@@ -1,0 +1,576 @@
+want to move a mobile application form an Android 
+phone to a Java phone； or we want to optimize a dex 
+file furthermore because it is expected to be run on 
+the PC instead of the mobile phone.  The resources of 
+the PC are more abundant than the mobile phone. 
+The purpose of this two-year project is to study the 
+key technology of binary transformation for dex 
+files. In the first year, we already have transferred 
+dex files to class files.  The major solved problems 
+are the data type inference and the program control 
+flow transformation.  In the second year, we 
+optimized dex files furthermore.  We found that some 
+optimization transformations done by the dx tool 
+cannot fit in the original analyzing framework, since 
+these transformations break the pattern of javac-
+complied programs and cannot be recognized by these 
+algorithms. We collected the transformations we found 
+that dx does and measured their effect on real 
+applications. 
+ 
+英文關鍵詞： binary transformation, type inference, compiler, 
+virtual machine, reversed engineering, Android, Java.
+ 
+1 
+ 
+行政院國家科學委員會專題研究計畫期末報告 
+Dalvik可執行檔之二元轉換 
+Binary Transformation for Dalvik Executable 
+計畫編號：NSC100－2221－E－002－0124－MY2 
+執行期限：100年 8 月 1日至 102年 7 月 31日 
+ 主持人：陳俊良 國立台灣大學資訊工程學系 
+  長榮大學資訊管理學系 
+摘要 
+二元轉換可以把一個可執行檔由一種二元格式轉成另一種二元格式，比如轉換一個 i386 可執行檔
+到一個 Arm 可執行檔。一些可執行檔是執行於虛擬機器而不是執行於真正的 CPU，比如 Java 虛擬機
+器和 .net 平台。最近另一種虛擬機器引起大家的注意，就是 Android 的 Dalvik 虛擬機器 (DVM)。DVM
+有它自己的可執行檔，命名為 dex (Dalvik EXectable)。它是由 Anrdoid 的工具，名叫 dx，所產生的。Dx
+的輸入是一個傳統的 Java class 檔案，而它的輸出是一個 Android dex 檔案。 
+有些場合，我們想要對一個 dex檔案進行二元轉換。例如，我們想要把一個應用程式由 Android 手
+機轉到 Java 手機。再比如，我們想要進一步最佳化一個 dex 檔案，因為它將會在 PC 而不是手機上執
+行。PC 的資源是比手機豐富得多。 
+本兩年計畫的目的就在於探討 dex 檔案二元轉換的關鍵技術。第一年，我們把 dex 檔案轉回 class
+檔案。主要解決的問題有：資料型態推斷，以及程式控制結構的轉換。第二年則對轉換過後的 dex 檔
+案進行最佳化。在套用既有資源做嘗試時，我們發現了幾個 dx轉換時所改變的程式碼模式；由於這些
+模式都破壞了原來 javac所編譯出來的程式碼樣式，因此使得既有的最佳化演算法無法處理。我們整理
+了這些模式以及它們對程式碼的影響，並且在實際的應用程式上測試了其效果。 
+ 
+關鍵詞：二元轉換、型態推斷、編譯器、虛擬機器、逆向工程、Android、Java。 
+Abstract 
+Binary transformation is a way to transfer an executable file from one binary format to another binary 
+format, for example, to transfer an i386 executable to an Arm executable.  Some executable files are executed 
+by virtual machines rather than by real CPUs, for example, Java virtual machine and .net platform.  Recently, 
+people pay much attention to another virtual machine, Android’s Dalvik virtual machine (DVM).  DVM has 
+its own executable, named dex (Dalvik EXectable).  It is produced by an Android’s tool named dx.  The input 
+of the dx is a traditional Java class file, while its output is an Android dex file. 
+There are some occasions that we want to do the binary transformation for dex files.  For example, we 
+want to move a mobile application form an Android phone to a Java phone; or we want to optimize a dex file 
+furthermore because it is expected to be run on the PC instead of the mobile phone.  The resources of the PC 
+are more abundant than the mobile phone. 
+The purpose of this two-year project is to study the key technology of binary transformation for dex files. 
+In the first year, we already have transferred dex files to class files.  The major solved problems are the data 
+type inference and the program control flow transformation.  In the second year, we optimized dex files 
+furthermore.  We found that some optimization transformations done by the dx tool cannot fit in the original 
+analyzing framework, since these transformations break the pattern of javac-complied programs and cannot be 
+recognized by these algorithms. We collected the transformations we found that dx does and measured their 
+effect on real applications. 
+ 
+keywords： binary transformation, type inference, compiler, virtual machine, reversed engineering, Android, 
+ Java. 
+3 
+ 
+Class 檔案與 dex檔案的差異 
+Class檔案與 dex檔案最基本的差別是根基於：JVM的指令集是 stack-based，而DVM的則是 register-
+based。 
+要特別指出，所謂 DVM 的 register
+是虛擬的，並不是硬體的 register，事實
+上只是記憶體的區段。圖 2 是 JVM 以
+及 DVM 的 method stack 示意圖。不論
+是 JVM還是DVM都會為每一個 thread
+配置一塊記憶體空間做為 method 
+stack。每一次 method invocation 時，就
+塞入一個 frame。除了 frame 必要的資
+訊，比如 return address 等，還會有本次
+method invocation 時需要的變數空間。 
+JVM 的變數空間區分為 local 
+variables 以及 operand stack。當 JVM 要
+執行加法時，比如 v1 (區域變數 1 號) 
+加 v2 存到 v3，會先把 v1放入 operand stack，再把 v2 也放入 operand stack。而加法的指令沒有直接支
+援區域變數間的相加，動作是從 operand stack彈出兩筆資料，相加後再存回 operand stack。最後把 operand 
+stack 最上面的資料放回 v3。至於 DVM 的變數空間都是 registers。而加法的指令直接支援 registers 間
+的相加。也就是說，加法的指令必須指出是運作到哪些號碼的 registers。 
+因為上述特性，對 class 檔案而言，operand stack 中每個堆疊元素的定義 (definition) 與使用 (use) 
+之間都維持著一對一對應 (one-to-one mapping) 的關係；而對 dex檔案而言，每個 register 的定義與使
+用之間可能是多對多對應 (many-to-many mapping) 的關係。這對 dex 檔案的二元轉換是一大挑戰。 
+除了 stack-based 以及 register-based 的差異外，經過比較兩者的指令集 (instruction set)，我們可以
+發現 dex 指令集對資料型態 (data type) 的態度較寬鬆，很多指令是 int 和 float 共用的，另外一些指令
+是 long 和 double共用的。Dalvik 的思考點是，搬動一個 int 或是一個 float，都是 32位元，所以底層動
+作是一樣的，所以就共用同一個指令。影響所及，有時候單看一個指令無法辨別出其資料型態。比如： 
+int a = 1079194419; 
+float b = 3.3f; 
+假設 a, b 分別配置到 registers v0, v1，產生出的指令會是： 
+0X 14 00 40 53 33 33 
+0X 14 01 40 53 33 33 
+其中 0X14是指令 const的 opcode，效果是把 immediate value 放到指定的 register。緊跟著的 0X00和
+0X01是目標 register編號，過來的 0X40533333可以是整數 1079194419的表示法，也可以是 3.3f的
+IEEE754 表示法。這是對 dex 檔案的二元轉換的另一大挑戰。 
+Soot的中介語言 
+Soot [2][3][4][5][6][7][8][9] 是一個 Java bytecode 的最佳化平台，能夠讀取 java原始程式或已編譯
+的 class 檔案，轉換為其內部中介語言之後進行最佳化，再輸出成 class 檔案。另外也可以讀取以中介
+語言表示的程式，或以中介語言輸出，因此在和其他程式共同作業時，其他程式可以直接產生中介語
+言程式，再交給 Soot 處理，省去了解 Soot 其內部中介語言資料結構的工作，因此許多這方面的研究及
+課程教學皆會使用。 
+Soot 最早是由 Raja Vallée-Rai 等人所提出的架構 [3]，當時便已經提出了三種中介語言，分別是
+Jimple、Baf及 Grimp，處理方式則是讀入 class 檔案之後，依序轉換為 Baf→Jimple→Grimp→回到 Baf，
+輸出成 class檔案；在每一種中介語言格式時都有其各自的最佳化。之後有許多關於最佳化演算法的發
+表，也都整理到了 Soot 裡面，例如 Navindra Umanee [5] 將 SSA form (Static Single Assignment form，
+...
+frame info.
+operand stack
+JVM s 
+method stack
+local variables
+...
+frame
+for a 
+method
+invocation
+...
+registers
+DVM s 
+method stack
+frame info.
+...
+ 
+圖 2：JVM以及 DVM的 method stack 
+ 
+5 
+ 
+如前面所介紹的，soot 現有四種中介語言，分別為 Jimple、Shimple、Baf及 Grimp。程式碼 1列舉
+了同一段程式以這四種中介語言表示的情形。 
+ 
+int a; 
+boolean b; 
+a = 77; 
+if(b) a = 88 * a + 99; 
+Object obj = new Object(); 
+a = a + obj.hashCode(); 
+程式碼 1(a)：Soot 的中介語言範例 – Java原始碼 
+ 
+0:  bipush 77 
+2:  istore_0 
+3:  iload_1 
+4:  ifeq 15 
+7:  bipush 88 
+9:  iload_0 
+10: imul 
+11: bipush 99 
+13: iadd 
+14: istore_0 
+15: iload_0 
+16: new #16; //class java/lang/Object 
+19: dup 
+20: invokespecial #1; //Method java/lang/Object."<init>":()V 
+23: invokevirtual #15; //Method java/lang/Object.hashCode:()I 
+26: iadd 
+27: istore_1 
+28: return 
+程式碼 1(b)：Soot 的中介語言範例 – Java’s byteCode 
+ 
+    push 77; 
+    store.i r0; 
+    load.b z0; 
+    ifeq label0; 
+    push 88; 
+    load.i r0; 
+    mul.i; 
+    push 99; 
+    add.i; 
+    store.i r0; 
+ label0: 
+    load.i r0; 
+    new java.lang.Object; 
+    dup1.r; 
+    specialinvoke <java.lang.Object: void <init>()>; 
+    virtualinvoke <java.lang.Object: int hashCode()>; 
+    add.i; 
+    store.i z0; 
+    return; 
+程式碼 1(c)：Soot 的中介語言範例 – Baf 
+7 
+ 
+系統架構 
+圖 5是我們的系統架構。我們並非直接
+把 dex 檔案轉換成 class 檔案，而是選擇把
+dex 檔案先反編譯至 java 檔案。因為 dex 檔
+案為 register-based 架構，所有的指令皆為 3-
+address 形式，而這樣的指令形式與 Java 語
+言中的敘述十分相近，反而與 class 檔案中
+stack-based 指令明顯的不同。所以我們放棄
+了需要進行 operand stack模擬的直接轉換方
+案，選擇了較容易翻譯指令的先間接轉換回
+java檔案的方案。 
+一開始 dex檔案被讀入時的型態資訊是
+不完備的，所以我們補上一個 Type 
+Inferencer 來推斷欠缺的型態資訊，產生的
+typed IR (Intermediate Representation) 是以
+SSA (Static Single Assignment form) 的形式
+呈現的。Control Structure Creator 則藉著此 IR 具有的 SSA資訊、block 資訊、control flow 資訊，建立
+控制結構資訊。再由 Java Writer 藉由 IR 的形態資訊及剛剛加上的控制結構資訊輸出 Java 檔案。最後
+靠 javac就可以完成把 dex檔案轉回 class檔案的任務。 
+型態推斷 
+Dex 檔案的二元轉換，第一關是讀入
+它。除了深入了解其檔案結構外，完整讀
+入的關鍵是補足在 dx 轉換過程中被省略
+掉的資料型態資訊，也就是說必須進行型
+態推斷。型態推斷是指電腦程式能夠自動
+推斷出一個值的型態的能力，class 檔案
+與 dex 檔案中並沒有包含區域變數的型
+態資訊。但對於編譯器而言，型態往往是
+一個重要的資訊，因此編譯階段時就需要
+一個靜態的型態來符合所有的使用以及
+定義。另外由於近年來物件導向程式設計
+的風行，其重要的一個功能：泛型 
+(generic) 的支援也是需要型態推斷的支
+援。 
+圖 6是我們 Type Inferencer 的架構，
+其中有若干部分是修改 Soot 的 Type 
+Inferencer而來。由於 Soot具有處理 IR的
+方便性，同時具有不錯的最佳化效能，有
+很多研究成果利用到它。 
+Soot Type Inferencer stage 1 前面必須
+加入 Null Splitter 的原因是：Java 語言是 strongly-typed，所以本來的 class 檔案並不會混用 iconst_0
+與 aconst_null 指令。但是為了精簡，Dalvik 的 dex 檔案混用所有 0x00000000 的常數。所以引用
+Soot 的 Type Inferencer 前，我們必須先加入自己的 Null Splitter，把 aconst_null區隔出來。 
+Soot Type Inferencer Stage 1 的主要工作為將參考型態 (reference type) 做一個細分。另外，它還預
+期每個變數都會在 define 時知道其最精準的型態。因此在此階段我們必須修改 Type Inferencer Stage 1
+*.dex
+Dex 
+Reader
+Type 
+Inferencer
+Control 
+Structure 
+Creator
+typed IR
+IR with control 
+structure info.
+Java
+Writer
+javac
+*.class
+untyped IR
+*.java
+ 
+圖 5：我們的系統架構 
+reference
+booleanint
+short
+byte
+char
+float
+long double
+reference
+int-like
+float
+long double
+reference
+int-like & float
+long double
+untyped IR
+Null
+Splitter
+Soot Type
+Inferencer 1
+Soot Type
+Inferencer 2
+Primitive 
+Type 
+Inferencer
+untyped IR
+(with const_null)
+typed IR
+ 
+圖 6：Type Inferencer 架構 
+9 
+ 
+0000: filled-new-array {v3, v4}, int[] // type@0007 
+0003: move-result-object v0 
+0004: sget-object v1, java.lang.Integer.TYPE:Ljava/lang/Class; // field@0000 
+0006: invoke-static {v1, v0}, java.lang.reflect.Array. newInstance: 
+                         (Ljava/lang/Class;[I)Ljava/lang/Object; // method@0001 
+0009: move-result-object v2 
+000a: check-cast v2, int[][] // type@0008 
+000c: return-void 
+程式碼 2(d)：multianewarray範例 – byteCode 轉成 Android’s dex 
+ 
+public void f(int, int); 
+  Code: 
+   0:  iconst_2 
+   1:  newarray int 
+   3:  astore_0 
+   4:  aload_0 
+   5:  iconst_0 
+   6:  iload_1 
+   7:  iastore 
+   8:  aload_0 
+   9:  iconst_1 
+   10: iload_2 
+   11: iastore 
+   12: getstatic #4;  //Field java/lang/Integer.TYPE: Ljava/lang/Class; 
+   15: aload_0 
+   16: invokestatic #12; //Method java/lang/reflect/Array.newInstance: 
+                                        (Ljava/lang/Class;[I)Ljava/lang/Object; 
+   19: checkcast #24;  //class "[[I" 
+   22: astore_2 
+   23: return 
+程式碼 2(e)：multianewarray範例 – dex 轉回 Java’s byteCode 
+ 
+public void f(int, int) { 
+    test r0; 
+    int i0, i1; 
+    java.lang.Object r1; 
+    int[] r3; 
+    java.lang.Class r5; 
+    int[][] r6; 
+    r0 := @this: test; 
+    i0 := @parameter0: int; 
+    i1 := @parameter1: int; 
+    r3 = newarray (int)[2]; 
+    r3[0] = i0; 
+    r3[1] = i1; 
+    r5 = <java.lang.Integer: java.lang.Class TYPE>; 
+    r1 = staticinvoke <java.lang.reflect.Array: java.lang.Object newInstance 
+                                                 (java.lang.Class,int[])>(r5, r3); 
+    r6 = (int[][]) r1; 
+    return; 
+} 
+程式碼 2(f)：multianewarray範例 – dex 轉回 Soot’s Jimple 
+11 
+ 
+的問題。Soot 在生成 Baf body 的 pack bb 當中的 bb.lso phase 是處理這個部份的。lso 的全名為 Load 
+Store Optimizer，這個 phase當看到程式中有先 store (由堆疊存入區域變數) 再 load (由同一區域變數
+載入堆疊) 的動作，且這個區域變數不在其他地方被使用的時候，將其代換為適合的 dup 指令。雖然
+soot的程式碼考慮到了 store和 load不一定放在一起，但是由於它只有考慮到一個暫時變數在 store
+之後只有 load一次或兩次的情形，當像程式碼 4般同一個陣列 load許多次的情形便無法處理了。而
+之所以 soot 無法偵測此種初始化行為的原因，由 Jimple 的型式可以推知，在 Jimple 此種 register-based
+的中介語言當中，無論該陣列是否為暫時的都會使用一個暫存器表示，事後才把不需要的暫存器透過
+最佳化的方式消除；而 soot 當中負責這種消除工作的 phase便是 bb.lso。 
+ 
+public void f() { 
+    int array[] = int[]{2,3,5,7}; 
+} 
+程式碼 4(a)：初始化陣列範例 – Java原始碼 
+ 
+public void f(); 
+  Code: 
+   0:  iconst_4 
+   1:  newarray int 
+   3:  dup 
+   4:  iconst_0 
+   5:  iconst_2 
+   6:  iastore 
+   7:  dup 
+   8:  iconst_1 
+   9:  iconst_3 
+   10: iastore 
+   11: dup 
+   12: iconst_2 
+   13: iconst_5 
+   14: iastore 
+   15: dup 
+   16: iconst_3 
+   17: bipush 7 
+   19: iastore 
+   20: astore_1 
+   21: return 
+程式碼 4(b)：初始化陣列範例 – Javac編譯後之 byteCode 
+ 
+public void f() { 
+    fillarray r0; 
+    int[] r1, $r2; 
+    r0 := @this: fillarray; 
+    $r2 = newarray (int)[4]; 
+    $r2[0] = 2; 
+    $r2[1] = 3; 
+    $r2[2] = 5; 
+    $r2[3] = 7; 
+    r1 = $r2; 
+    return; 
+} 
+程式碼 4(c)：初始化陣列範例 – byteCode直接轉成 Soot’s Jimple 
+13 
+ 
+或 fieldput即認為符合模式，而是確定這個 arraywrite或 fieldput的確使用了 rX做為要取值的
+陣列或物件才行。為此我們會追蹤中間敘述對堆疊元素個數的變化，紀錄由 load.r推進堆疊之後目前
+在那上面堆了幾個元素，當這個計數器減少到小於等於零即表示 rX 被使用到了；而若小於零則表示
+rX不是這個指令的第一個參數，即不是做為要取值的陣列或物件，故排除之。這些條件都滿足之後才
+將它轉換成程式碼 5(b) 的模式。另外為了能夠轉換連續指定陣列變數的情形，在一次轉換之後下一個
+比對是由轉換之後的 store.r開始比對，而非轉換之後的敘述開始比對；在連續指定陣列變數的情形
+當中，轉換後的 store.r會正好由下一個 load.r跟著，恰好符合配對模式的開頭，因此可以將一連
+串的 store/load/load/…/load 恰當的轉換為 dup/dup/…/dup/store，達到使用 dup 最佳化的目
+的。 
+ 
+store.r rX; 
+load.r rX; 
+… 
+arraywrite.*/fieldput; 
+程式碼 5(a)：dup的 Soot’s Baf模式 – 轉換前 
+ 
+dup1; 
+… 
+arraywrite.*/fieldput; 
+store.r rX; 
+程式碼 5(b)：dup的 Soot’s Baf模式 – 轉換後 
+多重分支的 return造成的問題及解法 
+return是從一個 method 當中返回的指令，在 bytecode 當中根據回傳型態有五種 return 指令，
+分別回傳堆疊最上方的 int、long、float、double或是無回傳值的返回。在一個有多重條件分支的
+method 當中，若有不只一個分支會結束 method 且回傳值時，最直覺也是最方便編譯器翻譯的方式便是
+在分支結束時才推入要回傳的值，再使用 return回傳。程式碼 6(a) 即是一個簡單的情形：min 函數
+判斷兩個參數何者較小，回傳那個比較小的值。程式碼 6(b) 的 bytecode很簡潔的表示出了這個簡單的
+狀況：條件成立時 iload_0 載入參數一後回傳，否則 iload_1 載入參數二後回傳。程式碼 6(c) 的
+Jimple中也可看到暫存器只使用到了參數的空間。 
+ 
+static int min(int a, int b) { 
+    if(a < b) 
+        return a; 
+    else 
+        return b; 
+} 
+程式碼 6(a)：多重分支 return 範例 – Java原始碼 
+ 
+static int min(int, int); 
+  Code: 
+   0: iload_0 
+   1: iload_1 
+   2: if_icmpge 7 
+   5: iload_0 
+   6: ireturn 
+   7: iload_1 
+   8: ireturn 
+程式碼 6(b)：多重分支 return範例 – Javac編譯後之 byteCode 
+15 
+ 
+看到這種架構：v0被當成「回傳暫存器」使用，存放了最終回傳的結果；而第二個回傳分支也是 goto
+到第一個來回傳。這表示這兩項轉換皆是 dx對程式所做的改動。推測在 register-based 的 dalvik bytecode
+當中，將回傳值存入某個暫存器再統一回傳，對虛擬機器的存取上會有好處。這個「回傳暫存器」的使
+用正是使得轉換回來的 bytecode變得複雜的原因，而且即使不計入存取區域變數的 store/load指令，
+goto指令至少要佔去 2 byte，不如直接使用 1 byte 的 return指令；若再計入 store/load指令，則由
+於每個分支至少一個 store，最後回傳指令又需要一個 load，各需至少 1 byte，在分支複雜時就會佔
+去一定數量的位元組。 
+還原此種改動的方式比較簡單。這種程式碼有兩個特性：在這個 method當中 return永遠只有一
+個，而且這個 return便是其他分支的 goto目標，因此我們只需要找出這一個 return，並將所有 goto
+到這個 return的指令改為完全相同的 return指令即可。至於「回傳暫存器」的消除則直接仰賴 soot
+的暫存器消除機制來消除。之所以原先的狀況 soot 無法將回傳暫存器消除的原因，正是這些 goto 使
+得回傳暫存器的值有了多於一個的來源，因此無法簡單的將這個回傳暫存器消除；將這些 goto以適當
+的 return取代掉之後，soot 便可以知道這個暫存器接下來就只有回傳，因此便能將其消除。 
+常數字串擴散造成的問題及解法 
+在 Java程式裡，所有的字串都是一個 java.lang.String物件的實例，而常數字串因其不變性，
+在編譯期間便可以用特殊的方式來進行儲存及初始化。在 class 檔案當中，常數庫裡的常數有一個型態
+為 CONSTANT_String_info，就是表示一個常數字串的內容。當 Java程式當中要取用一個常數字串時，
+直接以 ldc此一指令載入這個常數，在堆疊上就會推入一個參考，指向一個 java.lang.String物件，
+其內容為這常數所描述的字串。因此程式可以在需要用到這個常數字串時才將其推入堆疊當中，不必
+佔去一個區域變數空間存放。程式碼 7(a) 即為一個簡單的狀況，將 "Hello, World!" 這一字串連續
+印出三次。在 javac 編譯而成的 bytecode 程式碼 7b) 當中可以看到，在每次的 invoke 之前才以 ldc推
+入字串參考。程式碼 7(c) 的 Jimple 也表示出這些常數字串是用到時才取出來的。 
+ 
+static void f() { 
+    System.out.println("Hello, World!"); 
+    System.out.println("Hello, World!"); 
+    System.out.println("Hello, World!"); 
+} 
+程式碼 7(a)：常數字串擴散範例 – Java原始碼 
+ 
+static void f(); 
+  Code: 
+   0:  getstatic #2; //Field java/lang/System.out:Ljava/io/PrintStream; 
+   3:  ldc #3; //String Hello, World! 
+   5:  invokevirtual #4;  
+ //Method java/io/PrintStream.println:(Ljava/lang/String;)V 
+   8:  getstatic #2; //Field java/lang/System.out:Ljava/io/PrintStream; 
+   11: ldc #3; //String Hello, World! 
+   13: invokevirtual #4; 
+ //Method java/io/PrintStream.println:(Ljava/lang/String;)V 
+   16: getstatic #2; //Field java/lang/System.out:Ljava/io/PrintStream; 
+   19: ldc #3; //String Hello, World! 
+   21: invokevirtual #4; 
+ //Method java/io/PrintStream.println:(Ljava/lang/String;)V 
+   24: return 
+程式碼 7(b)：常數字串擴散範例 – Javac編譯後之 byteCode 
+ 
+ 
+17 
+ 
+static void f() 
+{ 
+    java.lang.String r0; 
+    java.io.PrintStream r4, r5, r6; 
+    r0 = "Hello, World!"; 
+    r4 = <java.lang.System: java.io.PrintStream out>; 
+    virtualinvoke r4.<java.io.PrintStream: void println(java.lang.String)>(r0); 
+    r5 = <java.lang.System: java.io.PrintStream out>; 
+    virtualinvoke r5.<java.io.PrintStream: void println(java.lang.String)>(r0); 
+    r6 = <java.lang.System: java.io.PrintStream out>; 
+    virtualinvoke r6.<java.io.PrintStream: void println(java.lang.String)>(r0); 
+    return; 
+} 
+程式碼 7(f)：常數字串擴散範例 – dex轉回 Soot’s Jimple 
+ 
+經過 dx的轉換之後，我們發現對於常數字串的取用變得間接了。程式碼7(d) 中可以看到，在method
+的開頭使用了區域變數 0存放 "Hello, World!" 字串的參考，其後的呼叫則變成載入區域變數 0。
+這個行為在程式碼 7(e) 的 Jimple 當中更為明顯：r0就是暫時存放 "Hello, World!" 字串的暫存器，
+其後的呼叫都是傳入 r0為參數。程式碼 7(f) 的 Dalvik bytecode 也有這個情形，在函式的開頭使用 v2
+存放著這個字串常數的參考，其後的呼叫皆是取用 v2做為參數；推測對於 register-based 的指令來說，
+與其每一次都要重新載入參考，載入一份讓每個指令共用較為方便。稍微耐人尋味的一點是 Dalvik 
+bytecode 當中在每一次呼叫之前又把同一個字串載入了 v1，但是呼叫本身卻是使用了 v2 做為參數。
+推測這是由於 dx的最佳化沒有完全，沒有移除一個雖定義了但未能參考到其內容就消失的暫存器。 
+還原這一改動也很簡單，只要找出存放在暫存器當中的字串常數參考，將其代換到其後每個指令
+當中即可。不過由於一個暫存器可能會有許多用途，因此這裡做了比較保守的選擇：當這一個存放字
+串常數參考的暫存器之後並無移作他用時才做代換。這裡「移作他用」的判斷基準是「出現另一個對這
+暫存器賦值的指令」，也就是說只要這個暫存器有被指定為其他值就不做變換。這對我們的問題來說已
+經足夠了：這種暫存器由於會暫存一個 method裡不同地方對同一個字串的引用，用來暫存某個字串的
+暫存器有很大的機會只會用來當作這個字串的參考，而不會移作他用，即使其他常數字串的使用範圍
+並不重疊；而即使程式中存在使用範圍不重疊的常數字串，實驗觀察發現 dx並不會對這種狀況進行暫
+存器合併，推測其理由可能包含方便常數字串管理以及 dx 轉換程式的容易實作。因此使用這個條件，
+既可達成我們的目的，也簡化了判斷條件以及轉換的實作。 
+這裡所做的最佳化在編譯器理論上稱做 Constant Propagation (常數擴散)，將編譯期裡已知的常數
+代入到其他式子裡去，配合 Constant Folding (常數摺疊) 可以將編譯期裡能夠計算的常數預先計算完寫
+入編譯後的程式碼裡。Soot 當中也有一個 phase 專門處理這個部份 (jop.cpf phase – Jimple Constant 
+Propagator and Folder [7])，但是如其名它只處理 Jimple 當中的常數，也就是基本型態的常數，對字串這
+種物件參考並沒有進行處理。不過 soot 當中並不是沒有處理字串物件的部份；在 cg (Call graph) pack當
+中，若選擇以 Spark [8] 或 Paddle [9] 來建立 call graph 的話，可以將選項 string-constants打開以
+使用字串常數擴散功能。之所以只在 call graph 的部份進行的原因是因為 Java 當中字串物件是不可變
+(immutable) 的，因此當一個參照到字串實體的參考被使用時，一定是提取實體之值本身，而不是改變
+實體的值。對於一個參考的提取，只會出現在方法呼叫上面，不論是作為呼叫參數或是呼叫該實體的
+成員方法皆是相同的；而對於字串來說，甚至語法上使用 + 號，看起來似乎沒有方法呼叫的字串連接，
+在經過 javac編譯之後也會轉換成對一個 java.lang.StringBuilder物件呼叫 append()方法，將這
+個字串作為參數傳進去。因此即使字串實際上是個物件實體，但其不可變的特性上我們可以將它視為
+常數來進行常數擴散；而字串是個物件實體的特性又可以將擴散的過程限制在方法呼叫當中，在擴散
+之後不需要進行摺疊，正好可以做為產生 call graph 的附帶效果。 
+如同前文所提到的，javac針對 JVM所產生的程式碼並不會也不需要進行如同 dx所做的共用字串
+常數參考，因此這個代換只需要做為生成 call graph 的副產品，在全域最佳化時進行即可；即使沒有做
+國科會補助計畫衍生研發成果推廣資料表
+日期:2013/12/19
+國科會補助計畫
+計畫名稱: Dalvik可執行檔之二元轉換
+計畫主持人: 陳俊良
+計畫編號: 100-2221-E-309-014-MY2 學門領域: 程式語言與軟體工程
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

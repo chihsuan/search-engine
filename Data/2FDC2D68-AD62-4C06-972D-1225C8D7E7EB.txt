@@ -1,0 +1,366 @@
+ 2 
+中文摘要 
+身處在現今資訊網路發達的時代，使用者(user)可以帶著各式各樣不同的資
+訊通訊產品於任何地方。我們參考 UPnP 技術以 UUID 為裝置(device)的獨一無
+二辨識碼，透過使用者名稱與 UUID的對應關係，發展出利用資訊裝置的 UUID
+來搜尋使用者的機制。我們所考慮的無線網路環境存在著現今極為普及的 IEEE 
+802.11 無線區域網路與藍芽(Bluetooth)個人通訊網路，透過 802.11 infrastructure
+與 ad hoc 兩種架構的搜尋，再加上藍芽介面搜尋，讓我們也可以搜尋到缺乏
+802.11 介面的裝置(或使用者) 。同時透過藍芽 PAN profile 可以將 802.11 與藍
+芽兩種協定串起，讓遠距通訊能力不足的使用者裝置可透過異質網路的合作通訊
+與網際網路上的其他裝置溝通。在本計畫中我們訂定了”使用者搜尋”的架構，並
+設計一套使用者搜尋的協定，透過我們所設計的協定，讓我們可以在沒有使用者
+裝置 IP位址的情況下找到使用者，並建立路由，以利與之溝通或傳遞資訊。 
+ 
+關鍵詞：802.11、藍芽、個人通訊網路要點、使用者搜尋
+ 4 
+目錄 
+中文摘要........................................................................................................................2 
+壹、 緣由與目的....................................................................................................7 
+貳、 成果與討論....................................................................................................8 
+2.1 User discovery protocol ...............................................................................8 
+2.2 Bluetooth PAN ...........................................................................................10 
+2.3 NIBS ..........................................................................................................14 
+2.4 User discovery scenarios............................................................................15 
+2.4.1 Bluetooth mode discovery .............................................................18 
+2.4.2 802.11 infrastructure mode discovery............................................20 
+2.4.3 802.11 adhoc mode discovery........................................................21 
+參、 實作驗證......................................................................................................26 
+3.1 Bluetooth與 802.11合作式通訊 ..............................................................26 
+3.2 Bluetooth mode discovery .........................................................................31 
+3.3 802.11 infrastructure mode discovery........................................................35 
+3.4 802.11 adhoc mode discovery....................................................................36 
+肆、 成果自評......................................................................................................48 
+伍、 參考文獻......................................................................................................49 
+ 
+ 
+ 6 
+圖 3.13 802.11 infrastructure mode discovery情境....................................................35 
+圖 3.14 802.11 infrastructure mode discovery TYPE 1訊息......................................35 
+圖 3.15 802.11 infrastructure mode discovery TYPE 2訊息......................................36 
+圖 3.16 問題................................................................................................................37 
+圖 3.17 無法取得MAC .............................................................................................37 
+圖 3.18手動設定 ARP................................................................................................38 
+圖 3.19 ICMP Redirect for Host. .................................................................................38 
+圖 3.20 不需要手動設定 ARP與 ICMP Redirect for Host之發生 .........................39 
+圖 3.21 ICMP Redirect發生流程 ...............................................................................40 
+圖 3.22 解決 ICMP Redirect for Host – ping result. ..................................................41 
+圖 3.23 ICMP Redirect for Host – wireshark display. .................................................41 
+圖 3.24 ad hoc mode下做 user discovery...................................................................42 
+圖 3.25 user A發出 TYPE 1訊息 ..............................................................................42 
+圖 3.26 中間 user發出的 TYPE 1訊息 ....................................................................43 
+圖 3.27 user B發出 TYPE2訊息 ...............................................................................43 
+圖 3.28 中間 user傳遞 TYPE 2訊息 ........................................................................44 
+圖 3.29 測試資料傳輸的路徑與其正確性 1.............................................................44 
+圖 3.30 測試資料傳輸的路徑與其正確性 2.............................................................45 
+圖 3.31 測試資料傳輸的路徑與其正確性 3.............................................................45 
+圖 3.32測試資料傳輸的路徑與其正確性 4..............................................................46 
+圖 3.33 user A的 routing table....................................................................................46 
+圖 3.34 中間 user C的 routing table..........................................................................47 
+圖 3.35 user B的 routing table....................................................................................47 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 8 
+貳、 成果與討論 
+此章節主要是要說明 user discovery的架構設計與運行機制。首先會先介紹
+我們所設計的 user discovery protocol，接著再提出一些會運用到的相關技術原
+理，並引進 NIBS (Name to ID Binding Server)的觀念，最後再詳細的把每個 user 
+discovery scenarios運作機制呈現出來。 
+2.1 User discovery protocol 
+如圖 2.1，當我們的使用者 jimi 想要跟他週遭的好友分享他所擁有的
+information時，卻不知道他的好友在哪，所以需要有一套機制來找到他的好友。 
+ 
+圖 2.1 使用者搜尋之時機 
+為了實現 user discovery讓使用者可以去找到其他的使用者(好友)，在此我們
+設計出一套 protocol based on UDP (port 7500)，讓我們可以透過這個 protocol去
+達成 user discovery，並將欲分享之資訊正確傳達，圖 2.2為我們所設計的 message
+之內容。 
+使用者 jimi要尋找他的好友時，當處在WiFi 模式下時，使用者 jimi 會發出
+User Discovery Request訊息，收到訊息的人，檢查訊息格式的 UUID 若是自己就
+ 10
+填入發出此 discovery的 device IP，之後其他 device收到後，可以拿 UUID與此
+IP 向 UD_table (User Discovery table- a database that has message UUID、BT 
+MAC、Target IP、Source IP、上一 hop IP)做比對，如果 UD_table 裡有兩項同時
+吻合的 entry，那就代表曾經接收過這個 discovery，所以我們就不再做重複的事
+情，停止再轉送此訊息，以避免 flooding storm的發生；另一種值是當 discovery
+訊息到達欲尋找的目標時，就是說找到目標使用者了，那目標使用者的 device
+會回應一訊息，裡面的 Target IP 就是填入本身的 IP，好告知 source 端目標使用
+者的 IP。 
+2.2 Bluetooth PAN 
+在我們的 user discovery中，會有一個情境是做 Bluetooth介面的 discovery，
+在此情境中，當使用者(尋找人)發現目標使用者時，必須與之建立 Bluetooth 連
+線。此處我們所建立的就是 Bluetooth PAN 連線，何謂 Bluetooth PAN，它是
+Bluetooth 眾多 profile 中的一個，全名是 Bluetooth Personal Area Networking 
+profile，在介紹此 profile之前，我們先介紹 Bluetooth protocol stack中的一層，
+叫 BNEP (Bluetooth Network Encapsulation Protocol )，之所以會先介紹此 protocol
+是因為在 Bluetooth PAN profile 中會使用到此 protocol。BNEP 的功用是讓
+Bluetooth 可以封裝其他 protocol，它實作了 Bluetooh 上的乙太網路模擬，使得 
+TCP/IP協定可以直接執行於 Bluetooth 之上，圖 2.3為 BNEP之 protocol stack。 
+ 12
+ 
+圖 2.5 NAP protocol stack. 
+第二種 Bluetooth PAN profile的組態是 Group Ad-hoc Networks，如圖 2.6，
+device在Bluetooth piconet中組成 Personal Area Network，並連接到一台 device (一
+般來說會是此 piconet中的 master)，形成一集中式的架構，但此組態並沒有連接
+到 internet的能力，只是在內部形成集中式的 ad hoc網路，與剛剛的 NAP 很類
+似，差別就在於此集中式的 server是否有對外連線的能力，圖 2.7為 Group Ad-hoc 
+Networks的 protocol stack，可以看到與 NAP的 protocol stack只差在對外的連線。 
+ 
+圖 2.6 Group Ad-hoc Networks 
+ 14
+ 
+圖 2.8 PANU-PANU (PAN User) 
+ 
+圖 2.9 PANU-PANU protocol stack 
+2.3 NIBS 
+這一小節要介紹的是 user discovery中扮演很重要角色的NIBS，全名為Name 
+to ID Binding Server，其功用主要是用在於將使用者的名稱對應到使用者目前所
+持有的 device之 UUID與 Bluetooth MAC，讓欲做 discovery的 user可以透過目
+標使用者的 user name 向 NIBS 詢問到目標使用者的 device UUID 與 Bluetooth 
+MAC，進而使用此 UUID/BT MAC 做為尋找使用者的依據。而在 NIBS 上存在
+的資訊，是由一開始加入此服務使用者先行連接到 NIBS，向其註冊的。 
+NIBS 感覺是一個很簡單的元件，但在我們的 user discovery中是必須存在的
+角色，讓我們可以得到使用者之相關資訊，在MSN或其他知名的服務中，也是
+會存在有類似的一個集中式的 server，用以管理使用者資訊。
+ 16
+下圖為 user discovery的流程： 
+ 
+圖 2.11 user discovery流程圖 
+在此我們將前面 2.2 小節所提到的 Bluetooth PAN profile，圖 2.12，引進至我
+們的 user discovery scenarios中，如圖 2.13。 
+ 
+圖 2.12 device通訊能不足 
+透過 Bluetooth PAN profile 讓通訊能力受限的 device 也能達成 user 
+discovery，如圖 2.13，在此處我們為了要將環境簡化，所以將圖中通訊能力受限
+的 device (PANU)與代理者(NAP)所構成的 Personal Area Network (圖中的紅圈)視
+為一具有WiFi與 Bluetooth 雙重 interface的 device，就是把圖 2.13中的紅圈視同
+於圖 2.10的一般使用者。 
+ 18
+方式向 U-Gate做詢問，好達成 user discovery，我們這裡只闡述了流程圖中的一
+部分。 
+ 
+圖 2.15 user discovery實例 
+在此我們並不去詳細探討如何向 U-Gate 詢問的細節[7]，我們將重點轉向下
+面的小節，就是當 U-Gate找不到此 user時，我們要透過怎樣的方式去尋找到使
+用者。 
+這裡我們所做的 discovery 基本上都是基於地域上的條件，也就是說搜尋的
+條件是以要去做搜尋的使用者其週遭的環境為考量，因我們考慮到的情境是某個
+使用者要將資訊分享給他的同學、同事或是生活上會接觸到的人， 換言之就是
+你身旁週遭的好朋友，所以我們會將搜尋範圍定在做搜尋的使用者的附近區域。 
+2.4.1 Bluetooth mode discovery 
+ 
+ User Discovery 
+Bluetooth mode 
+WiFi infrastructure mode 
+ 
+Discovery 
+mode 
+WiFi ad hoc mode 
+ 20
+ 
+圖 2.17 User discovery-Bluetooth mode流程圖 
+2.4.2 802.11 infrastructure mode discovery 
+ 
+ User Discovery 
+Bluetooth mode 
+WiFi infrastructure mode 
+ 
+Discovery 
+mode 
+WiFi ad hoc mode 
+表 2.2 User discovery- WiFi infrastructure mode 
+倘若透過 Bluetooth interface去做搜尋也沒找到使用者(B)的話，那 A 就把尋
+找的範圍加大，將範圍擴大至一個 LAN的大小，如圖 2.18，推測目標使用者(B)
+與 A可能在相同的 LAN 底下，所以透過 802.11 infrastructure的架構(AP mode)
+去做搜尋。A以 broadcast的方式將 discovery TYPE 1訊息送出，當 LAN 底下的
+其他使用者(e.g., User C) 收到 discovery TYPE 1 訊息時，會去判斷訊息裡的
+UUID是否與自己本身的 UUID 吻合，若吻合就回傳 discovery TYPE 2的訊息，
+如果比對不吻合 C 就再做一次 Bluetooth interface的 discovery，若找到目標 B，
+則與 B建立 Bluetooth PAN，並發出 TYPE 3的訊息告知目標 B，讓 B可以發送
+discovery TYPE 2的訊息與 source 端 A通訊。 
+ 22
+訊息內的 UUID 和 Traget /Source IP 欄位值，如果新收到的 discovery訊息內這兩
+項欄位與 UD_table的某一 entry同時吻合，即代表此 discovery訊息曾經被處理
+過，這是重複的訊息因此不做處理並停止此訊息的傳送，以防止 flooding storm
+的發生。 
+反之若 UD_table 裡沒有吻合的 entry時，Device 就將訊息的 UUID、上一 hop
+的 IP與 source IP (A的 IP)填入 UD_table 裡，同時比對自己與訊息的 UUID，若
+訊息 UUID與自己的 UUID 相同，就在剛剛紀錄的 entry 裡填入自己的 IP，並對
+上一 Hop發出 TYPE 2訊息，且根據所記錄的 entry建立路由，每一 device 均以
+此動作直到 TYPE 2 訊息到達尋找人(A)。倘若在與自己的 UUID 做比對時，並
+沒有吻合，就視 TTL 值適當的發出 TYPE 1訊息繼續尋找。 
+ 
+圖 2.19 User discovery-WiFi ad hoc mode 1 
+ 24
+ 
+圖 2.21 User discovery-WiFi ad hoc mode流程圖 
+在此模式下做 discovery，每個中繼 device (say C)收到訊息後比對 UUID，去
+判斷自己是否 device B，倘若不是使用者 B，在 device C發出 TYPE 1訊息繼續
+以 WiFi 去尋找之前，一樣會透過 Bluetooth 的介面去做 discovery，如同前面的
+Bluetooth discovery，如果有找到會建立 Bluetooth PAN連線，並發出 TYPE 3與
+回應 TYPE 2訊息，如下圖 2.22。 
+ 26
+參、 實作驗證 
+3.1 Bluetooth與 802.11合作式通訊 
+在我們的合作式通訊情境裡，一個主要的議題就是藍芽介面與 802.11 WiFi
+介面的互通，讓我們可以在藍芽與 802.11WiFi 間傳輸資料，也讓通訊能力受限
+的 device可以透過合作式通訊的方式連上 Internet與外界聯繫。我們透過前面介
+紹過的 Bluetooth PAN profile可以去達成這個目標，如圖 3.1，這是 Bluetooth PAN 
+profile中的其中一個組態 NAP (Network Access Point)，意即圖中左邊的是通訊能
+力受限的 device(只有 Bluetooth 能力)，右邊的即是一般的 device (具 Bluetooth 與
+WiFi 能力) 。隨著右邊的 device 扮演著 Network Access Point，就可以使左邊通訊
+能力受限的 device與外界做聯繫。 
+ 
+圖 3.1 Bluetooth PAN 
+下圖 3.2為NAP profile在 PC中實現後的組態，此台 PC所扮演的角色是NAP 
+profile中的 Network Access Point，可以看見有 bnep interface與 bridge interface 
+(pan0)。 
+ 28
+ 
+圖 3.3 NAP profile-PANU 
+可以預見的，PANU透過與 NAP連接後就可以連到外界了，如圖 3.4。 
+ 30
+ 
+圖 3.5 原始 NAP profile做法 
+但我們發現我們的應用環境並不完全適用此 profile，因在我們的環境中，如
+圖 3.6，使用者 A透過 Bluetooth介面發現了目標使用者 B時，必須先與其建立
+Bluetooth PAN，但在此時扮演 PANU 角色的目標使用者 B並不會主動與尋找人
+A建立連線，因為他並不知道有人要找他，也不知道要建立連線，所以在實作上
+無法以前面所闡述的作法去實現。在我們測試了許多方法後，發現將連接方式改
+以 PANU 連結 PANU，然後再透過將兩種 interface bridge 起來的方式連接到外
+界，即可打破 Linux Bluetooth PAN 軟體指令既有的限制。 
+ 
+圖 3.6 改良後的 NAP作法 
+ 32
+下圖 3.9為被尋找的使用者 B的 device 執行時列印出來的訊息。，可以看到
+此 device收到了 TYPE 3訊息並將自己的 IP 填入訊息裡回覆 TYPE 2訊息。 
+ 
+圖 3.9接收 TYPE 3訊息與發送 TYPE 2訊息(使用者 B) 
+下圖 3.10為被尋找者 B的 device網路介面組態，可以看到由 PAN profile所
+建立的 bnep interface，其 IP為 140.123.107.105。 
+ 34
+ 
+圖 3.11 使用者 B的 device透過 PAN profile聯繫 A使用者的 device 
+下圖3.12為建立bnep interface後發出的TYPE 3訊息與收到的TYPE 2訊息。 
+ 
+圖 3.12 TYPE 3 &TYPE 2 message 
+ 36
+圖 3.15為 TYPE 2的訊息，為 unicast，回覆對象是剛才做尋找的 device。 
+ 
+圖 3.15  802.11 infrastructure mode discovery TYPE 2訊息 
+3.4 802.11 adhoc mode discovery 
+當我們在 ad hoc的模式下做 user discovery時，可能會發生有相同 subnet的
+device存在同一個 ad hoc環境下，乍看之下好像沒有任何異狀，但實際上不然，
+由於我們無法控制 user 的位置，也不該限定 user 的位置，所以可能會發生如下
+圖 3.16的情況: 
+ 38
+發現訊框 destination MAC不是要給他的，所以不會把封包收起來；倘若我們手
+動將 B的 IP對應到 C的MAC address，如圖 3.18，A將封包傳送出去，C收到
+這封包，往 IP 層送時，發現這個封包的 destination IP並不是自己本身，而是 B，
+且得知 B與 A處與同一個 subnet，因此就對 A發送 ICMP Redirect for Host 封包，
+告知 A可直接透過MAC 層找到 B，不需要再透過 C來做 relay，但實際上 A 根
+本傳不到 B，所以 C 就會一直發出 ICMP Redirect for Host，如圖 3.19。但在無線
+的環境裡我們並不希望 ICMP Redirect for Host的封包一直被送出，這是由同一個
+subnet所衍生的問題，這會對我們的無線環境有所影響，因此我們必須去解決這
+些問題。 
+ 
+圖 3.18手動設定 ARP 
+ 
+圖 3.19 ICMP Redirect for Host. 
+首先，我們必須先將問題釐清，在 ad hoc mode 下會發生的第一個問題是:
+無法順利取得同一 subnet 底下 device的MAC (沒有 device 回應 ARP request)，因
+ 40
+ 
+圖 3.21 ICMP Redirect發生流程 
+圖 3.21是在 O`REILLY 的 LINUX網路原理中的圖，此圖主要是說明為何會
+發生 ICMP Redirect，由圖中可以看見會發生 ICMP Redirect 的第一個條件是被轉
+送的封包所進出的 network interface是否為同一個 interface，是的話再判斷是否
+是 NAT所導向的路徑，如果並不是 NAT 會經過的路徑，最後再判斷是否為 shared 
+medium，如果以上的條件均符合的話就會發出 ICMP Redirect的封包。由於我們
+的 device在 ad hoc mode下做封包 forward只有一個 interface，而且也符合 shared 
+medium，所以即使我們將 device 的 IP 設為不同的 subnet，還是會發生 ICMP 
+Redirect，為了避免 ICMP Redirect 封包對無線環境的影響，我們選擇將 ad hoc 
+mode 底下的 device關閉 ICMP Redirect的功能，透過 kernel所提供參數設定，
+即可將 ICMP Redirect關閉。在此之所以選擇將 ICMP Redirect關閉，主要是考量
+我們的路由是在 discovery的同時就建好了，所以並不會有使用到 ICMP Redirect
+的時機，加上在 ad hoc mode 下的 device 並沒有連上 Internet，所以將 ICMP 
+Redirect關閉並不會對使用者有任何的影響。同時我們設計一開關，當我們的 user
+要與 Internet做連線時，程式會將 device的 ICMP Redirect 打開，當我們的 device
+離開 Internet並且進入 ad hoc mode時，就會將 ICMP Redirect關閉，以解決 ICMP 
+ 42
+ 
+圖 3.24 ad hoc mode下做 user discovery 
+圖 3.25為使用者 A所發出的 discovery TYPE 1訊息，可以看到 TTL為 0x5，
+TYPE為 0x11。 
+ 
+圖 3.25 user A發出 TYPE 1訊息 
+中間的使用者 C收到了此一訊息發現 Target不是自己，繼續發出 TYPE 1訊
+息如圖 3.26，TTL為原 TTL 減一的 0x4。 
+ 44
+A送，所以繼續傳遞 TYPE 2訊息。 
+ 
+圖 3.28 中間 user傳遞 TYPE 2訊息 
+接著我們透過 ping 指令來測試資料傳輸的路徑與其正確性，如圖 3.29。 
+ 
+圖 3.29 測試資料傳輸的路徑與其正確性 1 
+由圖 3.30 至 3.32 觀察MAC可得知中間的 192.168.2.2主機會幫忙轉傳封包。 
+ 46
+ 
+圖 3.32測試資料傳輸的路徑與其正確性 4 
+並透過下面 3張圖，觀察 3 台主機的 routing table可以得知其路徑建立。 
+ 
+圖 3.33 user A的 routing table 
+ 
+ 48
+肆、 成果自評 
+ 
+本計畫主題為在到處存在的網路中實現使用者搜尋與合作通訊，以利具情境
+知覺特性之應用的開發。我們透過佈建好的 NIBS，將使用者的 user name 與其
+目前所持有的 device ID做對應，透過 binding user name 至 device UUID與 BT 
+MAC，然後使用 UUID/BT MAC的搜尋來尋找目標使用者。在此我們設計並實
+作 user discovery protocol，訂定各種搜尋環境，以 Bluetooth 與 802.11 的
+infrastructure mode及 ad hoc mode串起整個架構，讓使用者可以透過各種方式管
+道，盡其所能的去尋找他的好友，將資訊傳遞分享給他，並透過 Bluetooth PAN 
+profile連結 Bluetooth與 802.11，使其能與通訊能力較不足的 device 互通。本計
+畫所實作的 ad hoc mode discovery透過 on demand的方式，在邊做 discovery的同
+時也建立起路由，當尋找到好友同時也已經可以與他傳遞訊息了。我們所定的
+user discovery其著重的搜尋是在週遭的使用者，我們是以週遭的環境條件去做搜
+尋，但並不保證其找到的成功率，所以在找不到使用者時，我們定義了所謂的
+post-it 便條紙，能使 user discovery 功能更加完善。 
+我們所設計並實作的 user discovery protocol，與一般 service discovery (如
+UPnP 或Bluetooth)不同之處在於 service discovery多局限在一區域範圍(如 subnet 
+in UPnP 或 Piconet in Bluetooth)，其搜尋的對象有一個低階固定的 identifier。我
+們的 user discovery protocol 會竭盡所能利用環境中的通訊能力延伸搜尋能力，並
+允許使用者以容易記憶的 user name 來表示欲搜尋的對象，充分發揮”到處存
+在”、”友善介面” 及”情境知覺”等特質。這是目前文獻上尚未看到的作法。 
+  
+出席國際會議報告 
+ 
+ 
+ 
+ 
+侯廷昭 
+國立中正大學電機工程學系教授 
+ 
+ 
+會議期間及地點：96年 8月 6日至 96年 8月 10日 美國費城 
+ 
+會議名稱（中文）：2007年 國際行動與無所不在系統會議:計算、網路與服務 
+會議名稱（英文）：The Fourth Annual International Conference on Mobile and 
+Ubiquitous Systems: Computing, Networking and Services (MOBIQUITOUS 2007) 
+  
+會議名稱（中文）：2007年 國際行動與無所不在情境感知系統與應用研討會 
+會議名稱（英文）：The First International Workshop on Mobile and Ubiquitous 
+Context Aware Systems and Applications (MUBICA 2007) 
+ 

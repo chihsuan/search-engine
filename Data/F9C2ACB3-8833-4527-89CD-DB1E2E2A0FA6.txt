@@ -1,0 +1,136 @@
+1一、前言
+在通道傳輸中，因通道雜訊的影響，使得接收的 information 因干擾而失真，為了將錯
+誤回復，則發展出了各式各樣的 channel decoding，其 Viterbi algorithm [1]為 channel decode
+中具代表性的一種 channel decoding。但若要論及可有效的運用 trellis state估計出每一個 date
+symbol 的機率，並將機率當成 soft information 以達更佳的錯誤恢復，則是於 1974 年由
+BAHL、COCKE、JELINEK、RAVIV 所建構的 BCJR algorithm [2]，來完成 channel decoding；
+其錯誤恢復力更勝於 Viterbi algorithm，但卻帶有極高的計算複雜度。因為本計劃是使用
+H.263+的 code book 來當成我們傳輸端資料源壓縮編碼，而 VLC codeword 會因為一個 bit
+的錯誤造成 error propagation，導致我們並不能夠單純的使用原本基於 trellis 上 bit stage (或
+是 level)的 BCJR 演算法方式，而需要將之改成 symbol stage，每一個 stage 上的 node 所延
+伸出去的路徑將會因不同 bit 長度而延伸到不同的 stage 上，故我們得改變 BCJR 演算法中
+所採用分支(branch)的方式。
+二、研究目的
+在實行 BCJR 演算法時，我們必須建立 trellis 樹狀圖，根據接收端所接收的訊號，可觀
+察得到 bitstream長度，此時實行錯誤更正時必須考慮到所有的 codeword組合才能畫出 trellis
+圖中的所有路徑，等待 trellis 圖架構完成後才能開始實行 BCJR 演算法，此時 bitstream 長
+度將會影響到 trellis 架構圖的複雜度，考慮我們使用 H.263+的 codebook，我們將觀察
+bitstream 長度和 codeword 路徑的組合有多少，在找尋可能的 codeword 組合時，可依據
+codebook 中可依據不同的 bit 長度，對 codebook 做分類，再找尋 codeword 組合可能路徑，
+找尋後的結果如表一。
+Length of
+bitstream (bit)
+Number of path
+18 67
+19 97
+20 142
+21 207
+22 301
+23 440
+24 643
+3含有二個基本的 recursive function 成員，它被用來計算 trellis 中各種傳輸的編碼資料機率
+值，欲有效的運用矩陣計算特性，來代表 trellis 之間 stages、nodes 與傳輸之間的相關計算；
+假設接收訊號為 Y1…YL(假設編碼端使用 code rate 為 0.5 的 convolutional code，而每一個時
+間點 t，Yt 為一對編碼後經 AWGN channel 輸出的結果)，使用 BCJR 演算法估計(1)的機率
+ Lt YYiS ...|Pr 1 (1)
+將(1)乘上一常數，  LYY ...Pr 1 ，取而代之為(2)
+   LtYYiSit Lt ....1,...,Pr 1  (2)
+將每一個 trillis state 轉換機率定義為 t，
+    LtiSYjSji tttt ....1where,|;Pr, 1   (3)
+在(3)中，為 t 時間點從 stage i 到 j 且輸出結果為 Yt 的傳輸機率，利用 i 與 j 的 index 描述為
+一個維度 nn 的矩陣，其中 n 為 stage 的個數，最後定義 row vector (4) 和 column vector (5)
+   LtYYiSi ttt ....1where,...,Pr 1  (4)
+   LtjSYYj tLtt ....1where,|...Pr 1  (5)
+接著介紹 BCJR 演算法的三個 step:
+Step 1:計算 forward recursion(6)
+Ltttt ....1,1   (6)
+Step 2:計算 backward recursion(7)
+1.....1,11   Ltttt  (7)
+Step 3:計算 row vectors Ltt ....1,  ，由(2)可得
+iii ttt  )( (8)
+計算 trellis transition 由 iS t 1 到 jS t  的機率(9)
+   jjiiYYjSiS tttLtt  ,...;,Pr 111   (9)
+為了求得  0Pr tu 的機率，其中 tu 為 t 時間點的 codeword，  0Pr tu 可經由(8)或(9)
+中可對應到 data 為 0 的所有的 i,j 可能做機率累加求得，又    0Pr11Pr  tt uu ，
+5圖(2) T algorithm，每一個 stage 上所保留的 node，其α值都在 threshold 之上
+四、研究方法
+本計劃主要的目的為實行 joint source channel decoding，根據 H.263+中 VLC 的
+codebook，將產生出來的 symbol 對應 VLC codebook，串接成連續的 bitstream，此二位元的
+訊號經由 BPSK 的調變，訊號已成為 1 或 -1 的數位訊號，加上 AWGN 的雜訊之後就為
+decoder 端的輸入。
+在實行方面，先前所提及的 BCJR 演算法中，trellis 都以 bit stage 為主軸來延伸出所有
+的路徑，因考慮 VLC 是以 codeword 為單位，並且每一個 codeword 的 bit 數都不同，以致
+在解碼上一個 bit 的錯誤，會造成錯誤的延續性(error propagation)，使得之後 symbol 因沒辦
+法同步解碼而使 decoding performance 不佳，所以我們將原來所定義的 bit stage 修正為
+symbol stage，並且考慮 symbol number、bit number、run 和 last 等 codeword 的各種特性，
+在 trellis 上的 node 也要隨之紀錄各種資訊。
+在實行 M-BCJR 之前，先將 codebook 上的 codeword 依照 bit number 和 last 來分類，以
+方便 M-BCJR 的實行，假設編碼後的輸出的 bit number 為 bN ，根據定義所串接而成的
+bitstream 為  NbuuuU ..., 21 ；經 BPSK 調變後  NbxxxX ..., 21 為傳送信號，其中 xn 等於 1
+或-1，傳送時在通道中受到雜訊影響(如 AWGN)，接收端訊號則定義為  NbyyyY ..., 21 ，
+在接收到 Y 的前提之下，我們運用高斯的機率分布求得發送端每一個 bit  0Pr nu 的機
+率，其中 n =1,2,3,…,Nb，如此可求得相對應的 probability vector  NbpppP ..., 21 ，其中
+ 0Pr  nn uP ，此 vector 為實行 M-BCJR 演算法的中重要的 soft information。
+αt
+βt
+7假定隨機選定的 symbol 為 ACA，產生的 bitstream 為 001100； 6bN ，假設已經由
+BPSK 調變加上 AWGN channel 後，求得傳輸端二位元訊號 1nu 的機率 vector 為：
+ )12.0(),03.0(),97.0(),88.0(),12.0(),05.0(1 P
+我們以 bit stage 為主軸來描述實行 M-BCJR 中如何比較α來取捨較優良的 node，較優
+良的 node 將存入 data buffer 中，直至出現更佳的機率才取代，運算方式為假定 1M ，
+6bN ，我們將執行步驟分成六個 STEP 來探討，由時間的前後關係去分析:
+STEP 1：trellis 在 bit 0 時，有一個初始 node 其 1 ；
+一開始從 bit 0 的 initial node 出發，按照 codebook 中所有可能的 codeword 延展出不同
+的路徑，此例中 codeword 的 bit number 為 2 或 3，根據 data buffer 的 size，同 bit 長度的
+codeword 所延展出去的 node 也只將留一個( 1M )，此時比較α留下最佳的 node。
+Node 2：可能選擇的路徑為以下三個，比較其大小，
+A： 2508.088.095.03.01 
+B： 0088.088.005.02.01 
+C： 0012.012.005.02.01 
+選擇 A 放入 data buffer 當中
+Node 3：可能選擇的路徑為以下二個，比較其大小，
+D： 12.012.095.02.01 
+E： 01.088.012.095.02.01 
+選擇 E 放入 data buffer 當中
+STEP 2：此時 trellis 的 node index 由 0 往上增加至所對應的 data buffer 中有候選者的 node
+之上
+node0 node3 node4 node5 node6node2node1
+M=1；
+data buffer 空間可存一個A E
+bit stage
+0 1 2 3 4 5 6
+9EC： 03.097.02.001.0 
+比較原本 data buffer 的 AD 與 EB 後，選擇較佳的 AD 放入 data buffer 當中。
+Node 6：由 node3 往後延展，選擇的路徑為以下二個，比較其大小，
+ED： 61058.188.003.003.02.001.0 
+EE： 12.003.003.01.001.0 
+選擇 ED 放入 data buffer 當中
+STEP 4：trellis 的 node index 由 3 往上增加至 4。
+Node 6：由 node4 往後延展，選擇的路徑為以下三個，比較其大小，
+ACA： 11.088.097.03.00428.0 
+ACB： 88.003.02.00428.0 
+ACC： 12.003.02.00428.0 
+比較原本 data buffer 的 ED 與 ACA 後，選擇較佳的 ACA 放入 data buffer 當中。
+而另一橙色的路徑，已超過 bN 所限定的範圍，故全部捨棄。
+STEP 5：trellis 的 node index 由 4 往上增加至 5。
+node0 node3 node4 node5 node6node2node1
+M=1；
+data buffer 空間可存一個A E AC AD ACA
+node0 node3 node4 node5 node6node2node1
+M=1；
+data buffer 空間可存一個A E AC AD ED
+bit length0 1 2 3 4 5 6
+11
+圖(2) BER 與 M 的關係
+由圖(2)實驗數據得知，SNR 越佳錯誤更正的效果越好，M 的大小雖然與錯誤率有
+關，但是因為 M 所影響的錯誤率並不會很大，而計算複雜度卻高出相當的多，接著我
+們試驗相同的 SNR 的情況下，M 與錯誤率的關係，結果如圖(3)，但實驗數據顯示 M
+的大小影響錯誤更正相當的小。
+圖(3) 錯誤率與 M 的關係
+六、文獻
+[1] A.J. Viterbi,“Error Bounds for Convolutional Codes and Asymptotically Optimum Decoding
+Algorithm,”IEEE Trans. Inform. Theory, IT-13:260-269, April 1967.
+[2] L. Bahl, J. Cocke, F. Jelinek, and J. Raviv, “Optimal Decoding of Linear Codes for
+Minimizing Symbol Error Rate,”IEEE Trans. Inform. Theory, vol. 20, no. 3, pp. 284–287, Mar.
+1974.
+[3] C. M. Vithanage, C. Andrieu, and R. J. Piechocki,“Novel Reduced-State BCJR Algorithms,” 

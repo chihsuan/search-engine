@@ -1,0 +1,240 @@
+levels, capability of recovery would differ 
+accordingly. Users could also dynamically change the 
+reliability level of their data whenever needed. 
+Different from prior researches, our framework could 
+not only greatly reduce the overhead incurred by 
+parity data but also guarantee the data reliability. 
+Thus, the proposed framework could be applied in 
+flash memory based storage systems. 
+英文關鍵詞： MLC flash memory, RAID, Configurable reliability 
+levels, Performance 
+ 
+ 2
+的架構，並將奇偶校驗數據的更新動作控制在 NVRAM 中進行，以降低產生奇偶校驗數據所增加的寫
+入次數。但是新增一個 NVRAM 提高了系統建置的成本；況且，該架構並未降低用來產生奇偶校驗數
+據的資料讀取成本，因此對效能的提升有限。而一個 RAID-4 架構代表有一通道為奇偶校驗數據存取
+專用，若有大量奇偶校驗數據的更新，將會造成嚴重的效能瓶頸，系統其他動作都需等待奇偶校驗數
+據產生完畢才能繼續，勢必影響到系統的效能。 
+Lee 等三位學者 [3] 提供了不同的思維：藉由延遲奇偶校驗數據的產生，來減少寫入次數，進而將系
+統效能的影響降低。這篇研究排除了使用 NVRAM 所造成的額外成本，轉而將更新的資料先存入日誌
+區塊（Log Block），再利用系統閒置的時間來產生奇偶校驗數據，並以雙重對應表（Dual Mapping Table）
+分別記錄新舊奇偶校驗數據的位址，以確認奇偶校驗數據的最新狀態。但是該機制存在著部份問題：
+其一，若在系統閒置還未產生前發生資料錯誤，則該資料無法回復；再者，雖然此機制並未使用
+NVRAM，但是其使用資料頁面層級的對應方式（page-level mapping），將佔去可觀的記憶體空間。 
+Im 與 Shin 兩位學者整合上述各項機制的優缺點，設計一個以 NVRAM 為儲存媒介的快取，稱為 PPC
+（Partial Parity Cache），用來暫存部份更新資料所產生的部分奇偶校驗數據，並有效利用被更新但尚未
+抹除的資料，來降低為了產生奇偶校驗數據而增加的讀取次數 [4]。該架構以延遲奇偶校驗數據的產
+生，以及只產生與更新部份相關的奇偶校驗數據的方式，在 PPC 已滿或是需要進行空間回收（Garbage 
+Collection）的情況下，才做寫入快閃記憶體（Commit）的動作，的確可有效地降低資料寫入與讀取的
+次數；但是該機制除了需要新增一個 NVRAM 的系統成本之外，在其完成 Commit 之後所產生的奇偶
+校驗數據，依然會消耗掉大量的快閃記憶體空間。 
+Parity Logging [15] 將一個平價的磁碟指派為日誌磁碟（Log Disk），更新資料所產生的奇偶校驗數據先
+寫入日誌磁碟，並非直接寫入奇偶校驗數據磁碟（Parity Disk）之中；當日誌磁碟已滿或奇偶校驗數據
+較完整時才寫入奇偶校驗數據磁碟。透過此方法可降低大量而頻繁的奇偶校驗數據更新，減少奇偶校
+驗數據磁碟的空間與負載消耗。Floating Parity [16] 則以另一種方式來提升系統效能：它以浮動的映射
+方式，有彈性地重新定義奇偶校驗數據的寫入位置，省去了奇偶校驗數據更新所需耗費磁盤運轉時間，
+以及取得原本所在位置的搜尋時間所耗費的成本，進而節省大量 RAID 架構中，奇偶校驗數據更新所
+產生的負載。這兩者所提出的機制，的確有效地降低磁碟的磁盤運轉時間與搜尋時間；但是，由於該
+機制會造成奇偶校驗數據的搬移與奇偶校驗數據位址的重新映射，因此資料讀取的開銷反而加大。 
+由於快閃記憶體並不需要磁盤運轉時間與搜尋時間，因此我們可以很容易地避開這些議題。我們要強
+調的是，我們的機制並不會針對資料的更新產生奇偶校驗數據的更新；而是將其視為一份新資料，與
+其他新資料關聯產生一個全新的奇偶校驗數據；因此，相較於以上研究，我們的機制更適用於快閃記
+憶體系統，並且更能節省奇偶校驗數據所引發的資料存取成本。 
+四、 研究方法 
+系統架構 
+我們針對冗餘固態硬碟陣列設計了一個可依資料重要性對應處理的可調式可靠性架構（Configurable 
+Reliability Framework for SSD-Based RAID，CRF-RAID），圖一是系統架構圖。這個架構是由主機（Host）
+與固態硬碟（SSD）相互配合而成，主要由主機介面（Host Interface）作為溝通橋樑。而固態硬碟內部
+則是透過快閃記憶體介面（NAND Interface）作為固態硬碟控制器（SSD Controller）與快閃記憶體控
+制器（NAND Controller）的介面。 
+ 4
+其平行化程度為三者中最高。 
+虛擬頁面組與實體頁面組 
+虛擬頁面組（Virtual Page Set，VPS）與實體頁面組（Physical Page Set，PPS）為 CRF-RAID 產生奇偶
+校驗數據的依據。VPS 係由一個 Virtual Block Set 內每個區塊同一偏移量的頁面所組成。而 PPS 則是由
+一個實體區塊內 m 個連續的頁面所組成；搭配實際頁面的數量可記錄為 (n, 1)-VPS 與 (m, 1)-PPS。VPS
+與 PPS 雖為不同的 Striping Set 結構，但是其共同的特性是，資料須寫滿資料頁面，才能將產生的奇偶
+校驗數據寫入奇偶校驗頁面（parity page）。 
+z (n, 1)-VPS 表示該 VPS 的資料頁面數量為 n – 1，第 n 個頁面為同位檢查頁面 P，總數為 n。 
+z (m, 1)-PPS 表示該 PPS 的資料頁面數量為 m – 1，第 m 個頁面為同位檢查頁面 Q，總數為 m。 
+z Striping Set 為一個奇偶校驗數據的所有關聯頁面的集合，因此一個 Striping Set 會對應到一個奇偶
+校驗數據。 
+階層式可靠性演算法 
+CRF-RAID 的設計特點在於針對資料重要性的不同，提供不同的資料回復機制，我們稱其為階層式可
+靠性演算法。資料在主機端完成設定之後，即交由 SSD Controller 進行處理。首先，CRF-RAID Processor
+會先行判斷該資料的重要性層級，然後通知 Data Divider 與 Parity Generator 作出對應的處理。當資料
+重要性層級為低度（Low）時，Parity Generator 即不作處理，僅由 Data Divider 將該資料 Striping 至一
+個空間足夠的 LVBS（Low Virtual Block Set）之內，並更位址新映射表 VB table。須注意的是，低重要
+性資料寫入係充分運用 chip-wise Striping，因此並無提供寫入奇偶校驗數據的空間。但因 CRF-RAID 提
+供動態重要性層級切換機制，因此我們提出一個低重要性暫存區塊（Low-Importance Temporal Block，
+LTB），供 Low-Level Block 使用。 
+當資料重要性層級為中度（Middle）時，Data Divider 選擇一個空間足夠的 MVBS（Middle Virtual Block 
+Set）之後，會預留一個奇偶校驗區塊（parity block）的空間，再將資料 Striping 至該 MVBS 之內。當
+一個虛擬頁面組的資料頁面被寫滿，Parity Generator 即會將產生的奇偶校驗數據 P 寫入該虛擬頁面組
+的同位檢查頁面，並更新位址映射表 VB table。 
+資料重要性層級若設定為高度（High），Data Divider 會先行選擇一個空間足夠的 HVBS（High Virtual 
+Block Set），預留一個奇偶校驗區塊的空間，然後將資料 Striping 至該 HVBS 之內。當一個虛擬頁面組
+的資料頁面被寫滿，Parity Generator 即會將產生的奇偶校驗數據 P 寫入該虛擬頁面組的同位檢查頁面，
+並更新位址映射表 VB table。與中度重要性資料處理不同的是，當其中一個區塊的實體頁面組內部的
+資料頁面被寫滿時，Parity Generator 將會產生奇偶校驗數據 Q，並寫入該實體頁面組的最後一個頁面。 
+透過階層式可靠性演算法，CRF-RAID 所提供的回復層級最高可勝過 RAID-6 的保護機制，最低可以達
+到等同於 RAID-0 一樣完全沒有額外增加資源成本的平行化存取方法，讓整個系統的資源調配與保護
+更具彈性與穩定性。 
+重要性層級切換處理 
+為了使資料的重要性切換更具彈性，CRF-RAID 動態地將切換重要性層級的資料所應對應的回復機制
+建立起來，使得重要性層級切換造成的系統消耗降到最低。在三種重要性層級的相互切換之中，若是
+ 6
+的存取特性下，相對於 RAID-5 與 RAID-6，CRF-RAID+RAID-5 與 CRF-RAID+RAID-6 分別降低了約
+80%與 84%的讀取成本，這是因為 CRF-RAID 不需讀取原先的資料來更新奇偶校驗數據，而是將更新
+的資料視為新的資料，與其他資料產生新的奇偶校驗數據。這個效果也反映在寫入效能上，CRF-RAID
+降低了因資料更新所引發的奇偶校驗數據頻繁寫入，分別降低了約 42%與 56%的寫入成本。特別的是，
+CRF-RAID(10，10)因為僅將更新頻率前二十高的資料做重要性層級可靠性處理，因此其付出的讀取與
+寫入成本非常的少，只比 RAID-0 多出約 23%。Financial2 的讀取比例較寫入高，因此寫入的差距較小；
+但 CRF-RAID-RAID-5 與 CRF-RAID-RAID-6 相對於 RAID-5 與 RAID-6 在讀取成本方面，還是分別降
+低了 61.6%與 69%，在寫入成本方面也分別降低了 42%。而 CRF-RAID(10，10)，也因為寫入成本降低，
+整體成本只比 RAID-0 高出 1%，對整體快閃記憶體空間的利用率而言，有著大幅地提升。 
+無論是 Financial1 或是 Financial2，採用我們所提出的架構能大幅地降低奇偶校驗數據產生的次數；而
+傳統的 RAID-5 與 RAID-6 架構，因為每次資料更新都需要重新產生奇偶校驗數據，因此會有大量的讀
+寫動作。在 Financial1 下使用 RAID-6 甚至比 CRF-RAID-6 多出 84%的奇偶校驗數據。因此，我們可以
+了解，CRF-RAID 用其創新的設計，有效地降低奇偶校驗數據的更新，進而降低系統讀取與寫入的次
+數，其改良的效果並非使用奇偶校驗數據延遲寫入的技術所能匹敵的；而 CRF-RAID 所設計的重要性
+層級可靠性處理機制，更進一步地將奇偶校驗數據的影響降到最低。 
+系統可靠性分析 
+表二：資料錯誤模式列表 
+資料錯誤模式 描述 
+均勻模式 頁面錯誤均勻發生在每個快閃記憶體晶片 
+隨機模式 頁面錯誤隨機發生在每個快閃記憶體晶片 
+80-20 模式 80%的錯誤發生在 20%的頁面，另外 20%的錯誤則發生在 80%的頁面 
+為了了解 CRF-RAID 的重要性層級可靠性處理機制是否可以有效防護重要性高的資料，我們特別設計
+了三種資料錯誤模式：均勻模式、隨機模式，以及 80-20 模式，其特性如表二所示。我們使用的基數
+為 10 × 晶片數（晶片數＝8），級數為 1~50。為使我們的實驗更符合實際系統狀況，我們只針對有效
+資料頁作設定，以測試各機制在資料讀取發生錯誤時的回復能力。此外，我們使用的資料存取樣本為
+Financial1。由於我們使用的是 CRF-RAID (10, 10)；因此，我們將觀察前 10 個高度重要性與第 11~20
+個中度重要性資料的防護狀態，以比較各機制對重要性資料的防護性。 
+表三：均勻模式下資料遺失狀況的比較 
+Failed 
+Page 
+RAID‐0  RAID‐5  RAID‐6  CRF‐RAID(10, 10) 
+high  middle  low  high  middle low  high  middle low  high  middle low 
+80  1  0  79  0  0  51  0  0  0  0  0  79 
+1200  16  12  1172  2  1  210  0  0  0  0  0  1152
+4400  45  43  4312  4  1  526  0  0  1  0  0  4215
+9600  86  78  9436  6  2  1043 0  1  1  0  3  9205
+16800  144  148  16508  11  13  1891 0  1  1  0  6  16112
+26000  231  235  25534  24  24  3202 1  1  2  0  20  24893
+37200  342  337  36521  43  39  5027 1  2  3  3  28  35549
+ 8
+質為較差的區塊，則其對中度重要性資料的保護能力將會與 RAID-5 類似，甚至更差；當錯誤發生不
+集中在 HVBS 的情況下，CRF-RAID 在高度重要性資料的資料遺失狀況比 RAID-6 還低；而 CRF-RAID
+所設計的實體儲存庫動態選擇，就是為了選擇品質較高的區塊，作為重要層級較高資料的儲存元件。
+因此高度重要性資料存放在使用 CRF-RAID 機制的快閃記憶體系統之中，將可得到超越 RAID-6 架構
+的防護效能。 
+重要性層級切換效能評估 
+表六：重要性層級切換效能評估 
+Method 
+CRF‐RAID(20, 0)  CRF‐RAID(10, 10)  CRF‐RAID(0, 20) 
+Write counts Parity counts Write counts Parity counts Write counts  Parity counts
+具備重要性層
+級切換功能  504  504  416  416  320  320 
+不具重要性層
+級切換功能  2925  562  2830  466  2731  365 
+CRF-RAID 的重要性層級切換是透過動態對應的彈性，將資料所需的奇偶校驗數據建立，並以最小的
+成本儲存起來。為了解 CRF-RAID 各種重要性層級組合對系統成本的影響，我們另外加入 CRF-RAID 
+(20, 0)與 CRF-RAID (0, 20)作比較。對於不具重要性層級切換功能的系統來說，從低度重要性切換到中
+度重要性或是高度重要性，就必須將整個資料重新寫入一個 RAID-5 或 RAID-6 架構之中，因此代價非
+常大；反之，CRF-RAID 利用重要性層級切換處理，可以在不移動資料的情況下，產生奇偶校驗數據
+並讓其產生對應，因此相較於不具重要性層級切換功能的系統，降低了約 82%的寫入次數。雖然
+CRF-RAID 同樣需要產生奇偶校驗數據來提升對資料的防護層級，但是不具重要性層級切換功能的系
+統除了需要重新寫入資料，其寫入的過程之中還有可能與其他資料產生奇偶校驗數據，因此奇偶校驗
+數據產生的成本比 CRF-RAID 約高了 10%。透過 CRF-RAID 的重要性切換層級機制，讓 CRF-RAID 資
+料重要性層級可配置性所產生的系統成本降到最低，比起其他機制更具彈性與可調整性。 
+參考文獻 
+[1] Soraya Zertal, “A Reliability Enhancing Mechanism for a Large Flash Embedded Satellite Storage 
+System,” ICONS 08 Third International Conference on Systems, 2008. 
+[2] K. Greenan, D.D.E. Long, E.L. Miller, T. Schwarz, and A. Wildani, “Building Flexible, Fault-Tolerant 
+Flash-Based Storage Systems,” Proc. Fifth Workshop Hot Topics in System Dependability (HotDep ’09), 
+2009. 
+[3] Y. Lee, S. Jung, and Y.H. Song, “FRA: A Flash-Aware Redundancy Array of Flash Storage Devices,” 
+IEEE/ACM Int’l Conf. Hardware/Software Codesign and System Synthesis (CODES+ISSS ’09), pp. 
+163-172, 2009. 
+[4] Soojun Im, and Dongkun Shin, “Flash-Aware RAID Techniques for Dependable and High-Performance 
+Flash Memory SSD” IEEE Transactions on Computers, Vol. 60, No. 1, Jan. 2011. 
+[5] Bo Mao, Hong Jiang, Dan Feng, Suzhen Wu, Jianxi Chen, Lingfang Zeng and Lei Tian, “HPDA: A 
+Hybrid Parity-based Disk Array for Enhanced Performance and Reliability” IEEE International 
+Symposium on Parallel & Distributed Processing (IPDPS), 19-23 April 2010. 
+[6] J.-U. Kang, C. P. J.-S. Kim, H. Park, and J. Lee, “A multichannel architecture for high-performance 
+ 1
+ 
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+                                     日期：101 年 8 月 23 日 
+一、參加會議經過 
+International Workshop on Cyber-Physical Systems, Networks, and Applications（CPSNA）是臺灣、日
+本，以及韓國學者在這兩年積極推動成立的一個研討會，目的在使三個國家即時與嵌入式系統領
+域的研究學者能有更密切的交流與合作，本屆研討會於 2012 年 8 月 19 日在韓國的首爾大學舉行。
+申請者此次與會的目的是希望能夠與各國與會學者交流，因此投稿其中的短篇論文，每篇論文有
+十分鐘的時間來發表，以及回答問題。申請者也參加了當天晚上 18th IEEE International Conference 
+on Embedded and Real-Time Computing Systems and Applications（RTCSA 2012）的歡迎會，並出席
+20 日 RTCSA 2012 上午由韓國 LG 電子軟體中心副總裁 David Min 的 Keynote，瞭解 Future TV 的
+趨勢，另外也出席了當天多場 sessions，並於晚上受邀與台大郭大維教授及四位韓國教授（首爾大
+學的 Yookun Cho 教授與 Sang Lyul Min 教授、漢陽大學的 Yong Ho Song 教授、檀國大學的 Jongmoo 
+Choi 教授）共進晚餐及交流。申請者於 8 月 21 日搭機返國。 
+二、與會心得 
+此次出席國際會議，除了瞭解國際學術界最新的研究方向之外，最大的收穫就是認識了在即時與
+嵌入式系統領域多位相當活躍的國際傑出研究學者，包括；Christopher D. Gill 教授 (RTAS 2009 
+General co-Chair)、Jörgen Hansson 教授 (RTCSA 2012 General co-Chair)、首爾大學的 Yookun Cho
+教授 (President of Korea Institute of Information Scientists and Engineers，2001~2002)、Sang Lyul Min
+教授 (IEEE Distinguished Visitor)，以及瑞典 Malardalen University 的 Thomas Nolte 教授、韓國漢陽
+大學的 Yong Ho Song 教授、韓國檀國大學的 Jongmoo Choi 教授等等，對於申請者未來在國際學術
+計畫編號 NSC100-2221-E-011-074 
+計畫名稱 冗餘固態硬碟陣列可調式可靠性架構設計 
+出國人員
+姓名 謝仁偉 
+服務機構
+及職稱 
+國立台灣科技大學資訊工程系 
+副教授 
+會議時間 100 年 8 月 19 日 會議地點 韓國首爾 
+會議名稱 
+第二屆智慧整合感控系統網路與應用研討會 
+2nd International Workshop on Cyber-Physical Systems, Networks, and 
+Applications (CPSNA 2012) 
+發表論文
+題目 
+DRAM/PRAM 混合記憶體之快取管理機制 
+Double Circular Caching Scheme for DRAM/PRAM Hybrid Cache 
+附件五 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2012/12/29
+國科會補助計畫
+計畫名稱: 冗餘固態硬碟陣列之可調式可靠性架構設計
+計畫主持人: 謝仁偉
+計畫編號: 100-2221-E-011-074- 學門領域: 計算機結構與計算機系統
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+ 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數   
+ 

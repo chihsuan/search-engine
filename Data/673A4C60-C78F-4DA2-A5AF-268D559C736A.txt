@@ -1,0 +1,831 @@
+automation system let developers review and check 
+their work immediately so that bugs will not be 
+delayed to later stages to create more problems. 
+Building a test automation system, nevertheless, 
+requires considerable cost and efforts, regardless 
+whether your testing scope is unit testing (e.g., 
+xUnit framework) or complete test cases (in this 
+proposal, we focus on testing with complete test 
+cases). To build test automation, a common solution 
+is applying commercial capture/replay testing tools. 
+These tools allow testers/developers to capture a 
+test case and then the test case can be replayed and 
+verified automatically in a regression test run. 
+ In these years, the author has built a 3D debugging 
+visualization system called xDIVA [29]. Since the 
+scale of the system reaches near 70000 loc, it is 
+time to introduce test automation to control the 
+quality of future progress. We have tried several 
+commercial/open sourced capture/replay testing tools. 
+Unfortunately, none of them works for xDIVA because 
+xDIVA has a 3D engine which produces animated images 
+(frames). The recorded test cases often fail in the 
+replay due to the timing and nondeterministic 
+problems in the system. We soon discovered that we 
+are not alone in this case. There are many kinds of 
+applications which are not amenable to these testing 
+tools. 
+ To address the problem, we propose using program 
+instrumentation techniques to build our own test 
+automation system. This approach intercepts the 
+internal states of a program to verify the 
+correctness of a test run. It can solve the 
+nondeterministic problem in replaying the input 
+events. At last, our approach is in fact a low-cost, 
+generic test automation solution. Any applications 
+can adopt our approach and save the cost for 
+purchasing testing tools.  
+ 
+英文關鍵詞： Continuous Integration, Test automation, Regression 
+Test, Program Instrumentation, Capture/Replay 
+ 
+II 
+ 
+目錄 
+ 
+一、計畫中文摘要 .............................................................................. IV 
+二、計畫英文摘要 ............................................................................... V 
+三、前言 ....................................................................................... 1 
+軟體測試 ..................................................................................... 1 
+自動化測試概述基本準則 ....................................................................... 2 
+自動化回歸測試 (Automated Regression Testing) ................................................ 2 
+四、研究目的 ................................................................................... 4 
+五、文獻探討 ................................................................................... 5 
+Capture/Replay Approach ...................................................................... 5 
+Model-based approach ......................................................................... 6 
+Keyword approach ............................................................................. 7 
+六、研究方法 ................................................................................... 8 
+1.每日編譯(Daily build) ...................................................................... 8 
+2.Program Instrumentation (程式碼嵌入技術) ................................................... 8 
+七、結果與討論 ................................................................................ 11 
+系統實作 .................................................................................... 11 
+Test Spy .................................................................................. 11 
+Test Oracle ............................................................................... 13 
+Semi-Automatic Program Instrumentation .................................................... 14 
+Version control for new probing points .................................................... 15 
+探測點自動維護系統 ........................................................................ 17 
+Test case clustering ...................................................................... 17 
+系統驗證 .................................................................................... 18 
+成果 ........................................................................................ 20 
+對於學術研究、國家發展及其他應用方面之貢獻 .................................................. 21 
+對於參與之工作人員，可獲得之訓練 ............................................................ 21 
+八、參考文獻 .................................................................................. 22 
+九、計畫成果自評 ............................................................ 錯誤! 尚未定義書籤。 
+IV 
+ 
+一、計畫中文摘要	
+ 
+    持續整合 (Continuous Integration, daily build) 是最近軟體開發流程中廣受推廣的一項技術。引進
+這項技術除了可以每天自動化地將系統編譯完成,提報整合過程中的任何錯誤訊息之外，最重要是能夠進一步
+的執行自動化迴歸測試(regression testing)，讓程式人員/測試人員可以知道最近一次系統的修正導致了哪
+一些原本可以正常執行的測試案例發生錯誤。建置測試自動化系統通常必須耗費可觀的人力與成本，不管測試
+自動化的手段是 xUnit 之類的單元測試或者是本計劃所探討的完整案例測試。在測試自動化建置過程中，往
+往需要購置昂貴的測試自動化輔助工具。通常這一類的工具採用 Capture/Replay 的模式來錄製測試腳本，然
+後在重播測試案例的過程中去檢驗待測系統(System Under Test)的行為是否正常。 
+ 近幾年本計畫主持人建構了一個 3D 除錯視覺化的系統 xDIVA [1]。有鑑於系統本身已經過於龐大複雜
+(70000-80000 LOC)，所以嘗試引入測試自動化來控制品質。在試用過許多商業的測試自動化工具之後，我們
+很失望地發現這些工具並不能用在 xDIVA 的測試自動化，主要原因是 xDIVA 本身並非單純的 GUI 輸出，而
+是有 3D 繪圖的動態影像輸出。先前錄製的測試案例常會因為系統時序上的不確定性而導致重播失敗。我們也
+發現，其實這樣的問題也不只發生在類似 xDIVA 這樣的系統當中，無法採用這些測試工具的應用程式種類其
+實還不少。 
+ 為了探討這個問題，本計劃提出了一個採用程式碼嵌入技術(program instrumentation)的測試自動化
+方法。這個方法與傳統方法最不一樣的地方在於去擷取程式碼內部的狀態來判斷程式的行為是否正確，技術上
+還可以解決上述重播失敗的問題。最後，本計劃也等於是提出了一套廉價的軟體測試自動化的框架，任何測試
+自動化應該都可以採用我們所提出的方法來進行施做，進而省下可觀的工具購置成本。 
+ 
+ 
+ 
+ 
+ 
+關鍵詞：測試自動化，迴歸測試，程式嵌入技術，持續整合 
+  
+VI 
+ 
+Keywords: Continuous Integration, Test automation, Regression Test, Program Instrumentation, 
+Capture/Replay 
+  
+2 
+ 
+有些測試更是很難使用手工去完成，例如壓力測試。壓力測試只能藉由工具來幫助完成，另
+外迴歸測試也多使用自動化來協助完成繁複的測試過程。 
+自動化測試概述基本準則	
+ 測試是一系列有計畫地系統性的活動，為了實行測試活動而會提出許多測試策略方
+法。而其中測試自動化是近十幾年來關於軟體測試的一個種主要趨勢。其中主要搭配的活動
+是 Agile development 所推廣的 Continuous Integration (CI) 以及  Test Driven 
+Development (TDD)的 xUnit Testing 將測試以及測試自動化帶入了一個新的紀元。不過測
+試自動化的建置由來已久，xUnit 之類的單元測試自動化只是其中一個選項。測試其自動化
+的過程可以是 QA 人員使用特定的測試工具進行 test script 的撰寫，也可以是程式人員在
+專案進行時進行測試案例的撰寫(又稱做 code-based test automation, 以 xUnit 為代表)。 
+ 軟體的類型有很多種，也因為這些程式是為了應各種不同問題而產生，所以也造就
+了每種程式也都會有其獨特性，相同的測試自動化工具很難完全應用在各種不同類型的程式
+中，所以我們必需針對型態不同的軟體定義出不同的測試自動化策略(Test Automation 
+Strategy)。藉由這些策略判斷出哪些行為是可以被自動化測試，將會是在測試策略中最重
+要的事情之一──因為並不是所有的測試案例(Test Case)，都應該被自動化，過度複雜的
+測試自動化可能會花費更多的成本，必需考量是否值得將其自動化。 
+ 然而什麼時候該開始測試自動化? 理論上我們應該在專案一開始撰寫設計文件的時
+候，就應該去規劃出測試策略，提出符合設計概念的測試計畫，並且導入適當的物件導向設
+計模式，來增加程式碼的可測試性(Testability)。 
+自動化回歸測試	(Automated	Regression	Testing)	
+ 軟體專案開發過程中，常因為增加功能，或為了修復舊有臭蟲(bugs) 而去修改程式
+碼，但是這些修改卻常常又會產生新的臭蟲。這些因為程式碼修改而產生的新臭蟲，常常是
+程式設計員始料未及的。所以在修正完程式之後，通常需要完整的重新測試，確保程式的正
+確性，這種測試一般稱為迴歸測試(Regression Test)。迴歸測試的過程充滿重複性，如果
+我們可以將一個完整的測試自動化機制建立起來，之後程式設計師在撰寫完程式後，可以簡
+單、快速、正確的進行迴歸測試，不僅可以節省許多軟體專案開發時間，也可以確保程式品
+質。 
+ 傳統迴歸測試自動化工具之一的主要的功能是錄製測試行為(Capture)，然後提供自
+動化重播(Replay)以及驗證(Verify)的功能。我們嘗試過許多自動測試工具，發現大部分的
+工具在錄製上大多沒有太大問題，而最麻煩的部分主要落在重播(Replay)的步驟上。若重播
+測試行為無法完整的重現當初錄製的目的，那後續的驗證也沒有意義了。 
+ 我們的經驗主要來自於我們一個過去的專案 xDIVA [1] [2]。xDIVA 是本計畫主持人
+過去持續數年所開發的一個 3D 軟體除錯的視覺化工具，讓程式設計人員可以在除錯的中斷
+4 
+ 
+四、研究目的	
+ 
+ 我們觀察得出: 程式具備繪圖的輸出是這整個問題的癥結。如果繪圖的輸出結果還
+依存於使用者的輸入(例如滑鼠)則更惡化這一個問題。繪圖的輸出正確與否通常需要人眼的
+判斷。如果繪圖的輸出是非動態的，不更新的(e.g.:a static image, without animated 
+frames)，則影像處理的比對技術可能可以輕鬆的解決這個問題。舉例來說，一個繪製甘梯
+圖的程式，其結果正不正確可以用最暴力的影像比對法來判定結果是否正確。當然，其基本
+邏輯還是 Input-Output pair verification。 
+ 當程式除了有繪圖輸出之外，還有使用者的輸入(後續我們恆以滑鼠事件為例)，則
+錄製測試案例的過程就會遇到事件的時序問題。舉例說明，當使用者用小畫家在繪製一個由
+多個控制點控制的曲線的時候，由於錄製的過程中，錄製測試案例的工具通常會干擾待測系
+統(SUT)的效能。所以如果錄製的滑鼠事件描述是(滑鼠往南移動於第 0.1 秒按下 click) 通
+常重播錄致測試行為時會無法完整地的重現當初錄製的結果測試案例，因為時序會不一致,
+導致控制點的位置不一樣而做出不一樣的繪圖輸出。如果調整控制點的過程還牽涉到滑鼠事
+件的拖曳，則此問題會更加的嚴重。 
+ 聰明的讀者可能會立即建議將事件的擷取描述改為 (mouse click at (x,y)) 或者
+是 (mouse release at (x,y))來解決這個問題。但是這樣簡單的描述在拖曳的過程則會失
+敗:因為滑鼠拖曳的事件觸發頻率是完全由視窗系統所控制，加上 CPU 的時序控制，每一個
+拖曳事件基本上是很難精確重複的 (irreproducible)。讓我們以另外一個更明確的情境來
+做說明。假設滑鼠輸入可以與動態的影像的互動。由於動態影像的點擊事件一定要加上一個
+時間的維度 (click at (x,y) at time t)，記錄這樣的點擊事件通常不見得能重複觸發。
+請想像一個動畫有一個小球從左邊飛到右邊。錄製測試案例的時候測試人員在 (x,y) 精確
+的點到了飛行中的小球。但是當案例重播時，(x,y)的點擊事件可能錯失小球，因為錄製的
+時候通常待測系統(SUT)會執行的比較慢。而重播時(尤其是非原本錄製的執行環境與機器)
+執行速度上通常會有所些微的差別。 
+ 市面上所謂的 capture/replay 錄製測試自動化的工具所設計的目標都是能夠運用
+於廣泛的應用程式。所有攔截使用者輸入的技術基本上跳脫不出 OS hook 等等技術。但是，
+視窗系統，作業系統，以及繪圖引擎所共同製造的 nNondeterminism (不確定性)是這個問
+題的罪魁禍首。為了解決這個問題，也為了找出人眼的替代品，在本計畫中我們提出一種自
+動化測試的方法稱之為“侵入式性自動化測試＂(Intrusive Testing Automation)，儘量以
+達到花費最少的成本，擁有最好的效果來滿足我們的測試需求。所謂“侵入式＂表示我們會
+在原始程式碼中，插入一些側錄程式行為的程式碼，藉此來完成擷取資訊和驗證資訊以取代
+人眼的驗證功能。另外我們也提出一套新的有別於 input/output pair verification 的驗
+證邏輯。  
+6 
+ 
+ 
+Mod
+Model
+[11]
+或其他
+Model
+　 
+　 
+　 
+　 
+　 
+如圖 
+換圖來
+動化測
+的方法
+而最重
+這使得
+el‐based	
+-based tes
+、馬可夫鏈
+的正規表達
+-based app
+Build th
+Generate
+Generate
+Run test
+Compare 
+4 所示，一
+自動產生出
+試。Mode
+，可快速地
+要的部分
+程式能夠有
+approach
+ting [8] 
+( Markov c
+語言來敘述
+roach 的流
+e model 
+ expected 
+ expected 
+s 
+actual out
+開始 QA 人
+許多的測試
+l-based app
+產生大量的
+，則是透過
+更高的測試
+圖 3
+	
+[9]主要指的
+hain ) [12
+程式行為與
+程如下 : 
+inputs 
+outputs 
+puts with 
+員需要分析
+資料與預期
+roach 是一
+測資並且可
+Model 來自
+覆蓋率( 
+CR approa
+是透過需求
+]或者有限狀
+需要的資料
+expected o
+需求後建立
+的結果，
+種低成本的
+以透過分析
+動產生出許
+code cover
+ch 流程 
+來建立程式
+態機( Fi
+。 
+utputs 
+起 Model 
+逐一執行並
+方式產生測
+需求來找出
+多不重複( 
+age rate )
+測資模型
+nite state
+，此時透過此
+且驗證結果
+資( test 
+程式狀態
+non-repeti
+。此外，這
+ 
+，通常以 UM
+ machinge 
+Model 的
+是否一致來
+case gener
+模糊的部分
+tive )的有
+種方式最累
+L [10] 
+) [13]
+狀態轉
+達到自
+ation )
+。 
+效測資，
+人的則
+8 
+ 
+六、研究方法	
+ 
+1.每日編譯(Daily	build)	
+軟體專案每天不停地進行，代表著每天都會有程式碼的新增與修改，但整合卻可能是一段時
+間才進行，這意味著，許多整合性的錯誤此時才會浮現。錯誤發現的越晚，所需付出的代價
+越大，因此我們必須盡可能提高整合的頻率，讓潛在的錯誤即早現形。建構(Build)廣義係
+指包含撰寫程式碼、測試、整合程式碼、測試整合的程式碼一系列工作。其過程是每一個程
+式發展人員先針對部分單元撰寫程式碼（含編譯）及單元測試，再將此單元程式碼整合至共
+有的程式碼中並執行整合性的測試。而 Daily Build 即是每天進行這個建構的步驟。 
+2.Program	Instrumentation	(程式碼嵌入技術)	
+ 在程式碼的關鍵地方插入探測點來蒐集系統執行過程中的內部資訊是一種非常常用
+的軟體工程技術。這種技術稱之為 program instrumentation (PI) 常用於各種軟體工程工
+具如 profilers 或 test coverage tools 等等。或者程式人員常常基於除錯的需求，會在
+適當的地方手動進行 PI 來插入一些程式碼記錄 logs 以方便日後除錯。  
+欲使用 PI 來做事情的先決條件是必須要有原始程式碼。由於自動化測試都是一個軟體公司
+內部做的事情，所以一般來說不是問題。再來則是插入程式碼的過程中是否自動化。自動化
+進行 PI 的工具(如 profiler，test coverage tools) 通常具備分析原始程式碼的 parser。
+然後在適當的地點插入觀察程式碼片段之後產生一個中介檔，進行編譯成執行檔，所以程式
+人員並不會感覺程式碼被更動過。 
+ 本計畫所提的 PI 則是請程式設計人員手動地的進行插入需要的探測點 (probing 
+points)，這是我們＂侵入式＂名稱的由來。當這個探測點被執行時，在錄製階段的行為是
+將該探測點的重要變數或物件內容輸出到檔案儲存成測試案例檔(test case file)。若是在
+重播階段，則探測點的行為是將探測點的重要變數或物件的內容與先前錄製過程中所儲存下
+來的內容進行比對。若內容相同則表示此探測點的程式狀態正確。 
+ 假設每一個探測點所錄製到的行為是 pi，我們所提出的迴歸測試所要驗證的是: 
+ 
+Sk |= I1 I2 p3 I4 p5 I8 p9 p10 p11I12I13 p14 p15 p16 p17 I18 I19 p20I21 p22 
+ 
+10 
+ 
+的過程中可以蒐集這些最終觸發事件。然後在重播的階段則想辦法讓滑鼠事件處理函式在適
+當的時機呼叫 o.picked()以模擬一個輸入事件的觸發。 
+ 簡扼地說，為了避免輸入事件在重播過程中的不確定性，我們的方法在重播的過程
+中，將不會再一次餵錄製過程中的輸入事件給待測系統。取而代之的是代為呼叫系統的最終
+觸發事件。 
+  
+12 
+ 
+這 些
+ 
+ 
+ 
+在錄製
+並將這
+包裝過
+用 xI
+程 式 狀
+測試案例的
+些狀態儲存
+後的 API
+nput 函式，
+態 所 包 含
+圖
+階段，隨著
+成測試腳本
+（Applicat
+用以記錄操
+的 內 容
+圖 6 探
+7 SUT ex
+程式的流程
+檔案，如圖
+ion Progra
+作時的參數
+則 由 程 式
+測點(Probi
+ecution in
+，我們可
+。 
+mming Inte
+及時間區間
+人 員 或
+ 
+ng points)
+ capture m
+以依序從探
+rface，應用
+，使用法如
+測 試 人 員
+ 
+ 
+ode 
+測點中攔截
+程式介面
+下例： 
+自 行 決
+到程式內部
+）使用者只
+定 。 
+的狀態，
+需要使
+14 
+ 
+進行上述的比對的模組我們稱之為 Test Oracle。Test Oracle 在軟體測試與軟體工程的領
+域裡，是一種用來判別程式執行結果是否正確的機制。在我們的方法中，我們只要依據由探
+測點中所取得的值與測試腳本檔案的紀錄值分別進行比對，如果所擷取到的值與之前所記錄
+的值有所不同的話，代表程式碼被修改過之後，已經影響到某一個探測點的變數或物件的內
+容，極有可能是一個錯誤。  
+ 我們實作的 Test Oracle 包含了錄製、重播以及更新既有測試案例的操作介面，以
+及基本的測試案例管理介面，如下圖所示： 
+ 
+圖 10 Test Oracle 之測試案例 
+Semi‐Automatic	Program	Instrumentation	
+一旦測試人員或程式人員在原始碼中確定了探測點以及最終觸發事件之後，如果以人工的方
+式，我們必須要在這些探測點或者是最終觸發試驗的指令附件插入下面的虛擬程式碼。這種
+手動插入程式碼的方式雖然淺顯易懂，不過比較不具備彈性，而且明顯地汙染了原始程式碼:
+也就是說這些 xAssert()變成原始程式碼也必須維護的一個部分。 
+ 取而代之的, 我們可以半自動地將程式碼插入: 首先, 程式設計/測試人員在指認出
+探測點之後，在該探測點的後面打上具備特別 keyword 的 comment 如下。 
+ 
+16 
+ 
+ 
+圖 12 新加入探測點 
+ 
+ 
+在自動化測試的過程中，重新錄製測試案例的代價通常很高。例如，已經成功錄製了五百個
+測試腳本檔案，卻因為後續程式碼的修改，導致其中兩百個測試腳本檔案無法使用，必須再
+重新錄製。這種結果往往是任何自動化測試的相關人員所不樂見的。 
+為了解決這些問題，我們必需加入版本控制的機制，使之後再加入新的探測點時，版本號碼
+可以增加，然後舊有的測試腳本檔案仍然可以正常的執行。而在重播的過程中，若遇到比此
+測試腳本檔案更高的版本的探測點所送過來的資訊，則代表這個探測點是在此測試腳本檔案
+產生之後才增加的探測點，所以在重播驗證的過程中可以忽略掉它。但如何才能做到每增加
+一個新的探測點，版本自動增加呢?在此我們提出了兩個機制來解決這個問題: 
+ 
+　 探測點標籤化(Probing point labeling)  
+　 執行前分析(Pre-parsing) 
+ 
+Probing point labeling 
+主要概念是每個測試腳本檔案都會紀錄版本號碼，並且每個探測點也會給予一個唯一
+(Unique)的標籤，並且將這個標籤對應到一個版本號碼。當在重播驗證模式下，每次執行到
+18 
+ 
+ 
+我們首
+的測試
+人員修
+在特徵
+log，
+所以理
+點 專
+xAsse
+xAsse
+種分群
+歷程(
+我們就
+若要更
+我們的
+有通過
+用簡單
+錯誤的
+如果經
+群測試
+系統
+先將測試個
+個案分群
+正錯誤。 
+化的研究議
+也就是程式
+論上，我們
+注 於  x
+rt(postcon
+rt(“true＂
+(clusteri
+尤其是被 t
+可以使用各
+準確一點的
+daily bu
+自動化測試
+的工具如 
+可能來源
+過該處，合
+案例就可以
+驗證	
+案進行特徵
+（clusteri
+題上，有幾
+執行的歷程
+甚至於可以
+Assert(pre
+dition) 的
+) 即可。有
+ng)的技巧
+est oracle
+種 cluste
+話，我們可
+ild 系統完
+，我們的系
+diff，找出
+。理論上我們
+理的懷疑這
+被歸類為同
+圖 13
+化（char
+ng）,接著將
+種方法可以
+。當探測點
+在重要的
+condition)
+驗 證 。
+了這些 l
+，先行定義好
+報告為錯誤
+ring 的技巧
+以運用版本
+整記錄了每
+統則自動地
+程式碼之間
+可以推論
+一群的測試
+一群。 
+Test clus
+acterizati
+每群中的代
+進行。首
+愈多的時候
+method 出入
+ 的 驗 證
+如 果 純 粹
+og，我們可
+兩個執行
+的)彼此之
+來群組與分
+控制系統
+一個版本是
+找出前一
+的修改。由
+，如果某一
+案例在這
+tering 
+on），當自
+表性測試個
+先我們先知
+理論上這個
+口都加入探
+， 而 me
+要 做 為 一
+以進行許多
+歷程的距離
+間可以算出
+類錯誤的測
+的資訊結合
+否通過自動
+個正確的版
+於修改可能
+處修改出了
+一處修好之
+動測試失敗
+案提報給
+道每個探測
+程式執行
+測點。Met
+thod 的 出
+個 log ，
+特徵的蒐集
+。也就是說
+距離。一旦
+試案例。 
+執行歷程來
+化測試。
+本。在這兩
+不止一處
+錯誤，則測
+後應該能回
+ 
+後，便開始
+開發人員，
+點其實就是
+的歷程就會
+hod 的入口
+口 則 專
+也 可 以 直
+。我們可以
+，任意兩個
+有了距離的
+做判斷。簡
+假設目前的
+個版本間，
+，所以每一
+試案例的執
+復正常。所
+將失敗
+以輔助
+某一種 
+愈完整，
+的探測
+注 於 
+接 加 
+利用各
+執行的
+概念，
+單地說，
+版本沒
+我們利
+處都是
+行歷程
+以這一
+20 
+ 
+ 
+以第
+RTC 的
+透過如
+案例和
+雖然本
+但是其
+的應用
+以有
+Conti
+中修正
+我們所
+用去採
+我們的
+另外
+方法攔
+錄製的
+成果
+4084 版為例
+修正，已經
+此的分析
+SUT，以增
+計畫的開端
+實本計畫所
+程式理論上
+效感知並驗
+nuous Inte
+弱點的成本
+提出的是一
+購昂貴的 
+方法可能甚
+，可能也是最
+截的是 co
+測試案例
+	
+，修正一個
+有 82.35%的
+，我們能夠過
+進程式的品
+說明本計劃
+提出的方法
+都可以適用
+證程式內
+gration ..
+。 
+個廉價的 
+capture/re
+至於提供更
+重要的一點
+ntroller 的
+。這是傳統 
+RTC 後，
+測試案例回
+濾出最需要
+質以開發的
+的方法是為
+不只侷限於
+──因為使
+部狀態，
+. etc.），
+in-house 
+play 工具
+高的錯誤偵
+是：我們可
+處理函式
+capture/re
+失敗測試案
+復正常。
+優先修正
+效率。 
+了解決應
+這一類應
+用 PI 技
+並配合各
+早期發現程
+test autom
+，雖然必須
+測能力，
+以避免掉
+，所以理論
+play 工具最
+例中有 17
+的測試案例
+用程式本身
+用程式。沒
+術的測試方
+種其他技術
+式弱點，並
+ation 解決
+耗費一點工
+因為我們可
+UI 變動的
+上 UI 層如
+傷腦筋的地
+.65%回復正
+，最小化重
+有繪圖輸出
+有繪圖輸出
+法已經與操
+（Test 
+儘可能降
+方案。使用
+去指認出最
+以比對更多
+問題，也就
+何重新設計
+方。 
+常，一直到
+複執行及檢
+的測試自動
+，或者是沒
+作介面無關
+Case Clust
+低在版本演
+我們的方法
+終觸發事件
+的內部程式
+是說，由於
+，都不會影
+ 
+第八個
+查測試
+化問題。
+有 GUI
+，且可
+ering, 
+進過程
+可以不
+，但是
+狀態。 
+我們的
+響到已
+22 
+ 
+八、參考文獻	
+ 
+[1]  Y.-P. Cheng, J.-F. Chen, M.-C. Chiu, N.-W. Lai and C.-C. Tseng, "xDIVA: A 
+Debugging Visualization System with Composable Visualization Metaphors," in 
+23rd Annual ACM Conference on Object-Oriented Programming, Systems, 
+Languages, and Applications (OOPSLA2008), Nashville, Tennessee, USA., 2008. 
+[2]  Y.-P. Cheng, H.-Y. Tsai, C.-S. Wang and C.-H. Hsueh, "xDIVA: Automatic 
+Animation between Debugging Break Points," in ACM Symposium on Software 
+Visualization (SoftVis2008), Salt Lake City, USA, 2010.  
+[3]  "As a GUI based load testing tool," 2010. [Online]. Available: 
+http://www.loadtest.com.au/Technology/winrunner.htm. [Accessed 27 12 2010].
+[4]  "Product - Qt - A cross platform application and UI framework," Qt, 2010. 
+[Online]. Available: http://qt.nokia.com/products/. [Accessed 28 12 2010]. 
+[5]  "Rational Tester," 27 12 2010. [Online]. Available: http://www-
+01.ibm.com/software/awdtools/tester/functional/. [Accessed 27 12 2010]. 
+[6]  "Squish," froglogic - Squish, 2010. [Online]. Available: 
+http://www.froglogic.com/products/index.php. [Accessed 28 12 2010]. 
+[7]  "Test Complete," Test Complete version8, 2010. [Online]. Available: 
+http://www.automatedqa.com/products/testcomplete/. [Accessed 28 12 2010]. 
+[8]  B. T. Korel and B. L.H. Vaysburg, "Model based regression test reduction 
+using dependence analysis," in Software Maintenance, 2002. Proceedings. 
+International Conference on, 2002.  
+[9]  A. C. Neto, R. Subramanyan, M. Vieira and G. H. Travassos, "A survey on 
+model-based testing approaches: a systematic review," in International 
+Conference on Automated Software Engineering (ASE), 2007.  
+[10] C. Bertolini and A. Mota, "A Framework for GUI Testing Based on Use Case 
+Design," in ICSTW '10 Proceedings of the 2010 Third International 
+Conference on Software Testing, Verification, and Validation Workshops, 
+國際會議名稱: 
+APSEC 2011 : 18th Asia Pacific Software Engineering Conference 
+ 
+日期: 2011/12/5‐ 2011/12/8 
+論文發表: 
+ 
+Chien‐Hsin Hsueh, Yung‐Pin Cheng, Wei‐Cheng Pan, “Intrusive Test Automation with 
+Failed Test Case Clustering” In Proceedings of 18th Asia‐Pacific Software Engineering 
+Conference, pp. 89‐96, HoChiMinh city, Vietnam, 2011 
+ 
+會議過程與內容 
+ 
+         本國際會議為專業之軟體工程會議。會議所發表之論文囊括軟體工程各個
+領域。本計劃所發表之論文很榮幸地獲得大會頒發之  Outstanding Paper Award。
+滿載而歸。 
+ 
+ 
+ 
+100年度專題研究計畫研究成果彙整表 
+計畫主持人：鄭永斌 計畫編號：100-2221-E-008-047- 
+計畫名稱：使用程式碼嵌入技術之測試自動化方法 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 2 1 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 2 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 3 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

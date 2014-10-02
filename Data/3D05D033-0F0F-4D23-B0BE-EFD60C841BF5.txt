@@ -1,0 +1,874 @@
+  
+ 
+ 
+摘要 
+ 
+現今攝影機的缺點包括狹窄的視野和不能連續地及精確地追蹤有興趣的目標，解決這些問題
+可以使用旋轉傾斜平台做主動式攝影機視覺伺服追蹤系統。在本論文中，針對伺服系統的三
+個基本元素：視覺感測器、安裝視覺感測器的旋轉平台、處理演算法，依此建構一個簡易的
+旋轉傾斜平台做主動式攝影機視覺伺服追蹤系統，並且測試追蹤系統的效能。同時，提出一
+種新的自動增益微調式比例控制器用來追蹤有興趣的目標，並在最後顯示實驗結果，顯示出
+有較好的成果。先前以紅外光影像進行次像素動態物體追蹤的技術，經由匹配濾波器可提高
+偵測信號，並壓制白噪。但在動態物體追蹤的表現仍有改進空間。在本文中經由計算輸入影
+像的背景訊號值，將每個像素點的信號值於時間軸上的變化加入動態物體追蹤演算法，可大
+幅提昇對動態物體的追蹤成效。為了能更即時得到動態物體的變化趨勢，系統架構已由
+Matlab®語言轉為 C 語言，將程式效率提昇將近七倍。 
+ 
+關鍵字：視覺伺服、二維影像運動、目標追蹤紅外線影像、動態物體追蹤、影像即時追蹤 
+ 
+ 
+ 
+ 
+Abstract 
+ 
+In this paper, we study through a number of previous works to determine that there are three 
+basic components for such a system. The first one is the visual sensor. The second part is the 
+rotating platform that houses the visual sensor. The third part is the processing algorithm. A 
+simple active camera visual servo pan tilt tracking system is built using these three basic 
+components and tests are conducted to determine the performance of the tracking system. A 
+new variable proportional control is designed to better follow the target of interest. In the end, 
+experimental results are shown. With the techniques developed in the previous subpixel moving 
+object tracking using infrared images, matched filters were implemented to enhance target signal 
+and suppress white noise. However, there is room for improvements regarding moving object 
+tracking. In this article, by calculating the background noise values from the input images, the 
+time variations of the signal values in all pixels are calculated and added to the moving object 
+tracking algorithm. This could largely improve the moving object tracking performance. On the 
+other hand, in order to obtain the moving trend of objects in real‐time, the system is rebuilt 
+enhance performance. The performance of new C version system is nearly seven times faster than 
+the original Matlab version system. 
+ 
+Keywords: visual servoing, target tracking, infrared image, moving object tracking, real‐time 
+image tracking 
+ 
+  
+法運算需求及效率評估
+與提升 
+模擬)紅外線影像進行進一步之評估。其中當影像以八位元灰
+階度表示，其中背景雜訊相當於平均值等於零且變異小於背
+景平均值 3% 的均勻分佈隨機亂數，目標影像其灰階度高於
+周邊像素平均值15%的單一像素，且目標位置在連續畫面之間
+變動不大於1個像素，則演算法在連續30張畫面後，能偵測出
+該目標，偵測成功率能大於85％。目標不存在時之誤偵率能
+小於25％。程式平均每張的執行時間在硬體配備Intel 1.6G 
+雙核心CPU搭配 2GB記憶體的情況下為小於0.3秒。 
+ 
+ 
+ 
+ 2 
+一、 前言: 
+ 
+視覺伺服影像物體追蹤已是存在很久的技術並普遍的使用於機器手臂上。此
+技術採用單或多數攝影機來擷取機器手臂的整體形態，並配合馬達的解碼器來達
+到更準確的定位和運動。 
+一般的系統架構使用了影像視覺伺服並配合了機器手臂，只需要給予一張目
+標影像，機器手臂便會靠著迴授的影像自行定位。有時會結合了硬體馬達解碼器
+資訊和簡單的影像處理技術，成功了完成早期的旋轉傾斜平台(PTU)物體追蹤系
+統，但此系統還是只靠影像處理單獨來進行馬達控制，而沒有很正式的運動控
+制。同樣的PTU架構下增加了PI運動控制演算法並增加了Kalman估測器來進行物
+體追蹤，但是此架構限用於連續運動下，任何不連續或突然的運動(速度斷層)會
+造成估測器追蹤上的不穩定。除此之外，可以增加了一個裁判預測器來預測不連
+續運動可能的發生時間，而切換整個系統的控制器，雖然克服了運動不連續問
+題，但是也形成了非常複雜的系統。 
+伺覺伺服最大的問題莫過於物體追蹤的不穩定性，而不穩定性產生的原因包
+括感測器的低取樣率，影像特徵擷取演算法的不準確性和運動控制器無法適應追
+蹤物體的不連續運動。為了克服視覺伺服的不穩定性，當今大部分的研究朝向沿
+用更複雜的影像特徵擷取演算法或是採用多數具有更高取樣率的感測器，例如：
+多數感測器雖然可以更準確的估測出物體的正確位置，但是此舉往往需要更高階
+的處理器並增加系統成本。 
+ 
+二、 相關研究成果： 
+ 
+主動式攝影機視覺伺服追蹤的概念，和由三個不同的功能所組成：1. 偵測
+目標， 2. 移向目標，3. 追蹤目標。第一和第三部分的功能已經被研究很長一
+段時間了。影像分割的影像處理用來作目標偵測技術在最近十年已經被廣泛的研
+究 [1: Gonzalez & Woods 2008]，有些甚至還可以在高擷取率下成功偵測多目
+標物 [2: Haritaoglu et al. 2000]，更高階的偵測技術則是使用粒子濾波器理
+論去追蹤有產生遮蔽時的汽車和行人的狀況 [3: Li et al. 2008]。然而這些研
+究全都是基於靜止的攝影機下，如場景一是只裝置一個攝影機下的實驗，因此這
+些場景都會有盲點的產生。  
+ 4 
+Chaumette 2001] 發展。二度空間運動視野演算法也是需要事先仔細的攝影機校
+正。也展示出光流法是需要大量的計算能力。 
+在這篇論文中 [17: Chroust & Vincze 2003]， 作者專注在目標物的怪異
+運動方式。為了能夠追蹤任何加速度和劇烈變化速度的目標，系統使用了多重
+αβγ轉移濾波器去估測目標的運動模式。會使用多重濾波器是因為不同的濾波
+器會展示出不同的追蹤特性。  
+最新旋轉傾斜攝影機平台的研發是L-3 Brashear DCS， 並在這篇論文 [18: 
+McEver & Kimbrell 2006] 中討論。最顯著的特色是有時間同步的演算法，並補
+償了影像擷取和處理的延時現象。但是系統仍然是使用一秒鐘可以擷取50張影像
+的攝影機，才能達到好的實驗效能，且實驗只操作在模擬的情況下。 由這些過
+去研究主動式攝影機的視覺伺服系統， 可以發現有以下缺點的結論： 
+- 使用快速擷取率的攝影機。 
+- 複雜的影像處理延算法。 
+- 目標物在非連續運動模式下要有可靠且複雜的   
+估測演算法。 
+- 需要冗長的校正處理。 
+ 
+ 
+三、 設計概念和旋轉傾斜平台實現視覺伺服追蹤： 
+ 
+視覺伺服系統的主要流程圖在圖3.1 所示，他跟一般的程式流程圖很像，只
+是影像擷取取代了資料擷取的階段，影像處理則取代了資料處理的階段，而運動
+演算法則取代了資料演算法部分。新加入的處理階段包含讀取旋轉傾斜平台的資
+料和系統時間延遲。因為運動演算法需要額外的旋轉傾斜平台的資料來算出合適
+的速度命令。而時間延遲則是使用在同步內部迴圈和外部迴圈上。 
+ 6 
+ 
+圖 3.2: OPENCV 的 CAMSHIFT 流程圖 
+ 
+在這篇論文 [17: Chroust & Vincze 2003]， 開始使用XVision影像處理軟
+體中的基於顏色的追蹤器。但是對基於顏色的追蹤器不是很清楚的知道是用
+CAMSHIFT演算法或是其他種類的演算法。但不論是使用何種方式，可以知道追蹤
+方式是使用了準確且有高計算效率的基於顏色的追蹤器。 
+ 
+B. 運動演算法 
+旋轉傾斜平台系統使用簡單的PID控制器去控制馬達的運動。  
+對視覺伺服系統來說，改變的是旋轉傾斜平台的動作，而產生的影響卻是攝
+影機影像的變化。它的結構呈現在 圖3.3. 
+ 8 
+系統需要的比例控制器是在追蹤快速物體時要有高的比例增益量來減少追
+隨誤差；追蹤慢速物體時要有低的比例增益量來維持系統的穩定性。當物體在做
+等加速度運動時，比例增益量也要跟著變動。   
+結論就是比例控制器的比例增益量要能夠依照物體的移動速度做自我調
+整，它的結構方塊圖在圖3.4。 
+ 
+ 
+圖 3.4: 視覺伺服的適應性比例增益量控制 
+ 
+ 
+四、 實驗平台和結果： 
+ 
+在此處的討論，一開始先介紹實驗設備硬體和軟體部分，也包含了旋轉傾斜
+攝影機追蹤平台系統。 硬體包含主要的旋轉傾斜平台，網路攝影機和筆記型電
+腦。 圖4.1 展示最後組合而成的旋轉傾斜平台系統。 
+ 
+ 10 
+合前面兩個硬體部分，使得在執行上能夠同步成單一追蹤系統，因此使用了筆記
+型電腦，並發展出主要的控制演算法來整合旋轉傾斜平台軟體和攝影機軟體。 
+ 
+本系統影像畫面寬的解析度為320，而高的解析度為240。實驗效能的指標，
+絕對平均百分比就是對照這個影像畫面的解析度來計算。 
+ 
+  追蹤CNC平台的直線運動結果 
+ 
+在系統追蹤虛擬環境的目標時，調整好滿意的追蹤效能後，就把系統放在真
+實環境下做追蹤，並由電腦數值控制(CNC)的X-Y平台模擬出物體運動的軌跡。就
+如 圖4.2 所示。 
+ 
+ 
+圖 4.2: 測試追蹤 CNC 機器 
+ 
+用位置速度模式卡門濾波器下的比例控制器 
+ 
+圖4.3 是用位置速度模式的卡門濾波器當估測器使用的追蹤實驗結果圖。位
+置速度模式的估測比純位置模式要好，是因為預測下階段的位置可以多用到目標
+的速度資訊去估測目標位置。 
+ 12 
+0 5 10 15 20 25 30
+400
+600
+800
+1000
+1200
+1400
+PTU Projected Position vs Time
+Time (sec)
+P
+os
+iti
+on
+ (
+m
+m
+)
+ 
+ 
+Pan Position
+Tilt Position
+0 5 10 15 20 25 30
+-50
+0
+50
+Angular Speed vs Time
+Time (sec)
+A
+ng
+ul
+ar
+ S
+pe
+ed
+ (
+de
+gr
+ee
+/s
+)
+ 
+ 
+Pan Angular Speed
+Tilt Angular Speed
+ 
+0 5 10 15 20 25 30
+-100
+-50
+0
+50
+100
+Pixel Difference of Target Object
+Time (sec)
+P
+ix
+el
+ D
+iff
+er
+en
+ce
+ 
+ 
+Pan pixel difference
+Tilt pixel difference
+0 5 10 15 20 25 30
+0
+20
+40
+60
+80
+100
+Square root of Pan & Tilt pixel difference
+Time (sec)
+P
+ix
+el
+ D
+iff
+er
+en
+ce
+ 
+ 
+Pixel difference
+ 
+(a) 
+0 5 10 15 20 25 30
+-30
+-20
+-10
+0
+10
+20
+30
+40
+50
+60
+Object Position - Project Position vs Time
+Time (sec)
+D
+iff
+er
+en
+ce
+ in
+ m
+m
+ 
+ 
+ 
+X difference
+ 
+(c) 
+(b) 
+0 5 10 15 20 25 30
+-50
+0
+50
+PTU Pan and Tilt Angle
+A
+ng
+le
+ (d
+eg
+)
+ 
+ 
+PTU Pan Angle
+Tilt Angle
+0 5 10 15 20 25 30
+-4
+-2
+0
+2
+4
+Difference between Target Ground Truth & PTU Pan Angular Position
+Time (sec)
+A
+ng
+le
+ (d
+eg
+)
+ 
+ 
+Angle Difference
+ 
+(d) 
+圖 4.4: (a) 位置投影，  (b) 像素差，  (c) 位置投影和真實位置的誤差， (d) 
+旋轉傾斜平台的旋轉角度和真實角度的誤差。 
+ 
+最大的誤差是34，均方根值的誤差是20.52，而絕對值平均百分比誤差是10%。 
+自動增益微調式控制器的效能和比例積分控制器一樣好，且沒有比例積分控制器
+在遇到運動模式忽然的改變而造成的劇烈過衝現象。 
+ 
+直線運動追蹤的結果 
+ 
+最後控制器的測試效能結果，顯示在 表4.1. 
+ 
+表 4.1 直線運動的效能表 
+Controller Type: RMS Maximu Pan 
+ 14 
+0 2 4 6 8 10 12
+-40
+-20
+0
+20
+40
+Pixel Difference between Ceneter of Image & Ceneter of Object
+Time (sec)
+P
+ix
+el
+ D
+iff
+er
+en
+ce
+ 
+ 
+Pan difference
+Tilt difference
+0 2 4 6 8 10 12
+0
+10
+20
+30
+40
+50
+Square root of pan & tilt pixel difference
+Time (sec)
+P
+ix
+el
+ D
+iff
+er
+en
+ce
+ 
+ 
+PTU pixel difference
+ 
+(c) 
+圖 4.5: (a) 追蹤緩慢的計程車， (b) 目標的速度投影到旋轉傾斜平台的座標上，
+(c) 像素差。 
+ 
+量測結果估測運動狀態變數 
+ 
+為了利用量測的結果估測運動體的狀態變數，以便於進行追蹤誤差補償，我
+們亦利用卡曼濾波器的方式設計變數估測模式，主要是針對速度，加速度，以及
+急變量的大小的估測，基本的設計公式，如下所示： 
+ 
+1 *
+*
+k k
+k k
+x A x v
+y H x w
+   
+        ~ (0, )
+~ (0, )
+v N Q
+w N R
+               
+p
+v
+a
+j
+x
+      
+  
+ 
+1 0.2 0.04 0.008/6
+0 1 0.2 0.04
+0 0 1 0.2
+0 0 0 1
+A
+              
+
+        
+ 
+ 16 
+ 
+(c) 
+ 
+(d) 
+圖 4.6: (a) 卡曼濾波器變數估測補償追蹤實驗，(b) Jerk Model，(c) 
+Acceleration Model，(d) Velocity Model 是(2*2)。 
+ 
+表4.2三種不同估測模式誤差值比較表 
+Index\Model Jerk  Acce. Velocity 
+Error u ‐16 ‐11.25 ‐5.25 
+Error v ‐56.75 ‐201.25 ‐152 
+ 
+ 
+0 10 20 30 40 50
+-400
+-200
+0
+200
+400
+600
+Angle vs Time
+Frame Numbers
+An
+gl
+e 
+(p
+os
+iti
+on
+)
+ 
+ 
+0 10 20 30 40 50
+-500
+0
+500
+1000
+1500
+Angular Speed vs Time
+Frame Numbers
+An
+gu
+la
+r S
+pe
+ed
+ (p
+os
+iti
+on
+/s
+)
+ 
+ 
+0 10 20 30 40 50
+-100
+-50
+0
+50
+Pixel Difference between Center of Image & Center of Object
+Frame Numbers
+Pi
+xe
+l D
+iff
+er
+en
+ce
+ 
+ 
+0
+20
+40
+60
+-50
+0
+50
+-100
+-50
+0
+50
+Frame Numbers
+Pixel Difference
+u-axis Difference
+v-
+ax
+is
+ D
+iff
+er
+en
+ce
+PTU Pan Angle
+PTU Tilt Angle
+PTU Pan Angular Speed
+PTU Tilt Angular Speed
+u-axis pixel difference
+v-axis pixel difference
+0 10 20 30 40 50
+-400
+-200
+0
+200
+400
+600
+Angle vs Time
+Frame Numbers
+A
+ng
+le
+ (p
+os
+iti
+on
+)
+ 
+ 
+0 10 20 30 40 50
+-500
+0
+500
+1000
+1500
+Angular Speed vs Time
+Frame Numbers
+A
+ng
+ul
+ar
+ S
+pe
+ed
+ (p
+os
+iti
+on
+/s
+)
+ 
+ 
+0 10 20 30 40 50
+-100
+-50
+0
+50
+Pixel Difference between Center of Image & Center of Object
+Frame Numbers
+P
+ix
+el
+ D
+iff
+er
+en
+ce
+ 
+ 
+0
+20
+40
+60
+-50
+0
+50
+-100
+-50
+0
+50
+Frame Numbers
+Pixel Difference
+u-axis Difference
+v-
+ax
+is
+ D
+iff
+er
+en
+ce
+PTU Pan Angle
+PTU Tilt Angle
+PTU Pan Angular Speed
+PTU Tilt Angular Speed
+u-axis pixel difference
+v-axis pixel difference
+ 18 
+ 
+圖 5.1: 增加演算法來取代系統休眠時間 
+ 
+第三個未來可以改善的方向是改良運動控制演算法。推展出其他新的控制器，或是修正所提
+出的微調式比例增益控制器。使用較複雜的價值函數，用來提高整體系統的效能。 
+ 
+參考文獻 
+[1: Gonzalez & Woods 2008] 
+Rafael C. Gonzalez and Richard E. Woods, “Digital Image Processing,” in Paperback, 3rd edition, 
+Taiwan: Pearson Education Taiwan Ltd, 2008, pp. 689–787. 
+[2: Haritaoglu et al. 2000] 
+Ismail Haritaoglu, David Harwood, and Larry S. Davis, “W4: Real-Time Surveillance of People and 
+Their Activities,” IEEE Transactions on Pattern Analysis and Machine Intelligence, Vol. 22, No. 8, 
+pp. 809-830, August 2000. 
+[3: Li et al. 2008] 
+Yuan Li, Haizhou Ai, Takayoshi Yamashita, Shihong Lao, and Masato Kwade, “Tracking in Low 
+Frame Rate Video: A Cascade Particle Filter with Discriminative Observers of Different Life 
+Spans,” IEEE Transactions on Pattern Analysis and Machine Intelligence, Vol. 30, No. 10, pp. 
+1728-1740, October 2008. 
+[4. Cai & Aggarwal 1999] 
+Q. Cai and J.K. Aggarwal, “Tracking Human Motion in Structured Environments Using a 
+Distributed-Camera System,” IEEE Transactions on Pattern Analysis and Machine Intelligence, 
+Vol. 21, No. 12, pp. 1241-1247, November 1999. 
+[5: Khan et al. 2001] 
+Sohaib Khan, Omar Javed, Zeeshan Rasheed, and Mubarak Shah, “Human Tracking in Multiple 
+Cameras,” International Conference on Computer Vision, Vol 1, Vancouver, British Columbia, 
+Canada, pp. 331-336, July 7-14, 2001. 
+[6: Nakazawa et al. 1998] 
+ 20 
+Stefan Chroust and Markus Vincze, “Improvement of the Prediction Quality for Visual Servoing 
+with a Switching Kalman Filter,” The International Journal of Robotics Research, Vol. 22, No. 
+10-11, pp. 905-922, October–November 2003. 
+ [18: McEver & Kimbrell 2006] 
+Mark A. McEver and James E. Kimbrell, “Tracking Filter Algorithm for Automatic Video 
+Tracking,” Proceedings of SPIE, Vol. 623809, pp. 1-7, May 2006. 
+[19: Hutchinson et al. 1996] 
+Seth Hutchinson, Gregory D. Hager, and Peter I. Corke, “A Tutorial on Visual Servo Control” 
+IEEE Transactions on Robotics and Automation, Vol. 12, No. 5, pp. 651-670, October 1996. 
+[20: François 2004] 
+Alexandre R.J. François, “CAMSHIFT Tracker Design Experiments with Intel OpenCV and SAI” 
+July 2004 http://pollux.usc.edu/~afrancoi/pdf/camshift-tr.pdf 
+[21: Fukunaga & Hostetler 1975] 
+Keinosuke Fukunaga and Larry D. Hostetler, "The Estimation of the Gradient of a Density 
+Function, with Applications in Pattern Recognition," IEEE Transactions on Information Theory, 
+Vol. 21, Issue 1, pp. 32-40, January 1975.  
+[22: Bradski 1998] 
+Gary R. Bradski, “Computer Vision Face Tracking For Use in a Perceptual User Interface,” Intel 
+Technology Journal, Vol. 2, Issue 2, pp. 1-15, 2nd Quater 1998.  
+[23: Allen et el. 2004] 
+John G. Allen, Richard Y. D. Xu, and Jesse S. Jin, “Object tracking using Camshift algorithm and 
+multiple quantized feature spaces”, ACM International Conference Proceeding, Vol. 100, pp. 3-7, 
+2004.  
+[24: Kalman 1960] 
+Kalman, R. E. 1960. “A New Approach to Linear Filtering and Prediction Problems”, Transaction 
+of the ASME--Journal of Basic Engineering, pp. 35-45, March 1960.  
+[25: Welch & Bishop 2001] 
+Greg Welch and Gary Bishop, “An introduction to the Kalman Filter”, [Online]. Available: 
+http://www.cs.unc.edu/~welch/media/pdf/kalman_intro.pdf, July 2006. 
+[26: Watson 2009] 
+Theodore Watson, VideoInput Library 0.1995. [Online]. Available: 
+http://muonics.net/school/spring05/videoInput/, January 2009.   
+[27: Intel 2006] 
+Intel Corporation. OpenCV library. [Online].  Available: http://opencv.willowgarage.com/wiki/ 
+[28: Hewitt 2007] 
+Robin Hewitt, “Seeing With OpenCV, Part 3: Follow that Face!”, [Online]. Aviailable: 
+http://www.cognotics.com/opencv/servo_2007_series/part_3/index.html ,March 2007. 
+ 一、 前言: 
+影像上的動態物體追蹤技術有多方面的應用，如可追蹤、辨識監視攝影機影像的人員
+[1]，或是協助提高偵測影像上物體的成功率。以紅外線影像為例，進行次像素的動態物體
+追蹤，需要濾除雜訊、放大訊號，及動態物體偵測並追蹤技術。在先前的研究中[2]，利用
+匹配濾波器進行背景雜訊濾除與放大微弱信號，但對動態物體追蹤的表現仍有待加強。由
+於動態物體的信號較背景信號為大，並在空間上與時間上都有對應的變化，藉由偵測像素
+信號與背景信號的差異，以及像素信號於時間軸的變異量，可順利偵測出動態物體的軌跡，
+進而對該物體進行追蹤。在實際應用上，程式的運算時間對追蹤動態物體的成果有相當的
+影響，由於Matlab的核心語言就是C語言，將程式的編寫語言改為C可大幅提昇運算速度，
+達到即時影像追蹤。 
+二、 相關研究成果 
+參考電腦視覺領域進行物體追蹤的作法，在論文[1]中可得知建立背景模型(back 
+ground model)有助於由影像中分析出背景與移動物體。影像背景所提供的資訊在整段偵測
+過程中通常變化不大，可建立模型來判斷各個隨時間變化像素格的值應屬於背景值，或是
+屬於變化量相對較大的待測目標信號值。於論文[3],[4]提到在時間序列上對信號進行變異數
+濾波(variance filtering)，藉由消除像素上長期變異數的影響，得以突顯短時間內變異數的變
+化，從而提高對動態物體的偵測效果。在論文[4]中尚有提及：對實際應用的動態物體偵測
+程式而言，運算時間是考量重點之一，而即時運算(real-time computation)更是眾所努力的目
+標。為達此目的，至少有硬體與軟體兩方面可切入：硬體方面可經由投資經費，升級電腦
+設備來提高運算效能，但所費不貲。軟體方面可更換效率更高的程式語言來進行運算，在
+不更換硬體設備與程式架構下即可達成數倍的運算效能提昇。 
+三、 演算法設計 
+3.1 背景模型建立 
+背景模型是對移動目標物體以外的週邊像素進行分析，找出其共通的特點，作為判斷
+背景與動態物體的依據。在論文[1]可看到其在電腦視覺的應用，例如監視攝影機對行人與
+背景影像進行分析，建立背景模型可大幅提高移動行人與背景影像分割的成功率。 
+在本文我們假設輸入的的紅外光影像其背景雜訊為平均值等於零的鐘型分佈(Bell-shape 
+distribution)，含有欲測得目標的像素於影像上的灰階度高於周邊像素平均值，如圖一所示。 
+ 圖三 匹配濾波器示意圖。由不同時間的資料與不同時間上的樣板去做滾積(convolution)之
+後，我們就可以得到最後加強訊號。 
+3.3 訊號於時間之變化 
+在得到匹配濾波器加強之後的訊號之後，我們進一步去計算在時間軸上信號值的變
+化。由於待偵測的目標信號較原始平均值為零的背景雜訊來的強，若針對單一像素來檢視
+其信號強度隨時間的變化，當移動的目標物經過某個像素時，該像素信號平均值與標準差
+皆會比原先的背景像素信號值大上許多，這樣的特性可經由尋找隨時間流逝而變異量最大
+的像素來突顯之，加強紅外線影像的動態物體偵測效果，由此可觀測到如圖四所示的曲線。 
+ 
+ 
+圖四 移動目標物經過某像素時，該像素格信號隨時間變化量。 橫軸為時間序列，縱軸為信號
+強度。 
+ 
+時間序列上的變異數計算，可參考網頁[5]，引用常見的變異數計算法，如式(1)所示： 
+   
+
+
+n
+i
+ixXVar
+1
+2        (1) 
+其中 ix 是每個像素點上的值，是該像素點信號的平均值，  XVar 即是要求的變異數。
+變異數運算的起始值與中止值可自行選擇，即可求得短期的變異數與長時間的變異數。 
+ 
+ 
+ 
+ 
+程式檔案總結:  
+由main function 開始，呼叫 varTracking.h 函數進行主要運算。 
+各個函數的功能定義如下： 
+matrix_Operation.h, matrix_Operation.c 內含各種矩陣運算用的函數定義。 
+data2File.h        內含各種將數字資料寫至硬碟成為文字檔的
+函數。 
+display.h, display.c   內含經由 OpenCV(註*) 將影像資料與偵測資
+料顯示於螢幕的函數。若不使用可移除。 
+flipdim.h 內含將矩陣沿不同維度進行翻轉的函數。 
+LRT_run.h 內含計算資料矩陣每個像素隨時間上的信號
+變異數之函數 
+normalDistribution.h 內含計算高斯分佈時需使用的二維常態分佈
+函數。 
+patternGen.h 內含計算速度匹配濾波器的函數 
+readDataFromFile_3D.h 內含將輸入資料由文字檔讀入程式的函數 
+showDataSet.h 內含將運算資料輸出至螢幕之函數 
+註*: OpenCv 為一個open source 的computer vision library.  
+網址: http://opencv.willowgarage.com/wiki/ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+   
+(a) (c) (e) 
+   
+(b) (d) (f) 
+圖六 經過時間軸變異量濾波後的六組成果。藍色方框為已知動態物體出現範圍，紅色
+方框為輸入資料經偵測後的結果。在(a)、(c)、(d)圖的表現很好，成功標記待測目
+標物。在(b)圖中，影像中下方有一未偵測到之移動物體，原因是背景雜訊信號強
+度和待測目標的信號相近。在(e)與(f)圖中有多餘的偽陽性結果，是原始影像中強
+度較大且形狀類似目標物的雜訊造成。 
+ 
+4.1.1 探討未偵測到的移動物體 
+以圖六(b)的原始資料圖七為例，中間的白色方框對應到錯誤! 找不到參照來源。(a)
+的原始信號，而圖右下角的白色方框對應到錯誤! 找不到參照來源。(b)的原始信號。 
+ 
+ 
+圖七 此為圖六(b)的原始影像資料，白色方框為已知動態物體出現範圍。圖片中下方白色方框
+之原始信號對應到錯誤! 找不到參照來源。(a)，圖片右下方白色方框之原始信號對應到
+錯誤! 找不到參照來源。(b)。 
+ 
+  
+  
+圖九 此為圖六(e)的原始影像資料，深藍色
+方框為已知動態物體出現範圍，紅色方
+框為輸入資料經偵測後的結果，綠色方
+塊為參考用背景雜訊出現點。 
+圖十 此為圖六(e)的三個偵測框上原始信號
+隨時間變化曲線。紅線代表影像中上方
+產生偽陽性的像素信號隨時間變化曲
+線，藍線代表圖片左側正確偵測到動態
+物體的像素上信號隨時間變化曲線，綠
+線代表影像右側綠框內背景雜訊像素
+的信號隨時間變化曲線。 
+4.2 效能評估 
+4.2.1 目標偵測成功率與誤偵率 
+我們將目標偵測成功率(True positive)定義為在連續20張畫面進行匹配濾波運算，
+再經10張畫面進行信號隨時間變異量運算後，於第31張成功偵測出該目標的數目，除以全
+部六組資料中目標出現的數目，如下表三，其成功率為87.5%。 
+ Case 1 Case 2 Case 3 Case 4 Case 5 Case 6 總數 
+目標數 1 2 1 1 1 2 8 
+正確偵測數 1 1 1 1 1 2 7 
+表三 正確偵測結果 
+ 
+ Case 1 Case 2 Case 3 Case 4 Case 5 Case 6 
+偵測畫面總數 70 65 70 70 65 65 
+每張畫面平均 
+錯誤偵測點數 
+94.4  0.0  0.0  4.1  1.3  4.9  
+表四為六組資料的平均每個畫面的誤偵數目。大部份的錯誤偵測都集中在第一組資
+料，而其他組的誤偵數目也都小於五個點數以內。我們定義誤偵率為平均誤偵點數除以每
+張以影像需偵測之畫素共240*320= 76800畫素。這樣的情況之下，我們的誤偵率最高只有
+0.12%。 除了第一組外，實際使用上這些誤偵的結果大部份都只有零星的出現，並沒有像
+成功偵測的結果長時間出現。對於第一組資料而言，如圖十二所示，目標訊號(藍線)和背
+景雜訊(綠線)過於類似，而誤偵信號(紅線)和正常的目標信號(藍線)十分類似，，如何更
+*代表此組資料需成功追蹤之時間變異數採用畫面數量為他組之 2倍，如表二所示。 
+  
+4.3 程式運算效率提昇成果 
+Matlab語言與C程式語言間的轉換可參考Matlab官方網頁提供的解決方案[7]，轉換後
+在運算速度改進上，以資料量與運算量最大的滾積(convolution)為例，在這個函數中需計
+算兩個矩陣的連乘積與總和，將100張畫素為244*320的影像與20張畫素為6*6的速度方向偵
+測濾波矩陣作滾積，總共約進行 1010124.1  次運算，大約是一百一十二億次雙精度浮點數
+運算，以同樣的硬體架構(Intel 1.6G 雙核心CPU搭配 2GB記憶體)對兩種語言寫成的程式
+進行運算，結果得到將近七倍的速度增益，如表六所示： 
+ 
+ Matlab C 
+每張影像個別運算時間 1.93秒 0.16秒 
+表六 Matlab 與 C語言運算速度比較表 
+ 
+五、 結論 
+要達到紅外線影像的次像素動態物體追蹤，需要信號濾波、放大，以及物體追蹤的技
+術。在本次研究中，基於先前使用匹配濾波器的結果，搭配動態物體的信號較背景信號為
+大的特性，藉由偵測像素信號與背景信號的差異，以及像素信號於時間軸的變異量，可順
+利偵測出動態物體的軌跡，從而對該物體進行追蹤。相對的，如果影像的信號分佈與假設
+有差異，追蹤效果會受影響，需加以考慮。由於動態物體追蹤通常有即時運算的需求，為
+了得到更精確的變化趨勢，經由將系統架構由Matlab語言轉為C語言，得到近七倍的速度增
+益，大幅提昇程式運算效率，增加本系統在實際應用的適切性。 
+ 
+六、 參考文獻  
+[1]. 郭文傑、黃一哲、李金翰，多攝影機環境中人體追蹤及樣式比對之研究，經濟部學界科專，
+以視覺為基礎之智慧型環境的建構四年計畫，第 5期，2005 
+[2]. 蕭辰翰、王科植、林昆翰、王傑智，次像素目標檢測技術及多目標追蹤，國防科技學術合
+作計畫成果發表會論文集，2009 
+[3]. L. Varsano, I. Yatskaer, S. R. Rotman, " Temporal target tracking in hyperspectral images," Optical 
+Engineering, vol. 45, no. 12, December 2006 
+[4]. Jerry Silverman, Charlene E. Caefer, Steven DiSalvo and Virgil E. Vickers, “Temporal filtering for 
+point target detection in staring IR imagery: II. recursive variance filter”, Proc. SPIE, Vol. 3373, 44 
+[5]. Wikipedia上對  Variance  的介紹資料 
+http://en.wikipedia.org/wiki/Variance 
+[6]. REED, R. GAGLIARDI and L. STOTTS, " Optical Moving Target Detection With 3‐D Matched 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/01/18
+國科會補助計畫
+計畫名稱: 紅外線影像尋標系統(IIR)前瞻技術研究：(一)伺服控制迴路感測器延遲補償
+技術暨(二)次像素目標檢測技術及多目標追蹤技術
+計畫主持人: 連豊力
+計畫編號: 99-2623-E-002-007-D 學門領域: 遙測
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

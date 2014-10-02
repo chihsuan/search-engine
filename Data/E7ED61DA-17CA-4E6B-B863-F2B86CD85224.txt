@@ -1,0 +1,491 @@
+domain decomposition； overlap region； parallel 
+version program； PC cluster； preconditioned 
+BiCGSTAB method； sparse linear system. 
+ 
+行政院國家科學委員會專題研究計畫期中進度報告 
+ 
+在多核心平行電腦上針對規則與不規則科學計算的 
+編譯技術及執行支援之研究(2/2) 
+ 
+計畫編號 ：NSC 98－2221－E－001－006－MY2 
+執行期間 ：98 年 08 月 01 日至 100 年 07 月 31 日 
+計畫主持人 ：李丕榮 
+ 
+摘要 
+ 
+    隨著硬體的普及，多核心處理器和叢集電腦系統已遍佈各個角落。但是，如何 妥善發揮平行
+處理的能量，來協助科學與工業的發展仍是個挑戰，因為對非電腦科學領域的人來說，平行程式
+的寫作仍是件困難的事。 
+    本研究以計算流體力學為例，展示區域分割、資料編排、通聯資料建構等各步驟的操作方式。
+讓程式寫作者能夠簡單的利用 OpenMP 和 MPI 來表示資料間的相依和通聯關係，提供編譯器足夠
+的資訊產生平行化的程式。並在幾個典型的流體力學範例上實際應用，探討其功效，包括 NASA 
+EET 機翼、NACA0012 機翼、背向階梯流場、以及頂拉洞穴流場。 
+ 
+關鍵字：通聯資料；計算流體力學；區域分割；重疊區域；平行程式； 電腦叢集；預調形穩定共
+軛梯度法；稀疏線性系統。 
+ 
+ 
+Abstract 
+Because the price of hardware has been down significantly, PC clusters or workstation clusters 
+become more popular than ever.  However, it is still a nightmare to design parallel CFD programs for 
+junior application scientists, because they were not trained to write such complicated programs for 
+parallel computers. 
+We present in this paper a paradigm for designing parallel CFD programs, we point out that 
+decomposing domain, reordering data, generating overlap regions, and generating communication sets 
+all can be down in preprocessing steps by tools.  Programmers only need concentrate efforts to write 
+shared-memory sequential code, occasionally to add OpenMP do-all statements for those do loops 
+without data dependence, and to add MPI programming language directives for interchanging 
+communication sets among processing elements. 
+Experimental studies for the NASA EET wing, the NACA0012 airfoil, the backward facing step 
+flow, and the lid-driven cavity flow on a PC cluster are reported. 
+ 
+Keywords: Communication sets; computational fluid dynamics; domain decomposition; overlap 
+region; parallel version program; PC cluster; preconditioned BiCGSTAB method; sparse linear system. 
+neighboring domains, therefore, how to represent overlap regions among neighboring domains 
+significantly influences the performance of parallel computations. 
+In practice, most application scientists, which are not computer scientists, need not to know various 
+ongoing micro-processor computer architectures such as superscalar [13, 14], superpipelining [14], 
+multi-threads [15], multi-cores [16], or recent GPUs (Graphic Processing Units) [17].  They only need 
+to know their domain knowledge.  For writing parallel version programs, they only need to know the 
+concept of domain decomposition, which parts of the program haven’t data dependence and can be 
+represented by OpenMP do-all statements; and which parts of the program need interchange data among 
+neighboring domain partitions and can be represented by MPI programming language directives.  
+Then, for the compiler parts, after having OpenMP and MPI programming language directives, 
+compilers have enough information and can generate effective parallel code for their target 
+shared-memory or distributed-memory parallel computers, respectively.  
+We firmly believe that programmers should not be necessary to know what kind of parallel 
+computer architectures they used. They even needed not to handle tedious architecture-specific parallel 
+programming languages such as HPF [18], ParC++ [19], CUDA [20], OpenCL [21], or others. They only 
+need to understand their domain applications, then to follow the paradigm, to concentrate on writing 
+sequential programs, to clarify do-all statements and data exchanges by directives, and to leave all 
+tedious works of transforming sequential programs to parallel version programs to compilers. 
+The motivation of this paper is to propose such a paradigm for designing parallel CFD programs for 
+application scientists. We have studied several typical CFD problems by Euler/Navier-Stokes equations, 
+including (1) inviscid flow, such as flow over NASA EET wing and NACA0012 airfoil; (2) viscous flow, 
+such as backward facing step flow and lid-driven cavity flow. 
+The rest of this paper is organized as follows. Section II illustrates characteristic of CFD. Section III 
+presents steps of designing parallel CFD programs. Section IV analyzes parallelism for each step of the 
+proposed parallel CFD algorithm. Section V generates overlap region communication sets.  Section VI 
+presents a sparse linear system solver. Section VII shows experimental studies, and some concluding 
+remarks are given in Section VIII. 
+ 
+II.  Characteristic of CFD 
+Governing Equations 
+A basis of CFD problems is Navier–Stokes equations with considering the fluid motion, pressure, 
+and viscous shear stress. The equation set is simplified to yield Euler equations without viscous terms for 
+an inviscid assumption. Governing partial differential equations are discretized on structured or 
+unstructured meshes as to solve large linear systems by approximated methods. Data are updated based 
+by IBM's Blue Gene/L prototype in 2004 [47]. 
+In Nov 2010, Chinese computer NUDT Tianhe-1A located in China, which was performing 2.6 
+petaflops, was ranked No. 1 on the Top500 List. Each of 7,168 computing node quipped two Intel Xeon 
+X5673 processor with 6 cores and one nVidia Tesla M2025 GP-GPU with 14 cores [47]. 
+In Jun 2011, the new No. 1 system on the Top500 List, called the K Computer, was built by Fujitsu at the 
+RIKEN Advanced Institute for Computational Science (AICS) in Kobe. The system has a capable of 
+performing more than 8 petaflops and the system is still under construction to achieve 10 petaflops in 
+2012. Currently it uses 68,544 2.0GHz 8-core SPARC64 VIIIfx processors packed in 672 cabinets, for a 
+total of 548,352 cores. All of the top 10 systems achieved petaflops performance, and they are all the 
+hybrid type system combined shared memory and distributed memory architecture. 
+Except those well-known supercomputers, people can easily construct a personal system by 
+combining homogeneous/heterogeneous PCs and multiple homogeneous/heterogeneous multicore 
+CPUs/GPUs. The architecture is also the hybrid type combined shared memory and distributed memory 
+architecture. Thus, there is necessity to implement parallel version program on this type of systems. 
+ 
+Partitioning and Reordering 
+Domain decomposition or partitioning is an important issue in data-parallel processing on 
+distributed memory machines. It distributes the data and computation of domain onto PEs. This 
+influences the overall performance of parallel processing significantly [34-37]. Several heuristic methods 
+are proposed to such partitioning, such as using recursive coordinate bisection [48], recursive spectral 
+bisection [49], geometry-based partitions [50], graph-based method METIS[7], quadtree-spatial based 
+method [8], and other techniques. A well partitioning yields a balance number of cells in partitions and a 
+minimized number of cells adjacent partitions. In each partition, renumbering methods control the 
+locality for access efficiency and wave fronts in a linear system 
+ 
+Solver of Sparse Linear System 
+Solvers of linear system are also important to improve the efficiency, for example. multigrid, 
+GMRES, new-Krylov methods have been used on CFD [38-42]. Stationary methods can be incorporated 
+in Krylov subspace methods such as Arnoldi, Lanczos, CG, GMRES, BiCGSTAB, QMR, TFQMR, and 
+MINRES methods. P Krylov methods can be considered as accelerations of stationary iterative methods, 
+such as Jacobi, Gauss-Seidel, incomplete . LU
+The construction of parallel preconditioners is a large research area [26, 53,54]. The block Jacobi 
+method is a fully decoupled preconditioner. All processors execute their part of the preconditioner solve 
+without further communication. An incomplete  preconditioner that is processor-implicit is carried LU
+0ˆ
+[ ( )] [ ( )]
+xx x xy y
+yx x yy y
+x xx yx x y xy yy y
+n n
+n
+n n
+q u n q v n
+ 
+ 
+   
+             
+G  
+22 ( )v
+3xx
+u u
+x x y
+         , 
+22 ( )v
+3yy
+v u
+y x y
+         , ( )xy yx
+u v
+y x
+         
+21
+1 Prx
+aq
+x
+
+
+   , 
+21
+1 Pry
+aq
+y
+
+
+   , 
+2 pa    
+where xx , xy , yx , yy  are viscous shear stresses, xq  and  are heat conduction, yq   is viscosity, 
+ is the speed of sound, Pr is Prandtl number, a   is the ratio of specific heats. 
+We adopt the upwind schemes and the finite volume method to solve the Euler/Navier-Stokes 
+equations. By the use of Newton method, Equation (1) can be discretized and formulated into the 
+iteratively implicit form that can be written as 
+ 
+1 1
+[ ] (
+m s s m m m
+)sV H Q V Q VI Q H
+t Q t
+          　 
+or 
+  　 LHS RHSQ 
+where  and  are indices for main- and sub-iteration steps, respectively, m s 1s sQ Q Q    is the 
+increment of conservation states,  is the summation of numerical flux on the volume boundary. The 
+numerical flux on RHS is calculated by an advection upstream splitting method [22]. The flux Jacobin is 
+approximated by the linearization method proposed by Barth [23] while the numerical flux is based on 
+Roe’s approximate Riemann solver [24]. For the two-dimensional triangular mesh, a cell is a triangle, 
+each cell has at most three neighboring cells. As a result, the corresponding sparse linear system can be 
+treated as a four-stencil problem, in which each row or column in the sparse matrix has at most four 
+non-zero entries. And then the successive conservation states 
+H
+1sQ   can be calculated by solving this 
+sparse linear system. 
+Since the number of cells is normally a very large integer, it is not practical to use any direct method 
+to solve this sparse liner system because many non-zero entries may fill in the matrix, which results in 
+requiring an unaffordable huge space in the main memory. In order to implement the 
+Euler/Navier-Stokes flow solver on distributed memory parallel computers, we adopt the preconditioned 
+bi-conjugate gradient stabilized (BiCGSTAB) method [25, 26] because it is a matrix free method and has 
+high parallelism. 
+We now present steps of computing Equation (3): LHS RHSQ  . As indicated in above,  is Q
+attached on cells (triangles) on the two-dimensional unstructured mesh and covariant data,  , p , Q , 
+, , ……, are attached on nodes, edges, or cells. Second, these covariant data are updated 
+according to geometrically neighboring data, for example, covariant data at nodes are updated according 
+to data on their surrounding cells; covariant data on edges are updated according to data on their adjacent 
+cells; covariant data on cells are updated according to data on their nodes, edges, and other data on 
+neighboring cells; and principal data on cells are updated according to covariant data on their nodes, 
+edges, neighboring cells, and principal data on neighboring cells. 
+nˆF
+( )
+nˆG
+All covariant data can be explicitly expressed in an expansion formula of known principal data 
+sQ  on cells, the computations of the covariant data can be done in fully parallel, which can be 
+represented by do-all loops using OpenMP programming language directives. On the other hand, the 
+principal data of a cell is updated according to principal data of its neighboring cells, which results in the 
+need of solving a sparse linear system. 
+We now analyze parallelism in each step of the proposed parallel algorithm: 
+Preprocessing Step-1: Domain partitioning. This step can be done by using existing domain 
+decomposition tools, such as METIS [7] and others [8]. These tools usually required load balance among 
+partitions and minimized the number of adjacent cells among neighboring partitions. 
+Preprocessing Step-2: Partition extension. Overlap region represents communication sets among 
+neighboring partitions and also involves computation of updating data. Therefore, the ordering of cells in 
+the overlap region greatly influences the performance of accessing data in this area. We will describe this 
+step in great details in Section V. 
+( )sQStep-3 through Step-5 can be done in fully parallel. Covariant data is based on known , and 
+then ( )sA  and ( )sb  are based on the known covariant data. By well arranging computations of the 
+covariant data, each tuple of ( )sA  and ( )sb  can be done in fully parallel, which can be represented by 
+OpenMP do-all programming language directives. Step-4 needs to access geometrically neighboring data, 
+we will present it in great details in Section V. 
+Step-6: Solve a sparse linear system ( ) ( )s sA Q b  . There have been various algorithms for solving 
+sparse linear systems with different convergence behaviors [26]. We use a preconditioned BiCGSTAB 
+method because it is relatively faster convergent and has higher parallelism. An approximated linear 
+system on cells of  is embedded for preconditioning, for example, using incomplete  
+factorization, and then interchanging the results of precondition among neighboring partitions. An 
+iteration of the preconditioned BiCGSTAB method includes massive matrix-vector multiplications and 
+vector-vector inner products without data dependence, which can be represented by OpenMP do-all 
+programming language directives. In Section VI, we will present detailed steps of performing the 
+2
+i LU
+d. Calculate Q  at its edges based on (1) ( )sQ  on its cell(★ ) and cells( ╳ ), (2) Q  on its cell(★ ) 
+and cells( ╳ ), and (3) Q  at its edges and edges(---) of cells( ╳ ). 
+e. Calculate  , p , nˆF , nˆG , based on Q  and Q  at its edges, which will then be used to 
+compute ( )sA  and ( )sb  at Step-5. 
+In summary, it is enough to collect three levels of neighboring data for computing our schemes.  Figure 
+2 shows the partition of PEi requiring three levels of neighboring cells in its adjacent partitions. The first 
+level includes cells( ); the second level includes cells( ); and the third level includes cell( ). We will 
+call these additional three levels of neighboring cells as the overlap region. 
+╳ ●
+ 
+Figure 1.  A cell marked (★ ) has three different levels of adjacent neighboring cells, marked by ( ╳ ), 
+( ), and ( ● ), respectively. 
+ 
+Figure 2.  The overlap region of Partitioni in PEi includes three levels of adjacent cells in neighboring 
+partitions. (All cells in Partitioni should be marked by (★ ); however, to avoid excessive 
+details we only marked boundary cells by ( ★ ).) The overlap region represents 
+communication sets received from other partitions. On the contrary, the three-level shadowed 
+cells within Partitioni represent communication sets sent to other partitions. 
+Nodes and edges in the overlap region also can be computed in a similar way.  All these 
+computation mentioned in above can be done in a preprocessing step in a single (host) computer, and the 
+data structures of each partition and communication sets are output to different files. These files will be 
+read in Step-3 of the domain decomposition algorithm for each PE. And then all PEs compute their local 
+data simultaneously, occasionally in Step-6 and Step-8, exchange data in overlap regions by MPI 
+programming language directives among PEs, which stored neighboring partitions; and apply a single 
+MPI_allreduce directive to check whether residue is convergent at Step-9. 
+ 
+e VI.  Details in Preconditioned Bi-Conjugat Gradient Stabilized (BiCGSTAB) Method 
+Step-6 solves a sparse linear system  A Q b  . We use a BiCGSTAB m od because it is 
+latively faster convergent and has higher parallelism. We adopt an incomplete LU  factorization of 
+eth
+re  
+A , say Aˆ , as the role of preconditioner to improve the convergence of BiCGSTAB. We will describe 
+Aˆ  in details soon. The preconditioned BiCGSTAB method proceeds as follows, where we add major 
+operations used for each step, such as scalar operation, inner product, vector operation, matrix-vector 
+ of 
+multiplication and linear system. 
+A. Initialize 2i  and 0Q j  . (vector) 
+B. Compute (0)r b A Q    of 2i . (matrix-vector multiplication) 
+C. Set (0)rˆ r  of 2i . (vector) 
+D. Let 1j j  . 
+E. Co pute ( 1)ˆT jr r   of 2i  then sum up ( 1)ˆT jr r ( 1) ( 1)ˆj T jr r  m   among PEs for . (inner product) 
+method fails, we have to use another method. 
+G. If 
+Set 
+F. If ( 1) 0j    
+1j   
+(1) (0)p r  of ; (vector) 
+else 
+method fails, we have to use an
+) . (scalar) 
+pute  of 
+2
+i
+ If ( 1)j  other method. 0  
+( 1) ( 1) ( 2) ( 1) ( 1)( / )( /j j j j j       Compute 
+( ) ( 1) ( 1) ( 1) ( 1) ( 1)( )j j j j j jp r p v        2iCom . (vector) 
+endif 
+H. Solve ( )ˆ ˆ jA p p of 2 . (linear system)   
+I. Compute ( ) ˆ jv A p  of 2i . (matrix-vector multiplication) 
+the need requent communication onof f am g PEs. Therefore, we modify if the cell-( ), 0c ka    ( )c   is 
+outsi conde the partition taining cell- k . Thus, an original LU  factorizatio f 2  is approximated by 
+separate LU  factorizations of each 2i . 
+Then, separate LU  factorizations are solved independently on each 2i
+n o
+ , respectively; and then 
+we interchange the r lts among neighboring partitions. tep-H and S ep-N includes two steps: 
+(a) 
+esu Each of S t
+Solve an approximated linear system of 2i ; (b) interchange pˆ  or qˆ  am g neighboring 
+partitions and synchronize. 
+As a 
+on
+ with multiple shar emory sub-PEs, we further d  into ltiple 
+ub-parti
+2
+iPE
+tions 
+ed-m ecompose mu
+2
+  s for each sub-PE, and then off-diagonal sub-blocks of dif  
+set to zero. 
+ 
+mputers in a PC cluster represent distributed-m ory parallel processing. 
+We
+esolution, which results in the need of mo e. Theref  
+always a trade-of
+ 
+cells, is th
+performa proveme ber lls is large. Second, using quad cores is 
+always better than using only a single core for al
+ferent sub-p
+em
+re execution tim
+ber of PEs is 1, 2, or 4. 
+artitions all are
+ore, it is
+ does get 
+VII.  Experimental Studies on PC Clusters 
+The experimental environment we used includes four PCs connected by a switch. Each PC has an 
+Intel Core 2 Quad Q6600 processor with quad cores. Multi-cores in a CPU represent shared-memory 
+parallel processing; multi-co
+ will decom
+nce im
+pose the computing domain into N  partitions, where N  is the number of PCs used for 
+the parallel implementation. 
+For unstructured mesh applications, the number of cells, which determines the resolution of 
+simulation, also represents the complexity of execution time. For example, if the geometry of the target 
+computing domain is complex or if behaviors near simulated bodies will change rapidly, we will place 
+more triangles to get better r
+f of using more or less numbers of triangles in order to get better resolution or to spend 
+less computation time. 
+Four test cases are used to evaluate the performance of our method.  The first case is a 
+three-element NASA EET wing of 26,900 cells, the Mach number is 0.2 and angle of attack is 20°.  The 
+second case is the NACA0012 airfoil of 23,791 cells, the Mach number is 0.8 and angle of attack is 3°. 
+Both of the first two cases studied steady solutions of the inviscid flow by Euler Equations. The third 
+case, which includes 6,758 cells, is the backward facing step flow. The fourth case, which includes 2,004 
+e lid-driven cavity flow. Both of the last two cases are typical benchmarks of testifying the 
+viscous flow by Navier-Stokes Equations. Figure 4 shows the results of their flow fields.  
+The results for these test cases are shown in Figure 5. First, applying the parallel algorithm
+nt, especially when the num  of ce
+l cases when the num
+outperforms to use distributed-memory MPI programming language directives in a 
+multi-computer PC cluster.  This is because communication overhead across different computers 
+becomes relatively high when the number of cells is few. 
+In summary, we found that when the problem size (granularity) is large, then to apply the 
+parallel algorithm does gain performance for using multi-cores or multi-PEs. On the other hand, 
+when the problem size is small, then to use a single computer with multi-cores is better than to 
+use distributed memory multi-computers, because the latter one incurs additional communication 
+overhead among different PEs. 
+ 
+VIII.  Concluding Remarks 
+It was a nightmare to require junior application scientists to write parallel version CFD 
+programs based on unstructured meshes, because junior application scientists usually didn’t know 
+how to write parallel programs from scratch. Although domain decomposition methods are well 
+accepted as to write parallel version programs, how to generate overlap regions among domains 
+and how to generate communication sets efficiently still need more efforts to study. 
+We have presented in this paper a paradigm of designing parallel CFD programs. We can 
+use tools to do domain decompositions, to reorder cells in each partition, to generate overlap 
+region in each partition, and to generate communication sets for each partition all in the 
+preprocessing steps, and outputs are written in files. 
+Programmers then can get all necessary information of overlap regions and communication 
+sets from files, after that, they only need to write sequential code for each PE, using OpenMP 
+do-all statements to represent those do loops without data dependence, and using MPI 
+programming language directives to represent interchanging communication sets among 
+partitions. 
+We have run cases for the NASA EET wing, the NACA0012 airfoil, the backward facing 
+step flow, and the lid-driven cavity flow on a PC cluster.  Experimental studies show that our 
+paradigm for designing parallel CFD programs is promising. 
+ 
+Acknowledgement 
+This work was supported by the National Science Council under Grants NSC 
+98-2221-E-001-006-MY2.  
+ 
+References 
+[1] J.H. Ferziger and M. Peric, Computational Methods for Fluid Dynamics, 3rd ed., Springer, 
+2001. 
+[2] R. Pletcher, J. Tannehill, and D. Anderson, Computational Fluid Mechanics and Heat 
+Transfer, 2nd ed., Taylor & Francis, 1997. 
+[22] M.S. Liou, “A sequel to AUSM, part II: AUSM+-up for all speeds,” J. Comp. Phys., vol. 
+214, pp. 137-170, 2006. 
+[23] T.J. Barth, “Analysis of implicit local linearization techniques for TVD and upwind 
+algorithms,” AIAA paper 87-0595, Reno, Nevada, 1987. 
+[24] P.L. Roe, “Approximate Riemann solvers, parameter vectors, and difference schemes,” J. 
+Comp. Phys., vol. 43, pp. 357-372, 1981. 
+[25] H.A. van der Vorst, “Bi-CGSTAB: A fast and smoothly converging variant of Bi-CG for the 
+solution of nonsymmetric linear systems," SIAM J. Sci. Stat. Comp., vol. 13, No. 2, pp. 
+631–644, 1992. 
+[26] R. Barrett, M. Berry, T.F. Chan, J. Demmel, J.M. Donato, J. Dongarra, V. Eijkhout, R. Pozo, 
+C. Romine, and H. Van der Vorst, Templates for the Solution of Linear Systems: Building 
+Blocks for Iterative Methods, SIAM, 1994. 
+[27] Y. Kaneda and T. Isihara, “High-resolution direct numerical simulation of turbulence,” J. 
+Turbulence, vol. 7, pp. 1-17, 2006. 
+[28] J.R. Forsythe, K.D. Squires, K.E. Wurtzler, P.R. Spalart, “Detached-eddy simulation of the 
+F-15E at high alpha”, J. Aircraft, vol. 41, pp. 193-200, 2004. 
+[29] S.A. Morton, R.M. Cummings, and D.B. Kholodan, “High resoltution turbulence treatment 
+of F/A-18 tail buffet,” AIAA Paper 2004-1676, 45th AIAA/ASME/ASCE/AHS/ASC 
+Structures, Structural Dynamics & Material Con., Palm Springs, California, 2004. 
+[30] A. Uno, “Software of the Earth Simulator,” J. Earth Simulator, vol. 3, pp. 52-59, 2005. 
+[31] Barth, T. J. & Jesperson, D. C., “The design and application of upwind schemes on 
+unstructured meshes,” AIAA paper 89-0336, 27th Aerospace Science Meeting, Reno, 1989. 
+[32] Venkatakrishnan, V & Simon, H. D., ”A MIND implementation of a parallel Euler solver 
+for unstructured grids,” J.  Supercomputing, vol. 6, pp. 17-137, 1992. 
+[33] Hammond, S. W. & Barth, T. J., “Efficient massively parallel Euler solver for 
+two-dimensional unstructured grids,” AIAA J., vol. 30, pp. 947-952, 1992. 
+[34] Cui, A. & Knight, D., “Implementation of an unstructured grid Navier-Stokes algorithm on 
+the connection machine”, AIAA paper 94-0411, 32th Aerospace Science Meetinh, Reno, 
+1994. 
+[35] Lohner, R., “Renumbering stratege for unstruactured-grid solvers operating on 
+shared-memory, cache-based parallel machines,” AIAA paper 97-2045, 1997. 
+[36] Keyser, J. D. & Roose, D., “Run-time load balancing techniques for a paraller unstructured 
+multi-grid Euler solver with adaptive grid refinement,” Parallel Computing, vol. 21, pp. 
+179-198, 1995. 
+[37] Lanteri, S., “Parallel solution of compressible flows using overlapping and non-overlapping 
+mesh partitioning strategies,” Parallel Computing, Vol. 22, pp. 943-968, 1996. 
+[53] H.A. van der Vorst and T. F. Chan, “Parallel preconditioning for sparse linear equations,” 
+ZAMM. Z. angew. Math. Mech., vol. 76, pp. 167-170, 1996. 
+[54] I.S. Duff and H.A. van der Vorst, “Developments and trend in the parallel solution of linear 
+systems,” Parallel Computing, vol. 25, pp. 1931-1970, 1999. 
+[55] I.S. Duff and G.A. Meurant, “The effect of ordering on preconditioned conjugate gradients, 
+BIT, vol. 29, pp. 635-657, 1989. 
+[56] T. Iwashita and M. Shimasaki, “Construction and ordering of edge elements for parallel 
+computation,” IEEE Trans. Magn., vol. 37, pp. 3498-3502, 2001. 
+[57] S. Doi and T. Washio, “Ordering strategies and related techniques to overcome the trade-off 
+between parallelism and convergence in incomplete factorization”, Parallel Computing, 25, 
+(1999), pp. 1995-2014. 
+[58] S. Doi and A. Lichnewsky, “A graph-theory approach for analyzing the effects of ordering 
+on ILU preconditioning,” INRIA report 1452, (1991). 
+ 
+98 年度專題研究計畫研究成果彙整表 
+計畫主持人：李丕榮 計畫編號：98-2221-E-001-006-MY2 
+計畫名稱：在多核心平行電腦上針對規則與不規則科學計算的編譯技術及執行支援之研究 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 2 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 2 2 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

@@ -1,0 +1,355 @@
+ II
+中文摘要 
+ 
+本計畫之要點在於研究延遲式(delay-based)壅塞控制(congestion control)在異質環
+境 (heterogeneous environments) 中之效能改進與分析。近年來傳輸控制協定
+（Transmission Control Protocol, TCP）的壅塞控制，吸引了許多網路研究人員投身研
+究，至今已發展出許多版本，如：Tahoe、Reno、New Reno、SACK、Vegas…等，這
+些方案有效的解決了 TCP 的某些問題，例如 TCP Tahoe 提出了壅塞控制的概念，防止
+了網路崩潰的發生；TCP Reno 改善了 TCP Tahoe 在封包遺失時的效能不彰；TCP Vegas 
+則提出一個有別於 TCP Reno 的壅塞控制做法，利用封包往返延遲時間作為判斷網路
+壅塞與否的依據，使得網路資源的使用更有效率；…等等，另外更有為數眾多的細部
+調整方案，可以說 TCP 的不斷改進與變遷提供了網際網路可以繼續蓬勃發展的基礎。 
+而在各具特色的 TCP 版本中，以 Vegas 具有高穩定性及高頻寬使用率的優點而被
+受矚目。但目前 Reno 仍是最被廣為採用的傳輸控制協定，主要肇因於 Vegas 和 Reno
+的相容性。當網路上只有 Vegas 的傳輸控制協定時，其表現較 Reno 來得好，不論是在
+整體網路使用率、穩定性、公平性、產率、封包遺失率以及突發性等皆是如此。然而
+當有 Reno 存在於網路上時，Vegas 的效能會受到限制而表現低落，也因此目前的作業
+系統較少採用 Vegas 作為預設的傳輸控制協定。 
+於是本計劃將改良 Vegas 傳輸控制協定，使其能夠和 Reno 相容，並取得應有的
+網路資源以及維持良好的公平性。和之前相關研究所提出的方法較為不同之處，是在
+於我們並不是對於某些參數進行最佳化，或是藉由網路上之路由器的佇列管理機制來
+達到公平性，而是只讓傳送端的某些控制參數，能針對當時的網路狀況做適應性的調
+整，故其機制易於實作，並且適用於現今的網際網路上，而對於未來的網路傳輸控制
+協定，也提供了一個優良的發展方向與應用方案。 
+ 
+關鍵詞：壅塞控制、TCP Reno、TCP Vegas、公平性、傳輸層協定 
+ 
+ 1
+一、計畫緣由及目的 
+ 
+ 傳輸控制協定(transmission control protocol, TCP)在網際網路服務的供需之間，扮
+演著非常重要的角色。也因為 TCP 的存在，使網際網路的傳輸運作得以被信賴，成
+為又快又可靠的工具，於是許多重要的訊息與服務，現在也得以在網際網路上傳輸與
+運行，增進了人類的工作效率與便利性。儘管如此，網路資源的需求卻往往大於提供，
+因此發展能夠提昇整體網路效能，以及更能預防網路系統崩潰的傳輸控制協定，是目
+前重要且迫切的研究議題。 
+TCP Vegas 是以延遲時間做為判斷與運作基礎(delay-based)而聞名的壅塞控制技
+術，相較於 TCP Reno 以封包遺失做為判斷與運作基礎(loss-based)，Vegas 在傳輸效
+能以及穩定性等各壅塞控制評比的項目上，都比 Reno 有更優越的表現，說明 Vegas
+更能符合未來網際網路服務愈來愈多樣化的趨勢。 
+然而目前大多數作業系統所使用的 TCP 版本，仍然是較傳統的 Reno，原因在於
+Vegas 對偵測網路狀況的反應較敏感，進而造成使用網路資源的方式也較保守，因此
+可以想見在有 Reno 存在的網路環境下，Vegas 的表現會受到 Reno 競爭資源能力較強
+勢的影響而屈居劣勢。若現今所有作業系統的 TCP 版本同時換成 Vegas，則大家能直
+接獲得網路效能與品質提升的好處。但更新的時機一定有先後的問題，先使用 Vegas
+的作業系統，反而可能遭受網路效能不彰的誤解，而在自由競爭的市場上彼此互不相
+讓，因此誰都不願意先踏出使用 Vegas 的第一步。 
+為了能讓 Vegas 良好控制的精神能發揚光大，我們必須提高各家作業系統採用
+Vegas 的意願，其中一個重要的課題，就是增加 Vegas 在目前異質性網路環境中的競
+爭力，確保對於網路資源的合理佔有率，以改善原本受到 Reno 影響而效能不彰的問
+題，同時保留其穩定的控制特性，將 Vegas 改造為相容於現今網路環境的傳輸控制協
+定，增加被直接投入實作的機會，盡早實現提升整體網路效能與品質的目標。 
+從 Vegas 被提出以來，很多研究針對 Vegas 內部的某些參數進行最佳化的討論，
+然而網路的狀況一直在改變，如果只對特定的情況做最佳化，無法從根本解決問題；
+而又有許多研究，討論到使用中繼設備(如：路由器)，使其能夠針對網路狀況，將收
+到的封包進行排程控制，或使用回報機制讓傳送端知道目前網路的壅塞狀況，進而調
+整傳送速率達到壅塞控制的目的，但是由於必須同時對終端與中繼設備進行安裝與設
+定，其成本相對較高，於是也提高了在實作上的困難度。 
+由上述原因，我們考慮將 Vegas 的內部參數，設計出有別於以往研究的動態調整
+方式，使得我們的運作機制能達到理想的結果，也就是在異質性的網路環境下，取得
+應有的網路資源，維持應有的效能表現以及其穩定性；而其機制只需在傳送端運作，
+因此容易安裝與設定，成本相對較低。因此我們朝著以上的目標前進，使良好的壅塞
+控制技術有高度被投入實作的價值，為現今及未來網際網路帶來日益進步的實質意
+義。針對在本計劃提出的設計機制，我們除使用知名且具公信力的網路模擬器 ns-2
+進行實驗外，也在 Linux platform 上與其他 TCP 版本進行評比及結果分析。 
+ 
+ 
+ 
+,)( BaseRTTActualExpected ×−=∆                                      (1) 
+,
+,
+,1
+,1
+⎪⎩
+⎪⎨
+⎧
+>∆−
+<∆+
+=
+otherwiseCWND
+ifCWND
+ifCWND
+CWND β
+α
+                                      (2) 
+其中 BaseRTT 是傳送封包過程中所量測過最短的來回時間，Expected 等於 CWND 除以
+BaseRTT，Actual 則是 CWND 除以目前量測到的來回時間(RTT)，α與β是兩個固定參
+數，通常被設為 1 跟 3。 
+ 在異質性網路環境下，Reno是等到網路已經壅塞之後，才進行減速的動作；Vegas
+則因為使用α、β等預先防制壅塞的門檻值，會在壅塞避免(congestion avoidance)階段
+線性地調整其壅塞窗口，期望自己與其他連線的封包在中繼設備的佇列中保持低佔有
+率，也就是保持低佇列長度，因為佇列長度不斷成長並高到一定的值，代表，而Vegas
+可以用延遲時間來感知佇列長度是否過長，來判斷網路傳輸是否已達飽和，以達到避免
+壅塞發生的目的，因為對於Vegas而言，延遲超過一定的值，代表網路已達飽和，便會
+降低壅塞窗口，此時其他的Vegas連線便有機會增加自己的壅塞窗口，依照這樣的運作
+模式，彼此能達成均衡的狀態；但若是由Reno來佔用佇列，不論Reno在Vegas連線的前
+還是後加入網路，都會將網路資源完全佔用，Vegas便一直偵測到高延遲，即高壅塞網
+路的狀態，所以受到Reno過度佔用佇列長度的影響，而造成Vegas會一直處在效能低落
+的情況下，由此可知對於異質性網路環境來說，Vegas調整壅塞窗口的方式過於被動及
+緩慢。不過，藉由所測得的額外資料Δ，TCP Vegas可以採取另一種較動態而有彈性的
+壅塞窗口調整方式，即NewVegas所採用的方法。NewVegas的運作方式描述如下： 
+0
+0
+old old
+old 0
+if(receive_dupack)
+if(loss_ event_is_true)
+fast _ retransmission _ and _ re cov ery
+else
+if ( )
+W W 1
+elseif ( )
+W W 1
+else
+W W
+if ((RTT > RTT ) and (W <= W ))
+1
+1
+if ((RTT <= RTT ) and ( > ))
+α α
+β β
+∆ β
+∆ α
+α α
+β β
+α α
+α α
+=
+=
+>
+= −
+<
+= +
+=
+= +
+= +
+= − 1
+1β β= −
+ 
+ 3
+( )
+( )
+1,  1,  1
+( )
+(( 1) and( ))
+1
+(( 1 )and ( ))
+1,  1,  1
+( 1)
+1
+( )
+( 1)
+1,  1
+1
+t t RTT
+t t RTT
+t t RTT
+if
+if Th Th
+W W
+else
+W W
+elseif
+if Th Th
+W W
+elseif Th Th
+W W
+elseif
+W W
+elseif
+if
+W W
+else
+W
+β α
+α α β β
+α
+α
+α
+α α β β
+α
+β
+α
+α α β β
+−
+−
+−
+> ∆ >
+>
+= + = + = +
+=
+∆ <
+> >
+= +
+> <
+= − = − = −
+=
+= +
+∆ >
+>
+= − = −
+= −
+=W
+ 
+參數Tht代表在時間t所測量到的效能(throughput)，而Tht-RTT代表在t前面一個RTT
+時間所測得的效能。Vegas-A在壅塞發生之前會不斷將門檻值提高，因此CWND能不
+斷地成長。時間在小於α時，Vegas-A還會看與之前的效能收益是否有實質的增加，
+然而在有Reno的環境之下，效能很難有所成長，又Reno增加CWND的速度較快，所以
+即使Vegas-A會往上調整α與β的值以增加CWMD成長的空間，但是實際上成長的時
+間並不長，且成長速度仍落後於Reno。 
+CWND 的成長方式確實較原本的 Vegas 有彈性且具競爭力，但受限於延遲時間
+與效能仍然受到 Reno 的巨大影響，Vegas-A 只比 Vegas 在初期增加了一些 CWND 成
+長的時間與機會，於是 Vegas-A 仍然無法與 Reno 做長期性的競爭。 
+我們提出了進一步的改進方案，由於是以競爭力作為出發點，又是以 Vegas 之延
+遲為基礎的設計，因此我們的方法稱為 COmpetitive DElay-based, CODE TCP。CODE
+的靈感來自於 NewVegas，因為我們認為 NewVegas 有合理的演算機制來分辨壅塞責
+任，因此具有能夠合理佔用頻寬而不被 Reno 影響的潛力，以下為修改 NewVegas 之
+CODE TCP 的運作描述： 
+ 
+ 5
+降為原本的ε倍，也就是CWND在封包遺失之後，最大仍然可以達到原本ε倍的大
+小，而不會直接降為 3 以下。而將門檻值設定為ε倍的原因將由以下的分析推演過程
+來說明。 
+因為我們希望在封包遺失之後，能夠取得跟 Reno 一樣的效能，直到下次的封包
+遺失。而若將本次遺失封包制下次封包遺失之間，當作是一個循環，則每次循環 CODE
+均會取得與 Reno 同樣的效能，即達到 CODE 取得與 Reno 同樣效能的目的。 
+ 
+圖四：Reno 與 CODE 共存且在封包遺失時之個別壅塞窗口(CWND)變化 
+ 
+以上圖四說明當封包遺失發生後，CODE與Reno之CWND的變化情形，而由前一
+章的介紹，CODE之CWND的變化並不會受到Reno的影響，因此我們可以將CODE與
+Reno的CWND變化視為獨立的事件，而效能則是透過CWND的變化來計算，我們也就
+能夠個別計算出CODE與Reno的效能。假設CODE能與Reno取得平等的頻寬分享，則
+CODE與Reno的頻寬使用會同時到達飽和，於是我們假設兩者同時到達飽和後，同時
+送出了系統無法負荷的封包，因此它們發生封包遺失事件的時間點均在同一個RTT(ith 
+RTT與下一次發生遺失的kth RTT)，又假設兩者的RTT長度會相等，則在圖四的ith到kth
+之RTT，兩者可視為RTT同步(RTT長度相等，所以若將RTT當作競爭回合(round)的時
+間長度，每個round兩者均同時參與)。一次RTT送出的封包量為CWND值，而在封包
+遺失發生之間的這段時間，將每次RTT的CWND值加總，便是傳送出封包的總量，也
+就是我們所計算的效能便是圖四中，ith到kth RTT這段時間的面積。 
+則 Reno 之效能計算公式： 
+2max
+max max
+3 3
+4 2 8
+R
+R R
+WW W⋅ =  
+假設將調為原本的ε倍，則 CODE 之效能計算公式： 
+max max max max( ) ( )V V VW W W
+ε εε ε3+ 4 3 +1 3⎛ ⎞ ⎛ ⎞⋅ − + ⋅ 1−⎜ ⎟ ⎜ ⎟8 4 2 2⎝ ⎠ ⎝ ⎠ VW  
+兩者取等式： 
+ 7
+上跟進的行為延長了競爭時間，但因為CWND的成長速度仍停留在原本Vegas保守的等
+級，比起Reno翻倍的暴增，效能很快的被停止增長，甚至呈現負成長，且無法分辨壅塞
+的責任歸屬，只好降低CWND與α、β，每個循環均是如此，因此Vegas-A的效能仍遠
+低於Reno。 
+其中NewVegas因壅塞責任歸屬的概念，所以能比Vegas-A更適時的進入或退出競
+爭，Vegas-A只能在效能增進的可能性存在之下，才可獲得CWND的成長機會，並繼續
+讓效能有所增進，但Reno不會給任何對手機會，使得Vegas-A在效能停止或衰退時，早
+早打退堂鼓並臣服於Reno的淫威之下。 
+所以我們認為NewVegas提供了一個絕佳的競爭雛形，便以此做為改進基礎。我們
+發現到NewVegas的兩項缺陷之後，將之改進成為我們所提出的CODE Vegas版本，模擬
+結果顯示CODE能產生與Reno相稱的效能表現，產生制衡的效果，使得Vegas在異質性
+網路上，已達到了絕佳的免疫力，因此獲得了公平的資源使用，比起Vegas、NewVegas、
+Vegas-A在異質性網路環境下的效能表現，有卓越的改進與提升。 
+而以下實驗顯示在不同bottleneck頻寬限制之下，一條Vegas連線與一條Reno連線共
+存時的效能比較，結果顯示CODE的效能幾乎與Reno不相上下，達到了擁有與Reno相等
+的競爭力以及效能上的公平性(資源/頻寬使用率)。而其他版本的Vegas與Reno的效能差
+距甚大，均無法達到應有的效能也無法公平地使用頻寬。 
+ 
+圖七(a)：Reno與Vegas在不同瓶頸頻寬限制下的效能比較 
+ 
+圖七(b)：Reno與NewVegas在不同瓶頸頻寬限制下的效能比較 
+ 9
+ 
+圖八(b)：Reno與NewVegas在不同連線比例下的效能比較 
+ 
+圖八(c)：Reno與Vegas-A在不同連線比例下的效能比較 
+ 
+圖八(d)：Reno與CODE在不同連線比例下的效能比較 
+ 
+而圖九(a)-(h)顯示，假設Reno與Vegas之RTT時間長度不同時，各Vegas版本與Reno
+的效能評比，發現不論當Vegas RTT較長(例如Vegas的連線經過了較長的路徑)，或是
+Reno的RTT較長，仍然只有CODE達到理想的表現。 
+ 11
+ 
+圖九(d)：Reno與NewVegas在不同RTT設定下的效能比較(NewVegas之RTT遞增) 
+ 
+圖九(e)：Reno與Vegas-A在不同RTT設定下的效能比較(Reno之RTT遞增) 
+ 
+圖九(f)：Reno與Vegas-A在不同RTT設定下的效能比較(Vegas-A之RTT遞增) 
+ 13
+ 
+圖十(b)：Reno與NewVegas在不同中繼設備佇列長度下的效能比較 
+ 
+圖十(c)：Reno與Vegas-A在不同中繼設備佇列長度下的效能比較 
+ 
+圖十(d)：Reno與CODE在不同中繼設備佇列長度下的效能比較 
+ 
+接下來要闡述CODE在同質性環境與其他連線共存時，也能夠維持原本Vegas良好
+控制以避免壅塞發生的精神，並且與其他連線公平地分享網路頻寬，結果顯示在各種
+Vegas版本之下，CODE均合理且公平的佔用資源。 
+ 15
+(packet filter)來模擬路由器的行為，而將終端設備安裝各版TCP之後，我們進行在不同
+bottleneck頻寬下的效能實測。如下圖十二(a)-(c)，可以發現與NS-2模擬的情形幾乎相
+同，說明了NS-2實驗的準確性，更重要的是CODE在真實環境下，有如我們預期的表現。 
+ 
+圖十二(a)：Reno與Vegas在不同連線比例下的效能比較(實測) 
+ 
+圖十二(b)：Reno與NewVegas在不同連線比例下的效能比較(實測) 
+ 
+圖十二(c)：Reno與NewVegas在不同連線比例下的效能比較(實測) 
+ 17
+ 19
+417-440, June 2008. 
+[10]. G. Hasegawa, M. Murata, and H. Miyahara, “Fairness and stability of congestion control 
+mechanisms of TCP”, in Proc. of IEEE INFOCOM’99, Vol. 3, pp. 1329-1336, March 
+1999. 
+[11]. J. Mo, R. L. V. Anantharam, and J. Walrand, “Analysis and comparison of TCP Reno and 
+Vegas”, in Proc. of IEEE INFOCOM’99, Vol. 3, pp. 1556-1563, March 1999. 
+[12]. W. Feng and P. Tinnakornsrisuphap, “The failure of TCP in high-performance 
+computational grids”, in Proc. of Supercomputing’00, pp. 37-37, Nov. 2000. 
+[13]. W. Feng and S. Vanichpun, “Enabling compatibility between TCP Reno and TCP Vegas”, 
+in Proc. of the IEEE Symposium on Applications and the Internet, pp. 301-308, Jan. 
+2003. 
+[14]. Y. C. Lai and C. L. Yao, “Performance comparison betwee TCP Reno and TCP Vegas”, 
+in Computer Communications, Vol. 25, Issue 18, pp. 1765-1773, Dec. 2002. 
+[15]. A. DeVendictis, A. Baiocchi, and M. Bonacci, “Analysis and enhancement of TCP Vegas 
+congestion control in a mixed TCP Vegas and TCP Reno network scenario”, in 
+Performance Evaluation, Vol. 5, Issue 3-4, pp. 225-253, Aug. 2003. 
+[16]. K. Srijith, L. Jacob, and A. Ananda, “TCP Vegas-A: Improving the performance of TCP 
+Vegas”, in Computer Communications, Vol. 28, Issue 4, pp. 429-440, March 2005.  
+[17]. A. Veres and M. Boda., “The chaotic nature of TCP congestion control”, in Proc. of 
+IEEE INFOCOM’00, Vol. 3, pp. 1715-1723, March 2000. 
+[18]. Y. C. Lai and C. L. Yao, “The performance comparison between TCP Reno and TCP 
+Vegas”, in Seventh International Conference on Parallel and Distributed Systems’00, pp. 
+61-66, July 2000. 
+[19]. K. Takagaki, H. Ohsaki, and M. Murata, “Analysis of a window-based flow control 
+mechanism based on TCP Vegas in heterogeneous network environment”, in Proc. of the 
+IEEE ICC’01, Vol. 10, pp. 3224-3228, June 2001. 
+[20]. G. Hasegawa, K. Kurata, and M. Murata, “Analysis and improvement of fairness 
+between TCP Reno and Vegas for deployment of TCP Vegas to the Internet”, in Proc. of 
+the ICNP, pp. 177-186, Nov. 2000. 
+[21]. Y. C. Lai, “Improving the performance of TCP Vegas in a heterogeneous environment”, 
+in Proc. of the IEEE ICPADS, pp. 581-587, June 2001. 
+[22]. E. Weigle and W. Feng, “A case for TCP Vegas in high-performance computational 
+grids”, in High Performance Distributed Computing, pp. 158-167, Aug. 2001. 
+[23]. Network Simulator 2 (NS-2), in http://www.isi.edu/nsnam/ns 
+[24]. R. Jain, A. Durresi, and G. Babic, “Throughput fairness index: an explanation”, in 
+http://www.cis.ohio-state.edu/˜jain/atmf/a99-0045.htm, Feb. 1999. 
+ 
+五、計畫成果自評 
+ 
+本研究計畫的主旨是研究延遲式(delay-based)壅塞控制(congestion control)在異質環

@@ -1,0 +1,949 @@
+1 
+ 
+二、 前言 
+基於 MIPv6[1]， IETF 的一個工作小組
+(Network Mobility, NEMO, Group)[2-3]設計了支
+援行動網路的通訊協定(NEMO Basic Support，簡
+稱為 NBS)。此通訊協定支援單層的行動網路，
+主要是希望能夠讓行動網路裡的所有網路節
+點，能夠在改變對網際網路的連接點 (Access 
+Router，AR)時，也能夠保持進行中的連線不中
+斷。根據 NBS 的設計，若推廣到巢狀式行動網
+路的環境，封包在傳送時需對每層 MR 做封裝，
+產生 tunnel in tunnel 的問題，這樣會增加封包長
+度與延遲，也會產生乒乓路由(pinball route) [4]
+的現象，導致無法達到路徑最佳化 (route 
+optimization)。因此[5]提出 HCoP-B 行動網路架
+構，NEMO 的 Mobility Anchor Point (MAP) 上的
+BUT 內記錄著：1. 行動網路拓撲架構以及 2. 每
+個 Mobile Router (MR)/Visiting Mobile Node 
+(VMN) 所 有 連 線 中 的 CN 和
+MR-HA/VMN-HA。HCoP-B 設計的優點是當
+NEMO 子網路進行 Inter-MAP 換手時，HCoP-B
+可以同時執行：1. 由換手子網路的最上層 MR
+（Handoff Leading MR, HLMR）透過 Local 
+Binding Update (LBU)程序(step 1.1)，傳送這個子
+網路的 BUT 資訊給新的 MAP，立即對所有的
+HA 與連線中的 CN 執行 Global Binding Update 
+(GBU) (step 1.2)。2. 對行動網路內部的前置碼授
+權(step 2.1)與前置碼授權後內部 MR 對 MAP 的
+LBU(step 2.2)。HCoP-B 確實可以因此減少執行
+路由最佳化所需換手延遲的時間。 
+另一方面，IETF 所訂定的 Fast Handovers for 
+Mobile IPv6 (FMIPv6) [6]協定可藉由第二層的幫
+助來減少換手延遲時間和達成快速換手 (Fast 
+Handoff)。為了因應下一代行動網路的發展，行
+動網路的管理需求顯得愈來愈重要，支援巢狀式
+行動網路內所有的 MN 在行動網路移動的情況
+下可以達到快速無縫式換手，我們延伸 FMIPv6
+與 HCoP-B 的特性，設計出 Predictive Fast 
+HCoP-B (預測式 FHCoP-B) [7]，藉由整合 Layer 2
+的換手事件 (trigger)預約提早換手與 Layer 3 
+HCoP-B 路由最佳化，在換手動作發生前，讓巢
+狀式行動網路預測之後可能換手至另一 MAP 下
+的 AR，藉由交換 HI 和 HAck 等訊息，同時傳遞
+HCoP-B 的 BUL 資訊給新的 MAP 來完成路由最
+佳化。隨後在舊的和新的 MAP 下的兩個 AR 之
+間建立通道，轉送並暫存換手過程中收到的封
+包，達成快速無縫式換手。 
+三、 研究目的 
+如同 FMIPv6 的設計，預測式 FHCoP-B 可
+能會面對以下兩種移動太快的例外狀況，導致原
+本的流程無法正確完成。因此對於換手延遲
+(Handoff Latency)、封包遺失(Packet loss)等效能
+項目勢必比原本執行預測式 FHCoP-B 之流程還
+要更多，因此本計畫將設計因 FHCoP-B 預測換
+手失敗時，所必須執行的反應式  (Reactive) 
+FHCoP-B 的流程，並分析可能會發生的換手延
+遲、封包遺失和暫存封包時間(Buffering time)。 
+以下本計畫主要分為四節：第二節中將回顧
+針對行動網路快速換手的研究，特別探討
+FMIPv6 與預測式 FHCoP-B；第三節將詳細說明
+本計畫所提出反應式 FHCoP-B 架構面對兩種例
+外狀況的流程，並分析各種效能項目的結果；第
+四節是預測式 FHCoP-B、反應式 Fast HCoP-B 與
+其他機制的效能模擬實驗；最後是結論。 
+四、 相關研究 
+FMIPv6 可使目前仍在自已所屬的 Previous 
+Access Router (PAR)下的 MN 自行偵測自已即將
+是否移動至另一個 new Access Router (NAR)子
+網路範圍，並取得新的子網路 prefix 資訊。例如，
+MN 可使用特定的第二層鏈結層(link layer)機制
+(稱為 L2 的 trigger)來發現一個或多個 AP，藉由
+取得它們的 AP-ID 和 AR-Info，MN 可很快地發
+現自已有沒有可能將移動至另一 AR 下的子網
+路。如果有，便藉由 FMIPv6 的方法，MN 利用
+L2 的 trigger 主動發出 Router Solicitation for 
+Proxy Advertisement (RtSolPr)訊息給 PAR 或被動
+的從 PAR 接收 Proxy Router Advertisement 
+(PrRtAdv)訊息。一旦此訊息傳給 MN，MN 就可
+知道新的 AR 或 AP 的資訊，讓 MN 可提早獲知
+新網域的路由器名稱並取得新的 Care of Address 
+3 
+ 
+的時間以 int 表示；行動網路外每一網路節點間傳
+送封包的時間以 outt 表示。而行動網路外任兩節
+點(S,D)之間的 hop count，以 SDH 表示。 HMRARARSt //
+為行動網路內，每個 hop 傳送 RS/RA/HMRA 訊
+息所需的處理時間。 cct 為 MR/MN 取得新的
+care-of prefix (CoP)時，把新的 CoP 與 MR/MN 的
+ID (MAC Address)做配置取得新的 CoA 的時
+間。 2et 為行動網路內 L2 通知 L3 換手的事件； 2Lt
+為行動網路換手時，L2 執行 Authentication 與
+Association 的動作時間。 
+表一.相關參數設定 
+Notations Descriptions 
+l
+iMR  
+The ith MR at the lth layer of the nested 
+NEMO 
+S
+DH  
+Internet distance in hop count from the source 
+node S to the destination one D in the nested 
+NEMO 
+bct  
+The processing time, which value is 5ms, for 
+the node to update the LBC/VBC when 
+receiving the BU. 
+cct  
+The processing time, which value is 5ms, for 
+the MR to configure its new CoA. 
+int  
+The propagation delay and link access delay, 
+which value is 10ms/hop, between any two 
+adjacent nodes in the nested NEMO. 
+outt  
+The propagation delay and link access delay, 
+which value is 10ms/hop, between any two 
+adjacent nodes in Internet. 
+2et  
+Layer 2 notifies Layer 3 of the handoff event, 
+which value is 1ms. 
+2Lt  
+L2 executes the procedure of Authentication 
+and Association with the value of 50ms.[26] 
+DADt  
+The time for duplicate address detection of the 
+CoA, which value is 1000ms.[26] 
+, t , 
+t
+RS RA
+HMRA
+t The propagation delay, which value is 10ms/hop, to transmit the RS, RA or HMRA 
+message between two adjacent MRs in the 
+nested NEMO. 
+ 
+ 
+圖 1. HCoP-B 與預測式 FHCoP-B 換手流程圖 
+5 
+ 
+分析 
+當執行預測式 FHCoP-B 時，假如因某種原
+因而發生預測失敗的話，之前所做的預測換手動
+作勢必無效。在本節我們將根據[13]詳細探討
+FHCoP-B 可能換手失敗的二種快速移動，把
+FMIPv6的反應式換手應用在預測式FHCoP-B的
+預測換手失敗上，設計出反應式 FHCoP-B 的流
+程，並且對預測換手失敗的效能項目進行分析。 
+5.1. 快速移動(Fast Movement) case 1 
+在 FHCoP-B 裡，因為 HLMR 必須在有限時
+間內完成換手動作，否則就視為預測換手失敗。
+但如果 HLMR 突然快速地移動至 NAR 下的新網
+域，雖然預測新網域成功，但是因為運作時間上
+不足而無法完成預測式 FHCoP-B 的流程導致預
+測換手失敗的話，勢必會浪費一些額外訊息和遺
+失封包。在這種失敗原因下，透過新增二個符號， 
+X：HLMR link down 的時間點，Δ：HLMR 再次
+執行 channel scanning 找到應該換手的新 AR 的
+額外時間。我們可以將它細分為二種換手失敗情
+形，以 Inter-MAP 換手為例，其情形如下： 
+Case 1：HLMR 送出 FBU 給 PMAP 之前就 link 
+down： 
+換手失敗的時間圖如圖 3，詳細流程由圖 4
+所示，當 HLMR 收到由 NAR 的 802.16 BS 週期
+性的發出 MOB_NBR-ADV，並且此時發生 Link 
+Going Down 事件後， HLMR 會開始執行
+FHCoP-B 的 prefix delegation(t1~t2)流程。假設在
+時間 X 點發生連線中斷(link down)，HLMR L2
+會傳送 Link Down 事件給 L3，此時 HLMR 因時
+間上不足，而無法正常傳送 FBU 訊息至 PMAP，
+導致由外部 CN 傳送來的封包(original packet)就
+無法正常傳送給 HLMR 子網路，使得 HLMR 與
+底下 MR 和 VMN 開始發生 封包遺失。 
+因為 HLMR 子網路快速移動導致無法執行
+完 FHCoP-B 流程，但是 HLMR L2 由之前
+PrRtAdv 訊息得知 NAR 可提供連線服務的資訊
+是正確的，因此 HLMR 在與 PPMR link down 後
+會繼續與 NAR 執行 L2 的連結，此時間為
+2 2e Lt tΔ + + 。如同[9]，這種模式是屬於反應式
+FHCoP-B，執行完新的 L2 鏈結後，HLMR 會經
+由 NAR 傳送 UNA 訊息給 NMAP 要求傳送暫存
+的封包給 HLMR，此時間為 ( )1in HLMR outt l t× + + 。
+但由於之前的 FHCoP-B 流程只完成 prefix 
+delegation ， 並 沒 有 執 行 Predictive Binding 
+Update，所以 PMAP 沒有幫 HLMR 暫存它換手
+後的封包，使得 PMAP 無法將 forwarded packet
+預先轉送給 NMAP。因此當 HLMR 送出 UNA
+後，由於預測換手失敗，因此 HLMR 會送出
+FBU(夾帶 BC)訊息給 NMAP 更新 BC，此時間為
+( )1in HLMR out bct l t t× + + + 。NMAP 會將此 FBU 訊息
+轉送給 PMAP，PMAP 再發出 HI 訊息，希望在
+PMAP 和 NMAP 間建立隧道，使得在 PMAP 暫
+存的封包可以轉送給 NMAP，此交換 FBU、HI、
+HAck、FBAck 的時間為4 NMAPout PMAPt H× × 。但由於
+之前 HLMR 因為快速移動，導致 FBU 訊息並無
+法順利傳送給 PMAP，因此在 PMAP 並沒有封包
+可以轉送給 NMAP。當 NMAP 收到 PMAP 傳送
+的 FBAck 訊息後，NMAP 隨後會將 subsequent 
+packet 往下傳送給 HLMR 子網路，最後由 MN
+收到所需時間為 ( )2in HLMR HLMR outt L j l t× − + + + 。
+由於此 Case 1 較早發生預測失敗，因此 NMAP
+與外部網路執行的 FBU 和 RR 程序有可能比
+HLMR 執行完反應式 FHCoP-B 的時間來的晚，
+因此換手延遲時間有二種可能。若 NMAP 在
+FBAck 之後才收到 GBAck，則 NMAP 沒有暫存
+時間，但是換手延遲時間會較大。若 NMAP 在
+FBAck 之前就收到到 GBAck，則 NMAP 有暫存
+時間，但是換手延遲時間會較小。 
+以下我們將針對發生第一種換手失敗情形
+時，探討換手延遲時間、封包遺失、暫存時間與
+全部換手成本四種項目： 
+z 換手延遲時間：由圖 3 所示，換手延遲時間
+從此 X 時間點開始，並且等待 Δ 時間進行
+channel scanning 找到新的 BS/AP，執行新的
+L2 鏈結。一旦 Link Up，HLMR 就必須遵照
+反應式 FHCoP-B 的流程執行換手程序，因此
+由圖 3 可知換手延遲時間為 ( )'2'6 tt −+Δ 。
+NMAP 代替 HLMR 子網路執行 GBU 和 RR
+程序的時間總和如公式 3 所示。由於 HLMR
+7 
+ 
+ 
+圖 3. FHCoP-B 換手失敗時間圖 (Fast Movement case 1) 
+ 
+圖 4. FHCoP-B Inter-MAP 802.11Æ802.11 換手失敗流程圖 (Fast Movement case 1) 
+ 
+9 
+ 
+j
+iHA LiHA
+( )liHA ( )L j liHA − +
+L
+iMR
+HLMRjMR
+)( HLMRlMR
+( )L j liMR − +
+ 
+圖 6. FHCoP-B Inter-MAP 802.11Æ802.11 換手失敗流程圖 (Fast Movement case2) 
+ 
+a. forwarded packets 在 PMAP 暫存時間：由
+圖 6 所示，此時間為 2 PMAPbc out NMAPt t H+ × × 。 
+b. forwarded packets 在 NMAP 暫存時間：由
+圖 6 所示，因為預測換手失敗，在 NMAP
+需要執行反應式 FHCoP-B 程序，PMAP
+才能將封包送給 NMAP 下的 HLMR 子網
+路，此時間化簡通式結果如公式 12 所示。 
+( )
+( )
+2 22 2 3
+3
+e L bc in HLMR HLMR
+PMAP
+out NMAP
+t t t t j l
+t H
+× + + + × + × +
++ × ×  (12) 
+c. subsequent packets 在 NMAP 暫存時間：由
+圖 6 所示，因為預測換手失敗，在 NMAP
+需要執行反應式 FHCoP-B 程序，PMAP
+才能將封包送給 NMAP 下的 HLMR 子網
+路，因此 NMAP 裡的 subsequent packets
+同樣需要等待執行反應式 FHCoP-B 的時
+間，因此在此情形下的時間化簡通式結果
+如公式 13 所示。 
+( )
+( )
+2 2
+2
+2 2
+3
+7
+1 2
+HLMR
+bc but e L in
+HLMR
+PMAP CN CN
+NMAP PMAP NMAP
+out PMAP
+NMAP
+l
+t t t t t
+j
+H H H
+t
+H
+×⎛ ⎞× + + × + + ×⎜ ⎟+ +⎝ ⎠
+⎡ ⎤× + −⎢ ⎥+ × ⎢ ⎥+ − +⎣ ⎦
+(13) 
+z 全部換手成本：在此反應式 FHCoP-B (Case 2)
+的 全 部 換 手 成 本 為 全 部 暫 存 時 間 ：
+2 PMAPbc out NMAPt t H+ × × +(12)+(13)，化簡通式結果
+如公式 14 所示。 
+( )
+( )
+2 22 4 6 8
+13 4
+e L bc in HLMR
+PMAP
+out NMAP
+t t t t L l
+t H
++ + × + × + × +
++ × × +   (14) 
+11 
+ 
+Predictive Binding Update，但是卻因為移動過快
+無法完成流程。特別是 Reactive Case 1 因為移動
+太快，反而需要比 Case 2 付出更大的代價（較差
+的效能）來執行 FCoP-B 的流程。 
+ 
+ 
+(a) LH = 0 (b) LH = 3 (c) LH = 6 
+圖 9. FHCoP-B Inter-MAP Handoff Latency 
+(a) LH = 0 (b) LH = 3 (c) LH = 6 
+圖 10. FHCoP-B Inter-MAP total buffering time 
+(a) LH = 0 (b) LH = 3 (c) LH = 6 
+圖 11. FHCoP-B Inter-MAP packet loss time 
+ 
+(a) LH = 0 (b) LH = 3  (c) LH = 6 
+13 
+ 
+draft-thubert-nemo-reverse-routing header-05, 
+June 2004. 
+[5] I.C. Chang and C.H. Chou, “HCoP-B: A 
+Hierarchical Care-of Prefix with BUT Scheme 
+for Nested Mobile Networks”, IEEE Trans. on 
+Vehicular Technology, Vol.58, No.6, pp. 
+2942-2965, July 2009. 
+[6] R. Koodli et al., “Fast Handover for Mobile 
+IPv6”, IETF RFC 4068, July 2005. 
+[7] I.C. Chang and C.S. Lu, “Design and Analysis 
+of the FHCoP-B Scheme for Fast Handoff 
+Support in the Nested Mobile Network”, IEEE 
+International Conference on New Trends in 
+Information and Service Sciences (NISS2009), 
+pp.653-658, June 2009. 
+[8] L. Hai and L. Houda, “Hybrid Handover 
+Optimization for Multiple Mobile 
+Routers-based Multihomed NEMO Networks”, 
+IEEE International Conference on Pervasive 
+Services, pp. 136-144, Jul. 2007. 
+[9] M.H. Han, K.S. Han, D.J. Lee, “Fast IP 
+Handover Performance Improvements Using 
+Performance Enhancing Proxys between 
+Satellite Networks and Wireless LAN 
+Networks for High-Speed Trains”, IEEE pp. 
+2341-2344, May 2008. 
+[10] H. Oh, et al., “An Enhanced Fast Handover 
+Scheme with Temporal Reuse of CoAs and 
+PBP in IPv6-Based Mobile Network”, IEEE 
+Conference on Multimedia and Ubiquitous 
+Engineering, pp. 183-189, Apr. 2007. 
+[11] S. Ryu and Y. Mun, “Enhanced Fast Handover 
+for Mobile IPv6 based on IEEE 802.11 
+Network”, Internet Draft: 
+draft-mum-mipshop-efh-fast-mipv6-02.txt, 
+Jun. 2008. 
+[12] L. Jang, et al., “Fast Handover Scheme for 
+Supporting Network Mobility in IEEE 
+802.16e BWA System”, IEEE Wireless 
+Communications, pp. 1757-1760, Sep. 2007. 
+[13] R. Koodi, Ed., “Mobile IPv6 Fast Handover”, 
+IETF RFC 5268, Jun. 2008. 
+[14] W.K. Lai and J.C. Chiu, “Improving Handoff 
+Performance in Wireless Overlay Networks 
+by Switching Between Two-Layer IPv6 and 
+One-Layer IPv6 Addressing”, IEEE Journal 
+on Selected Areas in Communications, Vol. 
+23, pp. 2129-2137, Nov. 2005. 
+ 
+2 
+ 
+個特別的機會，討論相關研究的進展以及應用與發展。本會議分為ISC（服務計算）、IIS
+（資訊科學）、ISE（通訊/無所不在的計算/無線感測網路/行動網路/網路與電子）、IMS
+（資訊管理與服務）、IICS（工業與聚合科學）的主題與研究、技術經驗兩個軌道(Track)。 
+所有接受的論文都收錄在IEEE出版的會議論文與IEEE eXplore電子資料庫中，並進一步
+將能在列為Engineering Information (EI)或(Compendex)索引的資料庫中搜尋到。 最佳論
+文將能在數個SCI/EI/SCOPUS國際期刊中刊出。因此可見本會議雖然是第五屆舉辦，的
+確 是 獲 得 學 術 界 的 重 視 。 進 一 步 相 關 說 明 請 參 閱 會 議 網 站 ：
+http://www.humanpub.org/niss/。本次出席會議發表一篇論文，如後面說明。 
+大會邀請兩位演講者（Dr. Paul P. Wang, Professor of Electrical and Computer 
+Engineering Department of Electrical and Computer Engineering, Duke University, USA與 
+Dr. C. L. Philip Chen, FIEEE, FAAAS, Dean and Chair Professor Faculty of Science and 
+Technology, University of Macau）發表主旨演說，題目為Some Overlooked Issues on 
+Contemporary Information Technology Research，討論所有資訊處理的研究三個不同層次
+的主要構成要素，提供與會者瞭解這個領域未來的研究方向。之後同時展開兩個
+Workshops（ International Workshop on Nature-Inspired Computing and Metaheuristics 
+(NiCaM 2011)、The 4th International Workshop on Artificial Intelligence Applications for 
+E-services）與四個Invited Session（Knowledge sharing in our knowledge economy、Software 
+New Trends、Antenna and Antenna Arrays、Cloud Computing Researches and Developments）
+與三天的研討會論文發表。全程參與會議的進行，在第二天(10/25)下午Session 8發表論
+文，並與主席與台下專家討論本論文的兩個問題。 
+二、與會心得 
+NISS 2011會議與個人研究（Mobile Computing、Mobile Ad-hoc and Sensor Network、
+Mobile and Context-aware Computing、Ubiquitous/Pervasive Networks and Computing）最
+為相關的為主研討會與ISE的主題。回國之後，找出以下相關的論文後開始進行研讀與
+討論，希望能獲得重要的研究進展。 
+1. Session 4: Efficient Bandwidth Utilization and Congestion Control through Network 
+Traffic Analysis 
+4 
+ 
+五、其他 
+參加會議照片三張 
+ 
+圖一、會場入口 
+ 
+圖二、演講過程一 
+ACCEPTANCE LETTER
+Dear Ing-Chau Chang,  
+Congratulations! It is my great pleasure to announce you that your paper, The Predictive FHCoP-B Scheme for Fast 
+and Seamless Handoff in the Nested Mobile Network, is accepted by the NISS2011: The 5th International 
+Conference on New trends in Information and Service Science which will be held from October 24 - 26, 2011 in Macau, 
+China.
+This year, we have accepted a large number of various papers from more than 25 countries and it wasn't easy work for 
+us to select the most innovative and well-written papers among them. 
+With the assigned ID and PW, you can check or revise your personal and paper information from web system of the 
+NISS2011. http://www.humanpub.org/niss 
+Mission and Aims
+NISS will trigger off the scientific community to propose topics that should be tackled from research perspective and let 
+the community explain how to best use their tools for practical and theoretical problems of Interaction Sciences. Many 
+various contributions are foreseen from prospective authors. This includes use-cases of theoretical tools and methods to 
+solve practical problems. Such contributions should be as usable as possible by practitioners in the related field. We also 
+expect research results from practitioners that have identified a problem that could be solved by tools from network 
+sciences. One of the missions of NISS is to make the scientific community aware of the importance of the issues in 
+Interaction Sciences and to suggest means by which the problem may be solved by the scientific community. The 
+contributions should stimulate interaction between theoreticians and practitioners and also have high potential impact in 
+either field. 
+We aims to bring together and share brilliant and ideas, accumulated knowledge and unique experiences for mutual 
+benefit of researchers and practitioners and explore possible directions for development of Multidisciplinary and 
+Hybrid/Convergent research in the areas of Interaction Sciences. 
+Once again, congratulations on your paper acceptance.
+I look forward to seeing you at the conference soon. 
+Prof. Franz I. S. Ko, Ph.D.
+General Chair, NISS2011.
+Honorary Director General, IBC, Cambridge, UK.
+Vice-President, The World Congress of Arts, Sciences and Communications, Cambridge, UK.  
+    
+Address: 707, Seokjang-dong, Gyeongju-si, Gyeongbuk, 780-741, Korea(Rep. of) 
+Registration Number: 505-10-96301 
+TEL: +82-70-7730-2833 
+duplicate GBU messages for RO from an MNN to all 
+connecting CNs and thereby reduces GBU bandwidth 
+consumption. However, these NEMO schemes introduce 
+many extra L3 operations to optimize the route between the 
+CN and MNN after the L2 handoff has been completed, which 
+in turn significantly raises the handoff latency and deteriorates 
+QoS of active real-time applications. 
+FMIPv6 has proposed to reduce the significant MIPv6 
+handoff latency that was introduced by operations like link-
+layer procedures, movement detection, IP address 
+configuration and location update. It enables the MN to issue 
+the Router Solicitation for Proxy Advertisement (RtSolPr) 
+message to its PAR and wait for the Proxy Router 
+Advertisement (PrRtAdv) message from the PAR for quickly 
+detecting that it will move to a new subnet of an NAR and 
+configuring an prospective new CoA (NCoA) on the NAR 
+when the MN is still connected to its PAR. In [12], a fast 
+NEMO (FNEMO) scheme was proposed. When the handover 
+of an MR is triggered, the MR sends an FBU to its HA for 
+setting up a tunnel with the NAR by exchanging the handover 
+initiate (HI) and handover acknowledge (HAck) messages. 
+Hence, FNEMO eliminates the round trip and extra 
+encapsulation of the PAR by directly tunneling the packet via 
+the NAR to the MR. However, it has not mentioned how to 
+forward packets received by the PAR to the NAR during the 
+handover for avoiding packet losses. 
+ 
+III.   FAST HCOP-B ARCHITECTURE AND HANDOFF FLOW 
+ 
+As shown in Figure 1(a), the HCoP-B handoff procedure 
+begins with layer 2 channel scanning, authentication and 
+association, and follows with layer 3 prefix delegation, 
+binding update and media stream resumption. Hence, all 
+MNNs in the moving mobile network will stop receiving 
+ongoing media streams between time t2, i.e., the time when 
+the L2 link down event of the old link occurs, and t6, i.e., the 
+time to resume receiving packets that are forwarded from the 
+NAR, which will thereby significantly degrade QoS of real-
+time services. Hence, as shown in Figure 1(b), our FHCoP-B 
+overlaps the L3 prefix delegation, L2 authentication and 
+association procedures with the modified L3 binding update, 
+i.e., the predictive binding update (PBU), by the L2 link going 
+down event of the old link at time t1, which is notification of 
+the imminent handoff. Hence, the MNN can resume its media 
+stream as early as possible after t4. In this way, the handoff 
+latency of FHCoP-B will be reduced to the value of (t4-t2), 
+instead of that of (t6-t2) in original HCoP-B.  
+ 
+ 
+Figure 1. Timing diagrams of HCoP-B and FHCoP-B handoffs 
+Figure 2 shows the network architecture where FHCoP-B 
+works. Because IEEE 802.16 supports long-distance 
+transmission, it is adopted as the wireless link to provide 
+connectivity between the top-level MR of the NEMO and its 
+associated AR on Internet. Oppositely, short-range IEEE 
+802.11 wireless links are used to connect internal MRs and 
+underlying MNNs. Notations used are listed in Table 1. 
+TABLE I 
+NOTATIONS AND THEIR DESCRIPTIONS  
+Notations Descriptions 
+l
+iMR  The ith MR at the lth layer of the nested NEMO 
+l
+iHA , 
+l
+iHR  
+Home agent and home registrar of l
+iMR  
+S
+DH  
+Internet distance in hop count from the source node S to the 
+destination one D in the nested NEMO 
+bct  
+The processing time, which value is 5ms, for the node to update 
+the binding cache when receiving the BU. 
+cct  
+The processing time, which value is 5ms, for the MR to configure 
+its new CoA. 
+int  
+The propagation delay, which value is 10ms/hop, between any 
+two adjacent nodes in the nested NEMO. 
+outt  
+The propagation delay, which value is 10ms/hop, between any 
+two adjacent nodes in Internet. 
+,RS RAt t ,
+HMRAt   
+The propagation delay, which value is 10ms/hop, to transmit the 
+RS, RA and HMRA between two adjacent MRs in the nested 
+NEMO. 
+2Lt  Layer 2 handoff latency, which value is 20ms [10] 
+DADt  
+latencies of the duplicate address detection (DAD), which value is 
+1000ms [17] 
+fT  
+The one-way frame transportation delay through a wireless link 
+with RLP [10] 
+B  The end-to-end packet transportation delay between two nodes  with RLP 
+pD  
+The average one-way signaling packet transportation delay using 
+UDP between two nodes with RLP 
+  The initial value of the retransmission timer using UDP, which value is 150ms [10] 
+r 
+The factor by which the retransmission timer timeout duration is 
+increased after each failed retransmission, which value is 2 [10] 
+m The maximal number of failed retransmissions to freeze the timeout value of the retransmission timer, , which value is 10 [10]
+A / ( 1)r   
+K The number of link layer frames per packet; the frame size is 19 bytes [10]. 
+n The maximum number of RLP trials to transmit a frame over the link layer before aborting transmission, which is 3 for RLP [10]. 
+ The link layer interframe interval, which is 20ms [10] 
+ ,i jp c  
+The probability that the first frame transmitted by the MNN is 
+received correctly by the BS, being the ith retransmitted frame at 
+the jth retransmission trial [11]. 
+cP  
+Packet loss probabilities of the wired link, which value is equal to 
+51e [10]. 
+wP Packet loss probability in the wireless link, 
+fP Frame error rate of the link layer.  
+q End-to-end packet loss probability between two nodes with RLP 
+ 
+Figure 2 shows a general example of the 802.11 to 802.11 
+inter-MAP handoff. The HLMR, i.e., HLMRjiMR , of the mobile 
+subnet, which is the ith MR at the HLMRj th layer of the old 
+nested NEMO under the PAR before the handoff, will connect 
+to an MR under the NAR as HLMRliMR  at the HLMRl th layer of 
+the new nested NEMO under the NAR managed by the new 
+- 216 -
+preceding forwarded packets have been forwarded to the 
+MNN, i.e., the NMAP buffering time for forwarded packets, 
+which will be described later. The second period is the time 
+for the first subsequent packet to travel from the CN to the 
+NMAP, which is equal to CNout NMAPt H	 . Hence, with this kind 
+of predictive binding update procedure, i.e., part b in Figure 3, 
+executed before or during the imminent L2 handoff actually 
+occurs, FHCoP-B can update binding entries, reattach BUT 
+information, and perform DAD, GBU and RR processes in the 
+NMAP such that the handoff latency of FHCoP-B inter-MAP 
+handoff is significantly reduced. Further, with aforementioned 
+packet buffering and forwarding mechanisms, packet 
+disordering and losses during handoff are avoided altogether.  
+L2
+(S-BS)
+L3
+PAR
+L2
+(T-BS)
+L3
+NAR
+L2L3
+MOB_NBR-ADVNLD
+LBULBU
+LSW
+802.16 Network Entry
+LUP
+HMRA
+(a) 
+Prefix 
+Delegation
+(c) 
+Layer 2
+Handoff 
+Latency
+FHCoP-B 
+Handoff 
+Latency
+UNA
+RtSolPr
+PrRtAdv
+LBA
+FBAck
+LBA
+Buffer 
+forwarded 
+packet
+(d) 
+Media 
+Stream 
+Resumption
+FBU (BC)
+NMAPPMAP CN
+GBU to HA
+GBAck
+HoTi
+CoTi
+HoT
+CoT
+GBU to CN
+GBAck
+j
+iHA LiHA
+ liHA  L j liHA  
+802.16 signal
+forwarded  packet subsequent  packetoriginal  packet
+L
+iMR
+HLMRjMR
+)( HLMRlMR
+ L j liMR  
+VMN
+FHCoP-B message
+Retrieve BUT 
+from PMAPCreate temporary 
+BC
+First fo
+rwarde
+d pack
+etOrigin
+al pack
+et
+HI (BC)
+HAck
+Modify BC of NMAP
+First su
+bseque
+nt pack
+et
+Last fo
+rwarde
+d pack
+et
+Last forwarded packet
+Send last forwarded 
+packet to MNN
+Send subsequent 
+packet to MNN
+Send first forwarded 
+packet to MNN NMAP Buffering 
+time for 
+subsequent 
+packets
+Acquire AP-ID 
+and MR-Info
+NMAP 
+buffering 
+time for 
+forwarded 
+packets
+LBU(BUT)
+Reattach BUT 
+to NMAP and 
+DAD
+(b) 
+Predictive 
+Binding 
+Update
+PMAP 
+buffering 
+time
+LBA
+First forwarded packet
+Buffer 
+forwarded 
+packet
+Buffer 
+subsequent 
+packet
+L2 event
+Handoff 
+Preparation 
+Latency
+ 
+Figure 3. The flow of FHCoP-B 802.11 to 802.11 inter-MAP handoff 
+ 
+ 2 22 2
+(2 2)
+bc e L in HLMR HLMR
+PMAP CN CN
+out NMAP PMAP NMAP
+t t t t j l
+t H H H
+ 	   	  
+ 	 	   
+ (2) 
+Whenever the handoff decision algorithm of HLMRjiMR  
+decides to start the handoff, L2 of HLMRjiMR  will notify its L3 
+of the 802.16 LINK_SWITCH (LSW) message with the time 
+of 2et  to begin the 802.16 network entry procedure with the 
+NAR’s L2, i.e., T-BS, which also needs the time of 2Lt . As a 
+result, the L2 handoff procedure introduces latency of 2 2e Lt t . 
+As soon as the L2 handoff procedure of the HLMR, i.e., 
+HLMRl
+iMR  at the HLMRl  layer of the new NEMO after handoff, 
+has completed, the L2 will issue the 802.16 LINK_UP 
+message to its L3, which spends the time of 2et and in turn lets 
+the L3 send the unsolicited neighbor advertisement (UNA) 
+message through the NAR to the NMAP to finish the L3 
+handoff process with the time of  2 1e in HLMR outt t l t 	  
+   . 
+Hence, packets buffered in the NMAP will be forwarded to 
+each MNN to continue the media stream via NAR, all upper 
+MRs of the MNN in the new NEMO, which will introduce the 
+latency of ( 2)in HLMR HLMR outt L j l t	      for the MNN under 
+the deepest HLMR HLMRL j liMR
+   in the mobile subnet after handoff. 
+As a result, the total time for continuing the media stream is 
+equal to  2 3in HLMR HLMRt L j l	   	  + 2 2e outt t 	 . With this 
+approach, each forwarded packet has to be buffered in the 
+NMAP with the NMAP buffering time for forwarded packets, 
+which is calculated as follows. First, the period from when the 
+PMAP receives the HAck until when the NMAP receives the 
+UNA is equal to   2 22 2 2in HLMR HLMR e L outt j l t t t	    	   	 . 
+Second, the period for packets to be forwarded from the 
+PMAP to NMAP is PMAPout NMAPt H	 . Hence, the NMAP buffering 
+- 218 -
+buffered in the NMAP will be forwarded to each MNN to 
+continue the VOIP media stream via NAR, all upper MRs of 
+the MNN in the new NEMO. Hence, the latency for the MNN 
+under the deepest HLMR HLMRL j liMR
+   in the mobile subnet after 
+handoff to receive the first forwarded VoIP packet, which is 
+93 bytes (i.e., the sum of 40 bytes of IPv6 header, 8 bytes of 
+UDP header and 45 bytes of RTP message), through 
+ 2HLMR HLMRL j l    wireless links and one wired link is 
+formulated as 19D . On the other hand, the second period 
+spends the time to convey the last original 93-byte VoIP 
+packet from the PMAP to the MNN through  2L   wireless 
+links and one wired link before handoff so that the duration of 
+the second period is expressed as 16D . Consequently, the 
+handoff latency of FHCoP-B with RLP is equal to 
+2 2 13 16 17 18 192 2e L bct t t D D D D D	    	     .  
+ 13 1 1
+PMAP
+NMAPH
+cq p   , 13
+PMAP
+NMAP outB H T 	  
+ 14 1 1
+CN
+PMAPH
+cq p   , 14
+CN
+PMAP outB H T 	  
+ 15 1 1
+CN
+NMAPH
+cq p   , 15
+CN
+NMAP outB H T 	  
+  
+ 
+ 
+2 /2
+( 2)
+16 1 1 2 1
+n n
+K L
+f f f cq p p p p
+
+
+
+ 
+     	 
+  
+, 
+   16 2 1f outB L T K t  	     
+  
+ 
+ 
+2 /2
+( 1)
+17 1 1 2 1
+HLMRn n
+K j
+f f f cq p p p p
+
+
+
+ 
+     	 
+  
+, 
+ 17 ( 1) 1HLMR f outB j T K t  	     
+  
+ 
+ 
+2 /2
+( 1)
+18 1 1 2 1
+HLMRn n
+K l
+f f f cq p p p p
+
+
+
+ 
+     	 
+  
+, 
+ 18 ( 1) 1HLMR f outB l T K t  	     
+  
+ 
+ 
+2 /2
+( 2)
+19 1 1 2 1
+HLMR HLMRn n
+K L j l
+f f f cq p p p p
+
+  
+
+ 
+     	 
+  
+   19 2 1HLMR HLMR f outB L j l T K t    	     
+ 
+B.    Buffering Times of FHCoP-B with RLP 
+As mentioned above, the PMAP buffering time, i.e., the 
+duration that each forwarded packet has to be buffered in the 
+PMAP, is equal to the time to update the binding cache, i.e., 
+bct , added by the round trip time of HI/HAck between the 
+PMAP and NMAP, which is equal to 132 D	 . Hence, the 
+PMAP buffering time of FHCoP-B with RLP is expressed by 
+132bct D 	 . Further, the NMAP buffering time for forwarded 
+packets is equal to the difference of the following two periods. 
+The first period is from the time when the PMAP receives the 
+HAck until when the NMAP receives the UNA, which is equal 
+to the sum of 2 22 e Lt t	  , the duration for transmitting the 
+FBAck, which is calculated by 17D , and that for conveying the 
+UNA message, which is calculated by 18D . The second period 
+is spent for packets to be forwarded from the PMAP to NMAP, 
+which is expressed by 13D . Hence, the NMAP buffering time 
+for forwarded packets of FHCoP-B with RLP is expressed as 
+2 2 17 18 132 e Lt t D D D	     .   
+The NMAP buffering time for subsequent packets is equal to 
+the difference of the following two periods, as mentioned 
+above. The first one consists of four epochs for the last 
+forwarded packet to travel from the CN to the PMAP with the 
+time formulated by 14D , to be buffered in the PMAP with the 
+PMAP buffering time, to redirect from the PMAP to the 
+NMAP with the time formulated by 13D  and to be buffered 
+again in the NMAP with the NMAP buffering time for 
+forwarded packets. The second period is the time for the first 
+subsequent packet to travel from the CN to the NMAP, which 
+is formulated by 15D . Hence, the NMAP buffering time for 
+subsequent packets is equal to ( 13D + 14D + PMA buffering 
+time + NMAP buffering time for forwarded packets - 15D ). 
+Consequently, the total buffering time for the inter-MAP 
+handoff scenario is the sum of three buffering times, i.e., that 
+of PMAP, that of NMAP for forwarded packets and that of 
+NMAP for subsequent packets, which is expressed as 
+2 2 13 14 17 18 152 4 2 3 2 2bc e Lt t t D D D D D	  	  	  	   	  	  . 
+ 
+V.   PERFORMANCE COMPARISONS 
+Here, we present average handoff latencies and total 
+buffering times for four NEMO schemes, i.e., RRH, MIRON, 
+HCoP-B and FHCoP-B by applying aforementioned equations 
+for numerical results with RLP two hundred times. As shown 
+in Figure 2 for the topology of the nested NEMO, hop counts 
+between any two nodes, except the PMAP and NMAP, in 
+Internet are assumed to be uniformly distributed among 1 to 
+30 hops but that between the PMAP and NMAP is among 1 to 
+10 hops. HLMRjiMR  at the HLMRj th layer and its underlying 
+mobile subnet in the old NEMO will perform an inter-MAP 
+handoff to the HLMRl th layer of the new NEMO. Default values 
+of L, HLMRj  and fP  are set as 6, 3 and 0.1, respectively. 
+We illustrate average values of the handoff latency for these 
+four schemes in Figure 4. First, inter-MAP handoff latencies 
+of MIRON, RRH and HCoP-B with RLP decrease as the value 
+of HLMRj  raises, which is because the number of layers, i.e., 
+ 2HLMR HLMRL j l   , for control packets and VoIP messages 
+to pass in the new NEMO decreases accordingly, as shown in 
+Figure 4. RRH with RLP suffers higher handoff latencies than 
+MIRON with RLP because it appends the extra routing header 
+with (16* ( 1)HLMR HLMRL j l   ) bytes into each GBU and 
+VoIP packet to the deepest MNN for recording CoAs of all 
+parent ( 1)HLMR HLMRL j l    MRs in the new NEMO, which 
+therefore enlarges its GBU and VoIP packet length and their 
+corresponding numbers, i.e., K, of wireless frames. However, 
+GBU and VoIP packet length of MIRON are 88 bytes and 93 
+- 220 -
+國科會補助計畫衍生研發成果推廣資料表
+日期:2010/12/06
+國科會補助計畫
+計畫名稱: 反應式FHCoP-B快速換手的流程最佳化與效能分析
+計畫主持人: 張英超
+計畫編號: 99-2221-E-018-017- 學門領域: 計算機網路與網際網路
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+NCS 2011 議程委員 
+多次國際期刊、國際會議論文審查委員 
+多次博、碩士學位口試委員 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

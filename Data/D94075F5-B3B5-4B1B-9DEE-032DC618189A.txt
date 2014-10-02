@@ -1,0 +1,878 @@
+摘要 
+ 
+「資料探勘」是一門從儲存於資料庫的龐大資料中挖掘出有趣知識的技術。
+近年來在許多實際應用中，資料不再是靜態儲存於資料庫中的型態，而是以串流
+的方式陸陸續續抵達本地端系統，稱為「資料串流」的處理模型。資料串流是一
+個由(近乎)無限多的資料元件所形成之長串序列，以不定順序、非常快的速度產
+生，並且持續不斷地傳輸。資料串流在現實生活中的應用非常廣泛，例如：全國
+連鎖商店的總公司接收各分店的顧客交易紀錄、網路伺服器接收網站的超連結點
+擊與流量監控資料、交通管理中心接收各道路的監測系統的路況資料等。在這些
+串流資料中可能潛藏著具有價值的資訊，然而要發現它們並不容易。由於串流本
+身的特性造成了許多限制，加以串流具有在尖峰時刻資料量暴增的不安定因素，
+使得資料串流探勘比起傳統資料庫探勘要來得困難許多。 
+ 
+在本研究計畫中，我們主要研究資料串流頻繁樣式探勘的負載控制問題。對
+於一個使用「誤差範圍保證」或者「精確結果保證」類型之演算法的探勘系統，
+我們提出一套降低負載的機制來應付可能發生的資料過載情況。由於探勘演算法
+需要處理數量極為龐大的資料集是造成系統工作量龐大的主要原因，因此對於相
+同的輸入資料，我們提出的負載控制機制只需要處理較少的項目集、維護一份規
+模相對小巧的摘要資訊。如此一來記錄摘要資訊所需的工作量便大幅降低，藉此
+改善資料過載的情況。至於那些未處理的項目集，其支持度可以在有需要時使用
+一套估算技巧快速計算產生。根據我們的實驗結果，本計畫所提出的降低負載機
+制可以確實提升探勘系統的單位時間資料處理量，因此在一定程度上幫助系統應
+付資料串流探勘的資料過載問題。 
+ 
+ 
+關鍵詞：資料探勘、資料串流、頻繁項目集、資料過載、減載機制、組合估算 
+ 
+ 1 
+1. 前言及簡介 
+ 
+    資料探勘(data mining)是一門從大量資料中自動搜尋隱藏於其中、具有特殊關
+聯性資訊的技術，其在資料庫領域中的應用性非常廣泛，例如在大型交易資料庫
+中挖掘出資料元件的特徵樣式或者關連性，以及與使用者購物時間相關的循序樣
+式等。目前針對資料探勘的研究可分為數種類型，其中最被廣泛研究的一種是關
+聯規則(association rule)。關聯規則是用來找出於某一事件中會同時出現或存在的
+項目，這些同時出現的項目稱為項目集(itemset)，若項目集出現的頻率高於使用者
+設定的某個門檻值，即稱為頻繁樣式(frequent pattern)或是頻繁項目集(frequent 
+itemset)。只要能找出這些項目集，便能以簡單的方式推導出關聯規則。因此，關
+聯規則的相關研究近年來著重在找出頻繁項目集的方法[2][8]。 
+    隨著各種新興應用的崛起，例如：感測網路、網路流量分析、入侵偵測以及
+線上購物行為分析等，近年來資料探勘的研究重點已經逐漸轉移到一種新的資料
+處理模型，稱為資料串流(data stream) [8][9][12]。資料串流是由不斷增加、速度不
+定、數量近乎無限的長串資料元件所構成，其中每個資料元件可視為一筆紀錄，
+例如商店的交易紀錄(transaction)。對於使用者或決策者而言，在這些資料中可能
+潛藏著具有參考價值的重要資訊。然而，由於串流資料量非常龐大、具備動態特
+性，以及在尖峰時段傳輸速度可能暴增，使得從串流中找出有價值資訊的工作，
+亦即資料串流探勘，比起傳統的靜態資料庫探勘要來得困難。 
+如果以進行探勘時所要處理的時間長度或資料涵蓋範圍進行區分，可以將資
+料串流歸納成為三種不同的時間模型，分別是里程碑模型、滑動時間窗模型，以
+及衰退式模型。里程碑模型(landmark window model)所劃定的探勘範圍是從稱為
+「里程碑」的某個特定時間點開始直到目前時間點為止，在這段時間內包含的每
+一筆資料對探勘結果都具有相同的重要性。而滑動時間窗模型(sliding window 
+model)的探勘範圍會隨著時間推進而逐漸捨棄過去的舊資料，使得探勘範圍總是
+只包含最近期的資料元件。計算時間窗大小可分為兩種方式：以時間長度計算（例
+如距今幾個單位時間內的資料），或者以資料元件數量計算（例如最近的幾筆交
+易）。至於衰退式模型(damped window model)與滑動時間窗模型十分類似，主要的
+差別在於其加入「權重值」的概念，進一步將範圍內的資料元件劃分為更小的時
+間窗以區分其重要程度；愈新的時間窗將給予較高的權重值，反之愈舊的資料則
+給予較低的權重值。本計畫是針對在滑動時間窗模型下，從固定資料量的時間窗
+範圍中探勘出頻繁項目集。 
+ 3 
+3. 相關文獻探討 
+    Lossy Counting 是第一個可以於資料串流中探勘出頻繁項目集的實際方法 
+[11]，在目前資料串流探勘頻繁項目集的各種演算法中，以此演算法最具代表性。
+此演算法的原理是運用事先設定的兩項參數─誤差度 ε 及最小支持度 s，以決定項
+目集保留與否的計數值門檻以及探勘出來的項目集的支持度誤差範圍。若某個項
+目集 A 的支持度低於 s 但高於 ε 時，此項目集會被當作潛在頻繁項目集而儲存起
+來；若 A 的支持度低於 ε 時，則會被直接捨棄掉。透過這樣的操作方式可以確保
+所探勘出來的各個項目集的計數值與其實際計數值之間的誤差必定不會超過 ε。
+Lossy Counting 演算法所產生的探勘結果有一特性，其會包含所有支持度滿足 s 的
+頻繁項目集，但同時也可能會包含部分支持度未達 s 的非頻繁項目集。此演算法屬
+於利用 ε 參數以保證計數值誤差範圍（ε-deficient mining）的探勘方法。 
+    Leung等人提出了DSTree資料結構及探勘演算法 [9]，其產生的探勘結果精確
+無誤，屬於滑動時間窗模型下的精確結果保證（exact mining）探勘方法。DSTree
+演算法接收資料串流時以批次方式處理交易資料和更新其樹狀資料結構（分段記
+錄每個項目集的計數值），此樹狀結構儲存滑動時間窗內所有包含的項目集，達
+到探勘正確無誤結果的功能。儲存於樹狀資料結構中的項目根據某種canonical順序
+來排列，因此不會因為項目集出現頻率改變而需要調換順序。此演算法的特色在
+於提出一個相對簡潔的樹資料結構，用以擷取與維護資料串流中的相關資訊。然
+而，由於DSTree需要儲存出現於資料串流中的任何項目集，其數量極為龐大，因
+此在探勘效能和記憶體用量上表現不盡理想。 
+不同於 Lossy Counting 與 DSTree 儲存大量項目集的做法，組合估算
+(combinatorial approximation，CA)類型的演算法 [4] [5] [6] 保留長度較短的項目
+集作為基底部分；其餘未被記錄、長度較長的項目集，則在使用者要求輸出探勘
+結果時，運用由 Linial 所提出的排容原理估算理論 [10] 來計算出支持度並從中找
+出頻繁項目集。舉例來說，給定一個資料來源且我們知道其中所有長度為 1 及長
+度為 2 的項目集與其支持度（出現次數）。對於一個長度在 3 以上的項目集，例如
+abc，我們可以將其不同長度的子集合的計數值總和（亦即  (|a|+|b|+|c|) 與 
+(|ab|+|bc|+|ac|) 的值）做為參數代入排容原理估算公式，求出公式中聯集項 
+|a∪b∪c| 的數值，接著再經過等號交換計算而得到公式中交集項 |a∩b∩c| 的數
+值，這便對應到項目集 abc 之支持度的近似值。在這個例子中，我們不用實際掃
+瞄資料來源以計算 abc 的出現次數，而是透過數學公式和一些子集合的計數值資
+訊，便可以迅速求出 abc 的(近似)計數值。CA 這種估算式的探勘方法，其優點在
+於高執行速率以及低記憶體用量。針對大量的串流資料，探勘方法只需要記錄屬
+於基底部分的項目集及其計數值；當使用者發出探勘需求時，首先快速進行計數
+值的估算，接著從中找出滿足最小支持度的頻繁項目集作為結果傳給使用者。至
+ 5 
+4. 研究方法 
+ 
+在既有的研究方法中，誤差範圍保證或者精確結果保證兩種類型的演算法會
+因為需保留的項目集數量過多，導致探勘效能較低（且資料結構耗用龐大儲存空
+間），因而容易發生資料過載的現象。如果利用組合估算 CA 這類高執行效率以及
+低記憶體用量的方法作為過載時期的替代演算法（以該演算法的組合估算技巧降
+低工作負載量），雖然探勘準確度較低但是將能夠應付過載問題。過去所提出的負
+載控制方式係預先刪除來不及處理的交易資料，再將剩餘資料交給探勘演算法進
+行處理。倘若改以切換演算法的方式，在串流速度正常的情況下使用誤差範圍保
+證或精確結果保證的探勘演算法，在會發生過載的情況下則轉換至 CA 演算法，同
+樣能夠解決過載問題，且不需要刪除任何未處理的交易資料。 
+為了達到本計畫的目標，我們提出一個可切換探勘演算法的資料串流探勘系
+統。此系統以一個誤差範圍保證或者精確結果保證的探勘方法為主要演算法，並
+配以一個組合估算的探勘方法作為系統的負載控制機制或減載演算法，在資料過
+載時替代主要演算法處理串流資料以降低負載量（同時維持探勘結果有可接受的
+品質）。這樣的系統必須考量兩個重要的議題：第一，需要花費多少額外時間來
+切換演算法？第二，具有兩個探勘演算法的系統需要多少空間成本成維護其資料
+結構？在交替使用主要演算法及減載演算法以適應串流動態速率的情況下，兩個
+演算法可能擁有各自的資料結構，亦可能共用單一資料結構。對於共用單一資料
+結構的情況，一個演算法所保留的摘要資訊不需要轉換格式便可供另一個演算法
+存取，如此將可大幅減少切換探勘演算法的額外時間成本。然而，若要共用同一
+個資料結構，由於兩個演算法所蒐集/產生的摘要資訊原本並不相同，必須先讓兩
+個演算法以一致的方式產生摘要資訊並保留於資料結構中。我們在本計畫中針對
+此議題進行研究並獲得初步的成果，以下將扼要說明之。此外，這項研究成果已
+經發表於 FSKD 2011 國際學術會議，其論文稿亦收錄在成果報告的附件中。 
+ 
+4.1 可切換探勘演算法的資料串流探勘系統 
+ 
+我們所提出的可切換探勘演算法的資料串流探勘系統，其架構如圖 4.1 所示。
+這個系統具有兩種探勘演算法，一種是探勘準確度較高、在負載程度正常時使用
+的主要演算法，一種是執行效率較高、在發生資料過載時使用的減載演算法。系
+統中有一個資料結構供兩種演算法共同使用，兩種演算法以一致的方式產生摘要
+資訊並儲存於此資料結構中。探勘系統的運作方式敘述如下。當負載程度正常時，
+探勘工作使用準確度較高的主要演算法採批次方式進行，系統以一個批次的交易
+量為單位更新滑動時間窗；當串流速率過高使得系統發生資料過載時，系統則切
+ 7 
+母順序進行排列。資料結構儲存項目集的方式如圖 4.2 所示。 
+ 
+ 
+圖 4.1 資料結構存放資料串流摘要（項目集）示意圖 
+ 
+在探勘系統所具備的兩種演算法中，執行效率導向的減載演算法（CA 演算法）
+原本僅將基底部分的摘要資訊保留在資料結構中，當使用者要求輸出頻繁項目集
+時才會以估算方式產生長度大於基底層數的項目集。也就是說，相較於準確度導
+向的主要演算法（誤差範圍保證類型或者準確結果保證類型），CA 演算法所產生
+的摘要並不完整。因此，當探勘系統從 CA 演算法恢復至主要演算法時，必須適當
+地補足摘要資訊至共用資料結構中，使其與主要演算法的摘要資訊一致。 
+當系統在過載情況下接收到使用者的探勘結果輸出要求，或是當系統從減載
+演算法恢復到準確度導向的主要演算法時，由於先前某個批次因為資料過載而切
+換使用 CA 演算法進行處理，則 CA 演算法必須利用組合估算技巧，計算出該批次
+資料中（長度大於基底層數的）其餘項目集的支持度、補完未記錄的摘要資訊，
+以維護共用資料結構的一致性。另一方面，由於準確度較高的主要探勘演算法所
+產生的資料摘要並非片段資訊，因此當系統發生過載，從主要演算法切換至減載
+演算法時，並不需要進行所謂的「補完」工作。 
+以下用一個例子來幫助說明。假設有一個資料批次，其內容如表 4.1 所示。若
+以屬於精確結果保證類型的 DSTree 方法對此資料進行探勘，所儲存的資料摘要將
+如圖 4.3 所示，包含了所有可能的項目組合。若以屬於誤差範圍保證類型的 Lossy 
+Counting 方法探勘且只保留出現次數大於 2 的項目集，則產生的資料摘要為圖 4.4
+中的紅框部分。若是使用組合估算方法探勘且設定基底部分包含長度在 2 以下的
+項目集，則所產生的資料摘要為圖 4.5 中的黃色部分。CA 演算法記錄黃色部分的
+ 9 
+ 
+圖 4.3 Lossy Counting 探勘演算法所保留的摘要資訊示意（紅框部分） 
+ 
+ 
+ 
+圖 4.4 CA 探勘演算法保留基底摘要及進行組合估算示意 
+ 
+ 
+當系統發生資料過載時，因為來不及處理所有資料（無法處理每一筆接收到
+的資料），精確結果保證類型方法勢必無法維持其探勘結果的完全正確性，而誤
+差範圍保證類型方法亦無法保證其結果中項目集支持度的誤差範圍。然而，若使
+用 CA 類型演算法進行減載，便能夠在確保系統不會因為過載而無法運作的前提
+ 11 
+5. 實驗結果與討論 
+ 
+本節報告所提探勘系統的執行效能表現。我們透過執行實驗，比較單一探勘
+演算法（不可切換）與本計畫所提出之可切換探勘演算法的串流探勘系統，觀察
+兩者在「探勘效率」以及「探勘準確度」上的表現。在挑選探勘系統的主要演算
+法時，由於精確結果保證類型方法在執行時間和空間使用量方面皆明顯多於誤差
+保證類型方法。此外，在使用 CA 方法作為減載演算法的情況下，無論主要演算法
+是誤差範圍保證或者精確結果保證的類型，過載時期所產生的探勘結果皆相當類
+似。因此，在實驗測試的部分，我們的探勘系統將以誤差範圍保證類型的 Lossy 
+Counting 方法 [11] 為主要演算法，搭配 CA 類型的 SWCA 方法 [7] 作為減載演
+算法。我們將里程碑模型的 Lossy Counting 演算法修改為滑動時間窗模型的演算
+法，以便在滑動時間窗模型下觀察切換演算法的負載控制機制對於探勘效率與準
+確度的影響。系統的探勘效率以單位時間資料處理量(throughput)來衡量，而探勘
+結果的準確度以綜合了精確度(precision)與召回度(recall)的 F-measure 來衡量。 
+實驗平台採用個人電腦，處理器為 Pentium 2.80 GHz Dual-Core CPU，實體記
+憶體空間為 2.96 GB，作業系統為 Windows XP Professional 2002 SP3，相關探勘演
+算法的程式以 C++編寫，並使用 Dev C++進行編譯。實驗的測試資料包含 FIMI [13] 
+網站所提供的真實資料集 BMS-POS 以及虛擬資料集 T10.I4.D100K。其中，虛擬資
+料集的 T 表示資料集中交易的平均長度、I 表示資料集中項目集的平均長度，而 D
+表示資料集包含的交易數量。表 5.1 列出測試資料集的相關參數。其中，真實資料
+集 BMS-POS 所包含的屬性數量多達 1657 個、最大交易長度達 164 個項目，表示
+其含有較多需要處理的項目集，使得此資料集的處理複雜度比虛擬資料集
+T10.I4.D100K 來得更高。測試資料集在實驗中以循序讀取方式來模擬資料元件陸
+續抵達的資料串流。 
+ 
+表 5.1 測試資料集一覽 
+資料集 交易數量 屬性數量 最大交易長度 平均交易長度 
+T10.I4.D100K 100,000 1,000 29 10 
+BMS-POS 515,597 1,657 164 6.5 
+ 
+5.1 切換演算法效能的表現 
+ 
+本計畫實作部分以 Lossy Counting 這個準確度導向、保證誤差範圍的方法作為
+ 13 
+Lossy Counting 演算法及後續 k 個批次使用 SWCA 演算法之後，在開始探勘下一
+個批次之前，SWCA 演算法會先以組合估算程序補齊滑動時間窗中 k 個減載處理
+區段的摘要資訊。至於間歇降低負載（在圖表中以加星號的*ratio 來標示），係模
+擬資料串流流速不停變化而使得探勘系統需頻繁地切換演算法的情況。當 bn 為基
+數時表示負載程度正常，使用主要演算法 Lossy Counting 處裡；當 bn 為偶數時表
+示發生資料過載，使用減載演算法 SWCA 處裡。在此情況下，SWCA 會在每一個
+批次處理完，系統即將切換回 Lossy Counting 以處理下一個批次之前，以組合估算
+程序補齊自己所處理的批次的摘要資訊。 
+ 
+ 
+圖 5.1 滑動時間窗批次處理及降低負載情況模擬示意圖 
+ 
+ 
+圖 5.2 真實資料集 BMS-POS 實驗結果(執行效能) 
+ 
+ 
+圖 5.3 真實資料集 BMS-POS 實驗結果(準確度) 
+ 15 
+理的區段數比例增加（即 ratio 愈大），系統的單位時間資料處理量明顯提高。這對
+於資料過載問題，也就是探勘系統的資料處理速率趕不上資料串流之資料抵達速
+率的情況，可以提供一定程度的改善效果。根據實驗結果，搭配負載控制演算法
+的可切換演算法探勘系統，以減載(區段)比例 50%來說，在真實資料集 BMS-POS
+上平均可提升約 50%的單位時間資料處理量，而在虛擬資料集 T10.I4.D100K 上平
+均也能夠提升約 20%的單位時間資料處理量。 
+由圖 5.3 和圖 5.5 呈現探勘結果的準確度。我們可以發現當採用減載演算法的
+區段比例增加（即 ratio 愈大）時，探勘結果的準確度會隨之降低。亦即，當滑動
+時間窗中由 SWCA 進行處理的資料區段愈多時，對應的探勘結果準確度愈低。這
+是可以預期的，因為減載演算法所保留的摘要資訊不如主要演算法那般完整。此
+外，隨著最小支持度值變小，探勘準確度會逐漸降低，這是由於資料中長度較長
+的頻繁項目集數量增多的緣故。舉例來說，當最小支持度為 1.2%時，真實資料集
+BMS-POS 中頻繁項目集的最大長度為 5；當最小支持度為 0.4%時，虛擬資料集
+T10.I4.D100K 中頻繁項目集的最大長度為 7。減載演算法 SWCA 以長度 1 到長度
+3 項目集作為基底，來估算長度在 4 以上的項目集的出現次數。當欲估算項目集的
+長度愈長時，估算出來的計數值的誤差可能愈大，致使探勘結果的準確度較低。
+然而，探勘系統所採取的負載控制機制並非將未處理的交易直接刪除，而是切換
+執行效能較高的組合估算方法以維護相對小巧（僅包含基底部分）的摘要資訊，
+如果我們觀察圖表，即便在進行減載且比例達 50%甚至 70%時，F-measure 的平均
+分數仍維持在 90%以上，表示探勘結果仍具有相當程度的品質。 
+表 5.2 呈現主要演算法（Lossy Counting）與減載演算法（SWCA）的切換時
+間佔整體探勘時間的比例。我們可以發現，切換演算法的時間成本僅佔整體探勘
+時間的一小部分。這主要歸功於共用資料結構的設計，使得一個演算法可以直接
+存取另一個演算法更新過的資料結構，不需要進行諸如格式轉換的工作。當由主
+要演算法切換至減載演算法時不需要額外步驟來維護資料結構；當由減載演算法
+恢復至主要演算法時僅需補齊長度在 4 以上的項目集的摘要資訊，而這可以快速
+地使用組合估算程序來完成。即便在每隔一個區段∕批次便切換一次演算法，亦
+即間歇降低負載的情況下（*ratio=0.5），切換動作所需的時間成本依舊佔整體探勘
+時間不到 5%的比例。我們針對兩個探勘演算法交替切換所設計的共用資料結構，
+其效果經由此實驗得到充分證實。 
+ 17 
+7. 參考文獻 
+ 
+[1]  D. J. Abadi, D. Carney, U. Cetintemel, M. Cherniack, C. Convey, S. Lee, M. Stonebraker, 
+N. Tatbul, and S. Zdonik, “Aurora: a new model and architecture for data stream 
+management,” The VLDB Journal, 12(2), 2003, pp. 120-139. 
+[2] J. H. Chang and W. S. Lee, “Finding frequent itemsets over online data streams,” 
+Information and Software Technology, 48(7), 2006, pp. 606-618. 
+[3] Y. Chi, H. Wang, and P. S. Yu, “Loadstar: load shedding in data stream mining,” 
+Proceedings of the 31st International Conference on Very Large Data Bases, 2005, pp. 
+1302-1305. 
+[4] K.-F. Jea, M.-Y. Chang, and K.-C. Lin, “An efficient and flexible algorithm for online 
+mining of large itemsets,” Information Processing Letters, 92(6), 2004, pp. 311-316. 
+[5] K.-F. Jea, C.-W. Li, “A sliding-window based adaptive approximating method to discover 
+recent frequent itemsets from data streams,” Proceedings of the International 
+MultiConference of Engineers and Computer Scientists, 2010, pp. 532-539. 
+[6] K.-F. Jea and C.-W. Li, “Discovering frequent itemsets over transactional data streams 
+through an efficient and stable approximate approach,” Expert Systems with Applications, 
+36(10), 2009, pp. 12323-12331. 
+[7] K.-F. Jea, C.-W. Li, C.-W. Hsu, R.-P. Lin, and S.-F. Yen, “A load-controllable mining 
+system for frequent-pattern discovery in dynamic data streams,” Proceedings of the 9th 
+International Conference on Machine Learning and Cybernetics, 2010, pp. 2466-2471. 
+[8] N. Jiang and L. Gruenwald, “Research issues in data stream association rule mining,” ACM 
+SIGMOD Record, 35(1), 2006, pp. 14-19. 
+[9] C. K.-S. Leung and Q. I. Khan, “DSTree: a tree structure for the mining of frequent sets 
+from data streams,” Proceedings of the 6th International Conference on Data Mining 
+(ICDM), 2006, pp. 928-932. 
+[10] N. Linial and N. Nisan, “Approximate inclusion–exclusion,” Combinatorica, 10(4), 1990, 
+pp. 349-365. 
+[11] G. S. Manku and R. Motwani, “Approximate frequency counts over data streams,” 
+Proceedings of the 28th International Conference on Very Large Data Bases, 2002, pp. 
+346-357. 
+[12] S. J. Shin and W. S. Lee, “On-line generation association rules over data streams,” 
+Information and Software Technology, 50(6), 2008, pp. 569-578. 
+[13] FIMI, “Frequent Itemset Mining Dataset Repository,” http://fimi.ua.ac.be/data/. 
+[14] 楊慶瑞，於資料串流中挖掘頻繁項目集的降低負載策略，碩士論文，中興大學資訊科
+學與工程所，臺灣，2009. 
+ 19 
+A Load Shedding Scheme for Frequent Pattern 
+Mining in Transactional Data Streams 
+ 
+Kuen-Fang Jea*, Chao-Wei Li, Chih-Wei Hsu, Ru-Ping Lin, Ssu-Fan Yen 
+Department of Computer Science and Engineering 
+National Chung-Hsing University 
+Taichung 40227, Taiwan, R.O.C. 
+ 
+ 
+Abstract—In this paper, we study overload handling for 
+frequent-pattern mining in online data streams. For a 
+mining system with an ε-deficient synopsis based algorithm, 
+we propose a load shedding scheme to deal with the 
+overload situation. The heavy workload of the mining 
+algorithm lies mostly in the great deal of itemsets which 
+need to be enumerated and counted by the mining 
+algorithm. Therefore, our proposed scheme of load 
+shedding involves the maintenance of a smaller set of 
+itemsets, so the workload can be lessened accordingly. The 
+unrecorded itemsets can be fast approximated for their 
+counts when necessary. According to experimental results, 
+the load shedding scheme can increase the throughput of 
+the mining system and thus help manage the overload 
+problem effectively to a certain extent. 
+Keywords—data mining; data stream; frequent itemset; 
+data overload; load shedding 
+ 
+I.  INTRODUCTION 
+ 
+In many modern applications such as global retail chains, 
+data is continuously streamed in from each endpoint into the 
+local analysis system. The characteristic of such data is that it 
+is unbounded in terms of continuity of data generation. This 
+form of data has been termed as data streams. To discovery 
+knowledge in the data-stream environment is an attractive yet 
+challenging task, because data in a data stream is usually 
+infinite in volume. Many traditional mining techniques such as 
+scanning the entire data over and over (to produce mining 
+answers) become infeasible in the environment. As a result, 
+the methodology to data stream mining differs considerably 
+from that to database mining. 
+To design an algorithm for data stream mining, two 
+requirements need to be considered. First, an algorithm shall 
+process data in a data stream with respect to a window which 
+defines the range of mining. There exist basically three models 
+of window [1], namely landmark window, sliding window, and 
+damped window. Secondly, the processing time on each unit of 
+stream data should be as short as possible, or the mining 
+system cannot handle the stream data in time and causes the 
+so-called overload problem. 
+The features of the aforementioned three window models 
+[1] are sketched as follows. In the landmark window model, a 
+time-point called landmark is specified, and the mining task is 
+performed based on the data between the landmark and the 
+present. In the sliding window model, a fixed-length window 
+which slides with time is specified, and the mining outcome is 
+always generated based on the data within the current window. 
+In the damped window model, the mining task is performed 
+based on data in a sliding window in which recent data is more 
+important than previous data. In financial applications, for 
+example, the sliding window model is more appropriate for 
+data stream mining. 
+Because the data stream is continuous, dynamic and has an 
+enormous amount of data, a mining system may sometimes be 
+incapable of processing the arriving data promptly within a 
+time unit. Such a situation is known as data overload. 
+Basically, when the transmission rate of data stream gets 
+beyond the throughput (i.e., data processing rate) of the 
+mining system, data overload happens and causes some 
+problems unavoidably. For example, the system always 
+processes on early received data (and newly received data is 
+queued up). More seriously, the buffer of the system may be 
+filled up and newly incoming data gets lost. As a result, the 
+technique of load management or overload handling becomes 
+an important and necessary issue in the area of data stream 
+mining. 
+While most existing works of load management aim for 
+the mining task of classification, in this research work, we 
+study the issue of load shedding for frequent-pattern mining in 
+data streams. For a mining system with an ε-deficient synopsis 
+based algorithm, we propose a load shedding scheme for the 
+system. When the transmission rate of data stream is too fast, 
+or the workload of the mining system is too heavy, the load 
+shedding scheme takes the mining algorithm over to lessen the 
+workload as well as to increase the throughput (of data 
+processing) of the system. According to our empirical results, 
+the proposed scheme helps to cope with overload problems. 
+The rest of this paper is organized as follows. Section 2 
+briefly outlines the representative work concerning 
+frequent-pattern mining and load management in data streams. 
+Section 3 defines the problem and goal of this research. Section 
+4 describes our load shedding scheme for the mining system. 
+ 21 
+is low, the number of itemsets being explored and accessed 
+would be very large. 
+ 
+ 
+Figure 1.  Illustration of depth-first based and breadth-first based processing. 
+ 
+Assume that a frequent-pattern mining system exists which 
+is under the sliding window model of data stream and operates 
+a Lossy Counting based algorithm. The sliding window is 
+transaction-sensitive and slides in batch terms. On the basis of 
+depth-first processing, the main task of the mining algorithm is 
+to maintain the synopsis information of stream data in each of 
+the incoming batches. The throughput of the system is the 
+number of data elements that can be processed within a time 
+unit. The workload of the system can be considered as the 
+amount of itemsets being enumerated, counted, and/or stored. 
+This amount is directly affected by the setting of support 
+threshold ms. The larger the amount of itemsets is, the heavier 
+the workload of the system becomes. If the throughput of the 
+mining system during a heavy-workload period cannot keep 
+up with the (transmission) rate of the data stream, a data 
+overload situation is forced. 
+For such an aforesaid mining system, the goal of this study 
+is designing a load shedding scheme to deal with possible 
+overload situations. The scheme is used (instead of the original 
+mining algorithm) during a heavy period to decrease the 
+workload and thus increase the throughput of the system. 
+Running the scheme should correspond to a relatively 
+lightweight task, and the switch from the original mining 
+algorithm to the load shedding scheme (or vice versa) shall 
+bring about only moderate or even slight overheads to the 
+system. 
+IV.  LOAD SHEDDING SCHEME 
+ 
+To solve our problem namely data overload, we propose a 
+CA-based method as the load shedding scheme for the mining 
+system. If the data-stream element is long in length or the 
+support threshold is low, the mining algorithm has to 
+enumerate and count a great deal of itemsets across different 
+orders, amounting to a substantial workload. In contrast, a 
+method of CA only records itemsets of the first few orders 
+(and calculates for the other itemsets through fast 
+computation), which corresponds to a relatively lighter 
+workload concerning synopsis maintenance (on the same data 
+being processed). As a result, we use the method as a means of 
+load shedding for the mining system during a heavy period. 
+Besides, for the purpose of reducing the space overhead of 
+load shedding, the load shedding scheme is designed to 
+operate on the same data structure as the mining algorithm 
+(for maintaining synopsis information). 
+In theory, the number of orders of itemset being monitored 
+and used by the CA approach for count approximation is 
+unrestrained [4]; a larger number may bring about higher 
+accuracy on count approximation, but the processing time on 
+data becomes longer. To keep a balance between efficiency 
+and accuracy, in this research, a CA-based method that records 
+itemsets of the first three orders in each incoming batch (of 
+stream data) as synopsis information is adopted as the load 
+shedding scheme. 
+The operation of the mining system with the load shedding 
+scheme is briefly described as follows. While the mining 
+system is in normal workload (and able to manage with the 
+data stream), its own mining algorithm is run to perform the 
+mining task. If the workload of the system (at a batch) 
+becomes heavier, meaning that the throughput of the system 
+would fall behind the rate of the data stream, the load shedding 
+scheme takes the mining algorithm over (from the next batch) 
+in order to lessen the workload of the system. Later on, when 
+the system workload is eased (or the rate of the data stream 
+gets decreased), the system recovers from the load shedding 
+scheme and uses its own mining algorithm afterwards. 
+The load shedding scheme namely CA reduces the 
+workload during an overload period by means of maintaining 
+synopsis with a smaller scale (in terms of the number of 
+itemsets). A batch in the current sliding window is called 
+lessening batch if it is processed by the mining system with 
+the scheme of CA-based load shedding. The load shedding 
+ratio of the mining system at some point is defined as the 
+proportion of the number of lessening batches to the number 
+of batches in the sliding window. For example, if a sliding 
+window consists of 10 batches, and the first, third, and fifth 
+batches in the current window are lessening batches, the load 
+shedding ratio would amount to 3:10 or 0.3. 
+ 
+ 
+Figure 2.  Illustration and example of the prefix tree structure. 
+ 23 
+generated and output for every two slides of the sliding 
+window. The effect of load shedding on mining accuracy, on 
+the other hand, is assessed in terms of the F-measure of the 
+mining outcome. 
+ 
+ 
+ 
+(a) Experimental results (efficiency and accuracy) on the synthetic dataset. 
+ 
+(b) Experimental results (efficiency and accuracy) on the real-life dataset. 
+Figure 3.  Experimental results of the proposed scheme on testing datasets. 
+ 
+TABLE III.   PROPORTION OF SWITCH TIME TO OVERALL RUNTIME 
+T10.I4.D100K 
+ms 0.4% 0.6% 0.8% 1.0% 1.2% 1.4% 1.6% 1.8% 2.0% 2.2% 
+Ratio=0.5 0.8% 0.3% 0.3% 0.1% 0.1% 0.1% 0.1% 0.1% 0.1% 0.3% 
+Ratio=0.5* 1.7% 0.5% 0.5% 0.2% 0.2% 0.5% 0.3% 0.3% 0.3% 0.1% 
+Ratio=0.7 1.6% 0.4% 0.3% 0.1% 0.2% 0.1% 0.1% 0.1% 0.3% 0.3% 
+BMS-POS 
+ms 1.2% 1.4% 1.6% 1.8% 2.0% 2.2% 2.4% 2.6% 2.8% 3.0% 
+Ratio=0.5 0.5% 0.4% 0.5% 0.4% 0.4% 0.3% 0.2% 0.2% 0.1% 0.1% 
+Ratio=0.5* 0.6% 0.7% 0.7% 0.6% 0.6% 0.5% 0.5% 0.5% 0.4% 0.4% 
+Ratio=0.7 0.7% 0.7% 0.6% 0.5% 0.5% 0.4% 0.4% 0.3% 0.3% 0.2% 
+ 
+The experimental results on testing datasets are shown in 
+Fig. 3. In the figure, Ratio=0 represents mining without load 
+shedding, while Ratio=0.1×k means that k batches in the 
+sliding window are lessening batches (i.e., handled by the load 
+shedding scheme). The default to the mining system is to 
+process the first batch of data with its own mining algorithm, 
+then deal with the subsequent k batches with the load shedding 
+scheme. In addition, the item with an asterisk (e.g., Ratio=0.5*) 
+specially denotes intermittent load shedding. More specifically, 
+the operation of load shedding is performed once (on a batch) 
+every two batches. We test the proposed scheme on 
+intermittent load shedding to check its switch overhead. 
+國科會專題研究計畫 出席國際學術會議心得報告
+日期： 100 年 7 月 31 日
+一、參加會議經過
+本次參加的研討會為 FSKD 2011 國際會議，於 2011 年 7 月 26 日至 7 月 28 日在中國上海市長
+寧區的上海銀河賓館舉行。FSKD 研討會包含了模糊理論與演算法（Fuzzy Theory and Algorithms）、
+知識發現基礎（Knowledge Discovery Foundations）等數個主要的討論方向；我們的研究內容與投
+稿論文屬於「知識發現基礎」的範疇。本人於 7 月 26 日獨自搭乘復興航空班機出發前往上海浦東
+國際機場，入境後於當日抵達會場並進行註冊與報到手續。我們的論文被安排在 7 月 28 日下午進
+行上台報告，該場次的報告/討論內容包括了分類探勘、分群探勘、頻繁樣式探勘等與資料探勘和
+其應用相關的議題。在本人上台做完簡報並和與會者進行意見交流之後，會議場次順利結束。
+二、與會心得
+FSKD 研討會的與會者來自世界各地，研究主體囊括資訊科學和資訊工程的各個範疇。會議中
+由各個領域的專家學者介紹自己的研究成果，討論當今新潮、熱門的研究議題。參加此次會議，不
+僅獲得一次使用英文進行簡報的寶貴機會，對於研究計畫的後續發展，甚至於個人研究領域的廣
+度、深度等，都有相當深刻的助益。另外，透過與其他學者的討論，除了可以相互解答疑惑以及激
+發創意，更能夠認識相關領域的研究專家，建立人脈、擴展研究領域。此行參加會議讓本人以及整
+個計畫團隊收穫良多。
+三、攜回資料名稱及內容
+FSKD 2011 論文集一本(第一冊)、FSKD 2011 論文集電子檔光碟一片、出席會議紀念品
+計畫編號 NSC 99－2221－E－005－087－
+計畫名稱 運用組合估算理論為資料串流頻繁樣式探勘系統所設計之負載控制機制
+出國人員
+姓名
+李兆偉
+服務機構
+及職稱
+國立中興大學資訊科學與工程系(所)
+博士班兼任研究助理
+會議時間
+100 年 7 月 26 日至
+100 年 7 月 28 日 會議地點
+上海市長寧區
+上海銀河賓館
+會議名稱 The 8th International Conference on Fuzzy Systems and Knowledge Discovery (FSKD)
+發表論文
+題目
+A load shedding scheme for frequent pattern mining in transactional data streams
+(發表論文內容檢附於後,共 6頁)
+Section 5 presents experimental results on the proposed method.
+Finally, Section 6 concludes this study.
+II. RELATED WORK
+In the area of data mining, Apriori [2] is the most famous
+algorithm for finding frequent itemsets in databases. This
+algorithm generates candidate itemsets of length k from
+(frequent) itemsets of length k-1, according to the Apriori
+property that all non-empty subsets of a frequent itemset must
+be frequent as well. Apriori uses the breadth-first search and a
+tree structure to count candidate itemsets efficiently.
+As for data mining in data streams, Lossy Counting [3] is a
+representative algorithm, which can be regarded as an
+extension to the Apriori algorithm in a sense. The algorithm is
+under the landmark window model and it processes on stream
+data in batch mode. An error parameter εin addition to a
+minimum support threshold s is introduced, whose value is
+much less than the minimum support (usually one-tenth of s).
+The parameter εis used to keep those currently infrequent
+itemsets having the potential to become frequent in the near
+future. As a result, Lossy Counting maintains an ε-deficient
+synopsis for data-stream frequent-pattern mining.
+The process of Lossy Counting to discover frequent
+itemsets can be divided into two tasks. One task is to maintain
+the synopsis of data in a data stream in batch terms. For each
+received batch of transactions, it generates sets of itemsets
+along with their frequency counts in lexicographic order, and
+launches operations to update its data structure. In the end, the
+updated data structure is stored, and it gets ready to receive the
+next batch. The other task is to produce a list of frequent
+itemsets with respect to some support threshold s. Whenever
+asked, it finds from the data structure the itemsets whose
+frequency counts are above (s–ε)×N where N denotes the
+current length of the stream, and outputs the found itemsets as
+the mining outcome.
+In addition to Apriori and Lossy Counting, a different
+mining approach called CA (Combinatorial Approximation) [4]
+exists, which finds frequent itemsets from data through an
+approximation process. The approach is an application of the
+inclusion–exclusion principle in combinatorics. The mining
+algorithm with the approach records and maintains itemsets of
+lower orders as synopsis, and approximates the counts of
+unrecorded itemsets (of higher orders) using the maintained
+synopsis. For example, by monitoring itemsets of lengths 1
+and 2 only, the counts of itemsets with a length of 3 and over
+can be estimated. The basis of count estimation is the theory of
+approximate inclusion-exclusion [5].
+The main purpose of CA is to provide high efficiency on
+maintaining synopsis as well as on calculating the frequency
+count of itemset. The experimental evidence presented in [6]
+has showed that a CA-based algorithm performs efficiently on
+(stream) data processing and offers mining outcomes with a
+reasonable quality.
+As regards the issue of load management in data stream
+mining, the Loadstar system proposed in [7] is an example
+which introduces a load shedding technique to classify multiple
+data streams with large volume and high speed. Loadstar
+adopts a metric known as the quality of decision to measure the
+level of uncertainty in classification. Resources are then
+allocated to sources where uncertainty is high. To make
+optimal classification decisions, Loadstar relies on feature
+prediction to model the data dropped by the load shedding
+mechanism. Loadstar can also adapt to the changing
+characteristics in data streams. The system thus offers a
+solution to data-stream classification with resource constraints.
+Nevertheless, to our knowledge, except a small minority of
+works such as [8], existing methods in the field of data-stream
+frequent-pattern mining generally lack the load management
+function.
+III. PROBLEM DESCRIPTION
+Let I = {x1, x2, …, xz} be the set of items in a source of
+(stream) data. An itemset (or a pattern) X is a subset of I and
+written as X = xixj…xm. In other words, an itemset is a
+combination of items belonging to I. The length of an itemset
+is the number of items composing the itemset. Itemsets with a
+length of p are called of the pth order.
+A transaction T consists of items, and T supports an itemset
+X if X⊆T. An itemset is supported at most once by a
+transaction. The count of an itemset in a set of transactions is
+the number of occurrences that the itemset has within the set.
+With respect to a support threshold, an itemset is called
+frequent if its count is equal to or greater than the threshold;
+otherwise it is an infrequent itemset. An itemset is a candidate
+itemset if its count is unknown (yet) but its subsets are known
+to be frequent.
+A data stream over I is a continuous sequence of elements
+(entering a local system) where each element is a transaction.
+The rate of the data stream can be regarded as the number of
+transmitted transactions within a time unit, and it may vary
+with time. With a support threshold ms and a window size sw
+specified by the user, the goal of frequent-pattern mining in
+data streams is to find from the (recent) stream data the
+itemsets whose counts satisfy (i.e.,≥) ms×sw each time.
+With respect to stream-data processing on synopsis
+maintenance, it generally has two types, namely depth-first
+based and breadth-first based. The first one enumerates
+itemsets in terms of prefix growth, while the second one
+generates itemsets in length terms. For depth-first based
+processing, according to some support threshold, one starts at a
+single item and explores as far as possible along each growth
+path before backtracking. For breadth-first based processing,
+on the other hand, one starts from the first order of itemset and
+explores itemsets in an order-by-order manner (according to
+some support threshold). Fig. 1 simply illustrates the two types
+of processing on a set of itemsets represented by a prefix tree
+structure. For either type of processing, if the support threshold
+In this research, a data structure which is common to the
+mining algorithm and the load shedding scheme is used to
+maintain the synopsis information of the data stream. The data
+structure is a dynamic prefix tree and is practically
+implemented in terms of binary tree. Fig. 2 illustrates an
+example of the data structure, where five attributes are present
+and the tree thus has five levels in depth. Each node of the tree
+represents an itemset and has two branches namely dlink and
+blink, pointing to the first child node and the next sibling node
+respectively. All sibling nodes (e.g., itemsets abc, abd, and abe)
+under a same parent node (i.e., itemset ab) are arranged in
+lexicographic order.
+For the sliding-window processing model, the mining
+range always covers data in the most recent window. Assume
+that the batch-oriented sliding window consists of n batches.
+Whenever a new batch of transactional stream data is received,
+the mining system removes from the data structure the
+synopsis information concerning the earliest batch, and then
+extracts and stores the synopsis information on the newest
+batch. Each node in the data structure is of the form (item,
+scount, wcount, large), where item represents an itemset,
+scount is an array recording the count of the itemset in the
+sliding window in batch terms, wcount is an integer denoting
+the overall count of the itemset in the sliding window, and
+large is a Boolean variable marking whether the itemset is
+frequent or not. Besides, to distinguish between normal
+batches and lessening batches, an n-field array is necessary to
+indicate the mode of generation of the itemset’s counts (i.e.,
+either by counting or by approximating).
+When the system switches from the load shedding scheme
+to its own mining algorithm (e.g., after a rush hour), a
+completion process is performed by the scheme on the
+lessening batch(es). For those lessening batches whose
+synopsis information is short of itemsets with a length of 4 and
+above, the unrecorded candidate itemsets (in terms of the
+mining algorithm) are completed by calculating their missing
+counts with the approximation process of CA. More
+specifically, candidate itemsets above the length of 3 are count
+calculated based on the count information of their subsets of
+the first three orders. The completion process is progressed in
+ascending order of itemset’s length. That is, all candidate
+itemsets of length m are processed before candidate itemsets of
+length m+1. After the completion process, the synopsis of
+lessening batches is complemented by the counts of unrecorded
+itemsets. By combining (the synopsis information of) all
+batches together, frequent itemsets in the current sliding
+window (whose counts are above ms×sw) can be found and
+output on demand.
+V. EXPERIMENTAL RESULTS
+This section presents experimental results on the proposed
+load shedding scheme. We compare the mining system with
+and without load shedding operations for evaluation. The
+metrics of comparison are the efficiency (of stream data
+processing) and accuracy (of mining outcome). Besides, the
+effects of load shedding with different ratios on the mining
+performance and mining quality are evaluated.
+The experiments were carried out on a platform of
+personal computer with a Pentium 2.80 GHz dual-core CPU.
+The operating system is Windows XP Professional SP3, and
+programs of the (Lossy Counting based) mining algorithm and
+the (CA-based) load shedding scheme are implemented with
+C++.
+The testing data is composed of synthetic and real-life
+datasets, both of which are acquired from the website of FIMI
+[9]. The synthetic dataset T10.I4.D100K is generated by the
+generator [10] from the IBM Almaden Quest research group,
+while the real-life dataset BMS-POS is offered by a large
+electronics retailer and contains several-year worth of
+point-of-sale data. Table I lists related parameters about the
+testing datasets. For each of the two datasets, the support
+threshold ms has a separate range. As for the synthetic dataset,
+ms has a value ranging from 0.4% to 2.2%; as to the real-life
+dataset, the value of ms ranges from 1.2% to 3.0%.
+TABLE I. DESCRIPTION OF THE TESTING DATASETS
+Dataset Size
+No. of
+Attributes
+Max.
+Transaction
+Length
+Avg.
+Transaction
+Length
+T10.I4.D100K 100,000 1,000 29 10.0
+BMS-POS 515,597 1,657 164 6.5
+Table II lists the parameter settings in our experiments.
+The sliding window is sized in 50K transactions and composed
+of 10 batches (that is, 5K transactions per batch). The data
+structure is updated as well as the window slides forward upon
+the arrival of every batch of data. The error parameter εof the
+mining algorithm is one-tenth of the support ms. And the
+CA-based load shedding scheme records itemsets up to the
+third order at most.
+TABLE II. EXPERIMENTAL PARAMETER SETTINGS
+Parameter Setting Remark
+Sliding window size 50K transactions
+Batch size 5K transactions 10 batches per window
+Sliding rate 5K transactions Once a batch
+Error parameterε One-tenth of ms For Lossy Counting
+Synopsis scale of CA 3 levels at most
+The effect of load shedding on workload lessening is
+evaluated in terms of the throughput of the mining system.
+When a batch of transactions is fully received, the mining
+system decides whether to run the load shedding scheme, and
+processes on the data (i.e., extracts synopsis information)
+accordingly. The outcome namely a list of frequent itemsets is
+From Fig. 3 it is observed that the load shedding scheme
+can substantially help the mining system increase its
+throughput (by means of lessening the workload on synopsis
+maintenance). Regarding Ratio=0.5 as an example, the
+throughput in average has risen by 16% on the synthetic dataset
+and 110% on the real-life dataset. The load shedding scheme
+prunes out (a considerable number of) itemsets from synopsis
+and completes the unrecorded information by fast
+approximation. As the load shedding ratio increases (e.g., from
+0.5 to 0.7), the system raises its throughput to a higher degree.
+On the other hand, the resultant accuracy of the mining
+outcomes degrades reasonably, but the F-measure score is still
+above 90% in average. In other words, with the load shedding
+scheme, the throughput of the mining system is increased and
+the mining accuracy is preserved tolerably well.
+As for the overheads of switch (between the mining
+algorithm and the load shedding scheme), it is quite slight and
+accounts for only a minor percentage of the overall runtime,
+which can be found from Table III. As a result, the difference
+in throughput between continuous load shedding and
+intermittent load shedding (e.g., Ratio=0.5 and Ratio=0.5*) is
+small. According to the experimental results, the proposed
+scheme is an effective means of load shedding and throughput
+increment, and thus suitable for a mining system (with an
+ε-deficient synopsis based algorithm) in a data-stream
+environment.
+VI. CONCLUSIONS
+In this study we focus on overload handling in data-stream
+frequent-pattern mining. A CA-based load shedding scheme is
+proposed for a mining system with a Lossy Counting based
+algorithm. Compared with the mining algorithm, the load
+shedding scheme possesses a lighter workload on stream data
+processing (i.e., synopsis maintenance), so it is operating
+during a high-workload or overload period. The load shedding
+scheme is compatible with the mining algorithm on the same
+data structure, and the cost of switch between both of them is
+found to be small. By running the scheme (in place of its own
+mining algorithm) when necessary, the mining system can
+obtain an increase in its throughput and thus protect itself from
+the overload.
+As for future work, we will aim at the specialized workload
+model and the automated ability to perform load shedding. The
+load shedding scheme may offer information about the quality
+of decision, so the mining system can decide between the
+mining algorithm and the load shedding scheme for an
+incoming batch, according to the workload model. Besides, we
+will try to make the load shedding scheme itself adjustable in
+terms of synopsis scale, so the mining system can therefore
+deal with data streams ranging in transmission rate more
+flexibly.
+ACKNOWLEDGMENT
+This research work is supported by the National Science
+Council of Taiwan, R.O.C. under the research grant of project
+numbered NSC99-2221-E-005-087. We are very grateful to the
+support of National Science Council.
+REFERENCES
+[1] Y. Zhu and D. Shasha, “StatStream: statistical monitoring of 
+thousands of data streams in real time,” Proceedingsof the 28th
+International Conference on Very Large Data Bases, pp. 358–369,
+2002.
+[2] R. Agrawal and R. Srikant, “Fast algorithms for mining 
+association rules,” Proceedings of the 20th International
+Conference on Very Large Data Bases, pp. 487–499, 1994.
+[3] G. S. Manku and R. Motwani, “Approximate frequency counts 
+over data streams,” Proceedings of the 28th International
+Conference on Very Large Data Bases, pp. 346–357, 2002.
+[4] K.-F. Jea, M.-Y. Chang, and K.-C. Lin, “An eficient and flexible 
+algorithm for online mining of large itemsets,” Information 
+Processing Letters, vol. 92, pp. 311–316, 2004.
+[5] N. Linial, N. Nisan, “Approximate inclusion–exclusion,” 
+Combinatorica, vol. 10, pp. 349–365, 1990.
+[6] K.-F. Jea and C.-W. Li, “Discovering frequent itemsets over 
+transactional data streams through an efficient and stable
+approximate approach,” Expert Systems with Applications, vol.
+36(10), pp. 12323–12331, 2009.
+[7] Y. Chi, H. Wang, and P. S. Yu, “Loadstar: load shedding in data 
+stream mining,” Proceedings of the 31st International Conference
+on Very Large Data Bases, pp. 1302–1305, 2005.
+[8] K.-F. Jea, C.-W. Li, C.-W. Hsu, R.-P. Lin, and S.-F. Yen, “A 
+load-controllable mining system for frequent-pattern discovery in
+dynamic data streams,” Proceedings of the 9th International
+Conference on Machine Learning and Cybernetics, pp.
+2466–2471, 2010.
+[9] Frequent Itemset Mining Implementations Repository. Website:
+http://fimi.cs.helsinki.fi/.
+[10] IBM Quest Data Mining Synthetic Data Generation Code.
+Available: http://www.cs.indiana.edu/~cgiannel/assoc_gen.html.
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/10/29
+國科會補助計畫
+計畫名稱: 運用組合估算理論為資料串流頻繁樣式探勘系統所設計之負載控制機制
+計畫主持人: 賈坤芳
+計畫編號: 99-2221-E-005-087- 學門領域: 資料庫系統及資料工程
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

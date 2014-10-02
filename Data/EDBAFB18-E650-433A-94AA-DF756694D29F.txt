@@ -1,0 +1,609 @@
+ 2
+摘要 
+針對IPv6網路，本計畫探討交遞延遲的問題並提出proactive DAD (duplicate address 
+detection)機制。透過該機制，mobile node進入新的IPv6網段時可以快速啟用所獲得的IPv6位
+址。另外，為了監測SIP服務在IPv4/IPv6環境中運作的品質，我們研製了MoSA (Monitoring 
+SIP-service Availability) 機制和 SIPS (Status Information for Monitored Servers through 
+Presence Service) 機制；當SIP服務被偵測出異常時，亦可透過我們設計的RAS (Real-time 
+Alert System) 即時告警系統來通知管理員。我們實作上述三種機制，以驗證系統的功能。 
+在SIP群組撥號中，SIP proxy server需要將控制訊息發送給群組中的每位成員；當其中一
+位成員接聽電話後，SIP proxy server必須讓其他成員的響鈴停止，整個過程需要傳送許多控
+制訊息。本計畫提出群組任播(anycast call)的概念，藉由將群組撥號轉換成單一撥號，來減
+少建立通話所需的訊息量。我們利用Jiplet (Java SIP Servlet) 套件實作群組任播服務，並且提
+供壓力測試等數據。 
+ 
+關鍵字: 重複位址偵測、服務監測、IPv6網路、會議啟始協定、現況服務 
+ 4
+目錄 
+中文摘要......................................................................................................................................... 2 
+英文摘要......................................................................................................................................... 3 
+第一章 簡介................................................................................................................................... 5 
+第二章 P-DAD: IPv6 重複位址之快速檢測................................................................................ 8 
+第三章 IPv4/IPv6 網路下 SIP 服務之監測................................................................................ 17 
+第四章 SIP 服務異常之告警系統 .............................................................................................. 26 
+第五章 視覺化警訊通知：SIP 現況服務於網管之應用 .......................................................... 41 
+第六章 以 SIP 為基礎之群組任撥服務 ..................................................................................... 51 
+第七章 計畫成果自評................................................................................................................. 62 
+參考文獻....................................................................................................................................... 65 
+附錄 A 計畫相關著作 ................................................................................................................. 68 
+ 
+ 6
+本計畫的主要成果如圖1-1所示。首先，為了縮減MN交遞完成的時間，我們提出Proactive 
+DAD 機制，當 MN 進入一個新的 IPv6 網段時，可以快速地啟用所獲得的 IPv6 位址(圖 1-1(a))。
+其次，為了監測 SIP 服務運作的品質和穩固性，我們研製了 MoSA (Monitoring SIP-service 
+Availability) (圖 1-1(b))和 SIPS (Status Information for Monitored Servers through Presence 
+Service) (圖 1-1(c))這兩個機制。MoSA 和 SIPS 可以被擴充以便監測 SIP 之外的服務。 
+ 
+圖 1-1.系統架構.  
+一般而言，MoSA 會定期發出 SIP INVITE 訊息給被監控的 SIP 伺服器；如果 SIP 伺服
+器能回應對應的 200 OK 訊息，那麼 MoSA 將認為該伺服器所提供的服務是處於正常的狀態。
+然而， SIP 伺服器雖處於正常的狀態，但可能因為網路設備出現一些異常狀況，比如伺服器
+連結的 switch port 短暫的 up/dwon，造成 SIP 服務的中斷。這一類的異常狀況會被紀錄在對
+應的 log 檔；SIPS 會定期分析這些 log 檔，並且即時更新設備的現況。SIPS 具有下面的特性：
+(1) 採用標準的 Web 技術：即使在異質網路中，只要內建 Web 瀏覽器的行動裝置都可以使用
+SIPS 所提供的服務。 (2) 以視覺化方式呈現服務狀態：使用小尺寸螢幕也能一目了然。 (3)
+事件驅動：只有在網路設備的狀態改變時才需要更新畫面，因此對網路頻寬的需求很低。 
+接下來，我們提出 SIP 服務即時告警系統(Real-time Alert System, RAS) (圖 1-1(d))。目前
+ 8
+第二章 P-DAD: IPv6 重複位址之快速檢測 
+隨著 Wi-Fi 行動裝置(mobile node, MN)的增加，在 mobile IPv6 網路中支援 layer 3 (L3)
+平順換手 (hand-off)的技術將日益重要。MN 漫遊到新的網段時，須執行「重複位址偵測」
+(duplicate address detection, DAD)程序，以確保新取得的 IPv6 位址是唯一的。DAD 是一件費
+時的工作；本章提出 Proactive DAD (P-DAD)機制以減少換手的延遲以及封包的遺失。 
+2.1 簡介 
+Mobile IPv6 換手過程包括三個階段 [Joh04]： 
+z 網段變動(link-change)偵測階段[Cho05]：MN 得知需要換取新的 IPv6 位址； 
+z 獲取位址(address acquisition)階段：MN 取得並配置有效的 IPv6 位址； 
+z 位置更新 (binding update) 階段：MN 將自己新的 IPv6 位址告知 Home Agent (HA)。 
+上述三個階段中，由於第二個階段需要執行 DAD，所以最為耗時。MN 可透過 stateless [Tho98]
+或 stateful[Dro03]的方式來取得 IPv6 位址；但是，不管是用哪一種方式取得位址，都必須驗
+證所得位址的唯一性。根據預設值，DAD 的執行時間至少需要一秒鐘；在這段期間，所有運
+作中的連線都會暫停，這對即時(real-time)應用程式來講是無法接受的。 
+雖然 Optimistic DAD (O-DAD)[Moo06]與 Advanced DAD (A-DAD)[Han04]可以減少傳統
+DAD 的延遲，但這它們都有使用上的限制。為了克服這些限制，我們提出 Proactive DAD 機
+制。P-DAD 主要的觀念在於使用網路拓樸資訊和 layer 2 (L2)的信號來預測即將發生的 L3 換
+手，以便提早執行 DAD。實驗結果顯示 P-DAD 能明顯地減少 DAD 的延遲。 
+2.2 相關文獻 
+MN 透過發送鄰居要求(NeighborSol)訊息來啟動 DAD 程序，並以要確認的位址做為該訊
+ 10
+執行下列步驟： 
+1. 從位址池中挑選一個位址 add，並將之從位址池中移除。 
+2. 在鄰居快取 (neighbor cache) 中新增一個項目(entry)，紀錄被挑中位址與 MN 的
+link-layer 位址之間的關聯。 
+3. 新增一個主機路由(host route)項目，紀錄 MN 的上一個 CoA 與目前的 link-layer 位址之
+間的關聯。 
+4. 建立 RouterAdv 訊息，並在新增的 CoA 回覆選項(NCoA Reply)中加入位址 add。 
+5. 將 RouterAdv 訊息送到 MN 的上一個 CoA。 
+6. 刪除主機路由項目。 
+當 MN 收到 RouterAdv 訊息，MN 會從 CoA 回覆選項中取出位址 add 做為新的 CoA。透過上
+述的程序，MN 在換手的過程中不需要執行 DAD，就能得到一個 duplication-free 的新 IP 位址。 
+A-DAD 的效能與位址池的大小息息相關：位址池必須夠大，確保 IP 位址供應無虞；但
+又不能太大，以免有許多閒置的位址。再者，如果位址池相關的資料流失（e.g.,當 access router
+被重新啟動），A-DAD 將無法正確地運行。 
+2.2.3 預測 MN 的移動 
+當 MN 改變存取點(access point)時，L2 換手可能會促發 L3 換手，然目前尚沒有標準的
+方法可以預測是否一定要做 L3 換手。沒有收到定期廣播的 RA 訊息，雖然可以用來預測所處
+網段已經改變；但 RA 訊息的廣播間隔通常都是數分鐘之久，所以這個方法並不夠及時。 
+有些學者[Tse05]提出利用拓樸資訊－ 也就是存取點和路由器(access router)之間的關連
+性，來預測所處網段是否已經改變。藉由這些資訊，MN 在變更存取點時可以得知新的存取
+點和舊的是否隸屬於同一個路由器；如此一來，MN 就可以提早決定是否需要做 L3 換手。 
+ 12
+每個 RIP 會週期性地跟鄰居交換彼此的 MAP 表格。拿圖 2-1 當例子，RIP1 透過交換 MAP
+表格，從 RIP2 學習到相鄰網段的拓樸。表 2-2 為 RIP1(RIP2) 學習後的 MAP 表格。當進入新
+網段，MN 從 RIP 伺服器取得 MAP 表格。如此，MN 就能得知 access point 與 access routers
+的連結關係以及附近網域的 prefix。 
+表 2-1. Example MAP tables: before exchange (a) on RIP1 (b) on RIP2. 
+ 
+表 2-2. Example MAP table: after exchange (both on RIP1 and on RIP2). 
+ 
+每個 access router 必須維護一份註冊快取(registration cache)。透過 P-DAD 取得 IP 位址的
+MN，必須在註冊快取中留下以下資料： 
+z home address 
+z 預先分配的新 CoA  
+z CoA 的存活時間 
+如果有節點試著要使用這些被預先分配的 CoAs 並發出 DAD 相關的訊息，那麼 access router
+會回應這些 DAD 訊息，指出該位址已經被他人所使用。 
+ 14
+5. MN 利用綁定更新(Binding Update)通知 home agent (HA)目前的位置。 
+ 
+圖 2-2 Care-of-address pre-allocation. 
+2.4 效能評估 
+本節透過實驗來量測 L3 換手的延遲。 
+圖 2-3 說明實驗的方法。我們使用一台 PC 伺服器來扮演 IPv6 路由器，該 PC 安裝了 Linux 
+2.6 版核心及 IPv6 路由器廣播服務 radvd 0.8 版。路由器廣播服務會週期性地廣播 RouterAdv
+訊息或是回應 RouterAdv 給發出 RouterSol 請求的節點。RouterAdv 訊息對於 IPv6 stateless 位
+址自動設定來說是必須的。我們使用由 SourceForge project 開發的 DHCPv6 伺服器(0.85 版)。
+MN 配備了兩個相同的 Intersil prism2-based IEEE 802.11b 無線網卡，並且讓它們可以與 access 
+points AP1 或 AP2 溝通。 
+ 16
+們透過 DHCP 來設定介面 2 的 IPv6 位址；對 P-DAD，待步驟 4 一開始執行，我們就立刻設
+定介面 2 的位址。表格 2-3 列出實驗的結果。 
+由表 2-3 得知原始的 L3 換手延遲大於 1,400 ms，這對 VoIP 應用來說是無法接受的。相
+對的，A-DAD 的換手延遲大約在 83 ms，而 P-DAD 約在 48 ms，非常適合對延遲時間要求嚴
+苛的應用程式。封包遺失方面，原始的 L3 換手遺失了 70 個封包，但改用 A-DAD 與 P-DAD
+後，遺失的封包分別降低至 2.5 與 1.4 個。 
+表 2-3. L3 換手延遲與封包遺失 (10 experimental runs). 
+ 
+2.5 結論 
+不久的將來，MN 將會配置多種無線網路介面，包括 UMTS、Wi-Fi、與 Wi-MAX 等。
+在這樣的異質網路中，平順地執行無縫(seamless)換手將會是更嚴苛的挑戰。我們正著手於增
+強 P-DAD 機制，使之能適用於上述的環境。
+ 18
+目前的應用服務監測工具，存在下面兩個值得進一步探討的議題。第一，現有的偵測方
+式一般是針對應用服務所開啟的通訊埠(port scan)去做驗證。以網頁應用服務為例，通常是測
+試port 80是否有開啟。換句話說一般的應用服務監測工具並沒有進行由client送出封包到
+service daemon 的完整測試；因此，監測的結果無法保證應用程式是否穩定地提供服務。其
+次，目前的監測工具大部份以IPv4的應用服務為主，鮮少支援IPv6的應用服務，因此需要有
+適當的監測工具來協助管理者即時掌握IPv6應用服務的狀態。 
+針對上述問題，本論文分別提出適當的解決方案。首先，我們開發了一個 SIP daemon trace
+的工具用來取代 port scan。其次，我們提出 MoSA 架構，在 IPv4/IPv6 混合的網路環境中定期
+監控 SIP 的服務。監控的架構有二種：MoSA-Configuration 1 (MoSA-C1)及 MoSA-Configuration 
+2 (MoSA-C2)。MoSA-C1 適用於大多數的服務皆為 IPv4-based 的環境；反之，C2 適用於大多
+數的服務皆為 IPv6-based 的環境。 
+3.2 MoSA-C1 for IPv4 Dominant Scenario 
+本節將描述 MoSA-C1 架構以及監測 SIP 服務的訊息流程。 
+3.2.1 網路架構 
+圖3-2為MoSA-C1的網路架構。此架構包含了IPv4及IPv6網路，其中，SMS-I， SIPv4 
+Proxy Server， Web Server及Mail Server都在IPv4的網路環境；SIPv6 Proxy Server只具有
+IPv6的連線能力，SMA具網路通訊雙堆疊架構(Dual Stack， DS)，同時具有IPv4及IPv6的
+連線能力。透過Border Router提供網路路由。 
+SMS-I負責控制監測流程的運作、提供異常判斷、及啟動RAS。SMA負責運作SIPv6 
+Proxy Server監測，並且把結果回報給SMS-I。 
+ 20
+ 
+圖 3-3.  軟體架構：(a) SMS-I (b) SMA 
+3.2.3 監測流程 
+本節分別說明監測SIPv4 Proxy Server及SIPv6 Proxy Server之運作流程。 
+監測SIPv4 Proxy Server之程序如圖3-4： 
+Step1. Monitoring Control Module 送出一個要求，驅動 SIP Core Module 進行 SIPv4 服務
+測試。 
+Step2. 當 SIP Core Module 接收到 Monitoring Control Module 的要求後，SIP Core Module
+開始執行 SIP-availability-check procedure 的程序。SIP Core Module 分別扮演著 UAC
+及 UAS，一個完整的測試 SIPv4 的過程是 Step 2.1 至 Step 2.5，從通話建立完成到
+通話結束。 
+Step3. SIP Core Module 將測試結果回傳給 Monitoring Control Module。 
+Step4. Monitoring Control Module 將測試結果進行比對，若為監測條件所設立的異常狀
+況，Monitoring Control Module 立即觸發 Forced Alarm Module 去執行告警程序，並
+且把訊息記錄存放在記錄檔中；反之則不會觸發 Forced Alarm Module。 
+ 22
+ 
+圖 3-5.  監測 SIPv6 代理伺服器的訊息流程 
+3.3 MoSA-C2 for IPv6 Dominant Scenario 
+本節將描述 MoSA-C2 架構和監測 SIP 服務的訊息流程。 
+3.3.1 網路架構 
+相較於 MoSA-C1 的網路架構(圖 3-2)，MoSA-C2 用 SMS-II 取代 MoSA-C1 的 SMS-I
+及 SMA。如圖 3-6 為 MoSA-C2 網路架構，SIPv4 Proxy Server 及其所屬網段中的路由器皆
+只有 IPv4 網路連線能力；而 SIPv6 Proxy Server、WEB Server、Mail Server 及所屬網段中
+的路由器只有 IPv6 網路連線能力，並且也是預設使用的 IP 介面。透過 Border Router 提供
+網路路由。當大多數被監測的對象都在 IPv6 環境時，本論文建議 SMS-II 也應該在 IPv6
+網段中。 
+SMS-II 透過內部 IP 模組封包交換及 tunnel 的技術，進行 IPv4/IPv6 不同網路平台之間的
+應用服務監測，並且負責控制監測流程的運作、提供告警條件定義、及啟動 RAS。 
+ 24
+3.3.2 監測流程 
+圖 3-8 為 MoSA-C2 進行監測 SIPv4/SIPv6 的訊息流程，以下分別說明 Step1 至 Step6 的
+運作流程。 
+Step 1. Monitoring Control Module 要求 SIP Core Module 發出 SIPv6 服務測試請求。 
+Step 2. SIP Core Module 啟動 SIP-availability-check procedure 取得 SIPv6 的測試結果。 
+Step 3. SIP Core Module 回傳測試結果給 Monitoring Control Module。 
+Steps 4-6. Monitoring Control Module 要 SIP Core Module 發出 SIPv4 服務測試請求，
+SIP-availability-check procedure 傳送至 SIPv4 的封包是透過 SMS-II 及 Border 
+Router 之間所建立的 IPv4-in-IPv6 Tunnel 來傳送。 
+ 
+圖 3-8. 監測 SIP 代理伺服器的訊息流程 
+3.4 系統實作 
+本節說明 MoSA 的實作。關於 SIP 代理伺服器，我們選用可同時支援 IPv4 和 IPv6 且為
+open-source 的 SIP Express Router (SER) [Ser08]。關於 SMS，我們選用 Nagios 套件[Nag08]。
+ 26
+第四章 SIP 服務異常之告警系統 
+本章提出 SIP 服務監測之即時告警系統(Real-time Alert System, RAS)。我們將說明 RAS
+的網路架構及告警流程。 
+4.1 簡介 
+Voice over IP (VoIP)泛指在IP網路上傳輸即時語音的技術，主要的訊息協定(signaling 
+protocol)有ITU制定的H.323以及IETF制定的SIP (Session Initiation Protocol)。雖然H.323的設計
+較SIP來的完整，但因過於繁複及缺乏擴充性，因此SIP漸漸成為目前的主流協定。 
+目前的監測工具一般都是使用電子郵件或是手機簡訊向管理者匯報監測的結果。這種模
+式無法確認管理者是否即時看到警示訊息，亦無法於管理者取得監測結果後暫停監測作業。
+換句話說，暫時停止監測系統及回覆監測系統，無法在告警程序中一併進行，得透過其他管
+道才能運作。 
+針對上述缺點，我們提出 SIP 服務即時告警系統(RAS) 。MoSA-C1 及 MoSA-C2 的 Forced 
+Alarm Module 會觸發 RAS，RAS 透過 VoIP to PSTN 的方式進行監測結果的告警。若管理者
+取得告警訊息，需回應確認碼給監測系統，以便讓監測系統將應用服務的狀態改為「維修中」。
+待異常狀態排除後，管理者可以透過 VoIP 回傳通行碼以便重新啟動監測系統。 
+4.2 背景知識 
+本小節以SIP UA撥打電話給PSTN phone為例，介紹的通話建立及結束的基本流程(圖
+2-2)。在這個過程當中，UA利用SIP協定與PSTN Gateway交談，而PSTN Gateway則利用SS7
+協定與ISUP Telephone Switch交談。 
+以下分別說明Step1至Step17： 
+Step 1. SIP UA傳送INVITE訊息給PSTN Gateway請求撥號給PSTN phone。 
+ 28
+ 
+SIP UA PSTN phonePSTN Gateway
+ISUP
+Telephone Switch
+1. INVITE
+2. IAM
+3. Ringing voltage
+4. ACM
+5. 183 Session Progress
+6. ACK
+7. 200 OK
+8. Ring toneRTP Sesstion
+9.Answer
+10. ANM
+11. 200 OK
+12. ACK
+13. RTP Sesstion 13. PCM speech 13. Analog speech
+14. BYE
+15. 200 OK
+16. REL
+17. RLC
+18. Hangup
+Signaling protocol:
+SIP
+Signaling protocol:
+SS7  
+圖 4-1. SIP UA-to-PSTN phone 通話建立流程 
+4.3 SIP 服務即時告警系統 
+本節詳細探討 RAS 的網路架構及告警流程。 
+4.3.1 網路架構 
+圖 4-2 為 RAS 的網路架構圖，此架構包含了 IP 網路及 PSTN 網路，SMS 利用 VoIP 的方
+式告知負責 IP 與 PSTN 網路之間溝通的 PSTN Gateway，將告警訊息內容傳送到 Administrator 
+Phone。 
+ 30
+ 
+圖 4-3. RAS 告警流程 
+4.3.3 SMS 及 RAS 之 State Machine 
+如圖 4-4，SMS 週期性地排程重覆的進行 Monitoring Server 作業，亦即應用服務監測，
+監測的結果分成 3 種狀態，分別為 OK、WARNING、及 CRITICAL。當 Result=0 代表被監測
+的應用服務穩定提供服務中，接著結束該次監測作業；當 Result=1 代表被監測的應用服務有
+非緊急性的異常，換句話說，不屬於 OK 及 CRITICAL 狀態皆歸為 WARNING 狀態，在 Warring
+狀態下，利用電子郵件告知應用服務管理者此監測的狀態，接著結束該次監測作業；當
+Result=2 代表被監測的應用服務無法提供服務，此狀態下，會立即觸發 RAS，並且 SMS 將控
+制流程交由 RAS 管控。 
+啟動 RAS 後，接下來的流程利用時間到數計時器 Timer 來管控。一開始會有 2 種狀態，
+其一為 Non Pick up，亦即應用服務管理者無接聽電話的狀態，進入此狀態會先判斷參數
+Count，Count 參數用來累計進入 Non Pick up 狀態的次數，如果值在小於等於 Count 時，會進
+入 Play background voice 的狀態，在此狀態會重複撥放背景提示音直到 Timer 逾時，接著結束
+ 32
+4.4 系統實作 
+在 SMA 的設計中，是將一連串 SIPp 的指令寫成 shell script 檔，並將該檔案屬性利用
+chmod 指令轉換成執行檔。如圖 4-5，SMS 利用 RSH (Remote Shell)到 SMA 執行 shell script
+測試 SIPv6 Proxy Server。SMA 將測試的結果再寫到 SMS 指定目錄中，完成代理 SMS 測試驗
+證 SIPv6 服務的任務。 
+ 
+圖 4-5. SMS 測試 SIPv6 示意圖 
+4.4.1 RAS 實作方式 
+利用可程式化 Asteriks 的撥號控制及撥號流程的特性，SMS 利用 Perl 的 Net::Telnet 模組
+建立 Remote Access Session 到 PSTN Gateway，SMS 登入 PSTN Gateway 後，撥放巨集匯聚預
+錄的告警訊息，如圖 4-6；在語音的提示引導下，讓 Administrator Cell Phone 按下回饋確認碼
+(Feedback Confirm Code)，最後，PSTN Gateway 利用 Remote Shell 到 SMS 執行暫時停止監測
+的 shell script 系統指令。 
+ 34
+的方式，解決進行取得語音訊息程序的時間落差問題。最後，Administrator Cell Phone
+於聽取語音訊息後，必需回傳一個確認碼，本論文利用 exten => parameter, serial number, 
+system(command)語法來執行系統指令，將一連串的系統指令利用 shell script 撰寫成執行
+檔，以利執行暫停監測的作業。 
+4.4.2 回覆 SMS 監測作業 
+在 RAS 的異常告警語音中，會告知管理者，待應用服務故障排除後，需透過 UA 輸入的
+回覆監測系統通行碼。利用 Asterisk 可以執行系統指令的特性，透過 UA 輸入回覆監測的通
+行碼將 SMS 監測程序回覆。如圖 4-7，在 PSTN Gateway 將回覆監測系統通行碼以新增分機
+的方式加入，目的是要執行系統指令。當 Administrator 透過 UA 輸入分機後立即執行系統指
+令，系統指令內容為：以 Remote Shell 的方式到 SMS 執行回復監測指令。 
+ 
+圖 4-7. 回覆 SMS 監測示意圖 
+4.5  SER 監測範例 
+如圖 4-8，利用 Nagios 每隔 1 分鐘對 SER 進行一次測試，每一次測試需執行 SIPp 來產
+生 SIP Call Setup 及 Termination 的封包。一但監測出異常，則立即啟動 Asterisk 撥打告警電話
+ 36
+4.5.2 Nagios 偵測結果為正常狀態 
+當 Nagios 執行附錄 C.2 節監測主程式後，測試結果為正常時，主程式利用「exit 0;」回
+傳代碼 0，網頁的顯示狀態會如圖 4-10。網頁中的 Status 顯示 OK 的狀態，而 Status Information
+會顯示主程式所要 echo 的訊息內容。 
+ 
+圖 4-10. Nagios 顯示 SER 運作正常狀態圖 
+4.5.3 Nagios 偵測結果為 SER 可能有異常狀態 
+當 Nagios 執行附錄 C.2 節監測主程式後，測試結果為可能有異常時，主程式利用「exit 1;」
+回傳代碼 1，網頁的顯示狀態會如圖 4-11。網頁中的 Status 顯示 WARNING 的狀態，而 Status 
+Information 會顯示主程式所要 echo 的訊息內容。在 Nagios 更新網頁狀態之前，會先立即傳
+送一封郵件給 SER 管理者，告知管理者需留意 SER 運作狀況。 
+ 
+圖 4-11. Nagios 顯示 SER 可能異常狀態圖 
+4.5.4 Nagios 偵測結果為 SER 無法運作 
+利用指令/usr/local/sbin/serctl stop 來停止 SER 的服務，模擬 SER 服務無法提供。當 Nagios
+ 38
+4.5.5 Nagios 進入停止監測狀態 
+一但管理者在聽取 Asterisk 撥放的預錄語音過程中輸入確認已聽取告警訊息的代碼，
+Asterisk 立即利用 Remote Shell 的方式到 Nagios 中將 runsh.sh 的內容更新，詳細程式碼如附
+錄 C.6 節。此時 Nagios 網頁呈現的狀態如圖 4-14。網頁中的 Status 顯示 WARNING 的狀態，
+而 Status Information 是 runsh.sh 中 echo 的內容。 
+由於 Nagios 對於服務的狀態只有三種顯示方式，亦即代碼只有 0(OK)，1(WARNING)，
+2(CRITICAL)，因此本論文利用 WARNING 顯示兩種狀態，分別為 SER 有可能異常的狀態及
+管理者在對無法提供服務的 SER 進行檢修中的狀態，利用 Status Information 訊息內容來區分。 
+ 
+圖 4-14. Nagios 顯示 SER 維修中狀態圖 
+4.5.6 Nagios 回復監測的方法 
+利用指令/usr/local/sbin/serctl start 來啟動 SER 的服務，模擬 SER 服務故障狀態已排除。
+此時，對於 Nagios 而言，仍然處於 4.5.5 的狀態，在 SER 故障排除後直到透過 UA 輸入回復
+監測的代碼 6601，如圖 4-15，透過 UA 要求 Asterisk 利用 Remote Shell 的方式到 Nagios 回覆
+runsh.sh 的程式碼，才能重新啟動 Nagios 的監測程序，詳如附錄 C.7 節。 
+ 40
+示，例如整合即時狀態資訊(presence information)，以更多元的方式來呈現告警狀態資訊。 
+ 
+ 42
+為了解決 Issues 1-3，本文提出 SIPS (Status Information for Monitored Servers through 
+Presence Service) 視覺化平台。我們把網路設備的狀態視為是現況資訊，網管人員可以透過特
+定的網頁來訂閱這些現況資訊。如此一來，網管人員就可以使用行動裝置內建的瀏覽器來監
+控網路設備。SIPS 平台具有下面幾個特性： 
+z 以視覺化方式呈現服務狀態：使用小尺寸螢幕也能一目了然地掌握網路設備的現況。 
+z 採用標準的 Web 技術：即使在異質網路中，只要內建 Web 瀏覽器(須支援 Javascript)
+的行動裝置，都可以使用 SIPS 所提供的服務。 
+z 事件驅動：只有在網路設備的狀態改變時才需要更新畫面，因此 SIPS 對網路頻寬的
+需求很低。 
+本章內容安排如下：第二節介紹現況服務的架構和流程；第三節描述我們提出的 SIPS
+系統；第四節說明系統的實作方式；最後是結論與未來展望。 
+5.2 背景知識 
+現況服務讓使用者或設備可以將本身的現況資訊提供給現況伺服器，並透過該伺服器來
+控管不同對象所能訂閱的內容。當現況資訊改變時，使用者會主動更新伺服器上面的資訊。 
+現況服務系統由底下五個部份所組成：Presentity User Agent (PUA)、Presentity、現況伺
+服器、Watcher、Watcher User Agent (WUA)。 
+z PUA：負責提供現況資訊的終端設備或程式。 
+z Presentity：負責收集來自於 PUA 的現況資訊，並提供給現況伺服器。 
+z 現況伺服器：負責管理現況資訊的實體。現況伺服器可以讓使用者訂閱所需的現況
+資訊，並於現況資訊改變時通知相關的訂閱者。 
+z Watcher：為任何一個可以訂閱和接收現況資訊的實體。Watcher 可分成 Subscribers
+ 44
+ 
+圖 5-1. SIP/SIMPLE 現況服務之訊息流程 
+5.3 SIPS 
+本節將說明我們提出的 SIPS 系統，包括系統架構、設備監控流程、以及現況資訊更新
+流程。 
+5.3.1 系統架構 
+圖 5-2 為本文所提出的 SIPS 系統架構。SIPS 的組成元件有：  
+z Monitored Device (圖 5-2c)：舉凡可以產生日誌檔並且能夠被傳送至 NMS 的網路設
+備，如路由器和伺服器等。 
+z Network Manager Server (NMS) (圖 5-2d)：定期收集被監控設備的日誌檔，並研判
+設備的現況。當設備的現況改變時(e.g., interface upÆdown)，NMS 會透過內建的
+presentity 將新的現況資訊提供給現況伺服器。 
+z 現況伺服器(圖 5-2e)：負責儲存由 NMS 傳來的現況資訊，以及來自於 Web 伺服器
+的訂閱清單。每當 NMS 提供新的現況資訊時，現況伺服器就根據訂閱清單將資訊
+ 46
+Step 1：依網管人員設定的時間間隔和路徑，定期將日誌檔傳送到 NMS。 
+Step 2： NMS 根據網管人員事先定義的關鍵字是否出現在日誌檔，來判斷 monitored 
+device 的運作是否出現異常。若是運作正常，則回到 Step 1；否則，先更新 monitored 
+device 的現況資訊，然後執行 Step 3。 
+Step 3：NMS 發出 Publish 訊息來更新現況伺服器的資料庫。 
+Step 4. 現況伺服器回應 200 OK 訊息。 
+5.3.3 更新設備現況 
+現況伺服器在底下任一個條件成立，將會執行更新程序來更新 watcher UA 的現況資訊： 
+ Case 1. Watcher UA 訂閱新的 monitored device； 
+ Case 2. Watcher UA 訂閱的 monitored device 現況發生變化； 
+我們以圖 5-4 為例來說明 Case 1 的流程。 
+ 
+圖 5-4. 現況資訊更新流程 
+Step 1：使用者透過 Watch UA(瀏覽器)登入，認證通過後將會顯示可供訂閱的 monitored 
+devices (圖 5-5(a))。 
+ 48
+ 
+圖 5-6. Watcher UA 呈現的現況資訊 
+5.4 系統實作與效能評估 
+本節將介紹 SIPS 平台的實作。圖 5-7 為 SIPS 原型的網路架構。如圖所示，我們以 CISCO 
+4506 路由器做為 monitored device，Watcher UA 則採用 Dopod 838 Pocket PC 執行 WM 5.0 作
+業系統和 Opera Mobile 8.65 瀏覽器。 
+我們把三種伺服器(NMS、現況伺服器、Web 伺服器)都架設在同一台 Linux Fedora Core 6 
+PC 上，CPU 為 Intel Pentium III 512MHz，記憶體大小為 1GB。NMS 採用 syslog 協定來收集
+日誌檔。現況伺服器的資料庫為 MySQL 5.0.27，使用 Perl 程式來處理現況資訊。Web 伺服器
+採用 Apache 2.2.4，網頁的部分則使用 PHP 5.2.3 搭配 MySQL 5.0.27 和 AJAX 機制
+[Fie02,Ros07,Sta99,W3C08]。 
+ 
+圖 5-7. SIPS 原型的網路架構 
+ 50
+將現況服務與電子地圖整合，可以用來監控病人的狀態和位置、追蹤公車行徑路線、以
+及追蹤貨物運抵狀態等。未來現況服務還可以應用在監測天氣圖上氣溫或雲系狀態的改變，
+並提供適當的警訊。 
+ 
+ 52
+持有，可用來提供群組撥號(group call)。舉例來說，Bob、Alice 以及 John 都是微積分的助教，
+並且擁有相同的群組 URI sip:CSIM@netra.cs.pu.edu.tw。如果 Rock 撥打上述的群組 URI，那
+麼三位助教的電話都會同時響鈴；假設 Bob 率先接起電話，那 Rock 和 Bob 之間就可以建立
+通話，同時 Alice 和 John 的響鈴便會停止。 
+在群組撥號中，proxy server 需要將 SIP 控制訊息發送給群組中的每位成員；當通話建立
+後，還必須發送 SIP 訊息讓其他成員的響鈴停止，整個過程需要發送許多 SIP 訊息。我們提
+出群組任播(anycast call)的概念，以便減少撥號過程所需傳送的訊息量。在群組任播中，proxy 
+server 會先挑選出最恰當的成員，然後在發話端和被挑選的成員之間建立一對一的通話。換
+言之，其他落選成員的話機在上述過程中並不會響鈴。 
+6.2 SIP 通話流程 
+本小節將依次說明 SIP 單機撥號(basic call) 和群組撥號(group call)的流程。 
+6.2.1 單機撥號  
+我們以 Bob 撥打電話給 Alice 為例  (圖 6-1)。Alice 發出註冊訊息 REGISTER 
+alice@netra.cs.pu.edu.tw 給 proxy server，proxy server 收到註冊訊息後回應 200 OK，同時把
+Alice 所在的 IP 位址紀錄在 registrar (steps 1-2)。接下來 Bob 送出邀請訊息 INVITE 
+alice@netra.cs.pu.edu.tw，希望與 Alice 建立通話 (step 3)。 
+Proxy server收到 INVITE訊息後，先從 registrar查到Alice所在的 IP位址，接著把 INVITE
+訊息轉送給 Alice (step 4)。Alice 接聽電話後回應 200 OK 訊息，該訊息透過 proxy server 轉送
+給 Bob (steps 5-6)。最後 Bob 回應 ACK 訊息並完成 RTP 語音通道的建立 (steps 7-8)。 
+ 54
+ 
+圖 6-2  SIP 群組撥號流程 
+從上面的例子來看，假設 CSIM 群組中有 100 個成員，那麼每次 proxy server 收到要送
+給 CSIM 群組的 INVITE 訊息，就要將此訊息轉送給 100 個組員；然而實際上需要接起這通
+電話的組員卻只有一個，這無疑是網路頻寬的浪費。我們將把任播(anycast)的觀念應用到群
+組撥號中，以避免發生上述的情況。 
+6.3 群組任播服務 
+本小節將依次說明 SIP 群組任播的系統架構、撥號流程、以及選取受話端的準則。 
+6.3.1 System Architecture 
+圖 6-3 是群組任播的系統架構。系統管理員可透過 Web 伺服器(圖 6-3(a))所提供的界面，
+在資料庫主機 (圖 6-3(b))上建立群組任播的 URI 以及群組成員的個人帳號。假設
+sip:CSIM@netra.cs.pu.edu.tw 是一個群組任播的 URI。當 UA 撥電話給 CSIM 群組時，SIP proxy 
+server(圖 6-3(c))會依據系統所設定的條件，從 CSIM 群組中挑選一個最適當的成員做為受話
+端。成員的通話次數以及時間長度等資訊會記錄在資料庫，做為下次挑選受話端的根據。 
+圖 6-4 和圖 6-5 是 Web 化的管理界面，供系統管理員與群組成員使用。系統管理員可藉
+ 56
+群組任播的 URI，同時 Bob、Alice、和 John 是該群組的成員。當 Rock 撥打 CSIM 這個帳號
+時，對應的 INVITE 訊息會被送往 proxy server (step 1)。 
+ 
+圖 6-6  SIP 群組任撥流程 
+Proxy server 查詢資料庫後判斷 CSIM 是一個群組任播的 URI，因此 proxy Server 接著查
+詢 CSIM 各個組員的狀態，並將離線、忙碌、離開等狀態的組員過濾掉，只留下狀態為線上
+的組員做為候選人。在這個例子中，proxy server 挑選 Bob 作為這通電話的受話端，於是將
+INVITE 訊息轉送給 Bob (step 2)。Bob 與 Rock 交換 200 OK 和 ACK 訊息後完成通話的建立 
+(steps 3-6)。系統會紀錄這通電話的起始時間和結束時間，並據以更新 Bob 接聽電話的數量和
+總通話時間。 
+我們將挑選最適當組員的優先順序設定為： 
+z 電話接聽數量：為了平衡組員的工作量，我們挑選電話接聽數量最少者作為這通電
+話的受話端。 
+ 58
+接下來我們將解釋 Standalone Jiplet Container 的模組架構(圖 6-7)。JipletContainer (圖
+6-7(a))載入後將讀取配置檔 server.xml (圖 6-7(b))，並據以建立 SipConnector 元件(圖 6-7(c))。
+接著 JipletContainer 會掃描 deploy 資料夾(圖 6-7(d)) ，然後建立 JipletContext 元件(圖 6-7(e))
+來佈署相關的應用程式。 
+接下來，JipletContext 元件會根據應用程式設定檔 jip.xm(圖 6-7(f))，為每一隻應用程式
+建立一個 MyJiplet 元件(圖 6-7(g))，並執行初始化的動作。MyJiplet 底下有許多 Jiplet 物件(圖
+6-7(h))，在設定檔中可設定每一個 Jiplet 負責處理的 SIP 訊息。 
+當 JipletThread (圖 6-7(i)) 收到 SIP request、response、或 timeout 訊息，會將訊息送給對
+應的 Jiplet 物件處理。Jiplet 可以利用 JAIN-SIP stack (圖 6-7(j)) [Jai08]產生標準的 SIP 訊息，
+然後透過 SipConnector 元件將訊息發送出去。 
+要在 MyJiplet 元件中加入群組任播，需要修改 SipProxyJiplet 與 SipRecordJiplet 這兩個類
+別。SipProxyJiplet 類別主要功能是處理 SIP 訊息，我們在 SipProxyJiplet 中增加了判斷群組
+URI 以及挑選受話端的功能。SipRecordJiplet 類別負責將資訊儲存到 MySQL 資料庫中。我們
+修改 SipRecordJiplet 類別，把通話開始時間、通話結束時間、總通話時間、總通話數、使用
+者帳號資訊、使用者所屬群組等資訊記錄起來。 
+另外我們在 MySQL 資料庫中加入一個新表格(table) groups，同時在現有的表格 users 中
+新增下列欄位： 
+ Group_ID：該群組成員所屬群組的 ID。 
+ Gcall_num：該群組成員接聽過的群組任撥總數。 
+ Gcall_time：該群組成員所接聽過的群組任撥總時間。 
+ StartTime：該群組成員最近一通群組任撥的開始時間。 
+ EndTime：該群組成員最近一通群組任撥的結束時間。 
+ 60
+為了讓 SIPp 所發出的 SIP 訊息能夠被 Jiplet 正確地解讀，我們從 SIPp 的設定檔 uac.xml
+來調整 INVITE、ACK、以及 BYE 這三個訊息 To 欄位的格式，以避免出現「Request tossed 
+because it did not match any context selection criteria」錯誤訊息。我們把 To 欄位內定的格式 To: 
+sut <sip:[service]@ [remote_ip]:[remote_port]> 修改成 To: sut<sip: [service]@[remote_ip]>。 
+我們依序下達底下的指令，以便讓 SIPp 分別模擬 UAC 及 UAS。首先，我們下達指令讓
+UAS 及 UAC 向 proxy server 註冊： 
+./sipp -sf [scenario_file] -inf [username/password] -r [call_rate] -nd -fd 1 -i [local_ip] 
+[proxy_server_ip] 
+接著我們讓 SIPp 模擬 UAC 傳送 SIP 訊息： 
+./sipp -r [call_rate] -l [call_limit] -sf [scenario_file] -p [local_port] -i [local_ip] -rsa 
+[proxy_server_ip:port] [destination_ip:port] 
+最後我們讓 SIPp 模擬 UAS 接收 SIP 訊息： 
+./sipp -sf [scenario_file] -p [local_port] -i [local_ip] -rsa [proxy_server_ip:port] 
+6.5.2 壓力測試 
+0
+10
+20
+30
+40
+50
+60
+70
+80
+90
+100
+10 30 50 70 90 110 130 150 170 190 210 230 250
+Call Rate (Call Per Second)
+Su
+cc
+ess
+ R
+ate
+ (%
+)
+Basic Call (O-Jiplet) Basic Call (A-Jiplet) Anycast Call (A-Jiplet)  
+圖 6-9  Jiplet 壓力測試 
+ 62
+第七章 計畫成果自評 
+本章將就研究成果的產出、研究成果與應用、以及研發人才之培養等方面做一評述。 
+7.1 研究成果的產出 (詳見附錄 A) 
+(1) 期刊論文共 3 篇 
+(2) 會議論文共 10 篇 
+(3) 書籍章節共 1 篇 
+(4) 碩士畢業論文共 6 篇 
+(5) 大學部畢業專題報告共 1 篇 
+7.2 研究成果與應用 
+(1)  Proactive DAD: 快速檢測取得之 IPv6 位址是否唯一。適用於 mobile IPv6 環境或是 MN
+從 IPv4 網段移動到 IPv6 網段，以減少換手的延遲以及封包的遺失。 
+(2)  MoSA(Monitoring SIP-service Availability) : 在 IPv4/IPv6 混合網路中定期監控 SIP 服務。 
+(3)  RAS (Real-time Alert System): SIP 服務監測之即時告警系統。MoSA 的 Forced Alarm 
+Module 會觸發 RAS，RAS 透過 VoIP to PSTN 的方式進行監測結果的告警。若管理者
+取得告警訊息，需回應確認碼給監測系統。 
+(4)  SIPS (Status Information for Monitored Servers through Presence Service) 視覺化平台。我
+們把網路設備的狀態視為是現況資訊，網管人員可以透過特定的網頁來訂閱這些現況
+資訊。如此一來，網管人員就可以使用行動裝置內建的瀏覽器來監控網路設備。 
+(5)  DECAP (DNS-SD based Emergency Call Access Point)校園緊急網路電話系統。使用者只
+ 64
+- 陳如慧 禾頡物流資訊服務部  2007/08 ~迄今 
+- 黃楷民 服役     2007/08 ~迄今 
+- 呂弘鈞 富士康     2008/02 ~迄今 
+- 何明輝 福億通訊(中科)   2007/11 ~迄今 
+- 朱朝昑 靜宜大學計通中心  2007/08 ~迄今 
+- 鄭芳真 靜宜大學資工所   2007/08 ~迄今 
+ 66
+[Moo06] N. Moore, Optimistic Duplicate Address Detection for IPv6, IETF RFC 4429, April 2006. 
+[Nag08] Nagios Home. URL reference: http://nagios.org. Access on 06/29/2008.  
+[Nar98] T. Narten, E. Nordmark, and W. Simpson, Neighbor Discovery for IP version 6 (IPv6), 
+IETF RFC 2461, Dec. 1998  
+[New01] D. New and M. Rose, "Reliable Delivery for Syslog, " RFC 3195, IETF, November 2001. 
+[Rho07] Rhoda Chen, SIP Operation and Management in IPv4/IPv6 Hybrid Environment, 
+Department of Computer Science and Information Management, Providence University, Master 
+Thesis, July 2007.  
+[Roa02] A. B. Roach, "Session Initiation Protocol (SIP)-Specific Event Notification, " RFC 3265, 
+June 2002. 
+[Ros96] S.M. Rose, "Stochastic Process". Wiley, New York, 1996.  
+[Ros02a] J. Rosenberg, et al., "SIP: Section Initiation Protocol". IETF, RFC 3261, 2002.  
+[Ros04] J. Rosenberg, "A Presence Event Package for the Session Initiation Protocol (SIP), " RFC 
+3856, August 2004. 
+[Ros06] J. Rosenberg, "A Data Model for Presence, " RFC 4479, IETF, July 2006. 
+[Ros07] J. Rosenberg, "Extensible Markup Language (XML) Formats for Representing Resource 
+Lists, " RFC 4826, IETF, May 2007. 
+[Sch03] H. Schulzrinne, et al. "RTP: A Transport Protocol for Real-Time Applications". IETF, RFC 
+3550, July 2003.  
+[Ser08] About SIP Express Router, URL reference: http://www.iptel.org/ser. Access on 06/29/2008.  
+[Sip08] Welcome to SIPp. URL reference: http://sipp.sourceforge.net. Access on 06/29/2008. 
+[Sta99] Standard ECMA-262, ECMAScript Language Specification, 3rd edition (December 1999), 
+ 68
+附錄 A 計畫相關著作 
+I. 期刊論文 (共 3 篇) 
+[A1] Chau-Chin Chu and Yung-Chang Wong, "A RADIUS Accounting Application for 
+SIP-based VoIP Services", Journal of Science and Engineering Technology, vol. 2, no. 3, 
+p. 95-102, Sep. 2006. 
+[A2] Chien-Chao Tseng, Yung-Chang Wong, Li-Hsing Yen, and Kai-Cheng Hsu, "Proactive 
+DAD: A Fast Address-Acquisition Strategy for Mobile IPv6 Networks", IEEE Internet 
+Computing, p.52-57, November-December 2006. 
+[A3] Fang-Chen Cheng and Yung-Chang Wong, "RTP-Sniffer: A Highly Portable Sniffing 
+System for VoIP Communications", Communications of IICM (Special Issue on Mobile 
+Communications and Computing), vol. 10, no. 1, p. 27-42, March 2007.  
+II. 會議論文 (共 10 篇) 
+[B1] Chau-Chin Chu and Yung-Chang Wong, "A RADIUS Accounting Application for the 
+SIP", in Proceedings of the 2005 Taiwan Area Network Conference (TANET'05), Oct. 
+2005. 
+[B2] Hong-Jun Lu and Yung-Chang Wong, "Mobility Support in SIP/Mobile IP 
+Environments", in Proceedings of the 12th Mobile Computing Workshop, pp. 647-650, 
+March 2006. 
+[B3] Rhoda Chen and Yung-Chang Wong, "Toward Design of a SIP-based Mobile PBX 
+System", in Proceedings of the 2006 Symposium on Applications of Information, 
+Management and Communication Technology (SAICT'06), June 2006.  
+ 70
+III. 書籍章節 (共 1 篇) 
+[C1] Yung-Chang Wong and Rhoda Chen, "Monitoring SIP Service Availability in IPv4/IPv6 
+Hybrid Networks", the Asia-Pacific Network Operations and Management Symposium 
+(APNOMS), Sapporo, Japan, Oct. 10-12, 2007. LNCS 4773, pp. 195–204, 2007. 
+IV. 碩士畢業論文 (共 6 篇) 
+[D1] Chau-Chin Chu, "A RADIUS Accounting Application for the SIP", Master Thesis, 
+Department of Computer Science and Information Management, Providence University, 
+June 2005.  
+[D2] Ming-Hui Ho, "Design a SIP-based Anycasting Call Service", Master Thesis, 
+Department of Computer Science and Information Management, Providence University, 
+July 2006. 
+[D3] Hung-Chung Lu, "Mobility Support in SIP/Mobile IP Environments", Master Thesis, 
+Department of Computer Science and Information Management, Providence University, 
+July 2006. 
+[D4] Rhoda Chen, "SIP Operation and Management in IPv4/IPv6 Hybrid Environment", 
+Master Thesis, Department of Computer Science and Information Management, 
+Providence University, July 2007. 
+[D5] Kai-Ming Huang, "On Study of VoIP-based Emergency Call Service", Master Thesis, 
+Department of Computer Science and Information Management, Providence University, 
+July 2007. 
+[D6] Han-Lung Huang, "Survivable Point-to-Multipoint Communications in MPLS 
+Networks", Master Thesis, Department of Computer Science and Information 

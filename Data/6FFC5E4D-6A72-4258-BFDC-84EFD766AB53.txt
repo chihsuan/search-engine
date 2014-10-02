@@ -1,0 +1,904 @@
+ 1
+can then be altered individually or as a whole 
+depending on the request.   Various speakers can be 
+emulated as long as the properties of the pitch 
+contour, spectral parameters and energy variation are 
+correctly grasped and transformed.      
+ 
+Keywords: Voice Conversion, Harmonic + noise 
+model, hidden Markov model – weighted 
+deviation linear transform, Text-to-Speech. 
+ 
+1. 簡介 
+聲音轉換(Voice Conversion)的技術詞彙，顧名
+思義就是語者彼此聲音的轉換，亦即將來源者
+(source speaker)的聲音轉換成另一目標語者(target 
+speaker)的聲音，語音轉換技術的應用面廣泛，舉
+凡角色扮演、音質音色界定、影劇配音、病態語
+音(pathologic voice)之修正、甚或藏匿身份等，都
+有其實用價值。 
+在本計畫中，所要面對的主要課題有三：其
+一、建構一套適合聲音轉換的發聲模型，其二、
+掌握各模型參數對音質屬性的影響，透過參數的
+操縱調控出所想要的語音特性；其三、將其與文
+字轉語音之功能進一步結合，讓聲音的變化更加
+豐富，擴大其應用層面。 
+ 
+ 
+2. HNM 在語音合成之考量 
+近年來比較受到青睞的語音模型主要大抵有
+二，分別為 Stylianou 開發之HNM [1]，另一則是
+Kuwahara 所發展出的Speech Transformation and 
+Representation using Adaptive Interpolation of 
+weiGHTed spectrum (STRAIGHT) [2]，這兩套系統
+都是九０年中期所發展的技術，在模型參數的規
+劃與設定上，我們參考了Stylianou的HNM原始設
+計，將具有週期特性的有聲語音拆解成低頻區的
+諧波(harmonics, 記為 ( )h t )與高頻區的雜訊(noise, 
+記為 ( )n t )表示，各自表為 
+ 
+( )0( ) ( ) ( )
+1
+( ) ( ) k
+L t
+j k t t t
+k
+k
+h t a t e ω φ+
+=
+= ∑ ,    (1) 
+[ ]( ) ( , ) ( )n t v t b tτ= ∗     (2) 
+ 
+其中 ( )ka t , 0 ( )k tω , ( )k tφ  分別為第 k 個諧波之
+振幅、頻率及相位。 ( , )v tτ 為時變濾波響應， ( )b t
+泛指白雜訊。將 ( )h t 與 ( )n t 合併後即為高品質的語
+音信號 ( )s t ，亦即 ( ) ( ) ( )s t h t n t= + 。此一原理源自
+於有聲語音的頻譜結構，結合激源濾波的概念而
+成，詳細內容可參考 [1]。 
+一般的HNM分析及合成多與音高週期同步，
+但本計畫基於方便性考量，同時也為了使韻律的
+調整可以更加容易，因此採用了固定音框分割的
+方式，不管是有聲語音還是無聲語音，每一音框
+中僅選取一組代表性模型參數，而所選用音框長
+度定為15ms，這已是維持高話質的最低限度，倘
+若音框拉得更長，即有可能導致合成音質下降。 
+計畫所採用之模型參數詳列於表 1。參數在
+調整過後，便可開始執行語音合成，雖然分析時
+是採音框為單位，但有聲語音信號還是必須逐個
+週期產生，為求計算上的簡便，在此採用了音高
+同步疊加的技巧 [3]，意即所用的模型參數是從所
+在位置的鄰近音框推算而得，每次先行合成出2倍
+音高週期的信號，其後經過權值窗框處理予以疊
+加，這當中還特別藉助 [4] 之相位校正技術，讓
+前後週期的信號能準確同步。  
+ 
+表 1： HNM parameters for voice conversion  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+在參數變迭頻次由音框轉為音高週期時，參數
+內插技術即不可或缺，在此是採用如下方式進行： 
+ 
+1
+ˆˆ ˆ ˆ( ) ˆ ˆ
+i i
+t x
+L x xt
+L L
+λ λ λ +=
+⎛ ⎞− ⎛ ⎞= +    ⎜ ⎟ ⎜ ⎟⎜ ⎟ ⎝ ⎠⎝ ⎠
+ (3)
+ 
+上式的 x 為目前合成信號所在中心點位置到前一
+個音框中心點的距離， Lˆ 為預期的音框長度。須
+要內差的參數，意指式(3)中的 ˆ ( )tλ ，除了可以是
+諧波振幅與相位外，最大有聲頻率和雜訊採用的
+濾波相關係數（如LSP參數）均可適用。 
+內插雖可使信號較平滑及產生漸近式的改
+變，但這必須是在鄰近音框的參數變化幅度不大
+與音高週期估測無誤的情形下，假若音階估測不
+準而出現倏忽改變的情形（例如pitch halving或
+pitch doubling），則必須加入一套調整機制作為改
+善，其作法如下。 
+ 
+狀況一： 
+首先考慮音框i+1比音框i的基頻大的情形（如
+圖1），如果此時直接將音框i與音框i+1的諧波，按
+照諧波的個數來一對一進行內插，便會產生對照
+問題。 
+為了解決這個問題，可以根據音框間基頻的
+比例 1η （計算如公式(4)） 來進行判斷，這個比例
+Model parameters Number Unvoiced Voiced 
+Frame length: fL  1 3 3 
+LSF parameter: kl  18 3 3 
+Power level: 2σ  5 3 - 
+Fundamental frequency: 0f  1 - 3 
+Maximum voiced frequency : mF  1 - 3 
+Magnitude harmonics: ka  0/mF f⎢ ⎥⎣ ⎦  - 3 
+Phase harmonics: kφ  0/mF f⎢ ⎥⎣ ⎦  - 3 
+Harmonic variation: kγ  13 - 3 
+ 3
+Male to Female Female to Male Size 
+CM GMM PDLT HMM+ 
+WDLT 
+CM GMM PDLT HMM+
+WDLT 
+42  4.271 3.863 3.798 3.746 5.170 4.612 4.569 4.475 
+52  4.152 3.812 3.746 3.669 4.991 4.542 4.505 4.338 
+62  4.048 3.764 3.682 3.574 4.873 4.473 4.425 4.222 
+72  3.975 3.692 3.599 3.454 4.768 4.376 4.315 4.073 
+Male to Female Female to Male size 
+CM GMM PDLT HMM+ 
+WDLT 
+CM GMM PDLT HMM+
+WDLT 
+42  4.449 4.122 4.012 3.968  5.501  5.114  5.029 4.885 
+52  4.328 4.101 4.004 3.929  5.336  5.047  5.016 4.813 
+62  4.238 4.108 4.005 3.878  5.240  5.038  5.009 4.764 
+72  4.166 4.096 4.063 3.865  5.182  5.088  5.052 4.731 
+聲腔轉移函數(vocal tract transfer function)。因此在
+音質或聲音轉換的研究中常就激源與頻譜的個別
+變化及二者的關連詳加討論。本計畫亦不例外，
+是以頻譜及激源（尤其是與有聲激源密切相關的
+音高週期）為探討主體。 
+ 
+3.1. 線頻譜對參數之轉換 
+表中與頻譜直接相關的有線頻譜對 (line 
+spectrum pair, LSP)係數( kl ) [5] 以及諧波振幅
+( ka )，若將諧波振幅的大小依其所在倍頻位置連
+結為包絡線，其輪廓與線頻譜對參數推演的共振
+峰結構非常近似，因其係數個數較為簡潔，有不
+少學者是以線頻譜對參數作為轉換標的[6][7]。本
+計畫亦復如此，經過詳細比較研究，最終發展出
+的轉換函數如下: 
+ 
+( ) ( )ˆ ( ) ( ) | ( ) ( )( ) ( )( )1Qm P S m m mi i iii ⎡ ⎤= + −∑ ⎢ ⎥⎣ ⎦= y xy X μ V x μ   
+(13) 
+上式中的 ( )mx 與 ( )my 即為轉換函數的輸入和輸
+出向量，主要的組成是頻譜特徵參數， m 是與時
+序有關的音框索引，這裡可簡單想像成第 m 個音
+框的線頻譜對係數，而 ( )mX  則是代表觀察至第
+m 音框的特徵向量序列，換言之 X  包含從起始
+到 今 的 頻 譜 向 量 序 列 的 集 合 ， 亦 即  X  
+{ }(1), , ( )m= x x… 。 而 ( )iS m  是該音框中的第 i  
+個馬可夫狀態，至於 sN 指的是狀態的數目。透
+過貝氏定理，條件機率 ( )( ) | ( )iP S m mX  的計算  
+ 
+( ) ( )
+( )
+1
+( ), ( )
+( ) | ( )
+( ), ( )
+i
+i Q
+j
+j
+P S m m
+P S m m
+P S m m
+=
+=
+∑
+X
+X
+X
+. (14) 
+ 
+上式中的聯合機率 ( )( ), ( )iP S m mX  可經由迭帶
+方式取得，詳細過程可參考 [8]與[9]. 
+我們曾針對碼本對映(codebook mapping, CM) 
+[10]、高斯混合模型(GMM, Gaussian mixture model) 
+[11]、分段式偏差線性轉換 (piecewise deviation 
+linear transform, PDLT) [12]、隱藏式馬可夫模型
+(Hidden Markov Model, HMM) 併同權重偏差線性
+轉換 (weighted deviation linear transform, WDLT) 
+【合稱HMM+WDLT】 [9] 之於線頻對參數之轉
+換做過初步效能分析。實驗對象是以男女間的聲
+音轉換為主，語料庫採集自一男一女所錄製之承
+載句，所有可能的國語音節均會出現在句首、句
+中、句尾等三個位置，總共各有1409句。所對應
+的音節段落經人工篩選出來後進行分析，再分別
+劃分音框以及計算模型參數值，最後這些音框還
+必須經由動態時軸校正(Dynamic Time Warping, 
+DTW) [13]，讓頻譜參數呈現最佳的對應。 
+一般而言，在檢驗上述方法的優缺點時，除了
+觀察訓練樣本的反應外，通常還會另外準備一些
+多餘的測試組作為對照用。此處採行的作法也不
+例外，在全部的語料中，約當2/3是用來訓練，其
+餘1/3則是當作測試用。就音節的數量而言，訓練
+組共計1409 x 2 個取樣，測試組則有 1409個，至
+於音框數則各有41428 及 21849個。 
+以我們蒐集語料為例，其頻譜互轉在 42 、
+52 、 62 、 72  四種不同碼本數量下，經過各種不
+同轉換方法對頻譜對參數所造成的頻譜失真如表
+2、3所示，至於所引用的失真計算如下： 
+ 
+( )
+( ) ( )( ) 1/21 20.5 100
+0
+ˆ,
+1 1 ˆ20log /
+0.5
+f
+s
+SP
+N
+j j
+t t
+f st
+D
+A e A e d
+N
+ω ω ω ωω
+−
+=
+=
+⎡ ⎤⎢ ⎥⎢ ⎥⎣ ⎦∑ ∫
+y y
+        (15) 
+上式之 ( )jtA e ω  與 ( )ˆ jtA e ω  代表推算從 ty  和 
+ˆ ty 所推算之原始標的及經過轉換的頻譜， fN  則
+為音框總數。 
+ 
+ 
+表  2：  Average spectral distortions between the 
+target and converted LSP parameters in the 
+training set 
+ 
+ 
+ 
+表  3：  Average spectral distortions between the 
+target and converted LSP parameters in the test 
+set 
+ 
+ 
+就實驗結果來看，碼本的增加確實可將降低頻
+譜失真，但改善幅度似乎不大，而碼本變大後也
+連帶耗用更多的計算資源與記憶容量，中間的平
+ 5
+0 1000 2000 3000 4000 5000 6000 7000 8000
+0
+1
+2
+3
+4
+5
+6
+11th Critical Band
+Frequency [Hz]
+Ma
+gn
+itu
+de
+圖  3：  Illustration of extracting iγ  in the 11th 
+critical band (blue dashed line: FFT spectrum; 
+red solid line: LPC spectrum) 
+ 
+隸屬來源者的13個臨界頻帶比值可列為轉換
+函數的輸入參數，經轉換函數的作用轉成目標者
+的比值。當要合成語音時，以求得的頻譜包絡線
+在特定頻率 0kf 的頻譜大小(表為 0( )g A kf )乘上
+推估的比值 ( )ˆ yiγ 即是諧波 ˆ( )a k 該有的振幅 
+ 
+0 1
+( )
+0
+ˆˆ( )
+( )i i
+y
+ikf
+ga k
+A kfλ λ
+γ
++≤ ≤ =    (20) 
+ 
+ 
+4. 聲音轉換系統與聽測結果 
+綜合上述HNM模型參數轉換機制如圖2所
+示。該系統的所有分析工作都是在固定長度的音
+框架構下進行，以方便語音參數以一對一方式進
+行轉換，但這不意謂音框長度也必然一成不變，
+只要控制每一音框長度，其實也救間接決定了音
+長。在這裡，我們是把音框長度當成轉換函數的
+輸出值，這個值可用DTW校準時來源端與目標端
+的索引變化比值作為代表，函數輸入仍舊是只有
+線頻譜對參數，只要將推估的輸出值乘以原始音
+框長度即為新音框的長度。 
+ 
+圖4：Parametric conversion for HNM 
+ 
+為檢驗圖 4 變聲系統的效果好壞，本計畫特
+針對若干合成的語音樣本進行平均意見分數
+(mean opinion score, MOS)之聽力測驗，對象包括
+(1)僅有音高改變；(2)音高＋CM 法之頻譜改變；
+(3)音高＋HMM-WDLT 法之頻譜改變；(4) 音高＋
+HMM-WDLT 與諧波/頻譜比；(5)音框參數不做任
+何改變之重新合成。 
+上述除第五種情況提供 HNM 所能合成的音
+質水平，其餘四種則是反映 HNM 參數修改過後的
+影響，我們總共邀請 12 位試聽者，從表 4 結果可
+知，任何更動原始參數的舉動都會導致音質下
+降，一旦音高與頻譜同時改變時，音質減損尤其
+明顯，惟 HMM-WDLT 的轉換成效終究還是優於
+CM 方法，當諧波/頻譜比的調整功用匯集在一起
+時，合成聲音獲得較佳改善，聽起來也最能貼近
+轉換對象所應有特性。 
+ 
+表 4：Listening test results. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+5. 文字轉語音之應用 
+音長(duration)與音高(pitch)是音韻(prosody)
+的兩大決定性因素，便隨著語音內容與聲學屬性
+的改變，便可發出任何所想要的語調。所謂的音
+長修改，即是將信號的長度作縮短或是拉長，進
+而改變語音的說話速率。而本次所發展的 HNM 發
+聲模型強調是以音框來組成整段語音，調整個別
+音框的長度即可達到音長修改的效果，數學式如
+公式 (21)、(22)： 
+ 
+( ) ( )
+0
+ˆ ; /
+t iD t d i t Lβ τ τ=    = ⎡ ⎤⎢ ⎥∫  (21)
+( )( )
+( )( )
+1
+1
+1ˆ[ ]
+iL i
+i L
+iL i
+i L
+L i d L
+L
+d
+β τ τ
+β τ τ
+−
+−
+⎛ ⎞=  ⋅⎜ ⎟⎝ ⎠
+        =  
+∫
+∫
+ (22)
+ 
+前兩式中的 ( )iβ τ 為落在第 i個音框範圍內的音長
+修改比例， ( )Dˆ t 和 ˆ[ ]L i .分別代表合成信號在時間
+t 之前的總長以及第 i 個音框的修正長度，而 L 為
+原始音框長度，其中音框索引 i 特別加註在部分參
+數的上標位置，藉此強調音框扮演的角色。此處
+的 ˆ[ ]L i 正可以跟變聲系統的 yˆfL 相互連結，搭配其
+它變更過後的 HNM 新參數，便可發出人工語音。 
+上述概念所推想的最直接應用便是文字轉語
+音，一套完整的字轉音系統是由句型剖析、斷詞、
+語料篩選、音韻調整、語音合成等模組建構而成，
+本計畫的主要任務著重在後段，也就是音韻調整
+以後的部分。之前的斷詞與音韻編輯須結合別處
+所能取得資源或參考他人方法，其中斷詞是首先
+所必須要處理的步驟，雖然這項處理程序可透過
+辭典中的資料庫進行比對，找出所要分析的文章
+ 
+Speech analysis 
+ÎExtract HNM parameters 
+Conversion (I)
+Conversion (II)
+Linear  
+transformation
+Model 
+parameter 
+generator 
+Speech 
+synthesis 
+0
+xf Target 
+speech
+Source 
+speech 
+0
+yˆf
+1 18 1 13, , , , , ,
+x x x x x
+ml l Fγ γ⎡ ⎤⎣ ⎦" " ˆ ˆ ˆ1 13, , ,y y ymFγ γ⎡ ⎤⎣ ⎦"
+1 18, ,
+x xl l⎡ ⎤⎣ ⎦" ˆ ˆ ˆ1 18, , ,y y yfl l L⎡ ⎤⎣ ⎦"
+ (i) Pitch (ii) Pitch + CM 
+(iii) Pitch + 
+HMM-WDLT 
+(iv) Pitch + 
+HMM-WDLT 
++ HV 
+(v) Original 
+HNM 
+MOS 
+(in a range of 1~5) 3.11  2.59  2.83  2.98  4.15  
+XAB 
+(correct rate in 
+percentage) 
+92.7% 92.7% 97.9% 100.0% 100.0% 
+ 7
+mismatches in concatenative speech synthesis”, 
+IEEE Trans. Speech and Audio Processing, Vol. 
+9, No. 3, pp. 232-239, 2001. 
+[5] F. K. Soong and B. H. Juang, “Optimal 
+quantization of LSP parameters. IEEE Trans. 
+Speech Audio Process. Vol. 1, No. 1, 15-24, 
+1993. 
+[6] A. Kain and M. W. Macon, “Spectral voice 
+conversion for Text-to-Speech synthesis”, in 
+Proc. of ICASSP, pp. 285-299, 1998 
+[7] D. Erro and A. Moreno, “Weighted frequency 
+warping for voice conversion”, in Proc. of 
+Interspeech, pp. 1965-1968, 2007. 
+[8] P. Jax and P. Vary “On artificial bandwidth 
+extension of telephone speech,” Signal 
+Processing, 83, 1707-1719, 2003.   
+[9] H. T. Hu and C. Yu, “Combining HMM and 
+Weighted Deviation Linear Transformation for 
+Highband Speech Parameter Estimation”, 
+IEICE Transactions on Information and 
+Systems, E92.D , No. 7, pp.1488-1490, 2009. 
+[10] M. Abe, S. Nakamura, K. Shikano, and H. 
+Kuwabara, “Voice conversion through vector 
+quantization,” in Proc. of ICASSP, pp. 655-658, 
+1988.  
+[11] Y. Stylianou, O. Cappe, and E. Moulines, 
+“Continuous Probabilistic Transform for Voice 
+Conversion,” IEEE Trans. on Speech and 
+Audio Processing, Vol. 6, No. 2, pp. 131-142, 
+1998. 
+[12] H. T. Hu and Y. Chu “Narrowband-to-wideband 
+expansion of telephony speech using piecewise 
+deviation linear transformation”, International 
+Journal of Electrical Engineering (IJEE), 2010. 
+[13] L. Rabiner and B. H. Juang, Fundamentals of 
+speech recognition, Prentice-Hall, 1993. 
+[14] Y. Chen, M. Chu, E. Chang, J Liu, and R. Liu, 
+“Voice Conversion with Smoothed GMM and 
+MAP Adaptation”, in Proc. EUROSPEECH, pp. 
+2413-2416, 2003. 
+[15] L. M. Arslan, “Speaker transformation 
+algorithm using segmental”, codebooks 
+(STASC), Speech Communication, 28, pp. 
+211-226, 1999. 
+[16] M. M. Hasan, A. M. Nasr, and S. Sultana, “An 
+approach to voice conversion using feature 
+statistical mapping”, Applied Acoustics, pp. 
+513–532, 2005. 
+[17] C. Y. Tseng, S. H. Pin, Y. Lee, H. M. Wang, Y. 
+C. Chen, “Fluent speech prosody: Framework 
+and modeling”, Speech Communication, 46, 
+284–309, 2005. 
+ 2
+ 
+二、與會心得 
+本次研討會吸引許多國家的學者專家共同參與，會議論文篩選嚴格，通過率僅約三成
+(131/440)，所有通過審查的論文均獲刊登在 IEEE Xplore 並列為  EI (Compendex) 與  ISI 
+Thomson (ISTP)的索引，按理是場頗具水準的學術盛會。然因會議場所倉促變更，兼之並無強制
+要求作者必須現場報告方獲准刊登，以致出席率僅約六成左右。個人主持的 session 在第二日上
+午，起初排定 15 場次的報告，原本還擔心三小時的時間不足應付，未料缺席者比預期多，許多
+該在下午報告的人竟也臨時要求挪至上午報告，多少予人錯愕的感覺。 
+本人非常榮幸能有此次機會參與此次會議，除發表自己的研究成果外，也有機會聆聽各國
+訊號處理專業人士在相關領域的探索以及應用科技的最新進展，實獲益良多。 
+ 
+三、考察參觀活動(無是項活動者省略) 
+無 
+ 
+四、建議 
+參加國際研討會除可結識國內外專家學者，與其交流切磋之外，也有助於瞭解學術動向與
+科技新知，讓自己的研究趕上他人的腳步。而這類的研討會對研究生的學習成長格外有益處，
+未來如果經費許可，應多鼓勵研究生出國參加學術會議，助其增廣見聞和提高國際視野。 
+ 
+五、攜回資料名稱及內容 
+會議論文集一冊：Proceedings of the 2009 International Conference on Signal Processing Systems 
+(ICSPS 2009) 
+ 
+六、其他 
+無 
+ 
+ 
+ 
+ 
+1
+2
+0
+1
+2
+0
+1
+2
+0
+1
+2
+0
+2[ ] 2 2 cos
+( )
+2[ ] 2 2 cos
+[ ] [ ]
+[ ] [ ] /
+lp
+lp
+N
+k
+N
+k
+N
+k
+N
+k
+kX k
+N
+F
+kX k
+N
+x k x k
+x k x k N
+S W
+W S W H
+W
+W H
+
+ 
+
+ 
+
+ 
+
+ 
+ª º§ ·« »¨ ¸© ¹¬ ¼ ª º§ · « »¨ ¸© ¹¬ ¼
+­ ½ ° °° ° ® ¾° °  ° °¯ ¿
+¦
+¦
+¦
+¦
+
+
+ 
+ 
+            (3) 
+where the second row of Eq. (3) is the time-domain 
+representation using Parseval’s theorem with [ ]x k  denoting 
+the IFFT derived from [ ]X k .  The pitch period is found by 
+searching the location of the maximum ( )F W  within a 
+reasonable index range, i.e. 
+^ `
+min max
+ˆ arg max ( )
+p p
+p FW Wd d ,                  (4) 
+where minp  and maxp  are chosen as 20 and 180, respectively. 
+Fig. 1 illustrates the modified spectral flattening procedure 
+along with the resulting ( )F W .  Peaks are found in ( )F W  at 
+the multiples of the pitch period.  The time lag of the largest 
+peak is commonly regarded as the pitch period.  One of the 
+important features of ( )F W  is that the peak value also reflects 
+the periodical strength.  For periodical signals, Eq. (3) 
+generally comes up with a value much greater than unity at the 
+pitch period.  For random noise, the values derived from the 
+numerator and denominator in Eq. (3) are very close, 
+rendering a ratio around unity.     
+The operation in the denominator of ( )F W  is equivalent to 
+get the squared sum of the difference between the zero-padded 
+signal [ ]x i  and its circularly rotated version [ ]x i W .  Let us 
+decompose [ ]x i  into a periodical component termed [ ]s i  and 
+a non-periodical component termed [ ]d i .  Suppose now, for a 
+specific W c , [ ]s i  and [ ]s i W c  are identical due to signal 
+periodicity, whereas [ ]d i  and [ ]d i W c  are presumably 
+uncorrelated.  Then, the expectation of the numerator of 
+( )F W c  can be approximated by 4 2 2ss ss ddMR R MRW c  ,
+where ssR  and ddR  represent the zero-lag autocorrelation 
+function of [ ]s i  and [ ]d i , respectively.  M denotes the actual 
+frame length with no zero padding involved.  Likewise, the 
+denominator can be substituted by 2 2ss ddR MRW c  .  Hence 
+the expectation of ( )F W c  becomes 
+> @
+    
+    
+1 2
+0
+1 2
+0
+( )
+[ ] [ ] [ ] [ ]
+[ ] [ ] [ ] [ ] /
+N
+i
+N
+i
+E F
+s i d i s i d i
+E
+s i d i s i d i N
+E W
+W W
+W W H
+
+ 
+
+ 
+c 
+ª ºc c    « »« » « »c c     « »¬ ¼
+¦
+¦
+4 2 2
+.
+2 2
+ss ss dd
+ss dd
+MR R MR
+R MR
+W
+W
+c | c 
+          (5) 
+If we further define ss
+dd
+R
+R
+J  , then J  is readily computed 
+from Eq. (5) such that  
+ 
+ 
+2 1
+4 2 2
+M
+M
+EJ W W E
+ c c  .              (6) 
+Here we introduce a new term xK  called “periodical index” 
+(PI), which is defined as the ratio of ssR  to xxR  as
+1
+ss ss
+x
+xx ss dd
+R R
+R R R
+JK J     .            (7) 
+We will demonstrate the usefulness of PI in the following 
+sections. 
+III. ACOUSTIC FEATURES FOR V/UV DETECTION
+Five feature parameters are under test.  The first one is the 
+signal power in logarithmic scale, which is defined by   
+1
+2
+1
+0
+1log ( )
+fL
+if
+v x i
+L
+
+ 
+§ · ¨ ¸¨ ¸© ¹¦ ,              (8) 
+where fL  is the frame length.  This is an important feature 
+reflecting the vocal intensity.  The second parameter 2v  is the 
+zero crossing rate (ZCR), which is an acoustic feature heavily 
+used in speech analysis and can be calculated by 
+   12
+0
+0.5 ( 1) ( )
+fL
+if
+v sign x i sign x i
+L
+
+ 
+  ¦ .       (9) 
+For the third parameter, we adopt the spectral entropy (SE) 
+[10] that has been attempted in voice activity detection.  The 
+SE can be derived from [ ]X k  by first assigning a probability 
+mass function using 
+0 500 1000 1500 2000 2500 3000 3500 4000
+1
+2
+3
+4
+5
+6
+x 104
+Frequency [Hz]
+Mag
+nitu
+de
+(a)
+0 20 40 60 80 100 120 140 160 180
+0
+2
+4
+6
+8
+10
+12
+14
+peak value
+Time lag
+Amp
+litud
+e
+(b)
+0 20 40 60 80 100 120 140 160 180
+0
+0.2
+0.4
+0.6
+0.8
+1
+Time lag
+Amp
+litud
+e
+(c)
+Figure 1.  Pitch estimation by examining the periodicity index derived 
+from the estimation function.  
+(a) original spectrum (dash line), modified spectrum (solid line). 
+(b) estimation function ( )F W  derived from the modified spectrum. 
+(c) periodicity index derived from ( )F W
+136
+Authorized licensed use limited to: NATIONAL ILAN UNIVERSITY. Downloaded on January 31, 2010 at 03:17 from IEEE Xplore.  Restrictions apply. 
+Table 2 lists the results.  The error rates appear quite steady 
+for the 8 experimental arrangements; the averages are around 
+3.31% for the Viterbi algorithm and 3.45% for the soft 
+decision method while 1v , 2v , 3v  and 4v  are taken into 
+account.  In case 4v  (PI) is substituted by 5v  (NUAC), the 
+error rates are increased to 3.90% and 3.78%, however.   
+It is observed in our experiments that the misclassifications 
+often occur in the transition areas.  For these areas, sometimes 
+it is hard to make a definite decision even by manual judgment.  
+The other factor impeding the classification accuracy consists 
+in the range for deriving 4v  and 5v , which is 2.25 times 
+longer than that used to derive 1v , 2v  and 3v .  This results in 
+considerable overlap and consequently leads to ambiguous 
+outcomes.  Hence in Table 2 we present another statistics 
+wherein the errors at the conjunctions (i.e., 0H Î 1H , or 
+1H Î 0H ) are exempted.  Under the less rigorous condition, 
+the error rates for the Viterbi algorithm are 0.52% and 0.76% 
+in average for feature sets 1 2 3 4( , , , )v v v v  and 1 2 3 5( , , , )v v v v ,
+respectively.  Such low error rates are generally good enough 
+to conduct speech analysis and synthesis with satisfactory 
+quality. 
+V. PITCH TRACKING
+As shown in Fig. 1, the function ( )F W  given in Eq. (3) 
+generally results in distinct peaks at multiples of the pitch 
+period.  Most often the highest peak occurs at the pitch period.  
+However, influences like formants and/or background noise 
+might perturb the peak amplitude or produce spurious peaks.  
+Hence a better strategy for picking the right peak is to refer to 
+all candidates across neighboring frames.  This turns out to be 
+another optimization problem resolvable using the Viterbi 
+search, which aims at finding the optimal path with the highest 
+likelihood.  As the full Viterbi search is computationally 
+burdensome, we limit the number of candidates to 3 in each 
+frame.  The search process can be best apprehended using a 
+trellis diagram shown in Fig. 3.  In this trellis, each node 
+denotes a distinct state at a time frame and each arrow 
+represents a transition to a new state at the next frame.   
+The chance of getting to a trellis entry from the previous 
+nodes is computed as the product of these nodes' observation 
+probabilities and the transition probabilities between them.  In 
+this study, the probability of observing io  at node iS  is given 
+as  
+     | ( ) ( ) |i i i i i iP S P P S P S o o o          (13) 
+where io  is the observation vector of feature parameters 
+extracted at frame i , i.e. > 1v , 2v , 3v ,  1 2 3, , iK K K º¼ , in which 
+ 1 2 3, ,K K K  stands for a 3-component tuple with kK  being the 
+PI of the k th peak of the estimation function.  Only one 
+component is selected from  1 2 3, ,K K K  to form the 
+observation vector when used in voicing detection.  In Eq.  
+(13), the ( )iP S  is assigned as a constant for all iS ’s.  Hence 
+( ) ( )i iP P So  can be treated as a scale factor c , which is 
+negligible in the searching process.  Also, the choice of the 
+pitch state iS  is equivalent to picking the pitch candidate iSp
+at the particular state under the voicing condition 1H .  As a 
+result, 
+   1ˆ| , |ii i S iP S cP p p H|  o o .         (14) 
+From Bayes' rule, we have  
+     1 1 1ˆ ˆ, | | | ,i iS i i S iP p p H P H P p p H   o o o .   (15) 
+Since
+   
+ 
+   
+ 
+ 
+1 1
+1
+1 1
+1 1 0 0
+0 0
+1 1
+| ( )
+|
+( )
+| ( )
+| ( ) | ( )
+1
+| ( )1
+| ( )
+i
+i
+i
+i
+i i
+i
+i
+P H P H
+P H
+P
+P H P H
+P H P H P H P H
+P H P H
+P H P H
+ 
+ 
+ 
+
+o
+o
+o
+o
+o o
+o
+o
+   (16) 
+This term is readily obtained as the prior probabilities, i.e. 
+0( )P H  and 1( )P H , and the likelihood estimates, i.e. 
+ 0|P x H  and  1|P x H , are assessable from HMM.  On the 
+other hand, as the PI itself is a convenient voicing indicator, 
+ 1ˆ | ,k iP p p H o  can be given in a heuristic manner. 
+Figure 3.  Illustration of Viterbi search. 
+…… 
+…… 
+…… 
+Frame index 
+1
+2
+3
+1 2 3 t-1 t
+Node
+number 
+Node 
+probability 
+Transition 
+probability 
+Table 2:  Error rates (in percentage) based on the HMM detectors. 
+Log-signal power, ZCR, SE, 
+Periodical index 
+Log-signal power, ZCR, SE, 
+Unbiased autocorrelation 
+Viterbi  Soft Decision Viterbi  Soft Decision 
+Features 
+Test set Rigid Less 
+Rigid 
+Rigid Less
+Rigid 
+Rigid Less
+Rigid 
+Rigid Less 
+Rigid 
+1 3.34 0.49 3.01 0.57 4.09 0.85 3.54 0.81 
+2 3.64 0.55 3.57 0.91 4.19 0.66 3.82 0.96 
+3 3.28 0.70 3.61 0.97 3.96 0.81 3.83 1.08 
+4 3.18 0.50 3.40 0.87 3.28 0.54 3.30 0.74 
+5 3.24 0.48 3.78 0.66 3.80 0.55 3.91 0.74 
+6 2.79 0.37 2.91 0.57 3.70 0.57 3.29 0.73 
+7 3.39 0.51 3.60 0.72 3.72 0.57 4.10 0.93 
+8 3.60 0.59 3.75 0.78 4.49 0.91 4.43 1.14 
+Average 3.31 0.52 3.45 0.76 3.90 0.68 3.78 0.89 
+138
+Authorized licensed use limited to: NATIONAL ILAN UNIVERSITY. Downloaded on January 31, 2010 at 03:17 from IEEE Xplore.  Restrictions apply. 

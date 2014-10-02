@@ -1,0 +1,990 @@
+II
+中文摘要
+點對點系統是一種分散式系統，其中每個使用者便是一個節點，彼此皆能分享資
+源。給定個範圍，一個範圍查詢將會找任何值在此範圍內的資料。然而，一旦區
+間資料透過雜湊函數而分佈在這個點對點系統上時，區間資料本有的連續特性並
+不保證會存在。因此，找散布在各區域的區間資料是相當耗成本的。分散區段樹
+(Distributed Segment Tree，簡稱 DST)藉由區段樹的結構保留了每個節點上區
+間資料的區域連續性。此方法運用了分散雜湊表的邏輯。然而，DST 會有資料重
+疊、送出多餘查詢訊息、空間區域性的喪失和負載不平衡等問題。因此，在這個
+計劃的第三年，我們提出了結構區段樹(Structured Segment Tree，簡稱 SST)
+的方法。SST 不再運用分散雜湊表，系統所構成的拓樸即是區段樹的結構，它能
+充份反映出區段樹的特性。每個節點便是區段樹上的節點。此外，我們還加入了
+sibling link 來保留空間區域性(spatial locality)和增進搜尋效率。關於資
+料負載的議題，SST 表現得比 DST 來得更為平衡。在我們的模擬實驗中，顯示出
+了 SST 比 DST 走訪較少的節點數目，便能搜尋到資料。模擬實驗也顯示出資料負
+載在 SST 中來得比 DST 更加平衡。
+(關鍵詞：分散雜湊表，負載平衡，點對點，範圍搜尋，區段樹)
+1前言
+在傳統的主從式架構中，資料集中存放於伺服器中，使用者 (客戶端) 登入
+伺服器去使用這些資料。這種主從式架構普遍存在於現今的網際網路和其他網路
+中。然而，在這種架構下，伺服器需要管理如此大規模的資料，所以效率和效能
+就被限制住了。在主從式網路中，所有的資料都被放在伺服器中。所有使用者的
+存取動作都集中在伺服器上運作，所有的伺服器、網路和資料庫必須具有高速度
+以及高容量。因此，當這個網路的規模變得越大，效能就會變得更差。這樣也會
+增加主從式系統的負擔，且服務的回應時間變長。
+P2P (Peer-to-Peer, 點對點) 系統提供了很多基於它網路架構的優勢，包括顯
+著的地降低資料庫的花費，和其他伺服器相關的花費。在點對點系統網路中，個
+別的使用者電腦 (節點) 自己儲存資料。因此，伺服器只需要管理索引，以用來
+快速查詢儲存於這些節點的物件。也就是說，伺服器不需要自己儲存管理這些大
+量的資料。資料在各個節點間傳送，取代由伺服器傳送的方式。只要有一個很小
+的索引伺服器，大量 P2P 資料就能互相傳送於網路之中。點對點系統是一種分散
+式系統，其中的參與者扮演相似的角色[7]。在點對點系統中，每個使用者便是一
+個節點，彼此皆能分享資源[4]。每個節點會動態地進出這個點對點系統，系統中
+的資料也跟隨地增減而有所變化[1]。
+Chord 是一種基於環狀結構的結構化 P2P 系統，它能有效率的找到存著某個
+資源的節點。然而，Chord 系統是利用靜態雜湊函數配置資料，可能造成大部分
+資料對應到相同的配置處而產生大量的碰撞問題，導致系統上節點的負載不平
+衡。所以，在這個計劃中的第一年，我們提出了一個以 Chord 系統為基本架構，
+利用動態雜湊來達成資料的配置，使得節點和節點間的負載維持平衡狀態。再則，
+在 P2P 系統中，空間資料發生在許多重要且不同的應用上，例如: 土地發展計畫。
+因此，如何快速有效率地取得空間資料所在的位置就顯得格外重要。雖然，
+P2PR-tree 已經被提出，但是，它卻無法解決空間資料彼此間 overlap 的問題。近
+年來，對於空間資料的存取，NA-tree，已經被提出。它沒有 R-tree 中 overlap 的
+問題。Chord 是一個雜湊的方法，它能夠容易地處理資料增減時只做區域性的更
+改。然而，目前的 Chord 系統無法有效率地處理區域資料，因為，它只處理單一
+key 值。因此，在這個計劃中的第二年，我們提出在 Chord 系統中，使用在雜湊
+函數上，針對資料 key 值的部份，利用 NA-tree 對空間區域資料做編碼的方式做
+資料的搜尋。
+另一方面，使用者可能會想搜尋某區段範圍的資料，如“搜尋某歌手 1995
+年至 2006 年所發行的專輯”。一段範圍的資料，是屬於連續性的資料。然而，經
+由 DHT(Distributed Hash Table)來分派資料，會破壞這個特性。所以，在這個計劃
+中的第三年，我們設計在 P2P 系統上支援範圍搜尋，且能保持負載平衡的演算法。
+我們必須面對的困難是，如何在 P2P 系統中，盡量維持範圍資料之連續性不被破
+壞。
+3圖 一、Structured Segment Tree 架構圖
+圖 二、sibling link 的連結方式
+在模擬測試中，我們比較分散區段樹方法(DST)和結構區段樹方法(SST)在進
+行精確搜尋、範圍搜尋還有資料負載三方面的表現。搜尋成本定義為搜尋時所需
+經過的節點次數[5]，系統所能支援的資料範圍大小設定為 210。在比較精確搜尋
+成本時，將系統的節點數從 21 - 1 增加到 210 – 1，並讓每個節點尋找系統所能
+支援的資料範圍內的各個資料值。然後再比較其平均的搜尋成本。如圖三所示，
+隨著節點數的增加，搜尋成本也跟著增加，但 SST 總能比 DST 以較少的成本找到
+所要的資料。
+在比較範圍搜尋成本時，設定系統中節點數為 25 – 1，並讓每個節點尋找
+5圖 四、進行範圍搜尋時的成本比較圖
+圖 五、資料分布的比較圖。
+圖 六、當門檻值為 1500 時的資料分布比較圖
+參考文獻
+[1] K. Aberer and M. Hauswirth, ”An Overview on Peer-to-Peer Information
+System,”Workshop on Distributed Data and Structures (WDAS), pp. 171-188,
+2002.
+7成果報告自評
+請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價值（簡
+要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以 500 字為限）
+在集中式系統環境下，完全符合搜尋與範圍搜尋為傳統查詢最常用且重要的技
+術，例如：找出某個員工的業績就是完全符合搜尋，找出業績介於 1,000,000
+至 2,000,000 元的員工範圍查詢。另點對點 (Peer-to-Peer, P2P) 資訊系統則
+是新興的網路應用模式，各網路節點能同時扮演用戶端、伺服端或中繼者等多重
+角色，因此比傳統的應用模式更具多樣性，因此在點對點資訊系統中也存在完全
+符合搜尋與範圍搜尋的需求。然而，點對點系統(如 Chord)透過雜湊函數來派送
+資料，一旦區間資料透過雜湊函數而分佈在這個點對點系統上時，區間資料本有
+的連續特性並不保證會存在。因此，找分散在各區域的區間資料是相當耗成本
+的，若能保留了每個節點上區間資料的區域連續性將會縮短範圍搜尋的時間。在
+我們的研究成果中，利用結構區段樹(Structured Segment Tree，簡稱 SST)的
+方法，每個節點便是區段樹上的節點，因此每個節點保留區間資料的區間續性。
+另我們還加入了 sibling link 來保留空間區域性(spatial locality)和增進搜
+尋效率。因此，我們的研究能增進點對點系統的相關應用有關完全符合搜尋與範
+圍搜尋的功能，進而提高整體系統的效率。
+[0,7]
+[0,3]
+[0,1]
+[4,7]
+[2,3] [4,5] [6,7]
+[1,1] [2,2] [3,3] [4,4] [5,5] [6,6] [7,7][0,0]
+Figure 1. Distributed segment tree of length 8
+II. RELATED WORK
+The Distributed Segment Tree (DST) method [6] is one
+of these famous methods for range queries. It preserves the
+local continuity of range data by using a segment tree and
+provides a method, Range Splitting Algorithm, to break any
+given data range into the minimum number of node intervals
+whose union constitutes that range. It works based on the
+Distributed Hash Table (DHT) logic; therefore, it can be
+applied in any DHT-based P2P system. Based on the above
+properties, the DST method extends the DHT-based P2P
+systems so that these systems can support to answer range
+queries. Moreover, the DST method designs a Downward
+Load Stripping Mechanism for load balance.
+The segment tree representing the range of length L has a
+height H = log L+1. Fig. 1 shows an example of the DST
+of length 8. Each node on the DST represents a node interval
+[sl,k, tl,k], where l ∈ [0, logL] and k ∈ [0, 2l−1]. Its length
+is ll,k = tl,k−sl,k +1. Each non-leaf node has two children.
+The left child and the right child represent the intervals
+[sl,k, b
+sl,k+tl,k
+2 c] and [b
+sl,k+tl,k
+2 c+1, tl,k], respectively. The
+union of the two children covers the same interval as the
+parent does. For neighboring nodes on the same layer, we
+have sl,k ∈ (tl,k−1 +1) for any k ∈ [1, 2l−1]. This property
+ensures the continuity of the segment tree. All the nodes
+from the same layer span the whole segment tree range, i.e.,
+for any l ∈ [0, log L]. This property ensures the integrity of
+the segment tree.
+In the DST, the segment tree structure is distributed onto
+the distributed hash table (DHT): The node interval [s, t] is
+assigned to the DHT node (i.e., a peer) associated with the
+key Hash([s, t]) using the underlying DHT logic.
+For example, if users want to search range [2,6], they
+will send a range query for [2,6]. The range query will be
+processed by the range splitting algorithm, which means to
+construct the union of minimum node intervals that expand
+the range. As a result of the process, the users get nodes
+labeled [2,3] , [4,5], [6,6], whose union covers the range
+[2,6]. Next, these node intervals will be hashed. Moreover,
+users nally learn about the peers which they should send
+requests for.
+However, the DST method still has some disadvantages.
+Figure 2. Range search in the Chord system
+Since it works based on the DHT logic, the data interval of
+a node may be different from the underlying hash function.
+If the hash function performs poorly, it will result in many
+cases of overlapping data intervals and cause load unbalance
+among peers. In addition, the search cost depends on the
+applied DHT-based P2P systems.
+For example, assuming that the DST method is applied
+in the Chord system [9], which is one of well-known DHT-
+based P2P systems, as shown in Fig. 2. In this example, due
+to the unsuitable hash function, the data intervals of each
+peer are overlapped. The problem of overlapping will lead
+to inefcient nding of data locations and we will discuss
+the problem in detail later. In Fig. 2, peer 1 searches for
+data range [2,6]. Then, the requested data range [2,6] will be
+broken into data intervals [2,3], [4,5] and [6,6] based on the
+Range Splitting Algorithm. Next, these data intervals will be
+taken as inputs of a given hash function. Each data interval
+processed by the hash function will get a key, which means
+the location of the peer which covers that data interval. In
+this example, data intervals [2,3], [4,5] and [6,6] get keys
+6, 0 and 0, respectively. Up to this point, the requesting
+peer knows the locations of the requested data and sends 3
+independent requests to peer 6 (1 time) and peer 0 (2 times).
+In this example, we can see that the DST method will
+convert one range query into several exact queries. Because
+the applied DHT-based P2P systems mainly search for keys
+independently, rather than the original data range, the conti-
+nuity and locality of the data range do not exist after data is
+distributed. The more number of data intervals a requested
+data range is divided into, the more number of exact queries
+will be executed independently in the underlying DHT-
+based P2P systems. How the requests route for nding the
+requested data keys is dependent on the applied DHT-based
+P2P systems.
+III. STRUCTURED SEGMENT TREE
+Based on the proposed method for range queries in P2P
+systems, this section rst presents the details of our data
+structure. Next, it presents the related information stored at
+a peer.
+92
+P1
+P2 P3
+P4 P5
+P8 P9 P10 P11
+P6 P7
+P12 P13 P14 P15
+Level 0
+Level 1
+Level 2
+Level 3
+: forward sibling links
+: backward sibling links
+Figure 5. Sibling links
+P1
+P2 P3
+P4 P5
+P8 P9 P10 P11
+P6 P7
+P12 P13 P14 P15
+Level 0
+Level 1
+Level 2
+Level 3
+: ascendant links
+Figure 6. Ascendant links
+Similar to the function of the sibling links, the ascendant
+links also can improve the search efciency. The sibling
+links can forward a request quickly among peers at the
+same level, while the ascendant links can forward a request
+quickly among different levels. A peer at level h has at most
+h ascendant links. They connect to the ascendant peers. For
+example, in Fig. 6, peer P10 at level 3 has 3 ascendant links
+connecting to peers P5, P2 and P1.
+IV. PEER MANAGEMENT
+In this section, we describe how to manage the peers so
+that they can maintain the structure of an SST. The peer
+management handles the joining and leaving of peers. It
+ensures that the current peers can maintain the structure of an
+SST at any time. Before describing the joining and leaving
+of peers, we describe how to nd the maximum position
+identier, which is needed to maintain the structure of an
+SST.
+A. Find the Maximum Position Identier
+In order to maintain the structure of an SST, the peers
+need to know the Maximum Position Identier, MaxPID,
+when they join and leave the P2P system. MaxPID has
+the greatest value among the PIDs in the current system.
+If a peer with PID equal to MaxPID, it means that the
+peer is the last peer joining the system. MaxPID is at the
+last level of an SST.
+When a peer wants to know the MaxPID, it will rst
+check whether it is a leaf peer or not. A non-leaf peer will
+check the number of the children it has. If two children
+exists, a Finding message will be forwarded to the right
+child. Otherwise, a Finding message will be forwarded to
+the left child. The Finding message will be continually
+forwarded until it reaches a leaf peer. When an SST is a
+complete binary tree, a leaf peer may be at the last level or
+the last second level. Because MaxPID is at the last level,
+a leaf peer needs to check whether it is at the last level
+or not. It asks the neighbor peers whether they have any
+children. If any one of these neighbor peers has children,
+the neighbor peer will respond to the leaf peer. The leaf
+peer forwards the Finding message to the neighbor peer
+with the greatest value of PID among them. The neighbor
+peer again forwards the Finding message to its children.
+As a result, the Finding message arrives the last level.
+When a peer at the last level receives the Finding mes-
+sage, the peer will again forward the Finding message to its
+neighbor peers with the greatest value of PID through the
+sibling links. The process will be repeated until the Finding
+message reaches a peer without any forward sibling link.
+Such a peer is the last one joining the system, and it owns
+MaxPID. As a result, MaxPID is found.
+When a peer joins the system, it will take the position
+next to the peer with MaxPID. When a peer leaves the
+system, the peer with MaxPID will take the position of
+the leaving peer. Therefore, no matter peer joining or peer
+leaving, the structure of an SST is a complete binary tree.
+An SST is maintained at any time.
+B. Joining of Peers
+When a peer, Pin, wants to join the system, it needs to
+know one existing peer, Pknown, in the current system. Peer
+Pin sends a Joining request to peer Pknown. After peer
+Pknown receives the Joining request, it will nd MaxPID.
+A joining peer will take the position next to the peer with
+MaxPID. The subsequent PID after MaxPID equals
+(MaxPID + 1). This may be the PID of peer Pin. The
+peer, Ptarget, with PID=bMaxPID+12 c may be the parent
+of peer Pin. Peer Pin should connect to peer Ptarget. These
+computations are performed by peer Pknown. Peer Pknown
+forwards the Joining request to peer Ptarget. Peer Ptarget
+will decide whether it should accept the request of peer Pin.
+If there is no any other Joining request in the waiting
+queue, it will accept and respond to peer Pin. Otherwise,
+peer Ptarget will nd another target peer and complete the
+task similar to what peer Pknown has done. After peer Pin
+connects to peer Ptarget, peer Pin will get its own PID and
+the half data interval of peer Ptarget.
+For example, as shown in Fig. 7-(a), peer Pin wants to
+join the system. It knows that peer P2 is an existing peer
+and sends a Joining request to peer P2. After receiving the
+Joining request, as shown in Fig. 7-(b), peer P2 will nd
+out that the MaxPID is 5, which is owned by peer P5.
+Then, in Fig. 7-(c), peer P2 calculates and knows that (5
+94
+P1
+P2 P3
+P4 P5 P6 P7
+P1
+P2 P3
+P4 P5 P6 P7
+(a) (b)
+Figure 9. Data Insertion: (a) standard; (b) threshold.
+continues until the data key arrives peer Ptarget. Peer Ptarget
+is the peer at the same level whose data interval covers data
+key k. Then, peer Ptarget forwards data key k to its ancestors
+and descendants. As a result, data key k is stored at the peers
+whose data interval covers it.
+In addition, to prevent from load unbalance, each non-leaf
+peer can choose to store the data key or not. A non-leaf peer
+can set a threshold to limit the load. However, the leaf peers
+have no choice, because they have the minimum size of the
+data interval. That is, the leaf peers have the lightest loads
+among all the peers. With this mechanism, in Fig. 9-(b), P1
+chooses not to store the data key.
+B. Data Deletion
+The process of deleting data from an SST is quite similar
+to that of the data insertion. That is, the data key is removed
+from all the peers whose data interval covers it. When a
+peer wants to delete a data key k, it checks its neighbor
+peers through the sibling links. Then, it forwards a Deleting
+message to the neighbor peer whose data interval covers or
+most close to that data key k. The process will be repeated
+until the Deleting message is arrived at the peer whose data
+interval covers the data key k at the same level. Finally, the
+peer forwards the Deleting message to all its ancestors and
+all its descendants. The peers which receive the Deleting
+message will delete the data key k.
+VI. DATA LOOKUP
+To look up a requested data key is an important issue in
+P2P systems. We will describe how an SST handles exact
+queries and range queries.
+A. Exact Query
+According to the properties of an SST, a data key is stored
+at all the peers whose data interval covers it. These peers
+contain a leaf peer and all its ancestors. Therefore, the data
+key can be found at every level. In the previous section, we
+have learned the relationship between a PID and a data
+interval. Given a data key k, we can nd the peers whose
+data interval covers it. For example, given data key 6 and
+level 2, the size of the whole data range [0, 7] is 8, and the
+load size at level 2 is 2 (= 8/22). Data key 6 is stored at the 4
+(= b6/2c+1) th peer at level 2. Its PID is 22 + 4− 1(= 7).
+As a result, we know that peer P7 at level 2 covers data key
+6.
+Figure 10. An example of data lookup
+Since each peer of an SST has its own sibling links, the
+requested data key will be rst located through these links.
+That is, the search process starts at the same level. When a
+user at level h wants to nd data key k, it rst locates a peer
+at the same level h through the sibling links. For example,
+in Fig. 10, peer P4, at level 2, wants to look up data key
+6. It nds out that at the same level, peer P7 has the data
+key. Then, peer P4 checks whether peer P7 is a neighbor
+peer. It checks the sibling links and knows peer P7 is not
+a neighbor peer. The neighbor peers of peer P4 through the
+forward sibling links are peer P5 and peer P6. Since peer P6
+is closer to peer P7 than peer P5 is, peer P4 will forward the
+exact query to peer P6. The exact query is executed again at
+Peer P6. Since peer P7 is a neighbor peer of peer P6, peer
+P6 will forward the exact query to peer P7. If peer P7 has
+the data key, it will return the data key to peer P4.
+A leaf node may have no sibling link to forward an exact
+query. If such a leaf node receives an exact query, it will
+pass the exact query to its parent or any of its ancestors. For
+example, in Fig. 10, the leaf peer P10 wants to look up the
+same data key 6. It nds out that at the same level, peer P15
+has the data key. But peer P10 has no forward sibling links.
+Actually, peer P10 is the peer with MaxPID and peer P15
+does not exist. So peer P10 learns that peer Pb15/2c should
+be the target peer and then peer P10 forwards the exact query
+to its parent peer P5. Then, the search process of peer P5
+is similar to that of peer P4. Finally, peer P10 will nd out
+that peer P7 has the requested data key.
+Although peer Ptarget is the target peer whose data
+interval covers the requested data key, it may not have the
+requested data key. In this case, peer Ptarget will forward
+the exact query to its descendants until the requested data
+key is found or a leaf node is reached.
+B. Range Query
+Given an exact query for a data key, a peer whose data
+interval covers it is returned. While a range query for a data
+interval [A, B] is given, peers are returned. The PID values
+of these returned peers are successive. If we denote the peer
+whose data interval covers data key A as peer Pbegin and
+the peer whose data interval covers data key B as peer Pend,
+the returned peers will range from peer Pbegin to peer Pend.
+When a peer asks for a data interval [A, B], we will rst
+nd peer Pbegin and peer Pend by executing exact query. If
+96
+0.0
+5.0
+10.0
+15.0
+20.0
+25.0
+1 2 3 4 5 6 7 8 9 10
+The range span (QR = 2x)
+Se
+ar
+ch
+ c
+os
+t
+DST
+SST
+(a)
+0.0
+5.0
+10.0
+15.0
+20.0
+25.0
+30.0
+1 2 3 4 5 6 7 8 9 10
+The range span (QR = 2x)
+Se
+ar
+ch
+ c
+os
+t
+DST
+SST
+(b)
+0.0
+5.0
+10.0
+15.0
+20.0
+25.0
+1 2 3 4 5 6 7 8 9
+The range span (QR = 2x)
+Se
+ar
+ch
+ c
+os
+t DSTSST
+(c)
+Figure 11. A comparison of the range search: (a) with RS = 1024 and
+N = 31; (b) with RS = 1024 and N = 63; (c) with RS = 512 and N =
+63.
+expected. Even so, the average number of data stored at a
+peer of DST is greater than that of SST in this experiment.
+Fig. 12-(b) shows the standard deviation. In this gure, we
+see the value of standard deviation of SST is less than that
+of DST. It means that the load of SST is more balanced than
+that of DST.
+In Fig. 13-(a), the condition of this experiment is the same,
+except that we set the value of parameter γ to 1500. In
+this case, the average number of data stored at a peer of
+SST is greater than that of DST. When the total number
+of the generated data reaches 30000, 40000, and 50000,
+the average number of data of SST reaches its threshold.
+Comparing with Fig. 12-(a), we can see the average number
+of data stored at a peer falls down greatly. This is because the
+0
+2000
+4000
+6000
+8000
+10000
+10000 20000 30000 40000 50000
+The number of  generated data
+Th
+e 
+av
+er
+ag
+e 
+nu
+m
+be
+r o
+f
+da
+ta
+ a
+t a
+ p
+ee
+r
+DST
+SST
+(a)
+0
+2000
+4000
+6000
+8000
+10000
+12000
+14000
+10000 20000 30000 40000 50000
+The number of  generated data
+St
+an
+da
+rd
+  d
+ev
+ia
+tio
+n
+DST
+SST
+(b)
+Figure 12. A comparison of the load balance: (a) the average number of
+data at a peer; (b) standard deviation.
+threshold can efciently cut down the load size and shorten
+the difference. Fig. 13-(b) shows the standard deviation. In
+this gure, we see the value of the standard deviation of
+SST is still less than that of DST. After the total number
+of the generated data reaches 30000, all the peers of SST
+have the number of data equal to the threshold. So the
+value of standard deviation becomes zero. By comparing the
+performance shown in Fig. 13-(b) with that shown in Fig.
+12-(b), the standard deviation decreases. This is because the
+main difference mainly comes from the different levels. The
+peers at the low level usually have much more data than
+those at the high levels. The threshold can limit the load
+size and makes the difference small.
+VIII. CONCLUSION
+In this paper, we proposed a Structured Segment Tree to
+handle range queries in P2P systems. It does not use the
+DHT logic, but embeds the structure of the segment tree
+into the P2P system. The topology of a Structured Segment
+Tree is actually the structure of a segment tree. It can fully
+reect the properties of the original segment tree. Each peer
+in a Structured Segment Tree represents a node of a segment
+tree. Node intervals at the same level are continuous and will
+not overlap. The union of node intervals at a level with full
+nodes is the whole range which the P2P system can support.
+When searching a data range, the Structured Segment Tree
+method sends as many number of requests as needed. In
+addition, we add sibling links to preserve the locality and
+98
+ 1 
+參加 WCE 2011 心得報告 
+吳振彰 
+ 
+一 、 參 加 會 議 經 過  
+由國際工程師協會(the International Association of Engineers, IAENG)主辦的 2011 
+世界工程會議(World Congress on Engineering 2011)，於 2011 年 7 月 5 日至 8 日
+在英國倫敦的倫敦皇家學院難肯辛頓校區(the South Kensington campus, Imperial 
+College London)舉行。本次會議投稿論文篇數達 1328 篇，經篩選後共發表約 756 
+篇論文，接受率為 56.93%。本次會議是由 15 個不同的領域的研討會所合辦而成，
+其各研討會的名稱如下： 
+ 
+ICAEM'11 The 2011 International Conference of Applied and Engineering Mathematics 
+ICCIIS'11 The 2011 International Conference of Computational Intelligence and Intelligent Systems 
+ICCSDE'11 The 2011 International Conference of Computational Statistics and Data Engineering 
+ICCSE'11 The 2011 International Conference of Computer Science and Engineering 
+ICDMKE'11 The 2011 International Conference of Data Mining and Knowledge Engineering(參與發表) 
+ICEEE'11 The 2011 International Conference of Electrical and Electronics Engineering 
+ICFE'11 The 2011 International Conference of Financial Engineering 
+ICIE'11 The 2011 International Conference of Information Engineering 
+ICISIE'11 The 2011 International Conference of Information Security and Internet Engineering 
+ICME'11 The 2011 International Conference of Mechanical Engineering 
+ICMEEM'11 The 2011 International Conference of Manufacturing Engineering and Engineering Management 
+ICPDC'11 The 2011 International Conference of Parallel and Distributed Computing 
+ICSBB'11 The 2011 International Conference of Systems Biology and Bioengineering 
+ICSIE'11 The 2011 International Conference of Signal and Image Engineering 
+ICWN'11 The 2011 International Conference of Wireless Networks 
+ 
+ 3 
+ 
+三 、 建 議  
+無 
+四 、 攜 回 資 料 名 稱 及 內 容  
+1. 會議論文集乙份 
+2. 論文集光碟片乙張 
+五 、 其 他  
+無 
+ 
+TABLE I
+A SAMPLE OF THE ACCESS HISTORY
+Access Time Object ID Music Group Transaction
+2001/4/06 AM 11:47:03 1 B T1
+2001/4/06 AM 11:47:03 23 C T1
+2001/4/12 AM 10:11:25 7 D T2
+2001/4/12 AM 10:11:25 5 C T2
+2001/4/12 AM 10:11:25 32 B T2
+2001/4/16 AM 09:51:33 16 A T3
+2001/4/16 AM 09:51:33 19 B T3
+2001/4/16 AM 09:51:33 42 A T3
+2001/4/20 AM 08:31:12 31 D T4
+2001/4/20 AM 08:31:12 63 C T4
+2001/4/20 AM 08:31:12 26 A T4
+2001/4/22 AM 10:24:49 53 B T5
+2001/4/22 AM 10:24:49 12 A T5
+TABLE II
+NUMBER OF MUSIC OBJECTS TO THE RECOMMENDED IN EACH GROUP
+Music Group Number of Recommended Music Objects
+A 8
+B 6
+C 4
+D 4
+and B. We find group A appearing many times in the early
+transactions. On the other hand, group B appears one time
+in the latest transaction. But the group weight of group B is
+larger than the group weight of group A in the CB method,
+the result is not conventional. Observing the result of the CB
+method, we can find when the music group B appears once
+in the later transaction, it will have larger group weight than
+the group weight of the music group A which appears many
+times in the earlier transaction. This result may be not good
+for some users, because the purpose of the CB method is to
+recommend the music object which the users are interested.
+When the count of music group is large in the user’s access
+history, it means that this user is interested in this group, too.
+Therefore, in this paper, we propose the TICI (Transaction-
+Interest-Count-Interest) method to improve the performance
+of the CB method. In our TICI method, for the same access
+history shown in Table III, we can decide the rank of the
+music group weight between groups A and B. And we put
+two parameters: Count-Interest
+ 
+and Transaction-Interest
+
+
+in our TICI method to let user choose which weight they
+want to emphasize. From the simulation results, we show
+that our TICI method could provide better performance than
+the CB method in terms of the weight differences. That is,
+our TICI method can decide the rank of the group weight
+precisely.
+The rest of the paper is organized as follows. Section
+2 gives a survey of some music recommendation systems.
+Section 3 presents the proposed TICI method. Section 4
+TABLE III
+A SAMPLE OF THE ACCESS HISTORY H1
+Transaction Music Group
+T1 AA
+T2 AC
+T3 DEF
+T4 GHI
+T5 JK
+T6 B
+TABLE IV
+A SAMPLE OF THE ACCESS HISTORY
+Access Time Object ID Music Group Transaction
+2001/4/06 AM 11:47:03 1 B T1
+2001/4/06 AM 11:47:03 23 C T1
+2001/4/12 AM 10:11:25 7 D T2
+2001/4/12 AM 10:11:25 5 C T2
+2001/4/12 AM 10:11:25 32 B T2
+2001/4/16 AM 09:51:33 16 A T3
+2001/4/16 AM 09:51:33 19 B T3
+2001/4/16 AM 09:51:33 42 A T3
+2001/4/20 AM 08:31:12 31 D T4
+2001/4/20 AM 08:31:12 63 C T4
+2001/4/20 AM 08:31:12 26 A T4
+2001/4/22 AM 10:24:49 53 B T5
+2001/4/22 AM 10:24:49 12 A T5
+makes a comparison between our TICI method and CB
+method. Finally, Section 5 gives the conclusions.
+II. RELATED WORK
+The music objects in the database of the Music Recom-
+mendation System (MRS), as well as the incoming music
+objects, are candidates for music recommendation. When a
+new music object is inserted in the database of the MRS,
+it goes through the track selector and the feature extractor.
+According to the extracted features, the incoming music
+object is properly assigned to certain music group by the
+classifier function block. When the user accesses a music
+object from the list of music objects or the recommendation
+results, the profile manager will record the object information
+into the access history. An example of the access history is
+shown in Table IV. As shown in Table IV, the information of
+each accessed music object, i.e., the access time, the object
+ID, the corresponding music group which the object belongs
+to, and the corresponding transaction is recorded in the
+access history. Note that the transaction ID is monotonically
+increasing.
+Arbee L.P. Chen et al. have proposed the CB method
+to recommend the music objects that belong to the music
+groups the user is recently interested in [4]. Instead of textual
+descriptions, they consider the perceptual properties of music
+objects, such as pitch, duration, and loudness, which can
+be directly extracted from the music objects. For users,
+the preferences are derived from the access histories and
+recorded in profiles.
+To capture the recent interests of the user, they analyze
+the latest transactions in the access history as follows. Each
+transaction is assigned a different weight, where the latest
+transaction has the highest weight. The weight  of music
+group 	 is computed as follows:
+
+
+
+
+
+
+
+
+ (1)
+where
+
+
+ is the weight of transaction
+
+ ,  is the number
+of latest transactions used for analysis, ﬁﬀﬂ  is the number
+of music objects which belong to music group ﬃ in trans-
+action
+
+ . These weights will be recorded in a preference
+table for the user. The MRS ranks all the music groups.
+To avoid recommending a large number of music objects
+to users, the MRS limits the number of music objects for
+Proceedings of the World Congress on Engineering 2011 Vol III 
+WCE 2011, July 6 - 8, 2011, London, U.K.
+ISBN: 978-988-19251-5-2 
+ISSN: 2078-0958 (Print); ISSN: 2078-0966 (Online)
+WCE 2011
+TABLE IX
+PARAMETERS USED IN THE EXPERIMENT
+Parameters Meaning
+N The number of transactions in the access history
+M The number of music groups
+MinT The minimum length of the transaction
+MaxT The maximum length of the transaction
+TABLE X
+THE ACCESS HISTORY OF USER U1
+Transaction Music Group
+T1 A,B,C,D,E
+T2 A,C,E
+T3 A,B,C,D,E
+T4 C,E,K
+T5 A,D,E,M
+where Count-Interest
+ 
+( ﬀNM
+ 
+M
+I
+) and Transaction-
+Interest
+
+
+( ﬀOM
+
+
+M
+I
+) are assigned by users,
+
+
+= 1 -
+ 
+. According to each user’s preferences, our formula adds
+two parameters
+ 
+and
+
+
+to let users decide the importance
+of the time and count.
+IV. PERFORMANCE
+In this section, we study the performance of the proposed
+TICI. We also make a comparison with the CB method. The
+simulation was performed on an Intel Pentium Core2 1.86G
+Hz CPU computer with 1GB of RAM, and the operation
+system is Microsoft Windows XP service pack 3.
+A. Generation of Synthetic Data
+We generated synthetic access histories to evaluate the
+performance of the methods. The parameters used in the
+generation of the synthetic data are shown in Table IX. The
+length of a transaction is chosen randomly between MinT
+and MaxT. For the TICI method, the MinT and MaxT is
+2 and 5, respectively. In the comparison between the CB
+method and the TICI method, the music group will appear
+one time in a transaction or appear more than one time
+in a transaction. Therefore, for the music group appears
+more than one time in a transaction, we choose the music
+group in the set of music group randomly. For the music
+group appears one time in a transaction, we use the flag to
+record the appearance of the music group so that the music
+group will not appear again in a transaction. This way can
+achieve the goal that the music group appears one time in a
+transaction. For generating synthetic data, we assign an occur
+rate Orate, and we generate a random real number which
+is between 0 and 1. If the random number is larger than
+Orate, the generation runs normally. If the random number
+is smaller than or equal to Orate, we let the music group
+which never appears in the earlier transactions appear in the
+last transaction. The larger Orate is, the larger repeatability
+of the music group is. We call this synthetic data DataType1.
+B. Simulation Results of Synthetic Data
+In this subsection, we make a comparison of our TICI
+method with the CB method by using the synthetic data
+DataType1. We study the impact of five parameters on Table
+TABLE XI
+THE ACCESS HISTORY OF USER U2
+Transaction Music Group
+T1 A,B,C,D,E
+T2 B,C,E
+T3 A,B,C,D,E
+T4 C,E,K
+T5 B,D,E,M
+0
+10
+20
+30
+40
+50
+60
+70
+80
+1000 2000 3000 4000 5000
+Transaction size
+W
+e
+ig
+ht
+ d
+if
+fe
+re
+nc
+e
+TICI CI=0.7
+TICI CI=0.5
+TICI CI=0.3
+CB
+Fig. 1. A comparison of the group weight difference under the case that
+the music group appears more than one time in a transaction
+0
+10
+20
+30
+40
+50
+60
+70
+80
+1000 2000 3000 4000 5000
+Transaction size
+W
+e
+ig
+ht
+ d
+if
+fe
+re
+nc
+e
+TICI CI=0.7
+TICI CI=0.5
+TICI CI=0.3
+CB
+Fig. 2. A comparison of the group weight difference under the case that
+the music group only appears one time in a transaction
+IX. We let M be 50 because the numbers of music groups
+are not more than 50 in the current environment and we let
+MinT = 2 and MaxT = 5. Moreover, we make the comparison
+between the TICI method and the CB method under the two
+cases. One case is that the music group can appear more than
+one time in a transaction, another case is that the music group
+can only appear one time in a transaction. A comparison of
+the music group weight difference in the TICI method and
+CB method is shown in Figure 1 and Figure 2.
+Note that our TICI method has three cases: CI = 0.3,
+CI = 0.5 and CI = 0.7 to compare the change of the
+result that emphasizes weight of transaction and the weight
+of count. We use the group weight difference to be our
+performance measure. The group weight difference is the
+difference between the group weights of the group weight
+rank which are decided by the methods and we add all group
+weight differences to be the results of comparison between
+our TICI method and the CB method. When the group weight
+difference is larger, it means that the method can decide the
+rank of the group weight clearly.
+Proceedings of the World Congress on Engineering 2011 Vol III 
+WCE 2011, July 6 - 8, 2011, London, U.K.
+ISBN: 978-988-19251-5-2 
+ISSN: 2078-0958 (Print); ISSN: 2078-0966 (Online)
+WCE 2011
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/08/01
+國科會補助計畫
+計畫名稱: 點對點資訊系統中負載平衡，完全符合搜尋與範圍搜尋技術之設計與分析
+計畫主持人: 張玉盈
+計畫編號: 97-2221-E-110-058-MY3 學門領域: 資料庫系統及資料工程
+無研發成果推廣資料
+國外 論文著作 期刊論文 3 0 100% 篇 
+Ye-In Chang, 
+Chen-Chang Wu, and 
+Ching-I Wang, 
+2009, ＇ ＇ Spatial 
+Exact Match Query 
+Based on the NA-tree 
+Approach in P2P 
+Systems,＇＇ Proc. of 
+the 22th Int. Conf. on 
+Industrial, 
+Engineering &amp ；
+Other Applications of 
+Applied Intelligent 
+Systems, pp. 1-10. 
+(Lecture Notes in 
+Artificial 
+Intelligence: 
+Next-Generation 
+Applied Intelligence 
+(EI), Vol. 5579, pp. 
+409-418, 2009.)  
+  
+Ye-In Chang, 
+Chen-Chang Wu, and 
+Ching-I Wang, 2010, 
+Oct. ＇＇Spatial Exact 
+Match Query in P2P 
+Systems Using an 
+NA-tree Structure＇＇ 
+Journal of Internet 
+Technology (SCI), Vol. 
+11, No. 5, pp. 711-720.
+ 
+Ye-In Chang, Lee-Wen 
+Huang, and Hung-Ze 
+Liu, 
+2009, ＇＇AKDB--tree: 
+An Adjustable KDB-tree 
+for Efficiently 
+Supporting Nearest 
+Neighbor Queries in 
+P2P Systems,＇＇ Proc. 
+of the 22th Int. Conf. 
+on Industrial, 
+Engineering &amp ；
+Other Applications of 
+Applied Intelligent 
+Systems, pp. 101-106. 
+(Studies in 
+Computational 
+Intelligence: 
+Opportunities and 
+Ch ll f
+其他成果 
+(無法以量化表達之
+成果如辦理學術活
+動、獲得獎項、重要
+國際合作、研究成果
+國際影響力及其他
+協助產業技術發展
+之 具 體 效 益 事 項
+等，請以文字敘述填
+列。) 
+Ye-In Chang and Hue-Ling Chen, Sih-Ning Li and Hung-Ze Liu, 2008, ＇＇A 
+Dynamic Hashing Approach to Supporting Load Balance in P2P Systems＇＇, 
+Proc. of the second IEEE International Workshop on Cooperative Distributed 
+Systems, pp.1-6. 
+ 
+Ye-In Chang, Lee-Wen Huang, and Hung-Ze Liu, 2009, ＇＇AKDB--tree: An 
+Adjustable KDB-tree for Efficiently Supporting Nearest Neighbor Queries 
+in P2P Systems, ＇ ＇ Proc. of the 22th Int. Conf. on Industrial, 
+Engineering &amp； Other Applications of Applied Intelligent Systems, pp. 
+101-106. (Studies in Computational Intelligence: Opportunities and 
+Challenges for Next-Generation Applied Intelligence , Vol. 214, 
+pp.133-138, 2009.)  
+ 
+  
+Ye-In Chang, Chen-Chang Wu, Jun-Hong Shen, and Tzu-Lun Huang, 
+2010, ＇＇Range Queries Based on a Structured Segment Tree in P2P 
+Systems,＇＇ Proc. of the 17th IEEE International Conference on 
+Engineering of Computer-Based Systems, pp. 91-99.  
+  
+Ye-In Chang, Chen-Chang Wu, and Ching-I Wang, 2009, ＇＇Spatial Exact 
+Match Query Based on the NA-tree Approach in P2P Systems,＇＇ Proc. of 
+the 22th Int. Conf. on Industrial, Engineering &amp； Other Applications 
+of Applied Intelligent Systems, pp. 1-10. (Lecture Notes in Artificial 
+Intelligence: Next-Generation Applied Intelligence (EI), Vol. 5579, pp. 
+409-418, 2009.)  
+  
+Ye-In Chang, Chen-Chang Wu, and Ching-I Wang, 2010, Oct. ＇＇Spatial Exact 
+Match Query in P2P Systems Using an NA-tree Structure＇＇ Journal of 
+Internet Technology (SCI), Vol. 11, No. 5, pp. 711-720. 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

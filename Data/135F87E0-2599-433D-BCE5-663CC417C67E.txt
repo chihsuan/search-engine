@@ -1,0 +1,570 @@
+ 1 . 前言 
+1.1 研究背景 
+在網際網路創建初期，並沒有意識到服務品質的問題。依發送者和接收者的角度看
+來，封包從起點到終點的傳輸過程中會發生許多事情，並且產生封包遺失、延遲、傳輸順
+序錯誤、封包損壞等問題。隨者網路的使用者日眾，應用的程式越來越多。例如 WWW、
+網路遊戲、FTP、P2P、VoIP、E-mail 等等，IP 原有的 best-effort 封包傳送功能已經明顯不
+足，並且成為網際網路發展的主要瓶頸。因為不同的網路應用各有不同的特性與需求 
+(delay、loss tolerance)，因此這不單純只是增加網路頻寬就可以解決；對於那些比較不注重
+傳輸延遲的應用，像是 e-mail、FTP、P2P 等，增加網路頻寬或許就已足夠，但是對於那些
+具有互動特性 (inter-active)、重視傳輸延遲的應用，像 VoIP，除了增加網路頻寬外，網路
+中的傳輸設備還須具備有“即時”的特性才能針對這些互動性應用的封包給予較高的傳輸優
+先權甚至保障其可使用頻寬。 
+也因此，如何保障服務品質(Quality of Service, QoS)的問題也漸漸為人們所重視。而達
+到 QoS 的方式有許多發展成熟的傳輸處理機制可供使用，包括差異式服務 (diffserv)」、
+802.1p、整合服務 (intserv)、ATM 和 ISSLOW 等。如何在 MPLS 的網路架構下整合以上的
+QoS 技術使得使用者能根據需求獲得該有的服務品質，就是我們研究重要的課題。 
+1.2 研究動機 
+本研究在研讀許多 QoS 相關的研究後，決定整合 MPLS 技術與現在實作 QoS 最普遍的
+DiffServ 技術。 
+在研讀了將 MPLS 與 DiffServ 的許多相關研究後，發現了以下的一些問題：首先，
+DiffServ 結合 MPLS 兩種不同的技術封包格式並不相同；再者，雖然 DiffServ 能對各種等
+級的封包給予不同的服務品質，但在 MPLS 網路中仍然有可能會造成使用者無法獲得所需
+要的服務品質。而尋找一條有最大可使用頻寬與最低延遲的路徑，許多研究都已經證明它
+是一個 NP-Complete 的問題。在一條路徑無法同時兼顧頻寬與延遲的情況下，如何在一個
+MPLS 的網路架構下，整合 DiffServ 的技術，使得服務品質能夠達到使用者的需求，是要
+實作 QoS 上必須克服的重要課題。 
+1.3 研究目的 
+本研究主要致力於設計一個在 MPLS 流量工程下的 Constraint-based Routing(CBR)演算
+法，整合 MPLS 與 DiffServ 的技術，並套用負載平衡(loading balance)的概念，使得 Core 
+network 在 unicast 的傳輸技術上，採用多條路徑的方式，將流量分散同時經由數條路徑傳
+送，達到針對各種不同的應用程式或是不同的使用者所簽訂的 SLA，給予其該有的服務品
+質。 
+ 2 . 文獻探討 
+2.1 A Practical Architecture for Implementing End-to-End QoS in an IP 
+Network [1] 
+此篇論文提到如何在 IP 網路上實作出一個具有 end-to-end 的 QoS 的網路架構。要實現
+一個以 IP 技術為主的 end-to-end QoS 網路環境，是要結合許多不同的技術；例如在 MPLS
+應後，MPLS Core Newtork 裡的 LSR 不僅會根據 Label 去轉送這個封包，也可以根據這個
+封包的 EXP 欄位給予適合的 QoS。 
+ 
+圖一、DSCP 欄位與 EXP 欄位之對應 
+ 3 . 研究方法 
+3.1 路徑找尋演算法 
+我們所提出的路徑找尋演算法主要是尋找符合使用者頻寬需求的 LSPs。路徑找尋演算
+法使用路徑傳輸時間跟每條 link 的可用頻寬這兩個權值(metric)來找尋 LSP。由於從傳送端
+到目的端的傳遲時間路由器的 queuing delay 佔了最大的部份，所以我們以 queuing delay 來
+代表路徑傳輸的時間；也就是說路徑找尋演算法如果找尋到一條路徑所經過的節點數(Hop 
+Count，HC)越少就表示其路徑傳輸時間越小。但是路徑找尋演算法如果找到單一條 LSP 其
+傳輸時間較短但其可用頻寬卻不能符合使用者的頻寬需求，路徑找尋演算法會轉而找尋多
+條 LSP 並以同時傳輸流量的方式來滿足使用者在頻寬上的需求。 
+以下是路徑找尋演算法找尋路徑的四個原則： 
+A. 所找到的LSP不可有迴路[3][4]。  
+B. 路徑找尋演算法會尋找可用頻寬足夠且經過的路由器數量最少的路徑作為LSP[5]。路徑
+找尋演算法在選取路徑時，單一條Link 是可以重覆被多條路徑使用的，只要此 Link 的
+可用頻寬足夠供給多條路徑使用。相反的，當一條Link 的可用頻寬已不足以供給下一
+條路徑使用時，此條 Link 就不能被選取。 
+C. 路徑找尋演算法必須適當的更新每條 Link的可用頻寬，以避免這些 link 在可用頻寬不
+足時仍被其它的LSP選上。 
+D. 當有多條路徑同時符合以上三個條件，路徑找尋演算法會選擇可用頻寬最大的路徑作為
+LSP。 
+以下是路徑找尋演算法的執行步驟： 
+表示第 i 條 LSP 的最大可用頻寬且 LSPi 的傳輸時間為(ti+di)。首先傳送端從 Link State 
+Database 中得到每條 LSP 最大可用頻寬；然後根據每條 LSP 最大可用頻寬依比例來決定該
+條 LSP 的起始流量。  因此對任一條 LSPj，其會分配到的起始流量為 
+k
+LSPAB
+LSPAB
+n
+i
+i
+j
+×
+
+
+
+
+
+
+
+
+
+
+
+
+∑
+=1
+)(
+)(
+Mb. 
+此時，傳送端會計算每條 LSP 從傳送端到目的端的傳輸時間。令 Mt 表示此平均傳輸時間，
+其計算方式如下： 
+n
+dt
+M
+n
+i
+ii
+t
+∑
+=
++
+=
+1
+)(
+. 
+(二)動態調整每條 LSP 的流量 
+當傳送端計算完每條 LSP 的傳輸時間與平均傳輸時間之後，會依據如下兩個條件來決
+定是否調整 LSPj 的流量。 
+條件一：判斷 LSPj 的傳輸時間與 Mt 差距是否過大。 
+當任一條 LSPj 的傳輸時間與 Mt 差距大於所設定的門檻值(Threshold, Td)時，表示此條
+LSPj 的流量可能過多或過少，因此需要重新調整流量。 
+條件二：判斷 LSPj 的傳輸時間是否大於 Mt。 
+當 LSPj 的傳輸時間比 Mt 大時，表示 LSPj 的流量是過大的。 
+當 LSPj 同時符合以上兩個條件時，表示 LSPj 的流量過大且超過門檻值，則需要將流
+量釋放出來；若是 LSPj不符合條件一而符合條件二時，表示 LSPj 雖然流量過大，但是差距
+還沒有達到需要調整的程度；而若是 LSPj 不符合條件二時，無論有沒有符合條件一，都表
+示 LSPj 還能夠多傳輸一些流量。 
+因此當有 LSPs 同時符合條件一與條件二，傳送端就會計算此條 LSPj 需要釋放多少流
+量給其它不符合條件二的 LSPs。 
+[ ] 
+
+
+
+
+
+
+
+>−+
+>+−
+條件二
+條件一
+.......................................0)(
+                                                         ...................................( )
+tjj
+jjt
+Mdt
+TddtM
+傳送端根據 LSPj 的傳輸時間(tj+dj)與 Mt 用如下的公式來計算出該釋放出多少流量出來 
+
+
+
+
+
+
+
+
+
+
+
+
+×
+
+
+
+
+
+
+
+
+
+
+
+
+×
+−+
+∑
+=
+k
+)LSP(AB
+)LSP(AB
+M
+M)dt(
+n
+i
+i
+j
+t
+tjj
+1
+Mb 
+假設傳送端路由器計算出 LSPj 應該釋放的流量為 Rt Mb 並且共有 x 條的 LSPs 其傳輸
+時間低於 Mt。此時傳送端必須將 Rt 分配給所有 x 條的 LSP。分配的原則是我們會先計算出
+傳輸時間最長的 LSP 所分配到的流量，然後再以此流量為基準及依照其它 LSP 個別傳輸時
+間與最長傳輸時間的比例，去計算出其它 LSP 該分配到多少的流量。 
+假設 LSPe 是 x 條 LSPs 中傳輸時間(te+de)最長的路徑，則 LSPe 將會獲得如下的流量 
+的最大可用頻寬；舉例說明，40 表示每條 link 的可用頻寬會由[1Mb~40Mb] 這個範圍隨機
+挑選一個值，10 表示每條 link 的可用頻寬會由[1Mb~10Mb] 這個範圍隨機挑選一個值，所
+以 x 軸的數值越小，代表的就是每條 link 的可用頻寬越少；y 軸表示兩種演算法在平均傳輸
+時間上的表現。由實驗結果可以看出當傳送端傳送 100Mb 的資料時且網路上還有足夠的可
+用頻寬時，兩種演算法在平均傳輸時間差距大約 5 秒以內；相反的，如果網路的可用頻寬
+越來越小時，很明顯的，我們所提出的演算法其平均傳輸時間會比最短路徑演算法低較多。 
+從圖中可以清楚分析，link 最大可用頻寬如果小於 24Mb，最短路徑演算法已經不太容
+易找到一條符合使用者頻寬需求的路徑。當最大可用頻寬小於 15Mb 時，我們所提出的演
+算法其平均傳輸時間才會逐漸升高，這是因為網路上每條 link 的可用頻寬已經逐漸變小，
+所以即使使用我們所提出的演算法所找到的多條 LSP 其可用頻寬也不足以符合使用者的需
+求。仔細觀察圖二，在 link 上最大可用頻寬 21Mb 與 16Mb 的這兩個資料點，其最短路徑
+演算法的平均傳輸時間為異常的高，其主要原因是由於模擬實驗隨機產生的網路拓墣中，
+有些拓墣傳送端到目的端所找到的最短路徑其最大可用頻寬非常的小。同樣的，這兩個資
+料點其封包遺失率以及 Throughput 的表現也會較差。 
+圖三是我們所提的演算法與最短路徑演算法的封包遺失率比較。在我們的模擬實驗
+中，傳送端會傳送 100Mb 的資料量到目的端以計算封包遺失率，封包遺失率的計算方式如
+下所示 
+100Mb
+遺失的封包總量封包遺失率 =
+ 
+由實驗結果可以看出來，我們所提出的演算法其封包遺失率都在 2%以下，其主要原
+因是所有被找到的 LSPs 大部分都可以符合使用者頻寬的需求。相反的，使用最短路徑演算
+法在可用頻寬越小的情況下，找到符合使用者頻寬需求的路徑越來越不容易，因此封包遺
+失率上升的幅度就遠大於我們所提出的演算法。 
+圖二、平均傳輸時間之比較           圖三、平均封包遺失率之比較 
+圖四是我們所提的演算法與最短路徑演算法的 Throughput 比較。基本上 Throughput
+是與封包的遺失率成反比的關係。從圖四可以看的出來當網路還有足夠的可用頻寬時，我
+們所提出的演算法與最短路徑演算法在 Throughput 的表現上都相當優異；但是在可用頻寬
+越小的情況下，使用最短路徑演算法的 Throughput 下降的幅度相當大；相反的，我們所提
+出的演算法在可用頻寬越小的時候 Throughput 只有些微的下降。也就是說，本研究所提出
+的方法可以有效的提升網路的 Throughput。 
+0
+5
+10
+15
+20
+25
+30
+35
+40 35 30 25 20 15 10
+Link最大可用頻寬(Mb)
+平
+均
+傳
+輸
+時
+間
+(s)
+proposed algorithm
+shortest path
+0
+2
+4
+6
+8
+10
+40 35 30 25 20 15 10
+Link最大可用頻寬(Mb)
+封
+包
+遺
+失
+率
+(%
+)
+proposed algorithm
+shortest path
+條 link 可用頻寬的變異數所得到的結果都比最短路徑演算法好。因此，我們確信我們的方
+法是可行且效益較高的。 
+ 6 . 參考文獻 
+[1] Victoria Fineberg, Lucent Technologies. "A Practical Architecture for implementing 
+End-to-end QoS in an IP Network" IEEE Communications Magazine Janaury 2002. 
+[2] Tímea Dreilinger, "DiffServ and MPLS", International Workshop NGNT. 
+[3] B. Zhang and H.T. Mouftah, "Fast bandwidth-constrained shortest path routing algorithm" 
+IEEE Proc-Commun October 2006. 
+[4] Zheng Wang and Jon Crowcroft "Quality of Service Routing for Supporting Multimedia 
+Applications" IEEE Journal on Selected Area in Communications 1996. 
+[5] Lee Tseng Chang Tsai "Introduction to the Design and Analysis of Algorithms" McGraw-Hill 
+Education Asia 2005. 
+[6] ,Juha Heinanen, Telecom Finland "Multiprotocol Encapsulation over ATM Adadtation layer 
+5", July 1993. 
+[7] M. Laubach "Classical IP and ARP over ATM" January 1994. 
+[8] Ximing Zeng, Chung-Horong Lung, Changcheng Huang. "A Bandwidth-efficient Scheduler 
+for MPLS DiffServ Networks" IEEE 2004. 
+[9] Jacobson, V, Nichols, K . Poduri, K. "An Expedited Forwarding PHB" IETF RFC 259 1999. 
+[10] Ximing Zeng, Chung-Horong Lung, Changcheng Huang. "A Bandwidth-efficient Scheduler 
+for MPLS DiffServ Networks" IEEE 2004. 
+[11] Ali C. Begen and Yucel Altunbasak "Multi-Path Selection for Multiple Description Encoded 
+Video Streaming" Georgia Insitute of Technology 
+[12] Chun Zhang, Yong Liu, Weibo Gong "On Optimal Routing with Multiple Traffic Matrices"  
+[13] Coskun Cetinkaya, Edward W. Knightly "Opportunistic Traffic Scheduling Over Multiple 
+Network Paths"  
+[14] A. S. Fraenkel and D. Lichtenstein, "Computing a perfect strategy for n*n chess requires 
+time exponential in n" Automata, Languages, and Programming, Springer LNCS 115 (1981) 
+278-293 and J. Comb. 
+[15] Roch A.Guerin Ariel Orda "Computing Shortest Paths for Any Number of Hops" IEEE  
+2002. 
+ 7 . 發表文獻 
+Wu-Hsiao Hsu; Sheng-Cheng Yeh; Tsz-Heng Guo; Hia-Hui Wang, “Multiple Paths Selection 
+Algorithm for DiffServ-Aware MPLS Traffic Engineering”, IEEE Wireless Communications, 
+Networking and Mobile Computing, 2009. WiCom '09. 5th International Conference. 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 97-2221-E-130-003- 
+計畫名稱 一個適用於 IPTV 服務的端點對端點 QoS 網路的研究 
+出國人員姓名 
+服務機關及職稱 
+徐武孝副教授 銘傳大學資訊工程研究所 
+會議時間地點 中國大陸, 北京, 2009 年 9 月 24-26 日 
+會議名稱 IEEE Wireless Communications, Networking and Mobile Computing (WiCOM 2009) 
+發表論文題目 Multiple Paths Selection Algorithm for DiffServ-Aware MPLS Traffic  Engineering 
+一、參加會議經過 
+此研討會的全名為 2009 年無線網路、網路及移動式計算國際研討會，由 IEEE 主辦，於
+2009 年 9 月 24 至 2009 年 9 月 26 日在中國大陸北京市的友誼 HoTel 盛大舉行，為期 3 天。
+參加的學者來自於世界各地，例如日本、韓國、芬蘭和美國等國家。我非常榮幸能機會參加
+這次國際性的研討會，和世界各國的學者互相交流研究的成果。 
+參加的議程是第 3 天(2009 年 9 月 26 日)下午的網路協定 Session，主持人為日本大學的
+教授。我在議程中提出在 MPLS 的網路如何做多條路徑傳送的演算法(如附件)，以模擬證明
+可以大幅度提升多媒體串流品質；許多學者對於提出的構想充滿了興趣，問了許多問題，經
+過熱烈的討論後，給與一些建議，讓我受益良多。會後，我和許多學者進行更深入的討論，
+學者們也不吝嗇地分享他們的相關研究的成果和解決問題的方法。此外，在 2009 年 9 月 24
+至 2009 年 9 月 26 日之間我還參加了其它的議程和博覽會，見識到其他國家學者的研究；其
+中還遇到了一些來自臺灣其它大學的教授，互相分享參加研討會的心得。 
+此會議於 2009 年 9 月 26 日結束，帶回了各國的研究結果和心得，對於未來的研究有非
+常大的幫助。 
+二、與會心得 
+由衷地感謝國科會的補助，讓我能有機會參與這次的國際性研討會，見識到各國學者的
+研究成果，並且與他們進行深入的討論，從不同的角度去探討研究的內容與問題，這是非常
+難得的機會。在報告的過程中，議程的主持人和其他學者也給與許多建議，對於以後的研究
+都會有非常大的幫助與啟發。 
+此外，我很高興有機會參觀的北京；在城市的每個角落都可以看到北京在舉辦 2008 年的
+奧運後，都市已完全漸漸地邁向國際化，無論是北京機場、街道，甚至是交通與治安，都可
+以看到努力的成果。北京充滿了歷史的味道，曾經是明、清兩個朝代的首都，每個古蹟都讓
+人由衷敬佩古人的智慧與精神，直到如今仍然是政治中心。 
+最後，希望以後能有更多的機會參加國際研討會，和各國的學者討論研究的問題與解決
+方法，增加學術的交流，開闊國際視野。 
+boundary node A will use the link state database to find the 
+LSPB that has sufficient available bandwidth and the fewest 
+number of nodes passed through to reach node H. First, the 
+HC value of node B is set as 0 by boundary node A. Then, the 
+boundary node A uses link state database to find all the nodes 
+adjacent to node B. Finally, the HC value of all the adjacent 
+nodes with B is set as 1. For example as shown in Figure 1, 
+the HC value of nodes C, E ,and F is set as 1 by boundary 
+node A.  
+Step 3: Repeat step 2, the nodes adjacent to the nodes which 
+HC value is 1 are found and set as 2 by the boundary node A. 
+As shown in Figure 2, the HC value of the nodes adjacent to 
+the nodes C, E and F is set as 2. Note that if these adjacent 
+nodes already have a HC value, their HC value does not need 
+to be changed because the updated HC value may be larger 
+than or equal to the original HC value. Thus, the HC value of 
+nodes H and I is set as 2, but the HC value of nodes B, C and 
+E would not be changed by the boundary node A.  
+Step 4: This process is repeated until the destination node H is 
+found. As shown in Figure 2, the HC value of node H is set as 
+2 by boundary node A. At this time, the boundary node A 
+records the individual HC values from node B to each of the 
+node in the network. Obviously, the shortest path from node B 
+to destination node H passes through two hops. Hence, the 
+boundary node A may find a path which starts from node B 
+and reaches destination node H through the nodes which HC 
+value is 0, 1 and 2. 
+Step 5: There may be more than one shortest path from node 
+B to node H (passing through two hops). Taking Figure 2 as 
+an example, there are two shortest paths from node B to node 
+H: path p1(B, E, H) and p2(B, F, H). In this case, the boundary 
+node A will select the path with the largest available 
+bandwidth. Suppose AB(p) represents the maximum available 
+bandwidth of path p. AB(p1) and AB(p2) can be computed as 
+follows: 
+AB(p1) = min { )( j
+BE
+a CTl , )( j
+EH
+a CTl } = min {5, 8} = 5 Mb. 
+AB(p2) = min { )( j
+BF
+a CTl , )( j
+FH
+a CTl } = min {3, 7} = 3 Mb. 
+Thus, p1 (B, E, H) will be the path selected by boundary node 
+A. At this time, the LSPB is found and denoted by pB (A, B, E, 
+H). 
+Step 6: The available bandwidth of each link the LSPB passes 
+through must be updated. The procedure of update is that the 
+boundary node A will subtract the maximum available 
+bandwidth of LSPB from the available bandwidth of each link 
+passed through by LSPB. Suppose AB(LSPB) represents the 
+maximum available bandwidth of LSPB. AB(LSPB) can be 
+computed as follows: 
+AB(LSPB) = min { )( jABa CTl , )( j
+BE
+a CTl , )( j
+EH
+a CTl }  
+= min {8, 5, 8} = 5 Mb. 
+Thus, the boundary node A will subtract 5 Mb from the 
+available bandwidth of links l(A, B), l(B, E) and l(E, H). 
+Figure 3 shows the updated result.  It is worth noting that the 
+update for the available bandwidth of each link is only 
+recorded in boundary node A. Therefore, the available 
+bandwidth of each link in the link state database is unchanged. 
+Step 7: The boundary node A takes nodes C and D as the 
+starting points and repeats the steps 2 through 6 to find the 
+LSPC and LSPD, separately. As shown in Figure 4, LSPC and 
+LSPD are found and denoted by pC (A, C, F, H) and pD (A, D, 
+G, I, H), separately.  
+ 
+A
+D
+G
+E
+HSource
+I
+7 9
+5
+10
+5
+9
+8
+3 6
+7
+10
+8
+3
+8
+B
+C F
+Destination
+8
+5HC=0 HC=1
+HC=1
+HC=1
+Figure 1. The HC value of the nodes C, E and F is set as 1 
+A
+D
+G
+E
+HSource
+I
+7 9
+5
+10
+5
+9
+8
+3 6
+7
+10
+8
+3
+8
+B
+C F
+Destination
+8
+5HC=0 HC=1
+HC=1
+HC=1
+HC=2
+HC=2
+HC=2
+HC=2
+The HC value does not
+ need to be changed
+Figure 2. The HC value of the nodes C,E, and F is set as 2.
+A
+D
+G
+E
+HSource
+I
+7 9
+5
+10
+5
+9
+8
+3 6
+7
+10
+3
+3
+8
+B
+C F
+Destination
+3
+0
+LSPB
+Figure 3. The available bandwidth of links LSPB passes through is updated.
+A
+D
+G
+E
+HSource
+I
+7 9
+5
+10
+5
+9
+8
+3 6
+7
+10
+8
+3
+8
+B
+C F
+Destination
+8
+5
+LSPB=(A-B-E-H)
+LSPD=(A-D-G-I-H)
+LSPC=(A-C-F-H)
+Figure 4. Three LSPs found by boundary node A  
+C. How to allocate the network traffic to these selected LSPs 
+We have already proven that the total transmission time 
+from the source and the destination is the minimum, when the 
+transmission time of each selected LSP is the same. Hence, the 
+aim to allocate and adjust traffic to these selected LSPs is to 
+minimum the total transmission time between the source and 
+the destination.  
+Given that n LSPs from the source to the destination have 
+been found, the variables required are defined as follows:  
+T : the maximum transmission time of n LSPs 
+ti : the transmission time from the source to the destination 
+via LSPi when there is no traffic carried by the LSPi.  
+di: the transmission time from the source to the destination 
+via LSPi when there is some traffic carried by the LSPi; ti 
+should be subtracted from the transmission time.  
+mi: the allocated traffic for LSPi.  
+To allocate the network traffic to these selected LSP, the 
+proposed method has two steps:  
+Step 1. Initial traffic is allocated to each selected LSP 
+according to the maximum available bandwidth of each LSP. 
+It is supposed that the requested bandwidth is k Mb, and the 
+transmission time of LSPi is (ti+di). First, the source obtains 
+the maximum available bandwidth of each LSP from the link 
+state database; then initial traffic is allocated to each LSP 
+according to its individual maximum available bandwidth. 
+Thus, the allocated initial traffic for any LSPj is 
+.
+)(
+)(
+1
+Mbk
+LSPAB
+LSPAB
+n
+i
+i
+j
+×
+⎥⎥
+⎥⎥
+⎦
+⎤
+⎢⎢
+⎢⎢
+⎣
+⎡
+∑
+=
+ 
+Finally, the source will calculate the transmission time of each 
+LSP. Let Mt be the average transmission time, and can be 
+denoted as follows:  
+n
+dt
+M
+n
+i
+ii
+t
+∑
+=
++
+=
+1
+)( . 
+Authorized licensed use limited to: Ming Chuan University Library. Downloaded on November 17, 2009 at 23:27 from IEEE Xplore.  Restrictions apply. 

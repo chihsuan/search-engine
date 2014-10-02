@@ -1,0 +1,432 @@
+中文摘要 
+本計畫旨在研究設計一個 XML 與 Relational Database 之間轉換及能夠安全地進行資料
+維護操作的 API （命名為 XML-RDB API）與研究將經過加密處理的 XML 文件完整地存
+入關聯式資料庫後，在進行資料查詢時能夠有最佳化的資料查詢效率。本計畫將完成以下
+之工作項目：(1)實作關聯式 XML 資料庫：可以將原始或經加密過後的 XML 文件儲存於關
+聯式資料庫中，並利用 XML-RDB API 執行資料維護操作；(2)設計與實作 XML-RDB API；
+(3)完成最佳化查詢對儲存於資料庫表格中經加密的 XML 文件的演算法實作；(4)完成
+XML-RDB API 的實務應用測試；(5)完成報告與發表研究成果。 
+ 
+關鍵詞： XML-RDB 應用程式介面, 可擴展標示語言，XML 查詢語言，文件安全語言，
+安全，資料庫。  
+ 
+ 1
+1. 前言 
+XML文件已廣泛被應用到各個資訊系統領域，例如出版、文件規格、資料儲存、電子
+資料交換等等；同時XML在Web Services與Service Oriented Architecture (SOA)的帶動下，已
+漸漸顯示其做為系統整合的重要角色。由於XML常被用來做為異質系統間的資料交換或資
+料傳輸協定格式，XML文件傳送至目的主機後會被儲存至檔案系統或是資料庫，因此，如
+何將整個XML文件完整地保存與確保其安全已經漸漸變成重要的議題。因此，W3C於 2002
+年訂定出有關XML文件的加密與簽章的處理建議規範[1,2]，學術界也提出了許多針對XML
+文件安全的相關研究[3-10]。 
+由於愈來愈多的資料以 XML 為標準格式來儲存，如何從 XML 的“資料”轉變成有價
+值的“資訊”將是另一波 XML 發展的重點。要對資料做有效的管理需透過資料庫管理系
+統的應用，但由於 XML 的資料格式和傳統資料不同，將 XML 文件存入關聯式資料庫的挑
+戰也很大，常見的方式有下列幾種： 
+1. 拆解法(Shred)：將 XML 文件的每一個元素拆解，再存入數個資料表格中。其樹狀
+資料結構要存入關聯式資料庫系統前必需有一套編碼機制對 XML 文件內的各個元
+素做順序編號。 
+2. CLOB (Character Large Object)：利用 character form 來完整儲存 XML 文件。優點是
+簡單、不用複雜的 mapping、非常精確地保存原始的文件、容易用 XPath 與 XQuery
+來搜尋。缺點是沒有額外的 indexing 技術來支援查詢，查詢的動作會很花時間。另
+外，從文件中取得部份資料很費時、修改資料需要整個文件重新寫入、當文件很大
+時儲存成本也會很大。 
+3. BLOB (Binary Large Object)：利用 binary form 編碼的形式來儲存 XML 文件。使用
+這種編碼方式時，修改文件可能需要整個文件重新寫入、也需要把整個文件都鎖住。
+此外，修改資料時也要同時修正每一個 index entry，讀取一小部份資料時可能要把
+整份文件都從磁碟中讀出。 
+4. 原生XML資料庫(Native)：保留階層式的XML格式存進資料庫，並且利用XML的樹
+狀節點特性，進行查詢節點資料或新增、刪除資料。SQL Server 2005 依循W3C InfoSet
+規格，以特有的內部結構存放XML文件，並保存XML文件語意[11]。新的XML技術
+可以透過變數或資料欄位定義XML Schema，驗證XML資料輸入或更新時的正確
+性。此外可以利用XQuery查詢語言進行資料查詢，同時也應用XML索引技術，提升
+查詢效率。IBM在 2006 年推出的DB2 9.0 也提出了pureXML的技術與概念[12]，以原
+生的XML資料型態，直接保留原來樹狀結構，同時也支援XML索引功能和XQuery
+查詢。 
+ 
+2. 研究目的 
+由於XML的資料格式與傳統的資料不同，不再適用傳統的資料庫及查詢語法，因此
+W3C依據XML的特性發展出XML的查詢語言—XQuery [14]，以方便對XML資料的管理及
+處理。XQuery主要可從XML文件與內含XML的資料庫中，查詢或擷取資訊。其運作模式如
+Figure 1，規範標準如下： 
+ 
+<?xml version="1.0"?>
+<transactions>
+<transaction>
+<product type="CS" id="p01">
+keyboard
+</product>
+<price>32.00</price>
+<cardinfo> 
+<cardtype>visa</cardtype> 
+<cardlevel>A</cardlevel>
+<cardno>1234-5678-8765-4321</cardno>
+<cardowner>
+<bank>BBA</bank>
+<name>Bruce Hwang</name>
+<id>m123456789</id>
+<expired_date year="2008" month=“May"/>
+</cardowner>   
+</cardinfo>  
+</transaction>
+<transaction>
+<product type="MA" id="p03">
+CD Rom
+</product>
+<price>132.00</price>
+<cardinfo> 
+<cardtype>visa</cardtype> 
+transactions
+transaction
+ 3
+<cardlevel>B</cardlevel>
+<cardno>1234-5678-2222-4321</cardno>
+<cardowner>
+<bank>PPB</bank>
+<name>Dakin Chang</name>
+<id>m123459876</id>
+<expired_date year="2008" month="Feb"/>
+</cardowner>   
+</cardinfo>  
+</transaction>
+</transactions>
+product
+price
+cardinfo
+Keyboard
+Type=“CS” Id=“p01”
+cardtype
+cardlevel
+cardno
+cardowner
+bank
+name
+id
+expired_date
+Year=“2008” Month=“May”
+32.00
+VISA
+A
+1234-5678-8765-4321
+BBA
+Bruce Hwang
+M123456789
+transaction
+product
+price
+cardinfo
+CD ROM
+Type=“MA” Id=“p03”
+cardtype
+cardlevel
+cardno
+cardowner
+bank
+name
+id
+expired_date
+132.00
+VISA
+B
+1234-5678-2222-4321
+PPB
+Year=“2008” Month=“Feb”
+Dakin Chang
+: root node M123459876
+: element node
+: attribute node
+(A)
+(B)
+ 
+Figure 3: Graphical representation of the DOM of the example transactions 
+ 
+將XML存入關聯式資料庫還有另一個重要議題，就是經過加密後的文件如何快速存取
+的問題。最簡單的方式就是先將整份加密過的XML文件利用SQL查詢語言由資料庫中取
+出、解密後，再以XQuery程式來取得所需要的資料，見Figure 4。但是這個方法有兩個缺點： 
+XQuery
+Result X
+Q
+X
+XQuery
+engine
+Xs1 Xs2 Xs3
+Xs4 Xs5 Xs6
+Xs7 Xsn…..
+Relational database
+Decryption
+SQL
+ 
+Figure 4: 從加密的 XML 文件中搜尋一資料的簡單方法
+ 
+一，因為整個文件中被加密的元素(encrypted elements)必須全部被解密。以 XQuery
+的運
+ 
+第
+作方式來說，它會指定文件中的一特定節點，然後將目標文件內的資料取出，並不需
+要將文件中被加密的元素全部解密，要解密的部份應該只是會被輸出的部份與在查詢過程
+  
+ 插入 Node、Attribute、Text-Content： 
+Node 方法，其參數依序為：資料表名稱、資
+ 5
+●
+z Node：使用 XMLType 類別裡的 insert
+料欄位名稱、欲插入之內容值、欲插入之路徑、主鍵欄位名稱、主鍵內容值。 
+例： 
+/*---Insert Node ---*/ 
+new XMLType().insertNode("Table_XML", "XMLData", "<NewElement/>", 
+"/addressbook[1]" ,"ID", "address.xml") 
+ 
+ 
+z Attribute：使用 XMLType 類別裡的 insertAttribute 方法，其參數依序為：資料表名
+稱、XML 欄位名稱、欲插入之屬性名稱、欲插入之屬性值、欲插入之路徑、主鍵
+欄位名稱、主鍵內容值。 
+例： 
+/*---Insert Attribute & value---*/ 
+new XMLType().insertAttribute("Table_XML", "XMLData", "Att", "test", 
+"/addressbook/NewElement" ,"ID", "address.xml"); 
+ 
+ 
+ Text-Content：使用 XMLType 類別裡的 insertContent 方法，其參數依序為：資料表z
+名稱、資料欄位名稱、欲插入之內容值、欲插入之路徑、主鍵欄位名稱、主鍵內容
+值。 
+例： 
+  /*---Insert Text-content ---*/ 
+new XMLType().insertContent("Table_XML", "XMLData", "*Insert content 
+"ID", "address.xml"); 
+ 
+ 
+z Attribute-Value：使用 XMLType 類別裡的 delete 方法，其參數依序為：資料表名稱、
+XML 欄位名稱、欲刪除之路徑、主鍵欄位名稱、主鍵內容值。 
+例： 
+/*---Delete Attribute Value---*/ 
+new XMLType().delete("Table_XML", "XMLData", "/addressbook/Name/@sex", 
+"ID", "address.xml"); 
+ 
+z Te -Content：使用XMLType類別裡的delete方法，其參數依序為：資料表名稱、XMLxt
+欄位名稱、欲刪除之路徑、主鍵欄位名稱、主鍵內容值。 
+例： 
+ *----Delete Text-content----*/  /
+new XMLType().delete("Table_XML", "XMLData", 
+"/addressbook/name[1]/text()", "ID", "address.xml"); 
+ 
+)最佳化查詢儲存於關聯式資料庫中之經過加密的 XML 文件 
+括一個或多個query描述，
+本研
+(3
+Figure 6為對XQuery程式進行轉換的演算。一個XQuery的程式包
+究以功能最強大的FLWOR描述為基礎來發展轉換演算法，其語法定義如下： 
+FLWORExpr ::= (ForClause | LetClause)  
+ 7
+ 9
+; 
+      } 
+      N = N + “return” + 
+ N + “if”  
+f bound variables in BoundVariable_set) 
+BoundVariable_set(i) ≠ null 
+}
+      N N + “ and ”+WhereClause_string+“\n”+“then ”+ 
+ReturnCluase_string+“\n”+“else ()”+“\n”;     
+ 
+    i ntersection(I_set,T_set)=∅ and Intersection(R_set,T_set)≠∅ 
+{ 
+      For i = 1 to (the number of bound variables in BoundVariable_set) 
+    
+BoundVariable_set(i) +“_1”; 
+      For nd variables in BoundVariable_set) 
+Scope_Array(i)+”\“)”+“\n”
+“\n”; 
+      N =
+      For i = 1 to (the number o
+      { 
+N = N +“ ”+“(count(”+BoundVariable_set(i)+“)>0)” 
+if 
+{ 
+   N = N + “ and” 
+} 
+ 
+ = 
+} 
+f I
+Scope_Array = Decryption_Scope(IF_set,IW_set,R_set,T_set); 
+  { 
+         BoundVariable_set_1(i) =  
+      } 
+ i = 1 to (the number of bou
+      { 
+           New_forClause = 
+ForClause_String.replace(BoundVariable_set(i), 
+BoundVariable_set_1(i)) 
+      } 
+      For i = 1 to (the number o ndVariable_set) 
+ 
+WhereClause_String.replace(BoundVariable_set(i), 
+1(i)) 
+      } 
+      N = 
+ N + New_whereClause +“\n” 
+nd variables in BoundVariable_set) 
+“=decryption(”+ BoundVariable_set_1(i)+“,\“”+ 
+; 
+      } 
+  N = N +“retrun”+“\n
+    
+      For i = 1 to (the number of bound variables in BoundVariable_set) 
+BoundVariable_set(i) ≠ null 
+}
+      N N + “ and ”+WhereClause_string+“\n”+“then ”+ 
+ReturnCluase_string+“\n”+“else ()”+“\n”; 
+ 
+    if Intersection(I_set,T_set)≠∅ and Intersection(R_set,T_set)≠∅ 
+f bound variables in Bou
+      { 
+          New_whereClause = 
+BoundVariable_set_
+N + New_forClause +“\n” 
+      N =
+      For i = 1 to (the number of bou
+      { 
+N = N +“let ” + BoundVariable_set(i) +  
+Scope_Array(i)+"\“)”+“\n”
+”; 
+ 
+  N = N + “if”  
+      { 
+N = N +“ ”+“(count(”+BoundVariable_set(i)+“)>0)” 
+if 
+{ 
+   N = N + “ and” 
+} 
+ 
+ = 
+} 
+{ 
+P_set = XPath_Transformation(IF_set, T_set, S) 
+ 11
+The time required to obtain encrypted data by decrypting the whole XML document 
+密，沒有被查詢的資料是不會被解密的；這樣可以大幅降低不必要的解密程序，增進查詢
+的效能。 
+ 
+Table 1: 
+Average time (in seconds) 
+Total 
+Number of 
+queried Number of Number of 
+elements in 
+XML file 
+elements 
+which are 
+elements that 
+are decrypted
+encrypted 
+elements 
+encrypted 100 bytes
+* 500 bytes* 
+101 10 10 10 1.8984 3.7687 
+101 10 20 20 3.1155 6.7626 
+101 10 30 30 4.3640 9.8033 
+101 10 40 40 5.2296 12.7827 
+101 10 50 50 6.5156 15.7282 
+101 10 60 60 7.3671 18.6812 
+101 10 70 70 8.6720 21.4690 
+101 10 80 80 9.9843 24.8675 
+101 10 90 90 11.2171 27.3998 
+101 10 100 100 12.1735 29.9295 
+*Nu er of by  to be e ypted  elem
+ 
+Table 2: The time required statements generated 
+by our algorithm 
+mb tes ncr  in an ent 
+ to query encrypted documents using the XQuery 
+Average time (in seconds) 
+Total 
+elements in 
+XML file 
+queried 
+elements 
+which are 
+N
+ele
+should be 
+decrypted 
+encrypted 
+elements 
+Number of umber of 
+ments that Number of 
+encrypted 100 bytes* 500 bytes* 
+101 10 10 10 1.8937 3.7672 
+101 10 20 10 1.8968 3.7735 
+101 10 10 30 1.8921 3.7781 
+101 10 10 40 1.8984 3.7702 
+101 10 10 50 1.8077 3.7626 
+101 10 10 60 1.9157 3.7657 
+101 10 10 70 1.8469 3.7656 
+101 10 10 80 1.8531 3.7765 
+101 10 10 90 1.1987 3.7891 
+101 10 10 100 1.8938 3.7828 
+*Number of by o be encry an  
+ 
+5. 參考文獻 
+ Takeshi Imamura, Blair Dillaway, and Ed Simon, “XML Encryption Syntax and Processing. 
+mendation 10 December 2002,” http://www.w3.org/TR/xmlenc-core/. 
+2002. 
+3 
+or XML Documents,” International Conference on 
+tes t pted in element
+1
+W3C Recom
+2 Mark Bartel, John Boyer, Barb Fox, Brian LaMacchia, and Ed Simon, “XML-Signature 
+Syntax and Processing W3C Recommendation,” 12 February 
+http://www.w3.org/TR/xmldsig-core/ 
+Gwan-Hwan Hwang and Tao-Ku Chang, “Document Security Language (DSL) and an 
+Efficient Automatic Securing Tool f
+Internet Computing 2001, 24-28 June, Las Vegas, Nevada, USA, pp: 393-399. 
+ 13
+17 
+and querying ordered XML using a relational database system,” 
+18 
+Addison-Wesley, 2003.  
+lational Database,” 1134-1145, VLDB 
+20 
+onal databases,” The VLDB Journal-The International Journal on Very 
+21 
+ Conference on Computer and 
+22 
+xml in RDBMS,” Proceedings of the 2007 
+23 
+ocuments in XQuery,” The 18th Australasian Database Conference (ADC 
+ 
+6. 
+本計畫發展了設計一個 XML 與 Relational Database 之間轉換及能夠安全地進行資料維
+為 XML-RDB API）與研究將經過加密處理的 XML 文件完整地存入
+關聯
+Stratis D. Viglas, Kevin Beyer, Jayavel Shanmugasundaram, Eugene Shekita, and Chun 
+Zhang, “Storing 
+Proceedings of the 2002 ACM SIGMOD international conference on Management of data, 
+Pages: 204-215, 2002.  
+Michael Rys, “XQuery and Relational Database Systems. In ‘XQuery From the Experts’,” 
+Edited by Howard Katz, 
+19 Shankar Pal, Istvan Cseri, Gideon Schaller, Oliver Seeliger, Leo Giakoumakis, Vasili 
+Zolotov, “Indexing XML Data Stored in a Re
+Conference, 2004. 
+Andrey Balmin and Yannis Papakonstantinou, “Storing and querying XML data using 
+denormalized relati
+Large Data Bases, Volume 14 Issue 1, Pages: 30-49, 2005. 
+Ventzislav Tzvetkov and Xiong Wang, “DBXML - Connecting XML with Relational 
+Databases,” Proceedings of the The Fifth International
+Information Technology, Pages: 130-135, 2005. 
+Zhen Hua Liu, Muralidhar Krishnaprasad, James W. Warner, Rohan Angrish, and Vikas 
+Arora, “XML: Effective and efficient update of 
+ACM SIGMOD international conference on Management of data SIGMOD '07, Pages: 
+925 – 936, 2007. 
+Tao-Ku Chang and Gwan-Hwan Hwang, “A Processing Model for the Optimal Querying of 
+Encrypted XML D
+2007), Ballarat, Australia. 
+計畫成果自評 
+護操作的 API （命名
+式資料庫後，在進行資料查詢時能夠有最佳化的資料查詢效率。我們實作了一個 XML
+資料庫，可以將原始或經加密過後的 XML 文件儲存於關聯式資料庫中，XML 可以是個資
+料型態，也可以是個 data string，並利用 XML-RDB API 進行查詢。此計畫的研究成果已於
+2008 年 10 月份投稿至國際期刋 Data & Knowledge Engineering。同時我們也將更進一步研
+究是否有其它方法能夠大幅改善對 XML 文件之操作與查詢效率。 
+ 

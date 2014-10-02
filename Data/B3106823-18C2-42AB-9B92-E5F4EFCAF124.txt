@@ -1,0 +1,524 @@
+此新的 CMP 架構最多可以提升約 32%的執
+行效能。 
+本年度之計畫我們探討如何改善記憶
+體子系統之效能。由於存取 CPU 晶片外部
+之記憶體若產生失誤(miss)，處理器必須等
+上幾百個週期才能得到資料，因此如何降
+低記憶體存取失誤的機率便成為一個非常
+重要的設計議題[3, 4]。除了傳統的預先擷
+取技術外，最近的研究探討如何在既有的
+預先擷取技術支援外，進一步利用不同的
+執行方式來改善預先擷取的效果。其中
+Mutlu 等針對超純量處理器提出 runahead
+之執行模式，此技術可以在不需增加指令
+視窗  (instruction window) 以及 reorder 
+buffer 大小的情況下，當有一個發生失誤之
+load 指令到達 reorder buffer 的最前面時，
+則系統進入 runahead 的執行模式[5]。在此
+執行模式下，系統會預測所缺少之資料，
+例如此 missing load 的資料內容，以便往前
+執行。執行過程中會將資料從遠端記憶體
+預先擷取入近端之記憶體。而在 missing 
+load 讀取到資料後，系統會切換回一般執
+行模式，且所有在 runahead 執行模式下產
+生之結果均不會影響正確之系統狀態。另
+外，Slipstream 技術應用在 CMP-based 共享
+記憶體多處理機系統，則是利用 CMP 在每
+個晶片中有兩個 PE 的特性來執行應用程
+式[6]。它們讓同一個 CMP 中的一個 PE 以
+一般的方式執行一個 thread，而另一個 PE
+則執行精簡過後的 thread，精簡的方式是跳
+過遠端 store 記憶體存取指令與同步指令。
+執行精簡 thread 的 PE 可以執行的較快速，
+因此可以先將遠端之資料擷取到近端之記
+憶體中，方便另一個 PE 的執行。 
+我們的 CMP 同時具備有超純量處理
+器與 CMP 的特性，而且大超純量執行模式
+乃整合四個 PE 成為單一個超純量處理
+器。我們將根據兩種執行模式的特性，提
+出適合的預先擷取機制。 
+  
+三、結果與討論 
+   
+我們所提出之具雙重執行模式之單晶
+片多處理機除了同時具備超純量與 CMP
+兩種架構特性外，我們的 CMP 還包括將四
+個 PE 整合為一個更大之超純量架構。在平
+行多引線模式下，每個 PE 各會執行一個
+thread，而且每個 PE 是一個在每個週期會
+擷取四個指令進來執行的超純量架構。當
+一個 PE 遇到長時間延遲之記憶體存取擋
+在 reorder buffer 的前面時，原則上它可以
+利用 runahead 執行模式來進行記憶體資料
+之預先擷取，但是原則上只能往前執行到
+此 iteration 結束，因為該 PE 必須變成
+nonspeculative 而且此 iteration 執行完畢
+後，才可以執行下一個 iteration。可是如此
+之限制在 iteration body 不大時將無法有效
+藉由 runahead 模式進行資料預先擷取之效
+果。有鑑於此，不管 PE 是 nonspeculative
+或 speculative，允許 PE 在 runahead 模式中
+跨 iteration 執行絕對是必要的。我們必須
+要解決之問題是當跨 iteration 執行時，暫
+存器之相依性關係若以原有之 synchronous 
+scoreboard 機制來對應則完全不對了。我們
+的設計方式是如下。首先，從跨 iteration
+開始，所有暫存器均讀取 PE 區域內之值，
+每道指令執行後，將結果寫入目的暫存
+器，但是必須將此目的暫存器設成 INV，
+因為此時之 synchronous scoreborad 完全失
+效。另外，對於 speculative PE，我們以 stride
+的方式猜測其下一個 iteration 的 index，同
+樣的，也將此道指令之目的暫存器設成
+INV。由於跨 iteration 後，所有指令讀取之
+暫存器之值均可能是錯誤的，因此所有目
+的暫存器均設為 INV。也因此，load 指令
+的 effective address 可能會產生 exception，
+所以必須讓系統在 runahead 模式下不執行
+這類指令而且忽略相關之 exception。最
+後，在進入 runahead 模式時，除了儲存暫
+存器檔案之內容外，不須針對 synchronous 
+scoreboard 進行備份。相反的，在 runahead
+模式時，為了確保獲取其他 PE 對於暫存器
+所 做 之 更 新 結 果 ， 必 須 隨 時 更 新
+synchronous scoreborad 之內容，同時更新
+備份暫存器檔案內之值。如此，當從
+runahead 模式返回時，才可以會取最新之
+暫存器結果。但是，在進入 runahead 模式
+後，所有對於設為 INV 之目的暫存器所進
+行之動作，都不會影響 synchronous bus 之
+內容。 
+另一方面，由於每個 PE 會有自己的
+L1 cache，因此會有資料一致性的問題，於
+ 2
+元全部設為 0。當某道目的暫存器為 Ry 之
+指令會讀取暫存器 Rx 之值，且(Rx, Rx)之
+值為 1 時，將(Ry, Rx)之值也設為 1。若
+load 指令之來源暫存器為 Rd(計算位址之
+用)，則檢查 Rd 這個 column 是否有位元為
+1，若有，則代表這道指令會間接存取記憶
+體，因此將這兩個暫存器所對應之指令 PC
+值形成一對加入預先擷取之架構中。在後
+續的預先擷取機制中，我們會以每一對
+load 指令來執行預先擷取之功能。首先我
+們以 stride 的方式預測第一道的 load 指
+令，然後第二道指令則以第一道指令的結
+果當成其預先擷取之根據。 
+ 4
+另外，本年度我們也以編譯技術來改
+善整體之執行效能。我們將 loop 經由類似
+distribution 與 fusion 之功能，讓 PE 間
+之相依性降低，如此藉由資料之重新配
+置，讓每個 PE 存取記憶體時可以不受其他
+PE 之干擾。詳細演算法請參考圖二所示，
+效能評估之結果請參考圖三。圖三中，
+uniform、upper 與 lower 分別代表相依性
+之分布為平均、上三角形與下三角形，其
+中上三角形代表越接近 loop body 之指令
+越有可能具備相依性，而下三角形則相反。 
+ 
+四、計畫成果自評 
+ 
+本年度計畫之執行主要是針對原計畫
+書中所提之改善記憶體存取效能做一研
+究。我們研讀了目前其他人的研究成果，
+了解其設計上之優缺點，然後提出了一個
+適合於我們 CMP 架構的設計方法，因此是
+順利達成原計畫書之設定目標。我們已經
+將部份之研究成果發表於 IEEE IWNAS 國際
+會議中[8]，目前我們正在整理其他的研究
+成果，計畫於近期匯集成論文投稿至國際
+會議與期刊上發表。 
+ 
+五、參考文獻 
+ 
+[1]  Wu, C.-C.: Embedding a Superscalar Processor 
+onto a Chip Multiprocessor. Microprocessors 
+and Microsystems, 28(4) (2004) 147 – 156. 
+(SCI) 
+[2]  Chao-Chin Wu and Guan-Joe Lai, “A 
+Dynamically Clustered Chip Multiprocessor,” 
+IEEE PACRIM’05, Canada, 2006. 
+[3]  Yuan Chou; Fahs, B.; Abraham, S., 
+“Microarchitecture optimizations for exploiting 
+memory-level parallelism,” Proceedings of ISCA, 
+2004, 76- 87. 
+[4]  H. Zhou and T. Conte, “Enhancing Memory 
+Level Parallelism via Recovery-Free Value 
+Prediction,” ICS, June 2003. 
+[5]  O. Mutlu, J. Stark, C. Wilkerson and Y. Patt, 
+“Runahead Execution: An Alternative to Very 
+Large Instruction Windows for Out-of-order 
+Processors,” in 9th International Sysmposium on 
+High Performance Computer Architecture, 
+February 2003. pp. 20 – 25. 
+[6]  Ibrahim, K.Z.; Byrd, G.T.; Rotenberg, E.; 
+“Slipstream execution mode for CMP-based 
+multiprocessors,” HPCA-9 2003, pp. 179 – 190. 
+[7]  O. Mutlu, H. Kim, Y. N. Patt, “Address-Value 
+Delta (AVD) Prediction: Increasing the 
+Effectiveness of Runahead Execution by 
+Exploiting Regular Memory Allocation 
+Patterns,” MICRO’35, 2005, pp.233-244. 
+[8]  Chao-Chin Wu and K. C. Lai, “A Loop 
+Optimization Technique for Speculative Chip 
+Multiprocessors,” IWNAS 2006, pp. 55-56. 
+ 
+ 
+圖一、間接記憶體存取指令之偵測電路 
+ 
+Algorithm: Algorithm for lengthening dependence distance                               
+Loop1  ∅; Loop2  ∅; Loop3  ∅; Loop4  ∅;  
+void lengthen_distance( ) 
+1: construct the dependence graph DG for the program P; 
+2: for all loop L in P do 
+3:  d  the minimum dependence distance of the loop L; 
+4:  if(d > 3)  d  4; 
+5:  Loopd  Loopd ∪L; 
+6: end for 
+7: for all loop L not in Loop4 do 
+8:  split L into several small loops partitioned by DG and then modify DG accordingly; 
+10:  for all the new generated loop l from L 
+11:   D  the minimum dependence distance of the loop l; 
+12:   if(d > 3)  d  4; 
+13:   Loopd  Loopd ∪l; 
+14:  end for 
+15: end for 
+16: for i from 3 to 1 do  
+17:  for all loop L in Loopi do  
+18:   merge_loops(L); 
+19: apply loop fusion and loop unrolling when necessary  
+ 
+void merge_loops(loop L) 
+1: n  the number of iterations of L; 
+2: d  the minimum dependence distance of L; 
+3: l  select_a_candidate(L, d); 
+4: if (l ≠ null) 
+5:  l’  the first n *3(2–d ) iterations of l; 
+6:  l’’  the remaining iterations of l; 
+7:  L’  merge L with l’; 
+8:  modify DG accordingly; 
+9:  Loop4-d  Loop4-d - l; 
+10:  Loop4-d  Loop4-d ∪ l’’; 
+11:  Loop4  Loop4 ∪ l’; 
+12:  Loopd  Loopd - L; 
+13: end if 
+ 
+loop *select_a_candidate(loop L, int d) 
+1:  againg:  for all loop l in Loop4-d  
+2:    nl = the number of iterations of l; 
+3:    if(nl >= n*3(2–d )and merging l with L will not violate dependence 
+       relations according to DG)   return l;  
+4:   end for 
+5:      if(++d <= 4) goto again; 
+6:   return null;  
+圖二、增加資料存取區域性之演算法 
+ 
+3
+3.1
+3.2
+3.3
+3.4
+3.5
+3.6
+3.7
+3.8
+3.9
+4
+5 10 15 20 25 (%)
+Sp
+ee
+du
+p
+uniform
+upper triangle
+lower triangle
+ 
+圖三、效能評估之結果 
+金，希望能網羅留洋取得國際專業學位之研發人才與當地汲汲於追求紮實技術能力之學
+子，共同探討新一代 CPU 軟硬體技術之研究。由於大陸研究人力不虞匱乏，因此當有
+國際廠商提出合作方案時，可以吸引相當多優秀的人才的參與。即使是 CPU 硬體與編
+譯技術之研究，也有相當不錯之團隊在努力探討。反觀台灣，各大學之研究團隊大多已
+經轉向較容易出版論文，而且最好是單打獨鬥即可研究之領域發展，以致於需要大型團
+隊共同努力及不易有大量論文的研究領域急速萎縮。這樣的結果是一些國際廠商跳過台
+灣而與大陸合作，於是在這些領域台灣便失去了較佳之國際化機會。 
+在參加這次會議的過程中，聽取各國之學者發表最新的研究成果，與之互動，深深感
+染到來自於所有研究學者互相間所產生的熱情與激勵，這對於我往後的研究工作有著相
+當正面而積極的助力。我想持續的參加國際研討會，對於我們研究動力的延續與提升絕
+對是必要的。 
+ 
+三、考察參觀活動(無是項活動者省略) 
+瀋陽市是中國東北第一大城市，可以感受到其發展相當快速，各種現代化設備已經普
+及，廁所也改善得很不錯，但是市民不守規則，造成交通相當混亂，而且常可看到男女
+老少隨地吐痰。這讓我感受到現代化的建設容易，現代化的人民不易，文化水準是必須
+日積月累，由教化慢慢養成的。 
+滿清政府曾於入關前在瀋陽市建立了皇宮，俗稱小故宮。參觀時感受到的是：這是一
+個偉大的民族，開疆闢土，壯大原有中國之版圖。但是同一個民族的後裔子孫竟也塑造
+了腐敗的滿清末年，割地賠款，真教人不勝唏噓。 
+四、建議 
+在與會過程中，以下幾點可做為國內辦大型會議之參考： 
+1. 會議之大會網頁所提供之資訊對於來自世界各地之作者甚為重要，尤其是完整之
+交通與住宿資訊。對於交通不甚發達之會議地點，提供接駁車絕對有其必要性。
+在徵求論文時最好就能跟作者說明以上相關重要資訊，以免作者感到不便而放棄
+投稿的意願。 
+2. 慎選合適之 section chair，因為其會影響整個會議進行之步調與氣氛，更可以
+提出適切之問題。 
+3. 為了方便與會者能與外界保持暢通之連絡管道，大會應提供與會者免費之
+Internet access 服務。 
+ 
+表 Y04 
+A Loop Optimization Technique for Speculative Chip Multiprocessors 
+Chao-Chin Wu and Kuan-Chou Lai* 
+Department of Computer Science and Information Engineering 
+National Changhua University of Education, Taiwan 
+E-mail: ccwu@cc.ncue.edu.tw 
+*National Taichung University, Taichung, Taiwan 
+E-mail: kclai@mail.ntcu.edu.tw 
+Extended Abstract 
+A chip multiprocessor (CMP) can execute multiple threads in parallel in a single chip. For example, the CMP we 
+study in this paper consist of four processing elements (PEs) and each PEs can execute one loop iteration at any time, 
+respectively. All loop iterations will be allocated in-order to the four PEs in a round-robin fashion. Only the iteration 
+with the smallest iteration index among the four PEs is nonspeculative because the executions of its preceding iterations 
+are all completed; the other three running iterations are speculative. If a speculative iteration is found to have read a 
+premature data item, a dependence violations will occur and the speculative iteration and all its successors have to be 
+flushed and restarted, which will degrade the system's performance significantly.  
+A lot of research have been focusing on how to parallelize application programs to achieve better speedups, 
+however, none of them consider the unique feature of the above CMPs. Because at most four consecutive loop iterations 
+are executed in parallel at any time, only the loops with minimum dependence distances less than four will incur 
+dependence violations. Therefore, in this paper we will introduce a loop optimization technique to alleviate the problem 
+of dependence violations.  
+For a loop with a dependence distance less than four, if we can extract iterations from other loop(s) and insert 
+them into between two dependent iterations of the loop, the minimum dependence distance can be lengthened to be 
+larger than three. Of course, the essential requirement is that the dependence relations in the program cannot be violated. 
+For a loop with the minimum dependence distance of three, two and one, we need to insert one, two, and three 
+additional iterations into between any two original adjacent iterations, respectively. On the other hand, for a loop with 
+the minimum dependence distance of three, two and one, the additional iterations can come from a loop with the 
+minimum dependence distance larger than zero, one, and three, respectively. The requirement is that in the newly 
+merged loop the minimum dependence distance between adjacent inserted iterations also need to be larger than three. 
+Of course, the additional iterations also can come from multiple loops only if the dependences are enforced and the 
+minimum dependence distance is larger than three. The more detailed description is shown in Fig. 1.   
+We present how to transform a real application code to enlarge its cross-iteration dependence distance in this 
+section. The example shown in Fig. 2(a) is a bubble sort subroutine extracted from the mgrid application in the SPEC 
+CPU2000 benchmark suite. After we split a loop into several small loops partitioned by dependence graphs, each one of 
+the four new small loops has a dependence distance of one, as shown in Fig. 2(b). Finally, we can merge all the four 
+new small loops into a single one loop and let the four new loops be executed in turn in the merged loop as shown in 
+Fig. 3(c). As a result, the dependence distance of the merged loop is four, which will avoid any dependence violations in 
+the speculative multithreading mode. Of course, to preserve the correctness of the whole application program, both the 
+loop index and the related array subscripts have to be modified. 
+We have constructed a simulator in C language to analyze the performance gain of our proposed compilation 
+technique. At first, the simulator generates the dependence graph according the specified dependence possibility and the 
+minimum dependence distance. The dependences are distributed uniformly. Next, the simulator simulates the CMP 
+cycle by cycle. According to the specified violation possibility, the simulator generates a violation randomly. When 
+encountering a violation, the simulator will squash and restart the executions of the corresponding PE and its successors. 
+The specified violation overhead will also be simulated accordingly.  
+At first, we compare the performance gains under different program models after applying our method when the 
+minimum dependence distance is equal to one as shown in Fig. 3. The x axis indicates the different dependence 
+possibilities and the legend indicates the different violation possibilities. The speedup is derived by dividing the 
+execution cycles of a specified program models by the execution cycles of a program model under ideal case. The ideal 
+case means that after applying our method, the minimum dependence distance can be lengthened to be larger than three. 
+Consequently, the speedup is rather optimistic. When the dependent possibility or the violation possibilities becomes 
+larger, the speedup becomes higher. This is because when the dependence possibilities becomes larger, there are more 
+opportunities a PE has nothing to do but wait for another PE to produce its dependent data. When the dependence 
+possibility becomes larger, more consumer instructions will encounter dependence violations because these consumer 
+instructions may have read immature data as shown in Fig. 4. Moreover, the number of violations becomes larger when 
+the violation possibility becomes higher. The best speedup is approximate 3.9 when there are high dependent and 
+violation possibilities as shown in Fig. 3. In such case, because every iteration depends on its immediate preceding 
+iteration, a iteration cannot be executed successfully until all its preceding iterations are executed completely. On the 
+other hand, after applying our method, in the best case, the minimum dependence distance becomes to be larger than 
+three. Consequently, every four iterations executed at the same time have no data dependences between different PEs, 
+表 Y04 
+Algorithm: Algorithm for lengthening dependence distance                               
+Loop1  ∅; Loop2  ∅; Loop3  ∅; Loop4  ∅;  
+void lengthen_distance( ) 
+1: construct the dependence graph DG for the program P; 
+2: for all loop L in P do 
+3:  d  the minimum dependence distance of the loop L; 
+4:  if(d > 3)  d  4; 
+5:  Loopd  Loopd ∪L; 
+6: end for 
+7: for all loop L not in Loop4 do 
+8:  split L into several small loops partitioned by DG and then modify DG accordingly; 
+10:  for all the new generated loop l from L 
+11:   D  the minimum dependence distance of the loop l; 
+12:   if(d > 3)  d  4; 
+13:   Loopd  Loopd ∪l; 
+14:  end for 
+15: end for 
+16: for i from 3 to 1 do  
+17:  for all loop L in Loopi do  
+18:   merge_loops(L); 
+19: apply loop fusion and loop unrolling when necessary  
+ 
+void merge_loops(loop L) 
+1: n  the number of iterations of L; 
+2: d  the minimum dependence distance of L; 
+3: l  select_a_candidate(L, d); 
+4: if (l ≠ null) 
+5:  l’  the first n *3(2–d ) iterations of l; 
+6:  l’’  the remaining iterations of l; 
+7:  L’  merge L with l’; 
+8:  modify DG accordingly; 
+9:  Loop4-d  Loop4-d - l; 
+10:  Loop4-d  Loop4-d ∪ l’’; 
+11:  Loop4  Loop4 ∪ l’; 
+12:  Loopd  Loopd - L; 
+13: end if 
+ 
+loop *select_a_candidate(loop L, int d) 
+1:  againg:  for all loop l in Loop4-d  
+2:    nl = the number of iterations of l; 
+3:    if(nl >= n*3(2–d )and merging l with L will not violate dependence 
+       relations according to DG)   return l;  
+4:   end for 
+5:      if(++d <= 4) goto again; 
+6:      return null;  
+Fig. 1. Algorithm for lengthening dependence distance 
+SUBROUTINE BUBBLE( TEN, J1, J2, J3, M, IND ) 
+ REAL*8 TEN( M, 0:1 ) 
+      INTEGER M, IND, J1( M, 0:1 ), J2( M, 0:1 ), J3( M, 0:1 ) 
+ REAL*8 DIR, TEMP 
+ INTEGER I, JXTEMP 
+ IF( IND .EQ. 1 )THEN 
+   DIR = +1.0D0 
+ ELSE 
+   DIR = -1.0D0 
+ ENDIF 
+ DO 100 I=1,M-1 
+   IF( DIR*TEN(I,IND) .GT. DIR*TEN(I+1,IND) )THEN 
+     TEMP = TEN( I+1, IND ) 
+     TEN( I+1, IND ) = TEN( I, IND ) 
+     TEN( I, IND ) = TEMP 
+     JXTEMP    = J1( I+1, IND ) 
+     J1( I+1, IND ) = J1( I,   IND ) 
+     J1( I,   IND ) = JXTEMP 
+     JXTEMP    = J2( I+1, IND ) 
+     J2( I+1, IND ) = J2( I,   IND ) 
+     J2( I,   IND ) = JXTEMP 
+     JXTEMP    = J3( I+1, IND ) 
+     J3( I+1, IND ) = J3( I,   IND ) 
+     J3( I,   IND ) = JXTEMP 
+   ELSE  
+     RETURN 
+   ENDIF 
+100 CONTINUE 
+ RETURN 
+END 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+(a)                
+  
+SUBROUTINE BUBBLE( TEN, J1, J2, J3, M, IND ) 
+ REAL*8 TEN( M, 0:1 ) 
+    INTEGER M, IND, J1( M, 0:1 ), J2( M, 0:1 ), J3( M, 0:1 ) 
+    INTEGER FLAG( M ) 
+ REAL*8 DIR, TEMP 
+ INTEGER I, JXTEMP 
+ IF( IND .EQ. 1 )THEN 
+   DIR = +1.0D0 
+ ELSE 
+   DIR = -1.0D0 
+ ENDIF 
+ DO 100 I=1,M-1 
+   IF( DIR*TEN(I,IND) .GT. DIR*TEN(I+1,IND) )THEN 
+     FLAG[I] = 1 
+TEMP = TEN( I+1, IND ) 
+     TEN( I+1, IND ) = TEN( I, IND ) 
+     TEN( I, IND ) = TEMP 
+   ELSE  
+     FLAG[I] = 0 
+   ENDIF 
+100 CONTINUE 
+ 
+DO 200 I=1,M-1 
+   IF( FLAG[I] .EQ. 1 )THEN 
+     JXTEMP    = J1( I+1, IND ) 
+     J1( I+1, IND ) = J1( I,   IND ) 
+     J1( I,   IND ) = JXTEMP 
+   ENDIF 
+200 CONTINUE 
+ 
+DO 300 I=1,M-1 
+   IF( FLAG[I] .EQ. 1 )THEN 
+     JXTEMP    = J2( I+1, IND ) 
+     J2( I+1, IND ) = J2( I,   IND ) 
+     J2( I,   IND ) = JXTEMP 
+   ENDIF 
+300 CONTINUE 
+ 
+DO 400 I=1,M-1 
+   IF( FLAG[I] .EQ. 1 )THEN 
+     JXTEMP    = J3( I+1, IND ) 
+     J3( I+1, IND ) = J3( I,   IND ) 
+     J3( I,   IND ) = JXTEMP 
+   ELSE  
+     RETURN 
+   ENDIF 
+400 CONTINUE 
+ RETURN 
+END 
+ 
+(b) 
+SUBROUTINE BUBBLE( TEN, J1, J2, J3, M, IND ) 
+ REAL*8 TEN( M, 0:1 ) 
+    INTEGER M, IND, J1( M, 0:1 ), J2( M, 0:1 ), J3( M, 0:1 ) 
+    INTEGER FLAG( M ) 
+ REAL*8 DIR, TEMP 
+ INTEGER I, I1, I2, I3, I4, JXTEMP 
+ IF( IND .EQ. 1 )THEN 
+   DIR = +1.0D0 
+ ELSE 
+   DIR = -1.0D0 
+ ENDIF 
+ DO 100 I=1, 4*(M-1) 
+  IF( MOD(I, 4) .EQ 1 ) THEN 
+        I1 = ( I / 4) + MOD(I, 4)  
+   IF( DIR*TEN(I,IND) .GT. DIR*TEN(I+1,IND) )THEN 
+     FLAG[I1] = 1 
+TEMP = TEN( I1+1, IND ) 
+     TEN( I1+1, IND ) = TEN( I1, IND ) 
+     TEN( I1, IND ) = TEMP 
+   ELSE  
+     FLAG[I1] = 0 
+   ENDIF 
+       ELSE IF ( MOD(I, 4) .EQ 2 ) THEN 
+   I2 = ( I / 4) + MOD(I, 4)  
+IF( FLAG[I2] .EQ. 1 )THEN 
+     JXTEMP    = J1( I2+1, IND ) 
+     J1( I2+1, IND ) = J1( I2,   IND ) 
+     J1( I2,   IND ) = JXTEMP 
+   ENDIF 
+ELSE IF ( MOD(I, 4) .EQ 3 ) THEN 
+   I3 = ( I / 4) + MOD(I, 4)  
+IF( FLAG[I3] .EQ. 1 )THEN 
+     JXTEMP    = J2( I3+1, IND ) 
+     J2( I3+1, IND ) = J2( I3,   IND ) 
+     J2( I3,   IND ) = JXTEMP 
+   ENDIF 
+ELSE IF ( MOD(I, 4) .EQ 0 ) THEN 
+   I4 = ( I / 4) + MOD(I, 4)  
+IF( FLAG[I4] .EQ. 1 )THEN 
+     JXTEMP    = J3( I4+1, IND ) 
+     J3( I4+1, IND ) = J3( I4,   IND ) 
+     J3( I4,   IND ) = JXTEMP 
+   ELSE  
+     RETURN 
+   ENDIF 
+      ENDIF 
+100 CONTINUE 
+ RETURN 
+END 
+ 
+(c) 
+ 
+Fig. 2. A code transformation for enlarging the loop dependence distance of a bubble sort.  
+ 
+表 Y04 

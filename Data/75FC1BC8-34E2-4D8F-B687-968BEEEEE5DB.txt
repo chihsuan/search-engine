@@ -1,0 +1,622 @@
+ 
+中文摘要： EPON 網路使用 Multi-Point Control Protocol (MPCP)來達到
+OLT 跟 ONU 之間控制訊號的交換。但我們發現，MPCP 的協定中
+並沒有建立完善的安全機制。一個惡意的攻擊者可使用 ONU 藉
+由 MPCP 的控制訊息對 OLT 大量要求頻寬來達到 DOS(Denial of 
+Service)攻擊，造成大區域的用戶網路癱瘓。因此我們希望開
+發「MPCP 狀態化入侵偵測模組(MPCP Stateful Intrusion 
+Detection Module)」，置入於 OLT 設備中，並採用比對演算
+法「JEAN」(Judge Evaluation of Attack Notion)做為模組
+的偵測引擎。JEAN 是利用廣義霍夫轉換的特性加入新的想法來
+判斷評估攻擊意圖。將 EPON 中 MPCP 控制訊息以及 ONU 傳輸量
+繪製成線條圖並從兩條傳輸資料量線條(data-throughput-
+link)選取成對的相對應點組成集合。在兩個有順序的點集合
+中，藉由相對應點之間的最小距離加權總和來測量比對的品
+質，藉此偵測是否有惡意的使用者而更進一步的提供 MPCP 協
+定更安全的防護。 
+英文摘要： Advanced EPON technology enables us to get more 
+advantages in the area of high-speed Internet world. 
+However, security is still a major issue to be solved 
+in practical EPON implementations. In this project, we 
+emphasize on security issues inherently in the Multi-
+Point Control Protocol (MPCP) which is a standard 
+control plane protocol between Optical Line Terminal 
+(OLT) and Optical Network Unit (ONU) to maintain a 
+point to multipoint (P2M) environment. A Denial-of-
+Service (DoS) attack can be achieved by forging fake 
+MPCP messages with exaggerated bandwidth requests, 
+causing a poorly designed dynamic bandwidth allocation 
+(DBA) algorithm to assign a huge share of the 
+available system resources to a malicious ONU, while 
+starving the remaining legitimate subscribers. We are 
+also planning to design and implement a MPCP stateful 
+intrusion with anomaly detection module, which is 
+embedded in Optical Line Terminal (OLT) to relieve 
+MPCP potential security issues. In this project, there 
+are two major components to be imlemented: MPCP 
+protocol stateful inspection to monitor the state of 
+MPCP conversations and JEAN (Judge Evaluation of 
+Attack Notion). As a core engine of the anomaly 
+detection module, JEAN inspects the behaviors of DBA 
+messages between OLT-ONU negotiating on-demand 
+bandwidth with EPON. Through the Hough transform 
+ 1
+報告內容 
+(一) 前言 
+   近年來，隨著資訊的蓬勃發展，使用網路的人口逐年遞增，各式各樣的網路應用服務也應運而
+生，如網路電話(Voice Over IP, VoIP)、高解析度電視 (High Definition Television, HDTV)、IP Video 
+(Internet Protocol Video)等。而這些多媒體傳輸服務大大提升了頻寬的需求，傳統的乙太網路已不敷
+使用，網路頻寬的需求勢必成為未來電信網路嚴苛的挑戰。在下一代的寬頻網路中，因為光纖網路
+具備高頻寬、大容量、低損失與不受電磁波干擾及長距離信號傳遞的特性，再加上光纖建設成本逐
+漸降低，所以在新的通信網路發展中已然成為不可抵擋的趨勢，逐漸取代傳統以銅線傳輸的通訊模
+式，各種以光纖為主的寬頻接取網路(FTTx)技術也競相出現。 
+乙太被動光纖網路(Ethernet Passive Optical Network, EPON)是由電機電子工程師學會(Institute 
+of Electrical and Electronics Engineers, IEEE)所制定的被動光纖網路(Passive Optical Network, PON)
+規範，目前已經定案的標準包括 802.3ah-2004[1]以及 802.3av-2009[2]，速率分別為 1Gbps 與
+10Gbps，而速率高達 40Gbps 與 100Gbps 的 802.3ba[3]目前尚為草案。PON 的特性為速率快、距離
+長，並且在光纖(Fiber)路徑上使用不需電源的被動元件，因此 PON 系統相當簡單可靠，是一個優
+秀的最後一哩(last mile)技術。而 EPON 承襲自廣為使用的乙太網路(Ethernet)，在佈建與維護上更
+為直接與方便。根據 IEEE 802.3ah task force[4]，我們發現 802.3ah 並未對光纖網路的安全性作深入
+的探討，而且光纖網路相對於其他的網際網路是尚未成熟的技術，仍存在許多安全的疑慮，潛在的
+竊聽或其他攻擊行為將無法保證用戶數據的安全性，因此安全議題將成為光纖網路發展的一大隱
+憂。根據全球著名寬頻調查公司 Point Topic 也指出，截至 2008 年第 3 季止，全球固定寬頻用戶數
+近 4 億戶，2013 年將增至 6 億 8,300 萬戶，年平均成長率 10.8%。在網路的全球化之下，許多企業
+及個人的隱私或重要的資料文件將容易透過網路攻擊而洩漏。根據 Symantec 在今年的企業安全現
+況研究報告[5]指出，現有 42% 的企業組織將安全列為其應解決的首要問題。此結果並不令人感到
+意外，因為有 75% 的企業在過去 12 個月內曾遭受過網路攻擊，並且導致全球企業平均每年損失
+200 萬美元。Symantec 在[6]報告也指出 80％發動網路攻擊的都 集中於 10 個具有寬頻網路的國家。
+因此，光纖網路的安全議題更形重要。 
+ 
+(二) 研究目的 
+本計畫為合作廠商“首特科技(A-First)＂所委託進行之解決 EPON 環境中 DoS 攻擊問題的計
+畫，因此本計畫的執行目標為針對 EPON 環境中的 DoS 攻擊進行 「EPON 之 MPCP 通訊協定狀
+ 3
+流量狀態檢測與異常偵測模組(Bandwidth Stateful Inspection Anomaly Detection, BSIAD)間系統元
+件架構圖。 
+Session Graph (SG)
+BSIAD: Bandwidth Stateful Inspection Anomaly Detection
+JEAN: Judge Evaluation of Attack  Notion
+NMS: Network Management System
+ONU
+ONU
+ONU
+OLT BSIAD
+SG Database
+(SG-DB)
+JEAN
+Session Graph 
+(SG)
+Analyst Interface
+Alert
+Bandwidth Analyzer
+Aggregation
+NMS
+ 
+圖 1、BSIAD 系統架構圖 
+    本研究設計與開發「流量狀態檢測與異常偵測模組(Bandwidth Stateful Inspection Anomaly 
+Detection, BSIAD)」，在設計上面，我們以自動化系統為概念做開發，從流量擷取、SG 圖比對到
+分析結果警示。利用本系統可成功找到是否有 DoS 攻擊情形的發生，並將分析結果圖傳送到現有
+的網路管理系統供管理者查看網路狀況。  
+本研究計畫所提出的系統能夠透過流量分析的方式成功找出 EPON 網路中是否存在著 DoS 攻
+擊情勢發生，不但能滿足 EPON 光纖網路的流量管理需求，這套系統所提出的概念可衍生其他網
+管應用。只需將第一個元件「Bandwidth Analyzer」的輸入替換成需要偵測的流量則可應用到不同
+網路的管理，像是從個人到公司企業網路的流量使用狀況分析，以此來偵測網路正傳輸何種服務
+應用，如圖 2 即為 TCP 與 UDP 流量和正常流量經過 JEAN 分析後的結果圖。 
+(a) 
+(b) 
+1 2 3 4 5 6 7 8 9 10
+PSI (Ii)
+0
+0.2
+0.4
+0.6
+0.8
+1
+PS
+D
+ (%
+)
+(A1) FTP
+1 2 3 4 5 6 7 8 9 10
+PSI (Ii)
+0
+0.2
+0.4
+0.6
+0.8
+1
+PS
+D
+ (%
+)
+(A2) SFTP
+1 2 3 4 5 6 7 8 9 10
+PSI (Ii)
+0
+0.2
+0.4
+0.6
+0.8
+1
+PS
+D
+ (%
+)
+(B1) VoIP
+1 2 3 4 5 6 7 8 9 10
+PSI (Ii)
+0
+0.2
+0.4
+0.6
+0.8
+1
+PS
+D
+ (%
+)
+(B2) P2P_IPTV
+1 2 3 4 5 6 7 8 9 10
+PSI (Ii)
+0
+0.2
+0.4
+0.6
+0.8
+1
+PS
+D
+ (%
+)
+(B4) Game_FPS
+1 2 3 4 5 6 7 8 9 10
+PSI (Ii)
+0
+0.2
+0.4
+0.6
+0.8
+1
+PS
+D
+ (%
+)
+(B3) P2P_File-sharing
+1 2 3 4 5 6 7 8 9 10
+PSI (Ii)
+0
+0.2
+0.4
+0.6
+0.8
+1
+PS
+D
+ (%
+)
+(A3) HTTP
+1 2 3 4 5 6 7 8 9 10
+PSI (Ii)
+0
+0.2
+0.4
+0.6
+0.8
+1
+PS
+D
+ (%
+)
+(A4) Game_RTS
+圖 2、Baseline Distributions of PSD for (A)TCP-based (B) UDP-based Applications as Ts=20 s 
+ 5
+附錄 
+(一) 論文發表成果(A) 
+本計畫皆能順利達到預期目標，在計畫期間(08/2010~10/2011)共計產出下列成果(計 6 篇期刊
+論文、2 篇國際學術會議論文) 
+z 期刊論文 
+1. Bo-Chao Cheng, Guo-Tan Liao, Ryh-Yuh Tseng, Ping-Hai Hsu and Huan Chen, “Network 
+Lifetime Bounds for Hierarchical Wireless Sensor Networks in the Presence of Energy 
+Constraints”, Accepted by Computer Network, (IF= 1.176; Rank=23/80 Telecommunications) 
+2. Bo-Chao Cheng, Guo-Tan Liao, Chu-Chun Huang, Ming-Tse Yu, “A Novel Probabilistic 
+Matching Algorithm for Multi-Stage Attack Forecasts”, IEEE Journal on Selected Areas in 
+Communications 29(7): 1438-1448 (2011), (IF= 4.232; Rank=1/80 Telecommunications) 
+3. Bo-Chao Cheng, Hsi-Hsun Yeh and Bin-Hai Shiu, “Schedulability Analysis for Hard Network 
+Lifetime Wireless Sensor Networks with High Energy First Clustering”, IEEE Transactions on 
+Reliability, 60(3): 675-688 (2011), (IF= 1.288; Rank=35/99 Computer Science, Software 
+Engineering)  
+4. Bo-Chao Cheng, Ryh-Yuh Tseng, “A Context Adaptive Intrusion Detection System for 
+MANET”, Computer Communications 34(3): 310-318 (2011), (IF= 0.816; Rank=39/80 
+Telecommunications)  
+5. Bo-Chao Cheng, Huan Chen, Ryh-Yuh Tseng, “Quality Assurance Evidence Collection Model 
+for MSN Forensics”, Special Issue on Intelligent Manufacturing system and Security & 
+Assurance (IMSA) for Journal of Intelligent Manufacturing, Volume 21, Number 5, 
+p.613~p.622, 10/2010, (SCI/EI); Impact Factor: 0.938  
+6. Bo-Chao Cheng, Yi-An Tsai, Guo-Tan Liao and Eui-Seok Byeon, “HMM machine learning 
+and inference for Activities of Daily Living recognition”, Journal of Supercomputing (JoS), 
+Volume 54, Number 1 p.29~p.42, 10/2010. (SCI/EI); Impact Factor: 0.687 
+ 
+z 學術會議論文 
+國際： 
+1. Ping-Hai Hsu and Wenshiang Tang and Chiakai Tsai and Bo-Chao Cheng, “Two-Layer 
+Security Scheme for AMI System in Taiwan”, 2011 IEEE Ninth International Symposium on 
+Parallel and Distributed Processing with Applications Workshops, Busan, Korea, May 26-28, 
+2011. 
+2. Guo-Tan Liao, Li-Ru Chen, Bo-Chao Cheng, Huan Chen and Ping-Hai Hsu, “Building 
+Intrusion Path Graphs for Security Incident Handling Procedures”, The 2010 International 
+Symposium on Communications and Information Technologies (ISCIT 2010), Tokyo, Japan, 
+Oct. 26-29, 2010. 
+  
+ 2
+一、參加會議經過 
+    此國際研討會（ISCIT 2010）於 2010 年 10 月 26 日至 2010 年 10 月 29 日在日本東京都千代
+田區的明治大學(Meiji University)舉行。明治大學為日本知名私立大學，創校已有 130 周年，並設
+有博物館，雖然未進入博物館參觀，但於校園內可見到周年慶的活動看板，散發該學校教育無數
+學子的文藝氣息。此 2010 通信與信息技術國際研討會於 10/26 舉行會議註冊報到與歡迎會，27 號
+上午為會議開幕式，當天有三場專題演講(Keynote Speech)，而我們的論文被安排於 2010/10/27 號
+下午的 WA1-6 Software 2 場次中(14:20~16:00)發表。與會當中，我們除了聆聽論文發表演講之外，
+也觀察主持人對於會議流程的控制情況與演講者的表達方式，並將值得學習之處烙印於腦海中。
+當然，我們也於研討會報到入口處拍照記錄以茲留念，最後於 29 號下午搭機平安順利地回國。 
+ 
+二、與會心得 
+    大會的演講主題有 “Wireless Sensors Networks: Challenges and Opportunities＂與“Visual 
+Quality Evaluation for Images and Videos＂等等精湛演講，而此次會議中發表的眾多論文有涵蓋訊號
+處理與影像處理方面，包含探討感測網路與 P2P 網路等等研究議題，雖然平常較少閱讀訊號與影
+像的研究論文，不過希望透過參加這次會議的洗禮，可以打開一點通口，增加一些研究背景。令
+人印象深刻的一件事，還有另一位台灣學生的英語表達十分流利，雖然礙於時間限制而無法充分
+講述其論文內容，但其整體表現算是同一場次中名列前茅的。此次與會最大的收穫則是必須思考
+如何在極度緊張以及只有眼睛注視的投影片資料情況下，還能以英文完整地表達，此成為重要的
+學習目標，需藉由平時不斷地學習英文思考，才能有一點點成長。此外，這次到日本參加會議也
+發現到一件事，不僅有很多日本當地學生與世界各國研究人員參加，也有不少台灣國人前往參加，
+可見台灣對於這種國際會議也重視的。最後，從待在日本這一小段時間的所見所聞，以學術研究、
+交通建設與國際活動舉辦規模等等來說，我們都應該以朝向世界水平看齊，並秉持著保有人道精
+神，以服務大眾為宗旨。 
+三、建議 
+    感謝教育部與學校提供補助款，對於許多無經濟能力的學生們，實是一大福祉。希望此國際
+學術交流之補助政策能持續下去，也能有更多學生可以參加國際會議，或是作為國際交換學生，
+Building Intrusion Path Graphs for Security Incident 
+Handling Procedures 
+Guo-Tan Liao1, Li-Ru Chen2, Bo-Chao Cheng3, Huan Chen4 and Ping-Hai Hsu5 
+1234Department of Communications Engineering, National Chung-Cheng University, Taiwan 
+E-mail: 1loboyoh@gmail.com, 2greener@comm.ccu.edu.tw, 3bcheng@ccu.edu.tw, 4huan@ee.ccu.edu.tw  
+5Information and Communications Research Laboratories, ITRI, Taiwan 
+E-mail: 5becker@itri.org.tw  
+ 
+ 
+Abstract—Hardening network services and network 
+architecture is the best defense and the easiest way to reduce 
+security risks. However, there is no effective solution to correlate 
+all weaknesses, network topology with connectivity, and 
+intrusion alerts. As a result, it can be difficult for network 
+administrators to determine the root cause of a security incident. 
+In this paper, we propose “GReat Evil ENcroachments 
+Eradicator (GREENER)”, which can analyze the above network 
+information in-depth and establish an intrusion path graph to 
+display comprehensive information of security breaches. With 
+the help of GREENER, system administrators can discover 
+detailed information about an incident and rapidly remove 
+network intrusion issues associated with the hardening process 
+to prevent the same type of intrusion from happening again. This 
+study has demonstrated that GREENER meets the requirements 
+for mitigating security threats and provides a practical security 
+incident response solution.  
+I. INTRODUCTION 
+Ensuring network security is a long term effort and 
+challenging task. The nature of network security is such that it 
+is “easy to attack but hard to defense” and therefore, it is 
+difficult to design a security mechanism that can proactively 
+disrupt or defend all types of security attacks; these attacks 
+are constantly changing their attacking behaviors to avoid 
+being detected and prevented. In other words, it is impossible 
+to ensure a 100 percent incident-free secure network. Hence, 
+there is a need to deploy a new security management process, 
+hardening network services and network architecture, which 
+is the best defense and easiest way to reduce security risks. 
+A vulnerability assessment determines whether there have 
+been known weaknesses and gives system administrators in-
+depth recommendations regarding how to fix and improve the 
+security of their networks. However, current vulnerability 
+assessment tools only present the weaknesses of the various 
+host information and do not integrate this information with 
+other information, such as network topology and intrusion 
+alerts. This is an impediment for the tool as it prevents 
+network managers from being fully aware of the real 
+weaknesses of the entire network system associated with the 
+relationship of weaknesses between individual hosts and the 
+reality of intrusion situations. 
+Network intrusion detection systems (NIDS) [1] monitor 
+the network activity to identify possible network attacks and 
+alert network administrators about suspicious intrusions. In 
+practice, an intrusion is a highly prevalent infection that is 
+associated with many adverse alerts. Nevertheless, NIDSs are 
+usually criticized for triggering thousands of false positives 
+per day. The challenge of dealing effectively with intrusion 
+alerts is in eliminating false positive alerts and efficiently 
+organizing bulks of raw alerts that may be correlated as a 
+result of the root cause. 
+In the two above solutions, there are no correlations drawn 
+between vulnerability weaknesses, network topology with 
+connectivity and intrusion alerts. As a result, it is extremely 
+difficult for the network manager to determine the root cause 
+of a security incident. In this paper, we propose a new root 
+cause diagnosis system, GReat Evil ENcroachments 
+Eradicator (GREENER), which constructs an intrusion path 
+based on correlation analysis. By providing a graphical 
+representation of the intrusion path, GREENER provides a 
+cost-effective security incident handling process and risk 
+mitigation strategies that allow upper-level managers to 
+identify the origin of the intrusion which can then be traced 
+back to a failure of the hardening procedures. It is necessary 
+for network managers to either eliminate the vulnerability that 
+causes the system to be compromised or to develop an 
+approach to prevent the damage caused by the same attack in 
+the future. 
+The remainder of this paper is organized as follows. 
+Section II presents the background and related works and 
+Section III introduces the proposed GREENER architecture 
+and algorithm. Experimental results are presented in Section 
+IV and finally concluding remarks are made in Section V. 
+II. RELATED WORKS 
+When we are securing a practical network, it is important to 
+consider multi-stage and multi-host attacks because the 
+attacker will try to penetrate the compromised systems. Due 
+to the potential interactions between multiple hosts and 
+components, the security hardening process becomes much 
+more difficult and requires knowledge of things such as 
+vulnerability, security policy and network topology. Current 
+vulnerability assessment (VA) tools are designed to scan the 
+enterprise network automatically and locate the weaknesses, 
+including applications and the operating system, of individual 
+systems. However, if the vulnerabilities of the system are too 
+many, it becomes impossible to fix all vulnerabilities due to 
+limited resources and time during the hardening process. 
+These VA tools are unable to obtain the relationships between 
+267978-1-4244-7010-5/10/$26.00 c2010 IEEE ISCIT 2010
+protected within the entire network and system 
+vulnerabilities. 
+ Network Topology repository: provides network 
+topology information about the entire network that is 
+to be protected.  
+ Network Information repository: provides network 
+information about the entire network that is to be 
+protected, such as firewall rules and network 
+connectivity between the systems and network attack 
+program information.  
+ IDS: provides analyzed intrusion alerts, classified 
+according to attack characteristics, attack source and 
+attack target.  
+ Manager Interface: provides a visual representation 
+of the information, vulnerabilities and analyzed 
+intrusion alert information for the network manager. 
+ GREENER Processor: generates Attack Graph, 
+Evidence Graph and Intrusion Path Graph (IPG). In 
+this architecture, GREENER gathers information 
+about network topology, network information and 
+vulnerability information, and uses these three types 
+of information accordingly with vulnerability 
+information of the network to be protected to obtain 
+the Attack Graph. It then uses the network intrusion 
+detection system to gather and analyze network 
+intrusion alerts and then uses the analyzed intrusion 
+alerts to generate the Evidence Graph. Lastly, it 
+compares the Attack Graph and Evidence Graph to 
+generate the Intrusion Path Graph. In the following 
+sections, we detail the algorithms used by GREENER 
+to generate the Attack Graph, Evidence Graph and 
+Intrusion Path Graph. 
+A. Attack Graph Algorithm 
+Suppose there is an example topology with firewall rules as 
+shown in Fig. 2. A ruleset of the firewall rules enforce the 
+firewall to perform the following actions: Rule 1 allows 
+INTERNET users to connect to the WEB server, where the 
+connection port is 80; Rule 2 allows WEB located in DMZ 
+makes any connections to INTERNET; Rule 3 and 4 tell the 
+firewall to allow WEB to connect to the POND machine, 
+where the connection ports are 139 and 445; Rule 5 allows all 
+INTERNAL machines (including POND and INTDB) make 
+any connections to INTERNET; and Rule 6 denies all other 
+inbound/outbound connections. 
+Based on the example in Fig. 2, the algorithm analyzes the 
+network topology, network connectivity [9] as well as 
+vulnerability information and classifies them in the 
+Vulnerability Connectivity Matrix (VCM), which lists all 
+vulnerabilities for each pair of connectivity as shown in Table 
+2. In the table, ANY represents any network service that can 
+connect the attack source to the attack target and NONE 
+represents any network service that cannot connect the attack 
+source to the attack target, while all other entries represent the 
+name of the vulnerability targeted when some source attacks a 
+target. According to this table, we then put attack targets with 
+some vulnerability and the attack source that can target an 
+attack based on that vulnerability into the Attack Graph by the 
+following method listed in Fig. 3. A node in the Attack Graph 
+contains the vulnerability name, attack source, attack target 
+and includes hidden information about the network topology 
+and network connectivity. 
+DMZ
+Internal Network
+FirewallWEB
+INTERNET
+PONDINTDBVA
+IDS
+VA: Vulnerability Assessment
+IDS: Intrusion Detection System
+Firewall Ruleset
+DenyAnyAnyAnyAny6
+AllowAnyINTERNETAnyINTERNAL5
+Allow445PONDAnyWEB4
+Allow139PONDAnyWEB3
+AllowAnyINTERNETAnyWEB2
+Allow80WEBAnyAny1
+ActionDportDestinationSportSource
+IDS
+ 
+Fig. 2   An example topology with the firewall rules 
+Table 2   Vulnerability Connectivity Matrix 
+Dst 
+Src 
+INTERNET WEB POND INTDB 
+INTERNET ANY 
+PHPBB-SQL 
+INJECTION, 
+PHPBB-XSS 
+NONE NONE 
+WEB ANY ANY 
+MS04-012, 
+MS06-040, 
+MS04-011, 
+MS03-039, 
+MS06-035, 
+MS04-007, 
+MS06-035, 
+MS05-027, 
+MS05-043, 
+MS03-026, 
+MS02-045, 
+MS04-022, 
+MS03-043 
+NONE 
+POND ANY ANY ANY 
+MS06-040, 
+MS04-011, 
+MS05-047, 
+MS04-007, 
+MS06-035, 
+MS05-027, 
+MS05-039, 
+MS05-043, 
+SRVSVC-PIPE 
+INTDB ANY ANY ANY ANY 
+ 
+ 
+ 
+1 Input: Vulnerability Connectivity Matrix (VCM) 
+2 Output: Attack Graph AG 
+3 Let AG be a graph = (VAG, EAG) | V: set of vertex, E: set of edge  
+4 Define ν: a vertex ∈VAG, associated with three attributes (Vuln,Src,Dst) 
+5 Begin 
+6 For each element Γ in VCM  
+7    insertNode(Γ.Vuln, Γ.Src, Γ.Dst) into AG 
+8 For each node ρ in AG 
+9    For each node ν  in AG 
+10      If ρ.Dst = ν.Src then 
+11         addEdge(ρ,ν); 
+12 End 
+Fig. 3   Attack Graph algorithm 
+269
+2. Through WEB’s backdoor procedure, it logons to the 
+WEB system, discovers that it can connect to the 
+neighborhood service of POND in the intranet from WEB, 
+and that the service has the vulnerability MS06-040. 
+3. Thus, an attack procedure is uploaded from INTERNET 
+to WEB and, from the attack on POND by WEB, system 
+administrator privileges are obtained.  
+4. Following this, a tunnel is built in WEB, allowing 
+INTERNET to use WEB to connect to POND remotely.  
+5. After connecting to POND and entering the intranet, it 
+also discovers that the internal information repository 
+INTDB’s network neighborhood service also has the 
+vulnerability MS06-040. 
+6. The same attack procedure on WEB is then uploaded. 
+INTDB is attacked and system administrator privileges 
+are obtained. 
+A. Constructing attack graph 
+The vulnerability scan results from using Nessus on WEB, 
+POND and INTDB are as such: 17 severe vulnerabilities, 8 
+major vulnerabilities, 11 mid-level vulnerabilities and 1 minor 
+vulnerability. In the results, WEB has 2 severe and major 
+vulnerabilities, POND has 13 severe and major vulnerabilities 
+and INTDB has 8 severe and major vulnerabilities. The severe 
+and major vulnerability detailed information is shown in 
+Table 4. If attacks targeting severe vulnerabilities are 
+successful, the attacker can obtain administration or execution 
+privileges, while successful attacks against major 
+vulnerabilities can impair the system or enable extraction of 
+important system information. By using the Attack Graph 
+algorithm, the Attack Graph can be drawn from the 
+vulnerability information (as shown in Fig. 6). 
+Table 4   Severe and major vulnerability information 
+Machine Service Port Nessus ID Vulnerability Machine Service Port 
+Nessus 
+ID Vulnerability
+WEB http (80/tcp) 15780 PHPBB-SQL INJECTION POND 
+netbios-ssn 
+(139/tcp) 11110 MS02-045 
+WEB http (80/tcp) 23968 PHPBB-XSS POND cap (1026/tcp) 13852 MS04-022 
+POND epmap (135/tcp) 21655 MS04-012 POND 
+epmap 
+(135/tcp) 11890 MS03-043 
+POND netbios-ssn (139/tcp) 22194 MS06-040 INTDB 
+netbios-ssn 
+(139/tcp) 22194 MS06-040 
+POND netbios-ssn (139/tcp) 12209 MS04-011 INTDB 
+netbios-ssn 
+(139/tcp) 12209 MS04-011 
+POND netbios-ssn (139/tcp) 11835 MS03-039 INTDB 
+netbios-ssn 
+(139/tcp) 21193 MS05-047 
+POND netbios-ssn (139/tcp) 21696 MS06-025 INTDB 
+netbios-ssn 
+(139/tcp) 12054 MS04-007 
+POND netbios-ssn (139/tcp) 12054 MS04-007 INTDB 
+netbios-ssn 
+(139/tcp) 22034 MS06-035 
+POND netbios-ssn (139/tcp) 22034 MS06-035 INTDB 
+netbios-ssn 
+(139/tcp) 18502 MS05-027 
+POND netbios-ssn (139/tcp) 18502 MS05-027 INTDB 
+netbios-ssn 
+(139/tcp) 19408 MS05-039 
+POND netbios-ssn (139/tcp) 19407 MS05-043 INTDB 
+netbios-ssn 
+(139/tcp) 19407 MS05-043 
+POND netbios-ssn (139/tcp) 11808 MS03-026     
+ 
+ 
+Fig. 6   Attack Graph 
+ 
+Fig. 7   Evidence Graph 
+271
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/11/07
+國科會補助計畫
+計畫名稱: EPON之MPCP通訊協定狀態檢測與異常偵測系統的設計與實現
+計畫主持人: 鄭伯炤
+計畫編號: 99-2221-E-194-054- 學門領域: 資訊
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+1. 主辦 Smart Grid Security and Communications (SGSC2011: May 26th -
+28th, 2011 – Busan, Korea； http://sgsc.ee.ccu.edu.tw/) 
+2. 與工研院合作開發以下技術 
+* 智慧電表網路金鑰指派演算法研究 04/01/2011~11/30/2011 
+* Embedding Privacy Practices in eHealth Web Sites 06/01/2011~12/30/2011
+* Privacy-Preserved Security for healthcare solutions 
+11/24/2010~12/24/2010 
+* AMI 系統安全機制研究 05/01/2010~11/30/2010 
+ 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

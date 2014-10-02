@@ -1,0 +1,793 @@
+comic, our project provides a semi-automatic 
+conversion from movie to comic. The resulting vector 
+data is also easy to reuse in further post-process. 
+The report will describe the development and system 
+of three-year plan of the National Science Council. 
+In the whole process from film to comic, video 
+abstraction select key-frames. Paging , panel layout 
+and speech bubbles placement, special word or comic 
+effect and comic stylization  of non-photo realistic 
+rendering are handled later.  
+The first year to get more representative key-frames, 
+the video is segmented first by the context alignment 
+between screenplay which describes character and 
+subtitles binding with time record, then tracing 
+character in the local key-frames. In order to 
+imitate comic-like panel layout, simulated annealing 
+is applied with an energy function considering the 
+aesthetical rules. Speech bubbles are placed 
+automatically too. 
+We warp and morph image to generate required facial 
+expressions in the second year, and the hair and 
+hatching model is established to simulate a specific 
+comic style. 
+Furthermore, for a general comic stylization, a 
+hierarchical line structure is built up in the third 
+year by line clustering to adjust different line 
+density depending on comic style. CUDA accelerates 
+line generation and rendering. Special words are 
+selected by screenplay and motion effects are drawn 
+depend on motion vector. 
+ We also structure the user interface of paging, 
+panel layout, speech bubbles, special word effect and 
+motion effects for users to adjust. 
+ 
+英文關鍵詞： screenplay alignment, face detection, object tracing 
+and naming, comic layout, image morphing & warping, 
+elliptical radial based function, NPR. 
+ 
+ I  
+         
+一、 中、英文摘要及關鍵詞 
+中文摘要 
+平面劇情漫畫有數位容量小、敘事強、易顯示於智慧型手機、平板或筆電等各類載體
+的優點。而基於電影內容剪輯的漫畫在市場上兼具觀賞和行銷功用。然而電影漫畫多由人
+工剪輯，製作費時，且欠缺線條勾勒和色塊鮮明的漫畫作畫風格。這是因為以視訊為基礎
+的影像資料欠缺物件資訊，增加影像加工為漫畫的困難。 
+對傳統電影以漫畫形式加入數位載體的廣大市場，本計畫提供半自動轉換，產生的向
+量資訊，也有利編輯者再加工為成熟的數位漫畫。本報告將說明國科會三年計畫 ｢數位電
+影漫畫產生技術之研究」的成果，和介紹轉化系統的各項工具。  
+將電影轉為漫畫，需作視訊摘要的前處理和漫畫製作的分頁、排版、構圖、對話氣泡、
+字體特效、漫畫特效，和漫畫風格化繪圖等技術。 
+第一年我們擷取視訊和對白，排版成多頁漫畫。對齊了有人物腳色的劇本和有時間資
+訊的字幕後，再局部處理關鍵影格和人物追蹤。分鏡排版上，提出符合漫畫家的排版和構
+圖原則的能量函式，以退火演算法逼近最佳排版，並自動配置對話氣泡。第二年以影像形
+變產生漫畫所需表情。為了一般化漫畫風格，第三年我們以有向濾波器去除雜訊但生成邊
+分明的底圖，並向量化線條，其他的漫畫元素上，根據劇本，自動揀選合適的對話氣泡，
+由 motion vector 產生各類速度線。並以 CUDA 加速線條化和卡通上色和最近鄰搜尋，大幅
+減少製作時間。 
+劇情漫畫是藝術成品，我們的系統旨在減輕排版負擔，一貫化繪圖風格，並非取代人
+為編輯，所以架構了速度線、形變、對話氣泡和特效字的互動介面，供使用者調整。 
+ 
+ 
+ 
+ 
+ 
+關鍵字：劇本對齊、臉部偵測、人物追蹤、漫畫排版、影像形變、橢圓徑向基底函數、
+非擬真繪圖、速度線、特效字。 
+  
+ III  
+         
+目錄 
+一、 中、英文摘要及關鍵詞 ................................................................................................... I 
+中文摘要 ................................................................................................................................... I 
+Abstract ................................................................................................................................... II 
+二、 前言 .................................................................................................................................. 1 
+三、 研究目的 .......................................................................................................................... 2 
+四、 文獻探討 .......................................................................................................................... 3 
+劇本文法 .................................................................................................................................. 3 
+劇本分析 .................................................................................................................................. 3 
+劇本對齊 .................................................................................................................................. 4 
+臉部偵測(face detection)與追蹤 ............................................................................................. 4 
+平面排版 .................................................................................................................................. 4 
+對話氣泡 .................................................................................................................................. 4 
+影像形變(image morphing & warping) .................................................................................. 5 
+切線流 ...................................................................................................................................... 5 
+有向濾波器 .............................................................................................................................. 6 
+五、 研究方法 .......................................................................................................................... 6 
+劇本對齊 .................................................................................................................................. 7 
+劇本分析 .................................................................................................................................. 9 
+分頁 .......................................................................................................................................... 9 
+臉部偵測與追蹤 .................................................................................................................... 10 
+平面排版 ................................................................................................................................ 11 
+對話氣泡配置 ........................................................................................................................ 13 
+影像形變 (Image morphing & Warping) .............................................................................. 16 
+Laplacian mesh 為基礎的自由形變...................................................................................... 17 
+漫畫風格化 ............................................................................................................................ 22 
+特效線 .................................................................................................................................... 24 
+反應情緒的對話氣泡 ............................................................................................................ 26 
+平行運算 ................................................................................................................................ 28 
+六、 結果與討論 .................................................................................................................... 30 
+七、 參考文獻 ........................................................................................................................ 32 
+八、 附錄 ................................................................................................................................ 33 
+電影劇本的縮寫與術語 ........................................................................................................ 33 
+特效線使用手冊 .................................................................................................................... 36 
+特效字和對話氣泡使用手冊 ................................................................................................ 39 
+ 
+ 2  
+         
+三、 研究目的 
+本計畫「數位電影漫畫產生技術之研究」是國科會一項三年期專案，將電影產業的影
+片內容，以空間上簡扼又富敘事性的平面漫畫顯示。 
+影片到漫畫首要課題是「影像擷取」和「漫畫排版」。若僅由視訊取得關鍵影格再將音
+訊轉變成漫畫對話氣泡，意謂需有視訊和音訊識別能力來建立劇情。不過我們改用以劇本
+語意為基礎將電影視訊排版成平面漫畫。利用劇本和字幕這些公開資源，將劇本對話和有
+時間資訊的字幕進行文本對齊後，就可快速將視訊依劇本場景分段，之後依照劇本內容分
+頁，指定關鍵影格所需內容，而從分段的視訊中，以臉部偵測和人物追蹤找出合乎需求的
+關鍵影格。將數張關鍵影格在頁內作漫畫式的平面排版，考慮閱讀順序後，漫畫式排版可
+歸納為 v-h tree 但允許有斜度的水平或垂直切割。最佳的排版是對數張關鍵影格，在固定空
+間內，作有限度縮放、位移和改變 vh-tree 的結構後所得到的漫畫排版，在空間敘事上需有
+正確的閱讀順序，並符合坊間漫畫需要的可讀性，主題性和對稱性。對漫畫排版這樣的多
+變量最佳化問題，我們採用模擬退火(SA，simulated annealing)演算法完成。相對於成熟的
+最密排列，講求閱序、美觀和風格的漫畫式排版方興未艾，但在智慧型手機的小螢幕上呈
+現整頁漫畫卻有重新排版的迫切需求，我們希望能拓展這類智慧型排版的研究空間。 
+劇情和影像人物註冊後，人臉位置也可應用在對話氣泡排列，簡易文句分析後的對話
+情緒，則反應在對話氣泡型態。我們也調整了現有的氣泡配置法以適應任意四邊形漫畫格。
+我們希望能更廣泛地運用劇本語意，不僅在排版，也可應用在對話氣泡的排列和型態。 
+影像與漫畫的異質對應，使得影像中的人臉難有符合漫畫所需的誇張表情，為此我們
+探索兩年。我們先蒐集資料片中的誇張影像，建立資料庫。對所欲調整的表情圖，挑揀參
+考圖，以橢圓徑向基底函數(ERBF)為基礎的影像形變(image warping)技術合成所需表情。
+但合成不能無中生有，我們之後改以 Lapalacian Mesh 為基礎的自由形變，提供使用者以筆
+繪方式變形。 
+漫畫式的非擬真渲染上，除了模擬日式網點畫風，我們也應用近年影像簡化的技術，
+包含以雙邊濾波器簡化影像，以有向高斯差萃取線條，模擬彩色的美式卡通。但平面影像
+成品並不利於其他如 Illustrator 等數位向量軟體再加工，我們為了日後的加值利用，將影像
+線條向量化，以 Catmull-Rom spline 儲存。 
+影片到書頁中的單一影格，影片中的動量以速度線表現在畫格中。我們雖可解析每個
+關鍵影格的運動向量，但由於速度線和特效線屬於漫畫家風格的特有成分，系統仍設計成
+使用主導，揀選特效線區域，系統再前溯影片中該區的動量，畫出平行線、追蹤線和殘影
+等速度線。 
+這套由劇本語意來完成多重漫畫元素的半自動電影轉漫畫系統，可減輕編輯者負擔，
+但亦能讓人充分參與編輯，是可對電影再度利用的加值系統，可響應政府積極推動的數位
+內容產業。 
+ 4  
+         
+惡 disgust、驚 surprise、懼 fear)。Aman 和 Szpakowicz [1]研究對網誌內容以傳統英文辭典
+Roget’s thesaurus 或對 WordNet 英文同義字辭集延伸的 WordNet-Affect，兩者在六情的識別
+力。EmoHeart 的日本研究者 Neviarouskaya [10]增加責任型情緒，以九情(喜 joy、趣 interest、
+哀 sadness、怒 anger、惡 disgust、驚 surprise、懼 fear、悔 guilt、愧 shame)分析遊戲玩家的
+即時情緒。在玩家對話中篩選情緒符號(、、?、!)，以 WordNet-Affect 辭集作字意確認，
+再進一步將對話以英語文法解析，作句義上的情感分析，諸如判定含不同情感字的主從句
+的主要感情。 
+劇本對齊 
+以劇本為基礎的視訊分析技術源於信息查詢與檢索的研究者。Turesky 和 Dimitrova [12]
+依賴有時間內容的 DVD 字幕和劇本對話相似，以動態時間規整法(Dynamic time warping，
+DTW)[11]對齊。優質的對齊段落可提供音訊和角色的對照關係，作為類神經網路的訓練數
+據。近年[5][2]以字幕和劇本的文本對齊快速取得段落，分段提供出現角色的特徵作訓練數
+據，增加區間人物的識別度已蔚為主流。 
+臉部偵測(face detection)與追蹤 
+從 Viola-Jones [14]提出以適應增強演算法(AdaBoost，adaptive boosting)，用”Haar-like”
+的特徵訓練後，正面人臉偵測有突破性發展。但的物件偵測只是偵測區臉區。 Everingham 
+等人[5]研究辨識連續影格上的人臉。Everingham 等人將劇本和字幕對齊後，分區以
+Viola-Jones 的物件偵測法得到正面臉區，再以運動向量追蹤臉跡。在加強臉跡的正確性上，
+用類似 Viola-Jones 的物件偵測法，但特徵對像改為眼、嘴等細節。若偵測出交談中的角色，
+以對齊後的劇本字幕來檢索人物，並用衣物來加強人物辨別，以精準地逐格追蹤臉跡。由
+於本計畫只需要在特定區間內找出符和出場人物的影格，我們採用與[5]類似但簡化的方
+法。 
+平面排版 
+地板問題(floor plane problem)這類平排問題已被證明為 NPC 問題。但漫畫排版是平排
+的特例，對像是多張有重要區域的視訊關鍵影格，影格可被縮放位移，但需凸顯重要區域。
+漫畫排版除了改變佈局外，需允許調整多項變量，如對影格作有限度縮放、位移和改變切
+割角度，以期得到能維持整體閱序(reading order)，能表達重要區域的主題性、切割能符合
+漫畫美感和整體空間的最佳利用。這類多變量的最佳排版問題，邱立榕[15]則以模擬退火演
+算法(SA，simulated annealing)處理漫畫式的相本布局。我們同樣採用 SA 並增加任意四邊
+形漫畫格的空間佈局，並考慮更多漫畫美感的參數。 
+對話氣泡 
+對話氣泡是漫畫必要成分，Chun 等人[3]提出對話氣泡配置法(WBP，word balloon 
+placement)兼顧識別度(legibility)和閱序。本計畫以[3]的 WBP 法為基礎，調整演算以適應排
+ 6  
+         
+有向濾波器 
+應用在二維影像的影像處理濾波器，傳統是各向同性(isotropic)濾波器，如圓形分佈的
+高斯或高斯差濾波器，但各向同性並非適用所有。以高斯差這種逼近二次微分來凸顯影像
+的峰或谷的運算子，對自然影像通常呈現斷續的線條。更合理的方式是在影像梯度方向上
+作二次微分來凸顯邊緣差異，而在切線方向加總二次微分結果以抗噪，這種不同方向不同
+性質的濾波器，也就是各向異性(anisotropic)濾波器，像上述的有向性高斯差(Flow-based 
+Differetial of Gaussian，FDoG) [30]，或順著切線流的線積分卷積(Line Integral Convolution，
+LIC)，完全壓抑某一方向的濾波器。而在梯度方向作強化邊緣兩極的 shock filter，順著切
+線流，在最不破壞邊緣的方向上平滑去噪[35]，也是以各向異性濾波器來強化影像的同質性，
+產生邊緣強烈有色塊特性卡通式的結果。 
+各向異性也可用不同軸長且有方向性的核實現，如 Anisotropic Kuwahara filter [34]，由
+局部梯度的主成分，也就是 structure tensor 的特徵值決定兩軸長，特徵向量決定核方向，而
+Kuwahara filter 特有的局部核型，使影像宛如被有方向性的片點重畫成油畫。 
+ 
+五、 研究方法 
+系統流程如圖 5：採用以劇本為主(screenplay-based)的擷取方法。先將劇本對齊有時間
+資訊的 DVD 字幕，以對話內容決定關鍵影格時間範圍、以劇本分析作分頁。由上得到的對
+話的時間範圍內上，由臉部偵測和運動向量完成人物追蹤，由人臉和衣著特徵建立每張影
+格的 ROI(region of interesting) ，以找出滿足對話條件(對話人)的關鍵影格。如此取得的關
+鍵影格，有不定大小的 ROI，再經過最佳空間排版的過程得到任意四邊形狀的漫畫頁內排
+版。之後配置對話氣泡，最後再加上漫畫式非擬真繪圖，如卡通式著色(cartoon rendering)
+或黑白網點(halftone )著色後，補充漫畫的其他元素，如使用影像形變產生誇張的人物表情
+和特效字，以影格間的運動向量產生速度線。如此，系統可完成一個完整電影漫畫。 
+ 
+圖 5 系統流程 
+ 8  
+         
+但不存在交叉的對應關係(如圖 9 右)。 
+ 
+圖 9 左圖，DTW 合理之對應。右圖，不合法的對應。 
+發展的 DTW，以動態時間規畫法(DTP，dynamic time warping)求得逐筆對應下總差異
+最少的解。 我們簡述該法： 
+1. 建立陣列 D[m+1,n+1]。橫列代表 Y，直行為 X。第 0 列給初始值 0..m,  第 0 行給
+初始值 0..n。 
+2. D[i,j]內為 X 第 i 值與 Y 之第 j 值對齊案例中的最小差異值，也就是最佳解。如此可
+知 D[m,n]為 X 對齊 Y 之最佳解。 
+3. 而 D[i,j]來自於上一筆最佳對齊加上該筆差異|X[i]-Y[j]|。上一筆最佳解可能來自於
+D[i-1,j-1]或 D[i-1,j]或 D[i,j-1]，取最小者。 
+為了減少不必要的差異，我們將常見卻無損語意的 I am, I’m 等代名詞之 be 動詞、所
+有格、否定句、未來式、完成式等縮寫先以下式統一後，再進行 DTW 對齊。 
+ 
+字幕相對於音訊有極高的內容正確性，與劇本對齊後，能和劇本場景和人物結合。 
+ 
+1. ss = Regex.Replace(ss, "(?<p1>[is|was|has]) not ", "${p1}n't "); 
+2. ss = Regex.Replace(ss, "I am", "I'm"); 
+3. ss = Regex.Replace(ss, "(?<p1>[a-zA-Z]) have ", "${p1}'ve "); 
+4. ss = Regex.Replace(ss, "(?<p1>[a-zA-Z]) will ", "${p1}'ll "); 
+5. ss = Regex.Replace(ss, "(?<p1>[a-zA-Z]) are ", "${p1}'re "); 
+X 
+Y 
+X 
+Y 
+劇本 與劇本對齊後之字幕 
+Dialog/Action #scene Character: talk #scene  #subtitle time:interval Character: talk 
+字幕 
+#subtitle time:interval talk 
+ 
+ 10  
+         
+臉部偵測與追蹤 
+如 圖 11，臉部偵測與追蹤程式可回應主程式對特定時區的人物要求。我們以[6]的演
+算法為基礎，以 openCV 提供的 API，分三階段完成臉部偵測與追蹤： 
+ 臉部定位 
+偵測可能為臉部的區塊之後，以 openCV 的 cvHaarDetectObject()在此區塊內偵測眼、
+嘴等臉部特徵，偵測到視為是正確的臉區。臉部特徵之訓練資料來
+源： http://www.alereimondo.com.ar/OpenCV/34。 
+ 追蹤時區前後臉區 
+由(1)追蹤得到的臉區的運動向量，以 openCV 的 CalcOpticalFlowLK()預估前後影格中
+臉區的可能位置。 
+ 角色定名 
+在每張影格的臉區下方找出衣服的可能區域，寬高估計各為 face 兩倍，需考慮位於影
+像邊界而有所縮減。並算出衣服的 histogram，與資料提供的角色衣服做配對，並利用
+配對的結果替每張臉命名。 
+ 
+ 圖 11 臉部偵測與追蹤之實例。  
+劇本和視訊流結合後，經分頁、臉部偵測，相當於將影像與劇本註冊，所得結果以 XML
+格式儲存，供平面排版使用。XML 內以一頁內的畫格集 Grids，包含數個畫格 MangaGrid。
+MangaGrid 代表畫格，有所對應之關鍵影格圖檔名，容納所有臉部偵測結果的 ROI。而每
+個角色由劇本定名，每句對話有起始時間，內容，和經簡易文句分析後得到的 VoiceTag。 
+00:54:30,NoSub_SexAndTheCity_cd1\3270_2.bmp,CARRIE 92 39 152 182 
+00:54:23,NoSub_SexAndTheCity_cd1\3263_4.bmp,SAMANTHA 394 41 148 177 
+00:54:36,NoSub_SexAndTheCity_cd1\3276_7.bmp,CARRIE 275 12 276 262 
+00:54:45,NoSub_SexAndTheCity_cd1\3285_4.bmp,CHARLOTTE 246 18 216 257 
+00:54:46,NoSub_SexAndTheCity_cd1\3286_6.bmp,CARRIE 251 13 264 262 
+00:54:52,NoSub_SexAndTheCity_cd1\3292_2.bmp,CHARLOTTE 419 6 156 187,CARRIE 
+44 33 152 182 
+00:54:54,NoSub_SexAndTheCity_cd1\3294_6.bmp,SAMANTHA 255 3 332 269 
+00:55:01,NoSub_SexAndTheCity_cd1\3301_3.bmp,CARRIE 235 2 288 270 
+ 
+00:54:25,00:54:26,CARRIE    I could tell.  
+00:54:26,00:54:27,SAMANTHA   Then why didn't you say anything? 
+00:54:30,00:54:32,CARRIE    I didn't wanna believe it. I di... I didn't even wanna say it out loud. 
+00:54:40,00:54:41,CHARLOTTE   You'll stay here. 
+00:54:42,00:54:43,CARRIE    Forever. 
+00:54:44,00:54:50,CHARLOTTE,CARRIE Maybe you should eat something. Anyone? Hungry?  
+        No.    
+00:54:55,00:54:59,SAMANTHA   Oh, honey, I can hire people to do all that. Anything you need. 
+00:55:00,00:55:01,CARRIE    A hit man? 臉部偵測與追蹤 
+ 12  
+         
+  
+本模型中可看出，因為連續空間有合理的鄰域，退火演算法適用於連續空間的最佳解。
+應用在漫畫排版上，每張影格的縮放、位移和切割可由現有狀態的鄰域尋得，但在排版的
+改變上，雖然可以限制只改變樹內有限度枝葉，但改變量仍是離散而非連續。 
+本計畫中，我們將排列和其它變量分開。先取得一較佳的排列，再求其它變量的最佳
+解。 
+V-H tree 的的退火演算法，與模擬退火法模型類似。由於二元樹(binary tree)非常適用於
+一次作有限度的樹形變更，實作上我們以二元樹完成，但需要注意二元樹會重複表達相同
+的 layout 問題。 
+相對於樹形變更，影格的縮放、位移和切割角度等調整是多變量的模擬退火法，我們
+嘗試兩類方法，一種是將所有的變數都維持自己的退火模型，只有當全部都比較好的時候
+才接受，其它狀態以機率 P 決定，P 則是用各個 exp(dS/T)的連乘。另一種是[錯誤! 找不到
+參照來源。]提出的退火演算法，維持同一個退火模型，目標函式和 dS 都是將向量投射到
+純數。實驗結果後者較適於現行的架構。 
+關於目標函數，我們有 
+ 形狀相似性(Shape similarity)： 
+這裡估計佈局微調後的漫畫格形和對應影格的 ROI 的相似度，佈局後的長寬比和 ROI
+的長寬比越接近越好。Ai,ROI 是每張影格的長寬比，Ai,Panel 是漫畫格的長寬比。 
+,
+1
+1
+,
+,
+N
+i paneli
+ROIi
+S
+A
+A
+N
+O
+ 
+ 正確性(Correctness) 
+ROI 不盡然全在漫畫框格內，這裡計算在留在漫畫格內的比例。 Ai,FInPanel 的留在漫
+畫格的面積。 
+,
+1
+1
+,
+,
+
+N
+i AllFi
+FInPaneli
+C
+A
+A
+N
+O
+ 
+1. 初始高溫 T0，初始狀態 X，和代表晶體能量的目標函數(objective function) f。 
+2. 在 X 的鄰區搜尋新解 Y。 
+3. 若 f(Y)優於 f(X)，接受新狀態 Y 
+4. 若 f(Y)劣於 f(X)，有 P 的機會可接受 Y。 
+5. P = exp(-dS/T)，dS = Z(Y)-Z(X) 
+6. 逐步降低溫度。 
+7. 反覆 2-6 直到結束條件。 
+ 14  
+         
+ 
+圖 13 Fantastic Four.Vol 3-1.閱序由上而下，左而右。 
+ 
+ 
+ 
+ 
+ 
+ 
+圖 14  BZone [4]，下個氣泡只能配置在灰色限
+制區內。 
+ 
+Chun 等人[4]所發展的對話氣泡配置法(WBP，word balloon placement)，提出圖 14 的
+限制區域(BZone，bounded zone)概念，認為在由上而下由左而右的閱讀習慣下，下個氣泡
+中心只能在上個氣泡的灰色限制區內。Chun 將 PELP 的四鄰往上下延伸(圖 14-d) ，並將
+下個氣泡只在上個氣泡的 BZone 區的限制加入 PELP 演算法，得到的氣泡位置符合閱序，
+再整體上下位移優化識別度。WBP 法得到的氣泡位置能兼顧正確的閱序亦能優化辨識度(圖 
+14-e)。 
+我們以[4]為主，調整適應模擬退火演算法排版的 WBP 法。退火演算法排版的結果是
+將重要區域盡量置於漫畫格內而非保證全在漫畫格內，需對 WBP 的四鄰與漫畫格作碰撞偵
+測，並調整框外的聲源於框緣。劇本提示的鏡頭外(O.S.)也需要提供漫畫框內的虛擬位置，
+若 v-h tree 中鄰格存有該角色，以該角色位置位移到框緣作虛擬聲源；若不存在，則以框內
+鄰近的外邊，否則以框上四點為虛擬聲源。 
+1 
+2 
+3 
+4 
+ 16  
+         
+影像形變 (Image morphing & Warping) 
+從影片擷取的現實人物畫面，欠缺漫畫所需的誇張表情。第二年我們採用影像形變技
+術 (Image morphing & Warping) 協助加工漫畫表情。先將蒐集表情豐富之人臉作為資料庫，
+再以影像形變合成出所需表情。RBF 是基於圓形空間限制的高斯分布函數，在長型或是
+high-gradient 的資料上，像是嘴形的拉長、眉毛挑高等變動，其半徑會被最近的輪廓限制，
+而導致需要較多且較小的 RBFs 來填滿一個區域。所以我們使橢圓形高斯分布的 ERBF 來
+取代 RBF，可以得到較少的 kernel 數，且平滑的效果不會喪失，對臉部形體的適應性較好。
+實驗上，表情形變需 10~15 個圓 kernel，但 ERBF 僅需 5~7 個 kernel。 
+RBF 實作上，定義出對應點的關係，接著求出相對應係數，即可得到 X 和 Y 的兩個
+transform，如下列式子： 
+𝑓(?̅?) = ∑ 𝑘𝑖∅𝑖(?̅?) + 𝑝2𝑦 + 𝑝1𝑥 + 𝑝0
+𝑁
+𝑖=1 ⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡∅𝑖(?̅?) = ∅(||?̅? − ?̅?𝑖||) 
+ 
+ 
+ 
+Tx(?̅?) = ∑𝑘𝑖
+𝑥∅𝑖(?̅?) + 𝑝2
+𝑥𝑦 + 𝑝1
+𝑥𝑥 + 𝑝0
+𝑥
+𝑁
+𝑖=1
+⁡⁡⁡⁡T𝑦(?̅?) = ∑𝑘𝑖
+𝑦∅𝑖(?̅?) + 𝑝2
+𝑦𝑦 + 𝑝1
+𝑦𝑥 + 𝑝0
+𝑦
+𝑁
+𝑖=1
+ 
+而 ERBF 是改變了距離定義的方式，採用的是 Mahalanobis distance，如下式： 
+DM(x) = √(𝑥 − 𝜇)𝑇𝑆−1(𝑥 − 𝜇) 
+要求得最佳的核數量和位置，[17] 使用 reversible jump Markov Chain Monte Carlo 
+method(RJMCMC)。該文設計 Birth/Death/Move 三態，Birth 增 kernel，Death 減 kernel，Move
+修正 kernel 位置。而增減核後亦啟動核位置運算。RJMCMC 進行多回合運算，每次隨機進
+入三態。更新後若變形誤差少，有機會接受為新 ERBF。但隨著回合數增加，新 kernels 被
+接受的機率也越低。整個流程類似退火演算，需要大量計算時間。不過若僅要像素移動集
+中在嘴部的表情，我們提供介面，可憑經驗指定核數量及位置。 
+  
+圖 17 合成表情 
+Sum of radial basis function 
+Linear part of transformation Basis functions centered at 
+position of data 
+ 18  
+         
+他們的幾何性也相同，亦即第一步的結果可能造成面積變化，所以第二步的目的就是使各
+個三角形的面積與原三角形的面積相似，將原本的三角形 transform 到新的三角形上，計算
+出他們的頂點差距 
+ 
+藉由最小化上述的 error funtction 後可得到大小相似形狀相似的新三角網格。 
+ 
+圖 18 原圖, 形變後, 原字形, 形變後字形 
+As-rigid-as-possible[29]自由形變對象可針對任意物件，所以需要分離前景背景的工具，
+這裡使用 LazySnapping 的技術。並由於臉部和字體有不同的形變需求，如臉部可能需要三
+角對稱控制，而誇張的特效字可使用全畫面控制，我們在此提供四種方法，分別為 Vertex 
+Control Mode、Line Control Mode、Triangle Control Mode、Full Control Mode。 
+我們提供的形變編輯器有兩大步驟，分別是 LazySnapping 以及 2D deform，以下為主
+流程。 
+    
+LazySnapping 
+ -分離前景與背景 
+2D deform 
+ -找出物件的邊界範圍 
+ -找出邊界的輪廓 
+ -將物件內部結構三角網格化 
+ -將三角網格資訊丟入 2D deform model 
+-設定三角網格所對應的 texture 
+ -互動式接受形變，提供四種選擇 
+1. 頂點控制 
+2. 自由手繪線控 
+3. 三角形對稱控制 
+4. 全畫面控制 
+ -重繪 texture 於變形後之三角網格 
+ 20  
+         
+ 
+左圖為原圖，中間為 convex 結構，右圖為我們所希望的結果。 
+我們提出兩篩選條件：第一，其中有點的位置在圖像區域外的三角形就捨棄，第二，
+三角形的中心點位置如果不是物件範圍內就捨棄。這樣可得大致正確的結果。 
+但位在邊緣上的微細三角網格仍會誤判，由於小三角形的中心點位置會因為必須是整
+數而偏移到滿足捨棄條件的位置，如此三角形被誤捨棄，但頂點仍保留，這樣一來我
+們會設定多餘的點到2D deform model，造成無解的反矩陣，所以經過這二篩選條件後，
+還要將沒有歸屬的頂點排除，才能正常執行。 
+這麼做雖會把可能是物件範圍內的三角形也一併捨棄掉，但結果上仍可接受，因為會
+發生這類誤判的三角網格都很小，即使捨棄也幾乎看不出來。 
+ 2D deform - Texture 
+我們使用 OpenGL 的 GL_TEXTURE_2D，將原圖設為三角網格的材質貼圖，設定每個
+網格點材質座標。此外，為了在大程度形變時有較佳品質，我們將 glTexParameteri 的
+參數設為 GL_LINEAR_MIPMAP_LINEAR。 
+四個使用模式說明如下： 
+ 頂點控制 (Vertex Control Mode)  
+此模式能夠個別獨立對點做控制，基本上只要點的數量足夠可以完全任意變形。 
+ 
+ 自由手繪線控 (Line Control Mode)  
+此模式由使用者設定一條以上的控制線，完成後再依照順序畫上欲改變的線條形狀。 
+ 22  
+         
+漫畫風格化   
+ 建立切線流 
+我們仍使用 Kang 等人[30]的方法產生切線流。將彩色影像轉換成灰階 L，取影像梯度
+𝐺𝑥 =
+𝜕𝐿
+𝜕𝑥
+, 𝐺𝑦 =
+𝜕𝐿
+𝜕𝑦
+，作為切線流初始值𝑇𝑥 = −𝐺𝑦, 𝑇𝑦 = 𝐺𝑥。之後，以下式經過數次調整，
+得到平順的切線流。 
+t𝑛𝑒𝑤(𝑥) =
+1
+𝑘
+∑ 𝜙(𝑥, 𝑦)t𝑐𝑢𝑟(𝑦)
+𝑦𝜖Ω(𝑥)
+𝑤𝑚(𝑥, 𝑦)𝑤𝑑(𝑥, 𝑦) 
+𝑤𝑚(𝑥, 𝑦) = 0.5 + 0.5 tanh (𝜂 ⋅ (?̂?(𝑦) − ?̂?(𝑥))), 𝑤𝑑(𝑥, 𝑦) = |t
+𝑐𝑢𝑟(𝑥) ⋅ t𝑐𝑢𝑟(𝑦)|, 𝜙(𝑥, 𝑦) = {
+1⁡⁡⁡𝑖𝑓⁡t𝑐𝑢𝑟(𝑥) ⋅ t𝑐𝑢𝑟(𝑦) > 0⁡
+−1⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡⁡𝑜𝑡ℎ𝑒𝑟𝑤𝑖𝑠𝑒
+ 
+我們仍使用 Kang 等人[30]的方法產生切線流。將彩色影像轉換成灰階 L，取影像梯度
+𝐺𝑥 =
+𝜕𝐿
+𝜕𝑥
+, 𝐺𝑦 =
+𝜕𝐿
+𝜕𝑦
+，作為切線流初始值𝑇𝑥 = −𝐺𝑦 , 𝑇𝑦 = 𝐺𝑥。之後，以上式調整。𝑤𝑚崇強抑弱，
+梯度大於鄰域者會增強影響，梯度小於鄰域者會影響力衰減。𝑤𝑑加強與鄰域切線角度
+差異小的主方向，而𝜙是將不同半平面的切線轉向180∘。如此數回後，即使像有細碎
+羽毛的鳥眼，仍可得平順的切線流。 
+  
+ 以有向高斯差(FDoG)生成影像線條 
+在影像梯度方向上作仿二次微分的高斯差 DoG 來萃取邊緣差異，而在切線方向對高斯
+差結果作平滑化以抗噪，最後將高斯差結果二極化取出線條，也就是取出原灰階圖中
+的谷。對於草或頭髮等雜亂的材質，我們有嘗試先將影像作 LIC，得到視覺上較連續
+的影像後，再作有向高斯差。但這樣得到的線條，不如作 FDoG 時，多作幾回沿著切
+線方向將高斯差平滑化。 
+ 24  
+         
+特效線 
+單格影像中藉由各類不同的特效線顯示速度或情緒。速度線是追蹤關鍵影格的運動向
+量(motion vector)，以平行線 (Parallel Strait Lines)、軌跡線 (Tracking Curves) 和殘影 
+(Replication of Contours) 表現。放射線則用來強化音爆。 
+ 
+圖 20 (左) 平行線，(中) 軌跡線，(右) 殘影。 
+以 H.261 的影像編碼技術找影像流中的運動向量，對單漫畫格來說內容過於豐富，方
+向太多易干擾主題。我們從上圖中可觀察到，漫畫家只希望在某些被強調的物件邊緣畫上
+速度線，我們將這些物件邊緣定義為 rear edge，由使用者指定，系統再將 rear edge 存在的
+區域，自動前溯數張影格，以最近鄰搜尋法找出相似區塊，將軌跡紀錄為 motion vector 緣。 
+ 
+圖 21 在第 F 畫面設定 rear edge 後，在第 F-1 和第 F-2 張圖找最相近鄰域。 
+ 平行速度線 (Parallel Strait Lines)  
+MV = MB(F-1,F) – BB(F)，BB(i)為第 i畫面 rear edge的外框位置。
+MB(j,i)為以第 i 畫面，在第 j 畫面中找到與 BB(i)最相近的外框位
+置。在 rear edge 依照密度撒上黃色起始點 start，end =start+MV。
+以漸澄且逐漸變細的形式畫平行速度線。 
+ 軌跡線 (Tracking Curves)  
+同上我們設定 rear edge，前溯兩張，每個 rear edge point，求
+各自的逼近曲線。 
+ 殘影 (Replication of Contours)  
+前溯兩張，rear edge + MV[0], rear edge+MV[0]+MV[1]，連
+接 rear edge points。 
+ 26  
+         
+反應情緒的對話氣泡 
+如前述，每句對話經劇本分析後，以 VoiceTag 標示 none、anger、disgust、fear、joy、
+sadness 和 surprise 標示所屬情緒。本系統自動識別情緒，依對話內容產生適當大小，依情
+緒標籤產生適當型態的對話氣泡。 
+ None 
+畫最普通的橢圓形對話氣泡。 
+ Anger、surprise 
+氣憤驚訝等高情緒對話，以刺狀氣泡表示。先依文字數量產生白長方塊，再利用橢圓
+形公式，從 0 到 360 度，等角度並加一些角度擾動後決定新點，依次為一長一短，如
+此決定各尖刺頂點後，每 3 點一組畫白三角形，依序畫完一輪即完成刺狀氣泡。 
+ Disgust、fear 
+厭惡和恐懼的對話氣泡，以表示沉重壓力的凸多框體構成，遺憾的是電影對話內有許
+多人文幽默，是本專案無法解析，這部分多有誤判。氣泡以內容決定好文字框大小後，
+設內外框，對內框外內隨機灑點，再利用這些點，以 convex hull algorithm 找出一個最
+大凸包。 
+ Joy 
+雲狀對話氣泡，作法類似刺狀氣泡，先文字內容產生白長方塊，之後利用橢圓公式，
+對 0~360 繞一圈，決定好外圍上的新圓心組，各自畫圓以產生雲朵氣泡。 
+ 28  
+         
+平行運算 
+本專案以影像處理為主，使用通用圖形處理器(General-Purpose computing on Graphics 
+Processing Units，GPGPU)的 CUDA(Computing Unified Device Architecture，CDDA) 比相依
+於 rendering pipeline 的 shading language 更有彈性。我們採用 NVIDIA 的 CUDA 4.0，顯卡
+為 NVIDIA Quadro 2000，CPU 為 Intel ® Core™ i7-2600 @3.40GHz，4.0 GB RAM，作業系
+統為 64 bits。 
+使用 CUDA 加速的部分有四：卡通畫風所需的切線流 ETF、方向性高斯差 FDoG、雙
+邊濾波器，另外是為了產生速度線，對數張影像作的最近鄰搜尋。 
+ 切線流 (Edge Tangent Flow，ETF) 
+ 
+良好的切線流是將影像梯度垂直後，加權鄰區內切線，加權量抑弱崇大，偏好同向壓
+抑反向後，如此數回得到的平順切線流，需要 O(NMK)的運算，N 為點數，M 為鄰域
+大小，K 是回數。我們在此將逐點運算改以 CUDA 加速。首先將影像資訊(img , tx , ty , 
+mag)傳入 gpu texture memories，之後藉由 gpu 做兩次 sobel filter，得到 tx 和 ty，在每
+次的 sobel filter 中計算出 max_mag，每個 block 藉由 share memories 去儲存各 threads
+所計算的結果，並在最後取出最大者。block 與 block 之間則是待 gpu 執行完切回 cpu
+後再去取出最後的正確 max_mag 值。Kernel/Block 的關係為，每個 Sobel filter kernel
+以列數作為 block 數，而每個 block 使用 384 條 threads。 
+ 有向之高斯差濾波器(Flow-based Difference of Gaussian，FDoG)  
+分兩步驟，先垂直切線流作高斯差，再沿著切線流將路徑上的高斯差(DoG)以高斯濾波
+器平滑。我們以CUDA加速，將DoG所需資訊 (tx, ty, img) 傳入 gpu texture memories，
+blocks 和 threads 的配置同 ETF。 
+ 雙邊濾波器(Bilateral Filter)  
+雙邊濾波器以空間加權 x 色域加權來加總鄰域內的色彩。空間加權與距離差相關，色
+ 30  
+         
+六、 結果與討論 
+ 輸入：sexAndTheCity_cd1.avi.  字幕 p-sex-cd1.en.srt. 劇本 : sexAndTheCity.pdf  
+ 動作：擷取 scene 15 為一頁。 
+ 擷取之關鍵影格 
+ 
+ 整體重要區域 (黃)、對話角色之臉部(紅) 、對話角色之身體(橙) 
+ 
+ 
+排版初始值 
+ 
+ 
+排版後結果 
+ 
+  
+ 32  
+         
+七、 參考文獻 
+[1] “Using Roget's thesaurus for fine-grained emotion recognition,” in IJCNLP '08, pp. 296–302, 
+2008.  
+[2] Movie/script: Alignment and parsing of video and text transcription. In ECCV, 2008. 
+[3] An Automated Procedure for Word Balloon Placement in Cinema Comics. ISVC, 2, 576-585, 
+2006. 
+[4] An Argument for Basic Emotions, Cognition and Emotion. 1992. 
+[5] Hello! my name is...Buffy – automatic naming of characters in TV video. In BMVC, 2006. 
+[6] Nicholas Metropolis, Arianna W. Rosenbluth, Marshall N. Rosenbluth and Augusta H. 
+Teller. Equations of state calculations by fast computing machines. J Chem Phys 21: 1087–
+1092., 1953.  
+[7] S. Kirkpatric, Gelatt Jr CD and Vecchi. Optimization by simulated annealing. Science 220: 
+671–680., 1983.  
+[8] R. Ronfard and T. T. Thuong. A framework for aligning and indexing movies with their 
+scripts. In ICME, 2003.  
+[9] EmoHeart: Automation of Expressive Communication of Emotions in Second Life, 
+Proceedings of the 3d OCSC, 2009. 
+[10] A framework for aligning and indexing movies with their scripts. In ICME, 2003. 
+[11] Dynamic programming algorithm optimization for spoken word recognition, IEEE 
+Transactions on Acoustics, Speech and Signal Processing, 261 pp. 43- 49, 1978, ISSN: 
+0096-3518 
+[12] Robert Turetsky and Nevenka Dimitrova. Screenplay Alignment for Closed-System Speaker 
+Identification and Analysis of Feature Films, IEEE International Conference on Multimedia 
+and Expo, 1659--1662. 2004. 
+[13] . Interactive simulated annealing in a multiobjective framework: application to an industrial 
+problem. J Opl Res Soc 49: 1044–1050. 1998. 
+[14] Rapid Object Detection using a Boosted Cascade of Simple Features. IEEE CVPR 2001.  
+[15] 邱立榕. Comic-styled Photo Album Layout Using Simulated Annealing. 台灣大學資管碩
+士論文 2006.  
+[16] Katz, Steven D. and Butterworth-Heinemann. Film Direction Shot by Shot : Visualization 
+from Concept to Screen. 1991. 
+[17] Jon Christensen and Joe Marks. An Empirical Study of Algorithms for Point-Feature Label 
+Placement. ACM Transactions on Graphics (TOG). Volume 14 Issue 3, July 1995.  
+[18] http://www.screenwriting.info/  
+[19] Chou,Y.F. and Shih, Z.C. Animating Characters Using Nonparametric Regression, In The 
+International Symposium on Computer Science and its Applications. 2008. 
+[20] 阮喬楷. Image-Based Comic Portrait Generation, Thesis of NCTU 2009.  
+ 34  
+         
+O. S. Off screen 發聲者位於鏡頭外 
+V. O. Voice over 旁白 
+ 
+SLUG line 除了告知場景位置時間 [12] 外，也有部分會交代開場鏡頭。 
+CONTINUOUS ACTION 為連續動作的一環。 
+ESTABLISHING SHOT 定場鏡頭，從一開始用來明確交代地點的鏡頭，通常是視
+野寬闊的遠景，可確定場景中所有人物和空間關係。 
+STOCK SHOT 從現成影片中擷取，可購入的素材鏡頭。 
+ 
+鏡頭過場剪輯 (TRANSITION) 手法繁多不勝舉，僅列出樣本電影劇本中的手法。若能
+充分利用此資訊，外來也可以此優化漫畫排版。 
+JUMP CUT TO： 對同物件不連續的拍攝手法。 
+INTERCUT： 轉切，鏡頭迅速替換兩三回。 
+DISSOLVE TO： 前鏡頭淡出(fade-out)後鏡頭淡入(fade-in)。 
+FADE IN： 淡出。 
+FADE OUT： 漸入。 
+WIPEN TO： 掃入。 
+劇本中偶會出現諸如特寫 (CLOSE 
+UP)，遠景 (WIDE SHOT) 及推軌鏡頭 
+(TRACKING SHOT) 等運鏡指導。參考 
+[16] 製作了以人為比例的鏡頭示意圖 
+25。  
+ 
+圖 25 鏡頭 
+Two shot  雙人鏡頭。a,b 所在場景，先出現 a，再同時拍 a 和 b，再切到 b。 
+Over shoulder shot 過肩鏡頭，從某人的背後(肩)看到另外一人。 
+ 36  
+         
+特效線使用手冊 
+由於速度線需前溯影格，仍需影片資訊，自動排版後請進入 Motion effects 頁面產生特
+效線。 
+特效線需要使用者指定 rear edge 或 bounding box。使用者點選上排，進入 rear edge / 
+bounding box 之編輯模式，在右畫框上所見即所得編輯，確定所域區域後，按下 ”Compute” 
+計算影片中的動量。 
+之後選擇第二列之特效線種類產生對應線條。以 ”Next” 將特效線合併於底圖，並繼
+續下一個特效線編輯。 
+特效線建立後，再按選單 View\Show Bubbles 顯示對話氣泡，如此可得完整漫畫元素
+的漫畫式渲染頁面。之後可用 “Save” 將底圖另存他檔。 
+ 
+ 
+  
+ 38  
+         
+ 放射線 (Radiative Rays) 
+1. 按 “Bounding Box”進入 bounding box 模式。 
+2. 在右圖框所見即所得點選四點。 
+3. 選放射線按鍵，效果呈現在右圖框。 
+ 
+4. 參數調整：Radiative level、Lines Number、Length scale、Stroke1 WidthS、Stroke1 
+WidthE。 
+ 
+ 
+  
+ 40  
+         
+A. 拉出：點選字上兩點任意第三點。 
+B. 陰影：可與 Color、Shadow Color 設定字體與陰影色彩。Shadow X pos 和 
+Shaodw Y pos 設定字體陰影位置。 
+C.  刺狀字：可用 Triangle dense 調整尖刺密度。 
+D. Show bubble：點選後切換到對話氣泡模式，取消選取後切回特效字模式。 
+E. Deformation：使用 Laplacian mesh 編輯特效字。按下 “Deformation” 鍵後，出現
+特效字的獨立視窗，如圖 26-(1)，請直接畫上控制線，顏色依順次不同。結束後
+按 ”Enter”，原網格新增控制點後，生成如圖 26-(2)之新網格。之後依序”畫”出與
+原控制線對應之紅到暗紅色的目的線。畫完後按 ”Enter”，內部產生形變後格，原
+圖做為材質貼上新網格，得到變形後字體。之後按 ”s” 結束整體編輯，而形變字
+將原位置插回漫畫頁面。 
+ 
+圖 26 (1) 原圖和控制線。(2) 新增控制線後的網格。(3) 編輯控制線。(4) 形變後之新網格。 
+ 對話氣泡模式 
+A. Show bubble：點選後切換到對話氣泡模式，取消選取後切回特效字模式。 
+B. Run：進入對話氣泡模式後按 Run 會產生一白方形對話氣泡，方形周圍有許多點可
+用 Triangle X num 和 Triangle Y num 這兩個拉條決定，氣泡位置、高度和寬度亦可
+調整。 
+C. Hand move bubble：產生對話氣泡後，勾選該項後就可以手動編輯氣泡上某一點，
+如右下圖為手動拖曳諸氣泡頂點的結果。 
+出席 SIGGRAPH 2012 研討會報告 
+ 
+ 
+ 
+報告人姓名 施仁忠 服務單位 交通大學資訊工程系 
+會議期間 5 ~ 9 August 2012 會議地點 Los Angels, USA 
+會議名稱 SIGGRAPH 2012 
+主辦單位 ACM 
+論文標題 
+K-Clustered Tensor Approximation: A Sparse Multilinear 
+Model for Real-Time Rendering 
+ 
+ 
+ 
+ 
+摘要 
+本次在 LA 舉行的 SIGGRAPH 2012，為一年一度的學術研討會，全
+球各地 Computer Graphics 的頂尖學者和業者都會來參加這個盛會。
+本次我們發表了一篇論文有關及時光線照明的新演算法。 
+ 
+ 
+  
+三、 心得 
+SIGGRAPH 是 Computer Graphics 領域中全球最頂尖的學術會議，有
+機會與全球的頂尖學者共聚一堂非常難得，可彼此交換研究心得，相
+互切磋，對於後續的研究有相當大的幫助。 
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：施仁忠 計畫編號：98-2221-E-009-123-MY3 
+計畫名稱：數位電影漫畫產生技術之研究 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 4 4 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 12 12 100%  
+博士生 1 1 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 2 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

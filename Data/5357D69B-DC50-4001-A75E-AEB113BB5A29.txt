@@ -1,0 +1,595 @@
+I 
+ 
+中文摘要 
+ 
+因為不斷增加的網路流量與日益複雜的攻擊，使得設計高速網路型入侵偵測系統近來備受矚目，而深
+入研究網路型入侵偵測系統是達到健全設計的一個重要步驟。這個計畫藉由對目前普遍的 Snort 入侵
+偵測系統做深度量測，研究網路流量(包含惡意的流量)與系統設定對網路型入侵偵測系統的效能影
+響。依據量測結果，我們發現當網路型入侵偵測系統被設定成要掃描每一個封包內容時，樣式比對
+(pattern matching)確實會成執行時間的瓶頸。另外當網路型入侵偵測系統處理惡意流量的封包重組
+時，其前置處理階段的負擔也會相當繁重。所以，一台健全的高速網路型入侵偵測系統必須得同時改
+善多樣式的比對與前置處理階段，特別是封包重組的效能。調整封包內容的掃描深度也可以達到有效
+在高負荷下的效能調適。我們也展式了綜合多組的量測結果，的確可用來預測真實環境中龐大網路流
+量下的效能。也就是說，藉由觀察龐大網路流量的組成流量型態，並做個別流量型態下的效能分析，
+就可以推論出全部流量下的系統效能。 
+ 
+關鍵字：網路型入侵偵測系統、惡意網路流量、系統效能、樣式比對 
+ 
+英文摘要 
+ 
+Designing a high-speed NIDS has attracted much attention over recent years due to ever-increasing amount of 
+network traffic and ever-complicated attacks. Deeply studying the NIDS performance is an important step 
+toward a robust design. This work studies how the NIDS performance can vary with input network traffic, 
+including malicious traffic, and system configuration, based on detailed profiling with the popular NIDS, 
+Snort. According to the profiling, we find pattern matching can dominate the execution time if the NIDS is 
+configured to scan every packet payload in the packet traces. Moreover, the preprocessing stage can be heavy 
+when the NIDS handles packet reassembly for IP segments in malicious traffic. Therefore, a robust high-speed 
+NIDS design can focus on improving multiple pattern matching and preprocessing, particularly packet 
+reassembly. Adjusting the depth of payload to be scanned in the system configuration will be effective for 
+performance adaptation under heavy load. We also demonstrated that aggregating the profiling results can be 
+used to predict the results for bulk network traffic in a real environment. In other words, it is feasible to watch 
+the composing traffic types in the bulk traffic and individually analyzing the sample of each type to 
+extrapolate the performance for the total traffic. 
+Index Terms—NIDS, adversarial network traffic, system performance, pattern matching 
+to two main factors: the input network traffic and the system
+configuration. Many past studies have analyzed the NIDS
+performance with large packet traces of real network traffic
+mixed from a diversity of network applications [1], [10],
+[14]. Although this approach can reflect the performance of
+a NIDS in a realistic environment, it is still unable to tell
+how the two factors impact on the NIDS performance from
+their analysis due to the diverse characteristics of network
+traffic in the packet traces. In reality, the two factors can
+vary significantly in different environments. It is likely that
+the conclusion of analysis in an environment does not apply in
+another environment. Therefore, it is important to deeply study
+the NIDS performance to grasp environment-independent ideas
+that can explain the reasons behind the performance analysis.
+This work is intended to study how the input network traffic
+and the system configuration affect the NIDS performance.
+Rather than study the NIDS performance with the default
+configuration and packet traces from mixed network appli-
+cations, this work selects a set of network traffic of various
+characteristics (including malicious traffic) and a few different
+configurations, and then studies how the NIDS performance
+varies with them and the reasons behind the differences. From
+the study, this work can interpret observations on performance
+with large packet traces of real network traffic. The interpre-
+tation is helpful to both the NIDS developers and the network
+administrators. The former can have an insight of which
+components to optimize further in the system, and the latter
+can know how to configure the NIDS for better performance
+in an operational environment.
+The rest of this work is organized as follows. Section II
+reviews the architecture of a typical NIDS and the literature
+regarding analyzing and improving the NIDS performance.
+Section III describes the profiling of NIDS performance con-
+ducted in this work. Section IV deeply analyzes the profiling
+results and performs testing with bulk network traffic from a
+real environment. Section V concludes this work and points
+out the future work.
+II. BACKGROUND AND RELATED WORK
+This section provides the background information of this
+work. The processing in a NIDS involves several stages to
+detect intrusions in the packet traces. Section II-A first uses the
+popular open-source Snort NIDS as the example to describe
+the workings of a typical system. Section II-B then reviews
+related work on studying NIDS performance and accelerating
+pattern matching.
+A. Processing Stages in Snort
+Figure 1 illustrates the main processing stages in Snort.
+First, Snort fetches packet stream from the network interface
+using the open-source libpcap library (www.tcpdump.org) for
+packet capturing. The system can explicitly specify the packet
+filter, so only those packets of concern will be passed to
+upward stages for further analysis. Reading the raw packets,
+Snort first decodes the packet headers to identify header
+information such as port numbers and protocol types (TCP,
+real-time 
+notification
+record to disk
+policy 
+script
+alerts and packets
+record to diskdetection rules
+policy script
+  
+rule matching
+event engine
+event streamevent 
+control
+decoder/
+preprocessor
+processed contentconfiguration
+filtered packet 
+stream
+tcpdump
+filter
+filtered packet 
+stream
+tcpdump
+filter
+libpcaplibpcap
+Network
+packet stream
+Network
+packet stream
+48Bro (www.bro-ids.org)Fig. 1. The main processing stages in Snort.
+UDP, ICMP, etc.). Several preprocessors can be configured to
+process the packets before rule matching for intrusion detec-
+tion. Several of the preprocessors are important for restoring
+the application semantics for analysis in the latter stages and
+countering various evasion techniques [13]. For example, the
+frag3 and stream5 preprocessors reassemble IP fragments
+and TCP segments. The http_inspect preprocessor parses
+the HTTP content and normalizes the field values. There are
+also an increasing number of similar preprocessors for parsing
+the content of other application protocols for the semantics,
+such as ssh for the SSH protocol and so on. This work
+is interested in studying how much impact the newly added
+preprocessors or functions in existing preprocessors have on
+the overall system performance, whereas past studies paid less
+attention to them.
+Rule matching is the core stage for detecting intrusions in
+Snort. The following is an example of a Snort detection rule:
+alert tcp $EXTERNAL_NET any -> $HOME_NET 21 (msg:"FTP CWD
+˜root attempt"; flow:to_server,established; content:"CWD";
+nocase; content:"˜root"; distance:1; nocase;
+pcre:"/ˆCWD\s+˜root/smi"; metadata:service ftp;
+reference:arachnids,318; reference:cve,1999-0082;
+classtype:bad-unknown; sid:336; rev:11;)
+In the rule, Snort will look for the two patterns following the
+content keywords, “CWD” and “˜root”, in the payloads of
+the packets destined for the FTP port number 21.
+Rather than search for the patterns in each rule one by
+one, Snort selects a pattern from each rule (the longest one
+to reduce the chance of false positives by default), groups
+the patterns in the rules associated the same unique port (e.g.,
+port 21), and searches the payload for those in the same group
+simultaneously using a multiple-pattern search algorithm such
+as the Aho-Corasick algorithm [15]. If one of the selected
+patterns is found in the payload, the rule associated with it has
+2
+ 
+ 
+ 
+ 
+  最後，為了證明我們所有的實驗結果皆能代表對於現實生活中的真實流量產
+生的特性。我們將上述的 20GB pacp 依照 src_ip、dst_ip、src_port、dst_port 做
+hash 分類分割為十份 pcap 檔。Acc 為十份 pcap 檔加總結果，Ori 為單一檔案的
+結果。Figure 14 說明了，就算被分成許多部份，封包原有的特性還是依然不變，
+雖然在前置處理器的部份差異相當大，因為這階段存放了大量的連線狀態，所以
+在低一大檔案下會需要教多時間，是可預期的。 
+ 
+ decode Preprocessor mpse rule pcre total 
+Acc 19,746,971,720 59,650,184,712 3.99565E+11 8,680,884,592 795,386,304 5.86219E+11 
+Ori 20,203,711,792 1.26536E+11 4.456E+11 7,938,060,432 631,500,640 6.85942E+11 
+ 
+ 
+ 
+Section IV. Conclusion 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+0%
+10%
+20%
+30%
+40%
+50%
+60%
+70%
+80%
+90%
+100%
+HTTP SSH FTP SMTP Online 
+game 
+P2P
+other
+pcre
+rule tree
+mpse
+preprocessor
+decode
+Fig. 13                            packet decomposition test 
+Fig. 2. Proportion of total execution time in each Snort stage for normal
+traffic.
+regular expressions is commonly considered a heavy part
+in deep packet inspection. Note that although this stage is
+part of rule tree matching, its execution time is measured
+separately, and not counted in that of rule tree matching.
+• others: This stage involves other processing in the Snort
+analysis, such as outputting an alert.
+B. Baseline Profiling with Various Normal Traffic Types
+First, we fixed the system configuration with the default one,
+and fed the input network traffic of the following applications
+or protocols to Snort: HTTP, SSH, FTP, SMTP, online games
+and P2P. We chose these types of network traffic because
+they are common in real network and their characteristics are
+diverse significantly. Table I summarizes the execution time
+in each stage (in CPU cycles), and Figure 2 presents the
+proportion of the execution time in each stage. The profiling
+results are discussed as follows.
+The HTTP and SSH traffic involves the packets from
+downloading a large file from a Web site and transferring
+a large file using the scp command. In the profiling, Snort
+scans only the first 300 bytes in each direction of an HTTP
+connection and ignores the rest of bytes according to the
+default configuration. Similarly, Snort scans only the first 20
+packets in each direction of a SSH connection by default. The
+time spent in pattern matching is therefore trivial compared
+with the other stages. The pcre stage is not executed in the
+two cases because no patterns happen to be found in the mpse
+stage. Note that there is still time spent in the stage of rule
+tree matching because matching those rules without the
+content keyword needs to check the rest of rule options
+in the rules, even though no pattern matching is involved.
+Moreover, the per-packet execution time in the preprocessing
+stage is shorter in the SSH traffic than in the HTTP traffic
+because the packet content in SSH are encrypted and Snort
+can do little with the packet content for its semantics in this
+stage.
+The FTP and SMTP traffic in the profiling involve the
+packets from large downloaded files in FTP and an large
+attached file in a mail. Unlike the default configuration for
+the HTTP and SSH protocols, Snort scan every packet in the
+packet traces, and thus the proportions of the execution time
+in the mpse stage is much larger than those for the HTTP and
+SSH traffic. Moreover, the execution time in the preprocessing
+stage for the SMTP traffic occupies more than one third of the
+total time, meaning the processing in the SMTP preprocessor
+is also complex.
+The traffic of online game features many short packet
+payloads, while that of P2P (downloading a large file with
+BitTorrent) features a large number of connections. Although
+Snort scans the entire packet payloads, the execution time
+in the mpse stage is not so much as the cases of the FTP
+and SMTP traffic. Even though in the P2P traffic are many
+connections, the time spent in preprocessing, particularly the
+stream5 preprocessor for tracking the TCP states, is not so
+much as we originally expected.
+In summary, the mpse stage for multiple pattern matching
+is heavy if there are many long packet payloads to be scanned
+entirely; otherwise, the proportion of this stage in the total
+execution time is small to moderate, depending on the system
+configuration that specifies how deep to look into in each
+connection. The mpse stage is effective for filtering out those
+rules that cannot match, so the execution time in the rule
+tree matching, including the pcre stage, is generally
+short. The acceleration to regular expression matching will
+help little in practical Snort detection. On the contrary, the
+preprocessing stage consumes a noticeable proportion
+of time, depending on the work of individual preprocessors.
+When accelerating the Snort performance, the preprocessing
+should be also an important target to be boosted up.
+C. Profiling with Abnormal Network Traffic
+The network traffic in the preceding profiling is all normal,
+but it is common that abnormal or even malicious traffic is
+mixed in real network traffic. Therefore, we also measured
+the Snort performance to see the impact when Snort processes
+abnormal network traffic.
+1) Traffic with IP fragments and TCP segments: Splitting
+packets into small IP fragments and TCP segments is a
+known method to evade NIDS detection [13]. Modern NIDSs
+have been equipped with the capability of reassembling the
+split packets to avoid the evasion [28]. Snort comes with
+two preprocessors, frag3 and stream5, to reassemble IP
+fragments and TCP segments. In this profiling, we deliber-
+ately split packets from the traffic during a period of Web
+browsing into IP fragments and TCP segments using fragroute
+(monkey.org/∼dugsong/fragroute) to test the performance of
+both preprocessors in Snort. In the HTTP traffic, the packet
+traces contain several connections not so long as that of
+downloading a large file via HTTP in the preceding case, so
+most packet payloads should be scanned by default. Table II
+summarizes the execution time and the proportion in each
+stage for processing the split packets.
+For IP fragments, Snort collects and reassembles them be-
+fore scanning the packet payloads. Even though most payload
+payloads are scanned, the preprocessing stage still occupies
+a relatively large proportion, meaning the preprocessing can
+4
+a real environment. Snort provides the server_flowdepth
+configuration option for the http_inspect preprocessor to
+set the depth to look into. If the option value is 0, Snort
+will scan the entire traffic from the server to the client,
+which amounts to the majority of traffic in HTTP connections.
+Table IV compares the profiling results from Snort running
+with the HTTP traffic (the same as that in Section III-B) based
+on the default and new configurations.
+From the results in Table IV, we found slightly modifying
+the system configuration can result in a significantly different
+results. The mpse stage becomes dominant in the total exe-
+cution time if Snort scans the every packet payloads in the
+HTTP connection. We repeated a similar test with the SSH
+traffic, and also had a similar observation.
+A question immediately arises that whether it deserves
+to look deeply into every packet payloads in a connection.
+According to the discussion in [29], network traffic is heavy-
+tailed (i.e., most connections are short, with a small number
+of long connections accounting for the bulk of total volume
+of traffic), and most interesting information (e.g., protocol
+headers, authentication dialogues, protocol handshakes, etc.)
+is in the beginning of a connection. The work in [30] also
+showed that just scanning the beginning of the connections can
+generate most of the alerts. Therefore, if the load of a NIDS
+system is heavy, it is reasonable to dynamically reconfigure
+the system to scan only the beginning of the connections.
+The number of bytes in the connections to be scanned can
+be adjusted depending on the system load. From our profiling
+results, this strategy is effective to reduce the load of a NIDS
+system.
+IV. DEEP OBSERVATION AND TESTING WITH THE BULK
+TRAFFIC
+According to the preceding profiling, multiple pattern
+matching can dominate the total execution if every packet
+payload is scanned. Given a specific algorithm, the two
+factors can determine the scanning time of pattern matching:
+the payload length and the number of patterns in a group.
+Therefore, we will look into how the impact of the two factors
+is. Moreover, the profiling in Section III is performed on
+samples of packet traces because we do not want the profiling
+results to depend on the traffic in a specific environment, but
+want to understand how the results can vary depending on
+different input traffic and system configuration. Since network
+traffic in a real environment is composed of traffic from
+individual samples, we would like to show the aggregation of
+the time derived from individual traffic samples can be used
+to predict the results when profiling with bulk traffic in a real
+environment.
+A. Analysis of the Factors in Pattern Matching
+Figure 3 presents the relationship between the scanning time
+and the payload length (perhaps that after packet reassembly
+up to 64KB) to be scanned. Unsurprisingly, the scanning
+time is generally proportional to the payload length. This
+observation is consistent with that Snort runs the Aho Corasick
+ 
+Fig. 3. The relationship between the scanning time and the payload length.
+algorithm for patten matching, whose time complexity is linear
+to the payload length.
+When looking into the relationship between the scanning
+time per character in the payload and the number of patterns
+in a group, as presented in Figure 4(a), however, we found
+the proportional relation is not that obvious. Given a specific
+pattern group, the per-character scanning time can vary wildly,
+although the average time slightly increases with the number
+of patterns in a group. We investigated the hit rates of the
+L1 cache, as presented in Figure 4(b), and found the average
+hit rates slightly decreases with the number of patterns in a
+group because the memory size of the finite machine built
+from the patterns increases with the number of patterns. The
+slight decrease in the hit rates can account for the increase of
+the scanning time with the number of patterns in a group, but
+the reasons behind the wild variation of the scanning time for
+a given pattern group is still under investigation so far.
+B. Testing with the Bulk Traffic
+To extrapolate the profiling result from the sample traffic
+to the bulk traffic in a real environment, we studied whether
+the aggregation of the time from profiling individual sample
+traffic can predict the results from the bulk traffic in a real
+environment. As inspired from the work in [19], we divided the
+traffic of 20GB from the NCTU BetaSite [31], a bulk repos-
+itory of daily network traffic in the campus, into 10 subsets
+according to the hashing value from the source/destination IP
+addresses and the source/destination ports, and then measured
+the execution time in the Snort stages with each subset.
+Table V compares the aggregation time for these subsets
+and the time for the original bulk traffic. The aggregation time
+in every stage except the preprocessing is quite close to that
+for the bulk traffic. The exception in the preprocessing stage
+6
+TABLE V
+COMPARISON OF THE AGGREGATION TIME FOR THE SUBSETS OF TRAFFIC AND THE TIME FOR THE ORIGINAL BULK TRAFFIC.
+Traffic types Decoding Preprocessing Mpse Rule tree Pcre Others Total
+Aggregation time 19.75G 59.65G 388.57G 8.68G 795.39M 109.57G 586.22G
+Original time 20.20G 125.54G 445.60G 7.94G 631.50M 85.66G 685.94G
+[5] K. G. Anagnostakis, E. P. Markatos, S. Antonatos and M. Polychronatis,
+“EW 2XB: A Domain Specific String Matching Algorithm for Intrusion
+Detection,” 18th IFIP International Information Security Conference
+(SEC), Athens, Greece, May 2003.
+[6] D. Luchaup, R. Smith, C. Estan and S. Jha, “Multi-byte Regular Ex-
+pression Matching with Speculation,” Intl. Symp. on Recent Advances In
+Intrusion Detection (RAID), Saint-Malo, Brittany, France, Sept. 2009.
+[7] S. Artan and H. J. Chao, “10-Gbps High-Speed Single-Chip Network
+Intrusion Detection System,” IEEE Globecom, Washington DC, Nov.
+2007.
+[8] T. H. Lee, “Hardware Architecture for High-performance Regular Ex-
+pression Matching,” IEEE Tran. Computers, vol. 58, no. 7, pp. 984-993,
+July 2009.
+[9] C. R. Meiners, J. Patel, E. Norige, E. Torng and A. X. Liu, “Fast
+Regular Expression Matching Using Small TCAMs for Network Intrusion
+Detection and Prevention Systems,” Proc. USENIX Security Symposium,
+Washington DC, Aug. 2010.
+[10] D. L. Schuff,Y. R. Choe and V. S. Pai, “Conservative vs. optimistic
+Parallelization of Stateful Network Intrusion Detection,” IEEE Intl. Symp.
+on Performance Analysis of Systems and Software (ISPASS), Austin, TX,
+Apr. 2008.
+[11] V. Paxson, K. Asanovic, S. Dharmapurikar, J. Lockwood, R. Pang, R.
+Sommer and N. Weaver, “Rethinking Hardware Support for Network
+Analysis and Intrusion Prevention,” Proc. USENIX Hot Security, Van-
+couver, B.C., Canada, Aug. 2006.
+[12] V. Paxson, “Considerations and Pitfalls for Conducting Intrusion Detec-
+tion Research,” Invited talk in SIDAR Conf. on Detection of Intrusions and
+Malware & Vulnerability Assessment (DIMVA), Lucerne, Switzerland,
+July 2007.
+[13] M. Handley, C. Kreibich and V. Paxson, “Network Intrusion Detection:
+Evasion, Traffic Normalization, and End-to-end Protocol Semantics,”
+Proc. USENIX Security Symposium, Washington D.C., Aug. 2001.
+[14] J. B. D. Cabrera, J. Gosar, W. Lee and R. K. Mehra, “On the Statistical
+Distribution of Processing Times in Network Intrusion Detection,” IEEE
+Conf. on Decision and Control, Bahamas, Dec. 2004.
+[15] A. V. Aho and M. J. Corasick, “Efficient String Matching: an Aid to
+Bibliographic Search,” Commu. of the ACM, vol. 18, issue 6, pp. 333-340,
+Jun. 1975.
+[16] W. Lee, W. F, M. Miller, S. J. Stolfo and E. Zodak, “Toward Cost-
+Sensitive Modeling for Intrusion Detection and Response”, Journal of
+Computer Security, vol. 10, issue 1-2, pp. 5-22, 2002.
+[17] W. Lee, J. B. D. Cabrera, A. Thomas, N. Balwalli, S. Saluja and
+Y. Zhang, “Performance Adaptation in Real-Time Intrusion Detection
+Systems,” Intl. Symp. on Recent Advances In Intrusion Detection (RAID),
+Zurich, Switzerland, Oct. 2002.
+[18] M. Reha`k, E. Staab, V. Fusenig, M. Peˇchoucˇek, M. Grill, J. Stiborek, K.
+Bartosˇ and T. Engel, “Runtime Monitoring and Dynamic Reconfiguration
+for Intrusion Detection Systems,” Intl. Symp. on Recent Advances In
+Intrusion Detection (RAID), Saint-Malo, Brittany, France, Sept. 2009.
+[19] H. Dreger, A. Feldmann, V. Paxson and R. Sommer, “Predicting the
+Resource Consumption of Network Intrusion Detection Systems,” Proc.
+ACM Computer and Communications Security (CCS), Washington DC,
+Oct. 2008.
+[20] H. Dreger, A. Feldmann, V. Paxson and R. Sommer, “Operational
+Experiences with High-Volume Network Intrusion Detection,” Proc. ACM
+Computer and Communications Security (CCS), Washington DC, Oct.
+2004.
+[21] N. Tuck, T. Sherwood, B. Calder and G. Varghese, “Deterministic
+Memory-efficient String Matching Algorithms for Intrusion Detection,”
+IEEE INFOCOM, Hong Kong, Mar. 2004.
+[22] S. Dharmapurikar and J. Lockwood, “Fast and Scalable Pattern Matching
+for Content Filtering,” Proc. Symp. on Architectures for Networking and
+Communications Systems (ANCS), Princeton, NJ, Oct. 2005.
+[23] S. Dharmapurikar, P. Krishnamurthy, T. S. Sproull and J. Lockwood,
+“Deep Packet Inspection Using Parallel Bloom Filters,” IEEE Micro, vol.
+24, issue 1, pp. 52-61, Jan.-Feb. 2004.
+[24] R. Smith, C. Estan and S. Jha, Backtracking algorithmic complexity
+attacks against a NIDS, Proc. Annual Computer Security Applications
+Conference (ACSAC), Miami Beach, FL, Dec. 2006.
+[25] R. Sommer, V. Paxson, and N. Weaver, “An Architecture for Exploit-
+ing Multi-core Processors to Parallelize Network Intrusion Prevention,”
+Concurrency and Computation: Practice and Experience, Special Issue:
+Multi-core Supported Network and System Security, 21(10), pp. 1255-
+1279, May 2009.
+[26] Intel, “Supra-linear Packet Processing Performance with Intel Multi-core
+Processors,” Intel White Paper, 2006.
+[27] G. Vasiliadis, S. Antonatos, M. Polychronakis, E. P. Markatos and S.
+Ioannidis, Gnort: high performance network intrusion detection using
+graphics processors, Proc. of the 11th International Symposium on Recent
+Advances in Intrusion Detection (RAID), Cambridge, MA, Sept. 2008.
+[28] S. Dharmapurikar and V. Paxson, “Robust TCP Stream Reassembly
+in the Presence of Adversaries,” Proc. USENIX Security Symposium,
+Baltimore, MD, Aug. 2005.
+[29] G. Maier, R. Sommer, H. Dreger, A. Feldmann, V. Paxson and F.
+Schneider, “Enriching Network Security Analysis with Time Travel,”
+Proc. ACM SIGCOMM, Seattle, WA, Aug. 2008.
+[30] Y. D. Lin, T. H. Cheng, P. C. Lin, I. W. Chen and Y. C. Lai,“Low-
+storage Capture and Loss-recovery Selective Replay of Real Flows,” In
+preparation.
+[31] Y. D. Lin, I. W. Chen, P. C. Lin, C. S. Chen, C. H. Hsu, On Campus
+Beta Site: Architecture Designs, Operational Experience, and Top Product
+Defects, IEEE Communications Magazine, to appear.
+8
+ 3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以
+500 字為限） 
+這個研究成果的意義在於提供學術界與產業界欲設計高效能的入侵偵測系統
+一個重要的參考。事實上，我們把原本討論惡意流量對入侵偵測系統效能的
+影響更進一步擴大到各類型的網路流量與系統設定(configuration)對整體
+效能的衝擊(詳見結案報告)，在這個研究當中，我們確認了在過去一般認知
+的特徵字串比對會形成效能瓶頸的條件，以及封包重組、剖析對系統效能可
+能形成的衝擊。當然也包含了惡意流量，大量切割的封包、帶有攻擊內容的
+網路流量等，對入侵偵測系統效能的影響。相較於過去只看混合各種網路應
+用的大量流量所做出來的效能量測，我們的研究成果更能洞悉入侵偵測系統
+各階段可能成為瓶頸的條件。 
+ 
+這個研究結果對其後研究或產品開發的影響在於指出效能瓶頸的所在與發生
+的條件，使得不管是學者或是產品開發者能夠把精力專注在改善可能發生瓶
+頸的所在，以使得相關的研發可以真正改善系統整體的效能、以及在各種條
+件底下的承受力。此外也可以開發合理的動態調節機制，使得系統遭遇特殊
+流量時，可以在儘量不影響偵測率的前提下，動態調整系統內部機制，來減
+少對效能的衝擊，這些都是可以再進一步發展的議題。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+究，包括本計畫做網路型入侵偵測系統上做效能評估的議題，都非常需要真實的網路流量)，交換
+了一些意見和想法。此次的會議參與，整體來說，算是相當有收獲。 
+二、與會心得 
+IEEE Symposium on Security and Privacy 在安全相關的領域算是相當重要的會議，許多重要
+的人物或其團隊都在會場，所以比較有機會順便交流。我特別注意是否有台灣的學者參與，但今
+年較可惜的是，並沒有從台灣發表的論文。現在除了我之外，也沒看到從台灣來的人參與。相較
+於這個論文的重要性，覺得是比較可惜的事。或許也跟國內的研究環境較注重期刊論文有關，使
+得優秀的論文較以發表在期刊為首要目標。 
+這次雖然沒有能及時發表會議論文，不過有機會能夠在參加這種重要的會議，算是相當難得的
+經驗，也可以藉機跟一些重要人士做簡單的交流。雖然即使有投論文，要能在這樣的會議中被接
+受也不是一件簡單的事，可以做為今後努力的目標。 
+三、考察參觀活動(無是項活動者略) 
+四、建議 
+ 在個人所收集與目前自身研究相關的論文當中，絕大多數都是會議論文。這類的研究議題大都
+相當新穎，或許也是大都出現在會議論文的原因。在這些相關領域的國際會議中，有幾個會議接
+受率都相當低，大約在 10%上下，並不會比一些期刊論文好投上，論文的能見度也很高，能投上算
+是一個重要的 credit。建議除了期刊論文之外，在個別領域重要的國際會議也可以比照期刊論文
+列為研究成效量化指標的對象，希望以後能有多點來自台灣的論文在這類會議中出現。 
+五、攜回資料名稱及內容 
+IEEE Symposium on Security & Privacy 2010 會議論文集 
+六、其他 
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：林柏青 計畫編號：98-2218-E-194-009- 
+計畫名稱：剖析惡意流量對網路型入侵偵測系統效能的衝擊 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 3 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

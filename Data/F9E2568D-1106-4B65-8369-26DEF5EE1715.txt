@@ -1,0 +1,643 @@
+2 
+摘要 
+本計劃提出以調變頻譜分析來自動分類音樂之曲風。首先將輸入之音樂聲音切割為
+一些固定長度之分析視窗，對於每一分析視窗分別對其八度音程頻譜對比值(Octave 
+spectral contrast, OSC)、MPEG-7之正規化聲音頻譜封包(NASE)及MFCC倒頻譜等之靜
+態(static)及動態(dynamic)特徵做調變頻譜分析，分別產生靜態 OSC 調變聲譜圖、動態
+OSC調變聲譜圖、靜態 NASE調變聲譜圖、動態 NASE調變聲譜圖、靜態MFCC倒頻
+譜調變聲譜圖及動態MFCC倒頻譜調變聲譜圖，然後對每一個調變頻譜分解成對數間距
+之調變頻帶，自每一調變頻帶中我們擷取調變頻譜能量值(modulation subband energy)、
+調變頻譜波谷值 (modulation spectral valley)及調變頻譜對比值 (modulation spectral 
+contrast)，然後以主軸向量分析(PCA)來選取適當之調變頻譜特徵值並降低特徵向量維
+度，最後再以 LDA 來辨識決定每一分析視窗屬於每一特定類別聲音之相似度，以辨識
+此一輸入之音樂檔案是屬於何種類別之音樂曲風。 
+ 
+一. 報告內容 
+1. 前言 
+對於音樂曲風之分類，特徵值的擷取和分類器的選取將會影響分類的效果，其中特
+徵值的好壞，對於分類的結果有很大的影響。首先，我們可以將擷取之特徵向量分為短
+時距特徵(short-term features)和長時距特徵(long-term feature)兩類。 
+短時距特徵代表從一段較短時間(通常是一個音框)之音樂訊號中所擷取之特徵向
+量，一般而言是屬於較低階之音樂特徵。最常用來做為音樂曲風分類之音樂特徵可分為
+三類：音色(timbre)、節奏(rhythm)及音高(pitch)。音色特徵通常呈現了演奏之樂器或聲
+音來源之特性，譬如音樂、語音、及環境聲音等。通常較常使用之音色特徵有以下幾種： 
+(1) 低能量特徵 (low-energy feature, LEF) 
+此特徵之定義是將連續數個音框看成一個紋理視窗(texture window)，首先計算每個
+音框之能量值： 
+2/1
+1
+0
+2 )])[(1()( ∑
+−
+=
++×=
+M
+m
+RMS mMnxM
+nE  
+其中，M表示每個音框的樣本數目，然後計算紋理視窗中所有音框能量的平均值： 
+∑
+−
+=
+=
+1
+0
+)(1
+N
+n
+RMSRMS nEN
+E  
+其中，N表示每個紋理視窗中的音框數目，此低能量特徵是計算在此紋理視窗中有
+4 
+用來描述前後連續兩個音框間的頻譜差異性，可用來分割聲音片段。 
+∑
+=
+−−=
+N
+m
+nnn mNmNF
+1
+2
+1 ])[][(  
+其中 Nn[m]為將 Mn[m]正規化的值，其計算公式如下： 
+∑
+=
+= N
+m
+n
+n
+n
+mM
+mMmN
+1
+][
+][][  
+(7) 梅爾倒頻譜係數 (Mel-frequency cepstral coefficients, MFCC) 
+梅爾倒頻譜係數已經廣泛的應用在語音辨識上，事實上，梅爾倒頻譜係數在語音辨
+識上是非常有用的而且可以用一組頻帶來描述一段聲音訊號。人類之聽覺系統可將
+聲音之頻率分為一個個臨界頻帶(critical band)，位於同一臨界頻帶內之頻率聲音對
+人耳聽起來是相似的，梅爾倒頻譜係數之概念即是用一組梅爾濾波器來過濾每一臨
+界頻帶之聲音訊號，並對每一頻帶之對數能量頻譜值(logrithmic spectra)做離散餘弦
+轉換(discrete cosine transform, DCT)，即可求得每一音框之梅爾倒頻譜係數。 
+(8) 八度音程頻譜對比值 (octave-based spectral contrast, OSC) 
+八度音成頻譜對比值[1]是用來描述在每一個八度音程的次頻帶中，頻譜波峰和波
+谷的強度值之差異值，如此可以大略的反映聲音訊號之泛音(harmonic)和非泛音
+(non-harminic)的分佈狀況。 
+ 
+節奏特徵主要是描述一首音樂之節奏特性，通常是由一段音樂中的節拍統計圖(beat 
+histogram)中擷取其節奏特徵，包括所有節拍的強度、主節拍的速度及強度、主節拍和
+次節拍之速度間距，以及主節拍和次節拍的相對強度值。預估主節拍速度和其對應強度
+的方法可參考[2, 3]。Tzanetakis提出從一首音樂之音高統計圖(pitch histogram)中擷取音
+高特徵的方法[4]，其特徵包括頻率、音高強度值和音高間距。此一音高統計圖可以使用
+各種音高偵測演算法來統計得到[5, 6]，而旋律與泛音也廣泛地由音樂家用來研究音樂的
+結構，因此，Scaringella等人提出藉由描述每一小段音樂片段之音高分佈來擷取旋律與
+泛音的方法[7]，此一方法類似旋律或泛音分析器，但不用事先決定較高階之音樂特性，
+如基頻、和弦或音樂調性。 
+欲描述一整首音樂之特性，通常必需將短時距的特徵向量整合在一起而構成長時距
+之特徵向量，整合的方式包括計算所有短時距特徵向量之平均值及標準差，或者以自我
+回歸模型[8]或調變頻譜[9-11]來分析。 
+6 
+典音樂、鄉村音樂、嘻哈音樂(hip-hop)、爵士樂、搖滾樂、藍調音樂、雷鬼音樂(reggae)、
+流行音樂及金屬音樂(metal)等，並且將音樂曲風之分類建構成階層式架構，因此古典音
+樂可再細分為聖歌(choir)、管弦樂(orchestra)、鋼琴音樂及四重奏等，而爵士樂則細分為
+爵士樂團(bigband)、冷峻爵士樂(cool)、融合爵士樂(fusion)、鋼琴爵士樂、爵士樂四重
+奏及搖擺爵士樂(swing)，其實驗結果顯示以由三個高斯分佈群數組成之高斯混合模型來
+分類可以得到最佳之辨識率。 
+ West及 Cox[13]提出以音框為辨識單元之階層式音樂曲風分類系統，在其系統中以
+投票法則來決定一首音樂之曲風。其分類之音樂曲風包含以下幾種：搖滾樂、古典音樂、
+重金屬音樂(heavy metal)、鼓聲(drum)、貝斯聲(bass)、雷鬼音樂及叢林音樂等，其使用
+之音樂特徵包括梅爾倒頻譜係數(MFCC)及八度音程頻譜對比值(OSC)，同時比較以下幾
+種分類器之辨識效能：含(或不含)決策樹之高斯分類器、由三個高斯分佈群數組成之高
+斯混合模型及線性區別分析演算法，其實驗結果顯示以高斯混合模型且含決策樹之高斯
+分類器之辨識率最佳。 
+ Xu等人[14]以支撐向量機(support vector machine, SVM)來區分純音樂及人聲，其所
+使用之音樂特徵由支撐向量機之學習演算法來決定分類參數，而且其實驗結果顯示以支
+撐向量機來分類比起傳統之歐基里得距離公式或隱藏馬可夫模型(HMM)之分類結果還
+要好。 
+ Esmaili 等人[15]使用低階之音樂特徵(如梅爾倒頻譜係數、熵值(entropy)、頻譜質
+心、頻寬等)以及線性區別分析演算法來辨識音樂曲風，在其系統中將音樂分類為以下
+五類：搖滾樂、古典音樂、民謠(folk)、爵士樂及流行音樂等，其分類結果之正確率可以
+達到 93%。 
+ Bagci及 Erzin [16]建構一個以音框為辨識單元之音樂曲風分類系統，在其系統中，
+以 Inter-Genre Similarity (IGS)模型來偵測一些無效之音框並且將其排除以提高辨識的正
+確率。欲判定一個音框是否無效，其系統先對每一種音樂曲風建構其 GMM模型，然後
+以此 GMM模型進行辨識，所有辨識錯誤之音框將被視為無效之音框，而辨識正確之音
+框則用以更新 GMM模型之參數，此外對於那些辨識錯誤之之無效音框也以一個 GMM
+模型來表示其分佈狀況。其所使用之音樂特徵包括 13個梅爾倒頻譜係數、4個頻譜形狀
+特徵(頻譜質心、頻譜滑動率、頻譜變遷度及越零率)，此外還包括以上特徵之一階及二
+階導函數係數，而其音樂資料庫中總共有 10 種音樂曲風：藍調音樂、古典音樂、鄉村
+音樂、迪斯可舞曲、嘻哈音樂、爵士樂、金屬音樂、流行音樂、雷鬼音樂及搖滾樂等，
+8 
+為分類之依據，作者使用正規化最小平方法(Regularized Least Square, RLS)針對資訊融合
+之架構來計算相似度，藉以避免過度強調單一特徵之相似度計算且能擷取各個音樂風格
+之特徵。其分類之音樂資料庫是使用ISMIR2004之資料庫，此系統融合了梅爾倒頻譜係
+數(MFCC)、波動圖樣(Fluctuation Pattern)及頻譜統計圖(Spectrum Histogram)等特徵之相
+似度的資訊，其辨識率可達到84.77%。 
+Silla等人[20]應用機器學習的方法於音樂風格之分類。其系統主要是利用集成
+(Ensemble)的概念來整合對於時間分解及空間分解之分類辨識結果。在時間分解的架構
+上，是將音樂訊號分為開始、中間及結尾之長達30秒鐘的片段，針對各個片段來擷取其
+音樂特徵(包括節拍、音色及音高等)，其目的是希望對於訊號隨著時間的變化有更好的
+描述，最後的結果則是由三個音樂片段之結果採投票的方式決定。在空間分解的架構
+上，則將一序列的二元分類器之辨識結果加以組合，用來解決多元類別之音樂風格分類
+的問題。其中，採用了一對多(One Against All, OAA)及循環式(Round Robin, RR)之兩種
+演算法來加以達成，在最後的決定階段，OOA演算法是使用事後機率 (posteriori 
+probability)的方式決定，而RR演算法則採用投票的方式；其所使用的分類器包含：古典
+決策樹(classic decision tree)、Ｋ鄰近分類器(instance-based K-NN classifier)、貝氏分類器
+(Naïve-Bayes classifier)、多層感知類神經網路及支撐向量機(SVM)。此系統所使用的資
+料庫為拉丁音樂資料庫，其資料庫分為10類，共有3160首歌。當RR演算法應用於SVM
+分類器時，擁有最佳之辨識率為65.06%。 
+Cataltepe等人[21]使用MIDI檔案及音訊特徵應用於MIDI檔案之音樂風格分類。在利
+用MIDI檔案之辨識上，則將擷取不同長短之MIDI檔案片段轉換成字串，再使用正規化
+壓縮距離(Normalized Compression Distance, NCD)計算兩MIDI字串之距離做辨識。而利
+用音訊特徵之辨識時，則是將MIDI檔案先轉換為音訊檔案，再針對音訊檔案擷取其音
+色、節奏及音高等特徵，利用LDA分類器及Ｋ-NN分類器做辨識。此系統使用McKay及 
+Fujinaga所提出之資料庫，而結合了MIDI檔案及音訊特徵其正確率可達到93%。 
+ 
+2. 研究目的與研究方法 
+本計畫應用調變聲譜圖於音樂曲風之自動辨識分類，調變聲譜圖主要是對八度音程
+頻譜對比值(Octave spectral contrast, OSC)、MPEG-7 之正規化聲音頻譜封包(NASE)及
+MFCC倒頻譜等之靜態(static)及動態(dynamic)特徵做調變頻譜分析，分別產生靜態 OSC
+調變聲譜圖、動態 OSC調變聲譜圖、靜態 NASE調變聲譜圖、動態 NASE調變聲譜圖、
+10 
+),1log(
+1
+,∑
+=
+=
+bN
+i
+ib
+b
+b xN
+Peak
+α
+α
+ 
+),1log(
+1
+1,∑
+=
++−=
+b
+b
+N
+i
+iNb
+b
+b xN
+Valley
+α
+α
+ 
+其中α為鄰近區之參考因子(本計劃中設α = 0.2)，第 b個次頻帶之頻譜對比值可定義為 
+.bbb ValleyPeakSC −=  
+對每一音框，我們取所有次頻帶之頻譜波谷值(Valleyb, 1 ≤ b ≤ Bo)及頻譜對比值(SCb, 
+1 ≤ b ≤ Bo)為此一音框之 OSC特徵向量，然後我們將所有音框之 OSC係數(包含所有次
+頻帶之頻譜波谷值及頻譜對比值)沿著時間軸串接起來構成二維之影像圖，稱為 OSC聲
+譜圖。 
+ 
+表一. 八度音程之每一次頻帶之頻率範圍 (Sampling rate = 44.1 kHz) 
+Subband Low Frequency (Hz) High Frequency (Hz) 
+1 0 100 
+2 100 200 
+3 200 400 
+4 400 800 
+5 800 1600 
+6 1600 3200 
+7 3200 6400 
+8 6400 12800 
+9 12800 22050 
+ 
+2.1.2 靜態 NASE聲譜圖 
+ 在MPEG-7標準中，是以對數之頻率間格來描述音訊訊號的頻譜圖。由於人類對於
+頻率的敏感度是呈現對數之對應關係，所以我們使用對數頻率來取頻率間距，如此可以
+兼顧描述性與簡潔性。聲音頻譜封包(audio spectrum envelope, ASE)在MPEG-7標準裡普
+遍用於表示原始聲音訊號中每一頻帶之功率頻譜[22, 23]，主要是描述介於loEdge (預設
+62.5Hz)與hiEdge (預設為16000Hz)間的頻譜資訊，將介於loEdge與hiEdge間的頻率再分
+解為B個頻帶，而每一頻帶的頻寬解析度是以八度音(octave)解析度為基準，以1000Hz
+為中心上下區分，總計介於[loEdge, hiEdge]間之頻帶數目為 BN = 8/r，其中r是八度音的
+解析度，其範圍是介於1/16倍八度音至8倍八度音之間： 
+3   4-  octaves, 2 ≤≤= jr j  
+12 
+   )110(700 2595 −=
+mel
+f , 
+其中 f 代表實際的頻率值。人類之聽覺系統可將聲音之頻率分為一個個臨界頻帶(critical 
+band)，位於同一臨界頻帶內之頻率聲音對人耳聽起來是相似的，因此我們可以用一組
+濾波器來過濾每一臨界頻帶之訊號，另外每一個臨界頻帶的頻寬會隨著頻率值而改變。 
+對每一分析視窗我們計算梅爾倒頻譜係數為每一音框之特徵向量，然後將所有音框
+之梅爾倒頻譜係數沿著時間軸串接起來構成二維之影像圖，稱為MFCC倒頻譜聲譜圖。 
+ 
+2.1.4動態聲譜圖(dynamic spectrogram) 
+假設第 t個音框之MFCC、OSC及 NASE之特徵向量(稱為靜態特徵向量)分別為： 
+,1)]-( , (1), (0),[  TLMFCCMFCCMFCC ttt
+MFCC
+t =x  
+,])12(,),1(),0([  T-BOSCOSCOSC Ottt
+OSC
+t =x   
+,]1)( ,),1( ),0( ,[ T+= Ntttt
+NASE
+t BNASENASENASER x  
+其中 L 為 MFCC 特徵向量之長度，BO為 OSC 之濾波器數目，BN為 NASE之濾波器數
+目。而MFCC、OSC及 NASE之動態特徵值 ΔMFCC、ΔOSC及 ΔNASE之定義如下： 
+,0  ),()()( 11 LkkMFCCkMFCCkMFCC ttt <≤−=∆ −+   
+,20  ),()()( 11 Ottt BkkOSCkOSCkOSC <≤−=∆ −+  
+,20  ),()()( 11 Nttt BkkNASEkNASEkNSAE <≤−=∆ −+  
+我們再將動態特徵值串接起來分別構成MFCC、OSC及 NASE之動態特徵向量。 
+ 
+2.1.5 調變頻譜分析(modulation spectral analysis) 
+調變頻譜特徵主要用來描述一聲音訊號中某一特定頻率(或頻帶)隨時間變化之過
+程。首先，對時間域之聲音訊號做傅立葉轉換後可以得到在頻率域中之短時間聲音的頻
+譜係數。若對一特定頻率追蹤其隨時間變化之軌跡，稱之為流動頻譜(running spectrum)，
+因此所有的頻率之流動頻譜則構成二維之資料，而對流動頻譜進行頻率分析之結果就稱
+為調變頻譜。 
+在本計劃中，我們將此一調變頻譜之觀念應用於不同之特徵向量，包括 OSC係數、
+NASE係數及梅爾倒頻譜係數等，計算各種靜態及動態特徵向量之調變頻譜，然後將調
+變頻譜切割成數個調變頻帶(如表二)，再從每一個調變頻帶內擷取特徵值，然後將所有
+14 
+|),(|max),(
+,,
+dmMdjMSP
+hjlj ΦmΦ <≤
+=  
+|),(|min),(
+,,
+dmMdjMSV
+hjlj ΦmΦ <≤
+=  
+調變頻譜波峰值與調變頻譜波谷值之差異值即是調變頻譜對比值： 
+),(  ),(),( djMSVdjMSPdjMSC −=  
+因此所有特徵值之所有調變頻譜對比值、調變頻譜波谷值及調變頻譜能量值可構成三個
+D×J之矩陣，每一矩陣可視為二維之影像圖，統稱為調變聲譜圖。為了降低特徵向量維
+度，我們對於每一調變頻譜矩陣之每一列及每一行計算平均值及標準差為特徵向量： 
+T)]1( ),1( ),1( ),1( , ),0( ),0( ),0( ),0([ −−−−= DDuDDuuu rowMSV
+row
+MSV
+row
+MSC
+row
+MSC
+row
+MSV
+row
+MSV
+row
+MSC
+row
+MSC
+row σσσσ f  
+.)]1( ),1( ),1( ),1( , ),0( ),0( ),0( ),0([ T−−−−= JJuJJuuu colMSV
+col
+MSV
+col
+MSC
+col
+MSC
+col
+MSV
+col
+MSV
+col
+MSC
+col
+MSC
+col σσσσ f  
+然後再將每一列及每一行之特徵向量串接起來成為每一調變頻譜矩陣之特徵向量： 
+  .])(,)[( TTT colrow fff =  
+最後我們將每一個特徵值正規化來使得其特徵值範圍是介於 0與 1之間： 
+)()(
+)()()(
+minmax
+min
+nfnf
+nfnfnf
+−
+−
+=
+∧
+, 
+其中，f(n)為第 n個特徵值量， )(ˆ nf 為正規化後之徵值量，fmax(n)和 fmin(n)為第 n個特徵
+值之最大值和最小值。 
+ 
+2.2主軸向量分析演算法(principal component analysis, LDA) 
+PCA 是先計算所有訓練資料之特徵向量的平均變異數矩陣 E[XXT]之 eigenvalue 及
+eigenvector [27]，並以 eigenvector當作基底來做線性轉換，而 eigenvalue的大小可以決
+定其對應之 eigenvector轉換後之特徵所保留之資訊量大小，eigenvalue越大表示資料作
+線性轉換後，特徵的變異數值會越大，而變異數的大小又表示了分佈的寬廣，資料分佈
+越廣表示所保留之資訊量越大，也就是說，以 eigenvalue值較大之 eigenvector做為線性
+轉換之基底，轉換後的特徵分佈範圍會比以 eigenvector 較小的 eigenvector 轉換後的分
+佈範圍來得大。PCA之進行步驟如下： 
+ 
+步驟 1：計算平均向量 
+][XE=m  
+其中Ｘ是所有訓練資料之集合，X = {xi | i = 0 … N}，m是所有訓練資料的平均
+向量，Ｎ是訓練資料的數量。 
+步驟 2：令平均向量為 0 
+16 
+ 
+.
+)(
+)(maxarg T
+T
+LDA ASAtr
+ASAtr
+W
+B
+A
+=A
+ 
+此一轉換矩陣，可經由求出 B
+1
+W SS
+− 的 eigenvectors來得到，而 ALDA之(C-1)個行向量為前
+(C-1)個最大 eigenvalue值所對應之 eigenvector。 
+在我們決定出最佳的轉換矩陣 ALDA後，我們以 ALDA將每一 n維的特徵向量轉換為
+(C-1)維之向量。令 xPCA為 PCA轉換後之特徵向量，則 LDA轉換後之特徵向量如下: 
+PCA
+T
+LDALDA xAx = . 
+ 
+2.4 分類辨識 
+在辨識的部份中，我們先將輸入之音樂訊號擷取其調變特徵向量，以辨識此一輸入
+之音樂訊號是屬於何種音樂曲風。假設輸入之音樂訊號之特徵向量為 x，計算此一向量
+和每一辨識種類之聲音代表特徵向量(xk, 1 ≤ k ≤ N, 其中 N為資料庫中聲音之種類數目)
+之間的距離，在這裡的距離公式是歐基里德距離(Euclidean distance)，最終辨認之音樂種
+類代表編碼 s可由下列公式來決定： 
+   ),(minarg
+1 kNk
+ds xx
+≤≤
+=  
+ 
+2.5多個分類器整合(multiple classifiers fusion)  
+事實上，沒有一個特徵向量對所有的輸入之音樂類別都能得到最佳的辨識結果，也
+就是說，某些特徵向量對於特定的音樂類別有著較好的辨識率，但是對另一種類之音樂
+可能以另一種特徵向量可以得到更好的辨識率。因此，我們以資訊融合方法來整合各種
+特徵向量之辨識結果以提高辨識率。 
+假設 xMSMFCC, xMSOSC, xMSNASE代表靜態之調變特徵向量，xMDMFCC, xMDOSC, xMDNASE
+則代表動態之調變特徵向量，首先我們可以將靜態及動態之調變特徵向量分別串接起來
+構成靜態及動態之組合調變特徵向量 xMSCOMB及 xMDCOMB： 
+.] [ TTMSNASE
+T
+MSOSC
+T
+MSMFCCMSCOMB xxxx , ,  =     
+.] [ TTMDNASE
+T
+MDOSC
+T
+MDMFCCMDCOMB xxxx , ,  =  
+接著我們分別以 MSMFCC、MDMFCC、MSOSC、MDOSC、MSNASE、MDNASE、
+MSCOMB 及 MDCOMB 之特徵向量 xMSMFCC、xMDMFCC、xMSOSC、xMDOSC、xMSNASE、
+xMDNASE、xMSCOMB、及 xMDCOMB計算兩音樂檔案之特徵距離 dMSMFCC、dMDMFCC、dMSOSC、
+18 
+ 
+表格四比較我們所提出之方法及 2004 年音樂曲風分類競賽之前五名參賽者，還有
+其他具備相同實驗設定之論文，由此表格中我們可以發現我們所提出之方法得到最佳之
+辨識率(87.79%)，比 2004年音樂曲風分類競賽之優勝者(84.07%)還高 3.72%。 
+ 
+表四、 對於 2004年音樂曲風分類競賽之音樂資料庫之辨識率比較 
+References CA 
+Our proposed approach 87.79% 
+Our previous approach [29] 86.83% 
+Y. Song et al. [15] 84.77% 
+T. Lidy & A. Rauber [12] 79.70% 
+E. Pampalk (winner) 84.07% 
+K. West (2nd rank) 78.33% 
+G. Tzanetakis (3rd rank) 71.33% 
+T. Lidy & A. Rauber (4th rank) 70.37% 
+D. Ellis & B. Whitman (5th rank) 64.00% 
+ 
+二. 參考文獻 
+[1] D. N. Jiang, L. Lu, H. J. Zhang, J. H. Tao, and L. H. Cai, “Music type classification by spectral 
+contrast feature”, in Proc. of IEEE Int. Conf. on Multimedia & Expo, Vol. 1, pp. 113-116, 2002. 
+[2] M. E. P. Davies and M. D. Plumbley, “Beat tracking with a two state model”, in Proc. Int. Conf. 
+on Acoustic, Speech, and Signal Processing (ICASSP), Vol. 3, pp. 241-244, 2005. 
+[3] W. A. Sethares, R. D. Robin, and J. C. Sethares, “Beat tracking of musical performance using 
+low-level audio feature”, IEEE Trans. on Speech and Audio Processing, Vol. 13, No. 12, Mar. 
+2005, pp. 275-285. 
+[4] G. Tzanetakis, A. Ermolinskyi, and P. Cook, “Pitch Histogram in Audio and Symbolic Music 
+Information Retrieval”, in Proc. IRCAM, 2002. 
+[5] T. Tolonen and M. Karjalainen, “A computationally efficient multipitch analysis model”, IEEE 
+Trans. on Speech and Audio Processing, Vol. 8, No. 6, pp. 708-716, Nov. 2000. 
+[6] R. Meddis and L. O’Mard, “A unitary model of pitch perception”, Journal of the Acoustical 
+Society of America, Vol. 102, No. 3, pp. 1811-1820, Sep. 1997. 
+[7] N. Scaringella, G. Zoia and D. Mlynek, "Automatic genre classification of music content: a 
+survey", IEEE Signal Processing Magazine, Vol. 23, Issue 2, pp.133 - 141, Mar 2006. 
+[8] A. Meng, P. Ahrendt, J. Larsen, and L. K. Hansen, ”Temporal feature integration for music genre 
+classification”, IEEE Trans. on Audio, Speech and Language Processing, Vol. 15,  No. 
+5, pp.1654-1664, July 2007. 
+[9] B. Kingsbury, N. Morgan, and S. Greenberg, “Robust speech recognition using the modulation 
+spectrogram“, Speech Communication, Vol. 25, No. 1, pp.117-132, 1998. 
+[10] S. Sukittanon, L. E. Atlas, and J. W. Pitton, “Modulation-scale analysis for content 
+20 
+Speech and Audio Processing, Vol. 7, No. 5, pp. 525-532, Sep. 1999. 
+[26] J. W. Picone, “Signal modeling techniques in speech recognition”, Proceedings of the IEEE, Vol . 
+81, pp. 1215–1247, 1993. 
+[27] R. Duda, P. Hart, and D. Stork, Pattern Classification. New York:Wiley, 2000. 
+[28] http://ismir2004.ismir.net/ISMIR_Contest.html. 
+[29] C. H. Lee, J. L. Shih, K. M. Yu, and H. S. Lin, “Automatic Music Genre Classification Based on 
+Modulation Spectral Analysis of Spectral and Cepstral Features”, IEEE Trans. on Multimedia, 
+Vol. 11, No. 4, June 2009, pp. 670-682. 
+ 
+三. 計畫成果自評 
+本計劃完成音樂曲風之自動分類系統，能夠根據音樂的性質事先將音樂曲目分類為
+不同的曲風類型，有效率的管理龐大的音樂資料庫，此外也可做為音樂推薦系統使用，
+當使用者在選取一首喜愛的音樂時，可以將曲風相似之音樂曲目推薦給使用者，減少使
+用者搜尋性質相似之音樂所花的時間。當初提計劃書時預計以三年期之計劃來完成鳥類
+鳴唱聲音自動辨識與音樂曲風自動分類等兩系統，但是計劃只通過一年期，因此我們先
+完成音樂曲風自動分類系統，有關鳥類鳴唱聲音自動辨識系統則預計在後續之計劃中執
+行完成。目前我們已發表之相關論文如下： 
+ 
+期刊論文 (Journal Papers)： 
+[1] C. H. Lee, J. L. Shih, K. M. Yu, and H. S. Lin, “Automatic Music Genre Classification 
+Based on Modulation Spectral Analysis of Spectral and Cepstral Features”, IEEE Trans. 
+on Multimedia, Vol. 11, No. 4, June 2009, pp. 670-682. (SCI, EI) 
+[2] C. H. Lee, C. C. Han, and C. C. Chuang, “Automatic Classification of Bird Species by 
+Their Sounds Using Two Dimensional Cepstral Coefficients”, IEEE Trans. on Audio, 
+Speech, and Language Processing, Vol. 16, No. 8, Nov. 2008, pp. 1541-1550. (SCI, EI) 
+[3] C. H. Lee, C. H. Chou, C. H. Han, and R. Z. Huang, “Automatic Recognition of Animal 
+Vocalizations Using Averaged MFCC and Linear Discriminant Analysis”, Pattern 
+Recognition Letters, Vol. 27, Issue 2, Jan. 2006, pp. 93-101. (SCI, EI) 
+[4] C. H. Lee, Y. K. Lee and R. Z. Huang, “Automatic recognition of bird songs using 
+cepstral coefficients”, Journal of Information Technology and Applications, Vol. 1, No. 1, 
+May 2006, pp. 17-23. 
+[5] J. L. Shih, C. H. Lee, and S. W. Lin, “Automatic classification of musical audio signals”, 
+Journal of Information Technology and Applications, Vol. 1, No. 2, Sep. 2006, pp. 95-105. 
+表 Y04 
+行政院國家科學委員會補助國內專家學者出席國際學術會議報告 
+                                                          98 年 10 月 22 日 
+報告人姓名 李建興 
+ 
+服務機構
+及職稱 
+中華大學資訊工程學系 
+副教授 
+     時間 
+會議 
+     地點 
+Sep. 12-14, 2009 
+ 
+Kyoto Japan 
+本會核定
+補助文號
+NSC-98-2221-E-216-028- 
+會議 
+名稱 
+ (中文)  
+ (英文) The 5th International Conference on Intelligent Information Hiding and 
+Multimedia Signal Processing (IIHMSP’2009) 
+發表 
+論文 
+題目 
+ (中文)  
+ (英文) Modulation Spectral Analysis of Static and Transitional Information of 
+Cepstral and Spectral Features for Music Genre Classification 
+ 
+一、參加會議經過 
+本人於2009年9月11-14日赴日本京都參加 “The 5th International Conference on Intelligent 
+Information Hiding and Multimedia Signal Processing” 國際會議，會中發表論文一篇，如下所
+示： 
+ 
+C. H. Lee, H. S. Lin, C. H. Chou, and J. L. Shih, “Modulation Spectral Analysis of Static and 
+Transitional Information of Cepstral and Spectral Features for Music Genre Classification”, in Proc. 
+of the 5th International Conference on Intelligent Information Hiding and Multimedia Signal 
+Processing (IIHMSP’2009), Sep. 12-14, 2009, Kyoto, Japan, pp. 1030-1033. 
+本人於9月11日會議前一天由台灣出發前往日本京都，我們的論文是安排在第一天9月12日上
+午10:30至12:30，Session A01: Multimedia signal Processing for Intelligent Applications，從台灣
+來參加研討會的學者人數相當多，幾乎與日本的學者人數相當，顯現國內在多媒體訊號分析
+及資料隱藏等領域之研發能量相當強勁。 
+ 
+   
+ 
+二、與會心得 
+會議中與各國學者作深切的學術交流，而且認識許多國內相關學術領域之學者，獲益良多。 
+ 
+附件三
+ 
+表 Y04 
+行政院國家科學委員會補助國內專家學者出席國際學術會議報告 
+                                                          100 年 1 月 12 日 
+報告人姓名 李建興 
+ 
+服務機構 
+及職稱 
+中華大學資訊工程學系 
+副教授 
+     時間 
+會議 
+     地點 
+Sep. 21-25, 2010 
+ 
+Shanghai, China 
+本會核定 
+補助文號 
+NSC 98-2221-E-216-028- 
+會議 
+名稱 
+ (中文)  
+ (英文) The 2010 Pacific-Rim Conference on Multimedia (PCM 2010) 
+發表 
+論文 
+題目 
+ (中文)  
+ (英文)  
+ 
+一、參加會議經過 
+本人於 2010 年 9 月 21-25 日赴中國上海參加  “The 2010 Pacific-Rim Conference on 
+Multimedia (PCM 2010)” 國際會議，研討會會場位於復旦大學校內，該研討會主要是與多媒
+體系統相關之專業研討會，主要分為五個 tracks: Multimedia analysis and retrieval, Multimedia 
+security rights and management, Multimedia compression and optimization, Multimedia 
+communication and networking, 及Multimedia systems and applications等。由於本人之研究領
+域偏重多媒體訊號分析，因此本人主要參加之 sections是Multimedia Analysis and Retrieval 及
+Multimedia Systems and Applications等。 
+本人於9月21日會議當天由台灣出發前往中國上海，由於會議期間適逢上海世博會及中秋假
+期，因此機票及飯店不容易預定，雖然上海市區到處都是人擠人，但是來參加研討會的學者
+人數卻不多。 
+ 
+   
+ 
+二、與會心得 
+會議中與各國學者作深切的學術交流，獲益良多。 
+ 
+三、考察參觀活動(無是項活動者省略) 
+無 
+ 
+四、建議 
+ 
+建議台灣多爭取舉辦國際學術研討會，除了可以和各國學者作廣泛之學術交流，並能促進觀
+附件三
+ 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/01/19
+國科會補助計畫
+計畫名稱: 鳥類鳴唱聲音自動辨識與音樂曲風自動分類之研究
+計畫主持人: 李建興
+計畫編號: 98-2221-E-216-028- 學門領域: 自然語言處理與語音處理 
+研發成果名稱
+(中文) 應用靜態及動態調變頻譜分析於音樂曲風之自動分類
+(英文) Modulation Spectral Analysis of Static and Transitional Information of Cepstral and 
+Spectral Features for Music Genre Classification
+成果歸屬機構
+中華大學 發明人
+(創作人)
+李建興,林懷三,周智勳,石昭玲
+技術說明
+(中文) 本技術提出以調變頻譜分析來自動分類音樂之曲風。首先將輸入之音樂聲音切割
+為一些固定長度之分析視窗，對於每一分析視窗分別對其八度音程頻譜對比值
+(OSC)、MPEG-7之正規化聲音頻譜封包(NASE)及MFCC倒頻譜等之靜態及動態特徵
+做調變頻譜分析，分別產生靜態OSC調變聲譜圖、動態OSC調變聲譜圖、靜態NASE
+調變聲譜圖、動態NASE調變聲譜圖、靜態MFCC倒頻譜調變聲譜圖及動態MFCC倒頻
+譜調變聲譜圖，然後對每一個調變頻譜分解成對數間距之調變頻帶，自每一調變
+頻帶中我們擷取調變頻譜能量值、調變頻譜波谷值及調變頻譜對比值，然後以主
+軸向量分析(PCA)來選取適當之調變頻譜特徵值並降低特徵向量維度，最後再以
+LDA來辨識決定每一分析視窗屬於每一特定類別聲音之相似度，以辨識此一輸入
+之音樂檔案是屬於何種類別之音樂曲風。實驗結果比較我們所提出之方法及2004
+年音樂曲風分類競賽之前五名參賽者，還有其他具備相同實驗設定之論文，我們
+所提出之方法得到最佳之辨識率(87.79%)，比2004年音樂曲風分類競賽之優勝者
+(84.07%)還高3.72%。
+(英文) In this research, we will propose an automatic music genre classification approach based 
+on long-term modulation spectral analysis on the static and dynamic information of 
+spectral (OSC and MPEG-7 NASE) as well as cepstral (MFCC) features. First, 
+modulation spectral analysis is performed respectively on the static and dynamic OSC 
+spectrogram, NASE spectrogram, and MFCC spectrogram to obtain the corresponding 
+modulation spectrograms. Second, the modulation subband energy, modulation spectral 
+valley, and modulation spectral contrast are computed as the modulation features from 
+each decomposed modulation subband. Principal component analysis (PCA) and linear 
+discriminant analysis are then employed to reduce the feature dimension and improve the 
+classification accuracy. An information fusion approach is finally employed to further 
+improve the classification accuracy.
+產業別 出版事業；其他專業、科學及技術服務業
+技術/產品應用範圍 電子資訊產業、線上網站、音樂產業
+技術移轉可行性及
+預期效益
+技術可移轉線上網站及音樂產業
+註：本項研發成果若尚未申請專利，請勿揭露可申請專利之主要內容。
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

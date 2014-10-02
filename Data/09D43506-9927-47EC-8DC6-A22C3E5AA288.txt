@@ -1,0 +1,216 @@
+ 2
+前言 
+ 
+動作識別在最近幾年有亦發熱門的趨勢，以視訊自動化的識別人      類行為來達到監控的目
+的，對於居家照護、保安、國土安全上都有很大的幫助。而體感、手勢語言的發展，以肢體動作的方
+式與機器溝通已經在娛樂與家電產業也越來越多的運用。實現一個動作識別功能許多考量，在一些運
+用中，準確度是最主要的考量。例如對影片中的動作作標記，以建立索引資料庫，就沒有即時性的要
+求，可以以追較高的準確度為目標。相反的，在一些即時監控與識別的運用上，即時性是最主要的要
+求，因此，這方面的運用，必須在硬體成本、即時性與準確性之間作考量。 
+若今天以一個低成本、具即時性辨別系統為運用平台，例如以儲存的空間為考量，讓一個閉路監
+控設備夠智慧的捕捉關鍵畫面；或讓手持裝置具有動作識別的功能，以豐富人機互動等等，都是可能
+的運用。因此，如何讓動作識別演算法在嵌入式系統上實現是一個有趣的目標。儘管嵌入式系統在硬
+體成本上有優勢，但其在有限計算能力構成整個演算法在即時性或準確度方面最大的障礙。另外，嵌
+入式裝置通常倚賴電池供電，在功耗上也要有所考量。因此，如何以有限的資源，達到省電與高效能，
+並且兼顧即時性與準確度的動作識別演算法設計成為一個有趣的課題。 
+由研究[1]，Hongying Meng, Nick Pears, Chris Bailey 等人在嵌入式電腦視覺領域發展出以嵌入式系
+統為平台的動作識別演算法，其演算法設計考量在以嵌入式系統有限的運算資源上，仍達到不錯的動
+作識別率，最後同一個團隊用 FPGA 以階層設計的方式實作該演算法的簡化版[2]，他們用軟核心處理
+器來實作資料量小但複雜度高的計算，由硬體電路的方式處理資料量大但複雜度低的計算。分層處理
+是[2]主要提出的概念，其演算法將由攝影機抓進來的原始影像，一層層的把資料維度降低，並分層處
+理。但[2]只實作[1]一個較簡單的版本，而且所測試的樣本也經過簡化，只有三種簡單動作，而[1]中主
+要面對的分類種類有六種，[2]所使用的軟核是一般的純量處理器，並藉由引入多個純量處理器提高資
+料處理速度來達到即時處理需求。 
+基於以上研究，本計畫嘗試使用具向量處理能力，SIMD 架構的運算實作[1]並達到即時處理的目
+標。 
+ 4
+一般傳統處理器執行 LIBSVM 快了 81-138 倍。這是值得我們學習之處，但 GPGPU 應用於嵌入式系
+統將面臨電源與散熱的問題，且其中之所以有大幅度的效能提升乃仰賴於 GPGPU 之所謂 SIMT 之高度
+並行技術，本計畫所設計的精神是以 OPCell 進行位元運算為基礎的演算架構，其並行度將高於 GPGPU
+之演算架構，且將加入低頻低耗能之因素，使其更符合嵌入式系統的應用。 
+ 6
+ 
+圖 2 透過通用處裡單元運算 
+與一般 MMX 指令集相比，在 MSMU 只需要 5 個週期就可以完成目標，相較之下比 MMX 少 4 個
+週期。除了所費指令數較少外，在 couple 或 global 模式下的運算僅用到部分 MOSU 電路，在將未使用
+到的運算電路關閉的情況下，以 couple 或 global 模式運算還能達到省電的效果。其原因是視資料的寬
+度動態的安排運算電路的使用，在加法樹這種資料寬度逐漸下降的情況下，得到良好的節能效果。 
+以 WMMX 演算如下： 
+對於將比較後的結果轉為一個位元組的旗標，有一個特殊的指令可以完成，即 TMOVMSKB，
+TMOVMSKB 將各位元組元素 msb 給取出，然後轉存到外部的通用暫存器中，故 WMMX 在處理此一
+問題時只需花費一個週期，如圖 3 所示。然而，以上在 MMX 與 MSMU 介紹的方法是對於需要做橫向
+元素總和的演算法都可以使用，不限於將最高位元抽出。 
+ 
+圖 3 TMOVMSKB 指令示意圖 
+HMHHb 演算法實現 
+HMHHb 是 HMHH 的二位元版本，從原本的「有多少某種模式」的問題縮減到「有沒有某種模式」
+的問題，這種「有沒有」的問題可以用邏輯運算來實現。DMASKS 中每個 bit 即代表一個像素，若我
+們能使用邏輯運算子來完成此 HMHHb 的運算。 
+以下針對 MHHb 各模式來分析所採取相對應演算步驟，由於 MHHb 中 Pattern 代表 DMASKS 內數
+個影格之間的變化情形，我們使用 sliding window 的技巧來圈選所要計算的影格。 
+Pattern 1 
+Pattern 1 表在對某個像素，在 DMASKS 內具有 010 的變化。 
+如圖 4 所示，設 DMASKS 內第 N 個影格開始某像素具 010 的變化，故 MHHb(:,:,P2)在該像素位
+置值為 1。 
+ 
+圖 4 DMASK 與 MHHb(P1)關係圖 
+右邊為 DMASKS 某像素具 Pattern1，左邊為相應的 MHHb 
+Pattern 2 
+模式 2：表在對某個像素，在 DMASKS 內具有 0110 的變化。同上檢測方式，用一個檢測窗來檢查，
+不過這裡的檢測框比模式一大一個影格，檢測第 k 個到第 k+3 個影格是否具有模式二存在，如圖 5 所
+示。 
+ 8
+根據分類函數，在計算出所核函數數值 k 後，將其乘上對應的模型參數 ，再將結果總合起來
+後減去位移參數 b*，得到一個值，根據這個值得正負號來決定所屬的類別。由於模型內的拉格朗日常
+數 為浮點數型態，故不能透過一般整數的 SIMD 架構進行運算，這裡交由 CPU 做運算。 
+多類別 SVM 機制實現： 
+假設這裡的分類結果有 S 種，而選用的多類別決定機制是一對一，故一組訓練樣本要建立 個
+SVM 參數。此部分演算法屬於條件型控制程式，難以用向量運算方式實現，故採用純量的方式來實現。 
+ 10
+ 
+圖 8 總層數與辨識準確度關係圖 
+ 
+本計畫第一個目的是分析一個適用於嵌入式系統的動作識別演算法，並將之核心函數以並行化處
+裡以利用 SIMD 架構加速運算，採用盡量增加並行度的策略，來提高整體的運算效能。並將該並行化
+後的演算法分別在具 WMMX 運算的嵌入式平台與以 ModelSim 模擬之 MSMU 處裡單元上實現。 
+第二個目的在探討使用 MSMU 架構下對傳統 SIMD 架構下的優勢。我們發現，在多媒體，尤其是
+二維圖像上運算上，橫向運算的需求大為增加，以傳統的類似 MMX 指令架構需要以多次的位移運算
+才可以達成，而在 MSMU 架構下，藉由轉置指令讓這些工作能以更少的週期完成。另外，藉由 MSMU
+模式的切換，除了指令數減少，亦可藉由將未使用到的電路關閉來使整個完成運算的總體功率消耗更
+為降低。藉由比較 128-bit 位元處理的 SSE 架構，在實際運用上，MSMU 提供更佳的彈性，能達到更
+好的加速，亦說明了單純增加 subword 並行度所帶來的限制。並探討 CPU 可定址到 OP Cell 暫存器對
+於運算上所帶來的好處，以及多串流設計相較單純增加資料處理寬度所帶來的好處。 
+ 
+參考資料 
+[1] Hongying Meng, Nick Pears, Chris Bailey, “A Human Action Recognition System for Embedded 
+Computer Vision Application,” IEEE Conference on Computer Vision and Pattern Recognition 
+Minneapolis, MN, USA , June 2007. 
+[2]Hongying Meng ,  Michael Freeman, Nick Pears, Chris Bailey, “Real-time human action recognition on 
+an embedded, reconfigurable video processing architecture,” Journal of Real-Time Image Processing , pp. 
+163-176, Sep. 2008 . 
+[3]Ivan Laptev, Patrick P´erez, “Retrieving actions in movies,” IEEE International Conference on Computer 
+Vision , pp. 1-8 ,Oct 2007. 
+[4] Lena Gorelick, Moshe Blank,Eli Shechtman, Michal Irani, Ronen Basri, “Actions as Space-Time 
+Shapes,” IEEE Transactions On Pattern Analysis And Machine Intelligence VOL. 29, NO. 12, pp. 
+2247-2253, Dec. 2007. 
+[5] Lena Gorelick, Meirav Galun, Eitan Sharon, Ronen Basri, Achi Brandt, “Shape Representation and 
+Classification Using the Poisson Equation,” IEEE Conference on Computer Vision and Pattern 
+Recognition, pp. 1991-2005, Dec 2006.  
+[6] Yair Shapira ,“Solving PDEs in C++ Numerical Methods in a Unified Object-Oriented Approach,” 2005. 
+[7] J. W. Davis, “Hierarchical motion history images for recognizing human motion,” In IEEE Workshop on 
+Detection and Recognition of Events in Video, pp. 39–46, 2001. 
+[8] Meng, N. Pears, and C. Bailey, “Recognizing human actions based on motion information and SVM,” 
+International Conference on Intelligent Environments, pp 239–245, 2006. 
+[9]Aaron F. Bobick, James W. Davis, “The recognition of human movement using temporal templates,” 
+IEEE Trans. Pattern Anal. Mach. Intell. ,pp. 257-261, Mach 2001. 
+[10] Chih-Chung Chang , Chih-Jen Lin, “A Practical Guide to Support Vector Classification, ” May 2009. 
+[11]C. Schuldt, I. Laptev, and B. Caputo, “Recognizing Human Actions: A Local SVM Approach,” 
+Computational Vision and Active Perception Laboratory , Cambridge, UK. 2004. 
+ 12
+ 
+ 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+ˇ達成目標 
+□ 未達成目標（請說明，以 100 字為限） 
+□ 實驗失敗 
+□ 因故實驗中斷 
+□ 其他原因 
+說明： 
+ 
+ 
+ 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+計畫：ˇ已發表 □未發表之文稿 □撰寫中 □無 
+專利：□已獲得 □申請中 □無 
+技轉：□已技轉 □洽談中 □無 
+其他：（以 100 字為限） 
+ 
+ 
+ 
+附件二 
+ 14
+We had developed the multi-medium processor based the MMX 
+instructions and 14 extension instructions to optimize the 
+H.264 Codec. Following the primitive design in the current 
+NSC project, we challenge the computing power by the real 
+time Action Recognition and recognition processing, and 
+research the designs with the reconfigurable techniques to 
+construct the multiple MMX units to a reconfigurable SIMD 
+processing unit to support the more performance and more 
+flexible multi-medium processing. Finally, the real time 
+Action Recognition and recognition system had been completed 
+as the results of the project. 
+產業別 處理器設計 
+技術/產品應用範圍 多媒體領域 
+技術移轉可行性及預期
+效益 
+本計畫最終目標不只對 Action Recognition 運算做效能提升還達到
+對所有可以大量平行處理的軟體做加速，並且利用其可擴充、可
+重組的優勢，讓嵌入式系統的功能得到強化。 
+     註：本項研發成果若尚未申請專利，請勿揭露可申請專利之主要內容。 
+ 
+ 
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：邱日清 計畫編號：99-2221-E-110-053- 
+計畫名稱：實現支援動作識別運算加速之大量多重 SIMD 之可重組結構設計 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 1 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

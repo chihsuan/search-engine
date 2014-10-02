@@ -1,0 +1,358 @@
+值，判斷封包遺失的可能原因。最後，我們將使
+用具有多種編碼等級的編碼器，利用不同編碼等
+級產生不同的 RTP 速率，當網路擁塞狀況改變
+時，可以適應性的去調整 RTP 的傳輸速率。因此，
+本計畫在 Linux-IPv6 的實驗平台上，以實作的
+方式，建置一部 SIP-VoIPv6 的 Ad-hoc 閘道器，
+讓位於無線 Ad-hoc 網路(Multi-hop)上的 SIP 
+phone使用者，可以順利連線到有線網路上的SIP 
+phone 使用者，並且藉由兩份 RTCP 報告的比較，
+來適應性的調整 RTP 傳輸速率，以達到提升整體
+SIP-VoIPv6 傳送品質的最終目標。  
+在以前的研究中，Yoshimura 等人[3]特別針
+對混合的有線與無線網路，提出 RTP Monitoring 
+Agent 機制，由於無線網路相較於有線網路，擁
+有較高的資料錯誤比率，當發送端從 RTCP 報告
+中得知部分封包遺失時，除了壅塞的情形外也有
+可能是因為無線部分的干擾，造成資料錯誤而被
+丟棄，因此作者在有線核心網路與無線部份之間
+的邊界處，設置一個 RTP Monitoring Agent，
+Agent 會統計 RTP 資料流在有線核心網路傳輸情
+形，並且也會定期回報 RTCP 報告給發送端，而
+接收端則不需做任何修改，依正常處理程序並回
+報 RTCP 報告給發送端即可。另外 Qiao [4]等人
+認為，只根據封包遺失率來判斷品質好壞，不夠
+準確，因此在接收端，使用被動式的 ITU 客觀語
+音品質觀測方式，計算出 MOS(平均評價分數)，
+再由定期發送的 RTCP 報告帶回給發送端，發送
+端再根據 MOS 分數的變動，來選擇因應的 EBR，
+並且依語音訊框重要性的不同，標記不同的優先
+權，再將資料送出，以求順利通過差別式服務網
+路得到更高的 MOS 分數。Seo [5]提出的做法則
+是使用 RTP 的時間標籤 (Time stamps)，當收到
+RTP 封包後，取出時間標籤，用來計算與前一個
+RTP 封包的時間標籤，以及分析語音信號的訊框
+大小理應增加的時間量，求出差值，比對對應表
+格，將編碼器切換到對應的 EBR。 Rejaie [6]
+等人提出了 RAP 協定，設計與 TCP 相當類似，在
+每個資料封包抵達時，接收端必需回應 ACK，讓
+發送端能計算 RTT，統計出較精確的 SRTT，並求
+得 timeout 的時間及察覺封包的遺失，下一步再
+根據網路狀況，用 AIMD (線性增加，倍數減少)
+演算法，去增加或減少速率。Handley [7]等人
+提出的 TFRC，運作方式與 RAP 差不多，不同在於
+TFRC 的接收端必須觀察資料封包遺失的間隔時
+間，計算出封包遺失事件發生的比率，並且要統
+計接收封包的速率，再將這些數值由 ACK 送回發
+送端，並計算 RTT，發送端再依這些訊息，決定
+是否以 slow-start 持續成長，還是代入運算式，
+計算選擇出適合的速率，最後藉由調整封包傳送
+的間隔，控制傳輸速率。Cheng 和 Lei [8]認為
+RAP 之類的發 ACK 次數太頻繁，不適用於群播的
+環境下，因此只依據 RTCP 報告的封包遺失率是
+否超出預設上限，以 AIMD 演算法調整速率。Zhao 
+[9]等人提出類似的作法，只是在 AIMD 演算法
+中，找出適當增加減少的係數。最後，Sisalem
+和 Wolisz [10]提出的機制則是在接收端以探測
+用的封包大小，以及封包抵達的間隔時間，計算
+出資料流傳送路徑瓶頸處的傳送速率，再透過
+RTCP 報告回傳給發送端，最後同樣用 AIMD 演算
+法調整速率。 
+三、適應性 RTP 速率控制機制 
+   當 SIP 建立連線，兩端的使用者開始送
+出即時資料流後，Ad-hoc 閘道器會對經過的 RTP
+封包做統計，每隔 5 秒左右，接收端會回應一個
+RTCP 報告，Ad-hoc 閘道器收到 RTCP 報告時，將
+統計的資料，建立一份新的 RTCP 報告，連同原
+來的 RTCP 報告，一起送到發送端，發送端再依
+這兩個報告去調整傳送速率。SIP-VoIP 為雙向的
+即時資料流，在圖 3-1 中，我們以其中一方向的
+資料流，描述運作流程。 
+  
+圖 3-1 SIP-VoIPv6 的運作平臺 
+如圖 3-2 所示，當一個封包進來時，先區分
+出 SIP 的訊息封包、RTP 封包、RTCP 報告，如果
+是 SIP 的訊息封包，則針對 Via、Contact、c=IN、
+m=audio 四個部分去修改，修改成經 NAT 轉換後
+的位址以及 Port，這樣才能讓通話順利建立；如
+果是 RTP 封包，則累計數量並記錄目前最高的序
+列號碼；如果是 RTCP 報告，則將統計到的資料，
+計算出封包遺失率、DLSR(Delay since Last 
+SR)，之後將計算出來的資料和上一次收到 RTCP
+報告記錄的 LSR(Last SR timestamp)，建立一份
+新的 RTCP 報告，最後把新的 RTCP 報告跟原來的
+RTCP 報告分別送出。 
+ 
+ 2
+ 4
+當一個 UDP 封包進來後，先確認它的 Port 
+Number 是否存在於 NAT 表格中，如果確定為 RTP
+使用的 Port Number，才做處理，即記錄最高序
+列號碼及累計的封包量，如果 Port Number 不存
+在，就當成一般 UDP 封包做 NAT 轉換，修改表頭
+後送出，圖 3-4 為 RTP 封包的處理演算法。 
+rtp_header：RTP 封包表頭 
+ 
+void process_RTP(point *rtp_header) {
+     i = search_udp_table(src, port);  
+//檢查 Port Number 及位址是否存在
+NAT 表格 
+     if (udpv6_nat[i].sequence_number 
+< rtp_header->sequence_number) 
+          
+udpv6_nat[i].sequence_number = 
+rtp_header->sequence_number; 
+     (udpv6_nat[i].packets)++; 
+} 
+圖 3-4 RTP 封包的處理演算法 
+當一個 UDP 封包進來時，同樣先確認是否
+Port Number 存在於 NAT 表格中，確定為 RTCP
+使用的 Port Number，才做處理，先將收到 RTCP
+封包的時間與發出此 RTCP 封包的時間記錄下
+來，計算 DLSR 以及封包遺失率，再連同前一次
+紀錄所收到RTCP封包的時間及發出此RTCP封包
+的時間，建立一份新的 RTCP 報告，圖 3-5 為圖
+3-2 中 RTCP 封包的處理演算法。 
+rtcp_header：RTCP 封包表頭 
+sender_info：RTCP 的 SR 內的發送端資訊 
+recv_time：封包的接收時間 
+now：目前時間 
+void process_RTCP(rtcp_header) { 
+     i = search_udp_table(src, port);  
+//檢查 Port Number 及位址是否存在
+NAT 表格 
+ if (rtcp_header->packet_type == 
+200) {   //檢查是否為 RTCP 報告 
+          //記錄封包接收時間及封包的
+發送時間 
+  udpv6_nat[i].last_rcv_SR_ts = 
+(sender_info->NTP_timestamp_msw << 
+16) | 
+                                   
+(sender_info->NTP_timestamp_lsw >> 
+16); 
+  udpv6_nat[i].last_rcv_SR_time = 
+recv_time; 
+ } 
+} 
+void create_RTCP_report() { 
+     if (udpv6_nat[i].packets) {  
+      pkt = udpv6_nat[i].packets;   
+//取得自上次發送 RTCP 報告後的所有
+RTP 封包量 
+      SN = 
+udpv6_nat[i].sequence_number;      
+//取得最高的 RTP 序列號碼 
+          udpv6_nat[i].packets = 0;
+  .           //歸 0 
+      lost = SN - 
+old_sequence_number - pkt;    //計
+算封包遺失數量 
+      old_sequence_number = SN;     
+      dlsr = 
+now –udpv6_nat[i].last_rcv_SR_ti
+me; 
+          lsr = 
+udpv6_nat[i].last_rcv_SR_ts 
+      lost_rate = 256*lost/pkt; 
+          create_rtcp_packet(dlsr, 
+lsr, lost_rate); 
+     }  
+} 
+圖 3-5 RTCP 封包的處理演算法 
+圖 3-6 為使用者端的 RTP 速率調整流程，
+MAR(Monitor Agent Report)，即為 Ad-hoc 閘道
+器所回報的 RTCP 報告，速率調整機制只有在接
+收了 SR(Sender report)和 MAR 後才會運作，以
+有無封包遺失來區分成兩部份，如果是沒有封包
+遺失的情形，則計算SRTT，並與SRTT upper bound
+比較，當 SRTT 小於 1.25 倍的 upper bound 時，
+將SRTT用來修正upper bound，如果是大於upper 
+bound 兩倍，則降低 EBR 等級，最後再判斷如果
+目前等級超過 7 的話，則將等級下降一級，另外
+如果是 SRTT 小於 upper bound 一定次數且等級
+小於 7 的話，則慢慢提升 EBR 等級回到 7。在有
+封包遺失的部份，先藉由 MAR 區分出封包遺失是
+在有線網路還是在無線網路，如果是在有線網路
+則判定為壅塞，降低 EBR 等級。 
+ 
+ 
+ 
+四、實驗結果與分析 
+如圖 4-1 所示，在我們還沒加入 Jitter 控
+制時，在較低的 Link error rate 時，雖然沒什
+麼增加，然而等到 Link error rate 繼續增加，
+Jitter 開始有大幅度的成長，在 10% Link error 
+rate 時已經多了 9ms，並且有持續上升的趨勢，
+較低的 Link error rate 之所以 Jitter 較接近
+沒有速率控制時的 Jitter，是因為原本的機制，
+收到 RTCP 報告時，回報的封包遺失率是斷斷續
+續，時有時無，因此速率的調整便上上下下來
+回，跟沒有速率控制時的速率不會高出太多，沒
+有辦法上升到可能會壅塞的情形，到了較高的
+Link error rate 時，速率較有機會提升到最高，
+因此產生了點壅塞，導致 Jitter 大幅度的成長，
+也能從圖 4-2 中看到少了約 5%~6%的封包符合時
+間限制要求。 
+0
+4
+8
+12
+16
+20
+24
+28
+2 4 6 8 10
+Link error rate (%)
+Jit
+ter
+ (m
+se
+c)
+RTP stream with
+rate control and
+w/o jitter control
+RTP stream with
+rate control and
+jitter control
+RTP stream w/o
+rate control and
+w/o jitter control
+ 
+圖 4-1 無壅塞情形下 Jitter 的影響 
+0
+100
+200
+300
+400
+500
+600
+700
+2 4 6 8 10
+Link error rate (%)
+Re
+ce
+ive
+d d
+ata
+ (K
+By
+tes
+)
+RTP stream with
+rate control and
+w/o jitter control
+RTP stream with
+rate control and
+jitter control
+RTP stream w/o
+rate control and
+w/o jitter control
+ 
+圖 4-2 無壅塞情形下符合時間限制要求 
+ 
+經過修正加入 Jitter 控制後，有效把高
+Link error rate 時的 Jitter 壓低，約比沒有速
+率控制多 2ms 而已，並且維持住 Jitter，沒有上
+升的趨勢  
+如圖 4-3 所示，internode bandwidth 表示
+我們在 Ad Hoc 中間節點上使用 Token Bucket 限
+制頻寬的變化情形，而其他曲線都代表單一方向
+的傳輸速率變化，在我們的機制中，當只有壅塞
+情形時(假設為 0% link error rate 的情況)，
+會先盡快降低速率，減緩壅塞，再慢慢的提升回
+來，這才不至於造成太多不符合時間限制要求的
+封包，而有偵測到干擾的情況發生，則會嘗試提
+升速率，儘可能維持高的傳輸速率。 
+0
+5
+10
+15
+20
+25
+30
+35
+40
+45
+1 33 65 97 129 161 193 225 257 289 321 353
+Seconds
+Se
+nd
+ing
+ ra
+te(
+Kb
+ps
+)
+internode bandwidth
+RTP Stream        
+(0% link error rate)
+RTP Stream        
+(4% link error rate)
+RTP Stream        
+(8% link error rate)
+Without Rate control
+ 
+   圖 4-3 傳輸速率與中間節點頻寬的變化 
+0
+50
+100
+150
+200
+250
+300
+350
+0 2 4 6 8
+Link error rate (%)
+Re
+ce
+ive
+d d
+ata
+ (K
+By
+tes
+)
+RTP stream with
+rate control and
+w/o jitter control
+RTP stream with
+rate control and
+jitter control
+RTP stream w/o
+rate control and
+w/o jitter control
+ 
+       圖 4-4 在壅塞情形下符合時間限制要求 
+由圖 4-4 和圖 4-5 可以看出，我們接收到符
+合時間限制要求的總資料量，比沒有速率控制機
+制約多出了 33%左右，因為我們在偵測壅塞時，
+確實降低 EBR 等級，使得傳輸速率降低，減緩壅
+塞情形，雖然送出的資料量不多，但封包不在中
+間點的 Queue 裡累積，大部份封包都會符合時間
+ 6
+ 8
+New York, NY, USA, Volume 3, pp.1337 – 
+1345, March 1999 
+[7] M. Handley, S. Floyd, J. Padhye, and J. 
+Widmer, “TCP Friendly Rate Control (TFRC): 
+Protocol Specification,” RFC 3448, Jan. 2003. 
+[8] Wanxiang Cheng and Zhenming Lei, “An 
+modified RTP adaptive algorithm,” 
+International Conferences on Info-tech and 
+Info-net, Beijing, China, Volume 2, pp.33 – 
+38, Oct. 2001. 
+[9] Liang Zhao, Yuanwei Jing, and G.M. 
+Dimirovski, “Improvement of AIMD 
+algorithm considering multimedia transfer 
+over Internet,” the 6th International 
+Conference on Telecommunications in 
+Modern Satellite, Cable and Broadcasting 
+Service, Volume 1, pp.392 – 394, Oct. 2003. 
+[10] D. Sisalem and A. Wolisz, “LDA+: a 
+TCP-friendly adaptation scheme for 
+multimedia communication,” IEEE 
+International Conference on Multimedia and 
+Expo, New York, NY, USA, Volume 
+3, pp.1619 – 1622, July 2000. 
+ 

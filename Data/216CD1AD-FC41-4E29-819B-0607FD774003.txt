@@ -1,0 +1,941 @@
+ 2
+一、 摘要 
+近幾年來由於大量計算需求的科學研究及應用不斷成長，高效能計算平台的需求亦隨之增加，
+電腦計算平台也由單核心處理器走向多核心處理器、叢集系統、網格系統以及先進的圖形處理器
+(GPU)計算平台，藉由整合大量的運算單元來提供高效能的計算平台。然而現有各研究領域的重要
+課題大多是對單核心處理器所設計的循序演算法，無法將現有的技術直接運用在此新興的硬體架
+構之計算平台上，也因此許多傳統的循序計算演算法勢必要重新設計以適應新的平行計算平台，
+以有效發揮實際的硬體計算能力。在本計畫執行中，我們針對生物資訊領域及電腦輔助製薬領域
+中兩個重要的問題：最小權值演化樹(Minimum UltrametricTree, MUT)及化合物推論(Chemical 
+Compound Inference, CCI)，發展以多核心處理器為基礎之平行演算法，探討多核心處理器的特
+性及多執行緒實作可能遭遇的問題並且提出解決方案，包括:共同記憶體存取的機制、分時分區記
+憶體存取機制、動態多執行緒負載平衡機制，以及為上述兩個重要應用問題設計以多核心為架構
+之平行演算法，並且已將所得之成果整理成論文，於國際研討會上發表。 
+ 
+關鍵詞: 多核心處理器、多執行緒、最小權值演化樹、化合物推論 
+ 
+Abstract: 
+Recently, the computation-intensive research topics and applications grow unceasingly, 
+the demand of high-performance computation platform also increase. The computation 
+platform moves towards multiple-core processor, cluster system, grid system as well as 
+advanced graphics processor (GPU) platform, to provide a high efficiency, high throughput 
+computation platform. However, the existing solutions for the important research topics 
+in various research areas are mostly designed by using the single core processor 
+technologies; they are unable to adapt the new parallel computation platform inevitably. 
+In this project, we toke multiple-core and graphics processor as the foundation to design 
+an efficient parallel algorithm, and integrate the grid system to develop a conformity 
+high-performance computation platform. In this project, we carried on four main research 
+topics: First, the development of the multiple-core processor parallel computing 
+techniques. Second, take the advantage of graphics processor to construct high efficient 
+parallel algorithms. Third, integrates multiple-core processors and graphics processors 
+to construct a distributed high-performance computation platform based on grid technology. 
+Fourth, publishes above research results by web services. Moreover, the above parallel 
+algorithms all aims at MUT (Minimum Ultrametric Tree) and CCI (Chemical 
+CompoundInference), two important applications in the bioinformatics and drug research 
+fields. We have organized obtained results and published two international conference 
+papers in the projects. 
+ 
+Keywords: MultiCore, Multi-thread, MUT, CCI 
+ 
+ 4
+題經長年的探討研究之後，最佳化的演化樹建立問題多屬於NP-hard，亦即在合理的時間內，能建
+立的演化樹其物種個數相當少。因此，相當多近似演算法(Heuristic Algorithm)被提出，如 
+UPGMA、NJ、PAUP 等，不過，對於物種個數不多時，最佳化的演化樹建立仍是有其必要性。 
+ 
+化合物推論(Chemical compound inference, CCI) 
+由於資訊科學、分子生物學、結構生物學、組合化學、藥物化學等的蓬勃發展，可以  藉由電
+腦輔助藥物設計在短時間內進行大量且複雜的運算後得以縮短新藥研究發展的時間與成本。電腦輔
+助藥物設計主要是依照Receptor 以及Ligand的已知與否可分成: Ligand known、Ligand unknown、
+Receptor known、Receptor unknown 這四選項進而判斷該使用何種藥物設計策略 (可從事於新藥設
+計、老藥新用、非原廠藥物等設計策略)。化合物推論 (CCI) 技術是一種能產生一系列藥效基團相
+同但是結構不同的藥物。主要的概念為利用一個映射函式 (Mapping function) 將目標化合物映射
+至特徵空間 (feature space)，接用採用分支與界定技術找出所有與目標化合物有相同特徵且化學
+結構不同的化合物。 
+   1. 當Receptor 和Ligand 都是已經有結構的情況下可以採用Docking [1,2] 技術的方 式來進
+行藥物設計，將藥物資料庫 (Ligand database) 的資料在同一個 Receptor 位置進行大量幾
+何配對與能量計算。 
+   2. 當只有Receptor 結構已知時，可以採用De Novo Ligand Design [3-6]技術的方式，在已知
+的Receptor 結構之中，置入許多分子片段，再以合理的方式將片段連接起來，形成符合化學
+原理的全新藥物結構。 
+   3. 當只有Ligand 結構已知的時候，則可以採用3D-QSAR [7-11]或Pharmacophor [12-15]  技術
+的方式。 
+   4. 當Receptor 和Ligand 的結構都是未知的情況下，目前尚無有效的藥物設計策略。 
+ 
+4. 研究方法 
+本計畫發展適用於多核心處理器下之平行演算法，針對多核心共享記憶體的架構以及     
+多執行緒為基礎的設計概念為最小權值演化樹 (Minimum Ultrametric Tree, MUT) 及化合物推論
+(Chemical Compound Inference, CCI) 設計平行演算法並且使用 web services 包裝研究成果。
+平行處理指的是處理器可以同時處理多件事情，而一般平行處理可以分為 (1)Task parallelism 
+以及 (2) Data parallelism。Task parallelism 主要是將多項不同的工作分派給不同的核心執
+行，這部份的平行化主要由作業系統有效的分派不同的程序 (process) 給不同的核心執行。而 
+Data parallelism 是本計畫考量的主要課題，然而多核心的程式撰寫以及除錯相當困難，並且容
+易發生死結 (Deadlock)、資料異變的問題。而多核心處理器有三個主要的挑戰：分割、平行與最
+佳化，能有一個良好的程式模型的話可較輕易的發展平行應用程式。一般 Data parallelism 的平
+行程式設計可以分為兩大類：(1) 共享記憶體模型(shared memory model) 以及 (2) 訊息傳遞模
+型 (message passing model)。 
+由於傳統平行程式的計算平台多為叢集系統或網格系統，於是訊息傳遞模型是平行演算法領域
+中大家比較熟悉的模型。然而多核心平台的特色是共享同一記憶體空間，此時若採用訊息傳遞模型
+不僅會造成不必要的資料封裝及傳遞，效能也比不上記憶體直接存取，於是對於多核心平台本計畫
+主要採用多執行緒 (multi-threaded) 做為程式開發的基礎。 
+ 
+ 
+ 6
+[12] M. J. McGregor, "A Pharmacophore Map of Small Molecule Protein Kinase Inhibitors," J. Chem. Inf. 
+Model, vol. 47, pp. 2474-2382, 2007. 
+[13] M. Rella, C. A. Rushworth, J. L. Guy, A. J. Turner, T. Langer, and R. M. Jackson, "Structure-Based 
+Pharmacophore Design and Virtual Screening for Novel Angiotensin Converting Enzyme 2 Inhibitors," J. 
+Chem. Inf. Model. , vol. 46, pp.708-716, 2006. 
+[14] M. Gastreich, M. Lilienthal, H. Briem, and H. Claussen, "Ultrafast de novo docking combining 
+pharmacophores and combinatorics," J Comput Aided Mol Des., vol. 20, pp. 717-734, 2006. 
+[15] T. M. Steindl, D. Schuster, G. Wolber, C. Laggner, and T. Langer, "High-throughput structure-based 
+pharmacophore modelling as a basis for successful parallel virtual screening," J Comput Aided Mol Des., 
+vol. 20, pp. 703-715, 2006. 
+四、 計畫成果自評 
+本計畫除了提出以多核心為架構之平行演算法解決MUT 與CCI問題外，並且將計畫的成果以 
+web services(如圖一、二) 形態包裝後發佈。此種方式除了可以滿足生物學家及製藥領域的學者
+使用上的方便，而且以標準 web services 包裝的物件可以直接引用在生物學家現有的工作流程軟
+體、或者與標準的 web service 串連，使我們的方法成為未來不可或缺的服務。本計畫之研究內
+容與原計畫相符，並且已達成預期之目標，研究成果不但具有學術價值，同時也具有一定之應用價
+值。 
+1. 對於參與之工作人員所獲得之訓練 
+此計劃的發展以多核心處理器平行演算法解決上述問題，開發過程中所使用及學習的多執行緒
+技術及 MPI 技術，對於未來參與人員投入軟體產業開發高效能程式有非常大的幫助。參與人員可
+以學習到平行程式開發的理論、實務、並且學習獨立思考的能力。在參與的過程中，也可以學習研
+究方法、團隊工作精神、以及論文撰寫經驗。 
+2. 學術期刊已發表於研討會並將投稿於國際期刊 
+本計畫的研究成果已在兩個EI國際研討會上發表(ICA3PP 2010及 SMC 2010，請参閱附錄)，
+並將整理成兩篇論文投稿至國際著名期刊尋求發表機會，並希望能結合國內外從事此方面研究的研
+發能量，發展更有國際競爭力及高效能的系統。 
+ 
+圖一 web service 
+ 8
+ 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+■  達成目標 
+□ 未達成目標（請說明，以 100 字為限） 
+□ 實驗失敗 
+□ 因故實驗中斷 
+□ 其他原因 
+說明： 
+ 
+ 
+ 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：■已發表 □未發表之文稿 □撰寫中 □無 
+專利：□已獲得 □申請中 □無 
+技轉：□已技轉 □洽談中 □無 
+其他：（以 100 字為限） 
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以
+500 字為限） 
+     本計畫提出並設計於多核心( Multi-core)的平行化演化樹建構演算法，可以列出在
+input space 中找到最接近的近似解，可以應用該特性讓生物學家調整在 feature space 
+中的值，並找出與該似接近之化合物；同時在本計畫得執行過程中，我們亦提出一個 GPU
+平行化資料探勘演算法，有效加快資料探勘時間。 本計畫亦將設計完成的演算法包裝成
+web service 元件，使得國內外有興趣的相關團隊利用多核心計算資源快速解決 MUT 及
+CCI 課題。 
+   本計畫執行所獲得的成果將對 MUT、CCI 及資料探勘等問題，或是對於多核心計算領域
+之研究學者有相當大的助益。 
+ 
+ 
+ 10
+Analysis and Applications”之場次發表。 
+二、 與會心得 
+  GrC 2009 是一個在粒度計算(Granular computing)研究領域中具有指標性的最重
+要國際會議，此次會議共有三百四十多篇的論文投稿，但僅錄取了一百六十餘篇優秀的
+粒度計算資訊系統領域的論文，由會議的進行過程中可以看出主辦單位對會議的流程安
+排相當用心，参與此次會議之篇學者可藉著此次會議，在粒度計算資訊系統與生物資訊
+運用之各研究領域互相作深入的討論，而且可藉此機會認識在此領域中之權威研究學
+者，對於此後從事此領域之研究有相當之助益。 
+三、 考察參觀活動(無是項活動者省略) 
+無。 
+四、 建議 
+無。 
+ 
+五、攜回資料名稱及內容 
+1. 大會議程 
+   2. The Proceeding of 2009 IEEE International Conference on Granular Computing 研討會論
+文集。 
+ 
+六、 其他 
+ 
+ 
+ 
+ 
+ 
+ Balanced Multi-process Parallel Algorithm for Chemical Compound Inference 179 
+ 
+enumeration of constraints for other purposes, such as the virtual exploration of 
+chemical universe [6-7]. However, none can guarantee that all solutions can be found 
+since they are based on heuristic algorithms and require additional operations to avoid 
+generating isomorphic results. 
+The Kernel Methods (KMs) approach maps the data in the input space into a high 
+dimension feature space. The data are computed as points in the feature space where 
+each coordinate represents one feature of the data. In applying KMs to chemical  
+compounds, all compounds are mapped to feature vectors in the feature space. The 
+definition of feature vector is widely based on frequencies of labeled paths [8] or 
+frequencies of small fragments [5]. In this study, the pre-image problem was focused 
+on by enumerating all chemical compounds with the same path frequency. The de-
+sired object was computed as a point in the feature space, and then the point was 
+mapped back to the input space. This point was called the pre-image of the point. A 
+given point in the feature space (frequency path) was then mapped back to the point in 
+the input space (chemical compound). Let ψ  be the mapping function, then the pre-
+image is defined as follows: given a point y  in the feature space, to find all x  in the 
+input space such that ( )y xψ= . Therefore, the chemical compound inference (CCI) 
+is defined as follows: given a target compound c  and computed path frequency ( )cψ . 
+The objective is to infer all compounds 
+1 n
+c c… such that ( ) ( )
+i
+c cψ ψ=
+ for 
+1, ,i n= … . Since the solution for CCI can be applied to new chemical compounds 
+with the same path frequencies, it may be useful in drug design. 
+Akutsu and Fukagawa have proved that to enumerate chemical compounds with 
+given constrains is an NP-hard problem [9]. The branch-and-bound algorithm is gen-
+erally used to solve a wide variety of NP-hard problems [10], such as Traveling 
+Salesman, Knapsack, Vertex Covering, avoiding exhaustive searches. For CCI prob-
+lem, Fujiwara et al. have proposed an efficient branch-and-bound algorithm [11]. The 
+branching and bounding strategies are based on the path frequency and the valence 
+constrains of atoms, respectively, to avoid the generation of an invalid tree, thus re-
+ducing the search space. Although this algorithm outperforms the exhaustive search 
+algorithms, the computation time increases significantly when the number of atoms in 
+a compound grows. 
+A balanced multi-process parallel branch-and-bound algorithm for CCI (BMPBB-
+CCI) was designed in this study. In BMPBB-CCI, the searching space is dynamic 
+divided into p  subspaces with p  processors. Since each subspace is independent, it 
+can be processed by a processor and then applied to a sequential branch-and-bound 
+algorithm. Hence, it minimizes the parallel communication cost between processors 
+since only local communication is required. Moreover, two types of queuing, global 
+queue (GQ) and local queue (LQ), are used for load-balancing in branching. A hash-
+able and a serial data structure were used to store the path frequencies instead of the 
+Trie structure because it can be transferred between processors as a plain string. 
+The development trend in computers is one of multi-core processors. Adding more 
+cores to a computer makes it faster, but it also leads to difficulties in designing  
+programs. Although OpenMP [12] is a standard and easy to use multi-threading li-
+brary that gives the performance of multi-core processors, it is not flexible enough for 
+ Balanced Multi-process Parallel Algorithm for Chemical Compound Inference 181 
+ 
+ 
+Fig. 1. Example of ( , )valΣ -labeled multitree T 
+Theorem 1. For any tree with n vertices, either there is a unique vertex *v  such that 
+each subtree obtained by removing *v  to contain at most ( 1) / 2n⎢ ⎥−⎢ ⎥⎣ ⎦  vertices, or 
+there is a unique edge *e  such that both of the subtrees obtained by removing *e  
+contain exactly / 2n  vertices. 
+ 
+Vertex *v  is identified as a unicentroid of the tree, or a bicentroid for *e . In order to 
+introduce left-heavy properties, multitree T  is indexed using a depth-first search 
+(DFS) order. In general, the vertex sequence, 
+0 1
+, ,
+n
+v v v… , is labeled by DFS from the 
+root vertex. The depth function ( )d v  of vertex v  is the number of edges in ( )P v , 
+where the depth of the root vertex is 0. The depth label sequence of T  is defined 
+as
+1 1
+DL( ) (d( ), l( ), ,d( ), l( ))
+o o n n
+T v v v v− −= … . T( )v  denotes a subtree rooted at vertex 
+v  and all of its descendants. The left-heavy properties are defined as follows. T  is 
+left-heavy if i j<  implies DL(T( )) DL(T( ))i jv v≥  for any two siblings iv  and jv . 
+For any two depth label sequences 
+1 11 1,0 1,0 1,1 1,1 1, 1,
+DL( ) ( , , , , , )
+n n
+T d l d l d l= …  and 
+2 22 2,0 2,0 2,1 2,1 2, 2,
+DL( ) ( , , , , , )
+n n
+T d l d l d l= … , 
+1 2
+DL( ) DL( )T T>
+ means that there is a 
+1 2
+[1,min( 1, 1)]i n n∈ − −
+ such that 
+1, 2,j j
+d d=
+ and 
+1, 2,j j
+l l=
+ for 0, 1j i= −… . In 
+addition to either (1) 
+1, 2,i i
+d d> , or (2) 
+1, 2,i i
+d d=
+ and 
+1, 2,i i
+l l> .  
+Fujiwara et al. [11] propose a branch-and-bound algorithm to enumerate all tree-
+like chemical compounds with given path frequencies. It starts from an empty multi-
+tree, then iteratively creates a multi-tree rooted in atom v , where ( )l v ∈ Σ . After that, 
+new children multitree offspring can be obtained by inserting vertex 'v  where 
+( ')l v ∈ Σ  at the right-most path. If T  violates (1) centroid-rooted constraints, (2) 
+( )
+K
+f T g≤ , and (3) deg( ) val( ( ))v l v≤ for each v T∈  then candidate T  is bounded 
+immediately.  
+3   BMPBB-CCI 
+BMPBB-CCI was designed on shared memory multi-core computers. However, the 
+built-in shared memory facilities of the operating system (OS) somewhat restricted 
+ Balanced Multi-process Parallel Algorithm for Chemical Compound Inference 183 
+ 
+bounding operations are applied in steps 7 to 13. H atoms are inserted back to comp to 
+check the feature vector constrains and valence constrains in steps 8 and 9. The cen-
+troid-rooted and left-heavy properties are verified in step 10 to avoid generation of 
+isomorphic chemical compounds. If the comp passes all verifications, it is inserted 
+into resultQueue in step 11. The comp is dropped immediately if its path frequency 
+( )
+K
+f comp greater than 
+noH
+g
+ (step 13). Steps 14 to 17 are branching operations. In step 
+16, the potentially new pair of atoms are verified in the 
+noH
+g . If the pair is presented 
+in 
+noH
+g
+ then the new candidate compound newComps is generated. Moreover, borrow 
+a single bond transformation as proposed by Fujiwara et al. [11]. The number of 
+bonds of the attached new vertex is limited by the maximum number of bonds be-
+tween pairs of atoms in the target compound. Therefore, the searching spaces can be 
+significantly reduced to save on computation time. In order to balance the workload, 
+when there are too few compounds in the GQ, the newComps are appended to GQ, 
+otherwise the newComps are appended to LQ (step 17). Since the GQ is filled during 
+branching operations, the CP can immediately acquire the candidate compounds from 
+GQ without waiting for other CPs to transfer candidates. 
+MgP creates and obtains a shared object via socket-based connections. The benefits 
+of the shared object facilities are (1) they deal with various types of data structures, 
+(2) they have built-in synchronization facility, and (3) they share objects from differ-
+ent computers. The algorithm for BMPBB-CCI is given below. 
+ 
+Algorithm. BMPBB-CCI 
+ 
+Input: Target compound and valence function  
+Output: Chemical compound which confirms to path frequencies of given compound 
+Environment: Multi-core architecture computers 
+ 
+Main Process (MP) 
+Step 1: Remove H atoms from given target compound and      
+compute its path frequency 
+noH
+g . 
+Step 2: Insert the H atoms back to the given target compound and  
+compute its path frequency 
+H
+g . 
+Step 3: Create and start MgP and create a global queue on MgP. 
+Step 4: Allocate shared object form MgP, resultQueue and  
+insertAtomQueue. 
+Step 5: Create CP on each computing core in processor. 
+Step 6: Start CP with following parameters: 
+noH
+g , 
+H
+g ,  
+resultQueue, insertAtomQueue. 
+Step 7: Wait all started CPs terminated. 
+Step 8: Write the results to disk. 
+ 
+Computing Process (CP) 
+Step 1: while True: 
+Step 2:   if local queue is not empty: 
+         comp = pop last item of local queue 
+Step 3:   else: 
+        if global queue is not empty:  
+            comp = pop last item of global queue 
+        else: 
+ Balanced Multi-process Parallel Algorithm for Chemical Compound Inference 185 
+ 
+BMPBB-CCI with a different number of processes. It was found that a large number 
+of processes (computing process, CP) reduced computation time. Moreover, smaller 
+K  values had fewer constraints and more feasible solutions were found (see Table 1). 
+Therefore, there were more candidate compounds in branch-and-bound operations, 
+leading to larger solution spaces to be traversed. The computation time was long 
+when level K  was small. Fig. 3 (d) illustrates the speed-up ratio of BMPBB-CCI 
+from (a)-(c). The speed-up ratio increased when the number of processes increased. 
+Moreover, the speed-up ratios were satisfactory even for 8 processes. This result 
+showed that BMPBB-CCI was scalable. 
+Table 1. Properties of selected compounds 
+Entry 
+Formula 
+n1 n2 K fs 
+C00064 20 10 1 274 
+C5H10N2O3   2 3 
+C00073 21 9 1 339 
+C5H11NO2S   2 2 
+C00077 21 9 1 236 
+C5H12N2O2   2 3 
+ 
+0
+50
+100
+150
+200
+250
+1 2 4 8
+Ti
+m
+e 
+(se
+c.
+)
+Number of processes
+Computation time of different quantities of processes (C00064)
+K=1
+K=2
+ 
+0
+10
+20
+30
+40
+50
+60
+70
+80
+90
+1 2 4 8
+Ti
+m
+e 
+(se
+c.
+)
+Number of processes
+Computation time of different quantities of processes (C00073)
+K=1
+K=2
+ 
+(a) (b) 
+0
+10
+20
+30
+40
+50
+60
+70
+1 2 4 8
+Ti
+m
+e
+ 
+(se
+c.
+)
+Number of processes
+Computation time of different quantities of processes (C00077)
+K=1
+K=2
+ 
+0
+0.5
+1
+1.5
+2
+2.5
+3
+3.5
+4
+4.5
+C00064,K=1 C00064,K=2 C00073,K=1 C00073,K=2 C00077,K=1 C00077,K=2
+Sp
+ee
+d-
+u
+p 
+ra
+tio
+Entries
+Speed-up ratio of dfiirent entries 1 proc.
+2 proc.
+4 proc.
+8 proc.
+ 
+(c) (d) 
+Fig. 3. Computation time and speed-up ratio 
+ 
+BMPBB-CCI was used to infer novel chemical compounds for the second data set to 
+show that it had potential for drug design. A pharmacophore model consists of a 3D 
+arrangement of a collection of features necessary for the biological activity of ligands 
+(compounds). At first, the pharmacophore model (by Accelrys DiscoveryStudio) fwas 
+ Balanced Multi-process Parallel Algorithm for Chemical Compound Inference 187 
+ 
+Acknowledgement 
+We are grateful to the National Center for High-performance Computing for computer 
+time and facilities. 
+References 
+1. Buchanan, B., Feigenbaum, E.: DENDRAL and Meta-DENDRAL, Their Applications 
+Dimension. Artif. Intell. 11, 5–24 (1978) 
+2. Funatsu, K., Sasaki, S.: Recent advances in the automated structure elucidation system, 
+chemics. Utilization of two-dimensional nmr spectral information and development of pe-
+ripheral functions for examination of candidates. J. Chem. Inf. Comput. Sci. 36(2), 190–
+204 (1996) 
+3. Faulon, J., Churchwell, C., Visco Jr., D.: The signature molecular descriptor. 2. Enumerat-
+ing molecules from their extended valence sequences. J. Chem. Inf. Comput. Sci. 43(3), 
+721–734 (2003) 
+4. Hall, L., Dailey, R., Kier, L.: Design of molecules from quantitative structure-activity rela-
+tionship models. 3. Role of higher order path counts: path 3. J. Chem. Inf. Comput. 
+Sci. 33(4), 598–603 (1993) 
+5. Deshpande, M., Kuramochi, M., Wale, N., Karypis, G.: Frequent substructure-based ap-
+proaches for classifying chemical compounds. IEEE Trans. Knowl. Data Eng. 17(8), 
+1036–1050 (2005) 
+6. Fink, T., Reymond, J.: Virtual Exploration of the Chemical Universe up to 11 Atoms of C, 
+N, O, F: Assembly of 26.4 Million Structures (110.9 Million Stereoisomers) and Analysis 
+for New Ring Systems, Stereochemistry. J. Chem Inf. Model. 47(2), 342–353 (2007) 
+7. Mauser, H., Stahl, M.: Chemical fragment spaces for de novo design. J. Chem. Inf. 
+Model. 47(2), 318–324 (2007) 
+8. Kashima, H., Tsuda, K., Inokuchi, A.: Marginalized kernels between labeled graphs. In: 
+ICML, pp. 321–328 (2003) 
+9. Akutsu, T., Fukagawa, D.: Inferring a Graph from Path Frequency. In: Apostolico, A., 
+Crochemore, M., Park, K. (eds.) LOPSTR 2004. LNCS, vol. 3573, pp. 371–382. Springer, 
+Heidelberg (2005) 
+10. Yu, C., Wah, B.: Efficient branch-and-bound algorithms on a two-level memory system. 
+IEEE Trans. Softw. Eng. 14(9), 1342–1356 (1988) 
+11. Fujiwara, H., Wang, J., Zhao, L., Nagamochi, H., Akutsu, T.: Enumerating Treelike 
+Chemical Graphs with Given Path Frequency. J. Chem. Inf. Model. 48(7), 1345–1357 
+(2008) 
+12. OpenMP, http://openmp.org/ 
+13. Nakano, S., Uno, T.: Generating colored trees. In: Kratsch, D. (ed.) WG 2005. LNCS, 
+vol. 3787, pp. 249–260. Springer, Heidelberg (2005) 
+14. Wright, R., Richmond, B., Odlyzko, A., McKay, B.: Constant time generation of free trees. 
+SIAM J. Comput. 15, 540 (1986) 
+15. Jordan, C.: Sur les assemblages de lignes. J. Reine Angew. Math. 70(185), 81 (1869) 
+16. KEGG Ligand database, http://www.genome.jp/kegg/ligand.html 
+17. Zhang, J., Yu, K., Zhu, W., Jiang, H.: Neuraminidase pharmacophore model derived from 
+diverse classes of inhibitors. Bioorg. Med. Chem. Lett. 16, 3009–3014 (2006) 
+block sizes, and thresholds. The experimental results showed 
+that GPU-FPM significant reduced the computation time with 
+increasing threads. The speed-up ratio achieved 14.857 with 16 
+times of threads (in case of the T40I10D100K threshold being 
+1900, and block size 10). Moreover, even in the worst case, 
+GPU used 89.942% of the execution time. This means that 
+GPU-FPM efficiently used the GPU computing power.  
+The rest of the paper is organized as follows: In section 2, 
+the FPM, GPU, and OpenCL are described. The proposed 
+GPU-FPM is introduced in section 3 and the experimental 
+results are illustrated in section 4. Finally, the conclusions 
+discussed in section 5. 
+II. PRELIMINARIES 
+A. Frequent Pattern Mining (FPM) 
+The main concept of FPM is to find the number of times a 
+given pattern appears in a database. FPM is defined as follows: 
+Let D  be a transactional database consisting of a set of 
+transactions 1 2, , , nT T T… : 1 2{ , ,..., }nD T T T= . Let I  be a set of 
+items 1 2, , , mi i i… , a set 1 2{ , , , }kX i i i I= ⊆…  called an itemset 
+or a k -itemset if it consists of k  items. The support of an 
+itemset X  is the number of transactions containing X . 
+support( , ) { | , }iX D i X T X I= ⊆ ⊆  for 1i n= …  
+An itemset is called frequent if the support is greater than or 
+equal to the given absolute minimal threshold ξ . FPM is given 
+a set of items I , a database D , and a minimal threshold ξ , 
+then find FP( , )D ξ . 
+FP( , ) { | support( , ) }D X I X Dξ ξ= ⊆ ≥  
+B. Graphic Processing Unit (GPU) 
+GPU is a parallel-oriented computing device. It always 
+consists of massive processing units to perform mathematical 
+computing. It used to be used as a co-processor CPU for games 
+and 3D design applications. The DirectX 9 proposed in 2005, 
+has taken graphics cards to the next generation because of 
+vertex and pixel shaders being integrated in general-purpose 
+processing units—introducing the universal shader. The 
+mainstream GPU has hundreds to thousands computing units. 
+Each unit can be regarded as a simplified CPU. Compared with 
+the multicore CPU, the number of processing units has also 
+increased. Consequently, GPU also has a whole new 
+application—general-purpose computing on graphics 
+processing units (GPGPU).  
+C. OpenCL 
+The GPU programming language can be classified as 
+graphic APIs (DirectX, OpenGL, etc.), GPU programming 
+language (NVIDIA CUDA [9], ATI Stream [10], OpenCL [11], 
+etc). Previously, GPU programming required developers with 
+in-depth knowledge of graphics programming and hardware. In 
+order to utilize the computation resources on GPU, developers 
+had to encode data to a graphic vector, and then use the 
+DirectX or OpenGL functions to perform rendering. After that, 
+the rendered data had to be decoded. This procedure not only 
+required graphic programming knowledge, but also depended 
+on different GPUs. Recently, CUDA and Stream have been 
+proposed by NVIDIA and ATI. Both of them provide C 
+interface and allow developers to adapt the hardware, e.g., 
+number of processing units, size of local and global memory. 
+However, previous frameworks could only be used with the 
+respective GPUs, e.g., CUDA could only be executed on 
+NVIDIA’s GPUs. 
+In order to solve this situation, the Khronnos Group and 
+many industry-leading companies created the OpenCL. 
+OpenCL is an open and cross-platform parallel heterogeneous 
+programming system. It provides a uniform programming 
+environment for developers to write efficient and portable 
+codes using a diverse mix of multi-core CPUs, GPUs, and other 
+processors.  
+III. GPU-FPM 
+The goal of GPU-FPM was using massive processing units 
+on GPU to speed-up the FPM procedures. However, each 
+processing unit on GPU can only perform simple instructions. 
+Another important issue is memory size and access latency. 
+Therefore, the algorithm and data structure had to be re-
+designed for GPUs to fully utilize its computation resources. 
+Figure 1 illustrates the architecture of GPU-FPM. GPU-FPM 
+has the following features: (1) data handling between CPU and 
+GPU, (2) compact data structure, and (3) highly parallel. 
+ 
+ 
+Figure 1. Architecture of GPU-FPM 
+ 
+ 
+A. Compact Data Structure 
+The memory access latency on GPU is very high, and it 
+limits the computational speed-up ratio. Therefore, reducing 
+the number of fetchings of memory improves the performance. 
+It fetches the memory many times if used directly on a 
+transaction-oriented database. This is because the entire 
+transaction needs to be scanned for verifying each single 
+itemset. Consequently, a transaction identification set (Tidset) 
+was used to directly select transactions instead of scanning 
+whole databases. Tid and Tidset were defined as follows: 
+436
+Table 1. Hardware and Software configuration 
+Item Description 
+CPU AMD Phenom II X4 965 3.4 GHz 
+Memory 8G DDR3 memory 
+GPU ATI Radeon HD 5850 with 1440 stream processing units and 1G DDR5 memory 
+OS Microsoft Windows 7 
+Compiler Microsoft Visual C++ 2008 w/ SP1 
+SDK ATI Stream SDK 2.0 w/ OpenCL 1.0 support 
+ 
+Table 2. Statistical Characteristic of Datasets 
+Dataset Avg Trans 
+Len 
+Avg Len of 
+Max Pattern 
+No of Trans 
+T10I4D100K 10 4 100 
+T40I10D100K 40 10 100 
+ 
+A. Various Thread NumberrsQuantities 
+In this section, two datasets with different threads and 
+thresholds were used to verify the performance of GPU-FPM. 
+Figure 3 and Figure 4 illustrate the computation time of various 
+thresholds and threads. The computation time of the same 
+threads was affected by the threshold. A smaller threshold 
+refers to a smaller degree of support becoming a frequent 
+pattern. There were 385 and 13,253 frequent itemsets with 
+1000ξ =  and 200ξ = , respectively. The speed-up ratio is 
+depicted in Figure 5 and Figure 6. For 16 times of threads, the 
+best speed-up ratio was 13.066. Even in the worst case, it was 
+11.037. The average speed-up ratio was 12.576.  
+B. Various Block Sizes 
+In this section, GPU-FPM used different block sizes to 
+verify the performance. The block size is the number of 
+candidates that each processing unit on GPU deals with at each 
+kernel launch. A small block size implied that the kernel had to 
+be launched more times. Figure 7 and Figure 8 show the 
+computation time of various block sizes. The Var stands for the 
+block size changing with the number of threads, and the block 
+size ( blockSize ) and number of threads ( noOfThread ) had the 
+following relationship. 
+* 1024blockSize noOfThread =  
+Although a larger block size saved a bit on computation 
+time (block size from 2 to 10, saving 0.826 second in case of 
+T10I4D100K with 1024 threads), it only had a small influence 
+on computation time. In some cases, larger block size even 
+caused more computation time. The speed-up ratio is shown in 
+Figure 9 and Figure 10. The trend of the speed-up ratio could 
+not be observed from the results. According to the experimental 
+results, the block size had no significant effect on the 
+computation time. 
+C. Computation Time used by CPU and GPU 
+Finally, the computation time used by CPU and GPU is 
+depicted in Figure 11 and Figure 12. GPU occupied most of the 
+computation time in all cases. This means that the GPU-FPM 
+algorithm on GPU had the biggest workload. It also pointed out 
+that pattern verification required much computing resources 
+than pattern generation. For 1,024 threads, GPU occupied 
+93.837% computation time on average. 
+ 
+0
+50
+100
+150
+200
+250
+300
+350
+400
+450
+500
+64 128 256 512 1024
+Ti
+m
+e (
+se
+c.
+)
+Number of Threads
+Computation Time: Various Threshold 
+(T10I4D100K,B10)
+1000
+800
+600
+400
+200
+ 
+Figure 3. Computation Time of Various Thresholds (T10I4D100K, 
+B10) 
+ 
+0
+200
+400
+600
+800
+1000
+1200
+1400
+1600
+1800
+2000
+64 128 256 512 1024
+Ti
+m
+e (
+se
+c.
+)
+Number of Threads
+Computation Time: Various Threshold 
+(T40I10D100K,B10)
+2000
+1900
+1800
+1700
+1600
+ 
+Figure 4. Computation Time of Various Thresholds (T40I10D100K, 
+B10) 
+ 
+0
+2
+4
+6
+8
+10
+12
+14
+64 128 256 512 1024
+Sp
+ee
+d-
+up
+ R
+at
+io
+Number of Threads
+Speed-up Ratio: Various Threshold (T10I4D100K,B10)
+1000
+800
+600
+400
+200
+ 
+Figure 5. Speed-up Ratio of Various Thresholds (T10I4D100K, B10) 
+ 
+438
+64 128 256 512 1024
+GPU 446.801 251.613 120.636 62.975 34.976
+CPU 0.826 0.842 0.826 0.845 0.811
+0
+50
+100
+150
+200
+250
+300
+350
+400
+450
+500
+Ti
+m
+e (
+se
+c.
+)
+Number of Threads
+Computation Time Occupied by GPU and CPU 
+(T10I4D100K,T200,B10)
+GPU
+CPU
+ 
+Figure 12. Computation Time Occupied by GPU and CPU 
+(T10I4D100K, T200, B10) 
+ 
+V. CONCLUSIONS 
+Frequent pattern mining (FPM) is important and 
+fundamental in data mining. Most FPM methods can be 
+classified as Apriori-like or FP-growth-like. However, the 
+computation time increased significantly when the number of 
+transactions grew. In this study, a GPU based parallel 
+algorithm—GPU-FPM was used to speed-up the mining 
+processes. In order to conform to GPU hardware delimitation, a 
+compact data structure was used to store entire database in 
+GPU. Moreover, two template classes, MemPack and 
+CLProgram were also used. Two datasets with different 
+conditions were used to verify the performance of GPU-FPM. 
+The speed-up ratio was 12.57 and 7.11 for 16 and 8 times of 
+threads on average. In addition, most computation time was 
+occupied by GPU because of all pattern verification processes 
+being performed by it.  
+ 
+REFERENCES 
+[1] R. Agrawal, and R. Srikant, “Fast algorithms for mining 
+association rules,” in International Conference on Very 
+Large Data Bases, 1994, pp. 487-499. 
+[2] J. Han, J. Pei, Y. Yin et al., “Mining frequent patterns 
+without candidate generation: A frequent-pattern tree 
+approach,” Data Mining and Knowledge Discovery, vol. 8, 
+no. 1, pp. 53-87, 2004. 
+[3] E. Lazcorreta, F. Botella, and A. Fernández-Caballero, 
+“Towards personalized recommendation by two-step 
+modified Apriori data mining algorithm,” Expert Systems 
+with Applications, vol. 35, no. 3, pp. 1422-1429, 2008. 
+[4] J. Park, M. Chen, and P. Yu, “An effective hash-based 
+algorithm for mining association rules,” ACM SIGMOD 
+Record, vol. 24, no. 2, pp. 175-186, 1995. 
+[5] A. Javed, and A. Khokhar, “Frequent pattern mining on 
+message passing multiprocessor systems,” Distributed and 
+Parallel Databases, vol. 16, no. 3, pp. 321-334, 2004. 
+[6] K.-M. Yu, J. Zhou, T.-P. Hong et al., “A Load-Balanced 
+Distributed Parallel Mining Algorithm,” Expert Systems 
+with Applications, vol. 37, no. 3, pp. 2486-2494, 2009. 
+[7] M. Chen, C. Huang, K. Chen et al., “Aggregation of orders 
+in distribution centers using data mining,” Expert Systems 
+with Applications, vol. 28, no. 3, pp. 453-460, 2005. 
+[8] D. Luebke, M. Harris, N. Govindaraju et al., "GPGPU: 
+general-purpose computation on graphics hardware." p. 208. 
+[9] NVIDIA. "Compute Unified Device Architecture (CUDA)," 
+http://www.nvidia.com/object/cuda_home_new.html. 
+[10] ATI. "Stream SDK," 
+http://developer.amd.com/gpu/ATIStreamSDK/. 
+[11] OpenCL. "OpenCL," http://www.khronos.org/opencl/. 
+[12] R. Agrawal, and R. Srikant, "Quest Synthetic Data 
+Generator. IBM Almaden Research Center, San Jose, 
+California," 2009. 
+ 
+ 
+440
+二、 與會心得 
+  GrC 2009 是一個在粒度計算(Granular computing)研究領域中具有指標性的最重
+要國際會議，此次會議共有三百四十多篇的論文投稿，但僅錄取了一百六十餘篇優秀的
+粒度計算資訊系統領域的論文，由會議的進行過程中可以看出主辦單位對會議的流程安
+排相當用心，参與此次會議之篇學者可藉著此次會議，在粒度計算資訊系統與生物資訊
+運用之各研究領域互相作深入的討論，而且可藉此機會認識在此領域中之權威研究學
+者，對於此後從事此領域之研究有相當之助益。 
+三、 考察參觀活動(無是項活動者省略) 
+無。 
+四、 建議 
+無。 
+ 
+五、攜回資料名稱及內容 
+1. 大會議程 
+   2. The Proceeding of 2009 IEEE International Conference on Granular Computing 研討會論
+文集。 
+ 
+六、 其他 
+ 
+ 
+ 
+ 
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：游坤明 計畫編號：98-2221-E-216-023- 
+計畫名稱：應用多核心與格網技術設計同特徵化合物平行化演算法及其 Web Service 之研發 
+量化 
+成果項目 
+實際已達
+成數（被接
+受或已發
+表） 
+預期總達成
+數(含實際
+已達成數)
+本計畫
+實際貢
+獻百分
+比 
+單位 
+備註（質化說明：如數
+個計畫共同成果、成
+果列為該期刊之封面
+故事...等） 
+期刊論文 0 0 100%  
+研究報告 /技術報
+告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 3 3 100%  
+博士生 1 1 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 1 1 100% 
+人次 
+ 
+期刊論文 0 1 100%  國外 論文著作 
+研究報告 /技術報
+告 0 0 100% 
+篇 
+ 
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+其他成果 
+(無法以量化表達之
+成果如辦理學術活
+動、獲得獎項、重要
+國際合作、研究成果
+國際影響力及其他
+協助產業技術發展
+之 具 體 效 益 事 項
+等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

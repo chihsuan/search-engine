@@ -1,0 +1,280 @@
+ I
+ 
+目   錄 
+ 
+Abstract .......................................................................................................................................... II 
+摘要................................................................................................................................................ III 
+I. 計畫的緣由與目的 ................................................................................................................... 1 
+II. 研究方法及成果 ....................................................................................................................... 1 
+硬體架構流程說明 ..................................................................................................................... 1 
+A. 平行處理且具邊緣補償之架構設計 .................................................................................... 2 
+B. Modified EZW 演算法之零樹小波位址產生...................................................................... 2 
+C. 編碼模組 ................................................................................................................................ 3 
+FDWT_Module.................................................................................................................. 3 
+FDWT_Module.................................................................................................................. 3 
+FDWT 之 Data-Path ......................................................................................................... 3 
+FEZW 之 Data-Path ......................................................................................................... 4 
+D. 解碼模組 ................................................................................................................................ 4 
+IDWT_Module.................................................................................................................... 4 
+IEZW_Module .................................................................................................................... 5 
+III.　結果與討論............................................................................................................................. 5 
+IV.　參考文獻 ................................................................................................................................. 6 
+國科會補助專題研究計畫成果報告自評表.................................................................................. 7 
+ 
+ 2
+A. 平行處理且具邊緣補償之架構設計 
+我們將一張完整圖片切割成多個子區塊，如
+圖 2 所示，我們將一張 NN × 像素大小的影像切
+割成多個8 8× 像素大小的子區塊再傳送到離散小
+波做轉換，也就是說將圖片切成離散小波最基本
+的運算尺寸，藉此降低離散小波的硬體使用量。 
+ 
+圖 2 影像方塊切割圖 
+採用影像切割處理方式，將一張完整的影像圖
+片切割成多個8 8× 大小的方塊，因此若是沒有針
+對切塊後的小方塊做邊界處理，當 DWT 轉換與
+EZW 編解碼後的方塊還原成一張完整影像圖片
+時，會有方塊效應的情況發生。為了避免發生此
+問題，所以我們對切割後的8 8× 像素方塊做 DWT
+轉換時，加入了鏡射式邊界處理(圖 3)，來避免方
+塊效應的產生。 
+Left
+Boundary Source Data
+I2 I1 I0 I1 I2 I3 I4 I5 I6 I7 I6
+H0 H1 H2 H3 H4
+L0 L1 L2 L3
+Right
+Boundary
+ 
+圖 3 鏡射式邊界處理轉換圖 
+B. Modified EZW 演算法之零樹小波位址產生 
+Modified EZW 是從 LL3 依序掃描到 HH1，如
+圖 4 所示之掃描順序，每個子頻帶也是 Z 字形掃
+描方式，以圖 4 左邊的 8×8 影像為例，掃瞄順序
+為 0、1、8、9、2、3、10、11、16、17、24、25、
+18、19、26、27.....，以二進制表示就可以發現，
+只需將 Modified EZW 零樹計數器的腳位重新排
+列，將奇數腳位置左而偶數腳位置右，則可以產
+生 Modified EZW 所需要的位址，減少產生記憶體
+位址所需的硬體成本。 
+ 
+圖 4 EZW 位址產生順序與計數器和位址對應 
+Modified EZW 演算法中，需先將一個
+Bit-plane 的樹狀資料輸入並暫存後，才能夠進行
+編碼動作，如圖 5 所示，假設先掃瞄父節點 1 與
+子孫節點，位址產生順序應為 1、4、5、6、7、
+16、17、20、21、18、19、22、23、24、25、28、
+29、26、27、30、31，要產生此位址序列，僅需
+要父節點位址與一個 Bit-plane 產生計數器，如圖
+6 所示。當計數器為 0 時，將父節點位址直接輸
+出；若計數器範圍在 1~4 之間，此時皆為子係數
+節點位址，先將父節點位址左移二位後，計數器
+數值減 1 再與左移二位後之父節點位址相加，最
+後把相加後之最低二位元重新排列，將奇數位置
+的位元置左、偶數位置的位元置右；若計數器範
+圍在 5~20 之間，此時皆為孫係數節點位址，先將
+父節點位址左移四位後，計數器數值減 5 再與左
+移四位後之父節點位址相加，最後把相加後之最
+低四位元重新排列，將奇數位置的位元置左、偶
+數位置的位元置右，則可直接產生所需之位址。 
+ 4
+圖 9 二維三階 FDWT 架構圖 
+¾ FEZW 之 Data-Path 
+FEZW 架構設計上，為了能夠有效利用傳輸頻
+寬，我們將 FEZW 編碼符號在支配回合(Dominate 
+pass) 部分採用兩個位元來編碼，次要回合
+(Subordinate pass)部分則採用一個位元來編碼，使
+得硬體部分能夠儘量逹到減少的目的。在支配回
+合中會產生 PS、NS、IZ 與 ZR 一共四個符號，而
+在次要回合會產生 UP 與 LO 二個符號，其中支配
+回合會有兩個符號與次要回合所產生的符號共
+用，在設計上以二個位元來編碼 6 個符號，當解
+碼端接收到資料時，會先判斷在那一動作中，將
+符號正常解碼。EZW 之編碼模組架構如圖 10 所
+示，主要分為下列部分，之後章節會針對每個方
+塊圖做最詳細的說明。 
+圖 10 EZW 之編碼模組架構圖 
+ Threshold processor方塊主要是藉由Pass 
+processor 處理並儲存要執行的 pass 次
+數。 
+ Bit-plane processor 是用來處理判斷輸入
+的小波係數是否大於等於臨界值與兩倍
+臨界值，並且暫存 Bit-plane 的小波係數。 
+ Bit-plane register 主要儲存整個 Bit-plane
+的每一筆係數是否為重要係數與符號位
+元。 
+ Symbol generator 中 主 要 功 用 是 從
+Bit-plane register 讀取小波係數資料後，
+產生相對應之符號，編碼動作分為支配
+回合與次要回合兩個部分。 
+ Address generator 用來計數樹狀的父祖
+孫節點，並產生其相對位址。 
+D. 解碼模組 
+解碼模組如圖 11 所示，主要分為下列幾個部
+分，由架構中的分塊圖做說明： 
+IDWT_Module 
+¾ Data_Path：將輸入訊號做 IDWT 轉換，
+重建原始資料。 
+¾ Control Unit：控制電路運作。 
+IEZW_Module 
+¾ LL3 Processor：將最低頻帶係數不經由
+EZW 解碼直接送出。 
+¾ Pass reg：執行回合次數與臨界值之暫存
+器。 
+¾ Data_Path：處理輸入係數，做解碼動作。 
+¾ Control Unit：控制整個解碼電路運作。 
+在解碼模組中，編碼符號進入到IEZW模組做
+解碼動作後，再將解碼後的係數送入IDWT做反轉
+換得到重建原始資料。 
+圖 11 解碼模組架構圖 
+¾ IDWT_Module 
+DWT是一種可逆性的處理架構，因此它的反
+轉換架構動作與正轉架構是完全相反的，所以在
+二維的處理方式中先沿著垂直的行方向進行轉
+換，還原一維值，再沿著水平方向的列轉換得到
+重建值輸出。如圖12所示，與FDWT實現方式一
+樣，我們直接使用一個一維一階IDWT模組完成二
+維三階的IDWT。 
+ 6
+所提出是將兩種結合；離散小波轉換中圖片切割
+成區塊，以平行方式處理，再結合嵌入式零樹小
+波演算法特性，如此能提升速度，更大幅減少外
+部記憶體，亦能縮短後續模組的等待時間，結合
+上提式小波轉換與嵌入式零樹小波，可得到高品
+質因素 (Peak Signal to Noise Ratio, PSNR)與可接
+受的壓縮率(Compression Ratio, CR)。 
+ 
+IV. 參考文獻 
+[1] K. R. Rao and P. Yip, “Discrete Cosine Transform 
+Algorithms”, Advantages, Applications. New York: 
+Academic, 1990. 
+[2] ISO/IEC 10918-1, ITU-T T.81 " Digital compression and 
+coding of continuous-tone still images ", 1994. 
+[3] S. Mallat, “Multifrequency channel decompositions of 
+images and wavelet models” , IEEE Trans. Acoust., 
+Speech, Signal Process., vol. 37, pp. 2091-2110, 1989. 
+[4] ISO/IEC 15444-1, ISO/IEC 15444-2, ITU-T T.800, 
+ITU-T T.801  "Information Technology JPEG 2000 
+Image Coding System", 2000. 
+[5] A. N. Akansu and R. A. Haddad, Multiresolution Signal 
+Deomposition: Transform, Subbands and Wavelets. New 
+York: Academic, 1992. 
+[6] I. Sodagar, H.-J. Lee, P. Hatrack, and Y.-Q. Zhang, 
+“Scalable wavelet coding for synthetic/natural hybrid 
+images,” IEEE Trans. Circuits and Systems for Video 
+Technology, vol. 9, pp. 244-254, Mar. 1999. 
+[7] D. Taubman, “High performance scalable image 
+compression with EBCOT,” IEEE Trans. Image 
+Processing, vol. 9, pp. 1158-1170, July 2000. 
+[8] R. Kronland-Martinet, J. Morlet, and A. Grossman, 
+“Analysis of sound patterns through wavelet transform,” 
+Int. J. Pattern Recognit. Artif. Intell., vol. 1, no. 2, pp. 
+273-302, 1987. 
+[9] G. Beylkin, R. Coifman, and V. Rokhlin, Wavelet in 
+Numerical Analysis in Wavelets and their Applications.  
+New York: Jones and Bartlett, 1992. 
+[10] K. Parhi and T. Nishitani, “VLSI architectures for 
+discrete wavelet transforms,” IEEE Trans. VLSI Systems, 
+vol. 1, no. 2, pp. 191-202, 1993. 
+[11] A. S. Lewis and G. Knowles, “VLSI architecture for 2-D 
+Daubechies wavelet transform without multipliers,” 
+Electronic Letters, vol.27, no.2 pp 171-173, 1991. 
+[12] C. Chakrabarti and M. Vishwanath, “Efficient 
+realizations of the discrete and continuous wavelet 
+transforms: From single chip implementations to 
+mappings on SIMD array computers,” IEEE Trans. 
+Signal Processing, vol. 43, no. 5, pp. 759-771, 1995. 
+[13] W. Sweldens, “The lifting scheme: A custom-design 
+construction of biorthogonal wavelet,” Applied and 
+Computational Harmonic Analysis, vol. 3, pp. 186-200, 
+1996.  
+[14] Hongyu Liao, Mrinal K. Mandal Bruce and F. Cockburn, 
+“Novel architectures for the lifting-based discrete 
+wavelet transform,” IEEE CCECE 2002.Electrical and 
+Computer Engineering, 2002. Canadian Conference 
+on ,Volume: 2 , 12-15 pp.1020-1025, 2002 
+[15] K. Andra, C. Chakrabarti , T. Acharya, “A VLSI 
+architecture for lifting-based forward and inverse wavelet 
+transform.” IEEE Trans. Signal processing, vol. 50, no. 4, 
+pp.966-977, 2002. 
+[16] C.-T. Huang, P.-C. Tseng, and L.-G. Chen, “Efficient 
+VLSIArchitectures of Lifting-Based Discrete Wavelet 
+Transform bySystematic Design Method,” Proc. IEEE 
+Int’l Symp. Circuits and Systems, vol. 5, pp. 565-568, 
+May 2002. 
+[17] C. Diou, L. Torres, and M. Robert, “An Embedded Core 
+for the 2DWavelet Transform,” Proc. IEEE Int’l Conf. 
+Emerging Technologies and Factory Automation, vol. 5, 
+pp. 179-186, July 2001. 
+[18] J. M. Jou, Y.-H. Shiau, and C.-C. Liu, “Efficient VLSI 
+architectures for biorthogonal wavelet transform by filter 
+bank and lifting scheme,” in Proc. of IEEE Symposium 
+on Circuits and Systems, pp. 529-532, May 2001. 
+[19] C.-J. Lian, K.-F. Chen, H.-H. Chen, and L.-G. Chen, 
+“Lifting Based Discrete wavelet Transform Architecture 
+for JPEG2000,” in Proc. of IEEE Symposium on Circuits 
+and Systems, pp. 445-448, May 2001. 
+[20] P.-Y. Chen, “VLSI implementation of lifting discrete 
+wavelet transform using 5/3 filter,” IEICE Trans. Inf. & 
+Syst., vol. E58-D, no.12, pp.1893-1897, Dec. 2002. 
+[21] Jer Min Jou, Pei-Yin Chen, Ming-Shiang Liang, “A 
+scalable pipelined architecture for separable 2-D discrete 
+wavelet transform”, Design Automation Conference, vol. 
+1, pp. 205 -208, 1999. 
+[22] M. Ferretti, D.Rizzo, “Handling borders in systolic 
+architectures for the 1-D discrete wavelet transform for 
+perfect reconstruction”, IEEE Transactions on Signal 
+Processing, vol. 48, no. 5, pp. 1365-1378, May 2000. 
+[23] M. Vishwanath, R. M. Owens and M. J. Irwin, “VLSI 
+architectures for the discrete wavelet transform,” IEEE 
+Trans. Circuits and Systems, vol. 42, no. 5, pp. 305-316, 
+1995. 
+[24] Aleksander Grzeszczak, Mrinal K. Mandal, Sethuraman 
+Panchanathan, “VLSI implementation of discrete wavelet 
+transform,” IEEE Trans. VLSI System, pp.421-433, Dec. 
+1996. 
+[25] C. Chakrabarti and M. Vishwanath, “Efficient 
+realizations of the discrete and continuous wavelet 
+transforms: From single chip implementations to 
+mappings on SIMD array computers,” IEEE Trans. 
+Signal Processing, Vol. 43, No.5, pp. 759-771, 1995. 
+[26] Ming-Hwa Sheu, Ming-Der Shieh, Sheng-Wel Lin, “A 
+VLSI architecture design with lower hardware cost and 
+less memory for separable 2-D discrete wavelet 
+transform”, Proceedings of the 1998 IEEE International 
+Symposium on Circuits & Systems, Vol. 5, pp. 457-460, 
+1998. 
+[27] Jer Min Jou, Pei-Yin Chen, Ming-Shiang Liang, “A 
+scalable pipelined architecture for separable 2-D discrete 
+wavelet transform”, Design Automation Conference, Vol. 
+1, pp. 205 -208, 1999.
+. 
+ 
+無衍生研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

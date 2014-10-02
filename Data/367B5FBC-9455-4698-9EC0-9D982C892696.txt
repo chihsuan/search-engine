@@ -1,0 +1,498 @@
+multicycle overhead, and throughput exploration. As 
+lower voltage worsens latency variation, the original 
+poor performance is prominently enhanced by the 
+efficient latency adaptation. Second, we leverage a 
+rearguard timing error detection as fine-grain timing 
+speculation to dynamically reduce the DVFS guardband 
+and further tolerate latency stretching in voltage 
+scaling. Thus, the computing power can be sustained 
+with lower power consumption than that of traditional 
+DVFS designs. 
+英文關鍵詞： Timing Speculation, Pipeline and datapath 
+restructuring, Latency adaptation, Instruction-level 
+timing prediction, Ultra-wide voltage scaling. 
+ 
+I 
+ 
+ 
+中文摘要 ....................................................................................................................................................... II 
+英文摘要 ....................................................................................................................................................... II 
+一、 研究計畫之背景、目的及重要性 .................................................................................................. 1 
+二、 相關文獻 .......................................................................................................................................... 3 
+三、 研究方法 .......................................................................................................................................... 5 
+四、 結果與討論 ...................................................................................................................................... 7 
+五、 參考文獻 ........................................................................................................................................ 11 
+  
+1 
+ 
+一、 研究計畫之背景、目的及重要性 
+Contemporary portable consumer electronic products are moving to high performance and 
+multi-tasking services (such as 3D graphic/video/audio/Wi-Fi) with parallel computing solutions. 
+Low power and robustness under PVT (Process, Voltage, and Temperature) variations are still 
+two key factors for successful products. Due to the quadratic dependence of energy on the supply 
+voltage, significant energy savings are theoretically achievable with dynamic frequency voltage 
+and frequency scaling (DVFS). However, traditional DVFS techniques will cause frequency 
+degradation due to aggressive voltage scaling. It also requires significant voltage safety margins 
+(guardband) to guarantee correctness in the worst case combination of process, voltage and 
+temperature conditions, which lead to a loss in energy efficiency. Moreover, while silicon 
+uncertainties worsen with technology scaling, the safety margins increase. As a result, the 
+operation is overly conservative given the extremely rare occurrence of the worst case conditions. 
+In this work, we focus on techniques to allow the processor operating over a wide voltage range 
+with smooth transition to achieve best possible energy efficiency by mixed-level timing 
+speculation to optimize power performance. 
+In general, the root causes of path delay variation have three classifications: PVT variations, 
+variable latency of data paths, and variable latency by data dependencies. The last two are highly 
+dependent on microarchitectures and workloads. The worst-case design uses safety margins to 
+guard those variations for functional correctness under all operating conditions, but it results in an 
+excessively conservative design. The processor frequency constrained in the worst-case condition 
+might only be capable of 75% of the performance of the best-case; in addition, a single clock 
+constraint by critical paths leads over guardband of most data paths, especially in low-voltage 
+conditions. Furthermore, critical paths rarely occur in certain pairs of data sequences. 
+Consequently, it reveals the potential to release the design constraints to not only mitigate the 
+energy loss for robustness but also improve the performance. Current state-of-the-art researches 
+provided several novel adaptive techniques: path delay prediction, timing error detection, pipeline 
+skew for timing borrow, and voltage interpolation. Because we intend to reduce the guardband 
+for ultra-wide voltage scaling with a mixed-level timing speculation mechanism. 
+ 
+Fig. 1. Braided timing speculation for ultra-wide voltage scaling. 
+ 
+ 
+3 
+ 
+二、 相關文獻 
+A. Dynamic voltage and frequency scaling 
+The optimal voltage limitation depends on two factors: the power/delay trade-offs at low 
+operating voltages and the workload characteristics. Current processors that use DVS typically 
+have an operating voltage range from full to half of the maximum Vdd. 
+ We are addressing two issues of traditional DVFS techniques, and one is the overhead of 
+mode switching guardband. In general, they are using a delay chain [1, 11] to determine the 
+minimum voltage necessary for error-free operation at a particular frequency. The delay chain 
+replicates the worst-case critical paths with additional latency margins, and the safety margin is 
+used for mode switching uncertainties. That shows an example of power and performance 
+sacrifices for robustness. Another issue is the shortcoming by supporting few DVFS operating 
+points. Too few operating points may result in systems that under some profiles spend a 
+significant time ramping between the two levels [1], and the energy efficiency savings during the 
+ramping times are typically significantly less than the steady-state values. The two critical issues 
+could be mitigated adaptive techniques that beyond worst-case designs. Ramping times reduction 
+can be achieved by performance enhancement in low voltages (e.g. operating at subcritical-paths 
+[10]). Mode switching uncertainties can be tolerated by timing error detection [12] for power 
+performance optimization. 
+B. Beyond worst-case design techniques 
+ There are state-of-the-art techniques listed in Table 1, in strategies of vanguard (e.g. 
+path-delay prediction) and rearguard (e.g. timing error detection). Also, we sum up their 
+contributions for resisting which kinds of variable latency variations and compare with the 
+proposed BTS methodology. 
+Table 1. Beyond worst-case design techniques 
+ 
+Adaptive 
+techniques 
+Design strategies Path-delay variation root causes 
+Path-delay 
+prediction 
+Timing error 
+detection 
+Pipeline 
+skew 
+Voltage 
+interpolation 
+PVT 
+variations 
+Delay variations  
+by variable  
+data-paths 
+Delay variations  
+by run-time  
+data dependencies 
+Telescopic Units [7] ○     ▲ ▲ 
+CRISTA [8] ○    △ ▲ ▲ 
+Instruction Isolation [10] ○    △ ▲  
+Razor [6,20]  ○   ▲  ▲ 
+ReCycle [15]   ○  ▲   
+ReVIVaL [14]   ○ ○ ▲   
+Tribeca [5]  ○  ○ ▲  ▲ 
+BTGR (This work) ○ ○   ▲ ▲ ▲ 
+○ Design strategy used;  ▲ Able to resist the delay variation; △ Potential to resist the delay variation;  
+ 
+ 
+5 
+ 
+三、 研究方法 
+Figure 2 illustrates the architecture of BTS ULV-RISC, where the major design as above are 
+marked in gray. The most major components are the execution timing speculation circuit of 
+decode stage, the dynamic pipeline latency adaptive of execution stage and the error 
+detect/recovery mechanism of execution stage pipe in the architecture level. Detailed description 
+is given in the following subsections.  
+Variable-cycle 
+Execution
+Cycle
+info
+1 2 3 4 5 6Inst.
+Multi-cycle stall
+Multi-cycle
+stall
+Inst
+type
+Counter
+(2b)
+FSM
+Execution cycles
+Multi-cycle stall
+Multi-cycle stall
+MC ctrl.
+E
+rro
+r D
+e
+te
+ct F
+F
+ 
+R
+F
+F
+R
+F
+F
+R
+F
+F
+Result[15:0]
+Result[31:16]
+Result[47:32]
+Valid results sel Enable timing 
+error detection
+Timing 
+error
+3Timing
+Decoder
+1
+2
+ 
+Figure 2. The diagram of overall architecture 
+ 
+Figure 3 demonstrates the actual execute circumstances. (1)Razor pipe pass D to the next 
+stage (Q). If the following instruction predictably will execute two cycles, the stall signal is 
+raised(as Figure 3(2)) and there is no result in Razor pipe in this time. The Q is NOP. The Razor 
+pipes compare the two values after Clk and Clk_d is triggered respectively. The timing error 
+signal is raised to invalid Q because of the different two values D and Q(as 3). A stall pulse is 
+inserted to finish the instruction in a extended cycle by recovery mechanism. As the result, both 
+of the multi-cycle strategy and timing error perdition will impact the throughput. The balance 
+between cycle time and cycle count is a important issue. 
+Clk
+D Valid 1
+Valid 0Q Valid 1 NOP
+Done
+Valid 2 Valid 3
+Valid 2
+Clk_d
+Valid 3
+Valid 4
+Timing 
+error
+1
+Stall
+2
+Invalid 3
+restore
+3
+Predict 2-cycle
+ 
+Figure 3. "Timing prediction + Timing error" detection for aggressive latency adaptation 
+ 
+ 
+ 
+ 
+7 
+ 
+ Design flow 
+Figure 5 represents our variable path delay synthesis flow for ultra-wide voltage scaling. 
+There are two stages: initial synthesis and optimization synthesis. The initial synthesis reports 
+first-time timing analysis and feedback to simulation models for performance evaluation and data 
+path utilization profiling. Next, we process data paths restructuring at the beginning of 
+optimization synthesis stage. Synthesis commands for covering all data paths are prepared, and 
+we do the synthesis process in normal voltage for path delay optimization. If results do not 
+achieve the target specification, we can return to restructure the data paths. Otherwise, we do 
+timing analysis in other low voltage operating points, and those analysis results also report to 
+simulation models for performance evaluation. If unexpected worse path delay in a certain data 
+path is reported, it should back to redo the synthesis process in normal voltage for specific data 
+path optimization. After the optimization synthesis stage, the path delay constraint script will be 
+written out for the backend APR process. 
+Data-paths
+utilization analysis
+Timing analysis of 
+interested data-paths
+Architecture-level 
+data-paths restructuring
+1. Path-delay optimization 
+    in normal voltage
+2. Min-delay constraints
+Timing analysis 
+in low voltages
+APR process
+Write out 
+constraint script
+Initial 
+synthesis
+Optimization 
+synthesis
+Design SPEC 
+and system 
+parameters
+High-level ISS 
+& RTL model
+Timing analysis in 
+all conditions
+Latency of all 
+data-paths
+Performance 
+evaluation
+ 
+Figure 5. Variable path delay synthesis flow for ultra-wide voltage scaling. 
+四、 結果與討論 
+To realize the proposed design, we implement a dual-core system with caches (Icache: 2KB, 
+Dcache: 2KB for each BTS core), AHB interface, and a performance monitor for calibration. 
+Figure 6(a) shows the architecture of chip and Figure 6(b) gives the layout of BTS chip. The 
+technology node we used is UMC 90nm Logic & Mixed-Mode 1P9M low-K Process, operates at 
+1.1-0.45 V. After ARP, logic gate count is 374K and core area is 2.34*2.24 mm
+2
+. The chip can 
+operate at three DVFS modes, which are 0.45~0.60V, 0.60V~0.75, and 0.75~1.1V respectively. 
+ 
+(a) Architecture of BTS chip  (b) Layout of BTS chip 
+Figure 6. BTS chip Architecture, layout 
+9 
+ 
+ 
+Figure 7. Summary of power efficiency using BTS 
+Figure 7 shows the increasing proportion of effectiveness through the mechanism of 
+reducing multi-cycle overhead in each stage by DVFS and stage bypassing. By the simulation 
+and analysis, the multi-cycle mechanism can let the CPU run in higher frequency than worst case. 
+As the previously mentioned design concept, the modulation of each stage can achieve 26, 49 and 
+34 percent performance improvement, respectively (slash blocks in Figure 7). On the other hand, 
+through the technology of the razor, the CPU can tolerate a lower voltage by error detection to 
+have extra 24% saving of the power consumption. 
+ Chip silicon results 
+This chip was fabricated with UMC 90 nm technology and operates at 1.1-0.45 V. We use 
+logic analyzer and pattern generator as measurement instrument. In this measurement, we only 
+measure the result of the single core system but not measure the data of the cache and the AHB 
+bus. Figure 8(a) shows the measurement result of BTS chip in 1.0V, 0.7V and 0.5V. It illustrates 
+that as the voltage is decreasing, the baseline frequency drops significantly in order to keep the 
+same CPI. With BTS enabled, the timing decoder can provide extra cycles for certain instructions 
+to sustain the long execution latency so that its frequency is relatively stable at a cost of increased 
+CPI. BTS can give a better overall power performance than the baseline without speculation. 
+Then the fabricated chip was measured by an ADVANTEST V93000 PS1600 tester to 
+compare with simulation results. We found the chip can only run at around 50MHz no matter 
+baseline or BTS enabled. After layout checking, we figured out the power line of our design was 
+only with limited power width for 0.5V need such that this chip has the power density problem at 
+higher voltage. Figure 8(b) shows the frequency gap of the real chip due to the design bug, 
+although the CPI is as same as Figure 8(a). 
+11 
+ 
+五、 參考文獻 
+[1] A. Wang, and S. Naffziger, Adaptive Techniques for Dynamic Processor Optimization: 
+Theory and Practice, Springer, 2008.  
+[2] M. S. Gupta, J. A. Rivers, P. Bose, G. Wei and D. Brooks, "Tribeca: Design for PVT 
+Variations with Local Recovery and Fine-grained Adap-tation," in Proc. 42th IEEE/ACM 
+International Symposium on Microar-chitecture (MICRO), pp. 435-446, 2009.  
+[3] L. Benini, E. Macii, M. Poncino, and G. D. Micheli, "Telescopic units: a new paradigm for 
+performance optimization of VLSI designs, " IEEE Trans. Computer-Aided Design of 
+Integrated Circuits and Systems, vol.17, no.3, pp.220-232, 1998.  
+[4] S. Ghosh, S. Bhunia, and K. Roy, "CRISTA: A New Paradigm for Low- Power, 
+Variation-Tolerant, and Adaptive Circuit Synthesis Using Criti-cal Path Isolation, " IEEE 
+Trans. Computer-Aided Design of Integrated Circuits and Systems, vol.26, no.11, 
+pp.1947-1956, 2007.  
+[5] S. E. Lee, C. Wilkerson, M. Zhang, R. Yavatkar, S. Lu, and N. Bagher-zadeh, "Low Power 
+Adaptive Pipeline Based on Instruction Isolation," in Proc.10th International Symposium on 
+Quality of Electronic Design (ISQED), pp.788-793, 2009.  
+[6] S. Das, C. Tokunaga, S. Pant, W. H. Ma, S. Kalaiselvan, K. Lai, et al., “Razor II: In Situ 
+Error Detection and Correction for PVT and SER Tol-erance,” IEEE J. Solid-State Circuits, 
+vol.44, no.1, pp.32-48, 2009.  
+[7] D. Ernst, N. S. Kim, S. Das, S. Pant, R. Rao, T. Pham, et al., " Razor: A Low-Power 
+Pipeline Based on Circuit-Level Timing Speculation," in Proc. 36th IEEE/ACM 
+International Symposium on Microarchitecture (MICRO), pp. 7-18, 2003.  
+[8] X. Liang, G. Wei and D. Brooks, "ReVIVaL: A Variation-Tolerant Architecture Using 
+Voltage Interpolation and Variable Latency, " in Proc. 35th International Symposium on 
+Computer Architecture (ISCA), pp.191-202, 2008.  
+[9] A. Tiwari, S. R. Sarangi and J. Torrellas, "ReCycle: pipeline adaptation to tolerate process 
+variation," in Proc. 34th International Symposium on Computer Architecture (ISCA), 
+pp323-334, 2007.  
+[10] S. Ghosh, P. Batra, K. Kim, and K. Roy, "Process-Tolerant Low-Power Adaptive Pipeline 
+under Scaled-Vdd," in Proc. 2007 IEEE Custom Inte-grated Circuits Conference(CICC), 
+pp.733-736, 2007.  
+[11] S. Dhar, D. Maksimovic, and B. Kranzen, "Closed-Loop Adaptive Volt-age Scaling 
+Controller For Standard-Cell ASICs, " in Proc. 2002 ACM/IEEE International Symposium 
+on Low Power Electronics and Design (ISLPED), pp.103-107, 2002.  
+[12] S. Das, D. Roberts, S. Lee, S. Pant, D. Blaauw, T. Austin, et al., "A self-tuning DVS 
+processor using delay-error detection and correction, " IEEE J. Solid-State Circuits, vol.41, 
+no.4, pp. 792- 804, 2006.  
+ 
+ 二、與會心得 
+1.此次最重要keynote talk有三場，第一場在June 5由ARM 原始創業者之一曾任ARM 
+CTO的, Mike Muller, 主講" Scaling for 2020 Solutions." 隨著製程的進步，Foundry已
+經面臨製程材料、成本高漲、產品生命週期變短等嚴重挑戰，可以整合multicore 
+多重應用 行動通訊產品. 他首先回顧這幾年來 EDA 所貢獻在systems, hardware, 
+operating systems, and applications等多方面的治術進步與成長趨勢，並分析過去25
+年來ARM公司在商業模式方面的演進，然後他提到未來20年如何探索新的技術整
+合模式以因應下世代系統與IC的緊密整合的需要。從極小 embedded sensors一直到 
+cloud based servers，其中整合了智慧聯網。他也看到了這整合背後仍很大的挑戰。
+必須有一系列很強的伙伴關係支援，包含EDA, IP 及製造設計服務等。 
+ 
+2.第二場keynote talk在June 7由IBM Austin Server and Technology Group的Joshua 
+Friedrich主講" POWERTM Processor Design and Methodology Directions"，接連著
+Intel Corp. Brad Heaney 主講"Designing a 22nm Intel® Architecture Multi-CPU and 
+GPU"，其實這兩talk皆與processor設計相關，也顯示DAC越來越重視系統的整合。
+他們都提到現代processor均具極的高設計複雜度，未達到高效能及縮短設計時程，
+有許多的engineering decisions and design methodologies均需藉由極高複雜的EDA 工
+具整合，方得以完成。 
+ 
+3.本人參與此會議的主要目的為參與海報展覽和觀摩研究成果發表，所以到達會場
+的第一天，先在簽到並領取會議資料。作品展示被安排在第二天下午(下圖為海報
+展示時的討論情形)，在會場中，除了準備報告之外，也藉此機會參有其他相關的
+論文報告，學習別人所新提出的想法，並且參觀廠商的攤位，有許多廠商展示
+EDA tool，利用EDA tool加速設計師的開發速度。  
+ 
+3.此次會議，已有公司及多所學校發展以system-level為主題研究工具，以利於各種研
+究所須實驗模擬環境，這些努力往往能提供往後研究工作的方便性及提升研究層
+次，其投資是很值得的。 
+ 
+4. 本人會前特別參加了Synops一項名為"System Design verification"的Workshop，諸多
+學者、業界先進分享對新起的advanced computing對mobile devices或甚至embedded 
+system研究的變化與技術演進，深感有收穫。此次會議筆者接觸一些人士，交換討
+論研究題目方向並蒐集了一部份資料。雖行程短暫調整時差痛苦，仍深覺得收穫良
+多不虛此行。 
+Segmented and Adaptive NoC Architecture for Multi-
+Systems on Chip with Scalable Multicore 
+Hsiang-Jen Tsai, Chien-Chih Chen and Tien-Fu Chen 
+ABSTRACT 
+Future highly-integrated chips may include hundreds of cores and 
+support multiple programming or operating systems on chip for vari-
+ous applications. This study presents a reconfigurable network-on-
+chip (NoC) architecture and segmented techniques for system-
+specific traffic in the network. The topology of the proposed architec-
+ture can be dynamically customized base on traffic loads of different 
+system-wide configurations. The key issue is to isolate cache coher-
+ence interferences among different applications running on separated 
+cluster partitions.  This research seeks to reduce power consumption 
+and communication latency in reconfigurable architecture by em-
+ploying controllable switches based on circuit-switching at run-time. 
+Both goals of good NoC connectivity and low power consumption 
+should also be preserved for the multiple-system NoC.  
+1. INTRODUCTION 
+Multicore systems with an increasing number of cores provide 
+the potential for throughputs and performance gains. However, power 
+consumption bottleneck is inevitable; since the expect amount of 
+cores cause their excessive power consumption. The design of a mul-
+ticore chip should aim at the reduction of power consumption for 
+every element. This includes coherence traffic loads on NoC. 
+In shared memory architecture, the cache system is important in 
+the performance and power consumption of the system. NoCs and 
+caches consume up to 50% energy of the overall chip [1]. Hence, the 
+system should take advantage of coherence protocol for the special 
+characteristics. For multiple-systems consolidation with a server chip, 
+there is no use to keep coherence traffic beyond the limits of that 
+system. For this reason, the first challenge of reducing power con-
+sumption and communication latency is to utilize bandwidth with 
+traffic loads. The second challenge is to provide effective flexible 
+interconnect in NoC architecture. 
+In this paper, we present a new NoC scheme for multi-systems 
+consolidation NoC architecture with dynamic topology adaption by 
+introducing a reconfigurable NoC. As well as, we propose a segment-
+ed ring architecture to utilize energy-efficient solving circle destroyed 
+problem and keep power consumption low estimating broadcast 
+overhead to isolate coherency domains [2, 3, 4]. 
+2. THE PROPOSED NOC FOR MULTIPLE-
+SYSTEM CONSOLIDATION 
+Segmented ring is a technique which is proposed for well-
+utilizing the topology adaption of system-specific traffic. The key 
+design goal of this technique is to avoid the circle destroyed of tradi-
+tional ring topology.  
+2.1 Segmented Ring Architecture for Server Chip 
+The system under consideration is composed of n nodes arranged 
+as a ring network. In the proposed segmented ring architecture, how-
+ever, the middle routers are not connected directly to each other, but 
+connected through simple switch boxes, called segmented switch 
+(Seg-s). Each square in Figure 1 represents a network node which is 
+composed of a processing element and a 3-ported circuit-switched 
+router, whereas rectangle represents a segmented switch.  
+In this architecture, some PEs are not connected directly to each 
+other, but rather are connected through a segmented switch. The 
+switch can be configured to establish a direct static connection be-
+tween incident links. The segmented switch connects left-ring and 
+right-ring, and exchange traffic between them when necessary (see 
+Figure 1(c)). 
+Segmented ring architecture employs a circuit-switched routing 
+scheme by which data are routed along the paths determined during 
+the topology reconfiguration procedure. 
+2.2 Segmented Technique 
+Figure 2 illustrates the proposed segmented ring technique, where 
+nearest-neighbor communications are carried by local bus intercon-
+nects. Local bus interconnects are direct connections between neigh-
+boring cores dedicated for direct data exchange without any overhead 
+(see Figure 2(b)). The power consumption and communication laten-
+cy of short distance communication through local buses are therefore 
+much smaller than those through isolated cache coherence interfer-
+ences. Note that the topology of the segmented ring technique is dif-
+ferent from traditional ring topology shown in Figure 2, where there 
+is a segmented switch to separate neighboring rings. 
+The segmented switch in Figure 2 connects 4 PEs and it must be 
+able to connect links directly to each other. The topology is capable 
+to isolate two ring networks. This can be achieved by using a bit-
+vector register, called the segmented vector (SV). The two modes of 
+the segmented ring topology are presented in Figure 2. When the SV 
+is 0, the segmented switch operates in 4-PE clusters mode. Hence, the 
+topology of segmented ring will separate to two 4-PE clusters ring-
+network for multiple-systems. On the other land, this feature can run 
+different applications in segmented ring architecture independently. 
+When the SV is 1, the segmented switch operates in 8-PE clusters 
+mode. This mode is the same as the traditional ring interconnect. 
+Therefore, it can get more resource than 4-PE clusters mode. 
+At each node on a segmented ring, we place a 3-ported circuit-
+switched router shown in Figure 2 [5]. The router is extremely simple, 
+because it performs a very simple function: it passes through circulat-
+ing traffic, allows new traffic to enter the ring through a MUX, and 
+allows traffic to leave the ring when necessary (see Figure 2(a)). 
+3. CONCLUSION AND FUTURE WORK 
+In this paper we proposed the segmented ring architecture with 
+energy-efficient segmented switches. This method avoids the coher-
+ence broadcast traffic by separated cluster partitions.. 
+The centralized arbitration is inflexible that a single arbiter re-
+ceives requests from PEs and decides which requests to grant [6]. 
+Therefore, distributed arbitration is future research topic in the seg-
+mented ring architecture.  
+Dept. of CS, National Chiao Tung University, Taiwan, R.O.C. 
+hsiangjen.cs99g@nctu.edu.tw, john740207.cs99g@nctu.edu.tw, tfchen@cs.nctu.edu.tw 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2012/11/26
+國科會補助計畫
+計畫名稱: 子計畫一：抗變異可調適之處理器架構設計與其系統環境建置
+計畫主持人: 陳添福
+計畫編號: 98-2221-E-009-188-MY3 學門領域: 積體電路及系統設計
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

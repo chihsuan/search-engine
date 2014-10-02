@@ -1,0 +1,790 @@
+2 
+ 
+CDNs are too costly for general streaming applications [2]. IP multicast is probably the most 
+bandwidth-efficient vehicle, but its deployment is very limited due to many practical issues, such as 
+the lack of IP multicast supporting infrastructures and the lack incentives for network operators to 
+carry streaming data traffic [3]. Application-level multicast, by constructing an overlay network with 
+unicast connections between peers in the system, has been widely used to deal with the scalability 
+issue in many Internet applications. Thus, streaming services based on P2P technologies are also very 
+popular. 
+Current P2P multimedia streaming service researches can be classified into two categories: live 
+streaming and VOD (video on demand) services. Live streaming is like a broadcast TV channel; it 
+delivers the same video content to viewers simultaneously. On the other hand, a VOD is a video clip 
+watched by viewers at different positions, and thus the video contents delivered to viewers are 
+different. Recently there are few studies on P2P time-shifted streaming services. A time-shifted 
+streaming service allows viewer to choose an arbitrary offset of time to retrieve the streaming 
+contents; it is like a VOD whose length keeps growing constantly. 
+Sachin Deshpande and Jeonghun Noh [15] proposed a time-shifted and live streaming system 
+(P2TSS) where peers cache part of the video contents to serve other peers’ time-shifted demands. If 
+there is no peer can provide time-shifted contents, the time-shifted viewers retrieve from the server. 
+However, time-shifted peers in P2TSS cannot share contents in their playback buffers; only the 
+distributed stream cache (DSC) is shared. In this report, we implement a live streaming system that 
+supports time-shifted streaming service. Moreover, time-shifted peers cooperate in pulling the 
+desired contents from live streaming peers to reduce the load on live peers. We also performed 
+experiments on the PlanetLab platform to evaluate our system performance.  
+The remaining part of this report is organized as follows. Chapter 2 describes the current work 
+in P2P streaming studies related to our research. Chapter 3 presents the idea, design and 
+implementation of our system in details. Chapter 4 presents an analytic model to estimate the 
+feasibility of the time-shifted system. Chapter 5 presents the experiment setup, results, system 
+performance. Finally, we give our conclusions in Chapter 6. 
+II. Related Work 
+2.1 P2P live streaming 
+To provide P2P live streaming service, peers need to receive continuous delivery of video 
+streams and may need to forward the streams to other peers. Peers can form an overlay structure to 
+efficiently deliver video streams in a real-time fashion. CoopNet [6] adopts a hybrid model; a source 
+node is responsible for maintaining a multi-tree overlay of stream delivery and asisting new peers to 
+join. Using a multiple-description-coding (MDC) technique, each tree transmits a different MDC 
+description. CoopNet is a complement to a client-server framework; the multi-tree overlay is only 
+invoked when the video server is unable to handle the load imposed by clients. 
+In SplitStream [7], the video stream is split into multiple stripes and independent multicast trees 
+are constructed to deliver a stripe on each tree. The multicast trees are constructed such that an 
+interior node in one tree is a leaf node in all the remaining trees. In this way, the load of video 
+forwarding can be evenly spread across all the peers. However, such node-disjointness is a property 
+hard to achieve, especially in heterogeneous environments [8]. In GridMedia [4], a rendezvous point 
+assists peers to join the overlay. A new peer first contacts the rendezvous point to obtain a list of 
+peers on the overlay. Then, the new peer measures the end-to-end delay to each peer in the list and 
+selects a number of peers as partners, with the probability of a peer being selected in inverse 
+proportion to the end-to-end delay. This enables nearby peers to become partners, so that the latency 
+of stream delivery can be reduced. In DONet/CoolStreaming [3], a peer first contacts an origin node 
+and the origin node randomly selects a deputy peer and redirects the new peer to the deputy. The new 
+4 
+ 
+content. Each multicast tree consists of peers whose playback positions are within 30 seconds after 
+the root of the multicast tree. The roots of the multicast trees also forms a connected list with their 
+playback positions in increasing order, so that each root forwards video blocks to its successor. The 
+root of the first multicast tree receives video blocks from the video source. Their simulation results 
+indicate the block missing rate is less than 1.5% when time-shifted peers do not change viewing 
+positions. 
+2.4 Kademlia DHT 
+Kademlia is a DHT system based on XOR metric. Each Kademlia node has a 160-bit identifier; 
+each node chooses its identifier at random when joining the system. The keys used for the hash table 
+mapping are also 160-bit identifiers. Given two identifiers x and y, the distance between them is the 
+bitwise XOR (exclusive OR) result interpreted as an integer. The detailed operation will not be 
+described here, but two major functions used in our system are PUT<key, value> and GET<key>. 
+PUT<key, value> function stores the <key, value> pair on K nodes closest to the key, where K is a 
+system parameter that can be adjusted. The GET<key> function retrieves the value associated with 
+the previous PUT<key, value> have performed. 
+III. System Design & Implementation 
+3.1 System overview 
+We intend to design a P2P streaming service that provides both live and time-shifted streams to 
+viewers. Our system needs to cope with the following issues: the delivery of live streams, the 
+caching and publishing of live streams, and the retrieval of time-shifted contents. 
+1. Live streaming framework 
+A live streaming framework provides a base for our system, because it supports live streaming 
+service and the live streaming peers may need to store the received contents for the future use of 
+time-shifted streaming viewers. Since many live streaming frameworks have been developed and 
+comprehensively studied, we would not create a brand new live streaming system; instead, we 
+adopted the design of the latest DONet/Coolstreaming with modifications to suit our needs. 
+2. Caching strategy 
+Live streaming peers need to cache the contents they have watched to support time-shifted 
+streaming peers, and thus the caching strategy is an important issue. Since a live streaming peer may 
+go off-line, and thus its cached contents cannot be retrieved by time-shifted peers. We will study how 
+many replicas of live streams need to be cached to ensure that most time-shifted viewers can retrieve 
+all the contents they need. 
+3. Time-shifted content retrieval 
+Time-shifted peers must first locate the cached contents in their interests before they can 
+retrieve the contents. Kademlia [19-20] distributed hash table (DHT) is used for publishing and 
+locating the cached contents with special care being taken to ensure that PUT operations do not 
+over-write each other. In addition, time-shifted peers interested in the same video position would 
+cooperate to retrieve the cached contents in order to reduce the transmission load on live peers 
+caching the contents.  
+Figure 3-1 depicts the architecture of our system. The system consists of three types of nodes: a 
+bootstrap server, channel providers and streaming viewers. The bootstrap server maintains a list of 
+available channels and a partial list of participating peers of each channel, in order to bootstrap new 
+peers. A channel provider is the source node of a streaming channel and registers its channel 
+information with the bootstrap server. When a viewer joins the system, it first obtains the information 
+of available channels and participating peers from the bootstrap server, and then retrieves the desired 
+6 
+ 
+ 
+Duration Packet Length UDP packet payload from VLC
+Timed PacketTimestamp Timed Packet Timed Packet ... Timed Packet
+Block Length Block Block Length Block ... Block Length Block
+Packet with timing information:
+A video block of length 1 second:
+A video  file for storage:
+ 
+Figure 3-3 The structures of a video block and a video file. 
+ 
+3.3 Live streaming framework based on DONet/Coolstreaming 
+We adopted the design of the latest DONet/Coolstreaming as the live streaming framework to 
+deliver live contents. For reader’s interest, we briefly present the characteristics of the latest 
+DONet/Coolstreaming, and our modifications. 
+1. Node hierarchy 
+Each live streaming peer maintains three levels of peers: members, partners and parents. 
+Members are a subset of live-streaming peers watching the same channel as the peer. No connection 
+is established between the peer and the members. Connections are established between partners to 
+exchange the availabilities of video blocks. Parent-child relations are formed when connections are 
+established for the transmission of video blocks. Apparently a peer’s parents and children are a 
+subset of its partners. 
+2. Multiple sub-streams 
+As described before, the video stream is encoded and packed into continuous video blocks, each 
+of which is one-second long and time-stamped. The stream is also decomposed into S sub-streams, 
+by grouping blocks whose timestamps have the same modulo of S. By dividing the stream into 
+multiple sub-streams, each sub-stream can be retrieved from different parent peers independently, 
+which means a peer can retrieve blocks from up to S peers. Figure 3-4 shows a video stream is 
+divided into four sub-streams (i.e., S=4). In our implementation, the video stream is divided into 8 
+sub-streams. 
+1716151454321
+...13951
+...141062
+...151173
+...161284
+...
+Sub-stream 1
+Sub-stream 2
+Sub-stream 3
+Sub-stream 4
+Video Stream
+ 
+Figure 3-4 Sub-stream decomposition. 
+ 
+3. Joining procedure 
+When an new LS peer joins, it first contacts the bootstrap server and retrieves a list of available 
+channels. After selecting a channel, the new peer retrieves a partial list of the active peers of the 
+channel; the active peers become members known to the peer. Then the new peer randomly selects 
+24 of the members as its partners. Partners exchange their known members and the availabilities of 
+video blocks periodically. Since each partner may receive the video sub-streams at different paces for 
+different sub-streams, The new peer selects from its partners the fastest (with the largest timestamp) 
+sub-stream of each sub-stream, and then sets initial playback position at the end of the slowest 
+sub-stream among the S selected sub-streams. This would shorten the end-to-end delay since the 
+fastest sub-streams are selected. After that, for each sub-stream, the new peer would subscribe the 
+8 
+ 
+IP:PortRecord 1
+...
+IP:PortRecord 2
+IP:PortRecord 10
+ 
+Figure 3-6 The owner list of each video file. 
+ 
+3.4 Distributed cache management strategy 
+Live streaming peers need to cache streaming contents for TS viewers in the future. The goal of 
+our distributed cache management strategy is to effectively keep a desired number of replicas of 
+video files for TS peers. The strategy is composed of two parts: content caching based on probability 
+and publishing policy. 
+1. Caching based on probability 
+To distribute the responsibility of caching streaming contents and keep a desired number of 
+replicas in the system, we adopted a probability algorithm to determine whether a file should be 
+cached or not. Assume that the system wants to keep R replicas, and the system has N live streaming 
+peers. A simple way to do it is that each node should cache the received content with a probability of 
+R/N. Since R is a given, the discovery of N is the issue here. 
+To estimate N, first, a local knowledge based on the design of DONet/Coolstreaming is used. 
+Since each peer keeps connections with its partners and parents, which are active LS peers. It is clear 
+that N must be no less than the number of partners plus the number of parents. In addition, the 
+number of the current active LS peers can be obtained by a modified peer-startup procedure. When a 
+peer joins the system, heartbeat messages are periodically sent to the bootstrap server to update the 
+member list maintained by the server, and the number of active LS peers can piggybacked to the peer 
+in the reply messages. With the two values, N is selected as the larger one of the two. The local 
+knowledge helps the peer to react fast to the change of active peers, especially when the size of 
+viewers is small, since they would form an almost fully-connected mesh structure, and the number of 
+the current active viewers helps the peer to make better decisions when the size of viewers becomes 
+larger. 
+2. Content publishing policy 
+After a video file is collected for future time-shifted viewers, the peer publishes the ownership 
+information of the file on the DHT. In addition, the channel provider caches all video contents but 
+never publishes the ownership information. The channel provider would act as a backup source; its 
+cached contents can only be accessed at emergency. For example, when a block is 5 seconds to the 
+time-shifted playback deadline but had not been received, or when no owner information of a video 
+file is published on the DHT. Since the system would keep multiple replicas for each video file, the 
+published record on the DHT is a list of <IP_address:Port> tuples. Fig.3-6 depicts the data structure 
+of the owner list. The owner list contains records of the <IP_address:Port> of the owners of a video 
+file, and it can be retrieved by the hashed file name as a key GET(hash(filename)). 
+When a peer wants to update an owner list, it first tries to get the list from the DHT. If the size 
+of the list is less than the desired number of replicas, the peer adds its IP address and a port number 
+10 
+ 
+   Range of stable state
+10 blocks 10 blocks
+½ buffer size ½ buffer size
+Buffer Start Playback Position Buffer End
+Figure 3-7 The stable state of a TS peer’s buffer 
+ 
+2. Time-shifted stream subscription  
+TS Peers with overlapping playback buffers can share video blocks with each other. TS peers 
+are partitioned into groups; peers in each group may share blocks in their playback buffers. The 
+current playback position of each TS peer can be estimated by its initial playback position and the 
+lapse of time after the playback. Using the estimated playback position of each TS peer, the bootstrap 
+server can instruct TS peers with playback positions within a short distance to form a group. The 
+median of a group is defined to be the average playback positions of all peers in the group. If a new 
+TS peer’s initial playback position is within 8 minutes of a group median, the bootstrap server 
+instructs the peer join the group. Otherwise, the bootstrap server creates a new group for the peer. 
+The peer receives from the bootstrap server a member list of the group. Peers in a group exchange 
+playback buffer range (the buffer start and end) and the member list every 10 seconds. 
+With the exchanges of buffer range information, peers can check if their playback buffers are 
+overlapping or not. After reaching the stable state, two peers with overlapping buffers can form a 
+supplier-subscriber relation. The peer with an older playback position subscribes time-shifted stream 
+with the other peer. Once the subscription is accepted, the supplier pushes time-shifted video blocks 
+to the subscriber one block per second. If more than two peers have overlapping buffers, each peer 
+would subscribe with the one whose buffer head is closest to its own. This means each supplier 
+serves at most one subscriber at a time, and the supplier-subscriber relation of two peers will be 
+rearranged when a new peer joins in the middle of them. The new peer would subscribe with the 
+original supplier, and the original supplier cancels the contract with the original subscriber. The 
+original subscriber will find that the new peer is with the closest buffer head and then subscribe with 
+it. In subscription mode, the emergency handling for un-received blocks is the same as in that of 
+per-block pulling. 
+3. Switching between DHT per-block pulling and time-shifted stream subscription 
+A new TS peer would first start in per-block pulling mode to retrieve initial playback blocks. 
+After it reaches the stable state and finds a suitable supplier, it sends a subscription message to the 
+potential supplier, and stops per-block pulling thread if the subscription is accepted. When a peer is 
+served by a supplier, it stops requesting buffer range information with its group member, but still 
+replies buffer range requests. 
+If a subscriber has not received video contents from its supplier for 3 seconds, it sends an 
+un-subscription message to the supplier and starts per-block pulling. This is designed to react to 
+unexpected behaviors on the supplier’s side, such as, the shortage of network bandwidth shortage or 
+disgraceful leaving. The supplier sends an un-subscription message to the subscriber when it changes 
+its playback position or when another peer with a closer buffer head subscribes. Whenever a 
+time-shifted peer switches from time-shifted subscription to per-block pulling, it needs to keep 
+per-block pulling for at least a cycle time (10 sec.) of buffer range exchange to obtain buffer range 
+information. 
+When a peer is in time-shifted stream subscription mode, it also continuously retrieves the 
+current owner list and the next owner list as in per-block pulling mode to achieve smooth switching. 
+Otherwise it may suffer from a longer startup delay when switching to per-block pulling mode. 
+12 
+ 
+Live Streaming Part
+Playback Buffer
+Viewer
+Time-shift Streaming Part
+File 
+System
+VLC Player
+Member Management
+Partner Management
+Parent Management
+Sub-stream Management
+DHT 
+Request Handler Video Block Handler
+Network Interface
+Node NodeNode
+Cache and Publish Policy
+Video File Management
+Both Part
+ 
+Figure 3-9 The block diagram of a viewer. 
+ 
+IV. Feasibility analysis of time-shifted streaming  
+ A time-shifted viewer chooses a video position in the past and tries to obtain the time-shifted 
+contents cached by live peers. We intend to determine whether a time-shifted viewer can retrieve his 
+or her desired contents in full. It is clear that the answer depends on whether the desired contents 
+have been cached by live peers and whether the peers with the cached contents are on-line or not. 
+Assume that the arrivals of live viewers form a Poisson process with arrival rate , a live viewer 
+watches the live program for a random duration exponentially distributed with mean 1/ It is clear 
+that the number of live peers can be modeled as a Markov process depicted in Fig 4-1, i.e., an 
+M/M/ queue. If each live peer caches all the contents that the viewer watches, the number of live 
+peers caching a video segment equals to the number of replicas cached for the segment. The steady 
+state probability of state k, denoted by Pk, can be derived as follows, 
+ /
+!
+)/(  e
+k
+u
+p
+k
+k               (1) 
+0 1 2 3
+  
+4
+ 
+••••
+   
+ 
+Figure 4-1 Markov process of the number of live viewers 
+ 
+In addition, we need to consider whether the peers who cached the desired time-shifted contents 
+14 
+ 
+ 
+Figure 4-2 The number of available replicas for time-shifted contents 
+ 
+There are at most four types of events that cause out-flow transitions at state (i, j) in Fig. 4-2. 
+Take state (2, 1) for example, i.e., we have three live peers caching the desired contents in the 
+time-shifted time-span, and two of them are on-line and one of them is off-line in the current 
+time-span. First, in the time-shifted time-span, state (2, 1) transits to state (1, 1) with rate 
+2indicating one of the on-line live viewers finished watching, and transits to state (2, 0) with rate 
+indicating the on-line live viewer finished watching. Second, state (2, 1) transits to state (3, 1) 
+with rate Pon and to state (2, 2) with rate Poff, indicating a new live viewer arrived. These 
+transitions are the mixed effect of the time-shifted and current time-spans; the live viewer arrived at 
+the time-shifted time-span, but its on-line/off-line state is determined in the current time-span. Third, 
+in the current time-span, state (2, 1) transits to state (3, 0) with rate μoff indicating the off-line live 
+viewer becomes on-line. Last, state (2, 1) transits to state (1, 2) with rate 2μoff indicating one of the 
+two on-line live viewers becomes off-line. 
+The Markov process in Fig. 4-2 satisfies Detail Balance Equations, i.e., for each pair of 
+neighboring states, the flows of transitions to each other are the same. For example, consider two 
+neighboring states a and b. Let    and    denote the state probabilities, respectively,      the 
+transition rate from a to b, and      that of b to a. We have a Detail Balance Equation as 
+                              (3) 
+ 
+Like all Markov processes, the Markov process in Fig. 4-2 also satisfies Global Balance 
+0,0 1,0 2,0 3,0  
+4,0
+ 
+••••
+pon
+••••
+••••
+••••
+••••
+pon pon pon pon
+0,1 1,1 2,1
+ 
+3,1 
+pon pon pon pon
+0,2 1,2 2,2 
+pon pon pon
+0,3 1,3
+ 
+pon pon
+on
+off
+poff
+
+on
+off
+poff
+
+on
+off
+poff
+
+on
+off
+poff
+
+on
+off
+poff
+
+on
+off
+poff
+
+onoff
+poff
+
+on
+off
+poff
+
+on
+off
+poff
+
+poff
+
+on
+off
+poff
+
+poff
+
+poff
+
+poff
+
+16 
+ 
+0,0 1,0 2,0 3,0S() S() S()
+4,0
+S() S()
+••••
+••••
+••••
+••••
+••••
+ponS() ponS() ponS() ponS()
+0,1 1,1 2,1
+S() S()
+3,1S() S()
+ponS() ponS() ponS()
+0,2 1,2S() 2,2S() S()
+ponS() ponS()
+0,3 1,3
+S() S()
+ponS()
+onS()
+On
+S()off
+S()poffS()
+S() on
+S()
+off
+S()Poff
+S()
+S() On
+S()
+Off
+S()Poff
+S()
+S()
+onS()
+on
+S()off
+S()poffS()
+S()
+on    
+S()
+
+off
+S()
+
+Poff
+S()
+S()
+onS()
+On
+S()off
+S()poffS()
+S()
+onS()
+Poff
+S()
+S()
+Poff
+S()
+S()
+Poff
+S()
+S()
+poffS()
+S()c
+ν/S(i,j)   ν/S(i,j)
+ν/S(i,j)
+ν/S(i,j)
+...
+...
+...
+on
+Figure 4-3 A modified Markov process observed by a time-shifted viewer 
+ 
+The steady state probabilities of the Markov chain in Fig. 4-2 were used as the initial state 
+probabilities of the imbedded Markov chain in Fig. 4-3. Note that the initial probability of state c is 0. 
+In the imbedded Markov chain, each transition has a transition probability, not a rate. Taking an 
+example of out-flow transitions of state (2,1) in Fig 4-4, the transition probability of a transition 
+equals to its rate divided by the sum of all the transition rates originated from the same state of the 
+transition. Let S(i,j) denote the sum of state transition rates out of state(i,j), for example, S(2,1) = 
+offλPon + λPoff + 2on +  2 A transition probability matrix P for the imbedded Markov 
+chain can be obtained. Let i denote the initial probability vector of the imbedded Markov chain, i.e., 
+the steady state probabilities of the Markov chain in Fig. 4-2. Let  denote the limiting probability 
+vector of the imbedded Markov chain. We have 
+     
+  ∞
+   
+    
+Since state c and states (0, j) have no out-going transition, they have non-zero limiting 
+probabilities; other states’ limiting probabilities are all zero. Pc, the probability that a TS peer can 
+find all the desired contents from on line peers, equals to the limiting probability of state c. 
+18 
+ 
+ 
+Figure 4-6 Pc with 1/λ = 4.28, 1/μ = 60, 1/ν = 60 (min.) 
+ 
+ Computer simulations have been performed to validate our analytic model. Computer 
+simulation consists of two stages. At stage 1, the arrival and departure records of live viewer were 
+recorded. As depicted in Fig. 4-7, the arrivals of live viewers form a Poisson process with arrival rate 
+ and a live viewer watches the live program for an exponentially distributed duration mean 1/For 
+each live peer, we record its arrival and departure times. Stage2 simulates the on-and-off alternating 
+renewal process of the live peers, and time-shifted viewers retrieving the desired contents. As 
+depicted in Fig. 4-8, the on-line or off-line status of each live peer is determined independently with 
+probability Pon being on-line. For each peer, its alternating on-line and off-line periods were 
+generated with mean 1/μon and 1/μoff, respectively. For each peer, we record the on-line and off-line 
+events. A time-shifted viewer randomly chooses an initial video position, and a viewing duration 
+exponentially distributed with mean 1/. The peers’ arrival and departure records at the chosen 
+position and the peer’s on-line and off-line records are compared to verify if there are on-line peers 
+to provide the contents to the time-shifted viewers for the entire duration. 
+ We randomly generate and record 1000 sets of LS peers’ events. Each set contains LS peers’ 
+arrival and departure events in a three-day period. For each event set, 10000 TS viewers view the 
+three-day video content starting from independently random positions. The simulation and analytic 
+results are plotted in Figs. 4-9 and 4-10. We can see that the analytic and simulation results match. 
+This validates our analytic model. 
+0.86 
+0.87 
+0.88 
+0.89 
+0.9 
+0.91 
+0.92 
+0.93 
+0.94 
+0.95 
+0.96 
+0.97 
+0.98 
+0.99 
+1 
+06:18 08:16 10:14 12:12 
+P
+c 
+1/μon:1/μoff  (hr.) 
+20 
+ 
+ 
+ 
+Figure 4-10 The expected number of replicas with 1/λ = 4.28, 1/μ = 60, 1/ν = 60 (min.) 
+ 
+V. Performance Measurements  
+5.1 Experiment Environment  
+ To evaluate the system performance, we performed experiments on PlanetLab, an open 
+global research network [20]. A channel provider was located in the Internet Communication 
+Laboratory, NCTU. The number of PlanetLab nodes we use is not the same in every experiment 
+because of the availability of the nodes. The total number of nodes was targeted at 120; half of them 
+were live peers, and the other half were time-shifted peers. The peers were located in the United 
+States, European and East Asia. The bit-rate of the video stream is 400 kbps, the number of 
+sub-streams is 8, and each peer can connect to up to 24 peers as partners. The buffer size of each peer 
+is 120 video blocks, i.e., 120 seconds. The system intends to keep 10 replicas for each video block. 
+Time-shifted peers cache each received block with probability 0.5. Table 4-1 lists the system 
+parameters used in our system.  
+Table 5-1 Experiment Parameters 
+System parameters Value 
+Video streaming bit-rate 400 kbps 
+The number of sub-streams 8 
+The maximum number of partners 24 
+The number of replicas to keep 10 
+Buffer size 120 blocks 
+ 
+In the experiment, we first started the bootstrap server and the streaming provider, and then 
+peers joined the system as in a Poisson process, with an expected inter-arrival time of 60 seconds. 
+Whether a PlanetLab node is chosen to be a live or a time-shifted viewer is determined randomly in 
+advance. For each time-shifted peer, it randomly selects streaming playback position between the 
+beginning of the streaming and the current streaming. The experiment lasts 2 hours. 
+2 
+3 
+4 
+5 
+6 
+7 
+8 
+06:18 08:16 10:14 12:12 
+ER
+ 
+1/μon:1/μoff  (hr.) 
+analysis 
+simulation 
+22 
+ 
+ 
+Figure 5-3 The continuity index distribution 
+ 
+Figure 5-1 depicts the distribution of startup delay of the live streaming peers in our experiment. 
+Most of the peers experience a startup delay less than 20 sec.; the average startup delay is 16 sec., 
+which is a satisfactory result for P2P live streaming service. Figure 5-2 depicts the distribution of the 
+end-to-end delay of the live streaming nodes. Most of the nodes experience an end-to-end delay less 
+than 30 sec., and the average end-to-end delay is 22 sec. Note that the total number of peers in Fig. 
+5-2 is different from that of Fig. 5-1. It is because peers with negative end-to-end delay, which is 
+impossible, is eliminated from Fig. 5-2. The negative end-to-end delays were the results of 
+un-calibrated NTP time on the PlanetLab nodes, but we do not have the authority to adjust the NTP 
+time. Fig. 5-3 depicts the distribution of continuity index of live streaming nodes. 75% of them 
+achieve over 97% continuity index; the average continuity index is 96%. 
+5.2.2 The time-shifted streaming 
+ To serve time-shifted peers, live streaming video files collected by the live peers need to be 
+published on the DHT properly. First, we examine the probability that a file is successfully published. 
+The probability can be obtained by dividing the total size of the owner lists of all video files on the 
+DHT by the total number of video files cached by live peers. Note that all the owner lists are 
+retrieved from the DHT at the end of the experiment. In the experiment on PlanetLab described 
+above, the probability of success publishing is 97.39% , i.e., only less than 3% of the cached video 
+files fail to be published. 
+ The performance measurements that we are interested for time-shifted streaming include startup 
+delay, the missed ratio of time-shifted blocks, and the provider stress. In our experiment, there were 
+0 
+0.05 
+0.1 
+0.15 
+0.2 
+0.25 
+0.3 
+0.35 
+0.4 
+0.45 
+0.5 
+1-0.99 0.99-0.98 0.98-0.97 0.97-0.96 0.96-0.95 0.95-0.9 0.9-0.7 0.7-0.5 
+P
+e
+rc
+e
+n
+ta
+ge
+ o
+f 
+ n
+o
+d
+e
+s 
+continuity index 
+24 
+ 
+ 
+Figure 5-5 The distribution of block missing rates 
+ 
+  We also performed another experiment in which time-shifted viewers may change their 
+playback positions. In this experiment, TS viewers watch for a random interval from 15 to 25 
+minutes, and then change the playback position randomly chosen between the system startup time 
+and the current time. The number of total received blocks was 195632, and the number of TS peers 
+in this experiment was 56. Fig 5-6 depicts the distribution of startup delay. The delay in playing out 
+after a TS viewer changes his/her playback position is also considered as startup delay. The average 
+startup delay is 15.0 sec., which is 1.5 sec. shorter than that of the previous experiment where TS 
+viewers do not change playback positions. This is because some startup procedures, such as 
+initializing network connections, are only necessary in the first startup. As a result, the average 
+startup delay decreases.  
+Table 5-3 The TS streaming load on the channel provider with peers changing playback positions 
+From provider 
+Emergency pulling 
+3.01% 
+0.75% 
+Failing to obtain from the owners 1.01% 
+No owner found 1.12% 
+ 
+-0.1 
+6E-16 
+0.1 
+0.2 
+0.3 
+0.4 
+0.5 
+0.6 
+0.7 
+0 0-0.1%  0.1-0.5%  0.5-1%  1-2%  2-5% 5-10% 
+P
+e
+rc
+e
+n
+ta
+ge
+ o
+f 
+ n
+o
+d
+e
+s 
+The block missing rate 
+26 
+ 
+ 
+Fig. 5-7 depicts the distribution of the block missing ratios for the TS peers. The average block 
+missed ratio was 0.65%. 84% of the TS peers achieve a low missing rate less than 1%. Only one 
+peer experience an ultra high missed ratio of 78%, which may be due to a temporary overloading on 
+that node.  
+Table 5-3 lists the percentage of video blocks that is obtained from the channel provider by TS 
+peers. The results indicate that although time-shifted viewers change their playback positions, only 
+3% of video blocks were obtained from the provider. The provider stress only increases by 0.3%. 
+This imply that when TS peers change viewing positions, they experience about the same video 
+block shortage from the DHT. 
+The subscription rate is defined to be the proportion of blocks received by subscription among 
+the total received blocks. To evaluate how effectively the time-shifted stream subscription enhances 
+the cooperation between time-shifted viewers and reduces the block transmission load on LS peers, 
+we performed further experiments to analyze the time-shifted streaming sources. We categorize the 
+experiments into four cases, cases (1-4) as indicated in Table 5.4, depending on whether time-shifted 
+stream subscription and/or changing playback positions are allowed or not. The way that TS peers 
+change playback positions is the same as the previous experiment, and the number of time-shifted 
+peers are also around 60. 
+Table 5.4 The categories of experiments to analyze the time-shifted streaming sources 
+ No peer changing 
+playback positions 
+With peer changing 
+playback positions 
+No TS subscription (1) None (3) CP 
+With TS subscription  (2) Sub (4) CP+Sub 
+ 
+ 
+ 
+Figure 5-8 The effects of TS subscription with no peer changing playback positions 
+ 
+Fig. 5-8 depicts the source distribution of TS video blocks sources in cases (1) and (2). When no 
+TS subscription is allowed, 43% of the video blocks are pulled from LS peers and 57% pulled from 
+Pulling from LS 
+peers 
+57% 
+Pulling from TS 
+peers 
+43% 
+None  
+Pulling from LS 
+peers 
+42% 
+Pulling from TS 
+peers 26% 
+TS subscription 
+32% 
+Sub 
+28 
+ 
+positions.  
+References 
+[1] F. Douglis and M.F. Kaashoek, “Scalable Internet Services,” IEEE Internet Computing, vol. 5, no. 
+4, 2001, pp. 36–37. 
+[2] A. Vakali, and G. Pallis, “Content delivery networks: status and trends” IEEE Internet 
+Computing, vol. 7, no. 6, 2003, pp. 68-74.  
+[3] Xinyan Zhang, et al., “CoolStreaming/DONet: a data-driven overlay network for peer-to-peer 
+live media streaming” INFOCOM 2005. 24th Annual Joint Conference of the IEEE Computer 
+and Communications Societies. Proceedings IEEE, vol. 3, pp. 2102-2111. Mar. 2005 
+[4] Li Zhao, et al., “Gridmedia: A Practical Peer-to-Peer Based Live Video Streaming System” 
+Multimedia Signal Processing, 2005 IEEE 7th Workshop on, pp. 1-4. Nov. 2005 
+[5] Bo Li, et al., “Inside the New Coolstreaming: Principles, Measurements and Performance 
+Implications” INFOCOM 2008. The 27th Conference on Computer Communications. IEEE, pp. 
+1031-1039, Apr. 2008 
+[6] V. N. Padmanabhan, et al., “Distributing streaming media content using cooperative networking,” 
+in Proc. 12th international workshop on Network and operating systems support for digital audio 
+and video, pp. 177-186. Apr. 2002. 
+[7] M. Castro, et al., “Splitstream: High-bandwidth content distribution in a cooperative 
+environment,” in Proc. nineteenth ACM symposium on Operating systems principles, pp. 
+292-303. Oct. 2003. 
+[8] V. Venkataraman. K. Yoshida, and P. Francis, “Chunkyspread: Heterogeneous Unstructured 
+Tree-Based Peer-to-Peer Multicast” Network Protocols, 2006. ICNP '06. Proceedings of the 
+2006 14th IEEE International Conference on, pp 2-11. Nov. 2006 
+[9] Yang Guo, et al., “P2Cast: Peer-to-peer Patching Scheme for VoD Service” Multimedia Tools 
+and Applications, vol. 33, pp. 109-129, 2007 
+[10] T.T. Do, K.A. Hua, and M.A. Tantaoui, “P2VoD: providing fault tolerant video-on-demand 
+streaming in peer-to-peer environment” Communications, 2004 IEEE International Conference 
+on, vol. 3, pp. 1467-1472, Jun. 2004 
+[11] Yi Cui, Baochun Li, and K. Nahrstedt, “oStream: asynchronous streaming multicast in 
+application-layer overlay networks” Selected Areas in Communications, IEEE Journal on,  
+vol. 6, no. 1, Jan. 2004 
+[12] C. Dana et al., “BASS: BitTorrent Assisted Streaming System for Video-on-Demand” 
+Multimedia Signal Processing, 2005 IEEE 7th Workshop on, pp. 1-4. Nov.2005 
+[13] Yang Guo et al., “PONDER: Performance Aware P2P Video-on-Demand Service” Global 
+Telecommunications Conference, 2007. GLOBECOM '07. IEEE, pp. 225-230, Nov. 2007 
+[14] F.V. Hecht et al., “LiveShift: Peer-to-Peer Live Streaming with Distributed Time-Shifting” 
+Peer-to-Peer Computing , 2008. P2P '08. Eighth International Conference on, pp. 187-188, Sept. 
+2008 
+[15] S. Deshpande, and J. Noh, “P2TSS: Time-shifted and live streaming of video in peer-to-peer 
+systems” Multimedia and Expo, 2008 IEEE International Conference on, pp.649-652. Jun. 2008 
+[16] Hou Xiuhong, Ding Ruipeng, “Research of providing live and time-shifting function for 
+structured P2P streaming system” Machine Vision and Human-Machine Interface (MVHI), 2010 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/10/27
+國科會補助計畫
+計畫名稱: 點對點實況及移時播放之影音服務 II
+計畫主持人: 張明峰
+計畫編號: 99-2221-E-009-103- 學門領域: 計算機網路與網際網路
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

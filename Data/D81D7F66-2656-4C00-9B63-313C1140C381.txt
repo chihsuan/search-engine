@@ -1,0 +1,456 @@
+2 
+ 
+計議題在於提升軟體行程間通訊的速度。 
+傳統平行運算的技術差異性主要在於軟硬體資源分享的實做層次，主要有以
+下方法： 
+ SMP（Symmetric Multi-Processing）： 
+SMP 架構的作業系統必頇負責將運算工作切割分配至各個處理器
+（Processor），適用於具有輕量化的軟體程序（Light-Weight Processes）
+或者是軟體線程（Threading）的應用特性；像是 Windows NT 是 Heavily 
+Thread-Based，Linux是Fairly Light-Weight Processes，兩者皆適用於SMP
+架構；但是當處理器數目大於某個數量的時候，會因為資源競爭的問題
+造成處理器 Utilization 非常低，這是 SMP 架構的缺點。 
+ NUMA（Non-Uniform Memory Access）： 
+UMA（Uniform Memory Access）是 SMP 架構採用的記憶體共享機
+制，每一個處理器有共同的記憶體存取介面，而 NUMA 主要目標在於
+提高處理器的自有記憶體（Local-Memory）的使用效率。MPP 與
+Clustering 架構對於處理器之間通訊（Inter-Processor Communication）
+必頇透過網路進行，這會增加很多效能上的額外負擔，NUMA 透過共
+享記憶體機制提供具穿透性（Transparency）的最佳化解決方案。 
+ MPP（Massively Parallel Processing）： 
+MPP 架構的主要思維在於將運算工作切割分配為資料相關性極低
+的各部分，分配至各自擁有專用軟硬體資源的處理器執行，適用於數學
+模型分析、核爆模擬。它與 Clustering 非常相似，但是 MPP 架構的各
+個處理器未必有完整的輸入輸出介面（Input/Output Interface）；主要缺
+點在於必頇針對平行運算的特性寫程式（不具穿透性），盛行的函式庫
+(APIs)有 PVM 與 MPI。 
+ Clustering： 
+叢集電腦（Cluster Computer）是由一群個別的同質或異質的電腦
+系統透過網路通訊組成一種概念上的單一電腦，是平行運算的一個類
+型。 
+ Distributed Processing： 
+Distributed Processing 則是以 Client-Server 架構為代表。 
+ 
+硬體發展趨勢由傳統單核心處理器轉向單晶片多核心處理器，現有的作業系
+統必頇做適當的修改以提供相關功能性的支援。平行運算系統可略分為兩大類：
+High-Throughput 與 High-Performance，我們的系統參考叢集電腦與網格計算的相
+關技，對於 High-Throughput 平行運算的應用類型提供核心模式的分散式共享記
+憶體管理機制（Distributed Shared Memory），支援單晶片多處理器系統架構所需
+的各種功能特性。 
+ 
+4 
+ 
+ 
+圖 1：將模擬引擎分成 Master 與 Slave 兩種模式 
+1-2 網路協定的實作與模擬 
+由於在晶片網路（NoC）環境之中，不會有封包遺失的問題，而傳統的
+TCP/IP 通訊協定實作復雜度對於嵌入式作業系統又是一個很大的負擔，所
+以對於晶片網路來說，原本 OSI 七層架構是不適用的。所以我們在設計的
+作業系統及應用程式之上，簡化了原本 OSI 復雜的功能，實作了晶片網路
+所必需的部份元件。經簡化過後的架構圖如圖 2： 
+ 
+圖 2：標準 OSI 網路通訊協定與簡化後的 On-chip 網路通訊協定 
+ 實體層（Physical Layer）： 
+Physical 層為硬體設計，所以這一層的封包交換我們只需要加上自行定
+義的標頭後再傳送到網路模擬器之中，之後交由網路模擬器處理封包交換傳
+遞的工作。而當網路模擬器將封包傳遞到平台模擬器之後，平台模擬器會負
+責呼叫通知該模擬之上的網路驅動程式，驅動程式將封包接收起交由作業系
+6 
+ 
+ 
+圖 4：封包傳遞的流程架構圖 
+1-3 軟體架構 
+整個模擬環境是由許多軟體所組成的，我們所實作的模擬環境分成三大
+部份，以下分項描述（圖 5 為軟體模擬架構與元件描述）。 
+ 
+圖 5：軟體及元件描述 
+8 
+ 
+ 模擬引擎： 
+主要由三種不同元件所組成：行程管理、網路模擬器與終端機控制。以
+下將分成三個部份各別說明。 
+ 行程管理： 
+主要使用 Unix 的 exec 系統呼叫來實作，用來執行管理 QEmu 程
+序。跟據使用者所設定的參數，呼叫新的行程（Process）執行平台模擬
+器，並監視每一個行程的執行情形。 
+ 網路模擬器： 
+跟據 XML 格式的描述檔，產生出 Switch Table。並在接收到平台
+模擬器所發出的網路封包後，依據 Switch Table 找到對映的延遲（Delay）
+並掛入發送佇列之中，在封包該傳送的時間再傳送給接收端的平台模擬
+器。圖 8 解釋網路模擬的架構及流程。 
+ 
+圖 8：網路模擬流程圖 
+(1) 驅動程式透過 I/O 存取平台模擬器上的虛擬網路介面。 
+(2) 平台模擬器（QEmu）將封包傳送給晶片網路模擬器。 
+(3) 在經過分析後晶片網路模擬器會將該封包放入發送佇列。 
+(4) 發送佇列會找到對映的平台模擬器（QEmu）並將封包傳送過
+去。 
+(5) 平台模擬器（QEmu）會告知驅動程式有封包被接收上來，而
+平台模擬器可以使用 I/O 指令將封包接收。 
+由於虛擬交換器所接收到的封包也不是真實世界的封包格式，而是
+由我們的虛擬網卡將上層的封包加上我們所自行定義的標頭後以
+TCP/IP 送出，而網路模擬器接收到資料後，會依據交換器表格的描述，
+確認延遲時間後放到發送佇列之中，而發送佇列會跟據事件發生的時間
+送出封包到虛擬網路卡的接收端。 
+ 終端機控制： 
+使用 Unix 的 Pipe 來控制，主要是讓開發者可以很清楚觀察，很方
+10 
+ 
+2-1 指令集相容性 
+比較關於計畫使用的 CPU 和 CDK 開發板的 CPU，雖然在子計畫一中是使
+用 ARM922T base 的 CPU，而在 CoWare 模擬方面則是使用 ARM926EJS 的 CPU，
+但是根據我們組合語言部分所使用的 ARM 指令集來說，使用的指令這兩種型號
+皆有支援，所以相容性上不會有任何問題，因此我們選擇在 CDK 上來實作相關
+的程式。 
+2-2 Micro C/OS-II 移植到 CDK 上 
+如圖 11 所示，移植 uC/OS-II 至某一平台時，我們必需修改 OS_CPU.H、
+OS_CPU_A.ASM、OS_CPU_C.C 這三個檔案與 processor-specific 相關的程式碼。
+其檔案修改的內容，會在後面移植至 NCKU RSIC32 硬體時，做說明。 
+       
+移植 uC/OS-II 到 CDK，主要的執行步驟如下: 
+(1) 改變原 GNU ARM 組合語言的 syntax 成 RVDS 環境的組合語言的 
+syntax。  
+(2) 修改原 interrupt 及 exception handler 的進入點 (entry point) 為 
+μC/OS-II 的 interrupt 及 exception handler。  
+(3) 加入 timer 驅動程式，及修改 timer ISR 以整合 μC/OS-II 的排程。  
+(4) 修改 os_cfg.h 調整 μC/OS-II 相關的系統參數，如：task 數量等等。  
+(5) 加入 μC/OS-II 初始化流程，如圖 10 所示。 
+ 
+2-3 撰寫 NI（Network Interface）驅動程式 
+為了能夠先行測詴撰寫的 NI 驅動程式能否正常運行，由子計畫二的負責人
+員先提供網路鏈結 RTL 電路，燒錄至 CDK 的 FPGA 後，我們再撰寫 user 
+application，透過 NI 驅動程式進行傳送、接收資料封包的動作。 
+起初我們使用下圖左的測詴架構，此架構的編號 1、2 的 CDK 開發板各為
+一個核心，而編號 S 的 CDK 負責管理編號 1、2 板子傳送過來的 data，確定此
+圖 10：uCOS-II porting 圖 11：uCOS-II 初始化流程 
+12 
+ 
+下圖 14 為 L1 page table（section）translation： 
+ 
+圖 14：L1 Page Table Translation 
+L1 page table 的 translation 首先由 TTB 中得到 page table base 
+address，然後將虛擬記憶體位址 31 到 20 bit 的值拿出來加到尾端 13 到
+0 bit 的位置，就會得到 first-level descriptor，再查看是屬於哪種類型的，
+發現是 Section page table（L1），所以從 Page Table Entry 中的 31 到 20 bit
+得到 section base address 加上虛擬記憶體位址後面 19 到 0 bit 的部分就
+可以得到實體記憶體位址。 
+Large page 定義了 64KB page frame 屬性；Small page 定義了 4KB 
+page frame 屬性；Tiny page 定義了 1KB page frame 屬性；Fault 代表存
+取時產生 page fault 中止異常。在 Second-Level Page Table 我們使用了
+Small Page (4KB)。 
+圖 15 為 L2 page table translation，前半段和前面 L1 page table 的
+translation 是一樣的，只是在 L1 的 descriptor 中判別為屬於 Coarse page 
+table 的 type 所以 L1 存的是 L2 page table 的 base address，在利用虛擬
+記憶體位址的 19 到 12 bit 當 offset 找到 second-level descriptor，並由
+second-level descriptor 其中 31 到 12 bit 取得 page base address 再與虛擬
+記憶體位址後面 11 到 0 bit 合併就得到實體記憶體位址。 
+14 
+ 
+ 
+圖 17：L2 Page Table 
+表1為說明Domain不同的值代表的意義。表 2為Access Permission（AP）
+的說明。 
+ 
+表 1：Domain Bit Info 
+ 
+表 2：Access Permission Bit Info 
+ Cache and Write Buffer： 
+Cache bit 為 0 表示不使用 cache，若為 1 則使用 cache。表 3 說明 Page
+屬性。 
+   
+表 3： Cache & Write Buffer Bit Info 
+ CP15 and MMU： 
+CP15: c1 Bit 的格式如下： 
+ 
+16 
+ 
+vector.s
+startup.s
+main.c
+LDR     PC, Reset_Addr ;startup.s
+LDR     PC, Undefined_Instruction_Addr ;trap.s
+LDR     PC, SWI_Addr ;trap.s
+LDR     PC, Prefetch_Abort_Addr ;trap.s
+LDR     PC, Data_Abort_Addr ;trap.s
+LDR     PC, Not_Used_Addr ;trap.s
+LDR     PC, IRQ_Addr ;trap.s
+LDR     PC, FIQ_Addr ;trap.s
+1. Perform ROM/RAM remapping, if required
+2. Enter each mode in turn and set up the stack pointer
+3. disableMMU (disable MMU, cache, TLB)
+4. Branch to C Library entry point (Branch to __main)
+1. mmuInit();
+2. memTest();
+ 
+圖 18：Startup Flow 
+ Scatter file (分散載入描述檔) 
+為了讓 vector.s 的程式能夠在系統一開啟時就當作第一道指令執行，我
+們必頇把 IVT 放在系統開機時執行第一道指令的位址（ex: 0x0），當開機時
+就會執行 vector.s 中第一道 Reset 接著跳到 startup.s 去開始一連串的開機設
+定，但是其他部分的 Code 和 Data 要放在其他位址而不是連續的跟著 IVT
+的位址下去放，所以我們還需要根據需求去撰寫 scatter file 將 code 和 data
+放在適當的位址。 
+圖 19 為 scatter file 的簡略說明： 
+ 
+圖 19：Scatter File Sample 
+底下介紹提供的 API 函式： 
+ unsigned int os_get_pt_address(unsigned int vaddress) 
+說明：計算虛擬記憶體位置對應的 page table 所在的實體位置。首
+先要把 MMU disable，因為 Page Table 所存放的實體位址有受到保
+護，接著將傳進來的 virtual address 的值根據前面所提到的 L1, L2 
+Page Table 及實體 Page Base Address 所在的 Bit，Shift 對應的 bit
+個數後得到相對的值，再根據前面 Page Table Translation 的過程計
+算出來。 
+18 
+ 
+ Write fault 流程： 
+(1) Application 去寫入記憶體位置，發現非為此記憶體位置的
+owner 
+(2) 發生 page fault interrupt 通知 MMU，MMU 先把自己使用此段
+記憶體的權限打開 
+(3) 再去通知原先擁有此記憶體位置權限的 node 的 MMU，告知
+目前的 node 欲寫資料進去，於是另一 node 的 MMU 把此記憶
+體權限交給欲寫資料的 node，把自己的權限關起來。 
+ Read fault 流程： 
+(1) Application 去讀取記憶體位置，發現非為此記憶體位置的
+owner 
+(2) 發生 page fault interrupt 通知 MMU，MMU 先把自己使用此段
+記憶體的權限打開 
+(3) MMU 告知擁有此記憶體位置權限的 node 2 的 MMU，自己想
+去讀取這段記憶體的資料 
+(4) node 2 的 MMU 接受到此訊息後，去讀取此記憶體位置之內
+容，並寫入 node 1 的記憶體，然後把自己權限關起來。 
+      
+發生 page fault 中斷時，流程如圖 22 所示，根據向量中斷表跳入 abort
+處理函式，為了處理完 page fault 後，能再次執行產生中斷的指令，根據
+pipeline 的架構，頇先將 PC 值做減 8 的動作以獲得發生 page fault 指令的位
+置，之後處理完中斷後便能返回指令。 
+避免中斷前與中斷後，暫存器的值受到改變，進入處理函式前，頇將各
+一般暫存器存入堆疊中，依據發生 page fault 的指令判斷此指令是為 read 或
+者是 write，判別出後再跳至各自的處理方法，處理完中斷後再從堆疊中將
+剛存入的暫存器拿出。 
+圖 21：read fault 流程 圖 20：write fault 流程 
+20 
+ 
+pointer 指向其工作資料在堆疊中的位置，把工作資料拿出，並且
+return。 
+ OSCtxSw()： 
+在發生中斷或 Trap 時會做工作的轉換，在轉換時頇儲存目前
+工作的內容以及讀取被換上工作的內容，就會呼叫此函式，首先將
+目前工作的內容根據此工作的 stack pointer 存入堆疊之中，在根據
+OSPrioHighRdy 函式找出目前最高優先權的工作並將其內容從堆
+疊中拿出，並且 return。 
+ OSIntCtxSw()： 
+此函式是在中斷服務常式裡所呼叫，與 OSCtxSw（）不同的
+是，在進入服務常式時，工作的內容已經儲存至堆疊中，這個函式
+所做的便是將最高優先權的工作從堆疊拿出並且 return。 
+ OSTickISR()： 
+由於μC/OS-II 為一即時作業系統，利用周期性的時間中斷來
+紀錄延遲時間與逾時時間，此 ISR（Interrupt Service Routine）的註
+冊頇寫在 OSStart 後第一個執行的工作上；在函式裡，頇先根據
+OSTaskStkInit 的暫存器儲存方式存放目前工作的內容，若處理器架
+構有支援巢狀中斷則計算目前中斷次數，因為計畫一所設計的
+NCKU RISC32 處理器並無支援巢狀中斷，所以用此方法來檢測是
+否產生巢狀中斷而導致程式錯誤；若無巢狀中斷，呼叫 OSTimeTick
+來做μC/OS-II 內部計時器的更新，做完更新後，取出目前最高優
+權工作的資料後並 return。 
+ 
+四、 結果與討論 
+ 我們實作出一個完整的硬體多核心的網路通訊模擬環境，能夠讓使用者在沒
+有多核心硬體平台的情況下，運用這個硬體模擬環境，進行分散式多核心作業系
+統的開發，而且我們還針對了不同層級的開發者，提供了不同的功能來完成測詴
+及開發工作。 
+ 模擬器中的網路卡介面的模擬，分別提供了 x86 與 ARM 平台的實作，在 x86
+平台將網路介面卡接到 ISA Bus 的 0x800 位址。而在 ARM 平台則是將網路卡介
+面接到 AMBA Bus 上。並且基於 Qemu 模擬環境實作出兩個版本的網路介面卡，
+透過簡化網路通訊協定，保留 NoC 所需要的部份，實作出一個 MPI 協定函式庫。 
+ 對於使用者提供人性化的操作介面，讓使用者可以快速的描述晶片網路環
+境，並且對於網路狀態監視提供了即時的動畫呈現，方便實用者觀察，讓應用程
+式開發者方便觀察統計資料。最重要的是，我們提供此模擬環境給其他子計劃的
+開發人員使用，協助他們進行開發。 
+ 有了多核心硬體模擬器的協助，我們在 Socle CDK 的平台上進行多核心分散
+22 
+ 
+統上執行的應用程式。DSM 中介軟體跟我們的作業系統核心緊密的配合，
+即中介軟體為了配置管理記憶體，必頇經由 System call 使用我們提供的
+API，然後交由作業系統我們實作的記憶體管理機制來處理。我們提供的 API
+有：os_get_pt_address()、os_virt_to_phy()、os_get_page_state()、
+os_is_write_fault()、os_mprotect()。 
+ 
+此外，為了方便進行開發多核心分散式作業系統，我們也實作出一個完整的
+多核心硬體模擬環境，能夠提供給研究多核心分散式作業系統的學術單位使用，
+即使沒有實體的多核心開發平台，也能夠直接進行研究發展合適的多核心分散式
+作業系統。如果研究的作業系統並不是符合我們模擬器的模擬環境，我們也提出
+硬體模擬器的相關設計、架構以及方式等資訊，可供開發人員參考，幫助他們能
+夠快速的完成開發適當的多核心硬體模擬平台。 
+ 
+六、 參考文獻 
+1. “CDK Workshop v1.0”, Socle Technology Corp., 2008 
+2. “ARM926EJ-S™ Technical Reference Manual”, ARM 
+3. MicroC/OS-II: The Real-Time Kernel Second Edition, Jean J. Labrosse. 
+4. ARM System Developer’s Guide – Designing and Optimizing System Software, 
+《ARM 系統開發者指南》, Andrew N.SLOSS, Dominic SYMES, Chris 
+WRIGHT, 沈建華, 王能文 
+5. MicroC/OS-II: The Real-Time Krnel Secod Edition, Jean J. Labrosse 
+6. “ARM Developer Suite Guide”, ARM. 
+7. Operating System Support for Multimedia Agents , 
+http//www.ucop.edu/research/micro/96_97/96_062.pdf 
+8. “Operating system support for multi-core processors”, Robert Craig and Paul 
+Leroux, QNX Software Systems, Embedded Control Europe (ECE) 
+9. “From Grid Middleware to a Grid Operating System”, Arshad Ali1, Richard 
+McClatchey2, Ashiq Anjum1, 2, Irfan Habib1, Kamran Soomro1, Mohammed 
+Asif1, Ali Adil1, Athar Mohsin1, 1National University of Sciences and 
+Technology, Rawalpindi, Pakistan 
+10. “HW-SW framework for distributed parallel computing on programmable 
+chips”, Jaume Joven Murillo, David Castells-Rufas, Jordi Carrabina Bordoll, 
+CEPHIS-UAB (Universitat Autònoma de Barcelona), Bellaterra, Spain 
+11. “A Survey of Multiprocessor Operating System Kernels”, Bodhisattwa 
+Mukherjee, Karsten Schwan and Prabha Gopinath 
+12. “Advantages of FPGA-Based Multiprocessor Systems in Industrial 
+Applications”, Ralf Joost and Ralf Salomon, Institute of Applied 
+24 
+ 
+http://www.redbooks.ibm.com/Redbooks.nsf/RedbookAbstracts/tips0476.html?Open 
+29. “Linux Support for NUMA Hardware”, http：//lse.sourceforge.net/numa/ 
+30. MPI Standard http：//www.mcs.anl.gov/mpi 
+31. “A Tutorial on Parallel Systems Development”, Michael J. Quinn, 
+McGraw-Hill, 2003, ISBN 0-07-282256-2 
+32. “A NUMA API for LINUX”, Technical Linux Whitepaper, April 2005, 
+http://www.novell.com 
+ 2
+2009 年儀器與量測技術國際研討會(I2MTC 2009)報告 
+楊中平 
+成功大學資訊工程學系 
+ 
+(一) 參加會議經過 
+ 
+2009 年儀器與量測技術國際研討會(2009 IEEE International Instrumentation and 
+Measurement Technology Conference, I2MTC 2009)已是第 26 屆舉辦了，原本都是在美國舉行，
+1994 年首度移師到亞洲的日本，爾後就都在美洲及歐洲輪流，2004 年原已規劃再度回到亞洲的新
+加坡，可惜因為 SARS 的影響，便臨時再改回歐洲去，闊別了五年，又輪回到了新加坡，然而這次
+的 H1N1 流感卻又帶來了不少戒慎恐懼的氣氛，當會議開幕時大家莫不以調侃的心情來談到怎麼每
+次輪到了新加坡主辦會議就會發生全世界的病毒流行，還好此次會議期間都在安全與順暢的過程
+中完成。 
+I2MTC 2009 會議之日期為 2009 年 5 月 5 日(星期二)至 5月 7 日(星期四)，舉辦地點在新加坡的
+Suntec 會議中心，由 IEEE Instrumentation and Measurement Society, Singapore Polytechnic
+和 IEEE Singapore Section 主辦此次會議。會議之主軸包含兩大方向：儀器系統之開發及量測技
+術之研究，總計此會議共有世界各地投稿 485 篇，而最後共錄取 330 篇論文，錄取率略低於 70%，
+並發表於 6 個平行時段及 2 場海報展示。 
+本次會議僅有一場開幕的 keynote presentation，請到的講者是曾獲得 IEEE Joseph F. 
+Keithley Award in Instrumentation and Measurement 的 Dr. Bryan Kibble，講題是 Improving 
+the S.I. – Simpler is Better，主要是講述關於應該如何重新定義量測的標準單位
+(International System of Unites)，由於 Dr. Kibble 已經退休，但依然從事顧問工作持續過去
+之研究，從演講中所流露出其孜孜不倦的研究態度實在是令人欽佩。 
+本次會議共舉行三天，總共有 66 個場次，所涵蓋之儀器與量測之領域頗為廣泛，茲列舉議程如
+下以供參考 
+ 
+Tuesday, May 5 
+8:30 AM - 10:15 AM 
+Plenary Opening Session 
+ 
+10:30 AM - 12:15 PM 
+ 4
+10:30 AM - 12:15 PM 
+3B1: Chemical and Biological Measurements 
+3B2: Non-invasive Measurements II 
+3B3: Automated Test and Diagnostics Systems I 
+3B4: Telecommunications II 
+3B5: Special Session 6 - II 
+3B6: Optical Measurements II 
+ 
+12:15 PM - 1:30 PM 
+P2: Poster Session 2 
+ 
+1:30 PM - 3:15 PM 
+3C1: Sensor networks 
+3C2: Analog & Mix Signal I 
+3C3: Distributed measurements III 
+3C4: Mechanical Measurements II 
+3C5: Special Session 4 - I 
+3C6: Soft Computing I 
+ 
+3:30 PM - 5:15 PM 
+3D1: Special Session 3 
+3D2: Image Processing III 
+3D3: Distributed measurements IV 
+3D4: Analog and Digital Conversion I 
+3D5: Electrical and Power Measurements III 
+3D6: Mathematical Modeling II 
+ 
+Thursday, May 7 
+8:30 AM - 10:15 AM 
+4A1: Sensor Interfaces 
+4A2: Analog & Mixed Signal II 
+4A3: Distributed measurements V 
+4A4: Mechanical Measurements III 
+4A5: Special Session 4 - II 
+4A6: Soft Computing II 
+ 6
+ 量測系統 - Automated Test and Diagnostics Systems, Sensor networks, and Sensor 
+Interfaces,  
+ 量測方法 – Calibration, Distributed Measurements, and Non-invasive Measurements.  
+因為個人對於 Distributed Measurements, Sensor Networks 及 Medical and Biological 
+Measurements 較有興趣，所以主要集中參加這幾個領域之議程。 
+本人在 5 月 7 日下午口頭發表論文，題目為「低成本之即時閉迴路癲癇抽搐監測與控制器」 
+- Chung-Ping Young, Chao-Hsien Hsieh, and Hsu-Chuan Wang, “A Low-cost Real-time 
+Closed-loop Epileptic Seizure Monitor and Controller＂ 
+我的論文發表是安排在最後一場的倒數第二位講者，一般會議這時的聽眾已所剩無幾，但發現
+這場的聽眾人數僅略少於之前的場次，似乎有許多人對此類研究都還挺有興趣，當我的報告一結
+束，立刻就有四位聽眾舉手提問，其熱烈程度遠超過我所參加的其他各場次的講者，目前我們的
+研究是應用在老鼠頭上，而提問者多想了解更多的偵測及實驗方法、應用範圍，甚至想知道是否
+有實作在人體的結果，由於在答問上佔用了稍多時間，而會議也已接近尾聲，在時間限制下議程
+主席不得不盡速結束這個問答的時間，個人覺得此次會議的報告及問題的討論可謂收穫豐富。 
+ 
+(二) 與會心得 
+經由參加此次會議，不僅發表了個人的研究成果，也有機會和世界各地之專家學者進行討論，
+更可以獲取其他不同研究領域之知識，以激發未來研究之靈感，所以在此感謝國科會的出國經費
+補助，才得以有此難得的機會。 
+1. 本會議及學會之參與人員以歐美地區較多，亞洲地區日本學者與之前相比已減少許多，台灣
+的出席者一向不多，而中國大陸近年已有大幅增加之趨勢，且積極參與及爭取服務機會，故
+2011 年的年會已決定由中國大陸主辦，舉行地點將在杭州。 
+2. 由於國科會補助參與國際研討會的經費日益減少，連亞洲會議的所有費用支出都無法全額負
+擔，也不足以支付一次歐美會議的機票及註冊費，更遑論其他旅館及生活費用之支出，若需
+要教師個人自掏腰包參與，則大大減少其參與重要國際會議之意願及旅程安排的彈性，而僅
+能選擇亞洲地區之會議充數，如此則減少台灣在一些重要會議中之交流與表現機會，反觀中
+國大陸學者之積極爭取的態勢與目前所展現出來的格局，實為台灣未來之競爭地位感到憂
+心。此次在國科會補助金額不足之下，幸有其他經費支援，使得這次會議得以順利成行。 
+3. 此會議之研究領域包含材料、電機、資訊等基本學科，但量測應用卻更涵蓋了所有的科學相
+關領域，甚至影像處理及通訊都是儀器與量測的基本方法或系統架構，目前這個學會的重要
+成員主要來自義大利，以台灣學者的實力應該可以多參加這個會議，進而提高我們的影響力
+及能見度。 
+ 
+(三) 參觀活動 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2010/12/22
+國科會補助計畫
+計畫名稱: 子計畫三：分散式多核心處理器之嵌入式作業系統設計與實現
+計畫主持人: 楊中平
+計畫編號: 96-2221-E-006-233-MY3 學門領域: 計算機結構與計算機系統
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

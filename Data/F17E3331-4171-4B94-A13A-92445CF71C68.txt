@@ -1,0 +1,333 @@
+instructions. 
+To save memory area, branch target cache (BTC) is not 
+used in this project since incorporating the features 
+of multithread can effectively compensate for the 
+loss of time associated with instruction branches. In 
+this project, a multithread dispatcher is used to 
+switch threads in accordance with various conditions 
+and on the basis of the basic thread switch 
+mechanism. As for the hazards causing by cache memory 
+misses, this project also provides a solution to fit 
+into the features of the HT-ARM9TM microprocessor.  
+The resulting HT-ARM9TM has been implemented in the 
+Xilinx Virtex5 XC5VLX110- FF676 FPGA. Although the 
+operating frequency merely increases a little bit as 
+compared to the Proto3-ARM9TM microprocessor, from 
+45.2 MHz to 45.7 MHz, the average IPC for test 
+programs is increased about a factor of 23.64%, i.e., 
+form 0.7 to 0.856. 
+ 
+英文關鍵詞： multithread, microprocessor IP, hyper-threading 
+mechanism, thread dispatcher, and cache memory miss 
+ 
+	   I	  
+中文摘要 
+在本計畫中，我們設計並實現了一個與 ARMv4T 指令集架構相容的微處理器智財
+(Intellectual Property, IP) – HT-ARM9TM。本計畫為了改善 Proto3-ARM9TM處理器效能
+[7]，採用多執行緒處理的機制，重新設計了處理器架構。採用 Intel 處理器的超執行緒
+(Hyper-threading)機制，使處理器能執行兩個執行緒，並增加對應的暫存器，以及對等
+劃分所需的指令記憶體(instruction memory)與資料記憶體(data memory)。切換執行緒的
+方式以信號要求切換(switch-on-signal)的機制為基礎，再加上隱含切換(implicit-switch)
+的機制以彈性因應不同指令時的切換。 
+本計畫考量執行分支指令時的效率，決定不使用 BTC (branch target cache)以節省大
+量的記憶體面積，因為使用多執行緒執行時的特性，就能有效的掩蓋分支指令的時間浪
+費。本計畫設計執行緒的管理單元：執行緒分配器(thread-dispatcher)，依照切換執行緒
+的基本機制設定，以及不同情況所送入的訊號做判斷，選擇最適合執行的指令執行。對
+於快取記憶體存取失誤(cache miss)所造成的危障，本計畫也做出符合 HT-ARM9TM處
+理器特性的處理方式。 
+本計畫所設計的 HT-ARM9TM在 Xilinx的 Virtex5 XC5VLX110-FF676 FPGA上實
+現，與先前的 Proto3-ARM9TM 架構比較下，操作頻率從 45.2 MHz 略微提升至 45.7 
+MHz，相同測試程式下的 IPC由 0.7提升至 0.856，整體效能則增加了 23.64%。 
+關鍵詞：多執行緒、微處理器智財、超執行緒、執行緒分配器、快取記憶體存取失誤 
+	   III	  
+ 
+目錄 
+一. 前言                                                                  1 
+二. 研究目的                                                              1 
+三. 文獻探討                                                              2 
+3.1 執行緒處理模式                                                    2 
+3.2 多執行緒處理器                                                     2 
+四. 研究內容                                                              4 
+4.1 基本架構                                                           4 
+4.2 處理分支指令的效率分析                                             5 
+4.3 執行緒分配器單元設計                                             6 
+4.3.1 執行緒分配器 ver.1                                          6 
+4.3.2 執行緒分配器 ver.2                                          6 
+4.4 管線階級規劃                                                       7 
+4.5 危障處理                                                           9 
+  4.5.1 相依資料危障處理                                            9 
+4.5.2 指令記憶體及資料記憶體的存取危障處理                         9 
+4.6記憶體存取控制                                                      9 
+五. 結果與討論                                                            9 
+5.1 FPGA 合成結果                                                     9 
+5.2 效能評估與討論                                                    10 
+六. 參考資料                                                            10 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+	   2	  
+三、文獻探討 
+3.1 執行緒處理模式 
+切換執行緒的判斷方式[11]分為靜態(static)與動態(dynamic)，如圖 2所示。在軟體
+編譯時，外在切換(explicit-switch)是在指令集加入額外的指令做切換執行緒，隱含切換
+(implicit-switch)是根據不同種類的指令來做切換執行緒，其中隱含切換因為不需要額外
+修改指令集，能保有指令集的相容度。 
+ 
+圖 2：交叉技術 
+在硬體執行時，最為廣泛使用的是快取記憶器失誤切換(switch-on-cache-miss)，它
+能有效地減少發生快取記憶器失誤(cache miss)時造成的時間延遲；信號要求切換
+(switch-on-signal)是必要的機制，其優先權大於快取記憶器失誤切換。使用要求切換
+(switch-on-use)會比快取記憶器失誤切換晚一個時脈週期做執行緒切換，當快取記憶器
+失誤的延遲時間不長，可減少切換執行緒的次數，避免額外產生的錯誤，當快取記憶器
+失誤的延遲時間較長，會使系統停滯更久。 
+條件切換(conditional-switch)是根據外在切換的指令以及設定的條件做標準，當兩
+者都滿足才切換執行緒，相較於外在切換的方式，設定的條件可以更有效地切換執行緒
+使效能提升，但是仍有指令集不相容的問題。 
+3.2 多執行緒處理器 
+目前已經提出的多執行緒處理器有 Intel Pentium4 處理器[6,7]、Intel Core i3 處理
+器[6,7]、Intel Core i5 處理器[6,7]、Intel Core i7 處理器[6,7]、Rhamma 處理器[11]、Fuce 
+處理器[12,13]、Datarol-II 處理器[14]、MT-ARM 處理器[15]、CODA 架構[16]、MVP 系
+統[17]、SPARC 處理器[18]。本計畫參考上述處理器的特點，加以改良並整合至
+Proto3-ARM9TM處理器中。以下將深度探討，對本計畫影響最大的三個處理器架構 Intel 
+處理器、Fuce 處理器、與MVP 系統。 
+Intel [6,7]的處理器是利用超執行緒(Hyper-threading)的機制來達到兩倍多執行緒
+的效果。Intel將一個中央處理單元(CPU)中，除了原本的一個邏輯運算處理單元，再加
+	   4	  
+執行緒，假設有 n 個執行緒處理單元，當每個執行緒執行單元處理的資料不相依時，
+相較於單一執行緒處理單元的 CPU，可達到 n倍的吞吐量(throughput)；當每個執行緒
+執行單元處理的資料全部相依，只能一次執行一個執行緒執行單元，其他的執行單元
+反而會占用太大的晶片面積。MVP 系統[17]改進一般的單管線式多執行緒架構，加入
+硬體的排序單元(hardware scheduler)，其執行緒的排程分為兩部分，由軟體做第一階段
+的優先權排序，再由硬體根據執行情況調整執行緒執行的順序，如圖 5 所示。此架構
+相較於一般的多執行緒架構，更能應付執行緒執行時的狀況，由硬體有效的調整執行
+緒排序，更能充分地發揮效能。 
+ 
+圖 5：MVP系統概觀 
+四、研究內容 
+4.1 基本架構 
+本計畫以信號要求切換的機制為基礎，當上一個階級傳遞停滯管線的訊號時，將執
+行緒的執行權讓給其他執行緒。由於本計畫所使用的 Proto3-ARM9TM處理器已將快取
+記憶器失誤訊號列入停滯管線的判斷中，所以使用信號要求切換的機制即已包含快取記
+憶器失誤切換的機制。 
+除了採用信號要求切換的機制，本計畫也同時採用隱含切換的機制，其優先權低於
+信號要求切換，當上一個階級未傳遞停滯管線的訊號時，再判斷即將執行的指令的種
+類，若是需要長時間執行的指令類型，例如：load、store、branch指令，在下一個時脈
+週期中，將執行執行緒的優先權讓給其他執行緒，解決指令在執行時間中的浪費。 
+本計畫的整體架構參考 Intel 處理器的超執行緒(Hyper-threading)機制，將系統分為
+兩個執行緒執行，每個執行緒將對應其所需的指令記憶體、資料記憶體及暫存器。以不
+增加計算單元的前提下，由執行緒處理單元使用上述的切換執行緒機制，動態分配每個
+	   6	  
+4.3 執行緒分配器單元設計 
+4.3.1 執行緒分配器 ver.1 
+本計畫所需的執行緒執行管理單元命名為執行緒分配器(thread-dispatcher)，其主要
+功能為依據系統狀況選擇可執行的執行緒。除了使用信號要求切換機制，再考量各指令
+的執行時脈週期，可做到更精準的切換可執行的執行緒。 
+參照本計畫初步設計的執行緒分配器 ver.1流程圖(圖 5)，C1、C2為記錄 thread1、
+thread2的等待週期，P1、P2為 thread1、thread2的執行優先權，優先權由 ARM的執行
+模式、例外訊號決定，其數值越小優先權越高，Stall1、Stall2為強制暫停 thread1、thread2
+的訊號。 
+當系統初始時，將執行緒的等待執行週期(C1、C2)設為 0，由執行緒的執行優先權
+選擇可執行的執行緒，再依據指令的種類設定下一次的執行緒等待週期，並暫停另一個
+未執行的執行緒。 
+ 
+圖 7：執行緒分配器 ver.1 流程圖 
+當執行緒的等待執行週期有一個為 0、另一個不為 0時，即其中一個執行緒正在執
+行中，另一個執行緒在等待執行，執行緒分配器將選擇等待執行的執行緒執行，同時也
+依據指令種類設定該執行緒的等待執行週期。 
+當執行緒的等待執行週期皆不為 0時，即兩個執行緒都在執行中，則隨著每一個時
+脈週期同時遞減兩個執行緒的等待週期，並同時暫停兩個執行緒，直到至少其中一個執
+行緒的指令已執行完成。 
+4.3.2 執行緒分配器 ver.2 
+	   8	  
+Reg.
+Read
+TH IS SH EX
+ID/IS IS/SH EX/MA
+Phase 1 Phase 2 Phase 1 Phase 2 Phase 1 Phase 2 Phase 1 Phase 2 Phase 1 Phase 2
+Data path 
+signal
+controller
+TH/ID
+Phase 1 Phase 2
+ID
+Phase 1 Phase 2
+IF
+Instruction
+cache request
+Reg.W/R
+addr. 
+convert Shifter
+1st & 2nd 
+multiply
+acc. stage
+3rd multiply
+acc. stage
+Data MEM
+Request
+Data Mem.
+address
+calculation
+PSR read
+MA WB
+MA/WB
+Phase 1 Phase 2
+Reg.
+Write
+PSR 
+write
+4th multiply
+acc. stage
+Data MEM 
+Access
+ALUMEM Acc s
+Phase 1 Phase 2
+IR
+Instruction
+MEM Request
+ARM
+Inst.
+type
+decode
+SH/EXIF/THIR/IF
+Thumb
+Inst.
+type
+decode
+Thumb
+to
+ARM
+convert
+Thread 
+dispatch
+Rotate Data
+Flag
+update
+ 
+圖 9： HT-ARM9TM的管線架構 
+IR級：(Instruction Request)此級會向指令記憶體介面發出指令擷取請求 (request)訊號。 
+IF級：(Instruction Fetch)此級會擷取指令記憶體介面上的指令。 
+TH 級：(Thumb)此級會依據系統中的執行模式轉換指令的格式，HT-ARM9TM 處理器
+跟 Proto3-ARM9TM處理器皆可執行ARM或Thumb指令集，當處理器為Thumb
+執行模式時，此級會將 ARM指令轉換為 Thumb指令。 
+ID級：(Instruction Decode)此級包含所有指令的解碼與控制器，將控制訊號藉由管線傳
+遞到適當的管線級內。HT-ARM9TM的此級匯集兩個執行緒分別送入的指令，
+由執行緒分配器進行選擇執行緒，並將該執行緒的指令以及對應的控制訊號傳
+送到後續的管線級內。 
+IS級：(Instruction Issue)此級為負責暫存器檔案與程式狀態暫存器(PSR)的讀取，不同於
+Proto3-ARM9TM 處理器，HT-ARM9TM 處理器於此級增加暫存器以對應兩個
+執行緒所屬的資料存取。 
+SH 級：(Shift)此級主要做移位運算，HT-ARM9TM 沿襲 Proto3-ARM9TM 處理器的四
+級管線的乘加器架構，乘加器的第一級與第二級管線置於此級。此級包含了加
+減法器，用於運算資料記憶體的存取位址。 
+EX 級：(Execute)此級主要負責算術運算，包含了乘加器的第三級管線。延續 SH 級運
+算的記憶體位址，此級對資料記憶體存取提出請求。 
+MA級：(Memory Access)此級的主要功能為對資料記憶體的存取，更新系統係數(flag)。
+延續 SH級、EX級的乘加器，乘加器的第四級管線置於此級。 
+WB級：(Write Back)此級為運算結果或載入資料的暫存器寫入，還包含下一道指令的位
+置計算(Program Counter)，HT-ARM9TM配合兩個執行緒執行的機制，上述電
+路都額外增加以對應所屬的執行緒。 
+ 
+	   10	  
+表 1： Proto3-ARM9TM與 HT-ARM9TM的 FPGA合成結果 
+Processor Core  Proto3-ARM9TM HT-ARM9TM 
+# of Flip-Flops  2762 3061 
+# of LUT  8483 8675 
+# of Slices  4312 4489 
+# of Block RAMs  2B + 8R + 16M 16R + 16M 
+Max freq. (MHz)  45.2 45.7 
+HT-ARM9TM 需要較多的暫存器對應不同執行緒所屬的資料，以換取更高的執行
+效率。除了記憶體之外，其餘電路的面積相差不大。由於 HT-ARM9TM不需存取 BTC
+做分支指令的預測，所以處理器執行速度略快。 
+5.2 效能評估與討論 
+由 Proto3-ARM9TM與 HT-ARM9TM的效能比較(表 2)，即使沒有使用 BTC做動態
+分支指令預測，HT-ARM9TM擁有的多執行緒執行特性，使MIPS (Million Instructions 
+Per Cycles)從 31.64增加到 39.12，已能大幅改進執行效率。 
+未來可改進的方向有改善記憶體的存取介面，使不同執行緒的資料記憶體可同時存
+取。增加少量的運算單元，使部分的運算指令也能同步執行。 
+表 2： Proto3-ARM9TM與 HT-ARM9TM的效能比較 
+六、參考資料 
+1. Steve Furber, ARM system-on-chip architecture, 2nd edition, Addison Wesley, 2000. 
+2. Andrew N. Sloss, Dominic Symes, and Chris Wright, ARM system developer’s guide: 
+designing and optimizing system software, Morgan Kaufmann, 2004. 
+3. http://www.arm.com/ 
+Proto3-ARM9TM @ ARM mode  
+Implementation  FPGA Freq. Cycles Reduced(%) IPC Perf. ratio(%) MIPS 
+Without BTC  57.5 1519 0 0.348 100 20.01 
+With BTC  51.4 1119 26.33 0.437 112.24 22.46 
+Modified Code  51.4 875 42.39 0.604 155.12 31.04 
+EXS forwarding  45.2 755 50.29 0.7 158.12 31.64 
+HT-ARM9TM @ ARM mode  
+Implementation FPGA Freq. Cycles Reduced(%) IPC Perf. ratio(%) MIPS 
+Without BTC 45.7 618 59.31 0.856 195.5 39.12 
+	   12	  
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價值（簡
+要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適合在學術期刊
+發表或申請專利、主要發現或其他有關價值等，作一綜合評估。 
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+□ n達成目標 
+□ □未達成目標（請說明，以 100字為限） 
+□ □實驗失敗 
+□ □因故實驗中斷 
+□ □其他原因 
+說明： 
+ 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：n已發表 □未發表之文稿 □撰寫中 □無 
+專利：□已獲得 □申請中 □無 
+技轉：□已技轉 □洽談中 □無 
+其他：（以 100字為限） 
+相關研究論文發表： 
+已發表之會議論文： 
+1. Mehrdad Fallahpour, Chang-Hong Lin, Ming-Bo Lin, and Chin-Yu Chang, “Parallel One- 
+and Two-Dimensional FFTs on GPGPUs”, 2012 IEEE International Conference on 
+Anti-Counterfeiting Security and Identification (IEEE ASID2012), Taipei, Aug 24-26, 2012, 
+pp. 316-320. 
+ 
+ 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2012/10/30
+國科會補助計畫
+計畫名稱: 一個32位元多執行緒CPU架構研究與實現
+計畫主持人: 林銘波
+計畫編號: 100-2221-E-011-062- 學門領域: 計算機結構與計算機系統
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

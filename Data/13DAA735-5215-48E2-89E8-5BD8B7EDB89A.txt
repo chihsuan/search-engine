@@ -1,0 +1,687 @@
+ 
+I
+目錄 
+ 
+一、研究目標 ............................................................ 1 
+二、車輛運動動態描述與個案探討 .......................................... 1 
+三、賽局之個案模擬結果與分析 ............................................ 2 
+3.1 個案探討一之模擬結果........................................................................................... 2 
+3.2 個案探討二之模擬結果........................................................................................... 3 
+3.3 結果分析................................................................................................................... 4 
+四、駕駛疲勞指標 ........................................................ 8 
+4.1 以 DSP 實現線上駕駛人狀態判別系統 .................................................................. 8 
+4.2 人臉偵測系統程序.................................................................................................... 8 
+4.3 眼睛位置判別系統程序............................................................................................ 9 
+4.4 眼睛狀態識別系統程序.......................................................................................... 10 
+4.5 疲勞程度指標.......................................................................................................... 10 
+五、卡爾曼濾波器整合駕駛人狀態與控制權重調器設計 ....................... 11 
+5.1 卡爾曼濾波器整合駕駛人狀態............................................................................. 12 
+5.2 控制權重調節器..................................................................................................... 13 
+5.3 駕駛介入主動轉向輔助系統行為識別.................................................................. 14 
+六、實驗規劃及結果討論 ................................................. 15 
+6.1 駕駛人模擬器......................................................................................................... 15 
+6.2 駕駛人模擬器實驗結果討論................................................................................. 16 
+七、結論及未來工作 ..................................................... 19 
+八、參考文獻 ........................................................... 19 
+ 
+1
+一、研究目標 
+    本研究目的在於利用機率形式的駕駛人模型以代表人類行為中的隨機因素，並藉以協
+助模型的分析驗證以及進一步的車輛主動式安全系統設計。車輛主動式安全系統主要是藉
+由控制影響車輛運動的各主要變數，例如引擎輸出、方向盤轉矩、以及煞車分配等，以輔
+助駕駛人於事故發生前能有效地操控車輛，使車輛之動態響應行為趨於穩定。現今已有多
+種不同功能的安全系統安裝於車輛上，以電子穩定控制系統(Electronic Stability Program, 
+ESP) 為例，最初的設計是對於車輛橫擺平面(yaw plane)上的運動狀態：包括橫擺率（yaw 
+rate）以及側滑（sideslip）兩方面進行控制，使得車輛不僅能夠維持其橫擺率的穩定，同時
+使得側滑角仍維持在一個小角度內、不至於過大使得車輛失控，過去的各種研究也有不同
+設計 ESP 的方式[1-3]。而車輛在翻覆模式（roll mode）的運動狀態在原始的 ESP 設計構想
+中並未列入考慮，然而由於車輛運動在橫擺平面（yaw plan）與翻覆平面（roll plane）上的
+耦合(coupling)行為，對於 ESP 的運作與車輛翻覆現象息息相關。因此在現今的 ESP 設計上，
+除了要保有原先 ESP 的功能外，更需要將預防車輛翻覆列入設計考量。新一代 ESP 設計中，
+多數都是從頭將原始設計改善，直接在 ESP 加入翻覆模式上的控制系統，也已經有許多文
+獻報告了在 ESP 設計上引入車輛翻覆因素的成效[4-6]，但是在達到翻覆預防的要求時卻同
+時也使得車輛在橫擺運動上的追蹤效果變差，即減低了原始 ESP 的控制性能，如此會造成
+ESP 系統在輸出控制動作時的兩難。此一現象十分類似不同媒介間的競爭遊戲，為探討此
+一影響車輛運動各媒介間的交互作用，使用賽局理論（Game Theory）的決策思維來分析此
+類問題乃是十分自然的選擇。 
+本計畫初步工作主要針對車輛主動式安全系統與駕駛人之間的互動行為，以賽局理論
+作為分析的工具。針對安全系統與駕駛人間可能發生具有對抗性質的競爭情形進行探討，
+將駕駛人與車輛主動式安全系統間的相互競爭或者合作視為一種賽局，結果發現賽局理論
+可以適當地描述駕駛模擬器上所獲得的駕駛人操控資料，顯示再模型建立與分析上賽局是
+一項有用的工具。但是在安全系統設計時，由於控制器之設計不適合引入隨機變化的功能，
+因此本研究不使用賽局來做為設計控制器的依據，改以透過卡爾曼濾波器整合出駕駛人之
+隨機資訊，針對駕駛人的疲勞進行機率分析與線上的疲勞判別。最後利用模糊邏輯識別駕
+駛人是否意圖介入(Driver Override)主動轉向輔助系統的機率，藉以設計一組控制權重調節
+器來決定駕駛轉向命令與安全系統的控制輸出權重。希望經由分析駕駛人與安全系統間的
+互動能協助安全系統設計之更加人性化，使得安全系統在駕駛人意圖之確認正確度得以改
+善，並發揮更高的功效。 
+ 
+二、車輛運動動態描述與個案探討 
+ 在年度一的研究中，首先透過 CarSim®軟體進行電腦模擬。以提供評估控制器命令對
+車輛運動影響之指標數據，並以不同的個案來進行賽局分析與討論。 
+ 在個案探討一中進行兩類的車輛操控模擬，分別是魚鉤測試（fishhook test）以及大轉
+彎測試。魚鉤測試採用 NHTSA 之標準測試規範，並將車速定為每小時 80 公里。大轉彎測
+試則是於不同車速下將方向盤角度於 0 至 2 秒內轉至 120 度並維持此角度至模擬結束。透
+ 
+3
+力的預期偏航角誤差(Δr), 以及描述翻覆指標之側向負載轉移(load transfer ratio, LTR)。為建
+立一具體可供後續分析使用之量化指標，計算各資料數據的誤差平方積分(Integral of Square 
+Error, ISE)做為該數據代表車輛操控性能之指標。 
+    在安全系統的規劃上，在此個案探討中使用了 ESP 與 ROP 兩種主動安全控制系統。進
+行各種排列組合之模擬可產生如表 1 之數據。很明顯的可看出控制系統的啟動與否對車輛
+之運動有顯著的影響，並且對不同的指標而言有其分別所偏好的控制組合，此結果也佐證
+了多組控制器的整合可能因互相干擾而產生副作用的預期。 
+ 
+表 1 魚鉤測試控制性能優劣比較 
+ ISEβ  ISErΔ  ISELTR  
+both off 0.3451 0.4702 1.585 
+ESP on 0.0017 0.0428 1.234 
+ROP on 0.0308 0.3561 1.13 
+both on 0.0219 0.0742 0.9206 
+ 
+3.2 個案探討二之模擬結果 
+在本個案探討中，將針對駕駛人與安全系統間的互動行為進行探討，配合安全系統啟
+動與否之策略行為，則可形成一個賽局問題。與個案探討一相同，仍建立 ESP 啟動之門檻
+條件，橫擺率誤差為大於±5 度時 ESP 即啟動；而在車輛側滑角上則改為當側滑角大於±1.2
+度時啟動、小於±0.8 度時關閉。 
+模擬與個案探討一同樣分為四個部份：ESP 關閉與駕駛人不煞車；ESP 啟動而駕駛人
+不踩煞車；ESP 關閉而駕駛人煞車；ESP 啟動與駕駛人煞車。當 ESP 啟動時亦會造成對於
+橫擺率誤差上升，原因在於 ESP 之控制目標為降低車輛側滑角及橫擺率誤差，根據先前的
+門檻值設定，ESP 啟動乃是為了降低車輛側滑角而橫擺率誤差仍未達到啟動標準。基於此
+點，在隨後的賽局分析中，本研究不將橫擺率誤差列入報酬函數（payoff function）設計考
+量。 
+在此部分同樣用 ISE 以評估各組模擬之車輛性能，結果如表 2 所示。模擬結果顯示在
+相較於安全系統與駕駛人皆不作動的情形，不論是在僅有 ESP 啟動、僅駕駛人煞車或是兩
+者同時作動的情況下，隨著駕駛人與控制器之命令施加，在車輛側滑角及翻覆角上的響應
+皆有改善，然而於橫擺率追蹤性能上有劣化的趨勢。此乃自然的結果，由於 ESP 安全系統
+設計之目標為側滑方向的穩定，而在此探討中駕駛人的控制命令僅為縱向速度的減少，兩
+者均無修正橫擺率的功能。同時兼顧橫擺率的追蹤通常在整合式車身控制系統(Integrated 
+Chassis Control)中討論，已超過本研究之範疇。 
+ 
+5
+表 3 魚鉤測試改善率 
+ improveβ  improverΔ improveLTR
+both off 0 0 0 
+ESP on 0.9951 0.909 0.2215 
+ROP on 0.9109 0.2427 0.2817 
+both on 0.9366 0.8423 0.4192 
+ 
+利用表 3 之結果，首先以較簡單的方式定義 ESP 及翻腹預防的報酬函數分別為： 
+ESP：
+2
+improveimprover β+  (4) 
+ROP： improveLTR  (5) 
+因此可建立魚鉤測試之 payoff matrix 為： 
+( ) ( )
+( ) ( )⎟⎟⎠
+⎞
+⎜⎜⎝
+⎛
+0.4192 , 8894.00.2215 , 952.0
+0.2871 , 0.57680 , 0
+ 
+經由賽局分析可知當 row player 之策略 ( )10=pK 及 column player 之策略為 ( )10=qK ，即兩
+安全系統為同時啟動時，為其最佳策略。 
+    但在實際的情形中，車速對於車輛動態行為之影響亦佔有其舉足輕重的地位，若為了
+達到控制性能而導致車速降低過多，此亦非合適之選擇。基於此點，將原先所建立之報酬
+函數修改為以下形式： 
+ESP：
+321
+321
+ccc
+uccrc ratioimproveimprove
+++
+×+×+× β
+  (6) 
+ROP：
+54
+54
+cc
+ucLTRc ratioimprove
++
+×+×
+ (7) 
+其中 ratiou 為各組模擬之末速度與初速之比值，若其值越接近 1 則代表車速降低越少；反之
+若越接近 0 則代表車速幾乎降至 0。此外，各參數之權重選擇上必須特別注意，若是權重
+調整不佳，則賽局分析後之結果很容易會變成 pure strategy，進而降低利用賽局分析此問題
+之價值。在此設定 11 =c 、 12 =c 、 8.23 =c 、 14 =c 、 6.05 =c ，則新的 payoff matrix 為： 
+( ) ( )
+( ) ( )⎟⎟⎠
+⎞
+⎜⎜⎝
+⎛
+0.3299 , 0.47620.3183 , 0.6765
+0.3341 , .481000.4185 , .65100
+ 
+透過賽局分析可得 ( ).87920 , 1208.0=pK 、 ( )0.8416 , 0.1584=qK ，且 row player 與 column player
+之預期報酬（expected payoff）分別為 0.5079 與 0.3304。 
+大轉彎測試之賽局分析 
+同樣使用改善率的觀點，仍以安全系統皆不啟動情形作為基準，即(1)、(2)、(3)三式，
+則可建立表 4 代表相關車輛動態參數於安全系統啟動時之改善率。 
+ 
+ 
+7
+輛側滑角、LTR 及車速的影響。但兩者皆不特別要求何種性能；case 2：ESP 考慮車速的影
+響，並提高側滑角的權重，駕駛人考慮側滑角、LTR 及車速的影響，並提高側滑角及 LTR
+的權重；case 3：ESP 考慮車速的影響，提高車速的權重，駕駛人考慮側滑角、LTR 及車速
+的影響，提高車速的權重；case 4：ESP 考慮車速的影響，提高車速的權重，駕駛人考慮側
+滑角、LTR 及車速的影響，提高 LTR 及車速的權重；case 5：ESP 考慮車速的影響，提高車
+速的權重，駕駛人僅考慮 LTR 及車速的影響，提高車速的權重；case 6：ESP 及駕駛人皆考
+慮側滑角、LTR 及車速的影響，兩者所使用之報酬函數各參數權重相同；case 7：ESP 及駕
+駛人皆考慮側滑角、LTR 及車速的影響，兩者所使用之報酬函數各參數權重不同。 
+    在此省略以上各種情形之各參數權重値，經由賽局分析可得駕駛人與 ESP 的煞車機
+率，並僅考慮 mixed strategy 結果。圖 3-1 為以上七種情形經由賽局分析後，ESP 與駕駛人
+煞車機率組合，橫座標為 ESP 之啟動機率，縱座標為駕駛人煞車機率。結果顯示在以上七
+組分析中，可得到三組啟動機率高度偏向駕駛人及 ESP 皆須提供煞車壓力，其煞車機率皆
+高於 90％（case 1、case2、case6）；兩組駕駛人煞車機率高於 ESP 啟動機率，但皆高於 50
+％（case 3、case 5）；一組 ESP 啟動機率高於駕駛人（case 4）；以及一組高度偏向僅有 ESP
+啟動之結果（case 7）。 
+由以上各種分析方式可以發現，使用不同的報酬函數定義方式所得之結果亦有不同，
+完全視乎設計者要如何考慮駕駛人或安全系統所關心的相關參數。此結果仍需透過往後的
+實驗證明其正確性，並在未來可提供在設計安全系統上一種新的參考依據。 
+0 0.5 1
+0
+0.5
+1
+start probability of ESP
+br
+ak
+e 
+pr
+ob
+ab
+ili
+ty
+ o
+f 
+dr
+iv
+er
+ 
+ 
+case 1
+case 2
+case 3
+case 4
+case 5
+case 6
+case 7
+ 
+圖 3-1 個案探討二煞車啟動之機率組合 
+ 
+ 透過賽局理論分析可告訴我們於各種不同的情形下，兩安全系統間或駕駛人及 ESP 間
+之煞車分配、以及在此分配下所可得到之報酬。此外我們可以發現，大多數的情況下可得
+到三個 Nash equilibrium solutions，其中兩個為 pure strategies，一個為 mixed strategy
+結果。對於此處得到之 pure strategy 結果而言，由賽局的觀點來看，此種情形為滿足 Nash 
+equilibrium 的解，亦即在這種情形下賽局的兩方無法藉由單方面地改變自己的策略使其
+所獲得之報酬增加，因此可以說明以下現象：當某一控制單元決定輸出其控制命令時，另
+一方所應採取的對策就已決定，因此就無機率可言，以本研究所歸納出的結果而言代表另
+ 
+9
+ 
+圖 4-2 人臉偵測處理程序流程圖 
+4.3 眼睛位置判別系統程序 
+ 眼睛位置判別系統程序，其流程如圖 4-3 所示。首先將臉部區域擷取左上角部份影像，
+以降低計算量及增加處理速度，再開啟一個 40×80 視窗，依據眼睛兩個特徵進行眼睛位置
+搜尋，其滿足視窗四角為白色與中心 7×7 為黑色的條件，即可找到眼睛位置。 
+ 
+11
+PERCLOS 值為 6.67%；此外依據文獻[9]研究中顯示出漸進的疲勞行為，其在疲勞狀態時
+PERCLOS 值為在 50%左右，而對於突發性的疲勞行為 PERCLOS 值可高達 80%。所以本研
+究將取 PERCLOS 在 6.67%至 80%間定義駕駛人為疲勞狀態，而將式(9)作線性轉換如下式
+所示： 
+錯誤! 物件無法用編輯功能變數代碼來建立。  (10) 
+式(10)即為卡爾曼濾波器所需的系統模型狀態方程式。 
+ 
+圖 4-4 眼睛狀態識別系統程序流程圖 
+ 
+五、卡爾曼濾波器整合駕駛人狀態與控制權重調器設計 
+    本研究主要針對駕駛人與車輛安全系統之間的控制權重問題進行探討與設計，透過卡
+爾曼濾波器整合影像處理與 PNN 所建立的線上駕駛疲勞判別系統，再利用此資訊經模糊識
+別出駕駛意圖，進而得到系統控制權重。整體架構如圖 5-1 所示。 
+ 
+ 
+ 
+ 
+13
+k
+k
+k
+PK
+P R
+−
+−= +                (17) 
+    在 kK 值裡的R 為量測干擾協方差， kP−為估測前的誤差協方差定義如下所示： 
+1k kP P Q
+−
+−= +                 (18) 
+    其中 Q為外在對系統干擾協方差，本研究給定初始誤差協方差 0 1P = 。 
+    從式(15)可看出，當量測干擾協方差R 值接近零時，卡爾曼增益 kK 的權重將會變的較
+大，其具體的表示如下所示 
+0
+lim 1kR K→ =  
+    換而言之，當估測前的誤差協方差 kP−值很接近零時，卡爾曼增益 kK 的權重將會變的
+較小，其具體的表示如下所示 
+0
+lim 0
+k
+kP
+K−→ =  
+    對卡爾曼增益 kK 換個想法來探討，當量測干擾協方差R 值接近零時，表示對於實際量
+測值
+PNNDI
+y 的依賴程度將遠大於預測量測值 ˆ
+PNNDI
+y ；換句話說，當估測前的誤差協方差 kP−值
+很接近零時，表示對於預測量測值 ˆ
+PNNDI
+y 的依賴程度將遠大於實際量測值
+PNNDI
+y 。 
+    利用上式 kK 和 kP−值可求得估測後的誤差協方差 kP ，如下所示 
+( )1k k kP K P−= −      (19) 
+    卡爾曼濾波器估測過程是藉由回饋控制的架構形式，其中卡爾曼濾波器方程式將分成
+兩大類為時間更新方程式和量測更新方程式。時間更新方程式為負責先前的狀態及誤差協
+方差的估測以提供更新到下一個時間的狀態估測，而量測更新方程式為負責做回饋修正的
+工作，包含將新的量測值送到前先的估測以提供改善之後的估測值。由於卡爾曼濾波器運
+作時會缺乏事前的估測值，通常會在給定初始狀態 1ˆ kDI − 設為零與設定初始誤差協方差 1kP −
+後，以便進行預估的動作，藉有更新估測與修正的兩個動作不間斷的循環進行下，可以從
+初時時間開始將整個時間做一個最小平方的評估動作，而誤差協方差隨著時間運算越來越
+小，則最後估測值的準確度則越來越高 
+5.2 控制權重調節器 
+本研究所設計的權重調節器為調節駕駛人與控制器之控制指令權重的分配，而分配式
+為： 
+ 
+15
+1 ,     0.5
+0 ,     0.5 
+DO if Driver Override Output
+DO if Driver Override Output
+= ≥⎧⎨ = <⎩
+。其中：DO=1 表示駕駛為 Driver Override 意圖行為，
+DO=0 表示駕駛無 Driver Override 意圖行為。 
+最後我們藉由識別出的 Driver Override 意圖與否來決定控制權重值 ( β )： 
+=0 ,   1
+ =1 ,   0 
+if DO
+if DO
+β
+β
+=⎧⎨ =⎩  
+ 
+圖 5-3 模糊邏輯識別駕駛 DO 意圖架構  
+六、實驗規劃及結果討論 
+年度一研究中，我們透過兩種駕駛人模擬器實驗，蒐集駕駛人於實際行駛於彎路時之
+相關車輛動態參數變化情形，以及其操控行為對於車輛的影響。 
+ 
+實驗 I：使用不同車速行駛於相同彎道路徑，以得到在車速不同時駕駛人的過彎操控行為。 
+ 
+實驗 II：車輛以相同車速行駛於特定道路，探討 ESP 有無介入對於駕駛人煞車行為的影響。 
+ 
+年度二的研究實驗將邀請數位駕駛人分別進行實驗，其中大部分皆需要藉有駕駛模擬
+器來進行以下實驗。 
+實驗 I：卡爾曼濾波器整合線上駕駛狀態判別系統進行驗證效能 
+ 
+實驗 II：模糊邏輯識別「Driver Override 行為與否」之效能驗證 
+ 
+6.1 駕駛人模擬器 
+年度一、二透過同一套硬體但不同的軟體系統來設置駕駛人模擬器 
+ 
+17
+用相關車輛參數誤差之最大值作為建立駕駛人 payoff function 之基礎仍有其不足性，需
+考慮各變數之整體響應情形。然而，駕駛人的行為難以預測，因此本研究為了兼顧暫態及
+穩態響應，因此本研究所使用 ISE 作為駕駛人之 payoff function 建立基礎為合理的選擇。 
+實驗 II：駕駛人煞車行為實驗結果 
+此部分同樣使用 ISE 方式來計算煞車量，原因在於駕駛人並非一直踩煞車，因此當駕
+駛人煞車時，選用 ISE 方式可計算駕駛人之輸入煞車量，而不煞車時 ISE 值亦不會持續增
+加，因此選用 ISE 做為輸入煞車輛之評估依據。 
+    由實驗結果，目前僅能知道駕駛人會因預期 ESP 介入而減少其輸入煞車量，但減少之
+比例仍未有合適的評估標準，而當 ESP 介入操控時，有可能會使得車輛在翻覆上的表現劣
+化。 
+ 
+年度二結果： 
+ 
+實驗 I： 卡爾曼濾波器整合線上駕駛狀態判別系統進行驗證效能 
+ 本項實驗規劃實際駕駛人在 (A)精神狀態良好(B)精神狀態不佳 兩種不同條件下進行
+操作駕駛模擬器實驗，藉此驗證類神經網路狀態判別系統與 DSP 實現的狀態判別系統透過
+卡爾曼濾波器整合的效能改善實驗。 
+【Case A】駕駛精神狀態良好的實驗 
+ 
+圖 6-3 卡爾曼濾波器整合駕駛疲勞指標 
+【Case B】駕駛精神狀態不佳的實驗 
+ 
+19
+ 
+圖 6-6 各駕駛在高疲勞狀態之無障礙物實驗數據分析卡爾曼濾波器整合駕駛疲勞指標 
+七、結論及未來工作 
+年度一中提出以改善率的觀點評估安全系統啟動後對於車輛動態表現的影響，此方式
+仍有其不足之處，係因若是安全系統啟動後反而使得某種車輛表現劣化，則使用改善率的
+方法則非一良好選擇 
+而在年度二中，我們改以 DSP 實現駕駛眼睛狀態的識別機制而再經由離線的動態影像
+分析結果顯示有一定的吻合度，並且藉由此資訊建立出一線上駕駛疲勞指標系統。接著再
+探討兩套不同特性基礎的駕駛狀態判別系統，分別由影像處理演算法以及機率類神經網路
+所建構，再透過卡爾曼濾波器整合這兩套獨立的線上駕駛資訊，從實驗結果顯示出經整合
+後可確實改善整體系統的準確度與可靠度，讓系統較不會受到外在干擾或模型正確性降低
+的影響而導致駕駛人狀態判別錯誤。然後，在透過模糊邏輯識別出 DO 的駕駛意圖 
+在駕駛意圖的判別，可嘗試其他識別方法，例如機率類神經網路 (Probabilistic Neural 
+Network, PNN)、隱馬爾可夫模型 (Hidden Markov Models, HMMs)、支持向量機 (Support 
+Vector Machine, SVM)…等。而我們將在未來嘗試使用隱馬爾可夫模型來做為駕駛意圖的判
+別，希望能更準確的判別出駕駛之意圖。 
+八、參考文獻 
+[1]  Yi, K., Chung, T., Kim, J. and Yi, S., “An Investigation Into Differential Braking Strategies 
+for Vehicle Stability Control.” Proceedings of the Institution of Mechanical Engineers; 
+2003; 217, 12; ProQuest Science Journals p1081-1093 
+[2]  Li, J., Xu, B., Zhang, Y., Liu, W. and Liu, M., “Control Algorithm Based on Neural 
+Network PID Controller For Vehicle Electronic Stability Program.” Jilin Daxue Xuebao 
+(Gongxueban)/Journal of Jilin University (Engineering and Technology Edition), v 37, n 4, 
+July, 2007, p 741-744 
+[3]  Goodarzi, A. and Esmilzadeh, E., “An Optimal Vehicle Stability Enhancement Strategy For 
+Articulated Vehicle.” Proceedings of 2006 ASME International Mechanical Engineering 
+Congress and Exposition, IMECE2006 - Design Engineering, 2006, p9 
+[4]  Ungoren, A.Y. and Peng, H., “An Adaptive Lateral Preview Driver Model,” Vehicle System 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 NSC 96－2221－E－011－131－MY2 
+計畫名稱 應用車輛駕駛機率模型發展整合型車輛安全控制系統 
+出國人員姓名 
+服務機關及職稱 
+陳亮光 臺灣科技大學機械系 助理教授  
+會議時間地點 Kempinski Hotel, Xi'an, Shaanxi, China, June 3-8, 2009 
+會議名稱 2009 IEEE Intelligent Vehicle Symposium 
+發表論文題目 Control Authority Determination of a Vehicle Lane Keeping Assist Controller 
+ 
+三、參加會議經過 
+本次會議由 IEEE Intelligent Transportation System 協會主辦，除了三個 keynote 
+speeches 外，本研討會的特色在於所有口頭演講的文章報告均在 single track oral 
+presentation 進行，由於參與者均是對智慧型運輸系統有興趣之人士，同時研討會之主題
+定義明確且不廣，因此這個做法有其背景與原因。搭配 Prof. Broggi 與 Prof. Ozguner 的
+演講以及少數幾篇的口頭報告，此次研討會展示了許多的論文海報。每位海報投稿者須
+在展出時間在所展示的海報前與所有的與會人士溝通並討論，出差人同時受邀擔任該次
+展出時段之 co-chair。Prof. Werbos 主講有關如何避免使用石油能源的演講則搭配著研討
+會晚宴舉行。會議最後一天同時還參觀了在西安交通大學主辦的中國無人駕駛車的競賽。 
+ 
+四、與會心得 
+雖然研討會主題為智慧型車輛，但參與會議之文章主題涵蓋甚廣，內容遍及車輛主
+動安全、運輸、人機介面、以及駕駛人模型等。透過此次會中報告與世界各國研究學者
+的討論，對本計畫之未來研究方向與內容有很好的幫助。由於在大陸舉行，也看到了許
+多大陸各學校所報告的成果，很明顯的大陸在車輛產業上投注了大量的資源。會中也可
+感受到世界各國再車輛技術上目前的一個重點就是與駕駛輔助相關的主動式安全系統。
+不管是警示或是動態控制，都有許多團隊與單位在進行研究。期望能透過此次的會議互
+動，使本計畫之研究能持續修正並與國際接軌。 
+ 
+ 
+ 
+ 
+ 
+ 
+Fig. 1.  Block diagram of the lane keeping steering assist 
+controller 
+II. RMRAC STEERING ASSIST CONTROL 
+A. Vehicle and Driver Models 
+For the purpose of steering assist control design, both the 
+vehicle model and the driver model are needed. In this study, 
+a 3DOF model for the vehicle lateral, yaw, and roll motions is 
+adopted [12]. The basic structure of this model is briefly 
+summarized below:  
+0 0
+0 0
+0 0
+0 0 0 0 1
+0
+0
+       
+0
+0 0 1 0
+R
+z xz
+f
+R xz x
+r
+r
+R p
+Y mu m h
+N I I r
+m hu I I p
+Y mu Y Y
+N N N r
+m hu L L p
+δ
+δ
+β φ
+β φ
+φ
+β
+δ
+φ
+β
+φ
+⎡ ⎤⎡ ⎤ ⎡ ⎤ ⎢ ⎥⎢ ⎥ ⎢ ⎥ ⎢ ⎥⎢ ⎥ ⎢ ⎥= ⎢ ⎥⎢ ⎥ ⎢ ⎥ ⎢ ⎥⎢ ⎥ ⎢ ⎥⎣ ⎦ ⎣ ⎦ ⎣ ⎦
+− − −⎡ ⎤ ⎡ ⎤⎢ ⎥ ⎢ ⎥− − −⎢ ⎥ ⎢ ⎥+ − −⎢ ⎥ ⎢ ⎥⎢ ⎥ ⎢ ⎥−⎣ ⎦ ⎣ ⎦
+
+
+
+  (1) 
+and 
+R NRm m m= +   
+( )f rY C Cβ α α= − + , r fr
+bC aC
+Y
+u
+α α−=  
+fr
+r fY C Cφ α γ
+γδ
+φ φ
+∂∂= +∂ ∂ , Yδ=Cαf 
+r fN bC aCβ α α= −  
+2 2
+f r
+r
+a C b C
+N
+u
+α α+= −  
+f r
+f rN aC bCφ γ α
+γ δ
+φ φ
+∂ ∂= −∂ ∂  
+fN aCδ α=  
+p RL c= − , R RL m gh kφ = −  
+where δf  is the vehicle front steering angle, u is the vehicle 
+speed, β is the side slip angle, r is the vehicle yaw rate, φ and 
+p are the vehicle roll angle and roll rate respectively. 
+Furthermore, m is the total vehicle mass, including the sprung 
+mass (mR) and the un-sprung mass (mNR), h is the distance 
+form the roll axis to CG, a is distance from front to CG, b is 
+distance from rear to CG, Iz is moment of inertia about z-axis, 
+Ix is moment of inertia about x-axis, Ixz is the product of inertia 
+about x-z axes, Cαf and Cαγ are the cornering stiffness of the 
+front and rear axle respectively, Cγf is the camber thrust 
+stiffness, ∂γf ⁄∂φ and ∂δr ⁄∂φ  are the degree of incline change 
+per degree of roll, and the degree of rear steering per degree 
+of roll.  kR is the effective suspension roll stiffness and cR is the 
+effective suspension roll damping coefficient. The detailed 
+model explanation can be found in [12]. The coordinate 
+system is defined according to the SAE convention. 
+Assuming that the vehicle is traveling at constant speed, 
+equation (1) can be easily reformatted as a linear state space 
+model.  
+Considering the vehicle model as the plant to be controlled, 
+an existing controller, which is the driver, is already present 
+for the compensation of the vehicle lateral dynamics. The 
+diver lateral control behavior will be represented by a driver 
+steering model. Although several detailed and extensive 
+driver models are available in the literature, for the control 
+development purposes a simplified linear driver model is 
+preferred. The simple driver control model provides 
+fundamental characteristics of driver steering behavior, 
+which is the main function considered in this work. Therefore, 
+in this study the driver lateral control is modeled by a second 
+order PD type controller responsible for the tracking error 
+regulation. Despite the fact that this linear driver model is 
+over-simplified, the characteristics resemble the well-known 
+cross-over principle driver models in several aspects. 
+Furthermore, a low order linear model has the potential to be 
+estimated on-line through system identification techniques in 
+the future. In effect, the higher order dynamics and the 
+nonlinear effects that are inherent to the real driver behavior, 
+and commonly investigated in the literature, will be 
+considered as model uncertainty or disturbances to the 
+simplified driver model, thus demanding higher robustness 
+specifications. A set of reference driver model parameters 
+that represent a high performance driver can be tuned based 
+on simulations of vehicle lateral dynamics. It is noted that the 
+simple driver model is used for the purpose of control design. 
+In future simulations and driving simulator experiments this 
+simple model will be replaced by a more realistic driver 
+model (e.g., an optimal control based driver model), or even a 
+human driver.   
+ 
+B. Robust MRAC Design 
+For the steering assist function, due to the uncertain driver 
+steering behavior, a constant gain controller design generally 
+suffers from the conservativeness. In this research, a model 
+reference adaptive control (MRAC) structure is employed, 
+with the objective to compensate the driver lateral control 
+such that a reference driver behavior is asymptotically 
+matched. Furthermore, since the driver model is 
+over-simplified and the driver behavior is highly 
+unpredictable, strong modeling error is expected in the 
+problem formulation. To address this phenomenon, an input 
+disturbance will be introduced to account for the variety in 
+ 
+Human 
+driver 
+SYSID 
+Adaptive 
+control 
+VehicleControl. 
+authority 
+decision 
+steering assist 
+ 
+ 
+ 
+V(t) to be negative definitive. This design is evaluated using 
+computer simulations with the vehicle and driver models, and 
+a sample simulation plot is shown in Fig. 3. The simulation 
+indicates that for the deliberately tuned low performance 
+driver model, the MRAC can improve the damping of the 
+lateral dynamics under a continuous lane change maneuver.  
+Considering the existence of the input disturbance, 
+according to [14], the error equation is written as 
+)(tdbbeAe mn
+T
+mnmn ++= ωφ  (14) 
+ 
+Assuming an upper bound of the input disturbance can be 
+determined, i.e., dtd ≤)( , a simple robust term to reject the 
+input disturbance can be designed as sgn( )s yu d e= −  and 
+added to the control equation (6). Using the same Lyapunov 
+equation the modified control law will ensure negative 
+definiteness of the V  term.  
+ 
+ 
+Fig. 2. Structure of the Robust MRAC [13] 
+ 
+0 20 40 60 80 100 120
+-2
+-1
+0
+1
+2
+3
+4
+5
+6
+7
+8
+t(s)
+po
+si
+tio
+n(
+m
+)
+lateral position
+ 
+ 
+without adaptive control
+with adaptive control
+ 
+Fig. 3. Simulations with an optimal control driver model and 
+MRAC: Lateral position 
+ 
+III. THE CONTROL AUTHORITY DETERMINATION 
+The RMRAC provides steering corrections attempting to 
+match the reference driver model. Conceptually this is very 
+similar to the parallel copilot as described in [11], and the 
+main difference is now the corrections are provided in an 
+adaptive manner. Nonetheless, the control authority of the 
+steering assist must be limited and the human driver possesses 
+the ability to override the steering assist system. The 
+determination of the control authority is difficult, and heavily 
+relies on subjective experiences and trial-and-errors. 
+Therefore, in this research an adaptive adjustment of the 
+control authority is proposed based on the driver drowsy 
+level.  
+Using the structure presented in Fig. 1, the control 
+authority is designed as a leverage rule adjusted by a factor β. 
+That is, the actual steering input to the vehicle is  
+(1 )S c dδ βδ β δ= + −  (15) 
+where δS is the actual steering command to the vehicle, δc is 
+the corrected steering control from the MRAC, and δd is the 
+steering command issued by the driver. The variable 
+10 ≤≤ β is the shifting parameter to be design. Clearly the 
+controller has no effect when β=0 and has full control 
+authority when β=1. In other words, β indicates the steering 
+assist authority level, with 1 indicating the full assist 
+compensation and 0 indicating the driver override. For 
+consistent vehicle steering characteristics, eventually the β 
+must reach a steady state value, denoted βr, during a 
+particular driving scenario. If the β is not constant in the 
+steady state when the driver is trying to consistently 
+manipulate his vehicle, the change in β will become a 
+nuisance to the human driver and cause the degradation in 
+vehicle driving performance. It is proposed that this steady 
+state value, βr, be determined based on the current driver 
+drowsy index. A driver state assessment system, e.g., the 
+probabilistic neural network (PNN) presented in [9], is 
+incorporated to provide part of this information. For example, 
+βr will be set to 1 only when the driver is assessed as 
+absolutely fatigue and will be eventually set 0 otherwise. This 
+means that the driver is allowed to override the control action 
+unless the controller can be certain that the driver is 100% 
+fatigue. The transient adjustment of β during the short 
+duration before it converges to the steady state value is 
+designed based on a simple adjusting rule commonly seen in 
+adaptive control, i.e., 
+)( rk βββ −−=  (16) 
+and k determines the converging rate of β and can be adjusted 
+to achieve the desired performance.  
+This idea strongly depends on the available information of 
+the driver state and intention. In this paper the driver state will 
+be focused on the driver fatigue level, which will be estimated 
+using the integrated assessment obtained from different 
+driver fatigue information. The PNN (details in [9]) can 
+generate the driver drowsy index based on the driver’s lane 
+keeping control characteristics. However, during the lane 
+change or obstacle avoidance maneuvers the PNN will 
+Reference 
+model 
+Plant K 
+A ,Λ  T2θ  
+T
+1θ  A ,Λ  
+0θ  
+Augmented 
+signals 
+)(tr  
+)(te  su  
+)(1 tω  
+)(tu  
+)(2 tω  
++ 
++
+-

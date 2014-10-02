@@ -1,0 +1,764 @@
+improve the error recovery with light-weight control and a frame-
+trimming mechanism to improve the MH’s video decoding 
+efficiency and power consumption. In this year (2010), we focused 
+on the macro adaptation which handles long-term network changes 
+(e.g., network congestion or base-station handoff). Before 
+transmitting packets to MHs, a mobile gate enforces a packet 
+dropping policy based on a layer-priority order. Also a coding 
+dependency filter was proposed to filter out those undecodable 
+packets to save invalid transmission. To evaluate the video quality, 
+we also defined a relative smoothness (RS) metric to measure the 
+video fluency. We implemented the AMVS system based on the 
+H.264/SVC open source (JSVM 9.15) released by Joint Video Team 
+(JVT) to validate its feasibility and practicality. From experiments, 
+we observe the proposed macro/micro bi-stage adaptation strategy 
+can effectively reduced packet losses and improve the effective 
+information transmission. It is beneficial to maintain stable and 
+smooth video quality with graceful adaptation. 
+ 
+ I 
+中文摘要 
+無線網路受制於 mobile host（MH）移動行為與所處環境的影響，會出現傳輸衰減（fading）、高
+位元錯誤率（bit error rate）及封包遺失率（packet loss rate）等現象，進而造成網路傳輸品質呈現頻繁
+的變動。在這種變動的行動網路環境下對即時的影音串流傳送極具挑戰，一方面我們希望資料傳輸量
+能依據網路的目前狀態加以動態調節；另一方面我們希望能顧及到影音的品質。因此針對這個議題，
+本計劃在車載環境下提出『調適性行動視訊串流（adaptive mobile video streaming/AMVS）』的機制，
+基本上我們以優化視訊品質為主要訴求，將串流的 adaptation 分成 micro 與 macro 兩個層次。計畫
+第一年我們設計 micro adaptation 主要用來適應網路 short term 的變異（如：短暫的無線訊號不穩），
+在傳輸時從 frame level 進行傳輸量的調整，同時輔以 QoS-Gap ARQ 的 error recovery 機制來降低封
+包的遺失率，同時我們進一步在 client 設計了 frame trimming 機制，來提升 MH 視訊解碼效率並降
+低電源消耗。 
+而今年度在計畫第二年我們設計 macro adaptation 主要用來適應 long term 的網路變化（如：
+congestion 或基地台換手），在接收時從  layer level 進行資料丟棄的優先權調整，並使用  coding 
+dependency filter 在傳輸前先對無法解碼的資料做過濾，來提升資料傳輸的有效性。同時為了評估串流
+傳輸後影片播放的平順程度，我們設計了 relative smoothness（RS）測量方式來評估影片播放的相對平
+順度。我們使用 Joint Video Team（JVT）官方發佈的 H.264/SVC open source - JSVM 9.15 開發調適性
+行動視訊串流（AMVS）系統，並實際驗證其可行性。從實驗觀察 macro/micro 的二階調適策略，在
+網路情況不穩的行動環境下可有效降低封包的遺失率與提升資料傳輸的有效性，藉此提供穩定的視訊
+品質與提升播放的平順度，使整個調適過程可以達到平順（graceful）的效果。 
+關鍵詞：調適性行動視訊串流、micro/macro 調適、H.264/SVC、編碼相依性、相對平順度測量 
+ 1 
+一、 前言 
+行動網路環境下的串流傳輸服務是項極具挑戰的工作，主要因素有幾點：首先無線電波容易因為
+週遭地形與環境的影響，而受到許多干擾、如多重路徑(multi-path)、路徑衰減(path loss)、屏蔽效應
+(shadowing)等，造成無線電波的訊號品質降低，進而造成無線網路的傳輸衰減(fading)、動態功率及頻
+寬(dynamic power and bandwidth) 、不穩定性、高位元錯誤率(bit error rate)及封包遺失率(packet loss rate)
+等問題[1]，造成行動網路傳輸品質會隨著時間與移動位置不斷的改變。無論是在 UMTS 或 4G (WiMAX) 
+網路下，base station 也會依使用者距離與訊號功率的強度切換到合適的 RF 調變模式，因而會有不同的
+實際傳輸頻寬。上述因素除了造成行動網路所能提供的實際頻寬會經常明顯變動外，更影響傳輸協定
+的運作效能。以 TCP 為例，因為 TCP 存在 head-of-line (HoL) blocking 的問題，當傳輸封包遺失則需等
+待該遺失的封包重新傳送完成，才能繼續傳送資料，且 TCP 容易將因無線訊號干擾而損毀的封包誤判
+成網路壅塞(congestion)，進而週期性的啟動 slow-start 的機制，造成傳輸速率降低，與嚴重的 traffic jitter 
+[2]。倘若使用 UDP，雖然能避免重傳遺失封包，但是如果沒有加以有效管制，而一味的強送封包，會
+對其他交通造成惡意排擠，使原本有限的無線網路頻寬更加捉襟見肘[3]。因此我們必頇針對無線網路
+訊號好壞經常變動的特性，設計一套更有效率的傳輸機制。 
+ 
+二、 研究目的 
+我們將針對前述議題提出且開發出一套「調適性行動視訊串流機制(adaptive mobile video streaming 
+(AMVS) mechanism)」。主要是針對home(roadside)-to-vehicle 的行動網路環境，為行動中的車輛接收
+視訊串流設計一套高效率視訊串流調適機制(streaming adaptation)，使行動用戶端(mobile host/ MH)隨著
+網路環境的變動或是可用的MH 硬體資源，隨時依據frame type 的重要性調整視訊的傳送與播放，希
+望藉由此機制系統各部分能儘速達到穩定且最佳的效能平衡，避免bottleneck 的產生，使視訊品質調適
+的過程能即時且順暢。 
+視訊串流先從stream server 透過Internet傳輸至streaming proxy server (SPS)，SPS在透過類似
+gateway的adaptive mobile video streaming adaptor(AMVSG)，將視訊以調適的方式forward 至MH 端的
+adaptive mobile video streaming adaptor(AMVSA)。此計畫主要是放在home(Roadside)-to-vehicle的H.264
+視訊串流傳輸服務設計，包括了AMVSG 與AMVSA 的設計與開發，為了要做到graceful adaptation，
+我們在adaptation 的策略上大採用兩個層次來控制： 
+ Micro-adaptation： 
+依據近期的網路或系統狀況的觀察，處理暫時性的調整，如：殘破影格隱藏、AMVSG 與
+AMVSA 的packet buffer control 等。為了要能及時反應封包遺失所造成的衝擊，並確保播放的順
+暢與CPU的效能，我們在AMVSA中提出了「frame trimming」與「packet-based rate adaptation」機
+制，以處理因系統在震盪變化時(如：BS換手、訊號短暫遮蔽)所造成的衝擊。目前已初步完成系
+統的設計與開發，經過實驗觀察frame trimming機制可有效抑止MPEG4 的錯誤蔓延，使得影片不
+會有停頓與殘影的現象，且經實測在5%的封包遺失率下，可省下約161 秒的電源消耗；而
+packet-based rate adaptation可依照目前網路狀況迅速調整AMVSG的UDP封包輸出速率，以降低封
+包遺失機率。 
+ Macro-adaptation： 
+依據較長期的系統硬體資源與網路傳輸狀況觀察後，做出常態的調整，如：重傳政策與影片
+frame rate 的調整。但當網路傳輸進入一個常態後(如：從 3G 切換成 GPRS)，我們期望系統能快速
+收斂至一個新的平衡狀態。為此我們將提出具有優先權的「gap-based ARQ」與「frame-based rate 
+adaptation」機制，希望能對無線網路遺失與壅塞的狀況，提供具優先等級的重傳機制，同時對
+ 3 
+H.264/AVC 支援 temporal scalability (TS)與 bit-stream switching (BSS)調適策略，temporal 
+scalability 策略採用 base layer 與 enhancement 的概念。Bit-Stream Switching (BSS)調適策略中，
+H.264/AVC 的 IDR frame 除了可以用在影片隨機存取之外，透過量化參數(quantization parameters, 
+QPs)產生不同的 bit rate，在同樣的 GOP 結構下也可以透過 IDR frame 切換到不同 bit rate 的影
+片，進而達到 coarse grained SNR-scalability。 
+網路傳輸機制 
+許多研究提出錯誤回復(error recovery)機制來改善封包遺失的問題，作法上可以分為三類：
+redundant、duplicated、retransmission。Redundant 的概念是在每送出的資料加上些許額外的資訊，當接
+收端接收的資料不完整時，可以透過額外的資訊來修復與還原，典型的方法即為向前錯誤更正(forward 
+error correction, FEC)，此方法是用附加的修正碼(如：reed-solomon)在修正範圍內對錯誤進行修復[10]。
+Duplicated 的做法是複製多份相同的資料在不同的通道上傳送，當資料遺失時再透過其他頻道上相同的
+資料補回[11][12][13]。Retransmission 的概念是當資料遺失時，則要求重新傳送未收到的資料，典型的
+作法為自動要求重傳(automatic repeat request, ARQ) [14]。 
+而調適性網路傳送作法上可以分為兩類： network-assisted congestion control 與 end-to-end 
+congestion control。Network-assisted congestion control 透過網路層的路由器回報 choke packet，明確指
+示傳送端網路壅塞狀態[15]，此類作法優點可以從路由器的回報即能即時知道每個 domain 下的網路壅
+塞情形。End-to-end congestion control 為終端點透過蒐集統計已發生的現象來判斷網路狀況，TCP 即採
+用此壅塞控制方式，不透過網路層回報傳送端任何壅塞資訊，採用終端點偵測網路情況來判定是否發
+生壅塞，TCP 偵測封包遺失時，則判定網路發生壅塞並將傳送速率將為一半，其造成傳輸效能低落，
+因此在無線網路串流的設計上必頇同時考慮到壅塞或訊號錯誤，進而選擇合適的串流調適策略。 
+接收端視訊解碼 
+由於行動設備的體積不斷地縮小，相對的硬體上的資源也就跟著限制，例如 CPU 的運算時脈、記
+憶體的限制、儲存空間不足、電池的消耗等，在播放視訊串流的過程中，MH 需不斷的將接收到封包
+放入解碼器去做視訊解碼的動作，而這個動作非常耗電。基本上整個過程可以分成以下三個階段，不
+同的階段可達到不同的省電效果：接收(reception)，解碼(decoding)和播放(playing)。 
+1. 接收階段(Reception Stage) 
+    由於監控 channel 需要消耗電能，因此 Chandra 和 Va h d a t 提出了一種伺服器端的流量整
+形機制[16]。Janet Adams 和 Gabriel-Miro Muntean 進一步將此概念結合 IEEE802.11 中的省電
+Beacon 機制來實踐[17]。Anastasi et al 則降低 server 端的資料量，達到省電的目的[18]。Bae et 
+al 則提出了依據 frame 在 MH buffer 中存量的多寡，來調整 MH CPU 工作頻率（電壓）的監控
+機制[18]。Korhonen 和 Wa n g 觀察封包丟失和延遲特性[19]，提出一套調適 buffer 大小的機制，
+以達到功率消耗和擁塞容許之間的平衡。 
+2. 解碼階段(Decoding Stage) 
+    Pakdeepaiboonpol 和 Kittitornkun 針對 ARM-based 硬體平台，使解碼過程降對低記憶體
+(memory)和匯流排(bus)的存取次數，來達到省電的效果[19]。 
+3. 播放階段(Playing Stage) 
+    Pascrich et al 針對 MPEG-1 提出一個自動調整背光的機制，以達到省電的目的[20]。Shim, 
+Chang and Pedram 也提出一套省電機制[21]，根據剩餘的電池能量和周圍的亮度來決定運作時
+是否需要背光。 
+以上的三階段中，通常以解碼階段最為耗時，並且我們觀察到解碼的軟體效能好壞是一項重要的
+關鍵，它的過程通常涉及到運用 bit pattern 的辯識來解析資料的結構，如果 bit pattern 有殘缺，則會啟
+ 5 
+圖 2：Mobile gateway 系統模組圖 
+ 
+ Layer adaptation 模組 
+此模組主要以 layer level 的角度做調適，系統根據目前 buffer 的狀態提供 threshold indicator 給 
+layer adaptation 來調整接收 layer level 的資料。而調整 layer level 的優先權是採用 TDQ priority 策略
+當作 layer 取捨的依據。Layer adaptation 演算法是當 buffer capacity (BC) 超過 high threshold H 時，
+我們會嚐詴多捨棄一層 layer level 來減緩 buffer 容量的增加，避免 buffer overflow 的情況發生；當
+BC 介於 threshold H 與 L 之間時，為了能適時反映有效頻寬且又不要太頻繁的調適，我們會計算 
+buffer 每秒增減量 diff 是否維持在調適容忍值  的範圍內，來判斷是否要增減 layer level，避免過
+度刪減資料；當 BC 低於 low threshold L 時，我們會嚐詴多接收一層 layer level 來加速 buffer 容量
+的累積，避免 buffer underflow 的情況發生。 
+ Coding dependency filter 模組 
+此模組主要根據 coding dependency graph 來追蹤封包可解碼狀態，並在傳送前先過濾掉無法解碼
+的封包，以提升傳輸的有效性。一開始系統接收來自 server 的封包，在進入 transmission buffer 前，
+所有封包都被標記成不可傳送的 unpassed 狀態，直到本身以及參考的 layer type 封包完整收齊，才將
+封包改為可傳送的 passed 狀態。如果第 n + i 個 GOP 編號的封包開始進入 transmission buffer 等待，
+而第 n 個 GOP 編號之前所有標記為 unpassed 狀態的封包還在 transmission buffer 等待傳輸時，則系
+統會將這些封包視為無效的封包，並過濾這些無法解碼的封包。i 表示一個 epoch 的大小，系統根據
+影片 IDR frame 之間 GOP 的數量設定 epoch 的大小。圖 3 為 coding dependency filter 示意圖，系統
+採用 coding dependency graph（CDG）作為過濾封包的依據。而 CDG 使用 packet count list 來紀錄各
+狀態封包接收的狀態，同時使用 layer state list 記錄 CDG 狀態的轉換情況。當 packet count list 偵測
+接收完狀態（0,0,0,0）所有封包資料後，根據 CDG 來看有 3 種可能的狀態可以轉換，分別為 spatial 
+layer 的（0,1,0,0）、 temporal layer 的（1,0,1,0）和 quality layer 的（0,0,0,1），我們將這三種狀態記
+錄到 CDG 的 layer state list 中；當 packet count list 偵測收到狀態（0,0,0,1）所有的封包資料後，代
+表此支線狀態已完整接收，然後將此狀態所有的封包標記成 passed 狀態；我們看到圖中狀態（1,1,1,0）
+所有的封包資料已經完整接收，但是此狀態的封包仍然被標記為 unpassed 狀態，主要是因為此狀態的
+資料所參考的狀態（0,1,0,0）尚未 passed 的原故，除非等到狀態（0,1,0,0）所有封包資料接收完後，
+才會將狀態（1,1,1,0）加入 layer state list 中，允許此狀態所有的封包傳送。 
+ 
+ 
+ 7 
+ 
+在 MG 到 TC 之間模擬頻寬充足的情況下，各 priority 策略整體平均 PSNR 值與可解碼 frame 接
+收率，我們雖然有限制網路通道的頻寬，但還是符合影片傳輸的頻寬，因此從整體來看 4 種 priority 策
+略的平均 PSNR 值與可解碼 frame 接收率並無顯著差異。而圖 5 為模擬頻寬稍微不足的網路情況，
+我們將頻寬限制在 384 kbps 約為影片 bit rate 70%，整體來看 TDQ 與 AMVS 有較高的可解碼 frame 
+接收率與較高的 PSNR 值。 
+圖 5：頻寬稍微不足下各 priority 策略整體平均 PSNR 值與可解碼 frame 接收率 
+ 
+而在頻寬嚴重不足的網路情況下，我們將頻寬限制在 256 kbps 約為影片 bitrates 的 50 %，圖 6(b)
+由可解碼 frame 數量來觀察，TDQ 與 AMVS 策略對於 QCIF 與 CIF 兩種解析度的 base layer 有較高的
+接收率，所以這兩層的可解碼畫面數比例也較多，會有這種現象主要是因為 layer adaptation 策略採用 
+TDQ 的方式，著重在 temporal layer 的保護。比較令人注意的一點是 AMVS 除了 BL 和 EL2 這兩層資
+料的接收率較高外，對於 EL1 這層資料的接收率也比其它策略高出許多，這也顯示出使用 coding 
+dependency filter 機制對於 buffer 的使用上更有效率。我們從圖 6(a)的平均 PSNR 值來觀察，整體來看
+平均 PSNR 值的結果與可解碼 frames 數量之間呈現正相關，這也再次證明我們的 AMVS 策略，在頻寬
+嚴重不足時還是能夠提供穩定的視訊品質。 
+ 
+圖 6：頻寬嚴重不足環境下整體 PSNR 值與可解碼 frame 接收率 
+ 
+0 
+5 
+10 
+15 
+20 
+25 
+30 
+35 
+0%
+10%
+20%
+30%
+40%
+50%
+60%
+70%
+Primitive QDT TDQ AMVS
+P
+S
+N
+R
+ (
+d
+B
+)
+p
+er
+ce
+n
+ta
+g
+e 
+o
+f 
+d
+ec
+o
+d
+a
+b
+le
+ f
+ra
+m
+es
+PSNR
+ 9 
+AMVS 系統畫面 
+圖 7：AMVS 系統畫面 
+ 
+總結 
+行動串流常遭遇的問題有多重路徑信號衰減，導致高位元錯誤率以及高封包遺失率，且傳統的 TCP
+或 UDP 傳輸並未考量到影音資料內容特性，另外，行動裝置的資源有限(CPU、Power、Memory)，影
+片解碼效率是個重要課題。雖然 H.264/SVC 提供了三維可調的方式使得調適更具彈性，然而這種多維
+的調適方式也代表著資料之間有著不同的重要性也存在了更複雜的相依性，在傳輸過程中一旦有資料
+發生遺失將會影響到其它資料，導致解碼難度更高。而目前網路傳輸設備的設計上一般僅針對串流資
+料做流量的控制並未針對視訊的特性做處理。因此本系統在 mobile gateway 流量控制的設計上參考視
+訊資料的重要性與編碼的相依性提出編碼相依性導向優先化策略，也就是 TDQ/CD 策略，針對視訊解
+碼無效的封包加以處理過濾，提升有效資料的傳輸，並確保視訊播放的品質。經實驗結果顯示，我們
+AMVS 系統在頻寬嚴重不足的環境下，不管是可解碼 frame 接收率還是平均 PSNR 值都有最佳的效果。
+由此可證明我們的策略在網路頻寬嚴重不足的環境下仍能提供穩定且平順的視訊品質。 
+而我們 AMVS(Adaptive Mobile Video Streaming)系統能提供 micro/macro rate adaptation 的機制
+(micro 第一年/macro 第二年)，兼顧網路壅塞與無線 burst loss 而保障視訊品質，二階調適策略可以避免
+區域性震盪，使調適過程更為緩和與平順(graceful adaptation)。參考無線網路傳輸品質，提供具優先等
+級之 Gap-based ARQ 傳送機制(QoS-aware selective、real-time 重傳)，提升頻寬有效的利用。而 Coding 
+dependency filter 機制能依據解碼相依性，檢視封包有效性，以提升封包有效傳輸率。在 Client 端提供
+broken frame trimming 的機制，剔除無法解碼殘破畫面，有效抑止錯誤蔓延並改善行動端影片 decoding
+順暢並節省耗電。另外，我們系統主要使用 JSVM H.264 的開放源碼且採用 C/C++語言開發，同時支
+援 WinCE 及 Windows PC 平台，可供後續相關領域之研究迅速介接。 
+ 11 
+1–6, November 2005. 
+[20] S. Pasricha, S. Mohapatra, M. Luthra, N. Dutt, and N. Venkatasubramanian,“Reducing backlight power 
+consumption for streaming video applications on mobile handheld devices,” 2003. 
+[21] H. Shim, N. Chang, and M. Pedram, “A backlight power management framework for battery-operated 
+multimedia systems,” IEEE Design and Test of Computers, vol. 21, no. 5, pp. 388 – 396, 2004. 
+ 
+ 2 
+今年度會議地點選在於巴西巴塞隆納 Center of Technologies for Media (CTMedia) La Salle - 
+Universitat Ramon Llull 。會議為期五天(2011/7/11-2011/7/15)，討論主題包括 Multimedia Signal 
+Processing、Image Analysis and Retrieval、Multimedia Architecture, Algorithm, and Application、
+Segmentation and Classification、Multimedia Communication and Networking 等多媒體相關研究領
+域。共有 12 場 Lecture session、15 場 Poster Session、3 場 Keynotes 專題演講，同時現場還有安排
+系統展示攤位，內容相當豐富。筆者於 2011 年 7 月 13 日下午舉行的 Poster Session 進行研究成果
+的論文海報展示發表並與其他學者交換意見，獲益良多。 
+ 
+1.2 Keynote speech 
+在這次大會安排的 keynote speech 所涵括的範圍相當廣泛與豐富，包含了  exaflop 
+supercomputing、automatic photo-realistic 3D modeling、body part recognition、computer vision、
+telepresence、behavioral informatics 等與多媒體技術有關的最新發展與議題，其中令筆者印象較深
+的是，behavioral signal processing 領域，探討了一些有趣的觀點，將資料收集與呈現賦予重新定義，
+也引導出了新的運算模式，這對運用多媒體資訊系統於以人為本的醫療行為上是一項新的突破，
+可更有效且準確的協助診斷。 
+1.3 Technical Sessions:  
+有下列 Session 主題 
+(1) 互動式 3D 多媒體, Interactive 3D Multimedia 
+(2) 多媒體訊號處理, Multimedia Signal Processing (I, II) 
+(3) 影像分析與擷取, Image Analysis and Retrieval 
+(4) 多媒體架構、演算法與應用, Multimedia Architecture, Algorithm, and Application 
+(5) 分割和分類, Segmentation and Classification 
+(6) 多媒體通訊網路, Multimedia Communication and Networking 
+(7) 多媒體安全性和隱私權, Multimedia Security and Privacy 
+(8) 多媒體分析(影像/視訊/音訊), Multimedia Analysis (Image/Video/Audio) 
+(9) 多媒體壓縮, Multimedia Compression(I, II) 
+(10) 視訊分析, Video Analysis 
+二、與會心得 
+筆者參加 ICME 多年，此次研究成果與高雄師範大學余遠澤助理教授共同發表，由行政院國
+家科學委員會補助出席國際會議之經費。ICME 每年參加的人數眾多，且具有相當高的學術聲譽，
+在這 conference 良莠不齊到處充斥的年代，ICME 仍能獨樹一格，標榜論文品質高，吸引大批的學
+者投稿，是值得我們探討與借鏡。筆者觀察大會審稿態度之嚴謹，是重要的一環，為確保會議品
+質，有別於一般 conference，此次會議對論文的審查與報告品質要求甚為嚴格，通過率不到 30%，
+ 4 
+五、其他 
+ICME 2011 國際會議活動紀錄照片 
+  
+圖 1、前往至 ICME 2011 國際會議會場 圖 2、ICME 2011 La Salle 會議會場 
+  
+圖 3、ICME 2011 專題演講過程 圖 4、論文成果海報展示合影 
+  
+圖 5、論文海報展示會場、專家學者交流 圖 6、論文海報展示會場 (I) 
+2011 IEEE International Conference on Multimedia and Expo 
+11-15 July 2011 ● Barcelona, Spain 
+http:www.icme2011.org 
+  
+_____________________________________________________________________________________ 
+ 
+: 
+ 
+  
+ 
+  
+ 
+General Chair 
+I. Cheng, UAlbera, Canda 
+G. Fernandez, URL, Spain 
+H. Wang, Cisco, USA 
+ 
+Program Chairs 
+J. Li, Microsoft, USA 
+P. Salembier, UPC, Spain 
+D. Florencio, Microsoft, USA 
+M. Hefeeda, SFU Canada 
+A. Loui, Kodak, USA 
+S. Panchanathan, ASU, USA 
+ 
+Conf. Operation Chairs 
+A. Basu, UAlberta, Canada 
+L. Vincent, URL, Spain 
+ 
+Workshop Chairs 
+A. El Saddik, UOttawa, Canada 
+X. Hua, Microsoft, China 
+ 
+Tutorial Chairs 
+E. Gobbetti, CRS4, Italy 
+H. Rushmeier, Yale, USA  
+ 
+Panel Chairs 
+A. del Bimbo, UFirenze, Italy 
+H. Wu, LSU, USA 
+ 
+Exhibition & Events Chairs 
+O. Garcia, URL, Spain 
+T. Malzbender, HP, USA 
+ 
+Poster & Demo Chairs 
+D. Miralles, URL, Spain 
+C. Zhang, Microsoft, USA 
+ 
+Industry Chairs 
+X. Carrillo-Costa, Digital Legends, 
+Spain 
+K El-Maleh, Qualcomm, USA 
+ 
+Publicity Chairs 
+P. Atrey, UWinnipeg, Canada 
+Y. Ho, GIST, Korea 
+L. Sun, UPlymouth, UK 
+Q. Sun, HP, China 
+J. Wen, Tsinghua Univ, China 
+C. Yuan, UTubingen, Germany 
+ 
+International Liaison Chairs 
+W. Lin, NTU, Singapore 
+G. Su, Dolby Labs, USA 
+ 
+Advisory Chairs 
+R. Molina, UGR, Spain 
+L. Torres, UPC-Barcelona TECH, 
+Spain 
+       
+                  
+Dr. Irene Cheng  Dr. Gabriel Fernandez                Dr. Haohong Wang 
+ICME 2011 General Chair ICME 2011 General Chair               ICME 2011 General Chair 
+Department of Computer Science Department of Media Technologies               Cisco Systems 
+University of Alberta  La Salle Barcelona Campus – Universitat Ramon Llull      Milpitas, California, U.S.A. 
+Edmonton, Alberta, Canada Barcelona, Spain 
+ 
+Wednesday, 23 March 2011 
+Sheau-Ru Tong 
+ 
+National Pingtung University of Science and Technology 
+No. 1, Hseuh Fu Road, Neipu Hsiang, Pingtung 
+Taiwain 912 
+REPUBLIC OF CHINA 
+Passport Number: 211334955 
+ 
+Dear Sheau-Ru Tong: 
+Congratulations on your accepted paper titled: 
+● Application-Layer Error Resilience for Wireless IP-based Video Broadcasting 
+ 
+Given that you have registered and paid all fees necessary, we request you to 
+join us at the 2011 IEEE International Conference on Multimedia and Expo, 
+11-15 July, 2011. ICME 2011 will be held at the La Salle – Universitat Ramon 
+Llull Barcelona Campus, Quatre Camins 30, 08022, Barcelona, Spain. 
+The IEEE Computer Society, IEEE Circuit and Systems, IEEE Communications 
+Society, IEEE Signal Processing Society and the Organizing committee of the 
+2011 IEEE International Conference on Multimedia and Expo request you to 
+present your accepted paper at ICME, which has been the flagship multimedia 
+conference since 2000. It serves as a forum to promote the exchange of the 
+latest advances in multimedia technologies, systems and applications from 
+both the research and development perspectives of the circuits and systems, 
+communications, computer and signal processing communities.  
+You may obtain more information from the web at http://icme2011.org or 
+please feel free to contact us. We look forward to welcoming you to present 
+your paper(s). 
+Sincerely,  
+In wireless networks, MDC has been suggested to 
+incorporate with a multi-input-multi-output (MIMO) 
+interface to exploit time and channel diversity for enhancing 
+throughput [3,13]. 
+Intuitively, in such a vibrative environment, the 
+overheads paid for data protection should not be made 
+uniformly in the packet level, but should focus on the 
+important data in the application level, such as key frames. 
+Moreover, we think that the idea of MDC is also 
+advantageous when multiple descriptors are interleaved for 
+transmission over a time-sharing channel. It is because 
+multiple descriptors are encoded independently, after 
+interleaving, the dependency between neighboring frames of 
+the merged stream is not as strong as that in the single 
+descriptor. In other words, a long burst errors is evenly 
+distributed over multiple descriptors with alleviated impact. 
+Therefore, we propose an extension of MDC, called 
+replicate multiple descriptor coding scheme (RMD), which 
+can be served as a complementary scheme in the application 
+layer for combating excessive packet losses in a wireless 
+channels. In principle, we multiplex and transmit multiple 
+descriptors over an IP multicast channel, but add two unique 
+features to enhance the error recovery. One is to replicate 
+key frames in different descriptors; the other is to apply a 
+time-shifted schedule for the descriptor transmission. These 
+two features allow us to exploit time diversity for the key 
+frame transmission against channel fading and provide more 
+efficient selective-frame-based protection, which is able to 
+alleviate the error propagation in the video decoding. We 
+analyze the key frame loss rate with respect to several 
+parameters, such as the transmission schedule and the 
+number replicas and the packet error rate. The simulation 
+results confirm that under a heavy packet loss rate (15%-
+35%), RMD outperforms other error recovery schemes in 
+the peak-signal-noise-ratio only with moderate data 
+overheads.  
+The rest of the paper is organized as follows. Section 2 
+presents the model of RMD and some analytical works. 
+Section 3 presents the performance evaluation based on the 
+simulation results. Section 4 draws our conclusion. 
+ 
+2. REPLICATE MULTIPLE DESCRIPTOR CODING 
+SCHEME 
+2.1. System Architecture 
+We describe the replicate multiple descriptor coding (RMD) 
+scheme as follows (Fig. 2). A sender takes a video stream as 
+input, which consists of a sequence of raw video frames, 
+numbered from 0 to N-1.  A de-multiplexer splits the stream 
+into k sub-streams (descriptors), numbered from 0 to k-1. 
+Each of sub-stream, say i, consists of a sequence of video 
+frames {i, i+k, i+2k, …, i+(N/k-1)k}. These sub-streams are 
+fed into a frame-encoding module, where each sub-stream is 
+encoded independently. The encoded sub-streams are then 
+fed into a frame-replication/insertion module, where each 
+sub-stream is examined. If a key frame (e.g., an I-frame) is 
+found, it will also be replicated and inserted into other sub-
+streams (to be described shortly). Subsequently, a 
+packetization module packetizes sub-streams, and a 
+multiplexer merges them into a single packet stream and 
+transmits it over an IP multicast channel. A receiver 
+subscribes to the multicast channel to receive the packet 
+stream.  The stream is then de-multiplexed into individual 
+sub-streams and fed into a packet-error-recovery module, 
+where those redundant packets are extracted and used to 
+recover the lost packets (if any is found) in respective sub-
+streams. After error recovery, sub-streams are sent into a 
+frame-decoding module to perform frame decoding 
+independently. A multiplexer then merges the decoded sub-
+streams back into the original frame sequence for playback.   
+ 
+ 
+Fig. 2. The system architecture of RMD. 
+ 
+2.2. Frame Replication/Insertion for RMD 
+ 
+In the MPEG compression, three frame types, I, P and B, are 
+generated. An I frame can be self-decoded. A P frame has to 
+refer to the previous I or P frames to be decoded. A B frame 
+has to refer to the previous I or P frame and the next I or P 
+frame to be decoded.  In general, an I frame has the largest 
+size and carries the most important decoding information. 
+The encoded frames usually follow a fixed-pattern group-of-
+picture (GOP) cycle, denoted by GOP(p, q), where p is the 
+number of frames in a GOP and q is the number of frames 
+between two neighboring I or P frames.  For instance, 
+GOP(12, 4) indicates a cycle pattern of IBBBPBBBPBBB.  
+We assume the timeline is divided into a sequence of 
+fixed-length frame slots. Each sub-stream transmits one 
+frame per frame slot. Each sub-stream is encoded using the 
+same GOP pattern, and I frames are the key frames that we 
+want to protect against errors. The frame 
+replication/insertion process of RMD takes two subsequent 
+phases: replica insertion and replica shifting. First, in the 
+replica insertion phase, we duplicate each key frame (say 
+primary frame) into another (b-1) replicas (say backup 
+frames) and insert them into different sub-streams in a way 
+that a key frame originally associated with sub-stream i 
+located at frame slot j is also repeated in sub-stream p at 
+frame slot q, where p=(i+x)%k, q=(j+x)%k and x=1, 2, …, 
+(b-1). Next, in the replica shifting phase, we defer the 
+backup frames in sub-stream i with is frame slots. We call 
+the collection of such k sub-streams’ GOPs as a combo-
+GOP. Normally, b and s are small numbers, and we assume 
+the replica shifting will not cross to the next combo-GOP 
+(i.e., p+b-1(k-1)s+b). For instance, Fig. 3 shows a combo-
+GOP cycle which consists of four GOP(7, 1) sub-streams 
+ 
+Fig. 5.  The Pkf_err with respect to various b’s when k=4 and g=4. 
+ 
+3. SIMULATION AND PERFORMANCE EVALUATION 
+ 
+The raw video track under test consists of 400 frames with a 
+QCIF format and has a frame rate of 30 fps. We would like 
+to compare the single descriptor (SD), multiple descriptors 
+(MD) and replicate multiple descriptors (RMD). For MD 
+and RMD, the video stream is split into four descriptors. 
+The video compression scheme used is MPEG-4 with a 
+GOP pattern of IPPPPPP. The packet size is 1024 bytes. For 
+SD, the same compression parameters are applied, and in 
+each packet slot at most four packets can be delivered. We 
+also consider applying FEC to each descriptor, where data 
+bytes are encoded into the Reed Solomon (RS) coding 
+blocks [11]. Each coding block makes up 255 bytes, where 
+159 bytes are regular data, and 96 bytes are the parity codes 
+which can fix 96 bytes erasures. We take the bulk-packet-
+loss model as our channel loss model. The simulation 
+environment is NS2. We simulate several schemes: a single 
+descriptor (SD) with/without FEC, a multiple descriptor 
+(MD) with/without FEC and the proposed RMD. 
+ 
+3.1. Aspect of PSNR [9,10] 
+Figure 6 shows the average peak-signal-to-noise ratio 
+(PSNR) subject to SD, SD/FEC, MD/FEC and RMD (b=2, 
+s=0). Every value is the average of 30 independent 
+experiments. First of all, we observe that MD shows a better 
+PSNR compared with SD as the packet loss rate (i.e., ) 
+increases. This is because MD disperses errors among 
+descriptors and makes itself more immune from heavy burst 
+errors than SD. Next, when error recovery functions are 
+added, PSNR is generally improved. When the packet loss 
+rate is small (<10%), SD/FEC or MD/FEC can effectively 
+fix most of lost packets and keep PSNR >30dB. But when 
+the packet loss rate increases beyond 15%, RMD starts to 
+outperform than SD/FEC or MD/FEC. Even up to 25% 
+packet loss, RMD can still keep PSNR>25dB. This is 
+because the backup frame can more effectively protect the 
+key frame against long burst errors. 
+To get a closer look of the scheme behavior, Fig. 7 
+shows the instance of PSNR (taken from frame 196 to 290) 
+subject to various schemes in one random experiment with 
+respect to 20% packet loss rate. As it can been seen, MD 
+only performs error concealment but no error recovery, so 
+the performance is fairly poor. MD/FEC can improve PSNR 
+a bit, but it is still not adequate for fixing long burst errors. 
+If those burst errors occur to the key frames, the unresolved 
+errors will be propagated to the entire GOP. On the other 
+hand, RMD normally gives a higher PSNR. This is because 
+RMD transmits backup frames at different timeframes and 
+thus gives a better chance to preserve the entire key frames 
+against long burst errors. This also helps decoding of other 
+non-key frames. 
+ 
+Fig.6. Average PSNR under different packet loss rates  subject to 
+various schemes. 
+ 
+ 
+Fig. 7.  The instances of PSNR with respect to various scheme 
+when packet loss rate  = 20%. 
+ 
+3.2. Impact of b and s in RMD 
+As we mentioned before parameters b and s present certain 
+tradeoffs to the system performance.  Fig. 8 and Fig. 9 show 
+the average PSNR of RMD with different s subject to b=2 
+and b=3, respectively. (MD/FEC is also added for 
+comparison.) We observe that the PSNR curve is improved 
+(leveraged) as s increases. The improvement seems 
+magnified under a heavy packet loss condition (15%-35%). 
+This is because transmissions of key-frames are shifted over 
+a longer time span, which makes it more robust to long burst 
+errors. The improvement of PSNR is also obvious as b 
+increases from 2 to 3, because more key-frame redundancy 
+is provided. When b=3 and s=1 or 2, we can find a PSNR no 
+[5] EN 301 790, “Digital Video Broadcasting (DVB); 
+Interaction channel for satellite distribution systems,” 
+European Telecommunications Standards Institute 
+(ETSI). 
+[6] G. C. Clark and J. B. Cain, “Error-Correction Coding 
+for Digital Communications,” New York: Plenum, 1981. 
+[7] Ghosh, A., Ratasuk, R., Mondal, B., Mangalvedhe, N., 
+Thomas, T., “LTE-advanced: next-generation wireless 
+broadband technology,” IEEE Wireless Comm., vol. 17, 
+no. 3, pp. 10-22, June 2010.  
+[8] J. Wang, R. Sinnarajah, T. Chen, Y. Wei and E. 
+Tiedemann, “Broadcast and Multicast Services in 
+cdma2000”, IEEE Communication Magazine, pp. 76-82, 
+Feb. 2004.  
+[9] J.-C. Bolot, S. Fosse-Parisis, D. Towsley, “Adaptive 
+FEC-based error control for Internet telephony,” 
+INFOCOM '99, Mar 1999. 
+[10] L. Libman,  A. Orda, “Optimal packet-level fec 
+strategies in connections with large delay-bandwidth 
+products,” IEEE Transaction on Wireless Comm., July 
+2006, vol. 5, no. 7 , pp. 1645-1650. 
+[11] Manuela Pereira,Marc Antonini, Michel Barlaud, 
+“Multiple description coding for Internet video 
+streaming,” Int. Conf. on Image Processing, 2003. 
+[12] MDC Module, 
+http://140.116.72.80/~smallko/ns2/MDC.htm. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+[13] Roman, V., Namuduri, K.R., “Combined source-
+channel diversity scheme for image transmission over 
+wireless channels,” IEEE Conf. on Comm. (ICC 20005), 
+vol. 2, pp. 1219-1223, May 2005. 
+[14] Rouzbeh Razavi,Martin Fleury, andMohammed 
+Ghanbari, “Adaptive Packet-Level Interleaved FEC 
+forWireless Priority-Encoded Video Streaming,” 
+Advances in Multimedia, vol.  2009, 2009. 
+[15] S. M. Cheng, W. R. Lai, Phone Lin, K. C. Chen, “Key 
+Management for UMTS MBMS,” IEEE Trans. on 
+Wireless Comm., vol. 7, no. 9, pp. 3619-3628, Sept. 
+2008. 
+[16] S. Parkvall, E. Englund, M. Lundevall and J. Torsner, 
+“Evolving 3G Mobile Systems: Broadband and 
+Broadcast Services in WCDMA”, IEEE Comm. 
+Magazine, pp. 68-74, Feb. 2006.  
+[17] S. Somasundaram, K.P. Subbalakshmi, R.N. Uma, 
+“MDC and path diversity in video streaming,” Int. Conf. 
+on Image Processing, 2004. 
+[18] Van der Auwera, G. and Reisslein, M., “Implications of 
+Smoothing on Statistical Multiplexing of H.264/AVC 
+and SVC Video Streams,” IEEE Trans. on 
+Broadcasting, vol. 55, no. 3, pp. 541-558, 2009. 
+[19] W.-H. Kuo and J.-F. Lee, “Multicast Recipient 
+Maximization in IEEE 802.16j WiMAX Relay 
+Networks,” IEEE Trans. on Vehicular Technology, vol. 
+59 , no. 1, pp. 335-343, 2010. 
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：童曉儒 計畫編號：99-2220-E-020-002- 
+計畫名稱：為車用多媒體通訊而設計之調適性行動視訊串流技術之設計與實作 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 3 3 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 2 2 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 11 11 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 1 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 2 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+■達成目標 
+□未達成目標（請說明，以 100 字為限） 
+□實驗失敗 
+□因故實驗中斷 
+□其他原因 
+說明： 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：■已發表 □未發表之文稿 □撰寫中 □無 
+專利：□已獲得 ■申請中 □無 
+技轉：□已技轉 □洽談中 ■無 
+其他：（以 100 字為限） 
+目前有投稿三篇研討會論文分別為: 
+1.為 H.264/SVC 傳輸而設計之編碼相依性導向優先化策略 
+2.在無線網路下應用於媒體串流之 FEC 交錯策略研究 
+3.為無線 P2P-UEP 串流而設計之傳輸與快取策略 
+以上三篇都已經被接受。 
+ 
+專利部分，已提出兩件專利如下: 
+1.同儕網路之調適視訊傳送機制 
+2.為加速 H.264/SVC 解碼而設計之網路封包過濾機制 
+上述兩件皆申請中。 
+ 
+ 
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以
+500 字為限） 
+我們使用了 JSVM H.264 的開放源碼(open source)讓有需要的人，可以再加入自己所需要
+的技術去新增。 
+此外，使用了 C/C++語言，他同時可以支援 WINCE 以及 Windows PC，可以跨平台使用。我
+們還參考無線網路傳輸品質，提供具優先等級之 Gap-based ARQ 傳輸機制，提升頻寬有效
+利用。另外提供Broken frame trimming 機制，有效抑止解碼錯誤蔓延，節省行動端Decoder
+的耗電，還有提供 Micro/Macro rate adaptation 的機制，使整個調適的過程達到緩和
+與平順的效果，最後提供 Coding dependency filter 機制以提升有效封包傳輸。至於可
+應用之產業與產品我們提供行動網路串流影音服務的產業以及車用影音機上盒。我們主打
+在於行車環境中多媒體影音串流傳輸流量控制之相關技術因此藉由這些技術能有效率透

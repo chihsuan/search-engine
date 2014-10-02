@@ -1,0 +1,194 @@
+Table 2: Service Classes
+0 LAN0 All 0.0.0.0
+LAN1
+1 WLAN0 All 0.0.0.0
+WLAN1
+2 WLAN2 All 10.0.0.0/8
+3 DialUp0 HTTP, Telnet, SMTP 140.113.0.0/16
+4 GPRS0 SMTP 0.0.0.0
+GPRS1
+After the protocol initiation state, the SCTP endpoint sends all data packets to the primary address, but STCP
+can reroute data packets to one alternate address to improve the probability of reaching the remote endpoint. When
+transmission to primary address fails, packets are transmitted to other alternative addresses until the protocol be-
+comes confirmed that primary address is reachable by using extra heartbeat messages.
+In SCTP, the policy for selecting the new destination address for sending data is undefined. The endpoint should
+monitor the reachability of these alternative addresses by regularly sending the heartbeat message to all alternative
+addresses. Upon reception of a hearbeat message (HB), the SCTP endpoint should reply with a heartbeat acknowl-
+edgment message (HBACK , whereby each peer always knows which addresses are available for the failover.
+For each path, the endpoint keeps an error counter that is incremented, should the endpoint not receive an
+acknowledgement within a certain time. If the error counter exceeds a threshold value (a maxretransmition counter),
+the state of the considered path will be set to unreachable. Even if the path is set to unreachable, the endpoint will
+then continue to send heartbeats to this address, allowing the reinstatement of the path status to reachable at a later
+stage.
+As described in RFC2960, the set of IP addresses is fixed during the initiation of an association and cannot
+be changed during the lifetime of an association. R. Stewart et al. extended the SCTP to support dynamic address
+reconfiguration [24] which means that each endpoint’s available IP addresses can be dynamic update during the
+association lifetime by sending one Address Configuration Change (ASCONF) control chunk to its peer.
+3 Proposed enhanced SCTP protocol
+To make a more flexibility decision on path selection, we should classified all the available interfaces into several
+classes. We define each class by the service type, the link cost, and the reachable destination networks. Table 2 is
+an example.
+In table 2, the interfaces LAN0, LAN1, WLAN0 and WLAN1 allow all connections from all applications to
+all destination networks. Since the network speed of LAN0 and WLAN0 aenr not the same, they are in different
+service class. The WLAN2 is only used to connect to a private network ”10.0.0.0/8.” A dial-up link DialUp0 can
+only allow the web, telnet, and mail service to connect to the network ”140.113.0.0/16”. The GPRS0 and GPRS1
+links are only allowed mail connections.
+The lower class number has the higher priority to be select as candidate network interfaces. Each interface can
+be appeared in more than one service classes.
+3.1 Primary path selection algorithm
+Before an SCTP association starts to send packet, the primary and alternative interface should be chosen. This task
+was done by the following two algorithms: the Primary Path Selection Algorithm and the AlternativePath Selection
+Algorithm.
+To select the primary path, we should first get all the available paths according to the destination addresses and
+the service type, by using the getPathSet(dest, service) function.
+After getting all the available paths, the priority of each path is calculated and compared to select the maximum.
+The priority of a specific path is defined by γ · min(Cwinth/RTT,Ri) · (1 − ErrorRatei)/Costi. The value
+Cwin − threshold/RTT is the available sending-speed of a particular network interface. We make the link cost
+Costi and the error rate ErrorRatei into consideration. A path i that was previous marked as failed will never be
+take into consideration. However, after receiving a heartbeat message from this path will mark it as an active path
+again.
+The primary path selection algorithm is shown in Algorithm 1.
+2
+SCTP uses same congestion control algorithm in TCP. If a network congestion is occurred, which means the
+acknowledgment packet does not arrived on time, the congestion windows size Cwnd will be reduced. That is, if
+we do not received the acknowledgment packet at the first time, we will treat this condition as a congestion.
+At this time, the packets without acknowledgment will be sent to an alternative path and the timeout value
+RTOi of the primary path will be doubled, whereby the transmission speed between two endpoints will be reduced.
+The following packets, will be still send to the primary path instead of the alternative path.
+In the worst case, if the timeout value RTOi of the primary destination address is doubled several times until
+reach the maximum value RTOMAX but the acknowledgment packets are still not received, we mark the link as
+temporary failure.
+In this following algorithm, we use a threshold counter tCounter to determinate where a path is temporary
+disabled if the Retransi of the primary path reaches the threshold value of tCounter. The tCounter is adjustable
+from 2 to RetransMAX .
+The ActivePath will be changed from the primary path to an alternative path temporary if any error occurred.
+Another path used for backup will be selected by the algorithm AlternativePathSelection, as shown in figure 2.
+In the same time, a heartbeat message will be sent to the primary path and wait for the response. If the heartbeat
+acknowledgment (HBACK) packet is received, the ActivePath will be changed back to the primary path.
+The temporary failover algorithm is described in Algorithm 3.
+Algorithm 3 Temporary Failover
+PrimaryPath = ActivePath = PrimaryPathSelection(dest, service);
+AlternativePath = AlternativePathSelection(dest, service, ActivePath);
+Send packets to ActivePath;
+start timer;
+if timer reaches RTOi then
+RTOi = 2 ·RTOi;
+if RTOi > RTOMAX then
+RTOi = RTOMAX ;
+end if
+Send non ACK packets to AlternativePath;
+Send HB packet to PrimaryPath;
+Retransi ++;
+if Retransi >= tCounter then
+ActivePath = AlternativePath;
+AlternativePath = AlternativePathSelection(dest, service, ActivePath);
+end if
+end if
+if get HBACK from PrimaryPath then
+AlternativePath = ActivePath;
+ActivePath = PrimaryPath;
+end if
+3.4 Long-term failover algorithm
+In the temporary failover algorithm, the data packets will be sent to the alternative address, but the condition of
+primary destination address is still monitored by sending the heartbeat message continuously and waits for the
+response.
+If the HBACK is still not received in time, the retransmission counter Retransi of the primary destination
+address will be increased and the RTOi will be doubled each time until a maximum value (RTOMAX ) is reached.
+The default value of RTOMAX is 60 seconds in SCTP protocol. After a specific period, where the re-transmission
+counter reaches RetransMAX , the primary path will be marked as failed. In this condition, the alternative path
+becomes the new primary path and another candidate alternative path is selected from the available PathSet. The
+long-term failover algorithm is shown in Algorithm 4.
+4 Performance evaluation
+In this section, we use the ns2 network simulator to evaluate the performance of our scheme. In the test framework,
+there are two SCTP endpoints, where each endpoint contains several interfaces with different network speed and
+4
+Down for 15 seconds
+Original SCTP
+tCounter=2
+tCounter=3
+bytes x 106
+seconds0.0000
+1.0000
+2.0000
+3.0000
+4.0000
+5.0000
+6.0000
+7.0000
+0.0000 100.0000 200.0000 300.0000 400.0000
+Figure 2: Two paths, link 0 down for 15 seconds
+Down for 30 seconds
+Original SCTP
+tCounter=2
+tCounter=3
+bytes x 106
+seconds0.0000
+1.0000
+2.0000
+3.0000
+4.0000
+5.0000
+6.0000
+7.0000
+0.0000 100.0000 200.0000 300.0000 400.0000
+Figure 3: Two paths, link 0 down for 30 seconds
+congestion, which means the SCTP endpoints does not need to do temporary failover because the primary path will
+be recover quickly.
+In Figure 3, link 0 is down alternatively for every 30 seconds and up for 30 seconds. We will find the network
+recovery quickly when tCounter = 2 because the endpoint 0 will use the alternative path (link 1) to transfer
+packets. By using the original SCTP protocol, the endpoint 0 will wait for the link to be up again, which means the
+performance is the worst.
+In Figure 4 and Figure 5, link 0 is down alternatively for every 45 and 90 seconds, respectively. In these
+situations, our enhanced SCTP performance significantly improve the network performance. We will find the
+network recovery quickly when tCounter = 2. When tCounter = 3, the performance is still better than original
+SCTP protocol.
+5 Summary
+The original SCTP protocol does not have a failure detection and recovery scheme to handle packet retransmission.
+In this chapter, we provide the following enhancement. First, each available interface will be classified into several
+classes. The operating system will select one optimal primary path and another alternative path from the available
+6
+classes. Second, two failover schemes are proposed to detect the network failure and make a decision to change the
+active path to transmit data packet. These modifications increased the transmission performance and decreased the
+error recovery time.
+References
+[1] P. Bellavista, A. Corradi, R. Montanari, and C. Stefanelli, “Dynamic Binding in Mobile Applications A Mid-
+dleware Approach,” IEEE Internet Computing, pp. 34–42, April 2003.
+[2] A. L. Caro, J. R. Iyengar, P. D. Amer, G. J. Heinz, and R. R. Stewart, “Using SCTP Multihoming for Fault
+Tolerance and Load Balancing,” ACM SIGCOMM Computer Communication Review, vol. 32, no. 3, p. 23,
+Jul. 2002.
+[3] L. Coene, “Multihoming Issues in the Stream Control Transmission Protocol,” IETF Internet Draft, draft-
+coene-sctp-multihome-03.txt, February 2002.
+[4] N. G. Duffield, P. Goyal, A. Greenberg, P. Mishra, K. K. Ramakrishnan, and J. E. van der Merwe, “Resource
+Management With Hoses: Point-to-Cloud Services for Virtual Private Networks,” IEEE/ACM Transaction on
+Networking, vol. 10, no. 5, pp. 679–692, October 2002.
+[5] P. Ferguson and D. Senie, “Network Ingress Filtering: Defeating Denial of Service Attacks which employ IP
+Source Address Spoofing,” RFC-2827, May 2000.
+[6] M. Holdrege and P. Srisuresh, “Protocol Complications with the IP Network Address Trans-
+lator (NAT),” Internet Draft, March 2000. [Online]. Available: http://www.ietf.org/internet-drafts/
+draft-ietf-nat-protocol-complications-02.txt
+[7] H.-Y. Hsieh and R. Sivakuma, “Transport Layer Issues: A transport layer approach for achieving aggregate
+bandwidths on multi-homed mobile hosts,” in Proceedings of the 8th annual international conference on
+Mobile computing and networking, 2002, pp. 83–94.
+[8] G. J. H. II, “Priorities in Stream Transmission Control Protocol (SCTP) multistreaming,” Master’s thesis.
+[9] J. R. Iyengar, A. L. Caro, P. D. A. Jr., G. J. Heinz, and R. R. Stewart, “Making SCTP More Robust to
+Changeover.”
+[10] ——, “Retransmission Policies With Transport Layer Multihoming.”
+[11] ——, “SCTP and TCP Variants: Congestion Control Under Multiple Losses.”
+[12] J. R. Iyengar, K. C. Shah, P. D. Amer, and R. Stewart, “Concurrent Multipath Transfer Using SCTP Multi-
+homing.”
+[13] S.-E. Jeon, R. T. Alber, J. A. Copeland, and Y. Pan, “Path Selection With Class Distribution Information in
+the Integrated Network,” IEEE COMMUNICATIONS LETTERS, vol. 6, no. 2, February 2002.
+[14] A. L. C. Jr., J. R. Iyengar, P. D. Amer, G. J. Heinz, and R. R. Stewart, “A Two-level Threshold Recovery
+Mechanism for SCTP,” 2002. [Online]. Available: www.cis.udel.edu/∼amer/PEL/poc/pdf/sci2002-acaro.
+pdfhttp://citeseer.ist.psu.edu/616657.html
+[15] E. Korach and R. Ohayon, “Path Selection in Networks with Non-Deterministic Information,” IEEE, pp.
+2227–2231, 2002.
+[16] S. Ladha and P. D. Amer, “Improving Multiple File Transfers Using SCTP Multistreaming.”
+[17] Y.-K. Lee and S. Lee, “Path Selection Algorithms for Real-time Communication,” 2001, pp. 398–404.
+[18] H. Matsuoka, T. Yoshimura, and T. Ohya, “A Robust Method for Soft IP Handover,” IEEE Internet Computing,
+pp. 18–24, March 2003.
+[19] J. M. Ng and P. K. Ng, “Cost-Delay Path Selection Function for Real-Time Multicast Routing.”
+[20] Y. Pan, M. Lee, J. B. Kim, and T. Suda, “Roaming and Handoff Management: An End-to-end Multi-path
+Smooth Handoff Scheme for Stream Media,” in Proceedings of the 1st ACM international workshop on Wire-
+less mobile applications and services on WLAN hotspots, Sep. 2003.
+8

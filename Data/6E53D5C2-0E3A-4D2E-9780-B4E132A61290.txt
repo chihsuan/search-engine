@@ -1,0 +1,2012 @@
+Self-Organizing Systems (SASO 2011). An 
+implementation of VSO is available as part of the 
+open source VAST library at SourceForge, and has been 
+downloaded over 680 times since Aug. 2010. 
+英文關鍵詞： Peer-to-peer, networked virtual environment, online 
+games 
+ 
+ 2
+一、前言 (Introduction) 
+ 
+Massively Multiuser Virtual Environments (MMVEs) [1] are computer-generated 3D virtual worlds 
+in which human participants assume virtual representations called avatars to engage in immersive, 
+real-time interactions. Internet-based VEs trace their origin from the military simulators in the 80s’ 
+to the emerging multiplayer games of the 90s’. Today, the most popular form of VE is Massively 
+Multiplayer Online Games (MMOGs) [2] , which typically boost up to hundreds of thousands of 
+concurrent users. The most popular MMOG today, World of Warcraft, has over 11 million paying 
+monthly subscribers [3] , while the social MMOG Second Life has over 12 million user accounts 
+[4] . The rapid evolution of MMOGs has also brought VEs to other domains, making VEs a likely 
+enabling medium that supports a diverse range of applications, from entertainment, socialization, 
+shopping, to military / corporate training and education.  
+ 
+Scalability is a defining trait in MMVEs, where over 100,000 concurrent users are typically reported. 
+Currently, scalability is achieved with two main techniques: 1) replicating many parallel world 
+instances (called sharding); and 2) geographic decomposition (i.e., partitioning the world into 
+regions and assign each to a server) [5] . However, neither approach can yet support a virtual 
+environment (VE) with millions of concurrent users in a single world instance. Each shard has a 
+maximum number of users, who cannot migrate or communicate across worlds, limiting the realism 
+of interactions. While geographic partitioning may scale with user size (as long as enough servers 
+are available and each server can handle the users in its region), existing partitioning is often 
+hard-wired to world design and requires manual adjustment. Given that user distribution often 
+varies greatly across regions and time of day [6] , this means prohibitively expensive operating costs 
+(for running servers without users and manually adjusting region sizes), or overloaded and 
+unresponsive servers (if the region has too many users) [7] . 
+ 
+ 
+二、研究目的 (Research Goals) 
+ 
+Many researchers have proposed alternative peer-to-peer (P2P) architectures [8] . However, while 
+P2P may be more economic by utilizing inexpensive clients, they still face the same geometric 
+partitioning problem due to uneven user distribution. Recent works suggest that by separating 
+interest management from state management (i.e., the task of determining and delivering the 
+messages of interest can be separated from the tasks of computing state changes [5] [9] ), the 
+scalability limit inherent in geometric partitioning thus may be alleviated. 
+ 
+Regardless of P2P or client-server, we identify the fundamental interest management required by 
+any VE applications as spatial publish / subscribe (SPS), and argue that most existing VE functions 
+can be reduced to SPS operations. An implication is that if SPS operations can be made highly 
+scalable and self-organizing, a VE supporting millions of concurrent users may become possible. 
+ 
+Our goal in this project is very specific: to design a generic overlay suitable for MMVE applications 
+by supporting scalable Spatial Publish Subscribe (SPS) [10] functions. Our design is a generic P2P 
+overlay that considers real-world constrains (e.g., peer heterogeneity, churn), we will also evaluate 
+the design via both simulations and experiments on PlanetLab. 
+ 4
+FLoD [24], LODDT [26], HyperVerse [27]) propose to use P2P-VE overlays for 3D streaming. 
+Another potential area where P2P-VE overlays can be used is voice. As voice communication is 
+bandwidth-intensive and yet does not affect game rule executions, much server bandwidth can be 
+saved if clients are allowed to manage voice traffic [28], [29]. Finally, distributing AI computation 
+on the clients has recently been proposed [30]. 
+ 
+Fundamental to all these designs is a robust and efficient P2P overlay that must support basic 
+primitive operations in a VE, while considering the reality of P2P networks (e.g., heterogeneous 
+peer resources, fluctuating network conditions, and dynamic join and leave of peers) and specific 
+application requirements (e.g., latency constrains due to the interactive nature of MMVEs). So far, 
+no P2P-VE designs have been comprehensive enough to consider all the real-world constrains that a 
+working system needs to deal with. In this project, we explored the possibility for a generic overlay 
+design that is practical, flexible, and efficient, while supporting various application needs for 
+large-scale, real-world MMVEs.  
+ 
+ 
+四、研究方法 (Research Methods) 
+ 
+In SPS, each node in a coordinate space can specify a publication space and a subscription space. A 
+node may send a message to a specified publication space, which will then be delivered to all nodes 
+whose subscriptions overlap with the publication space (Figure 1). Subscription spaces can further 
+be updated continuously as nodes move. 
+ 
+Figure 1: 2D Spatial Publish Subscribe 
+ 
+In Voronoi Self-organizing Overlay (or VSO), the entire virtual space is divided into various 
+regions, each managed by interest matcher, or simply matcher, whose responsibility is to map a 
+given publication with potential subscribers. A client (i.e., entity) joins the system to perform 
+publications or subscriptions. Additionally, clients may also move their existing subscribed area to 
+receive more relevant and timely messages. For simplicity, we assume that publications or 
+subscriptions are specified as circles or rectangles, and have a well-specified center point. 
+ 
+Each matcher is the unique authority in a region, such that a client needs to register its subscription 
+with at least one matcher, before receiving any publications. To ensure that subscriptions are 
+updated authoritatively, each subscription has an owner matcher whose region covers the 
+subscription center. A client joins by contacting any existing matchers to notify its subscription. If 
+non-owners receive it, the subscription is forwarded greedily based on the center to the actual owner 
+ 6
+We note that in a Voronoi partitioning, it is fairly easy to adjust region boundary, by moving the 
+sites of the Voronoi diagram. The main questions then are: 1) how to move the site locations, as 
+client density changes; and 2) where and when to insert new matchers, if overload persists. 
+ 
+We experimented with a number of approaches and found the following simple rules. Intuitively, 
+the ideal partitioning matches the region size with the region's load (which should reflect the 
+matcher's capacity). In other words, the region size should change in such a way that the average 
+client density per square area roughly equals the handling ability of the matcher per square area. 
+ 
+The adjustment rules for a matcher are twofold: 
+ 
+1) Shrink region size when overloaded by asking neighbors to move their sites closer. 
+ 
+2) Request a matcher insertion from a gateway, if the first method does not work after a while. 
+ 
+Each time a neighbor matcher moves, it uses the following to adjust the distance (where P stands for 
+position): 
+ 
+Pnew = Pcurr + (Poverload - Pcurr) * Fmove 
+ 
+Where Pnew is the new position to be taken by the neighbor; Pcurr is the current position of the 
+neighbor; Poverload is the overloaded matcher’s position and Fmove is a number between 0 and 1 that 
+determines how speedy the adjustment should be. While the above may appear intuitive, the site 
+positions would soon cluster when clients are moving, thus making the clients to cross region 
+boundaries easily. A second requirement thus is to have each region centers (e.g., the sites) to be as 
+far away from each other as possible, so that region crossing can be minimized. We thus devise a 
+third rule as follows: 
+ 
+3) A matcher will continuously move its site to the center of clients that it manages, using the 
+formula: 
+ 
+Pnew = Pcurr + (Lcenter - Pcurr) * Fadjust 
+ 
+Where Pnew is the new site position of the matcher, Pcurr is the current site position of the matcher, 
+Lcenter is the load center of the client positions (defined as the average coordinates of all x and y 
+coordinates of their subscription centers), and Fadjust is an adjustable parameter for how much 
+fractional adjustment should be made each time. 
+ 
+With the above rules, a Voronoi partitioning can be in constant adjustment of its region shape, such 
+that the number of clients in a region will follow the matcher's capacity. 
+ 
+ 
+五、結果與討論 (Results and Discussions) 
+ 
+We evaluate VSO based on simulations and experiments on PlanetLab. For this initial 
+evaluation, each client only performs area subscription and point publication of its position. We are 
+mainly interested to answer these questions: 1) How does dynamic partitioning affect the work load 
+balance? 2) How consistent and accurate is the pub/sub information, despite node churn? 3) How 
+scalable can VSO be to accommodate high user density scenarios? 
+ 
+ 8
+ 
+Figure 5: Effect of Churn on Discovery Consistency (left) stable size 50 (right) stable size 100. 
+ 
+We then investigate the effect of churn (nodes constantly joining and leaving the network). With a 
+churn rate between 1 node / second to 10 nodes / second, and a stable size of 50 and 100 nodes, we 
+can see that discovery consistency lowers at about 1000 time-steps (when nodes start to churn) but 
+restores later after the churning period ends at about 2000 time-steps.  
+ 
+To evaluate on the scalability of VSO, we plot the cumulative distribution function (CDF) for the 
+upload on matchers. We can see that for average upload, in a 500 node region, 90% of the matchers 
+can be supported with an upload of 1.2 M bytes / second, while all can be supported by an upload of 
+2.2 M bytes / second (or 20 Mbps upload). For a 1000 node region, 90% of matchers are 
+supportable by 2.8 M bytes / second upload, and 100% are supportable with 5.0 M bytes / second 
+upload. Our simulation results thus imply the following: 1) the required bandwidth resources for 
+matchers is supportable with a combination of low and high bandwidth hosts, where the majority 
+(90%) can be of relatively low upload capacity (i.e., ADSL-grade). For example, in the case for 500 
+nodes, ADSL with 10 Mbps upload can cover 90% of the matchers' upload needs; 2) In general, the 
+matcher size is only 10% of the total number of nodes in the system, so if ADSL-grade hosts can be 
+the matchers, it is possible to support a whole region of relatively dense user population (e.g., 500 
+nodes) with client machines, where only 10% of them need to assume matcher responsibility. Given 
+typical ADSL bandwidth distributions and user incentives, such is a likely scenario. 
+ 
+  
+Figure 6: Matcher Per Second Upload CDF (left) average (right) maximum 
+ 
+ 
+ 
+ 10
+六、參考文獻 (References) 
+[1] S. Singhal and M.Zyda, “Networked Virtual Environments”, ACM Press, MA, 1999. 
+[2] T. Alexander, Editor, Massively Multiplayer Game Development, Charles River Media, 2003. 
+[3] http://www.gamasutra.com/php-bin/news_index.php?story=17062 
+[4] http://secondlife.com/whatis/economy_stats.php 
+[5] Jim Waldo, “Scaling in Games & Virtual Worlds,” ACM Queue, vol. 6, no. 7, 2008. 
+[6] Yeng-Ting Lee and Kuan-Ta Chen, “Is Server Consolidation Beneficial to MMORPG?” in Proc. IEEE 
+Cloud, 2010. 
+[7] Mitch Wagner, “Inside Second Life's Data Centers,” Information Week, 2007. 
+http://www.informationweek.com/news/showArticle.jhtml?articleID=197800179 
+[8] B. Knutsson, H. Lu, W. Xu, and B. Hopkins, "Peer-to-peer support for massively multiplayer games," in 
+Proc. IEEE INFOCOM, pp. 96-107, 2004. 
+[9] Mahdi Tayarani Najaran and Charles Krasic, “Scaling Online Games with Adaptive Interest Management 
+in the Cloud,” in Proc. NetGames 2010, 2010.  
+[10] Shun-Yun Hu, “Spatial Publish Subscribe,” Proc. IEEE Virtual Reality workshop MMVE, 2009. 
+[11] S. Y. Hu, J. F. Chen, and T. H. Chen, “VON: A Scalable Peer-to-Peer Network for Virtual 
+Environments,” IEEE Network, vol. 20, no. 4, pp. 22-31, July/August 2006. 
+[12] J. Keller and G. Simon, "Towards a peer-to-peer shared virtual reality," in Proc. ICDCSW, pp. 695-700, 
+July 2002. 
+[13] P. Morillo, W. Moncho, J.M. Orduna and J. Duato, "Providing Full Awareness to Distributed Virtual 
+Environments Based on Peer-To-Peer Architectures," Springer LNCS, vol. 4035 (CGI'06), pp. 336-347, Jun. 
+2006. 
+[14] Y. Kawahara, H. Morikawa, and T. Aoyama, "A Peer-to-Peer Message Exchange Scheme for Large 
+Scale Networked Virtual Environments," in Proc. of 8th IEEE Int. Conf. on Communications Systems 
+(ICCS 2002), November 2002. 
+[15] T. Iimura, H. Hazeyama, and Y. Kadobayashi, "Zoned federation of game servers: a peer-to-peer 
+approach to scalable multi-player online games," in Proc. NetGames, pp. 116-120, Aug. 2004. 
+[16] E. Tanin, A. Harwood, H. Samet, S. Nutanong, and M. Truong, "A serverless 3D world," in Proc. of the 
+Symp. on Advances in Geographic Information Systems (ACM GIS), pp. 157-165, Nov. 2004. 
+[17] Masaaki Ohnishi, Ryo Nishide, and Shinichi Ueshima, "Incremental Construction of Delaunay Overlaid 
+Network for Virtual Collaborative Space," in Proc. C5, pp. 75- 82, Jan. 2005. 
+[18] C. GauthierDickey, V. Lo, and D. Zappala, "Using n-trees for scalable event ordering in peer-to-peer 
+games," in Proc. NOSSDAV, pp. 87-92, Jun. 2005. 
+[19] J. Liebeherr, M. Nahas and W. Si, "Application-layer Multicasting with Delaunay Triangulation 
+Overlays," IEEE JSAC, vol. 20, no. 8, pp. 1472-1488, 2002. 
+[20] Kyungchul Kim, Ikjun Yeom and Joonwon Lee, "HYMS: A Hybrid MMOG Server Architecture," IEICE 
+Transactions on information and Systems, vol. E87-D, no. 12, pp.2706-2713, Dec. 2004. 
+[21] A. Bharambe, J. Pang and S. Seshan, "Colyseus: A Distributed Architecture for Multiplayer Games," in 
+Proc. ACM/USENIX NSDI, May 2006. 
+[22] Gregor Schiele et al., "Requirements of Peer-to-Peer-based Massively Multiplayer Online Gaming," in 
+Proc. CCGRID 2007, May 2007. 
+[23] Shun-Yun Hu, Shao-Chen Chang, and Jehn-Ruey Jiang, "Voronoi State Management for Peer-to-Peer 
+Massively Multiplayer Online Games," in Proc. 4th IEEE NIME, Jan. 2008. 
+[24] Shun-Yun Hu, Ting-Hao Huang, Shao-Chen Chang, Wei-Lun Sung, Jehn-Ruey Jiang, and Bing-Yu Chen, 
+"FLoD: A Framework for Peer-to-Peer 3D Streaming," in Proc. INFOCOM, Apr. 2008. 
+[25] Frederick W. B. Li, Rynson W. H. Lau, and Danny Kilis, “GameOD: an internet based game-on-demand 
+framework,” in Proc. ACM VRST, 2004. 
+[26] Jerome Royan, Patrick Gioia, Romain Cavagna, and Christian Bouville, "Network-Based Visualization of 
+3D Landscapes and City Models," IEEE CG&A, vol. 27, no. 6, pp. 70-79, Nov.-Dec. 2007. 
+[27] Jean Botev, Alexander Hohfeld, Hermann Schloss, Ingo Scholtes, and Markus Esch, "The HyperVerse - 
+Concepts for a Federated and Torrent Based '3D Web'," in Proc. IEEE Virtual Reality (IEEE VR) 
+workshop Massively Multiuser Virtual Environment (MMVE), Mar. 2008. 
+[28] L. Liu and R. Zimmermann, “Immersive peer-to-peer audio streaming platform for massive online 
+games,” in Proc. IEEE CCNC, 2006. 
+[29] Jehn-Ruey Jiang and Hung-Shiang Chen, "Peer-to-Peer AOI Voice Chatting for Massively Multiplayer 
+Online Games," in Proc. ICPADS 2007 workshop P2P-NVE, Dec. 2007. 
+[30] John Douceur, Jacob Lorch, Frank Uyeda, and Randall Wood, "Enhancing Game-Server AI with 
+Distributed Client Computation", in Proc. NOSSDAV, 2007. 
+ 
+scribers. A client (i.e., entity) joins the system to perform
+publications or subscriptions. Additionally, clients may also
+move their existing subscribed area to receive more rele-
+vant and timely messages. For simplicity, we assume that
+publications or subscriptions are specified as circles or rect-
+angles, and have a well-specified center point. Each matcher
+is the unique authority in a region, such that a client needs
+to register its subscription with at least one matcher, be-
+fore receiving any publications. To ensure that subscrip-
+tions are updated authoritatively, each subscription has an
+owner matcher whose region covers the subscription cen-
+ter. A client joins by contacting any existing matchers to
+notify its subscription. If non-owners receive it, the sub-
+scription is forwarded greedily based on the center to the
+actual owner matcher. It is also forwarded to all relevant
+matchers, if the subscribed area covers neighboring regions.
+Once joined, clients can move to new locations by chang-
+ing their subscribed areas. If the subscription center enters
+another region, an explicit ownership transfer should occur.
+Figure 2: Non-redundant multicast tree.
+A client publishes by sending messages to its current matcher,
+which checks for a list of known subscribers. If the publi-
+cation covers other regions, it is forwarded to neighboring
+matchers continuously, until all matchers with overlapped
+regions are notified. The forwarding is based on VoroCast
+[2], which builds a spanning tree covering all the matchers
+within the publication area with non-redundant paths (e.g.,
+in Figure 2 left, a publisher sends four copies of the same
+message to its immediate neighbors. Its neighbors then for-
+ward the message in a non-redundant way, see right).
+To manage the pub/sub matching, the matchers form a
+Voronoi-based Overlay Network (VON) [1] to allow decen-
+tralized overlay connectivity and dynamic load balancing.
+Voronoi diagram is a way to divide a space into n regions
+based on the positions of n points, or sites, such that all
+points within a region are closest to that region’s site than
+to any other site. Each node on a VON (in our case, a
+matcher) specifies an Area of Interest (AOI) and organizes
+other neighbor nodes with a Voronoi diagram. Based on the
+Voronoi diagram, a node can identify its boundary neigh-
+bors (i.e., neighbors whose Voronoi regions touch on the
+AOI boundary), so when a node moves to a new position, its
+boundary neighbors could help to notify the existence of any
+new neighbors (Figure 3). This allows a moving node to dis-
+cover neighbors continuously in a fully distributed manner.
+In our case, each matcher’s AOI is the combined subscrip-
+tion areas of all the clients the matcher manages.
+We note that in a Voronoi partitioning, it is fairly easy to
+adjust region boundary, by moving the sites of the Voronoi
+diagram. The main questions then are: 1) how to move the
+Figure 3: Neighbor Discovery in VON.
+site locations, as client density changes; and 2) where and
+when to insert new matchers, if overload persists.
+We experimented with a number of approaches and found
+the following simple rules. Intuitively, the ideal partitioning
+matches the region size with the region’s load (which should
+reflect the matcher’s capacity). In other words, the region
+size should change in such a way that the average client
+density per square area roughly equals the handling ability
+of the matcher per square area.
+The adjustment rules for a matcher is twofold:
+1) shrink region size when overloaded by asking neighbors
+to move their sites closer.
+2) request a matcher insertion from a gateway, if the first
+method does not work after a while.
+Each time a neighbor matcher moves, it uses the following
+to adjust the distance (where P stands for position):
+P new = P current+(P overload−P current)∗F move
+Where F move is a number between 0 and 1 that de-
+termines how speedy the adjustment should be. While the
+above may appear intuitive, the site positions would soon
+cluster when clients are moving, thus making the clients to
+cross region boundaries easily. A second requirement thus is
+to have each region centers (e.g., the sites) to be as far away
+from each other as possible, so that region crossing can be
+minimized. We thus devise a third rule as follows:
+3) a matcher will continuously move its site to the center
+of clients that it manages, using the formula:
+Mc =Mc + (Lc −Mc) ∗ f
+Where Mc is the site position of the matcher (i.e., the
+matcher’s center), Lc is the center of the clients’ positions
+(i.e., the load center), and f is an adjustable parameter for
+how much fractional adjustment should be made each time.
+With the above rules, a Voronoi partitioning can be in
+constant adjustment of its region shape, such that the num-
+ber of clients in a region will follow the matcher’s capacity.
+3. REFERENCES
+[1] S.-Y. Hu et al. A spatial publish subscribe overlay for
+massively multiuser virtual environments. In Proc.
+ICEIE 2010, 2010.
+[2] J.-R. Jiang, Y.-L. Huang, and S.-Y. Hu. Scalable
+aoi-cast for peer-to-peer networked virtual
+environments. In ICDCS Workshops, 2008.
+[3] Y.-T. Lee and K.-T. Chen. Is server consolidation
+beneficial to mmorpg? In IEEE Cloud, 2010.
+[4] M. T. Najaran and C. Krasic. Scaling online games
+with adaptive interest management in the cloud. In
+Proc. NetGames 2010, 2010.
+[5] J. Waldo. Scaling in games & virtual worlds. ACM
+Queue, 6(7), 2008.
+defined as the percentage of correctly discovered AOI neigh-
+bors, out of all potential AOI neighbors [1]. For example, if
+a node has 10 actual AOI neighbors but only sees 9, then the
+consistency is 9/10 * 100% = 90%. We first collect logs on
+the clients’ actual positions and their observed neighbors
+(recorded with synchronized timestamps). After merging
+into a global view of the clients’ authentic positions, we
+can reconstruct which neighbors are visible to each client at
+any time. Discovery consistency is then calculated between
+the observed and the authentic client positions.
+Figure 1. Concurrent Clients Reported
+Figure 2. Discovery Consistency
+At first, we randomly choose our Planetlab hosts, such that
+the chosen hosts may be at different sites (i.e., a physical
+location with several host machines). We start clients on each
+host at random times within a period. However, we find that
+the consistency is poor when the node size reaches 100. We
+thus choose our PlanetLab hosts from the same site (i.e., a
+LAN environment) to reduce latency and refine control on
+joining. The hosts belong to UC Santa Barbara (CPU about
+2.3GHz and RAM is around 3.67GB). On each selected host,
+we uniformly place clients and allow at least one client be
+promoted as a matcher. Clients join the system continuously
+and move 5 steps per second for 3000 steps (i.e., about 600
+seconds). Each client has a different movement path (based
+on a nodeID), and wait for (1 * nodeID) seconds before
+joining. The world dimension is 768x768 units, and each
+move is 3 units in distance (i.e., 15 units per second), to
+mimic dimensions of a regular Second Life region. We find
+that too many clients at the same host would cause crashes.
+So we set up no more than 50 clients on each host.
+Figure 3. Effect of Matcher Sizes on Consistency
+Fig. 1 and Fig. 2 track the changes in concurrent clients
+and consistency (respectively) as a time-series in seconds
+for 50 to 200 nodes (i.e., using 1 to 4 hosts). In general,
+the consistency is above 90% , but may drop if there are
+continuous join or departures (i.e., churn). The joining slope
+is almost 1 node/sec, but the join may delay and consistency
+could drop if there are matcher crashes (e.g., in the 200 node
+curve in Fig. 1, we see that the delay in client join correlates
+to matcher departures). However, the consistency tends to
+restore if churn stops. This shows that churn negatively
+impacts VSO’s correctness, even though VSO can function
+properly if there are only node movements.
+We also want to see how matcher size affects consistency.
+We disperse 200 nodes uniformly on each host (i.e., 50
+nodes/host) and increase the number of candidate matchers.
+Fig. 3 shows the dependency of consistency on the number
+of promotable matchers. As before, the consistency drops
+due to node churn or matcher failure. Still, we see that
+increasing matcher availability stabilizes consistency.
+REFERENCES
+[1] S.-Y. Hu and K.-T. Chen, “Vso: Self-organizing spatial publish
+subscribe,” in Proc. SASO 2011, 2011.
+[2] Y.-T. Lee and K.-T. Chen, “Is server consolidation beneficial
+to mmorpg?” in IEEE Cloud, 2010.
+[3] A. Bavier et al., “Operating system support for planetary-scale
+network services,” in Proc. NSDI, 2004.
+entity send its position updates to a central manager, and
+have the manager to match and filter only relevant messages
+back to each entity (i.e., performing interest management
+[8] for each entity). However, the total amount of resources
+of this manager determine the scale of the system. To
+perform scalable SPS, interest matching needs to be divided
+and assigned to different simulation units. To limit our
+discussions, we will focus on discrete-time simulations with
+strict latency requirements in 2D space, such as MMOGs, as
+its requirements are one of the strongest. But we note that
+our discussions can be generalized to higher dimensions and
+other types of spatial simulations, especially those with more
+relaxed accuracy or latency requirements.
+Various techniques have been proposed to divide the
+workload for spatial query or spatial multicast, from divi-
+sions based on space or on entities (see [9] for a survey).
+However, to the best of our knowledge, few approaches have
+been described in literature on the actual design and evalua-
+tion for the full SPS functionality. While the idea of SPS has
+also been described by the Data Distribution Management
+(DDM) section of the IEEE 1516 simulation specification
+(the High Level Architecture, or HLA) [10], the specification
+intentionally leaves out the implementation details. In this
+paper, we describe Voronoi Self-organizing Overlay (VSO),
+a spatial division approach to support SPS based on Voronoi
+partitioning and self-organizing load balancing. The overall
+effect is that only the resource units necessary to support
+the system actually join the system, thus avoiding the over-
+provisioning or over-loading issues commonly associated
+with static partitioning.
+II. BACKGROUND
+A. SPS
+Traditionally, the most basic form of publish/subscribe
+(pub/sub) is channel-based (also called topic-based) [4],
+[11], where receivers would subscribe to a particular channel
+for messages sent by publishers to the channel. However,
+in case for spatial messages, how to divide the space and
+assign them to channels becomes problematic (i.e., how
+to determine the right region size [12]). Spatial publish
+/ subscribe (SPS) on the other hand, provides a simpler
+concept for these operations. The simplest SPS supports the
+subscriptions and publications of messages on an area. For
+simplicity, we will discuss 2D space only in this paper. As
+the smallest area is one with zero size (a point), SPS can be
+also be specified with points. There are thus four main types
+of SPS operations: 1) area subscription specifies an intention
+to receive all messages published onto the area specified;
+2) area publication sends a message to an area, receivable
+by any subscribers whose subscribed areas overlap with the
+publication areas; 3) point subscription intends to receive
+any area publications that cover the point specified; 4) point
+publication sends a message to a given point, receivable by
+any area subscribers whose subscribed areas cover the point.
+Figure 2. Quad-tree (left) vs. Voronoi (right) Partitioning.
+Spatial partitioning is easier to understand and implement,
+and requires less application-specific knowledge to general-
+ize its use. Existing spatial partitioning methods, however,
+either divides the virtual space in pre-defined manners (e.g.,
+division by grids) which makes picking the right region size
+difficult [12], or requires human intervention in specifying
+the different region sizes. When the entity movement or
+density changes in highly unexpected manners, or if a large
+number of entities are simulated, such approaches become
+unpractical and unsuitable. Ideally, if spatial divisions can
+occur based on the density and distribution of the entities,
+and adjust automatically as the density changes, then we
+will have a system that is more flexible to deploy, and
+more practical to manage. In this paper, such an approach is
+described based on Voronoi partitioning [13], as it allows
+fewer divisions of the space than alternative approaches,
+especially when the entities’ spatial distribution is skewed.
+For example, in Fig. 2, we see that for 50 entities around
+a few clusters, if a region can accommodate at most 10
+entities, a quad-tree-based partitioning would produce about
+10 regions, while a Voronoi partitioning produces only 6.
+Although concepts of dynamic zoning have been proposed
+before (e.g., Matrix [14]), when the management of entities
+is distributed, issues of state consistency, load balancing,
+and fault tolerance emerge and need to be considered in
+whole. We thus also describe our techniques to address these
+issues, which existing proposals have yet described in a
+comprehensive manner.
+B. Multi-user Virtual Environments
+Recently, MMOGs have become a popular form of enter-
+tainment that rivals with movies. In a MMOG, users send
+events (e.g., movements, trading, attacks) to a game state
+manager, which, according to current game states and the
+rules of the game (i.e., game logic), will update the game
+states and return updates to the users, within their AOI. We
+thus can consider sending events as point publications, made
+by users and subscribed by the state managers, who have
+well-defined subscribed areas. In the case of a partitioned
+(i.e., zoned) world, each manager can subscribe to non-
+overlapping regions. Sending updates from managers to
+When a publication occurs, it is first sent from a client
+to its owner matcher, which then checks a list of known
+subscribers to send the message. If the publication area falls
+outside the owner matcher’s region, the publication will
+be forwarded to neighboring matchers continuously, until
+all affected matchers are notified (via forwarding such as
+VoroCast [16]). This way, each publication is guaranteed
+to be delivered to all potential subscribers, as long as
+subscription info is properly maintained by each matchers.
+Although a subscription area may span several regions, each
+subscription has only one owner, who is responsible to
+forward any relevant publications to the client. A published
+message thus would be delivered to a subscriber only once.
+A. Dynamic Load Balancing
+As subscriptions move and cluster, a given matcher
+may become overloaded, it is thus desirable to adjust
+matcher loads automatically. For this purpose, the matchers
+form a Voronoi-based Overlay Network (VON) [13] to
+maintain connectivity and perform load balancing. While
+a VON provides neighbor discovery in a distributed way,
+functionally it can be seen to provide only area subscriptions
+and point publications. There is also no load balancing in
+VON’s original design. By alleviating a VON to handle
+only matcher connectivity (instead of clients), a client in
+VSO maintains only a single connection with its matcher.
+To provide load balancing, the matchers can adopt two
+main strategies to alleviate overloading:
+1) Adjust region size to match workload with capacity;
+2) Insert a new matcher nearby to share the loads.
+For the following discussion, we first make two assumptions:
+1) a matcher can detect whether it is overloaded (e.g.,
+simple CPU or memory usage monitoring); and 2) potential
+matchers can identify themselves and report availabilities
+to the gateway, which acts as the initial entry point of the
+system for all candidate matchers. The gateway may send
+a message to promote a matcher candidate at a certain
+location in the virtual space. A potential matcher may be
+a provisioned server (i.e., in a cloud system), or a client
+machine (i.e., in a P2P system), however, this is mainly a
+deployment decision and not architectural.
+We note that in a Voronoi partitioning, it is fairly easy to
+adjust region boundary, by moving the sites of the Voronoi
+diagram (see Fig 5). The main questions then are: 1) how
+to move the site locations, as client density changes; and 2)
+where and when to insert new matchers, if overload persists.
+We experimented with a number of approaches and came
+out with the following simple rules, which we found were
+effective. Intuitively, the ideal partitioning makes the size of
+the region to match the region’s loading, which should reflect
+the capacity of the matcher. In other words, the region size
+would change in such a way that the average client density
+Figure 5. Schematic of load balancing. (Left) The center matcher requests
+help from its neighbors. Triangles are the subscriptions centers of clients.
+(Right) Neighbor matchers move their sites closer to make the center region
+smaller. Note that some subscription centers are now in neighbor regions,
+the ownerships thus are transferred (e.g., the circles at the boundaries).
+per square area roughly equals the handling ability of the
+matcher per square area.
+In our rules to adjust region sizes, a given matcher will:
+1) shrink region size when overloaded by asking neighbors
+to move their sites closer.
+2) request a matcher insertion from the gateway, if 1) does
+not work after a while.
+The threshold to adjust would require tuning in practice,
+we thus set the number of the “come closer” requests as
+an adjustable VSO INSERTION TRIGGER, so that an
+overloaded matcher’s neighbors will attempt to move their
+sites closer for a specified number of times, before the
+gateway is called to insert a new matcher. A neighbor
+matcher uses the following formula to move closer:
+Pnew = Pcurr + (Poverload − Pcurr) ∗ Fmove (1)
+Where Pnew is the new position to be taken by the
+neighbor; Pcurr is the current position of the neighbor;
+Poverload is the overloaded matcher’s position and Fmove
+is a number between 0 and 1 for the speed of adjustment.
+While the above rules may appear intuitive, the site positions
+would soon come close to one another during adjustments,
+thus making the clients to cross region boundaries easily.
+A second requirement thus is to have each region centers
+(e.g., the sites of the Voronoi diagram) to be as far away
+from each other as possible, while ensuring that each region
+can approximately contain a cluster of clients, to minimize
+region crossing. We thus devise a third rule as follows:
+3) a matcher will move its site location closer to the
+center of clients, using the following formula:
+Pnew = Pcurr + (Lcenter − Pcurr) ∗ Fadjust (2)
+Where Pnew is the new site position of the matcher,
+Pcurr is the current site position of the matcher, Lcenter
+IV. VSO PROCEDURES
+With the above rules, a Voronoi partitioning can be
+in constant adjustment of its region shape and size, such
+that the number of clients within a region will follow the
+matcher’s capacity. Below, we describe the procedures of
+VSO in more details, but first summarize the terminology
+that will be used:
+client a user node that performs publish/subscribe requests.
+matcher a manager node of a Voronoi region that records
+subscriptions and performs pub/sub matching.
+enclosing matchers matchers whose Voronoi regions sur-
+round a given matcher.
+candidate matcher a node with sufficient capacity and
+reachability to qualify as a new matcher.
+owner matcher a matcher whose region covers the center
+of a particular subscription.
+acceptor matcher an existing matcher in the system that
+accepts a joining matcher.
+gateway the first matcher of the system, and the keeper of
+a list of candidate matchers for matcher promotion.
+replica subscription a subscription record replicated at
+another non-owner matcher whose region overlaps with the
+subscription area.
+A. Initialization
+1. The first matcher joins the system and acts as a well-
+known gateway for the system.
+B. Matcher Join Procedure
+1. A joining matcher sends a join request to the gateway.
+2. The gateway determines whether the joining matcher
+is a candidate matcher and records it.
+C. Matcher Leave Procedure
+1. If there are no subscriptions managed by a matcher for
+an extended time, the matcher leaves the system by itself.
+2. Enclosing matchers of the leaving matcher adjust their
+Voronoi regions using VON’s Leave Procedure [13].
+3. The leaving matcher repeats the Matcher Join Proce-
+dure to rejoin the pool of matcher candidates.
+D. Subscribe (Client Join) Procedure
+1. A joining client notifies an existing matcher of its
+desired subscription area. The existing matcher may be
+known from previous logins, or can simply be the gateway
+if no known matchers exist.
+2. The receiving matcher forwards the subscription request
+greedily to find the owner matcher of the subscription.
+3. The receiving matcher notifies the client of its owner
+matcher.
+4. The client requests subscription from its owner matcher,
+which records it.
+5. The owner matcher may forward the subscription
+to its neighbors to record as replica subscriptions, if the
+subscription area overlaps with neighboring regions (via
+VoroCast [16]).
+E. Publish Procedure
+1. A client sends a publication to its owner matcher.
+2. The receiving matcher checks if the publication
+matches one of its subscription records, if so, the owner
+matcher of the subscriber is notified. Note that the owner
+can be the receiving matcher itself and thus no actual
+transmission is made.
+3. If the publication area overlaps with the regions of the
+enclosing matcher, it is forwarded to the enclosing matchers
+(using VoroCast [16] to avoid redundant forwarding).
+4. Step 2 and 3 are repeated until no more matchers are
+covered by the publication area.
+5. The owner matcher of the subscription notifies the
+subscribing client of the publication, while ensuring that
+only one notification is sent.
+F. Load Balancing Procedure
+1. If a matcher is overloaded (based on the number of
+subscribers, or the level of activities), it sends a MOVE
+request to its enclosing matchers.
+2. The enclosing matchers will move their sites closer to
+the overloaded matcher (see formula (1) in Section III-A).
+3. If the overload situation does not improve after re-
+quests have been sent VSO INSERTION TRIGGER times,
+a MATCHER INSERT request is sent to gateway.
+4. The gateway selects a capable matcher from the can-
+didate matcher list, and sends a PROMOTE request to the
+selected candidate. The request consists of the candidate’s
+joining position, which is the load center (i.e., the center of
+all the subscription centers) of the overloaded matcher.
+5. The selected candidate joins the matcher overlay via
+VON’s Join Procedure [13] (i.e., asking gateway and be
+greedily forwarded to the closest acceptor matcher near its
+join location, where the acceptor matcher sends a list of
+initial matcher neighbors to the joining matcher.)
+6. The joined matcher notifies the gateway of its success-
+ful join, to be removed from the matcher candidate list.
+G. Ownership Transfer Procedure
+1. Each matcher checks if the center of any recorded
+subscription is now outside of its region, if so, it sends a
+TRANSFER request to the respective matcher neighbor.
+2. The neighboring matcher records the subscription and
+sends back a TRANSFER ACK message to the previous
+owner matcher to confirm the transfer.
+3. The previous owner matcher notifies the respective
+client of the change in ownership.
+4. If the original owner matcher does not receive the
+acknowledgement within a timeout period, the ownership
+of the subscription is reclaimed.
+The clustering movement is done by randomly placing
+1.5 * ln(n) hotspots (n is node size, so 100 nodes has
+6 hotspots) where nodes would move towards the nearest
+hotspot with high probability. We allow each node to
+register as a potential matcher with the gateway (i.e., a
+P2P-like deployment), as pure client-specific bandwidth
+usage is often small. The overload limit for each matcher is
+set to 20 nodes (i.e., when subscriber size within a region
+exceeds 20, the matcher would start the load balancing
+procedure). To evaluate the correctness of the simulation,
+we adopt discovery consistency (or consistency for short)
+as the main metric. Discovery consistency is defined as
+the percentage of the nodes actually visible to a user from
+those that should be seen (e.g., if there are 10 nodes within
+a user’s AOI, but only 9 are visible, discovery consistency
+is 9/10 = 90%) [13]. For all the simulations below, except
+the churn simulations, the average discovery consistency
+is always above 99%, indicating that the performance
+evaluation is based on the system first runs correctly.
+Below we discuss our findings in the following three
+categories: 1) comparison of partitioning method; 2) per-
+formance under churn; and 3) scalability:
+A. Dynamic Partitioning
+We compare how dynamic partitioning affects matcher
+workload by first dividing the whole space into 9 regions
+and assigned them to 9 matchers. For static partitioning, the
+division is fully regular as 9 square regions. For dynamic
+partitioning, although the partitioning begins as square re-
+gions, region boundaries may adjust with time. To perform
+a comparable experiment, no new matchers are added to the
+system.
+Fig. 7(a) shows the average, maximum, and minimum
+upload bandwidth of the matchers per second, as the total
+number of nodes increase from 50 to 500. We can clearly see
+that with dynamic partitioning, not only the average upload
+bandwidth is lower, the difference between the maximum
+and average upload is also greatly reduced. Workload thus
+is much more balanced. For matcher’s download bandwidth,
+Fig. 7(b) shows similar results, where dynamic load balanc-
+ing greatly reduces the workload’s average and variance for
+each matcher. As matchers need to send updates to clients,
+their upload is greater than download in general.
+B. Effect of Churn
+To evaluate how VSO performs under constant node
+joining and leaving (i.e., churn), we perform another set
+of simulations with three periods: joining, churning, and
+stabilizing. During joining, nodes enter the system at a
+constant defined rate and start moving; in churning, nodes
+would start to join and leave the system at a defined rate
+per second; during stabilizing, no node joins the system to
+allow stabilization.
+We set up a stable size of 50 and 100 nodes, and a churn
+rate of 1 node per second (i.e., there is one node joined and
+one node leave each second) to 10 nodes per second. The
+leaving nodes may be either a matcher or client, chosen
+at random. Fig. 8(a) shows the discovery consistency of
+the system as time goes, under 50 stable nodes. We can
+see that for the joining phase, the consistency gradually
+increases to over 99% until time-step 1000. As it takes time
+to join the system, nodes that should be visible may yet
+be learned, consistency thus may be low while nodes are
+joining. Once nodes are fully joined, starting from step 1000
+to step 2000, churn begins and we see a drop in consistency
+to different degrees, the higher the churn rate the lower
+the consistency. After 2000 steps, we see that consistency
+restores eventually, mostly within 200 time-steps, or 20
+seconds. The consistency drop can be as heavy as to 30%
+for a 10 nodes / second churn rate (i.e., when 20% of the
+nodes are constantly joining and leaving each second). Note
+that there is no hard limit on what consistency level must be
+in a given scenario, and it is rather application-dependent.
+Although we generally expect a discovery consistency of
+above 90% as being acceptable. In Fig. 8(b), a stable size
+of 100 nodes is used, and we see that churn’s effects are less
+severe, likely as the number of churning nodes is a smaller
+percentage of the total nodes (i.e., 10% churn rate in the
+most serious case). We again see that the consistency drops
+when churn begins, and restores when there is no churn.
+The most serious drop becomes about 20%. The line for 1
+node / second churn rate increases continuously as it takes
+some time for all nodes to fully join, but churning already
+begins before nodes are fully joined, thus the continuous
+increase. The important message from the two graphs is that:
+1) consistency and churn rate have a negative correlation and
+2) consistency restores back to normal eventually after some
+time when the system re-stabilizes.
+C. Scalability
+For scalability evaluation, we are mainly interested in
+the practical bandwidth requirement when a high density
+of users exists. For this purpose, we simulate between 50 to
+1000 nodes totally, all with a high joining rate of 10 nodes
+/ second, and plot the cumulative distribution function or
+CDF of bandwidth usage for both the matchers and clients.
+Note that having 1000 nodes in our simulated area is a
+severe density scenario (i.e., it is 10 times the density of the
+current Second Life region). As matchers in general need
+to send out updates on neighbors, their upload is greater
+than download and is often the main scalability bottleneck.
+Fig. 9(a) shows the CDF of the matcher’s average upload.
+We see that with 500 nodes, 90% of the matchers has an
+average upload of 500 KB / sec, while for 1000 nodes, 90%
+of the matchers has an average upload of 1 M bytes / second.
+This means that a majority of matchers on average sends
+out less than 10 Mbps of data, which is within the range of
+Table I
+MATCHER RATIO
+Node Size Matcher Size Matcher Ratio
+50 5 10.00%
+100 8 8.00%
+200 20 10.00%
+500 41 8.20%
+1000 74 7.40%
+VI. CONCLUSIONS
+We present the design and evaluation of Voronoi Self-
+organizing Overlay (VSO), an adaptive mechanism to adjust
+workloads within Voronoi regions to support spatial publish
+subscribe (SPS) services. VSO utilizes two basic mecha-
+nisms for load balancing: boundary shifting and new region
+(i.e., matcher) insertion. Tolerance to matcher or client
+failure is also supported by making backup subscriptions and
+having client rejoin mechanisms during matcher failures.
+We show from simulations that VSO reduces both the
+average and variability of the workloads for matchers, so
+that overload is less likely to occur, resource provisioning
+can also be more dynamic. Fault tolerance to churn up to
+10% in a 50 node region is supported, and the overlay can
+recover from churn. Scalability analysis shows that even
+under a very dense scenario of 1000 nodes per region, 90%
+of the matchers only need an upload of 1 M bytes / sec
+(i.e., 10 Mbps upload) on average. While 10 Mbps is enough
+to support the maximum upload requirement for 500 nodes
+per region for 90% of the matchers. In other words, home
+ADSL connections plus a few server resources is sufficient
+to support fairly high-density interactions.
+While the initial evaluation is promising, we would still
+like to evaluate VSO in more realistic environments and
+under full SPS operations (e.g., area publications). The
+dynamic partitioning and load balancing of VSO is general
+enough to be deployed in both cloud or P2P environments.
+How to best utilize both resources for scalability and per-
+formance is thus an interesting question. Another important
+aspect to investigate is whether under highly fluctuating
+workloads, the number of active matchers can indeed adjust
+accordingly to conserve resources.
+REFERENCES
+[1] S.-Y. Hu and K.-T. Chen, “Self-organizing spatial publish
+subscribe,” in Proc. ICAC (poster), 2011.
+[2] S. Singhal and M. Zyda, Networked Virtual Environments:
+Design and Implementation. ACM Press, 1999.
+[3] S. Douglas, E. Tanin, A. Harwood, and S. Karunasekera,
+“Enabling massively multi-player online gaming applications
+on a p2p architecture,” in Proc. ICIAD, December 2005.
+[4] A. R. Bharambe, S. Rao, and S. Seshan, “Mercury: A scal-
+able publish-subscribe system for internet games,” in Proc.
+NetGames, 2002, pp. 3–9.
+[5] C. GauthierDickey, V. Lo, and D. Zappala, “Using n-trees
+for scalable event ordering in peer-to-peer games,” in Proc.
+NOSSDAV, June 2005, pp. 87–92.
+[6] B. Knutsson, H. Lu, W. Xu, and B. Hopkins, “Peer-to-peer
+support for massively multiplayer games,” in INFOCOM,
+2004, pp. 96–107.
+[7] S.-Y. Hu, “Spatial publish subscribe,” in Proc. IEEE Virtual
+Reality (IEEE VR) workshop Massively Multiuser Virtual
+Environment (MMVE’09), 2009.
+[8] K. Morse, L. Bic, and M. Dillencourt, “Interest management
+in large-scale virtual environments,” Presence, vol. 9, no. 1,
+pp. 52–68, 2000.
+[9] S.-Y. Hu, S.-C. Chang, and J.-R. Jiang, “Voronoi state
+management for peer-to-peer massively multiplayer online
+games,” in Proc. IEEE CCNC Workshop NIME, 2008, pp.
+1134–1138.
+[10] K. L. Morse and J. S. Steinman, “Data distribution man-
+agement in the hla: Multidimensional regions and physically
+correct filtering,” in Proc. Spring Simulation Interoperability
+Workshop, 1997.
+[11] A. Bonotti, L. Ricci, and F. Baiardi, “A publish subscribe
+support for networked multiplayer games,” in Proc. IMSA,
+2007, pp. 236–241.
+[12] E. Lety, T. Turletti, and F. Baccelli, “Score: A scalable
+communication protocol for large-scale virtual environments,”
+IEEE/ACM Trans. Networking, vol. 12, no. 2, pp. 247–260,
+2004.
+[13] S.-Y. Hu, J.-F. Chen, and T.-H. Chen, “Von: A scalable peer-
+to-peer network for virtual environments,” IEEE Network,
+vol. 20, no. 4, pp. 22–31, 2006.
+[14] R. K. Balan, M. Ebling, P. Castro, and A. Misra, “Ma-
+trix: Adaptive middleware for distributed multiplayer games,”
+LNCS (Middleware 2005), vol. 3790, pp. 390–400, 2005.
+[15] J. Liebeherr, M. Nahas, and W. Si, “Application-layer mul-
+ticasting with delaunay triangulation overlays,” IEEE JSAC,
+vol. 20, no. 8, pp. 1472–1488, 2002.
+[16] J.-R. Jiang, Y.-L. Huang, and S.-Y. Hu, “Scalable aoi-cast
+for peer-to-peer networked virtual environments,” in ICDCS
+Workshops, 2008.
+[17] L. Genovali and L. Ricci, “Aoi-cast strategies for p2p mas-
+sively multiplayer online games,” in Proc. IEEE CCNC, 2009.
+[18] M. Steiner and E. W. Biersack, “Shortcuts in a virtual world,”
+in Proc. CoNext, 2006.
+[19] H. Liang, M. Motani, and W. T. Ooi, “Textures in second life:
+Measurement and analysis,” in Proc. P2P-NVE, 2008.
+[20] A. Bharambe et al., “Donnybrook: Enabling large-scale, high-
+speed, peer-to-peer games,” in Proc. SIGCOMM, 2008.
+訊息及 News Feed，例如 Facebook、Twitter 等等，結合了社群網路的最新趨勢。 
+  
+此次會議相當盛大，議程(Session)也十分多元，在每一個時段都有十幾個議程同時進
+行，以至於為了聽到某些感興趣的論文簡報，常常可以看到在同個時段裡，人們在不同
+的議程中進進出出”趕場。”而我除了聽到本身感興趣的領域的研究發表外，也聽到了
+許多不同領域的創新研究，著實獲益良多。另外也遇到了之前在美國研究所的學長姐及
+指導教授，以及認識了一些不同學校的台灣留學生、台大”行動社群與互動設計實驗室”
+的師生，還有一些與會的外國學生，彼此交流分享，也擴展了彼此的社群網路。 
+ 
+此次會議同時也展出了一位研究者(Bill Buxton)針對過去三十年來，全世界重要的輸入及
+互動裝置的收藏；其重要概念在於，很多當今主流的技術及概念(例如: 多重觸控式螢幕, 
+智慧型手機等)其實早在數十年前就已經提出並開發了，只是當時礙於某些因素無法普及
+開發；告誡我們應破除所謂”最新就是最好，過去就是過時”的觀念；在追求創新的同
+時，應同時回頭看看之前甚至古早同領域的研究及想法，因為很多當今的創新，可能在
+很久以前就有人提出來了；我們需要將過去的不可能化為可能，將過去的設計藍圖改良
+並整合當今的技術重新開發，這樣才是所謂的有效設計與研究創新。 
+ 
+CHI 是我長久以來最想參加的國際會議，這次感謝陳昇瑋老師的協助，讓我能首次參與，
+並吸取到很多寶貴的研究方法與想法，也認識了許多在同領域奮鬥的學生。希望之後能
+在這個領域有更多的研究成果。 
+ 
+註：請申請人印出本表親自簽名，並由所屬單位主管審閱及簽章後，連同第二頁出國報
+告表交由各單位承辦人掃瞄為 PDF 檔，上傳至本院，方為完成報告繳交。 
+ 
+填表人簽章：吳紹瑜                                所屬單位主管審閱簽章  
+填表日期 :  05/27/2011 
+OR  A B C D E F G H I J K L M N O 
+CHI2011 PROGRAM ATTENDING AUTHORS SPONSORS RECRUITERS EXHIBITORS
+(3) Special Events : Closing Plenary --- May 12, 2011 16:00
+Closing Keynote
+Ethan Zuckerman
+Special Events : Opening Plenary --- May 9, 2011 08:45
+Opening Keynote
+Howard Rheingold
+Note : Cats, Dogs, Sports, Games & Books --- May 11, 2011 16:00
+Cat Cat Revolution: An Interspecies Gaming Experience  - ACM
+Frank Noz Carnegie Mellon University, University of Madeira
+Jinsoo An
+&
+École Polytechnique Fédérale de
+Lausanne
+(1)
+Note : Health 1: Technology Challenges --- May 9, 2011 11:00
+Simulating the Feel of Brain-Computer Interfaces for Design, Development and
+Social Interaction  - ACM
+Melissa Quek University of Glasgow
+Daniel Boland University of Glasgow
+John Williamson University of Glasgow
+Roderick Murray-Smith University of Glasgow
+Michele Tavella École Polytechnique Fédérale de Lausanne
+Serafeim Perdikis École Polytechnique Fédérale de Lausanne
+Martijn Schreuder Technische Universität Berlin
+Michael Tangermann Technische Universität Berlin
+1
+143 South St.
+(1)
+alt.chi : alt.chi: Is there a Designer in the house? --- May 12, 2011 09:00
+On Ethical Problem Solving in User-Centered Research: An Analysis  - ACM
+Zarla Ludin 143 South St.
+ Video Summarization via 
+Crowdsourcing
+ 
+ 
+Abstract 
+Although video summarization has been studied 
+extensively, existing schemes are neither lightweight 
+nor generalizable to all types of video content. To 
+generate accurate abstractions of all types of video, we 
+propose a framework called Click2SMRY, which 
+leverages the wisdom of the crowd to generate video 
+summaries with a low workload for workers. The 
+framework is lightweight because workers only need to 
+click a dedicated key when they feel that the video 
+being played is reaching a highlight. One unique feature 
+of the framework is that it can generate different 
+abstraction levels of video summaries according to 
+viewers’ preferences in real time. The results of 
+experiments conducted to evaluate the framework 
+demonstrate that it can generate satisfactory 
+summaries for different types of video clips. 
+Keywords 
+Video summarization, video skimming, crowdsourcing, 
+human computation 
+ACM Classification Keywords 
+H.5.1 [Information Interfaces and Presentation]: 
+Multimedia Information Systems. 
+Copyright is held by the author/owner(s). 
+CHI 2011, May 7–12, 2011, Vancouver, BC, Canada. 
+ACM  978-1-4503-0268-5/11/05. 
+Shao-Yu Wu 
+Institute of Information Science 
+Academia Sinica 
+128 Academia Road, Section 2 
+Nankang, Taipei 115, Taiwan 
+derecw@iis.sinica.edu.tw 
+ 
+Ruck Thawonmas 
+Department of Human and 
+Computer Intelligence 
+Ritsumeikan University 
+1-1-1, Noji-higashi, Kusatsu, 
+Shiga, 525-8577, Japan 
+ruck@ci.ritsumei.ac.jp 
+ 
+Kuan-Ta Chen 
+Institute of Information Science 
+Academia Sinica 
+128 Academia Road, Section 2 
+Nankang, Taipei 115, Taiwan 
+ktchen@iis.sinica.edu.tw 
+ 
+ 
+CHI 2011 • Work-in-Progress May 7–12, 2011 • Vancouver, BC, Canada
+1531
+  
+to be well-trained or have any experience in video 
+editing. 
+After collecting a reasonable number of samples (i.e., 
+timestamps when workers press the SPACE key) for a 
+video clip, the Click2SMRY framework can generate a 
+video summary of any specified length based on the 
+collected samples. Assuming the video clip is comprised 
+of n non-overlapping video shots, the k samples 
+collected are denoted by t1, t2, …, tk; and the length of 
+the video summary specified by the viewer is denoted 
+by T. We generate a video summary based on the 
+following algorithm: 
+1 21: compute the histogram, , of ... , 
+2:
+3:  video length ( ) <  
+4: arg max ( ),  not  contained in 
+5: the video shot containing 
+6:
+, , k
+add
+t
+add add
+H t t t
+summary
+summary T
+t H t t summary
+shot t
+summary summary
+= ∅
+= ∀
+=
+= ∪
+while do
+7:
+addshot
+end while
+ 
+ 
+The output of the algorithm, summary, is a set of video 
+shots that comprise the video summarization result. 
+Since a video shot can be arbitrarily long, before 
+running the algorithm, we divide a video shot into 
+successive shots, each of which runs for a maximum of 
+5 seconds. 
+Experiment 
+To evaluate the effectiveness of the Click2SMRY 
+framework, we design and put its Flash-based 
+implementation online to conduct Internet experiments. 
+Subjects 
+We recruited 101 participants (63 males and 38 
+females) from Amazon Mechanical Turk. The age range 
+of the participants was 18 to 64 years old, and their 
+occupations were as follows: IT (21.8%), student 
+(17.8%), homemaker (11.9%), self-employed (9.9%), 
+business (7.9%), service (6.9%), unemployed (5.9%), 
+education (4.0%), management (3.0%), and others 
+(7.9%). 
+Materials 
+We selected three video clips as summarization sources 
+from YouTube. The clips covered three genres, namely, 
+news, sport, and commercial; and the length of each 
+video clip was 1.5–2minutes. 
+Procedure 
+The 101 MTurk workers who accepted our HIT (Human 
+Intelligence Task) were directed to our Click2SMRY 
+system. Each experiment comprise three steps: 1) read 
+the instructions, 2) watch the video and click the SPACE 
+key whenever a highlight is identified, and 3) complete 
+a demographic survey and obtain a verification code for 
+MTurk submission. When a step is finished, the next 
+step is shown automatically, so participants only need 
+to follow the instructions to complete the whole 
+experiment. 
+After reading the instructions (see Figure 1) in the step 
+one, participants were led to the main experiment (step 
+two), which involved three tasks. In each task, the 
+participants watched one of the three videos twice in 
+turn with a randomized order; and they were asked to 
+press the SPACE key whenever they identified a 
+highlight. The video highlight, as defined in the 
+instructions, can be momentary or it can span a period 
+Figure 1. The instructions 
+shown to the participants in the 
+first part of the experiment 
+Figure 1. The instructions 
+shown to the participants in the 
+first part of the experiment 
+CHI 2011 • Work-in-Progress May 7–12, 2011 • Vancouver, BC, Canada
+1533
+  
+Rating  
+To evaluate the quality of the video summaries 
+generated by Click2SMRY, we conducted a within-
+subjects study (N=81) of the participants recruited 
+from Amazon Mechanical Turk (MTurk). To ensure that 
+each MTurk worker only participated in the study once, 
+we recorded his/her IP address. We also set up a HTTP 
+cookie on each browser so that we could determine if 
+the worker had already visited our system. Moreover, 
+to ensure that the rating result was reliable, we 
+disqualified workers who submitted a wrong unique 
+verification code (the MD5 value of their IP and their 
+browser version information). Also, we discarded data 
+from workers who could not answer the following 
+question correctly: “How many videos did you watch in 
+this study?” 
+The age range of the final qualified 81 participants (53 
+males and 28 females) was 18 to 58 years, and their 
+occupations were as follows: student (25.0%), IT 
+(16.7%), self-employed (9.5%), homemaker (9.5%), 
+management (8.3%), business (8.3%), unemployed 
+(4.8%), education (3.6%), service (3.6%), and others 
+(4.8%).  
+There were also three steps in this phase: 1) read the 
+instructions, 2) watch and rate each video and the 
+corresponding summaries, and 3) complete the 
+demographic survey and obtain a verification code for 
+MTurk submission.  
+The rating procedure involved three tasks. In each task, 
+the participants watched the three videos in random 
+order, and then watched the three corresponding 
+summaries of each video in random order. The versions 
+of the summaries were “expert,” “crowdsourcing,” and 
+“baseline.” No fast forward or backward functions were 
+provided on the video player, and the title of each 
+summary only stated “Summary Version #.”  
+After completing each summary, the participants were 
+asked to rate the summary segments on a scale of 1–7 
+(where 1=very bad, 2=bad, 3=poor, 4=neutral, 
+5=reasonable, 6=good, and 7=very good) with the 
+following instruction: “Please rate the summary 
+segments that you just watched in terms of how much 
+they helped you make sense of the full video.” 
+Results and Discussion 
+Figure 3 shows the analysis of the rating results. We 
+observe that the mean score of each video summary 
+derived by crowdsourcing is significantly higher than 
+those generated by the baseline (subsampling) scheme 
+(p<.05 using the paired t-test). 
+The mean scores of the crowdsourcing-generated 
+summaries were either significantly higher (p<.01) 
+than those extracted by the experts or there was no 
+significant difference between the mean scores of the 
+two mechanisms for video #1 and video #2. In 
+contrast, the mean score of the crowdsourcing 
+summary in video #3 (commercial) was significantly 
+(p<.01) lower than that of the expert version. By 
+analyzing the video summaries, we found that the 
+commercial summary in the expert version consisted of 
+the following segments: prologue, highlight, and brand 
+mark; however, compared to the crowdsourcing version, 
+we found that only the longer highlighted segments 
+were included. This is reasonable because we only 
+asked participants to mark the “video highlights” in the 
+first experiment. Therefore, it was expected that the 
+Figure 2. The summary segments 
+highlighted in blue were generated 
+from the collected samples (i.e., the 
+timestamps when the participants 
+pressed the SPACE key) by using 
+our algorithm 
+CHI 2011 • Work-in-Progress May 7–12, 2011 • Vancouver, BC, Canada
+1535
+1↢⚳⟙⏲炷⚳ℏ䞼䨞䓇↢ⷕ⚳晃㚫嬘⟙⏲炸ġ
+ġ
+ġ
+ġ
+ġ
+䞕㛇䣦Ṍ埴䁢䘬┇䘤烉➢㕤≽ン䣦佌
+㳣≽屯妲ᷳ䭨溆ᷕ⽫ῤ役ỤỘ妰㱽!
+ġ
+ġ
+ġ
+ġ
+ġ
+ġ
+ġ
+㚵⊁㨇斄烉⎘䀋⣏⬠ġ 暣㨇ⶍ䦳⬠䲣ġ
+⥻⎵借䧙烉伭䴻↙ġ⌂⢓῁怠Ṣġ
+㳦崜⚳⭞烉ᷡ湍ġ㫸䘣䐇ġ
+↢⚳㛇攻烉ĳıĲıİıĹİıĸſĳıĲıİıĹİĲĶġ
+⟙⏲㖍㛇烉ĳıĲıİıĹİıĺġ
+䴻屣Ἦ㸸烉怩⎹枪⮾⣏⬠妰䔓ġ
+3忁㫉㚫嬘ᷕ炻⎬⺷嬘柴㕤⣂㧋䘬䣦佌䵚嶗㚵⊁炻⤪䵚嶗婾⡯ˣṌ㖻⸛⎘ˣṌ⍳䵚
+䪁ˣ䓂军㗗䵚嶗忲㇚䫱䫱炻⛯塓㍸崟᷎䅙䁰妶婾炻⮵㕤㬌柀➇䘬⎬䞼䨞⬠侭㚱㚜
+⣂䘬┇䘤ˤ!㬌⢾炻㖶⸜䘬㚫嬘炻BTPOBN!3122炻⮯㕤⎘䀋檀晬冱彎炻䓙⚳䩳檀晬
+⣏⬠屯妲䭉䎮⬠䲣䲣ᷣả䌳⬠Ṗ⛐㚫嬘㚨⼴娛䳘⛘枸⏲⎘䀋嬘㚫䳘枭ᷕ句ⷽˤ!
+!
+⽫⼿冯⺢嬘烉!
+㛔Ṣ⎋柕⟙⏲婾㔯ᷣ天⮰㲐㕤妰䬿ᾳ橼㕤䣦佌ᷕ䘬慵天䦳⹎炻晾䃞㬌嬘柴⶚朆ᶨ
+ℐ㕘䘬嬘柴炻Ữ㬌䭯婾㔯ẍᶨᾳ㕘朊⎹㍊妶啱䓙䞕㛇ᾳ橼䣦Ṍ埴䁢㍐Ộ℞慵天⿏
+䘬⎗傥炻⎴㗪`㬌㕡㱽ὧ⣏ⷭ旵Ỷ㖑㛇㕡㱽䘬忳䬿墯暄⹎ˤ⛐㚫嬘䘤堐䳸㜇⼴炻
+䌚⼿⛐⟜⣂ỵ䘬䞼䨞⬠侭䅙䁰䘤⓷ˤ䘤⓷䘬忶䦳䔞ᷕ炻㛔幓ḇ䓙德忶⎬⺷ᶵ⎴柀
+➇䞼䨞侭䘬奨溆Ἦ慵㕘⮑夾冒⶙㇨㍸↢䘬㕡㱽炻㔜ᾳ㳩䦳Ẍㆹ䌚䙲列⣂ˤ!
+!
+㛔䭯婾㔯䘬㊯⮶侩ⷓ炻⎘䀋⣏⬠屯妲ⶍ䦳⬠䲣㜿⬰⽟㔁㌰炻ᶨ⎴⍫冯㬌㫉㚫嬘 !ˤ
+⛐ㆹ䘤堐婾㔯䳸㜇⼴炻㜿㔁㌰昌Ḯ晐⌛冯ㆹ㍊妶㛒Ἦ⎗傥䞼䨞㕡⎹炻䓂军ḇ溆↢
+姙⣂斄㕤⟙⏲⎗㓡忚ᷳ嗽ˤ!ᶵ⁭⤪㬌炻冯㜿㔁㌰ℙ⎴修倥℞Ṿ⟙⏲㗪炻㍸↢姙
+⣂ㆹ㇨㰺㚱侫ㄖ䘬⓷柴冯朊⎹䓂军⎗傥䘬妋㰢㕡⺷ˤ!
+!
+德忶冯㚫㨇㚫炻⼿ẍ修倥⚳晃䞼䨞侭䘬゛㱽⢾炻⇢㽨冯攳㉻ㆹ㚱㚜⣂⃫䘬夾慶冯
+゛㱽ˤᶵ⁭⤪㬌炻⛐冯⚳⢾⬠侭⼤㬌娵嬀冯Ṍ㳩゛㱽忶⼴炻㚜㚱㨇㚫冯⚳⢾㚱⼴
+临⎰ἄ䘬⎗傥ˤ!
+!
+㓄⚆屯㕁烉!
+Dpogfsfodf!Qsphsbn!y!2-!Dpogfsfodf!Qspdffejoh!DE!y!2!
+entities. Hence, it is difficult to answer questions like “Is the
+network growing or shrinking?” and “Is the speed of change
+fast or slow?” based on only static information about social
+networks.
+To capture dynamic information, it has been proposed that
+each vertex and edge should be time-stamped the first time it
+appears in a social network. As mentioned earlier, networks
+that provide such temporal information are called dynamic
+social networks. In this work, a dynamic social network is
+defined as a directed graph G(V,E), where V is a set of
+vertices and E is a set of edges. The time-stamp of a link from
+vertex i to vertex j is denoted as τij . We use τi to denote the
+time-stamp of a vertex i, i.e. the time it joined the network.
+A pair of vertices i and j are said to be bi-directionally
+linked and denoted as i ↔ j if and only if there exist
+two opposite-directional edges between i and j. We use Cij
+to denote the channel-establishment time for a pair of bi-
+directionally linked vertices i and j. That is, Cij represents
+the time the bidirectional edge was established:
+Cij = max
+i↔j
+{τij , τji}
+We use BN (i) to denote the bidirectional-linked neighbor-
+hood of vertex i. BN is defined as follows:
+BN (i) = {j ∈ V (G)|i↔ j}
+III. A FAST ALGORITHM FOR ESTIMATING
+VERTEX-BETWEENNESS
+A. Previous Work on Vertex-Betweenness
+Vertex-betweenness is a kind of centrality index that ranks
+the vertices in a network according to their connectivity. It is
+usually regarded as a measurement to quantify the importance
+of a vertex in terms of it connections to other vertices in the
+network. Following the formal definition proposed by Freeman
+[1], let pij denote the number of shortest paths from vertex i
+to vertex j, and let pijk denote the number of shortest paths
+from vertex i to vertex j that pass through the intermediary
+vertex k. The betweenness centrality score is normalized by
+dividing the number of pairs of vertices that do not include k
+as follows:
+bt(k) =
+1
+(n− 1)(n− 2)
+∑
+i
+∑
+j
+pijk
+pij
+,
+where n is the number of vertices in the network.
+B. Limitations
+Since calculating the vertex-betweenness values of all ver-
+tices in a graph involves finding all-pairs of shortest paths,
+the operation generally takes Θ(|V |3) time with the Floyd-
+Warshall algorithm. On a sparse graph, it is more efficient to
+use Johnson’s algorithm, which takes O(|V |2 log |V |+|V ||E|)
+time. For a unweighted graph, Brandes [2] proposed an
+algorithm that requires O(|V ||E|). However, it is still com-
+putationally intractable for real-world social networks, which
+usually consist of millions of nodes and edges.
+C. Using local dynamic features to estimate vertex-
+betweenness
+We proposed a fast algorithm for estimating vertex-
+betweenness. Intuitively, the evolution of a vertex can affect
+its connectivity in a dynamic social network. We believe it
+is reasonable to consider the dynamics between a vertex and
+its neighbors as clues to infer the vertex’s global vertex-
+betweenness value. Therefore, we design a regression model
+based on the proposed local descriptors to predict such values.
+Basically, the local descriptor of a vertex tires to collect
+local dynamic information about the vertex. Our intuition is
+that vertices that can attract new comers in every time pe-
+riod have greater potential to achieve high-betweeness scores.
+Moreover, a vertex that plays the role of local mediator is
+more likely to possess high betweenness values. Therefore,
+we propose two local descriptors: attraction and dynamic
+transitivity. Attraction captures a vertex’s ability to attract new
+vertices to join the network; and dynamic transitivity indicates
+the willingness of a node to introduce their acquaintances to
+each other. Formally, local descriptors are defined as follows:
+Definition 1 (Attraction). Attraction shows how capable a
+vertex is in terms of attracting fresh members, and the fresh
+member is defined as the vertex joining the networks for no
+more than i days. The indicator of v is the number of bi-
+directionally linked neighbors who are fresh. We denote the
+attraction to i-fresh vertices of v as Ni(v), and calculate it
+by
+Ni(v) = |{u ∈ BN (v)|Cuv ≤ τu + i}|.
+If i is set to infinite, the attraction value would be equivalent
+to the degree value. Although the degree value captures the
+connectivity of a vertex, it does not indicate how well a vertex
+can attract new comers.
+Definition 2 (Dynamic Transitivity). Given three vertices v, u,
+and w, linked bi-directionally in a pairwise manner, if Cvu and
+Cvw both appear earlier than Cuw, then pair (u,w) is regarded
+as being introduced by vertex v. The dynamic transitivity of
+v, T (v), is defined as the number of pairs introduced by it
+normalized by its clustering coefficient [6] denoted as cc
+T (v) = |{(x ∈ BN (v), y ∈ BN (v))|Cxy ≥ max{Cvx, Cvy}}|
+cc(v)
+,
+where cc(v) = 2|{euw|euv, ewv, euw∈ E(G)}|deg(v)· (deg(v)−1) . The term deg(v)
+equals to the cardinality of {x|x→ v ∨ x← v}.
+Note the major difference between the numerator and de-
+nominator is that the former considers the order of appearance
+or edges, but the latter does not, as shown by the example in
+Figure 1. The channel-establishment time between u and w,
+Cuw = 6, which occurs later than Cvu = 3 and Cvw = 1.
+Moreover, Cmw = 5 occurs after Cvm = 3 and Cvw = 1;
+and the clustering coefficient of v is 2/3. Thus, the dynamic
+transitivity of v, T (v) is equivalent to 3, since the two existing
+pairs, (u,w) and (m,w), are regarded as being introduced by
+v.
+Note that the usage of cc as the normalization factor
+does have its empirical justification. From an experiment
+we conducted, we find a negative correlation between the
+vertex-betweenness scores and the clustering coefficients of
+the vertices, given similar out-degrees. Figures 2 shows that
+the correlation declines from −0.01 to −0.84 as the vertices
+We exploit a linear regression model to incorporate these
+four variables into our prediction model for betweeness cen-
+trality:
+bt(v) = w1 · od(v) + w2 · id(v) + w3 · bd(v) + w4 · cc(v)
+C. Evaluation
+To roughly see the goodness-of-fit, we compare the true
+betweenness values with the values predicted by the baseline
+model and the proposed model respectively in Figure 4. Note
+that Figure 4 is a log-log plot due to the skewness of vertex-
+betweeness distribution. The results show that for the high
+vertex-betweenness vertices, our model generally provides a
+better predicted values than the baseline model does.
+Next, we compare the goodness-of-fit of the baseline model
+and the proposed model. In addition, we believe the ranks
+of the centrality values are important for applications in
+online game domains. Hence, we also evaluate the persistence
+of the ranks in the vertex-betweenness values via Kendall’s
+coefficient and Spearman’s coefficient.
+1) Goodness-of-fit: First, we evaluate the goodness-of-fit
+of our two models. The coefficient of determination, R2 is the
+prediction of future outcomes on the basis of given informa-
+tion. R2 provides a measure of how well the outcomes are
+likely to be predicted by the model. We assess R2 shrinkage
+using 10-fold cross validation and plot the results in Figure 6.
+On all eight chat activity networks, the proposed model
+performs significantly better in terms of the goodness-of-fit
+than the baseline model. Our model achieves R2 scores as
+high as 0.93, and the average is 0.85.
+Goodness of fit
+10−fold cross−validation R−square
+0 0.2 0.4 0.6 0.8 1
+0.575
+0.734
+0.718
+0.837
+0.741
+0.884
+0.717
+0.833
+0.717
+0.842
+0.706
+0.850
+0.695
+0.857
+0.741
+0.927
+Wolf
+Red
+Merm
+aid
+Gree
+n
+Doll
+Cand
+y
+Ande
+rson
+Alice
+Baseline
+Proposed
+Fig. 6. Comparison of the baseline linear model and the proposed linear
+model
+2) Rank Persistence: To evaluate the number of the highest
+vertex-betweenness being correctly estimated, we inspect the
+overlap ratio between the top predicted betweenness vertices
+and top true betweenness vertices. The estimation exactly cap-
+tures top n% high vertex-betweenness vertices if the overlap
+ratio of top n% set equals to 1. Table I shows that our proposed
+model performs better than the baseline model in terms of the
+capability to capture the highest vertex-betweenness vertices.
+Normally our approximation reaches the range from 70% to
+90% in overlap.
+The overlap ratio can expose the number of captured the
+highest vertex-betweenness vertices, but does not show us how
+well the rank persist. We therefore use Spearman’s coefficient
+ρ and Kendall’s coefficient τ to evaluate the rank persistence.
+Spearman’s coefficient is often thought of as being the Pearson
+correlation coefficient between ranked variables. The n raw
+scores are first converted to ranks xi, yi, and the differences
+di = xi − yi between the ranks of each observation on the
+two variables are calculated. Then, coefficient ρ is given by
+ρ = 1− 6
+∑
+d2i
+n(n2 − 1) .
+Kendall’s coefficient is a non-parametric statistic used to
+measure the association or statistical dependence between two
+measured quantities. More specifically, it is a measure of rank
+correlation. The coefficient is defined as follows:
+τ =
+nc − nd
+1
+2n(n− 1)
+,
+where nc is the number of concordant pairs in the data set
+and nd is the number of discordant pairs. The denominator
+can be interpreted as the total number of pairs. A high τ -
+value means that most pairs are concordant, indicating that
+the two rankings are consistent.
+Generally, users care more about vertices with higher vertex-
+betweenness values. Therefore, we investigate whether the
+order of vertices with the top 0.1%, 1%, 5%, 10%, 20%,
+and 30% vertex-betweenness values are consistent with their
+estimated order in Figure 5. In our model, the Spearman’s
+coefficients and Kendall’s coefficient between the original
+order and the estimated order are generally acceptable, and
+much better than the baseline model.
+V. ONLINE-GAME SOCIAL NETWORK ANALYSIS
+In recent years, researchers have shown increasing interest
+in online social networks such as MySpace, Flickr, Twitter
+and other large-scale online communities. In this paper, we
+focus on networks extracted from massively multiplayer online
+games. Worldwide, the number of active subscribers to such
+games increased dramatically from fewer than 10, 000 in 1998
+to more than 16 million in 2008.
+A. Social Interactions in MMORPGs
+Massively multi-player online role-playing games
+(MMORPGs) are a genre of computer role-playing games in
+which a large number of players interact with one another
+in a virtual game world. In this virtual game world, each
+player assumes the role of a character and controls many of
+its actions.
+According to [8], the social interactions of players are the
+phenomena that make virtual worlds “sticky” and it is believed
+that feature enables game worlds to retain long-term players.
+Most MMORPGs exploit players’ social skills and provide
+various mechanisms to support players’ interactions. Social
+interactions in MMORPGs are typically integrated with the
+mechanisms of the games. Through the interactions, players
+may form relationships, varying from simply being a member
+of a cohesive team, to friendship, or even romance.
+Among the numerous interactive mechanisms, text con-
+versation is the most widely used. By sending instant text-
+messages, players can exchange ideas and share information
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+Top 30%
+Top 20%
+Top 10%
+Top 5%
+Top 1%
+Top 0.1%
+0.0 0.2 0.4 0.6 0.8 1.0
+Realm Anderson
+coefficient
+(a) Anderson
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+Top 30%
+Top 20%
+Top 10%
+Top 5%
+Top 1%
+Top 0.1%
+0.0 0.2 0.4 0.6 0.8 1.0
+Realm Green
+coefficient
+(b) Green
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+Top 30%
+Top 20%
+Top 10%
+Top 5%
+Top 1%
+Top 0.1%
+0.0 0.2 0.4 0.6 0.8 1.0
+Realm Red
+coefficient
+(c) Red
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+base−spearmanproposed−spearman
+base−kendallproposed−kendall
+Top 30%
+Top 20%
+Top 10%
+Top 5%
+Top 1%
+Top 0.1%
+0.0 0.2 0.4 0.6 0.8 1.0
+Realm Wolf
+coefficient
+(d) Wolf
+Fig. 5. To evaluate the rank persistence of the models, we use ◦ and • to identify Spearman’s coefficient for the baseline model and the proposed model
+respectively; and + and × to identify Kendall’s coefficient for the baseline model and the proposed model respectively
+Male
+Female
+Population over Gender
+co
+u
+n
+t
+0
+50
+00
+0
+10
+00
+00
+15
+00
+00
+20
+00
+00
+Alice Ande
+rson Cand
+y Doll Gree
+n
+Merm
+aid Red Wolf
+Human
+Elf
+Dwarf
+Population over Race
+co
+u
+n
+t
+0
+50
+00
+0
+10
+00
+00
+15
+00
+00
+Alice Ande
+rson Cand
+y Doll Gree
+n
+Merm
+aid Red Wolf
+Fig. 7. A snapshot of in-game demographics in terms of gender and race
+As a result, high-level characters can build a network of
+relationships more easily than low level characters.
+Figure 8 shows that the level distributions in all 8 realms
+follow a power-law distribution with an exponential coefficient
+range of 1.50 to 1.54. This finding corresponds with the Pareto
+principle (also known as the 80-20 rule), which holds in the
+virtual game world as well as in the real world.
+C. Topology of a Chat Activity Network
+Table II summarizes the topological characteristics of the
+chat activity networks in the eight realms of Fairyland Online.
+The size of the networks ranges from 32, 690 to 101, 150.
+The distributions of the in-degrees, out-degrees, and bi-degrees
+follow a power-law distribution with α equal to 1.37, 1.40,
+and 1.40 respectively. The mean clustering coefficients of the
+networks are small. The size of the giant strongly connected
+components (gscc) ranges from 66.41% to 79.24%, and the
+diameter ranges from 11 to 14.
+1) Degree distribution: We begin with the degree distri-
+bution in MMORPG social networks. Because chatting is a
+directional edge from one entity to another, the degree of
+vertices can be classified into two categories: in-degree and
+out-degree. For a vertex v, we denote the vertices linked to v
+as in-degree neighbors and the vertices from v as out-degree
+Alice
+level
+co
+u
+n
+t
+0 20 40 60 80
+0
+10
+00
+0
+30
+00
+0
+Anderson
+level
+co
+u
+n
+t
+0 20 40 60 80
+0
+40
+00
+0
+80
+00
+0
+12
+00
+00
+Candy
+level
+co
+u
+n
+t
+0 20 40 60 80
+0
+20
+00
+0
+60
+00
+0
+Doll
+level
+co
+u
+n
+t
+0 20 40 60 80
+0
+20
+00
+0
+40
+00
+0
+60
+00
+0
+Green
+level
+co
+u
+n
+t
+0 20 40 60 800
+e+
+00
+4e
++0
+4
+8e
++0
+4
+Mermaid
+level
+co
+u
+n
+t
+0 20 40 60 80
+0
+20
+00
+0
+40
+00
+0
+60
+00
+0
+Red
+level
+co
+u
+n
+t
+0 20 40 60 80
+0
+20
+00
+0
+40
+00
+0
+60
+00
+0
+80
+00
+0
+Wolf
+level
+co
+u
+n
+t
+0 20 40 60 800
+e+
+00
+4e
++0
+4
+8e
++0
+4
+Fig. 8. The distributions of levels in eight realms of Fairyland Online
+neighbors. These two kinds of degrees represent different types
+of activity; the out-degree of a vertex represent how often
+an individual’s contacts other players, while the in-degree
+represents how frequently the individual is contacted by other
+players.
+Figure 9(a) shows that the out-degree distributions of the
+four largest chat activity networks follow a power law distri-
+bution; and Figure 9(b) shows that the in-degree distributions
+are also power law distributions. The in-degree and out-degree
+distributions look similar, which implies that active individuals
+coincide with popularity distribution in such instant text-
+conversation.
+2) Clustering coefficient: A remarkable property of most
+real-world scale-free networks is the high clustering coefficient
+of their vertices. The clustering coefficient of a vertex in a
+graph quantifies how close its neighbors are to being a clique
+(a complete graph). The measurement was introduced by Watts
+and Strogatz [6]. The clustering coefficient for undirected
+graphs is defined as follows:
+Ci =
+2|{ejk}|
+ki(ki − 1) ,where eij , eik, ejk ∈ E(G).
+In this work, we convert chat activity networks into undi-
+rected graphs to calculate the clustering coefficients. For
+the four largest realms: Anderson, Green, Red, and Wolf,
+the mean clustering coefficients are 0.10567919, 0.10201802,
+1 5 50 500 5000
+0.
+01
+0.
+05
+0.
+20
+Realm Anderson
+out−degree
+cl
+us
+te
+rin
+g 
+co
+ef
+fic
+ie
+nt
+1 5 50 500 5000
+0.
+01
+0.
+05
+0.
+20
+Realm Green
+out−degree
+cl
+us
+te
+rin
+g 
+co
+ef
+fic
+ie
+nt
+1 5 50 500 5000
+0.
+01
+0.
+05
+0.
+20
+Realm Red
+out−degree
+cl
+us
+te
+rin
+g 
+co
+ef
+fic
+ie
+nt
+1 5 50 500 5000
+0.
+01
+0.
+05
+0.
+20
+Realm Wolf
+out−degree
+cl
+us
+te
+rin
+g 
+co
+ef
+fic
+ie
+nt
+Fig. 11. Clustering coefficient dependence of degree in the four largest
+realms: Anderson, Green, Red, and Wolf
+also made a series of recommendations for the design of
+social activities in MMORPGs. Chen et al. [17] found that
+participants who have a higher degree of social interaction tend
+to play much longer, and players who are closer in network
+topology tend to team up for longer periods. Moreover, to
+investigate the evolution of social communities in online
+games, Ducheneaut et al. [18] used longitudinal data collected
+directly from the popular online game World of Warcraft to
+identify the grouping patterns of players.
+To identify influential players, Kirman [19] analyzed the
+online game called “Familiar” to identify Hardcore players.
+Among the various classifications in [20], the players can
+be classified into two classes: Hardcore players and Casual
+players. Kirman classified the players according to the number
+of in-game activities. However, the data set only involved 157
+active users and recorded 1546 distinct interactions between
+players. To our knowledge, this paper is the first paper that
+reports studies on the influential player analysis for large
+online game social networks. We were able to identify high
+betweenness nodes in networks of this large scale thanks to
+the estimation method we have designed.
+VII. CONCLUSION
+In this paper, we discuss how that dynamic information
+about degree and transitivity can help us understand the
+evolution of social networks. Moreover, based on the local
+dynamic information, we have proposed a fast and accurate
+method for estimating vertex-betweenness values in a real-
+world application; the method identifies influential individuals
+in MMORPGs. To shed more light on the social interactions
+between MMORPG players, we examined the demograph-
+ics of Fairyland Online players and identified the structural
+characteristics of chat activity networks based on private text-
+conversations.
+Compared to the the Brandes algorithm, our estimation
+requires O(b2|V |) time, where b is the average degree in
+the network. In Fairyland Online, the average value of b is
+approximately 50 while the average value of |E| is 1, 265, 761.
+In other words, the proposed model is 506 times faster in
+terms of time complexity. We evaluate the goodness-of-fit by
+shrinkage R2 using 10-fold cross validation, and the rank
+persistence by Spearman’s coefficient and Kendall’s coefficient
+with promising results.
+VIII. ACKNOWLEDGEMENT
+This work was supported in part by Taiwan E-learning
+and Digital Archives Programs (TELDAP) sponsored by the
+National Science Council of Taiwan under the grants NSC99-
+2631-H-001-018 and NSC99-2631-H-001-020. It was also
+supported in part by the National Science Council of Taiwan
+under the grants NSC98-2221-E-001-017.
+REFERENCES
+[1] L. C. Freeman, “A set of measures of centrality based
+on betweenness,” Sociometry, vol. 40, no. 1, pp. 35–41,
+March 1977. [Online]. Available: http://links.jstor.org/sici?sici=0038-
+0431%28197703%2940%3A1%3C35%3AASOMOC%3E2.0.CO%3B2-
+H
+[2] U. Brandes, “A faster algorithm for betweenness centrality,” Journal of
+Mathematical Sociology, vol. 25, pp. 163–177, 2001.
+[3] D. Liben-Nowell and J. Kleinberg, “The link prediction problem for
+social networks,” in Proceedings of the twelfth international conference
+on Information and knowledge management. ACM New York, NY,
+USA, 2003, pp. 556–559.
+[4] M. Newman, “The structure and function of complex networks,” Arxiv
+preprint cond-mat/0303516, 2003.
+[5] B. Woodcock, “MMOGCHART.COM,” http://www.mmogchart.com/.
+[6] D. Watts and S. Strogatz, “Collective dynamics of small-worldnetworks,”
+Nature, vol. 393, no. 6684, pp. 440–442, 1998.
+[7] T. Schank and D. Wagner, “Approximating clustering coefficient and
+transitivity,” Journal of Graph Algorithms and Applications, vol. 9, no. 2,
+pp. 265–275, 2005.
+[8] R. Bartle, Designing virtual worlds. New Riders Games, 2003.
+[9] M. Newman, “A measure of betweenness centrality based on random
+walks,” Social networks, vol. 27, no. 1, pp. 39–54, 2005.
+[10] A. Barrat, M. Barthelemy, R. Pastor-Satorras, and A. Vespignani, “The
+architecture of complex weighted networks,” Proceedings of the Na-
+tional Academy of Sciences, vol. 101, no. 11, p. 3747, 2004.
+[11] D. Lusseau and M. Newman, “Identifying the role that animals play in
+their social networks,” Proceedings: Biological Sciences, vol. 271, pp.
+477–481, 2004.
+[12] P. Holme, B. Kim, C. Yoon, and S. Han, “Attack vulnerability of
+complex networks,” Physical Review E, vol. 65, no. 5, p. 56109, 2002.
+[13] U. Brandes, “On variants of shortest-path betweenness centrality and
+their generic computation,” Social Networks, vol. 30, no. 2, pp. 136–
+145, 2008.
+[14] D. Bader, S. Kintali, K. Madduri, and M. Mihail, “Approximating
+betweenness centrality,” Algorithms and Models for the Web-Graph, pp.
+124–137, 2007.
+[15] M. Jakobsson and T. Taylor, “The Sopranos meets EverQuest: social
+networking in massively multiplayer online games,” in Proceedings
+of the 2003 Digital Arts and Culture (DAC) conference, Melbourne,
+Australia, 2003, pp. 81–90.
+[16] N. Ducheneaut and R. Moore, “The social side of gaming: a study
+of interaction patterns in a massively multiplayer online game,” in
+Proceedings of the 2004 ACM conference on Computer supported
+cooperative work. ACM New York, NY, USA, 2004, pp. 360–369.
+[17] K.-T. Chen and C.-L. Lei, “Network game design: Hints and implica-
+tions of player interaction,” in Proceedings of ACM NetGames 2006,
+Singapore, Oct 2006.
+[18] N. Ducheneaut, N. Yee, E. Nickell, and R. Moore, “Alone together?:
+exploring the social dynamics of massively multiplayer online games,” in
+Proceedings of the SIGCHI conference on Human Factors in computing
+systems. ACM, 2006, p. 416.
+[19] B. Kirman and S. Lawson, “Hardcore Classification: Identifying Play
+Styles in Social Games Using Network Analysis,” in Proceedings of the
+8th International Conference on Entertainment Computing. Springer,
+2009, p. 251.
+[20] R. Bartle, “Hearts, clubs, diamonds, spades: Players who suit MUDs,”
+Journal of MUD research, vol. 1, no. 1, p. 19, 1996.
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：陳昇瑋 計畫編號：99-2221-E-001-015- 
+計畫名稱：萬人網路虛擬環境的通用性覆疊網路 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 1 1 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 6 6 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

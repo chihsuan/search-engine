@@ -1,0 +1,1907 @@
+ 2 
+Unit ; CSHU)..等等，來完成執行緒服務機制( Spawn / Switch / Synchronization 
+/ Kill )。 
+(3) 載入及儲存單元(Load Store Unit; LSU)： 
+        由於不同 pU執行不同執行緒，且藉由此結構來存取共用記憶體，假若
+Load Request 的資料存在於此結構中，則可降低存取共用記憶體延遲
+(Latency)時間，且 Load Return Data 亦須藉由 LSU來回傳資料至所屬的 pU
+中，以避免執行緒資料混亂情況。 
+        在本架構之執行緒執行到儲存(Store)指令時，可能會有兩種不同的需
+求，一為同步需求，另一為儲存資料的需求，原因是，這兩種需求皆會有資
+料相依(Read After Write ; RAW)的情況，因此同步需求可藉由 store指令來完
+成，以避免錯誤的資料同步情形發生，然而 LSU 必須檢查記憶體的目的位
+元址，是否為執行緒內容的記憶體區間，若是，則該 Store Request 為同步需
+求。 
+(4) 記憶體管理單元(Memory Management Unit ; MMU)： 
+        此單元主要是由 Shared Level 2 Instruction & Data Caches 所組成提供指
+令及資料的存取，在存取共享快取之前必須先搜尋轉換搜尋緩衝器
+(Translation Look-aside Buffer ; TLB)將虛擬位址轉換成實體位址，以減少至
+分頁對應表(Page Mapping Table ; PMT)搜尋的機會，加快指令或資料的存取
+速度。 
+        當指令或資料在 L2 Cache發生遺失，則必須至 Main Memory存取，而
+在存取 Main Memory 之前，其指令或資料的 Request 都必須經由 Main 
+Memory Interface 仲裁，使正確地存取主記憶體。 
+Multi-Thread Service Unit
+( MSU )
+Load Store Unit 
+(LSU)
+Memory Management Unit 
+( MMU)
+Processing Unit 
+(PU)
+Multi-Thread Request
+Shared L2 D-Cache Access
+Context Switch
+Load / Store Request
+Main Memory
+Sy
+nch
+ron
+iza
+tion
+Shared L2 I-Cache Access
+Load / Store
+BUS Snooping
+DSC Synchronization
+ 
+圖 1整體架構區塊圖 
+ 4 
+number name illustration 
+10 TAC_MS_PU 執行緒內容從 MSU 轉換至 PU  (Context & Thread ID) 。 
+11 InQ_Thread 
+從Hardware Scheduler抽取出來的執行緒資訊(Thread ID , Priority , Start 
+PC ) 。 
+12 Spawn_Comp 
+Spawn Operation 完成，需要將被建立的執行緒 ID 回傳給建立者執行緒                          
+(RS Pointer , Thread ID , Data (Spawned Thread ID))。 
+13 Switch_Info 
+Switch Operation 除了將 MSU 中最高優先權的執行緒搬移置 PU，還需
+初始化其指令等資訊，因此必須透過此 Parkage 將該執行緒的(Thread，
+Priority，SPC)傳送至 PU 。 
+表 2 MSU 輸出說明 
+number name illustration 
+14 LR_DA pU 的 Load Request 之回傳資料( Load Return Data & Address ) 。 
+15 Sync_R 
+經由位址比較之後，發現到該位址為 Active Frame 區段，因此將該資料傳至 MSU 
+之 AF Cache ，因此需要發出同步要求給 MSU (Thread ID & Data) 。 
+16 L_A LSU 發出 Load Request 至 MMU 的 L2 D-Cache (Load address & Thread ID) 。 
+17 S_DA 
+LSU 發出 Store Request 至 MMU 的 L2 D-Cache (Store Address & Data & Thread 
+ID) 。 
+表 3 LSU 輸出說明 
+number name illustration 
+18 ICI_I 
+回傳執行緒出始化指令至 PU (L1 I-Cache Line Index (log2(4n) bits) &     
+Instructions) 。 
+19 MM_LR_DA Load Data 從 MMU 回傳至 LSU (Load Return Data & Thread ID) 。 
+20 S_Comp 用來通知 LSU 之 Store Wait Buffer Store Complete (Store Address) 。 
+21 Load_Store Main Memory Load / Store Request 。 
+22 Load_Return Main Memory Load Return Instruction / Data 。 
+表 4 MMU輸出說明 
+ 處理單元 (Processing Unit ; PU) 
+    由於本架構採用的執行緒層級平行（Thread Level Parallelism ; TLP)設計種
+類為單晶片多處理器(Chip Multi-Processor)，因此本處理單元(Processing Unit ; PU)
+是由多個處理器單元(Processor Unit ; pU)所組成，使能夠不同執行緒執行於不同
+處理器上，其中還包含預先擷取結構(Pre-fetch Architecture)，來預先擷取執行緒
+於此結構中，以避免執行緒內容交換所造成的延遲，此外每個處理器單元還配有
+一分散式同步控制器(DSC)來完成拴鎖(Lock)及柵欄(Barrier)同步機制。 
+ 
+ 6 
+因此 L1 I-Cache Table 及執行緒資訊表(Thread Information Table ; TIT)的 entry必
+須為 4n 組，多出的 2n組是為了提供在 FU中的執行緒，能夠預先擷取下個指令
+快取列(Instruction Cache Line)，因此 FS Entry個數必須為 2n，但可能 2n個在 FU
+中的執行緒皆不需要預先擷取下個 Instruction Cache Line，因此在 TIT中的最大
+可能執行緒個數為 4n，除了在 FU中 2n 個執行緒外，另外 2n 個執行緒必須藉由
+擷取排程器(Fetch Scheduler ; FS)來挑選出最高優先權的執行緒，待 FU釋放時，
+最高優先權的執行緒能夠立即取得 FU及 RS 資源。 
+ 
+圖 5 預先擷取結構 
+ 偵測區塊(Detect Block ; DB) 
+    偵測區塊(Detect Block ; DB)用來偵測從 MMU 所傳送進入 L1 Instruction 
+Cache的指令是否有 Jump、Branch或Wait 指令，若沒有上述三種指令，則需預
+先擷取該執行緒的下個 Instruction Cache Line，原因是，Jump 及 Branch 會影響
+程式計數器(Program Counter)值，而 wait 指令(wait $reg)會使得該執行緒被交換
+出 PU 或者執行結束(wait 0)，因此不預先擷取下個執行緒的 Instruction Cache 
+Line。 
+   DB是由下述結構所組成，如下 6圖所示： 
+(1) Mark Block : 用來遮罩(Mark)指令，以取出指令的 Operation Code，其中 Cache 
+Index，用來提供 L1 I-Cache Table找尋相對應的 entry。 
+(2) Wait / Branch Detector : 偵測指令的Operation Code是否為Branch / Jump、Wait 
+ 
+DB :
+Detect 
+Block
+MMU
+ICI_I
+L1 I-Cache :
+L1 Instruction Cache
+FU :
+Fetch Units
+TIT :
+Thread Information 
+Table
+FS :
+Fetch
+Scheduler
+DS :
+Decode
+Scheduler
+MSU
+TID_TI
+RS :
+Register
+Sets
+MMU
+ICI_IADD
+MSU
+InQ_Thread
+MSU
+TAC_MS_PU
+Child pU Private I-Cache
+( Read Instruction )
+Parent pU Decoder & Commit
+( Register Sets Pointer ) 
+Parent pU Fetch Queue
+(Instruction)
+Parent pU Branch Unit
+( PC & pU numbers )
+Parent pU
+Decode & 
+Commit
+Parent pU Decoder
+( Switch / Wait / Kill) 
+Instruction Fetch
+Fetch Scheduler 
+(Instruction Invalid)
+Decode Scheduler 
+(Instruction Dispatch)
+Context Switch Out
+Context Switch In 
+& Switch 
+Information Set
+Initialize
+Instruction Valid
+Free UP
+MSU
+HS_Extract
+Hardware Scheduler Extract
+Parent pU Decoder / DSC 
+(pU numbers & Control )
+LSU 
+MT_Comm
+MSU
+Spawn_Comp
+MSU
+TAC_PU_MS
+MSU
+Switch_Info
+Suspend / Resume
+Transfer Out / Kill
+ 8 
+(1) State (2 bit): Instruction Cache Line 狀態，如下所述: 
+     (a) NONE ( 00 ) ：尚未有執行緒佔用指令區塊。 
+     (b) INQ   ( 01 ) ：執行緒進入 Fetch Scheduler。 
+     (c) NEXT  ( 10 ) ：預先擷取的執行緒指令區塊。 
+     (d) READY( 11 ) ： 指令備妥 L1 I-Cache。 
+(2) Thread ID(16 bits)：標示該 Cache Line 屬於哪一個執行緒。 
+(3) Complete Flag (1 bit) : 標示該指令區塊是否擷取完畢或者有無分支指令及 
+   wait $reg指令。     
+     (a) 0 : 不需預先擷取下個 Cache Line 
+     (b) 1 : 需預先擷取下個 Cache Line 
+(4) TAG (25 bits) : 用來比對 TAG以得知該指令是否存在於 L1 I-Cache。 
+(5) Cache Line Index(log2(4n) bits) : 用來索引該指令存於哪一個 Cache Line。 
+ 
+Complete & Instruction 
+Valid Flag Set Interface
+Detect 
+Block
+Complete flag &
+Cache Line Index
+MSU
+InQ_Thread
+Thread INQ 
+Interface
+Thread ID Cache Line IndexTAGComplete FlagState
+Fetch Units / 
+Child pU
+Private I-Queue
+MMU
+ICI_IADD
+Thread ID 
+& Start PC 
+PCs
+PCs & I-Addrs
+(Hit)
+L1 I-Cache
+PC & I-Cache 
+Index     
+(Initialization)
+Instruction Invalid 
+Interface
+TIT
+Thread IDs 
+(Miss)
+Instruction Valid 
+Interface
+Thread ID 
+(Valid)
+TIT
+Instruction Fetch 
+Interface
+Free Up 
+Interface
+TIT
+Thread ID
+PU
+Switch_Info
+Switch 
+Information 
+Interface
+Thread ID 
+& Start PC 
+ 
+圖 8 L1 I-Cache Table 
+ L1 I-Cache :  
+    此結構一共具有 4n組 Cache Line，提供正在執行及預備執行的執行緒所需，
+每一個 Cache Line 能夠儲存多道指令，如下圖 9所示。 ( n：Processor Unit 個數)  
+ 10 
+pU
+Fetch Queue  
+Instruction
+L1 I-Cache 
+Table
+PC
+L1 I-Cache
+Instruction
+Thread ID & pU Number 
+(Instruction Dispatch)
+TIT
+Branch Unit
+Branch PC & pU numbers
+Fetch Units
+TITThread ID & SPC 
+(Instruction Invalid)
+TIT
+Thread ID (Instruction Valid)
+Thread ID (Free Up FU) TIT
+DSC Decoder
+pU number & Control
+LSU 
+MT_CommCommand & Thread ID & pU number
+MSU
+Spawn_Comp
+Thread ID 
+Parent pU Decoder
+ 
+圖 10 Fetch Unit 
+    擷取單元(Fetch Units)需要負責擷取不同執行緒的指令，它必須具有 2n 組
+Instruction Fetch Interface，來提供指令擷取及程式計數(PC)所需，由於不同執行
+緒同時存在於此結構中，因此必須要有 Thread ID 來分辨該 Fetch Unit Entry屬於
+哪一個執行緒，且當執行緒取得處理器中執行時，必須要有 pU number提供指令
+路由所需 ， Fetch Units 的細部結構如下圖 11所示， Fetch Unit 紀錄的資訊如
+下所述： 
+(1) State : 
+   (a) Non Used (00) : 沒有執行緒佔用此 Fetch Unit。 
+   (b) Invalid (01) : 執行緒佔用 Fetch Unit ，但指令尚未備妥。 
+   (c) Valid (10) : 執行緒指令備妥，此狀態亦可用於暫停分派指令至 pU。 
+   (d) Run (11) : 此執行緒取得 pU，開始擷取並 Dispatch指令至 pU執行。 
+(2) Program Counter : 目前的指令位元址。 
+(3) Instruction : 緩衝從 L1 I-Cache擷取到的指令。 
+(4) Thread ID , TID : 紀錄目前 FU屬於哪一個執行緒。 
+(5) pU number : 執行緒所取得的 pU number 。 
+ 12 
+ 解碼排程器(Decode Scheduler ; DS) 
+    用來排程已取得 Fetch Units但尚未進取得處理器單元(Processor Unit ; pU)的
+最高優先權執行緒，以待有 Free pU即可將最高優先權的執行緒抽取出來並傳送
+至 TIT ，因此共具有 n組 Entry，如下圖 13 所示。 
+    TIT接收到來自Decode Scheduler抽取出來的Thread ID之後會將Register Set 
+Pointer傳送至 Free pU，提供執行緒存取暫存器所需。 
+Thread ID & 
+Priority
+TIT TIT 
+Insert
+TIT
+Extract
+TIT
+Thread ID
+R[n/2]L[n/2]
+R [2]L[2]
+R [1]L[1]
+Priority Thread ID
+8 bits 16 bits
+ 
+ 
+圖 13 Decode Scheduler 
+ 暫存器集合(Register Sets ; RS) 
+    當執行緒進入擷取單元(Fetch Units ; FU)，則執行緒能開始初始化執行緒內
+容於 Register Sets 中，由於 FU能夠儲存 2n 組執行緒，因此 Register Set 亦必須
+能夠儲存 2n 組執行緒內容，分別為正在執行及預先擷取的執行緒內容，當執行
+中的執行緒被 Switch Out，則預先擷取的執行緒能夠馬上提供執行所需，以達到
+zero context switch latency的特性，如下圖 14 所示，此結構除了 Register Sets 用
+來儲存執行緒內容外，還需要 Register Sets Table 紀錄執行緒內容的狀態資訊： 
+ 
+Register Sets 
+Pointer & Context 
+(Transfer In) 
+TIT
+TIT
+Thread ID 
+& Context
+MSU
+TAC_MS_PU
+MSU
+TAC_PU_MS
+Register Sets Pointer 
+(Transfer Out Finish)
+Parent pUs Decoder
+Register Sets Table Register Sets
+Data 
+Register Address & Context
+Register Sets Pointer & 
+Thread ID (Transfer Out)
+Register Index & Thread ID
+Parent pUs Decoder
+Register Pointer & Register 
+Number
+Register Address
+Register Address & Data
+Register Pointer & Register 
+Number & Data 
+Parent pUs Commit
+Register Sets Pointer 
+(Transfer In Finish)
+TIT
+MSU
+Spawn_Comp
+Register Set 
+Pointers & 
+Data 
+Register Address & Data
+ 
+圖 14 Register Sets 
+ 14 
+$ t9
+$ t8
+$ s7
+$ s1
+$ s0
+$ t7
+$ t1
+$ t0
+$ a3
+$ a2
+$ a1 
+$ a0 
+$ v1
+$ v0
+$ at : GID & Thread ID
+$ zero
+$ ra : Return Address
+$ fp : Frame Pointer
+$ sp : Stack Pointer
+$ BID : Barrier ID
+$ k1 : Scoreboard Info
+$ k0 :
+Register Set 1
+Register Set 2
+Register Set 3
+Register Set 2n
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+15
+16
+17
+23
+24
+25
+26
+27
+28
+29
+30
+31
+Thread ID 
+& Context
+MSU
+TAC_PU_MS
+Parent pUs Decoder
+Data 
+Register Address & Context
+Thread ID & Register Index
+Register Address
+Register Address & Data
+R
+eg
+is
+te
+r 
+S
+et
+s 
+T
+ab
+le
+RS Address & Data 
+ 
+圖 16 Register Sets 
+ 執行緒資訊表(Thread Information Table ; TIT) 
+    TIT 一共具有 4n 個 entry，主要是用來紀錄 Runnable執行緒資訊及狀態，再
+根據不同的執行緒狀態做相對應的處理，例如：執行緒取得 Fetch Unit，則為
+Invalid 狀態，因此 TIT 發出執行緒內容初始化需求給 MSU之 AF Cache，在執行
+緒內容初始化完畢後則進入 Valid 狀態，此狀態下的執行緒能夠進入 Decode 
+Scheduler排程，等待 Free pU，因此執行緒暫存器(Register Sets ; RS)及擷取單元
+(Fetch Units ; FU)皆由此結構來分配，4n個 entry是為了避免當執行緒皆不需要
+預先擷取下個 Instruction Cache Line，則最大可能的執行個數為 4n，TIT與其他
+單元的連接關係，如下圖 17所示。(n 為 pU 個數) 
+Thread Information Table
+MSU
+InQ_Thread
+Priority & 
+TID 
+RS Table
+L1 I-Cache
+Table
+FU
+TID
+(Instruction Valid)
+TID & SPC
+(Instruction Invalid)
+FU
+TID & pU number
+(Instruction Run)
+FU
+FS FS
+TID Priority & 
+TID 
+DS DS
+TID 
+L1 I-Cache
+Table
+RS Pointer
+(Transfer In 
+Finish) 
+RS Table
+RS Table
+TID & RS 
+Pointer
+(Transfer Out)
+RS Pointer
+(Transfer Out Finish) 
+Parent pU Decoder & Commit
+( RS Pointer Dispatch) 
+RS 
+Pointer
+TID (I-Miss)
+TID        
+(I-Valid 
+& Next)
+MSU
+TID_TI
+TID  & 
+Priority  & 
+SPC  
+(Initialization)
+TID & RS 
+Pointer 
+(Context 
+Transfer In)
+Parent pU Decoder
+( Switch / Wait / Kill) 
+PU 
+number 
+FU & L1            
+I-Cache 
+Table
+TID
+(Free UP FU)
+FS DS
+Extract Extract
+MSU
+HS_Extract
+Extract
+MSU
+Switch_Info
+TID  & Priority  & 
+SPC         
+(Switch)
+ 
+圖 17 Thread Information Table 
+ 16 
+ 處理器單元(Processor Unit ; pU) 
+    上述 Pre-fetch Architecture主要的功能是將 Runnable的執行緒根據優先權來
+做排序並備妥執行緒所需的指令及內容，讓高優先權執行緒能夠儘快取得 pU，
+以完成所需的運算。 
+    除了透過Pre-fetch Architecture及Multi-thread Service Unit (MSU)來支援TLP
+外，為了能夠在更進一步提高程式執行效率，處理器單元(Processor Unit ; pU)中
+的 Processor Element (PE)是採用 Superscalar 結構，以提高 ILP。 
+    除此之外，為了能夠讓單一執行緒能夠更加提高平行，因此單一 pU內部除
+了主要的處理單元(Parent Processor Unit , PpU)用來處裡 Parent Thread 以外，另外
+新增加兩個次要的處理單元(Child Processor Unit , CpU)來處裡 Child Thread，如
+下圖 19 所示。 
+    此結構的主要目的是為了能夠讓母執行緒(Parent Thread)在Parent pU執行大
+型迴圈時，能夠分割出顆粒度更細的子執行緒(Child Thread)讓 Child pU 執行，
+以提昇單一執行緒的平行程度。 
+ 
+Shared Resource PpU Parent Processor Unit
+CpU Child Processor Unit
+DSC Distributed Synchronization Controller
+Processor
+Unit
+DSC
+MSU
+DSC_Sync
+BUS
+SNOOP
+LSU
+LS_S_REQ
+MSU
+MT_R
+LSU
+LR_DA
+L1 I-Cache
+L1 I-Cache
+FU
+RS
+FU
+PpU
+DSC
+CpU
+CpU
+P
+ri
+va
+te
+ L
+1 
+ D
+at
+a 
+C
+ac
+h
+e
+FU
+RS
+MSU
+DSC_Sync
+BUS
+SNOOP
+MSU
+MT_R
+L1 I-Cache
+LSU 
+LS_S_REQ
+LSU
+LR_DA
+L1 I-Cache
+FU
+TIT
+FU
+TIT
+TIT
+FU
+TIT
+ 
+圖 19 Processor Unit & DSC 
+    Parent & Child Processor Unit (PpU & CpU)結構中除了 Processor Element (PE)
+為 Superscalar 結構外，還包含下列結構以支援粗顆粒度執行緒能夠分割出更細
+小顆粒度執行緒的需求： 
+(1) Communication Unit (CMU) 採用了一個環形的連接方式，這使得執行緒能夠
+接收來自 Predecessor Thread 的 Command 及 Target Store (TS)，相同的，它亦可
+傳送 Command 及 Target Store (TS)至 Successor Thread，以完成執行緒間的資料
+ 18 
+Memory Buffer
+Next  CPU 
+(Communication Unit)
+Communication 
+Unit
+Load 
+Function Unit
+Load Address 
+(Address Miss)
+Address 
+(Load)
+Address        
+(Load Data Invalid)
+Data 
+(Load)
+Common 
+Data BUS
+Private L1 
+Data Cache
+Data  
+(Load) 
+Command  / TS 
+Data & Address  
+(Write Back) 
+Load 
+Function Unit
+Write Back Unit
+Private L1 
+Data Cache
+STOP / 
+WB_DONE Command / TS 
+ 
+圖 21 Memory Buffer&Write Back Unit 
+DataAddressData Valid
+Target Store 
+Interface Load Interface
+Command / 
+TS Interface
+Communication 
+Unit
+Address & Data       
+(Target Store)
+Address        
+(Load Data Invalid)Address
+Load 
+Function Unit
+Address 
+(Load 
+Miss)
+Private L1 
+Data Cache
+Data 
+Data 
+(Load 
+Hit )
+Common 
+Data BUS
+STOP / 
+WB_DONE
+Data & Address
+Write Back Unit
+Next  CPU 
+(Communication Unit)
+Private L1 
+Data Cache
+Abort
+WB_DONE
+Command / TS 
+ 
+圖 22 Memory Buffer & Write Back Unit 細部結構 
+ 
+ 
+ 
+ 母處理器單元(Parent Processor Unit ; PpU) 
+     在處理器單元(Processor Unit ; pU)中，僅有執行於 PpU 的母執行緒(Parent 
+Thread)能夠發出多執行緒要求給多執行緒服務單元(Multi-thread Service Unit ; 
+MSU)及同步要求給分散式同步控制器(Distributed Synchronization Controller ; 
+DSC)，由於母執行緒指令及內容的初始化是藉由預先擷取結構 (Pre-fetch 
+Architecture)完成，因此其結構中並無指令快取及暫存器，而指令及執行緒內容
+的存取是在 Pre-fetch Arcitecture完成，如下圖 23所示。 
+ 20 
+PpU
+DSC
+CpU
+CpUPr
+iv
+at
+e 
+L
+1 
+ D
+at
+a 
+C
+ac
+h
+e
+FU
+RS
+MSU
+DSC_Sync
+BUS
+SNOOP
+L1 I-Cache
+LSU 
+LS_S_REQ
+LSU
+LR_DA
+L1 I-Cache
+PE Processor Element
+CpU Child Processor Unit
+Fetch Queue
+Decoder &
+Register Rename
+ISSUE LOGIC
+Load
+Store
+ADD SUB MUL DIV
+Branch
+/ Jump
+Commit Logic
+ROB
+Private
+Register File
+Fetch Unit
+C
+o
+m
+m
+u
+n
+ic
+at
+io
+n
+ U
+n
+it
+Memory Buffer
+Write Back
+Unit
+PE
+L1 I-Cache TableL1 I-Cache
+PpU
+(Memory Buffer)
+Next  CpU
+(Communication Unit)
+Private L1 
+D-Cache
+PpU (Decode)
+Next  CpU (Fetch Unit)
+FU
+MSU
+MT_R
+TIT
+FU
+TIT
+PC 
+(FORK)
+Release
+PCInstruction
+Load
+ABORT_FURTURE 
+/ WB_DONE / TS 
+Command / TS 
+PC 
+(FORK)
+Write Back
+ 
+圖 24 Child Processor Unit 
+ 分散式同步控制器(DSC) 
+    多執行緒的環境下，傳統同步機制的實現，通常是藉由作業系統(Operation 
+System ; OS)來完成，主要原因是，自由度較高且成本較低，但在作業系統為了
+維持此機制的運作，必須執行額外的系統程式，使得系統效能下降，因此在[16]
+這篇論文中藉由硬體方法來解決多處理器多執行緒的 Lock 及 Barrier 同步問題，
+以達到低功率，高效能的優點。分散式同步控制器 (Distribute Synchronize 
+Controller ; DSC)能夠避免使用軟體方式來完成資料同步機制，此結構能夠擷取
+並比對匯流排上儲存資料的位址，以決定是否應存取同步值或者喚醒等待同步資
+料之執行緒。 
+    DSC 除了能夠加速同步機制的處理外，還能避免處理器為了取得 Memory 
+Lock Section，藉由 Spin Lock 機制來完成 Lock 索取動作，Spin Lock 機制會持續
+的發出 Lock Request 給 BUS，直到取得 Lock，因此可能會造成匯流排的瓶頸，
+且會引起過多的功率消耗，藉由此結構來完成 Lock 同步機制將能完全避免掉此
+問題，如下圖 25 所示。 
+(1) Lock Section： (若是要求 Lock Section 則必須先暫時停止指令的擷取) 
+    (a) Total (log2(n) bits)，紀錄目前總共有多少執行緒要求存取此記憶體區塊。 
+    (b) Ahead (log2(n) bits)，紀錄目前有多少執行緒可優先存取此記憶體區塊，  
+      若為 1則表示為下個可存取該記憶體區塊的執行緒。 
+ 22 
+ 多執行緒服務單元(MSU) 
+    在未考慮到執行緒層級的並行時，由於程式本身固有指令間相依的限制
+[15]，因此即使透過 VLIW 或 Superscalar這類的處理器結構來提升 ILP，還是會
+因為程式本身的並行程度而使功能單元(Function Unit)的使用率受到的限制，因
+此便將程式提升至執行緒層級平行(Thread Level Parallelism ; TLP)。當提升至
+TLP 後，伴隨而來的就是執行緒管理問題，這類問題的解決方案大多是藉由具有
+作業系統(Operation System ; OS)來完成，其中包括了執行緒的排程、記憶體管
+理、資源管理、執行緒同步…等等，而這些工作若藉由作業系統程式[8][9][10][11]
+來完成，將導致整體系統執行效率下降，因此若能夠將這些工作藉由額外的硬體
+資源完成[12][13][14]，除了能夠避免因為系統程式(優先權高)佔用一般應用程式
+(優先權低)的計算資源而影響一般應用程式的執行效率，還能夠提升多執行緒管
+理機制的即時性。多執行緒服務單元(Multi-thread Service Unit ; MSU)是為了取代
+作業系統(Operation System ; OS)中的多執行緒管理機制，以完成執行緒內容儲
+存、執行緒排程及多執行緒管理，例如：執行緒創建(Spawn)、交換(Switch)、同
+步(Synchronization)及終止(Kill)，以避免系統程式(軟體)佔用一般應用程式的 PU
+資源，降低程式執行效率，且能夠提昇多執行緒管理機制的效能。為了提升單一
+執行緒的執行效率，將藉由[17][18]所提出的概念來加速單一執行緒的迴圈運
+算。為了使執行緒管理能夠具有即時(Real Time)的特性，通常會加入優先權機
+制，就是根據不同執行緒的類型，賦予不同大小的優先權，優先權越大者，則取
+得計算資源的機率就越高，因此在相當要求即時特性的嵌入式系統中，越是緊急
+的事件其優先權也越高，例如：中斷處理、例外處理…等等，這使得不同優先權
+的執行緒在競爭運算資源時，緊急事件能夠盡快取得運算資源做相對應的處理，
+因此能夠符合即時的特性[22]。 
+(1)儲存執行緒內容：  
+    執行緒內容儲存於 Active Frame Cache (AF Cache)。 
+(2)執行緒排程： 
+    根據執行緒優先權來排程可執行的執行緒，當 PU結構具有閒置的硬體資源
+時，即可將該執行緒資訊傳入 PU，以取得 pU執行。 
+(3)多執行緒服務要求： 
+    藉由 Multi-thread Request Queue 來緩衝並仲裁多執行管理要求，執行緒間的
+管理包含 
+       (a) Spawn：執行緒創建。 
+       (b )Switch：執行緒交換。 
+       (c) Kill：執行緒終止。 
+       (d) DSC_Synchronization：藉由 DSC 喚醒等待 Barrier Values 之執行緒。 
+       (e) Synchronization：執行緒同步，此同步需求是由 pU 發出，在傳道 LSU
+比對 Store Address 是否為 Active Frame 區間，若是則發出同步需求給
+ 24 
+ AF Cache Table與 Empty AF Link List 
+    AF Cache Table 除了能偵測可執行的執行緒(Runnable Thread)以外還能夠處
+理執行緒同步(Sync / DSC_Sync)及執行緒移入(Transfer In)及移出(Transfer Out)
+的需求，且在配合 Empty AF Link List 後，其能完成執行緒創建(Spawn)及終止
+(Kill)的運作。 
+Avtive Frame Cache Table(AF Cache Table)紀錄了儲存在 AF Cache 中的執行
+緒資訊，其中包含執行緒目前的狀態、執行緒識別碼、優先權…等等，當具有可
+執行的執行緒，即 Prefence Flag 皆為 1 時，即可將該執行緒之執行緒識別碼
+(Thread ID)、優先權(Priority)及起始執行位址(Start Program Counter)，傳入硬體
+排程器(Hardware Scheduler ; HS)中排程。 
+    除了處理 DSC 同步及 pU執行緒同步運作外，還需配合 Empty AF LinkList
+來處理執行緒創建(Spawn)及執行緒終止(Kill)運作，以取得 AF Cache 並更新
+Empty H / Empty T 之內容，當執行緒創建(Spawn)要求處理完畢後，需將被創建
+(Spawned)的執行緒識別碼(Thread ID)透過 Spawn_Comp 訊號傳回處理單元
+(Processing Unit ; PU)。 
+    當執行緒需要初始化時，則 PU會傳送 TID_TI給 AF Cache Table 以取得 AF 
+Cache Index，再將該執行緒內容傳回 PU，而當執行緒在執行時遇到執行緒交換
+事件，即 PU 會發出 TAC_PU_MSU 訊號，將該執行緒內容從 PU 移出至 AF 
+Cache，但必須先藉由 AF Cache Table 索引出該執行緒的 AF Cache Index，以將
+該執行緒內容置入所屬的 Active Frame，其 AF Cache Table 紀錄了下資訊，如圖
+28所示： 
+(1) State (2bits)：標示執行緒在 MSU的狀態。 
+(2) Thread ID (16 bits)：執行緒識別碼。 
+(3) Link Thread ID (16 bits)：用來支援 Empty AF Link List 所用，以鏈結到下個   
+  Empty AF。 
+(4) Priority (8 bits)：執行緒的優先權大小。 
+(5) Presence (24 bits)：標示此執行緒是否有相依於某一暫存器資料，若全為 1則   
+  表示沒有相依資料，Runnable state，可擷取至 Hardware Scheduler 排程 。 
+(6) Start PC (32 bits)：用來記錄執行緒的起始指令位元址。 
+(7) Index (Log2(N) bits)：用來記錄 AF Cache 的 Index 。 
+ 26 
+AF Cache 
+   AF Cache共有 N 組 Active Frame，表示可以儲存 N組執行緒的內容，每一執
+行緒內容包含 32 組 Words，提供執行緒計算及管理所需，當執行緒初始化要求
+從 PU 傳至 AF Cache Table 索引出 AF Cache Index 後，發出執行緒移出要求
+(Transfer Out Request)給 AF Cache，以藉由 TAC_MS_PU 將相對應的執行緒內容
+移至 PU中。 
+$ T9
+$ T8
+$ S7
+$ s1
+$ S0
+$ T7
+$ T1
+$ T0
+$ A3
+$ A2
+$ A1
+$ A0 
+$ V1
+$ V0
+$ Program Counter
+$ Priority & Presence
+$ RA  : Return Address
+$ FP  : Frame Pointer
+$ SP : Stack Pointer
+$ BID : Barrier ID
+$ K1 :
+$ K0 : GID & TID
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+15
+16
+17
+23
+24
+25
+26
+27
+28
+29
+30
+31
+PU
+TAC_MS_PU
+AF Index & Context
+AF Index & RS Pointer
+RS Pointer & Context
+AF Index & Register ID & Sync Data
+AF Index & Register ID & Sync Data
+Thread ID & AF Index & Spawn Info AF 1
+AF 2
+AF 3
+AF NA
+ct
+iv
+e 
+F
+ra
+m
+e 
+C
+ac
+he
+ T
+ab
+le
+ 
+圖 30 AF Cache 
+ 硬體排程器(HS) 
+    主要是用來排程可執行的執行緒(Runnable Thread)，此結構能夠每個 cycle
+接收新的 Runnable Thread，並排程最高優先權的執行緒，待處理單元(Processing 
+Unit ; PU)之預先擷取結構 (Pre-fetch Architecture)的執行緒資訊表 (Thread 
+Information Table ; TIT)有閒置空間，即藉由 HS_Extract 訊號來抽取出最高優先
+權執行緒，再藉由 InQ_Thread 訊號將執行緒資訊傳入 TIT，以進入執行緒初始
+化流程其結構如下圖 31所示。 
+    當 HS 皆收到執行緒終止要求(Kill Request)，則比對所有 Entry之 Thread ID，
+若相同則將該 Entry之 Priority設為 0以終止該執行緒排程。 
+   
+ 28 
+MT Request 
+Queue
+PriorityOut AF Thread ID Start PCIn AF Thread IDState
+MT Request 
+Queue
+In Thread ID
+Transfer In Finish 
+Interface
+Thread ID           
+AF Cache Table
+Out AF Interface Switch Done 
+Interface
+Switch 
+Done
+Transfer Out Finish 
+Interface
+AF Cache Table
+Thread ID &
+Priority & SPC
+PU
+Switch_Info
+Out Thread ID &
+Priority & SPC
+Switch_Info
+Interface
+Thread ID
+Switch  
+Interface
+Extract
+HSHS  
+圖 32 Context Switch Hande Unit 
+ 多執行緒要求佇列(MTRQ) 
+    由於處理單元(Processing Unit ; PU)是由多個處理器單元(Processor Unit ; pU)
+而每一個 pU 能夠執行一執行緒，因此多執行緒要求佇列(Multi-thread Request 
+Queue)為了處理來自不同 pU的多執行緒服務要求，例如：執行緒創建(Spawn)、
+執行緒交換(Switch)、執行緒終止(Kill)，因此來自 pU 的多執行緒要求 MT_R 佇
+列個數必須為 pU 個數，同樣的為了處理來自分散式同步控制器(Distributed 
+Synchronization Controller ; DSC)的同步要求(DSC_Sync)，其佇列個數亦為 pU個
+數，因為每一 pU 皆有一個所屬的 DSC，此外，由於 pU發出的同步要求是經由
+Store 指令來完成，以避免因暫存器資料相依而引起執行緒同步資料錯誤的問
+題，因此該同步要求會經由載入及儲存單元(Load Store Unit ; LSU)傳至MSU，
+所以處理來自 LSU 之同步要求 Sync_R 佇列僅需一組即可，如下圖 33所示。 
+多執行緒要求佇列仲裁器 (Multi-Thread Request Queue Arbiter ; MTRQ 
+Arbiter)接收並仲裁來自 pU、LSU及 DSCs 的多執行緒管理及同步的需求，以避
+免結構衝突的問題。 
+DSC 的同步需求只有在Memory Barrier Section 的 Barrier Value 皆備妥後，
+由 DSC 發出同步需求(DSC_Sync)，以喚醒等待同步資料的執行緒。 
+    必須注意的是，當 MTRQ 所處理的要求是 Switch，則 MTRQ Arbiter 必須
+等待 Switch done訊號回傳後才可處理新的仲裁，以避免多執行緒管理混亂。 
+ 30 
+Unit ; pU)。 
+(5) Store Logic : 接收來自 Store Wait Buffer 的資料，並判斷該 Store Operation 之
+目的是否為同步需求。 
+    (a) 若是，則將資料寫回 MSU AF Cache 。 
+    (b) 若否，則將資料寫入 MMU 之 Shared L2 Data Cache。 
+(6) Load Return Logic : 接收並仲裁來自 Load & Store Wait Buffer的 Load Request 
+Data，並根據 Load Data 之 Thread ID至 pU Information table 中搜尋比對該執行
+緒存在於哪一個處理器單元(Processor Unit ; pU)  
+ 
+ 
+Load/Store 
+Request     
+Queue
+Load Wait 
+Buffer
+Store Wait 
+Buffer
+pU Information 
+Table
+Store 
+Logic
+Load data & address
+MMU
+L_A
+MSU 
+Sync_R
+MMU 
+S_DA
+MMU 
+S_Comp_A
+MMU 
+MM_LR_DA
+Store Complete
+PU 
+LR_DA
+Load Address
+Load
+Load Return 
+Login
+PU 
+MT_Comm
+Store
+PU 
+LS_S_REQ
+Hit
+Miss
+ 
+圖 34 Load Store Unit 
+ 載入儲存要求佇列 (LSRQ) 
+    載入儲存要求佇列(Load Store Request Queue ; LSRQ)主要是用來接收及仲
+裁來自處理器單元(Procrssor Unit ; pU)的 Load / Store Request，因此其佇列個數
+為 pU個數，其中 Load Request 必須先到 Store Wait Buffer做位址的比對工作。 
+ 32 
+Store Wait 
+Buffer
+Load/Store 
+Request Queue
+MMU 
+S_Comp_A Store Logic
+MMU
+L_A
+Load Wait 
+Buffer
+Load Return 
+Logic
+DataAddressState
+Load Address 
+Comparison 
+InterfaceLoad/Store 
+Request 
+Queue Store Interface
+Miss
+Hit
+MMU
+L_A
+Load Return Logic
+Load Wait 
+Buffer&
+Store Complete 
+Interface
+MMU 
+S_Comp_A
+Address Store Logic 
+Interface
+Store 
+Logic
+Address & Data
+Thread ID & Address
+Thread ID & Address & Data
+Data & Address
+TID & Address
+Data & Address
+Thread ID & Data & 
+Address                      
+(hit)
+Thread ID & 
+Address & 
+Data
+Address Address & Data
+Thread ID & 
+Address
+Thread ID & Address
+Address
+Store Logic
+Address
+ 
+圖 36 Store Wait Buffer 
+ 載入等待緩衝(LWB) 
+    載入等待緩衝(Load Wait Buffer ; LWB)主要是用來緩衝不同執行緒的 Load 
+Request，避免共用記憶體存取混亂，當 Load Data Return，則可將該資料經由載
+入回傳邏輯(Load Return Logic)將資料回傳至所屬的處理器單元(Processor Unit ; 
+pU)，其結構如下圖 37 所示，Load Wait Buffer 所儲存的執行緒資訊如下所述: 
+(1) State (2 bits) : 用來標示該 Entry的狀態。 
+    (a) Non Used (00): 標示為 Free Entry 。 
+    (b) Load (01) : 執行緒佔用此 Entry 。 
+    (c) Loading (10) : 執行緒正在擷取資料。 
+    (d) Undefine (11) : 尚未定義。 
+(2) Thread ID (16 bits) : 用來標示佔用該 Entry的 Thread 。 
+(3) Address (32 bits) : 儲存 Load Operation Address。  
+(4) Data (32 bits) : 儲存 Load Operation Data 。 
+ 34 
+ 載入回傳邏輯(Load Return Logic) 
+    當執行緒的 Load Request 取得資料後，則必須藉由索引 pU Information 
+table，以將資料回傳至該執行緒所屬的處理器單元(Processor Unit ; pU)中，其結
+構如下圖 39所示： 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+圖 39 Load Return Logic 
+ 處理器單元資訊表(pU Information Table)  
+    此結構主要功能是用來儲存正在處理器單元(Processor Unit ; pU)中執行的執
+行緒資訊，以提供載入回傳邏輯(Load Return Logic)在回傳資料之前的目的 pU索
+引，如下圖 40所示，其儲存的執行緒資訊如下所述: 
+(1) State (2 bits) : 用來標示該 Entry的狀態。 
+    (a) Non Used (0): 標示為 Free Entry 。 
+    (b) Used(1) : 執行緒佔用此 Entry 。  
+(2) Thread ID (16 bits) : 用來標示佔用該 Entry的 Thread 。 
+(3) pU number (log2(n) bits) : 儲存取得 pU的執行緒。 
+ 
+ 
+ 
+ 
+LR Data Queue 1
+Store Wait 
+Buffer
+Load Wait 
+Buffer
+LR Data Queue 2
+pU Information 
+Table
+Load 
+Router 
+PU 
+LR_DA
+Load Return 
+Data Arbiter
+Thread ID
+Load Return Login
+PU 
+LR_DA
+Load Wait 
+Buffer
+pU Information 
+Table
+Store Wait 
+Buffer
+Load Data & 
+Address     
+(Miss)
+Load Data & 
+Address (hit)
+Thread ID
+Data & Address
+Data & 
+Address & 
+Thread ID 
+(hit)
+Data & Address  
+& Thread ID 
+(Miss)
+Control
+Data & 
+Address
+Control
+ 36 
+ 
+圖 41 Memory Management Unit 
+ 
+ 
+ 層級 1指令計數器 (Level 1 Instruction Counter) 
+    此結構是用來支援層級 1指令快取(Level 1 Instruction Cache)之執行緒指令
+初始化，當接收到執行緒初始化的起始位址後，則先索引指令轉換搜尋緩衝器
+(Instruction Translation Look-aside Buffer ; ITLB)，將虛擬位址轉換成實體位址，
+以存取層級 2指令快取(L2 Instruction Cache)，當取得指令後將該指令回傳至層級
+1指令快取(Levl 1 Instruction Cache)，假設 Cache Line 能夠儲存 32 道指令，當
+Instruction Counter計數 32次則表示指令初始化完成，其結構如下圖 42所示。 
+(1) State：用來標示該執行緒指令是否以擷取完畢。 
+(a) Non Used (00)：沒有執行緒需要初始化執行緒指令。 
+(b) Return (01)：指令回傳。 
+(c) Loading (01)：執行緒正在 L2 Instruction Cache 取得指令。 
+(d) Return (10)： 指令回傳至 PU。 
+(2) Cache Index： 此為 L1 Instruction Cache，以提供指令回傳所需。 
+(3) PC : 儲存執行緒指令初始化起始位元址。 
+(4) Instruction : 儲存存取後的回傳指令。 
+ 
+L1 Instruction 
+Counter
+PU
+ICI_IADD
+Level 2        
+Instruction Cache
+Level 2                   
+Data Cache
+LSU
+L_A
+LSU
+S_DA
+Main Memory Interface
+PU
+ICA_I
+LSU
+MM_LR_DA
+LSU
+S_Comp
+Load
+Store
+Store Load
+BUS
+Load _ Store
+BUS
+Load _ Return
+ITLB DTLB
+PC
+Instruction
+Store
+Virtual 
+Address
+Instruction
+Physical 
+Address
+ 38 
+整的實體位址，運作範例如下圖 44所示。 
+Virtual page number Page offset
+1
+Valid Virtual Page number Physical Page number
+=
+Physical page number Page offset
+TAG Index Offset
+Level 2 I-Cache
+ITLB
+ 
+圖 44 ITLB運作範例 
+ 層級 2指令快取 (Level 2 Instruction Cache) 
+    當 L1 Instruction Counter 發出指令存取要求，則 PC(Virtual address)必須先由
+ITLB 轉換取得實體位址，以搜尋 L2 I-Cache，若擊中(Hit)，則將指令回傳至 L1 
+Instruction Counter，否則將發出 Instruction Load Request 給 Main Memory 
+Interface，以存取主記憶體，其結構如下圖 45。 
+L1 Instruction Counter
+Level 2       
+Instruction Cache
+Main Memory Interface
+Instruction
+Physical 
+Address
+Physical 
+Address     
+(Miss)
+Instruction
+InstructionTAGValid
+Instruction Access 
+Interface
+L1 Instruction Counter
+Instruction
+Instruction
+Main Memory Interface
+Physical 
+Address
+Physical 
+Address     
+(Miss)
+ITLB
+ITLB
+ 
+圖 45 Level 2 Instruction 
+ 
+ 
+ 40 
+Level 2                
+Data Cache
+LSU
+MM_LR_DA
+LSU
+S_Comp_A
+Main Memory Interface
+Data
+DataTAGValid
+Load  Interface
+Physical 
+Address (Miss) Data
+Main Memory Interface
+LSU
+MM_LR_DA
+Virtual 
+Address 
+& Data
+Store  Interface
+Main Memory Interface
+Virtual Address
+LSU
+S_Comp
+Virtual  address & 
+Physical Address & 
+Data                    
+(Store)
+Virtual  address & 
+Physical Address 
+(Load) 
+Virtual  address & 
+Physical Address & 
+Data                    
+(Store)
+Physical Address & 
+Data                    
+(Store)
+Physical Address & 
+Data                    
+(Store)
+Physical 
+Address (Miss)
+Virtual  address & 
+Physical Address 
+(Load) 
+Virtual Address 
+& Data
+Virtual Address
+DTLB
+DTLB
+DTLB
+DTLB
+ 
+圖 47 Level 2 Data Cache 
+ 主記憶體介面 (Main Memory Interface) 
+    主記憶體介面(Main Memory Interface)，其必須處理下述三件事，結構如下
+圖 48所示 : 
+(1) Load Operation Miss : 當 Load Miss則必須經由Main Memory Interface來存取
+主記憶體，以取得資料。 
+(2) Store Operation : 當執行緒執行 Store Operation，必須將資料寫穿至 Main 
+Memory ，目的是為了讓 DSC 能夠觀察 Memory Barrier Section 的存取情況。 
+(3) L2 Instruction Cache Miss : 當 L2 I-Cache Miss 必須藉由此介面與主記憶體溝
+通，以取得所需的指令。 
+Main Memory Interface
+L2 Instruction Cache L2 Data Cache
+Address  
+(Inst)
+Instruction
+Address & 
+Data       
+(Store)
+Address 
+(Load)
+Data 
+BUS
+Load_Return Instruction / 
+Data           
+(Load)
+BUS       
+Request Arbiter
+Level 2 
+Data 
+Cache
+L2 Instruction 
+Cache
+BUS Request Interface
+Load / Store BUS
+Load _ Store
+BUS
+Load _ Return
+Instruction / Data           
+(Load)
+Load / 
+Store Done
+BUS
+Load _ Store
+Load / Store
+Data 
+Level 2   
+Data Cache
+Instruction
+L2 Instruction 
+Cache
+Address  
+(Inst)
+Address & 
+Data       
+(Store)
+Address 
+(Load)
+ 
+圖 48 Main Memory Interface 
+ 42 
+(Distributed Synchronization Controller ; DSC)來觀察 barrier value 是否抵達，因此
+執行 acquire_barrier 在 DSC 建立 Barrier entry，當 barrier value 皆抵達後，由 DSC
+喚醒 Spawnee，以完成 merge及總和運算。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+圖 5-1平行化後的 Bubble Sort 程式範例 
+ 
+圖 50 
+     
+ 實驗例 1在系統中之運作說明 
+    我們可以將該程式劃分為 12 個時間片段來說明程式在系統中的運作，下圖
+51為平行化後的程式在系統中執行的時間片段。 
+Sort  後半
+Merge 0~n-1
+Acquire_Barrier < n/2 , result >
+Sum
+Wait 0
+Waiting For Join
+Time
+Sub Thread 1Main Thread
+Sort  前半
+Wait 0
+wait $a0
+T0
+T1
+T2
+T3
+T5
+Spawn Marco
+T4
+Transfer Out
+Thread Initialization
+Thread Initialization
+T6
+T7
+T8
+T9
+T10
+T11
+Transfer Out
+T12
+Wake Up Transfer Out
+Thread Initialization
+Parameter initialization
+Spawn
+n/2
+Clean
+Clean
+ 
+圖 51平行化後的 Bubble Sort 執行時間片段 
+   
+if (n > 1) { 
+       spawn( bubble sort, result , n/2 ); 
+       acquire_barrier <n , result> ; 
+       bubble sort( result + n/2 , n - n/2 ); 
+       wait $a0; 
+       merge( result , n/2 , n - n/2 ); 
+      } 
+  for (i = 0; i < 10; i++)  sum += results[ i ] ; 
+} 
+ 44 
+$ t9
+$ t8
+$ s7
+$ s1
+$ s0
+$ t7
+$ t1
+$ t0
+$ a3
+$ a2 : Parent Thread ID
+$ a1 : Start Program Cout
+$ a0 : Priority & Presence
+$ v1
+$ v0 : Spawned Thread ID
+$ at : GID & Thread ID
+$ zero
+$ ra : Return Address
+$ fp : Frame Pointer
+$ sp :   Stack Pointer
+$ BID : Barrier ID
+$ k1 
+$ k0
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+15
+16
+17
+23
+24
+25
+26
+27
+28
+29
+30
+31
+RS
+MSU
+MT_R
+Fetch Queue
+Decode &
+Register Rename
+ISSUE LOGIC
+Load
+Store
+ADD SUB MUL DIV
+Branch
+/ Jump
+Commit Logic
+ROB
+PE
+addi $a0 , $zero , 0~255  
+sll $a0 , $a0 ,24  
+ori $a0 , $a0 , 0x00FFFFFF
+addi $a1 , $zero , Start PC
+andi $a2 , $at , 0x0000FFFF
+Add $BID , $zero , $reg
+mov $sp, $reg
+Spawn
+Spawn Marco
+1 2
+Spawn BIDSPPP Parent IDSPCRS PointerSpawn Package :
+ 
+圖 52 Spawn Package Preparing 
+    在藉由 MT_R 訊號將 Spawn Package傳送至 MSU後，會經過多執行緒要求
+佇列的仲裁，而此時僅有 Main Thread在系統中運作，因此此需求很快被仲裁同
+意，開始 Spawn Operation，其主要分為兩個步驟，如下所述： 
+    (1)保留一個新的 AF空間，如下圖 53所示： 
+        (a) 將 AF Index 及 Empty H放到 Spawn Info，Empty H 表示 Empty AF    
+           Cache Space 鏈結串列的最前頭 。 
+        (b) 更新 Empty H ，來源為 Active Frame Cache Table之 Link Thread ID。 
+    (2)建立新執行緒資訊於 Active Frame Cache，同時將被建立的執行緒 ID回   
+      傳給建立者執行緒，如下圖 54所示，其 Spawn Information 包括： 
+        (a) 找到 Spawn Info 其分別為 AF Index 及 Thread ID ($ K0) 。 
+        (b) 透過 Spawn 指令傳送 Start Program Counter、Parent ID、    
+           Priority、Presence flag、Stack Pointer給被建立的執行緒，同時將被 
+           創建(Spawned)執行緒之 Thread ID回傳給創建者(Spawnee)。 
+0X0001 IndexThread ID
+SpawnInfo0X0002
+下一個空的Active Frame Thread ID
+Empty H
+0x100
+PresencePriority Start PC
+0x100(=) hit00
+IndexLink Thread IDThread IDState
+1
+2
+1
+2
+ 
+圖 53 Empty Active Frame Preparing 
+ 46 
+ T8-T9： 
+     wait 0 運作相同於 Kill 指令，只是終止目標為自己，以釋放 PU及MSU 
+的資源，其中修改了AF Cache Table之Link Thread ID Entry與更新Empty AF Link 
+List Empty T，由於該執行緒不存在於硬體排程器(Hardware Scheduler ; HS)中，
+假若是終止(Kill)其他執行緒，而該執行緒正在 HS 中排程，則將該執行緒的
+Priority設定為 0，如圖 55所示。 
+     當 DSC 偵測到 Barrier Values 全部抵達後，則發出 DSC_Sync Package，將
+Main Thread 喚醒，DSC_Sync 包含執行緒 ID 及$A1 暫存器號碼，如下圖 56 所
+示。 
+0x0001Kill Thread ID
+Empty T
+Kill
+R[0]L[0]
+AF Cache Table
+Hardware Scheduler
+PresencePriority Start PC
+0(=) hit00
+(=) hit01/10
+IndexLink Thread IDThread IDState
+PresencePriority Start PC
+0X0001(=) hit00
+0(=) hit00
+IndexLink Thread IDThread IDState
+AF Cache Table
+Before
+After
+1
+2
+1
+2
+2
+ 
+圖 55 Kill 運作 
+ 
+AF Cache
+Priority 11…1111
+AT=address
+A0
+AddressSync
+$A0 00Thread ID
++
+DSC_Sync Package :
+PresencePriority Start PC
+0x200(=) hit01/10
+IndexLink Thread IDThread IDState
+0x200
+AF Cache Table
+1
+2
+3
+1…01111
+1
+ 
+圖 56 DSC 同步運作 
+ T9-T10： 
+    當Main Thread 被喚醒後，即 Presence Flag全為 1，因此 Main Thread 進入
+硬體排程器(Hardware Scheduler ; HS)中排程，且由於系統中僅剩 Main Thread，
+ 48 
+ 
+圖 57 平行化前之鏈結串列程式範例 
+    為了提升上述程式的執行效率，我們可以將虛線部分劃分出來給另外一個執
+行緒做運算，因此可以分為 Main Thread 與 Sub Thread 1，Main Thread 主要是負
+責節點資料的擷取與寫入 DATA 記憶體區間，再資料寫入完成後則更新節點，並
+進入下個 Loop iteration，如圖 58(a)，而 Sub Thread 1 是負責擷取 DATA 的資料，
+並藉由該資料計算成本，而後判斷該成本是否超出臨界值，以決定是否進入下個
+Loop iteration 或者離開迴圈，如圖 58(b)。 
+    由於 Main Thread 與 Sub Thread 1 具有 DATA 資料相依的情況，為了避免兩
+執行緒發生記憶體同步錯誤，我們可以藉由處理單元(Processing Unit ; PU)之分散
+式同步控制器(Distributed Synchronization Controller ; DSC)的 Lock 機制來解決此
+問題，其在存取 DATA 之前必須先藉由 Acquire_Lock<addres>指令來要求存取該
+記憶體區間，而在存取完畢後，則藉由 Release_Lock<address>指令來釋放該記憶
+體區間。 
+ 
+(a) 資料擷取與節點更新            (b) 資料計算與成本確認 
+圖 58平行化後之鏈結串列程式範例 
+ 實驗例 2在系統中之運作說明 
+    我們可以將該程式劃分為 12 個時間片段來說明程式在系統中的運作，下圖
+59為平行化後的程式在系統中執行的時間片段。 
+   
+if ( !node ) goto exit; 
+spawn (sub thread 1); 
+loop: 
+   Acquire_Lock <&DATA>; 
+   *DATA = extract ( node ); 
+   Release_Lock <&DATA >; 
+   update ( node ); 
+   if (node)   goto loop; 
+exit: 
+    wait 0 ; 
+   
+loop : 
+    Acquire_Lock <&DATA>; 
+    cost = calc(&DATA); 
+    Release_Lock <&DATA >;  
+    if (cost < THRESH)  go to loop; 
+    else go to exit; 
+exit: 
+    wait 0 ; 
+Main Thread Sub Thread 1 
+ 50 
+能夠擷取至執行緒資訊表(Thread Informarion Table ; TIT)，很快地初始化執行緒
+指令及內容，而後取得處理器單元(Processor Unit ; pU)執行。 
+    Sub Thread 1 在初始化的同時，Main Thread 執行 Acquire_Lock<&DATA>指
+令，向分散式同步控制器(Distributed Synchronization Controller ; DSC)要求存取
+Memory Lock Section，即 DATA 的記憶體區間，此時 Main Thread 暫停擷取與執
+行的指令，等待 DSC1 判斷該Main Thread 是否取得 Lock Section，由於目前僅
+Main Thread要求此 Lock Section，因此 DSC1 馬上通知Main Thread 所屬的擷取
+單元(Fetch Units; FU)開始擷取及發送新的指令並且通知 pU1且開始執行。 
+ T4-T5： 
+    Main Thread 取得 DATA 後，則開始結取新的節點資料，並將資料寫入 DATA       
+記憶體區間，此時 Sub Thread 1正在初始化參數。 
+ T5-T6： 
+    當Main Thread 將資料寫入 DATA 後，則執行 Release_Lock<&DATA>指令，
+通知 DSC1 釋放 DATA，並將釋放資訊傳到 BUS 上，假設 Sub Thread 1 已藉由
+Acquire_Lock<&DATA>向 DSC2 要求 DATA 記憶體同步區間，則 DSC2 在觀察
+到匯流排上之釋放資訊後，DSC2 則通知 Sub Thread 1 所屬的擷取單元開始擷取
+及發送新指令至 pU2並且通知 pU2開始執行。 
+ T6-T7： 
+    Main Thread 更新節點並確認該節點是否存在，同時 Sub Thread 1 正在存取
+DATA 記憶體區間，以取得成本計算資料。由於預設的處理器單元(Porcessor Unit ; 
+pU)內部具有 1個母處理器單元(Parent Processor Unit ; PpU)及兩個子處理器單元
+(Child Processor Unit ; CpU)，因此我們可以將成本計算部份切割給 1個母執行緒
+(Parent Thread)及兩個子執行緒(Child Thread)管線化執行，如下圖 60為成本運算
+部分管線化後的結果。 
+     
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 52 
+ T7-T8： 
+    假若 Main Thread 之節點不存在，則執行 wait 0，以結束執行緒，否則跳迴
+loop，開始下個 Loop iteration。 
+    此時 Sub Thread 1 尚未釋放 DATA 記憶體區間，因此當 Main Thread 開始執
+行下個 Loop iteration 時，會執行 Acquire_Lock<&DATA>指令，使得 Main Thread
+暫停指令執行，其必須等待 Sub Thread 1 釋放 DATA 才可繼續執行。 
+ T8-T9： 
+    假設 Main Thread 執行 wait 0，則清除在 PU及MSU中的相關資訊，以釋放
+資源，同時 Sub thread 1 執行 Release_Lock<&DATA>，以釋放 DATA 記憶體區間。 
+ T9-T10： 
+    當 Sub Thread 1 確認成本是否超出臨界值，若超出則執行 wait 0 指令，否則
+進入下個 Loop iteration。 
+ T10-T11： 
+    假設 sub thread 1 執行 wait 0 指令，則清除在 PU及MSU 中的相關資訊，以
+釋放資源。 
+ T11-T12： 
+    假設 Sub Thread1 執行 wait 0，則清除在 PU及MSU中的相關資訊，以釋放
+資源。 
+ 實驗例 2結果分析 
+    由於此實驗範例之Main Thread與 Sub thread1 具有記憶體資料相依，因此藉
+由分散式同步控制器(Distributed Synchronization Controller ; DSC)來實現 Lock 機
+制，以避免記憶體同步資料錯誤情況發生。 
+    由於 Sub thread 1 與Main Thread 對於 DATA 的記憶體資料具有 Read After 
+Write的資料相依情況，因此Main Thread 還未將資料寫入 DATA 前 Sub Thread 1
+不能夠讀取 DATA 資料，這是程式本身的相依特性，因此若節點個數過少，將會
+使執行緒創建(Spawn)及初始化時間大於程式本身的計算時間，這將導致多執行
+緒的執行效能小於單一執行緒執行。 
+    Sub Thread 1 在成本計算部份切割成三個執行緒管線化執行，理論上將使
+Sub thread1 之執行效能提升三倍，但由於執行緒間具有資料相依及需要額外的管
+線化指令，因此會產生額外負載，使得效能無法達到理論值，但若每一執行緒之
+計算本體所執行的時間遠大於額外負載時間，將能夠使效能提升趨近三倍。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 54 
+ 參考文獻 
+[1] D.M. Tullsen, S.J. Eggers, and H.M. Levy, “Simultaneous Multithreading: 
+Maximizing On-Chip Parallelism,” In 22nd Annual International Symposium on 
+Computer Architecture, June, 1995 
+[2] Lance Hammond, Basem A. Nayfeh, Kunle Olukotun, “A Single-Chip 
+Multiprocessor,” IEEE Computer, September 1997, 30(9): 79-85. 
+[3] S. Palacharla, N. P. Jouppi, and J. E. Smith, “Quantifying the Complexity of 
+Superscalar Processors,” University of Wisconsin-Madison, Tech. Rep. CS-1328, May 
+1997. 
+[4] J.L. Hennessy, D.A. Paterson, “Computer Architecture: A Quantitative Approach, 
+Third Edition,” Elsevier Science Pte Ltd, 2002. 
+[5] William M. Johnson, “Superscalar Processor Design,” Stanford University, 1989 
+[6] S.J Eggers, J.S. Emer, H.M Levy, J.L. Lo, R.L. Stamm and D.M Tullsen, 
+“Simultaneous multithreading: A platform for next-generation processors,” IEEE 
+Micro, September 1997 
+[7] Lance Hammond, Benedict A. Hubbert, Michael Siu, Manohar K.Prabhu, Michael 
+Chen, Kunle Olukotun , “The Stanford Hydra CMP,” Microprocessor, IEEE, April 
+2000. 
+[8] Jonathan Appavoo, Marc Auslander, Dilma DaSilva, David Edelsohn, Orran 
+Krieger, Michal Ostrowski, Bryan Rosenburg, Robert W. Wisniewski, Jimi Xenidis, 
+“K42 Overview,” IBM K42 , August 2002. 
+[9] Jonathan Appavoo, Marc Auslander, Dilma DaSilva, David Edelsohn, Orran 
+Krieger, Michal Ostrowski, Bryan Rosenburg, Robert W. Wisniewski, Jimi Xenidis, 
+“Scheduling in K42,” IBM K42, August 2001. 
+[10] Jonathan Appavoo, Marc Auslander, Dilma DaSilva, David Edelsohn, Orran 
+Krieger, Michal Ostrowski, Bryan Rosenburg, Robert W. Wisniewski, Jimi Xenidis 
+“Memory Management in K42,” IBM K42, August 2002. 
+[11] Adrian Tam, David Kar-Fai Tam, Reza Azimi, “Implementing Resource 
+Containers in K42,” IBM K42, August 2002. 
+[12] Francisco J. Cazorla, Peter M.W. Knijnenburg, Rizos Sakellariou, Enrique 
+Fern´andez, Alex Ramirez, Mateo Valero, “Architectural Support for Real-Time Task 
+Scheduling in SMT Processors,” Proceedings of the 2005 international conference on 
+Compilers, architectures and synthesis for embedded systems, P. 166 – 176 , 2005. 
+[13] Francisco J. Cazorla, Peter M. W. Knijnenburg, Rizos Sakellariou, Enrique 
+Fernandez, Alex Ramirez, Mateo Valero, "Implicit vs. Explicit Resource Allocation 
+in SMT Processors," Euromicro Symposium on Digital System Design (DSD'04), 
+pp.44-51,2004. 
+ 1 
+出席 〔SoC 2010 國際學術研討會〕 會議報告  周哲民 
+ 
+1. 參加會議經過 
+由芬蘭Tampere科技大學所主辦的二○一○年SoC國際學術研討會議 (SoC 2010)，於
+二○一○年九月二十九日至三十日在芬蘭Tampere國際會議廳舉行。本國際會議自一九九
+九年以來，每年在芬蘭Tampere城舉辦，已是北歐地區SoC設計研究領域之重要盛事，每
+屆均有數百人與會。本屆會議有來自全球數十個國家之學術界及工業界共襄盛舉；總投稿
+篇數達百餘篇，在經過嚴謹的審查過程後，收錄其中四○篇成為會議論文，並分為全文(full 
+paper)及海報 (poster) 之形式予以刊登。 
+此次會議邀請了五位國際學術界及工業界專家學者進行如下重量級專題演講:   
+1. 比利時Altreonic公司之Eric Verhulst 專家主講: Present and Future Challenges in 
+Developing a Manycore RTOS. 
+2. 荷蘭Recore Systems公司之Paul Heysters 專家主講 : Reconfigurable Embedded 
+Multicore Processor for Streaming Applications. 
+3. 英國ARM公司之David Brash專家主講: Introducing New Features for the ARM 
+Architecture 
+4. 芬蘭Nokia公司之Heikki Berg專家主講 : Portability of Software Defined Radio 
+Implementation. 
+5. 德國慕尼黑科技大學之Samarjit Chakraborty博士主講: Multiprocessor System and 
+Software Design for Control Applications. 
+本次與會人數眾多，分別來自全球16個國家與地區。論文發表分兩個場地進行。筆者
+就目前SoC軟硬體設計研究領域之需要，穿插於不同研討會場聽取專家學人的研究與論文
+發表。 
+2. 與會心得 
+以下茲就筆者有興趣之Multi-core SoC技術與設計關議題提出個人心得︰ 
+由於半導體製程技術的進步，開啟了包含CPUs、記憶體與通訊架構於單一個晶片上
+的完整Multi-core SoC之製作。昇陽的Niagara-2、Intel的Penryn & Nehalem處理器及其
+Tera-scale處理器、與IBM的Power6 及其Cell 與電腦藍色基因(Blue Gene)之32核處理器都
+ 3 
+害。負偏壓溫度不穩定(NBTI)與熱載子注入(HCI)造成電路沒辦法達到時序上的要求。在
+小於0.13 m的製程技術下，元件使用過程中其運作速度與電場達到夠高時更加重前述機
+制之影響，可靠度的問題將由於NBTI與HCI而浮上檯面。一些其他設計問題由於大的空間
+位置上差異而浮上檯面。局部電阻正比於溫度；增加溫度因而增加電阻，因此造成電路延
+遲與IR drop 。整體時脈網路特別容易受到位置不同之傷害。溫度每增加20度造成Elmore
+導線延遲增加5~6%。因此，當大約20度或以上之不同位置的溫差時，時脈飄移問題變成
+受注目的焦點。最近，有一些建議被用來對付在時脈網路上的延遲。到今天為止，溫度的
+相關問題，已經有一些解決方案，其藉著降低平均溫度或是保持溫度在一個門檻值以下等
+技術。功率感知之合成、動態電源管理(DPM)與動態電壓縮放(DVS)等是如此之技術。熱
+模擬與管理已提出來保證晶片溫度不會到達臨界值。一個傳統熱管理方法的瓶頸是，將運
+作中之處理器或元件暫停或是變慢會有效能上的衝擊。當正在系統中運作之工作量是已知
+時(例如在一些嵌入式系統)，預測技術能應用在選擇電壓/頻率等級或是在設計階段的架構
+組態之決定，並儘可能避免採用動態之熱管理。 
+傳統電源或熱管理技術總是無法以具成本效益的方式，來排除與熱有關係的問題。時
+間與空間上的溫度變異造成許多可靠度的問題，然典型電源與熱管理沒辦法針對這些變異
+的影響進行處理。此外，反應式熱管理方法，其可有效解決一些實際上溫度的問題，但通
+常有相當大的效能衝擊。在尖端計算領域，因為工作負載隨著時間而變化，一些低額外負
+擔之策略，例如在設計階段將工作量與核心頻率最佳化的方法，不是非常有用。因此，能
+在執行階段降低或平衡溫度而不降低效能的技術是很需要的。 
+甚且，隨著多執行緒(multithread)以及新一代Multi-core SoC架構的發展，過熱的問題
+將會更加嚴重。因為，將每一個小晶片的工作集中化，也就表示大大的增加了使用率，在
+另外一方面也代表集中了更多的熱，這將會導致晶片的溫度上升。過去一般冷卻設備是以
+最糟的狀況作為設計的考量。對於微處理器來說，最糟的狀況為該處理器持續的以理想的
+最高能量消耗來做運算，也就表示將會產生最大量的熱。不過，在大多數的狀況之下，並
+不會使處理器消耗最高的能量。因此，要取決適當的電源設計方式，來抑止處理器產生大
+量執行時過熱的問題。但是，”抑止”(throttle)也就表示放慢甚或暫停處理器的執行，也就
+是透過降低頻率或是加入停止時脈動作。因此，抑止速度將會損害系統的效能，所以只有
+在真正需要的時候才會使用此方法。 
+ 5 
+(queues)之動作更具效率；因為所有工作在迴圈一開始時就一次全部移入佇列(queues)中，
+並不需要處理新工作之動態產生的情況，這讓並行迴圈的結束能用有效的樹狀柵欄(tree 
+barrier)來處理便可。現今以許多平行化的程式語言包括OpenMP、HPF、及NESL支援迴圈
+級平行於Multi-core SoC上。 
+RMS這類主流並行應用，如前所述，具串列(serial)運算、小尺度(fine-grained)並行運
+算、大尺度(coarse-grained) 並行運算交替混雜執行之更一般化特性。RMS主流並行應用基
+本上和前述科學性並行應用有如下不同點: 
+1. 在結構上: Multi-core SoCs大量減少通訊上的時間延遲及增加IPs與各核心間的頻
+寬，這樣能允許小尺度(fine-grained)並行運算，這在過去之超級電腦、叢集處理器、或者
+SMP是無益而無法做到的。 
+2. 在工作負載上: RMS主流並行應用具有可觀數量的各類模組，它們需要並行於小尺
+度(fine-granularity)才能達到合理的效能提升。跟據Amdahl’s定理，應用程式的並行效果
+受到循序部分的很大限制：舉例來說，若應用程式中有99%並行執行部份，剩下的1%為循
+序執行部份其造成最大平行度的降低竟然達到39倍(在64個執行緒中)。這意指即使小的模
+組也需要平行化，以保證有令人滿意的整體應用效能。 
+3. 在效能強健上: 主流的平行化應用要能在不同的嵌入式系統平台及配置上都能得
+到好的效能，這是非常重要的。這意謂著其所需的平行度要達到小尺度(fine-granularity)。 
+當然，我們並不是說所有小模組都要並行化；而是說，基於上述原因，非常多之小模
+組都將因並行化而受惠。而本計畫正是要以有效之Multi-core SoC硬體排程器之研究設
+計，來幫助眾小模組之並行化。此外，Multi-core SoC處理器是由同一晶片上多個處理器
+核構成，具有分散並行的特性。但現代計算機系統架構是建立在Turing機理論之上的，
+Turing機本質上是串列(serial)執行的，這就造成了串列執行的Turing機與並行的Multi-core 
+SoC多核處理器之架構的不匹配。這種不匹配直接導致設計並行程式之困難，而更嚴重是
+串列(serial)程式執行速度反而可能更慢之現象。 
+現今各多核處理器主要是針對多執行緒應用，且提出多核架構的主要初衷也是如此。
+如果不採用特別排程措施，串列程式很難從中獲益。而大量的傳統應用都是串列程式，基
+於相容性的考慮，多核處理器必須支持它們的運作，即便是多執行緒應用，每個執行緒也
+由串列程式構成的。同時，由於在一個晶片上集合了多個處理器核，出於功耗和面積的考
+無衍生研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

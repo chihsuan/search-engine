@@ -1,0 +1,870 @@
+API interface and user-level InfiniBand driver. Virt-
+IB driver provides a channel for VM IB library to 
+write commands into InfiniBand device indirectly. 
+Evaluation results show that our method can achieve 
+50% performance of the native InfiniBand. 
+ 
+英文關鍵詞： KVM, virtio, InfiniBand, virtualization 
+ 
+ I 
+ 
+摘要  
+由於雲端運算可提供隨需的服務且有效降低 IT 設備的成本，近幾年來雲端
+運算愈來愈受歡迎。虛擬化技術是雲端運算重要的技術之一，它有 CPU 虛擬化、
+記憶體虛擬化、I/O 虛擬化、儲存虛擬化等等各種虛擬化。虛擬化的核心概念主
+要是提供一個硬體資源的抽象層，所以它需要額外增加一虛擬層在硬體設備之上，
+正因為如此，經過虛擬化的硬體效能會降低。在各種虛擬化中以 I/O 虛擬化效能
+下降的情況最嚴重，經常在雲端運算成為效能的瓶頸。 
+InfiniBand 是一種擁有高頻寬、低延遲的高速網路，它廣泛用於高效能運算
+的領域。在此篇報告中，我們提出一套針對 KVM 虛擬機器管理者的 InfiniBand
+虛擬化系統——Virt-IB。Virt-IB 主要由 VM IB library 和以 virtio 為基礎架構的
+Virt-IB 驅動程式所構成。我們直接在虛擬機上執行 API，然後再間接使用
+InfiniBand 設備進行傳輸。VM IB library 不僅提供 API 介面，同時也具備使用者
+InfiniBand 驅動程式的作用，然後 Virt-IB 驅動程式提供溝通管道讓 VM IB library
+間接將指令寫入 InfiniBand 設備。本作法將虛擬化的 Virt-IB 達到實體 InfiniBand
+百分之五十的效能。 
+關鍵詞：核心虛擬機器、virtio、InfiniBand、虛擬化 
+ III 
+ 
+ 
+目錄  
+摘要................................................................................................................................ I 
+ABSTRACT .................................................................................................................. II 
+目錄.............................................................................................................................. III 
+Chapter 1 前言 ........................................................................................................... 1 
+Chapter 2 研究目的 ................................................................................................... 1 
+Chapter 3 文獻探討 ................................................................................................... 3 
+3.1 Overview of Kernel-based Virtual Machine ................................................ 3 
+3.2 InfiniBand Architecture ................................................................................ 7 
+3.3 Existing Methods for InfiniBand Virtualization ........................................... 9 
+Chapter 4 研究方法 ................................................................................................. 10 
+4.1 Design overview ......................................................................................... 10 
+4.2 Components of Virt-IB ............................................................................... 11 
+4.2.1 VM IB Library ................................................................................. 11 
+4.2.2 Virt-IB Driver .................................................................................. 12 
+4.2.3 Work Flow of Virt-IB ...................................................................... 13 
+4.3 Additional InfiniBand Operations of Virt-IB ............................................. 15 
+4.3.1 Resources Creation .......................................................................... 15 
+4.3.2 Memory Registration ....................................................................... 15 
+4.3.3 Posting Work Requests .................................................................... 16 
+4.3.4 Polling for Completion .................................................................... 16 
+Chapter 5 結果與討論 ............................................................................................. 17 
+5.1 Experiment Environment Setup .................................................................. 17 
+5.2 Performance Comparison between Virtual Network and Virt-IB .............. 17 
+5.3 Performance Comparison between Native InfiniBand and Virt-IB ........... 18 
+Chapter 6 結論與未來展望 ..................................................................................... 19 
+References .................................................................................................................... 20 
+  
+ 2 
+ 
+is para-virtualization, in which guest operating system does not only aware of that it is 
+running on a hypervisor, but also contains code to make guest-to-hypervisor 
+transitions more efficient. Since virtualization adds additional layer through the way 
+of software or hardware on top of the physical devices, it causes performance 
+degradation. Especially for I/O virtualization, the performance degradation is severe. 
+As the result, the I/O virtualization is usually the performance bottleneck in cloud 
+computing [11, 18]. 
+In this thesis, we propose InfiniBand virtualization to improve I/O performance. 
+InfiniBand [8] is a network interconnects that provides very low latency (less than 5us) 
+and very high bandwidth (multiple Gbps). Due to its excellent performance, 
+InfiniBand is commonly used in high performance computing (HPC). For example, 
+many machines in Top 500 utilize InfiniBand [5]. To achieve high performance, 
+InfiniBand has intelligent network interface cards (NICs), which can be used to 
+offload a large part of the host communication protocol processing. The intelligence 
+in the NICs also supports access from user-level communication, which enables safe 
+direct I/O access from user-level processes and contributes to reduced latency and 
+CPU overhead. 
+The existing methods of InfiniBand virtualization can be classified into two 
+types of methods. One is software-based I/O virtualization; the other is 
+hardware-based I/O virtualization. The software-based methods have the advantages 
+of flexibility and ease of migration, but suffer from low I/O bandwidth and high I/O 
+latency. Hardware-based methods pass through VM hypervisors and directly access 
+the underlying hardware, which are efficient but lacking of flexibility for migration 
+and reducing the advantages of virtualization. Since the hardware-based methods need 
+the hardware support, our design belongs to software-based method.  
+There are several challenges for InfiniBand virtualization. First, each port 
+address of InfiniBand (LID) is associated with a physical port in the one-to-one 
+manner. The mapping between the LIDs and the physical ports is controlled by 
+external subnet management, which again cannot be changed by system software. 
+This problem does not appear in network virtualization, because both IP and MAC 
+addresses used in Ethernet can be associated with any Ethernet device. Second, the 
+memory registration needs a contiguous segment of virtual/physical memory that can 
+be read or written by a local or remote process. However, there is no guarantee that 
+virtual machine will get a continuous memory to run on a guest OS. Third, the 
+behavior of operations is different between Ethernet network device and InfiniBand 
+device. Ethernet network is socket based communication. It packs data into packet to 
+send while unpacks the packet to get data for receiving. InfiniBand uses queue-based 
+model for communication. It posts work requests which contains the address and 
+length of data. Then, InfiniBand HCA can perform Direct Memory Access (DMA) [1] 
+to the address directly to send or receive data. So, we cannot use the existing 
+virtualization architectures of network such as [10] for InfiniBand virtualization 
+directly. 
+Kernel-based virtual machine (KVM) [7] is a full virtualization solution for 
+ 4 
+ 
+or special instructions. User mode performs I/O on behalf of the guest through QEMU. 
+The guest mode executes non-I/O guest code through the path from QEMU to 
+/dev/kvm and then to the device driver. 
+Guest	  OS
+Linux	  kernel
+QEMU	  I/O
+Hardware	  Platform
+kvm.kokvm-­‐intel.ko/kvm-­‐amd.ko
+App
+App
+ 
+Figure 1: The architecture of KVM 
+For the I/O device emulation, there are two types of virtualization methods: full 
+virtualization and para-virtualization as shown in Figure 2. 
+Guest	  Operating	  System
+	  	  	  	  	  	  	  	  	  	  	  	  Hypervisor	  	  
+	  	  	  	  (Full	  Virtualization)
+Traps
+Device	  Emulation
+Hardware
+Guest	  Operating	  System
+	  	  	  	  	  	  	  	  	  	  	  	  Hypervisor	  	  
+	  	  	  	  (Full	  Virtualization)
+Interfaces
+Device	  Emulation
+Hardware
+Para-­‐drivers
+ 
+Figure 2: Device emulation in full virtualization and para-virtualization environment 
+In KVM, the full virtualization of I/O execution KVM is with QEMU, whose 
+execution path is shown in Figure 3. First, the guest application issues an I/O 
+instruction in guest user-space. Then, pass the I/O instruction to guest I/O driver in 
+guest kernel. After that, the kernel module of KVM in host kernel traps the instruction 
+and gives the control from guest VM to QEMU devices, which is also in host 
+user-space. QEMU devices initiate the I/O on behalf of the guest. Finally, QUMU 
+passes the I/O actions to the hardware. 
+KVM I/O also has para-virtualization through the virtio framework. Virtio [17] 
+is a Linux standard, provides a shim virtualization layer for network and disk device 
+drivers, in which only the guest's device drivers aware the virtual environment, and 
+cooperate with the hypervisor. Basically, it includes the frontend drivers implemented 
+ 6 
+ 
+use zero or more queues, depending on needs. For example, the virtio network driver 
+uses two virtual queues (one for receive and one for transmit), where the virtio block 
+driver uses only one. Virtual queues, called virtqueue, are actually implemented as 
+rings to traverse the guest-to-hypervisor transition.  
+Above mentioned is the way for frontend driver connecting to the backend driver. 
+When guest (frontend) drivers communicate with hypervisor (backend) drivers, they 
+are actually through virtio-buffers. For an I/O, the guest provides one or more 
+virtio-buffer representing the request. For example, we could provide three 
+virtio-buffers, with the first representing a Read request and the subsequent two 
+virtio-buffers representing the response data. Internally, this configuration is 
+represented as a scatter-gather list (with each entry in the list representing an address 
+and a length). 
+Virtqueue
+Vring
+add_buf
+kick
+Frontend	  Driver
+1.	  Create	  a	  buffer
+2.Put	  data	  to	  buffer
+3.Create	  virtio-­‐buffer
+Backend	  Driver
+1.	  Gets	  address	  and	  
+length.
+2.	  Copy	  data	  out	  from	  
+t h e 	   a d d r e s s 	   w i t h	  
+length	  and	  process	  
+data.
+3.Copy	  results	  to	  the	  
+address.
+pushpop
+get_buf
+ 
+Figure 5: Communication process between virtio frontend driver and backend driver 
+For a whole communication process, shown in Figure 5, between frontend driver 
+and backend driver, there are five main APIs. Frontend driver creates a buffer and 
+puts data into the buffer. Then, after the frontend driver creates virtio-buffers and puts 
+the buffer into virtio-buffers, the communication process starts as follows. First, the 
+frontend executes add_buf to put the virtio-buffers to be sent in the virtqueue. After 
+that, the frontend driver calls kick to signal the backend driver the data is ready so that 
+the backend driver can use pop to get the data. After pop, the backend driver gets the 
+address and the length of the buffer created in frontend driver, so the backed driver 
+can get the data and returns results to user programs in VM. Once the backend driver 
+completes processing of the data, it does push to push results to virtqueue. Finally, the 
+ 8 
+ 
+[12] approach, which represents the typical implementation of the InfiniBand 
+specification, each resource has a buffer for receiving requests and a database for 
+recording the related information of the resource itself. The buffer and database are 
+created in user-space and registered in InfiniBand HCA through the HCA driver. 
+After creation, each resource gets a handle, which is a key for acquiring the resource 
+in HCA later.  
+l Memory registration 
+InfiniBand requires all buffers involved in communication be registered before 
+they can be used in data transfers. In Mellanox HCAs, the purpose of registration is 
+two-fold. Fist, an HCA needs to keep an entry in the Translation and Protection Table 
+(TPT) so that it can perform virtual-to-physical translation and protection checks 
+during data transfer. Second, the memory buffer needs to be pinned in memory so that 
+HCA can DMA directly into the target buffer. Upon the success of registration, a local 
+key and a remote key are returned, which can be used later for local and remote 
+(RDMA) accesses. The registration of QPs and CQs has the same procedure as 
+mentioned above. 
+l Posting work requests 
+In the Mellanox approach, posting work requests includes putting the descriptors 
+to a QP buffer and then ringing the doorbell. The QP buffer is registered in InfiniBand 
+HCA, so the descriptors put in QP buffer are also visible in directly in HCA. 
+Doorbells are rung by writing to the registers, which is a User Access Region (UAR) 
+mapping into process’s virtual address space. So, this work can be completed without 
+involvement of the operating system. 
+l Polling for completion 
+When a work request is completed, InfiniBand HCA locates the CQE in CQ 
+buffer. Since the CQ buffer is registered in InfiniBand HCA, the CQE can be directly 
+accessed from the process in virtual address space. The CQE contains much 
+information, such as OP Code, status, and id of the work request. After processing the 
+CQE, information in CQE is stored in a data structure named ibv_wc.  
+There two popular stacks for InfiniBand drivers. VAPI [13] is the Mellanox 
+implementation and OpenIB Gen2 [14] is a standardized Linux OS–based InfiniBand 
+software stack created by OpenFabrics Alliance (then named the OpenIB Alliance). In 
+this thesis, our implementation is based on OpenIB Gen2 whose architecture is 
+illustrated in Figure 6. 
+ 10 
+ 
+SR-IOV, virtual machines reach nearly native performance.  
+Although SR-IOV has good performance, it needs hardware supports. So far, not 
+every device has the hardware supports. Taking Mellanox InfiniBand [12] for 
+example, it supports SR-IOV only after the version of ConnectX2 InfiniBand HCA. 
+Chapter 4  研究方法  
+In this chapter, we present the design and implementation of Virt-IB. First, we 
+give an overview of the design in Section 4.1, and describe main system components 
+in Section 4.2. Finally, we show the additional operations of Virt-IB in Section 4.3. 
+4.1 Design overview 
+The design of Virt-IB consists of two parts. One is the VM IB library for 
+providing APIs interface for the InfiniBand operations in guest; the other is the 
+Virt-IB driver based on virtio frameworks for processing the corresponding 
+InfiniBand commands. Each time an API is called in guest VM, the Virt-IB driver in 
+guest passes them through virtio framework. After the host gets the request, the 
+Virt-IB driver in host performs Read or Write operation to the InfiniBand character 
+device. 
+VM IB library provides API interface and user-level HCA driver. Also, VM IB 
+library is able to create shared-buffer. VM IB library packs commands into requests. 
+Each command contains the address of receiving response and OP Code denoting the 
+operation, which is going to be done in the core InfiniBand module. InfiniBand has its 
+own standardized access interface, named VERBS interface, for a host to access 
+InfiniBand devices. In this implementation, when user program calls an API, VM IB 
+library in guest will interpret API calls to commands and pack them into requests 
+before passing to Virt-IB driver. 
+Virt-IB driver includes Virt-IB frontend driver (VFED) and Virt-IB backend 
+driver (VBED). VFED is a character device in guest kernel-space, which is also 
+capable of doing memory mapping. Once VFED is load in guest VM, it builds up 
+three virtqueues, which are read, write, and memory-map (MMAP) virtqueues, 
+between guest VM (VFED) and host machine (VBED). On the other hand, VBED 
+builds up a corresponding function for processing the requests from the MMAP 
+virtqueue. In addition, VBED performs read or write operation to communicate with 
+core InfiniBand module. 
+ 12 
+ 
+Virt-­‐IB	  backend	  driver
+Guest	  VM
+User-­‐level	  Application
+Virt-­‐IB	  fronted	  driver
+User-­‐space
+Kernel
+User-­‐level	  InfiniBand	  Service
+User-­‐level	  HCA	  Driver
+Core	  InfiniBand	  Modules
+HCA	  Driver
+InfiniBand	  HCA
+User-­‐space
+Kernel
+→
+User-­‐level	  Application
+User-­‐level	  InfiniBand	  Service
+User-­‐level	  HCA	  Driver
+Core	  InfiniBand	  Modules
+HCA	  Driver
+InfiniBand	  HCA
+User-­‐space
+Kernel
+OpenIB	  Gen2	  Stack
+ 
+Figure 8: The top-level view for the execution flow of basic Virt-IB 
+In summary, VM IB library has three main works. First, VM IB library sets an 
+index number to each API. Second, VM IB library packs all the necessary parameters 
+passed by users and the index of API into a request. Third, VM IB library reads or 
+writes the request to the character device and waits for results. In addition, since user 
+program needs to keep the key of the resources, VM IB library modifies the data 
+structure of the resources to add additional space for storing the key. 
+4.2.2 Virt-IB Driver 
+Virt-IB driver provides a way for VM to perform the API of user-level 
+InfiniBand services. Based on virtio frameworks, Virt-IB driver includes Virt-IB 
+frontend driver (VFED) and Virt-IB backend driver (VBED).  
+VFED is a character device running as a kernel module inside VM and it 
+provides Read and Write operations. Once VFED is loaded, it registers through virtio 
+APIs and establishes two virtqueues which are shared memory spaces between guest 
+VM (VFED) and host machine (VBED). The first virtqueue is used to process the 
+Write requests initiated from the VM IB library, while the second virtqueue is used to 
+process the Read requests. Both virtqueues are visible and pointed to different 
+functions in host machine. Each time before VFED wants to send requests to VBED, 
+it creates virtio-buffer mentioned in Section 3.1. Then, VFED puts the request 
+(assume it is already put in buffer created in VFED) to virtio-buffer. After that, VFED 
+adds the virtio-buffer into virtqueue and notifies VBED. VFED communicates with 
+VBED through virtqueues with virtio-buffer.  
+VBED is responsible for performing the corresponding APIs in the user space of 
+the host machine. VBED provides the different functions to process the requests from 
+different virtqueues. To processing Write requests, when VBED accepts the request 
+from the VFED, it unpacks the request into parameters and the index of API. Then, 
+according to the index, VBED calls API with the parameters. On the other hand, for 
+processing Read requests, VBED unpacks the requests to get the file path and then 
+reads the data. Processing either write or read requests, VBED pops the virtqueue to 
+get the address and length of the buffer containing the requests. Then, through copy 
+ 14 
+ 
+User	  program
+VFED
+1.	  Accept	  requests	  by	  
+using	  buffer	  created	  in	  
+advance.	  
+1.	  Create	  virtio-­‐buffer.
+2.	  Put	  the	  buffer	  into	  
+virtio-­‐buffer.
+3.	  Add	  virtio-­‐buffer	  into	  
+virtqueue.
+VBED
+1.	  Pop	  virt-­‐buffer	  from	  
+virqueue	  and	  get	  the	  
+address	  and	  length	  of	  
+buffer	  containing	  
+request.
+2.	  Get	  the	  requests	  by	  
+using	  the	  address	  and	  
+length	  .
+3.	  Unpack	  the	  requests.
+4.	  Read/Write	  to	  the	  
+character	  device	  
+exported	  by	  core	  
+InfiniBand	  module	  and	  
+get	  results.
+5.	  Put	  the	  results	  to	  virt-­‐
+buffer	  through	  copying	  	  
+the	  results	  to	  the	  
+address.	  
+VM	  IB	  Library
+Notify
+Push	  virtio-­‐buffer
+User-­‐level	  
+InfiniBand	  Service
+Pack	  command	  into	  a	  
+request
+User-­‐level	  HCA	  Driver
+1.	  Call	  the	  functions	  of	  
+	  	  	  user-­‐level	  HCA	  driver.
+2.	  Call	  the	  functions	  of	  	  
+	  	  	  	  ibverbs	  library
+Copy	  results	  
+back
+Read/Write
+Call	  API
+Return	  
+results
+ 
+Figure 9: The main work flow of Virt-IB 
+ 16 
+ 
+buffers to be registered is that the largest size of shared-buffer has limitation. The 
+limitation results from that the buffer is created in kernel with kmalloc, which has the 
+size limitation of creating buffer according to different hardware configuration and 
+operating systems. 
+Therefore, for the size of user buffer below the limitation, the memory 
+registration is using shared-buffer. Also, Virt-IB creates database to record the 
+information of shared-buffer and the mapping with user buffer. For the size of user 
+buffer larger the limitation, the memory registration is using buffer created in host. At 
+the same time, Virt-IB also creates a shared-buffer with largest size corresponding to 
+the user buffer for reducing the times to copy later. Therefore, Virt-IB needs to 
+records more information, which are the information of shared-buffer and buffer 
+created in host and the mapping with user buffer. 
+4.3.3 Posting Work Requests 
+The purpose of posting work request is to do send/receive operation of 
+InfiniBand. Usually, the work requests are post to QP buffer. Since the buffer of QP 
+in Virt-IB is shared-buffer and it is registered in InfiniBand HCA, InfiniBand HCA 
+can do DMA to QP buffer directly to get the work request and handle it. 
+Before posting send-work-request, Virt-IB needs to synchronize the data in user 
+buffer and the registered buffer. If the registered buffer is shared-buffer, then VM IB 
+library copies the data to be sent directly to shared-buffer through its mapping address. 
+If the registered buffer is buffer created in host, then VM IB library copies the data to 
+shared-buffer through its mapping address first. Then, VM IB library do a 
+PUT_DATA request with hva of the shared-buffer and the address of buffer created in 
+host through VFED to VBED. Finally, VBED copies the data in hva to the buffer. 
+PUT_DATA may happen many times depending on the length of the data. 
+Because only after polling for completion, a user program can know whether the 
+work request is completed successfully or not, VM IB library needs to create database 
+for storing the address, including the address of user buffer, mapping address and hva 
+of shared-buffer, and the address of buffer created in host (maybe NULL), and length 
+of expected received data when posting receive- work-request. 
+4.3.4 Polling for Completion 
+Since the CQ buffer is shared-buffer and Virt-IB register it in InfiniBand HCA, 
+InfiniBand HCA can DMA the completion queue to put completion queue entries 
+(CQEs). So, VM IB library can directly perform polling for CQE. After polling, VM 
+IB library does the same check action as the original design to see if there is 
+receive-work-request done successfully. If successfully, then VM IB library finds the 
+corresponding information in receiving database for the receive work request and 
+starts to copy data back from the registered buffer to user buffer. If the registered 
+buffer is shared-buffer, then VM IB library copies the data received directly from 
+ 18 
+ 
+ 
+ 
+ 
+Figure 11: Throughput for virtio network and Virt-IB. 
+  
+5.3 Performance Comparison between Native InfiniBand 
+and Virt-IB 
+Testing methods for Virt-IB are the same as mentioned in Section 5.2. Since we 
+have Virt-IB and native InfiniBand, we are providing the testing between native and 
+our Virt-IB implementation. For Virt-IB, the results are obtained from two guest VMs 
+in two different physical machines. For native InfiniBand, the results are obtained 
+from two physical machines.  
+In Figure 12 and Figure 13, we can see the performance of Virt-IB is only 50% 
+of native InfiniBand. The reason is that the registered buffer using for Send and 
+Receive is not the same as the user buffer used by user program in guest VM. So, 
+Virt-IB still needs to perform Copy when sending or receiving data while native 
+InfiniBand obtains data directly. 
+0 
+2000 
+4000 
+6000 
+8000 
+10000 
+12000 
+14000 
+1k 4k 16k 64k 256k 1M 
+Virt-IB 
+virtio network 
+ 20 
+ 
+sending or receiving data, Virt-IB needs to copy data in user buffer from/to the 
+registered buffer. To solve this problem, we are working on finding out a way to 
+remap the registered buffer to the user buffer. 
+In addition, there are many other InfiniBand operations, such as RDMA, 
+InfiniBand management, IPoIB, and MPI. What we have done now is just the basic 
+operation for Send and Receive. Currently, we are working on providing RDMA and 
+MPI. In future, we are going to provide InfiniBand management operations and IPoIB. 
+Also, since our work is based on virtio frameworks and virtio can be used in other 
+hypervisors, we plan to investigate how to apply our Virt-IB to other hypervisors. 
+References 
+[1] "Direct memory access". en.wikipedia.org/wiki/Direct_memory_access. 
+[2] "Iperf". http://en.wikipedia.org/wiki/Iperf. 
+[3] "PCI SIG I/O Virtualization (IOV) Specifications". 
+[4] "QEMU". http://wiki.qemu.org/Main_Page. 
+[5] "TOP500 List". http://www.top500.org/. 
+[6] "Virtualization". http://en.wikipedia.org/wiki/Virtualization. 
+[7] Avi Kivity, Y. K., Dor Laor,Uri Lublin, Anthony Liguori. "kvm: the Linux 
+virtual machine monitor". in Ottawa Linux Symposium ,July 2007. 
+[8] InfiniBand™ Trade Association, "InfiniBand™ Architecture Specification 
+Volume 1,Release 1.2.1", January 2008. 
+[9] J. Liu, W. H., B. Abali and D. K. Panda, "High Performance VMM-Bypass 
+I/O in Virtual Machines", in USENIX Annual Technical Conferencepp, 29-42, June 
+2006. 
+[10] Jones, M. T. "Virtio: An I/O virtualization framework for Linux". 
+http://www.ibm.com/developerworks/linux/library/l-virtio/. 
+[11] Lucas Nussbaum, F. A., Olivier Mornard,Jean-Patrick Gelas. "Linux-based 
+virtualization for HPC clusters". in Proceedings of the Linux Symposium, July 2009. 
+[12] Mellanox InfiniBand. http://mellanox.com/. 
+ 22 
+ 
+ 
+表 Y04 
+報告內容應包括下列各項： 
+一、參加會議經過 
+ 
+國立清華大學所組成的六人隊伍、以及兩位教授還有一位博士研究生及三位碩士研究生
+參加 SC11 Student Cluster Competition競賽，在經過三天的比賽之後，在與美國、
+俄羅斯、哥斯大黎加與中國的隊伍激烈競爭下，贏得比賽的總冠軍。 
+ 
+二、與會心得 
+ 
+學生叢集運算競賽( Student Cluster Competition, SCC )是在這個會議的眾多展覽交流項
+目中一個具有重要指標性的競賽，其主要的目的在於對大學生推廣叢集運算的知識，同
+時藉由比賽的過程促進各大學學生之間的相互經驗交流與分享。從 2007 年起歷經五屆
+的競賽舉辦經驗，主辦單位將比賽規模持續擴大並且提供更為完整的比賽環境和技術協
+助，今年的競賽可以說是五年來最為激烈的一次競爭。這項比賽不但要考驗學生本身的
+專業能力也是考驗學生們之間的合作以及臨場反應，要在資源極端有限的情況下盡其所
+能的達成艱鉅的超高效能運算生產力( computing throughput )，每個隊伍根據所完成的總
+共運算工作量來決定最後的冠軍。對於所以參賽學生而言，這將是一個彼此交流與競爭
+的絕佳機會，同時也是對於自我能力極限的一項高難度挑戰；對於主辦單位而言，這是
+一個了解目前超級運算領域在學校教育裡的深耕程度，同時也為推廣超級運算的工作有
+很大的助益，因此這個競賽無論對於主辦單位或是參賽的學生來說都將是意義重大的。 
+ 
+三、考察參觀活動(無是項活動者省略) 
+ 
+四、建議 
+ 
+政府應更積極支持學生參加類似的國際性會議，以拓展學生的視野以及增加與國際人才
+的交流合作。 
+ 
+五、攜回資料名稱及內容 
+ 
+SC11 Student Cluster Competition Overall Winner 獎牌一枚 
+ 
+六、其他 
+ 
+ 
+ 
+o Revolutionary Approaches (Thomas Sterling & Bill Gropp): Approaches 
+for delivering disruptive new technology 
+o Apps (David Keyes & Jean-Claude Andre): co-design, minapps, and 
+"needs" documentation 
+• 5:00 – 5:30 pm Reports from subgroups 
+Dinner 6:00 pm Buses to Banquet 
+April 13, Friday (Day 2) 
+• 7:00 - 8:00 am Breakfast at Hotel Area One 
+• 8:00am Bus departs Hotel Area One for Riken (Meet at 1st Floor entrance of 
+hotel at 7:55am) 
+• 8:30 - 9:00 am Registration, Breakfast 
+• 9:00 – 9:30 am On Data Intensive Computing and Exascale: Alok Choudhary 
+• 9:30 – 10:00 am Square K array, Tim Cornwell 
+• 10:00 – 10:30 am G8 Projects: Jean-Yves Berthou & William Tang 
+10:30 - Break 
+• 11:00 – 12:30 pm Breakout Groups 
+o Software (Franck Cappello & Rajeev Thakur): Finish software planning 
+from last meeting 
+o Revolutionary Approaches (Thomas Sterling & Bill Gropp): Approaches 
+for delivering disruptive new technology 
+o Apps (David Keyes & Jean-Claude Andre): co-design, minapps, and 
+"needs" documentation 
+12:30 – 1:30 pm Lunch 
+• 1:30 - 3:30 pm Breakout continued 
+3:30 – 4:00 pm Break 
+• 4:00 – 5:00 pm Report out from breakouts and discussion of follow on activities 
+• 5:00 - 6:00 pm K computer tour 
+2. 與會心得  
+國外，包含美國、日本、中國、歐洲等，對於超級電腦(supercomputer)的發展
+都無不盡全力發展，因為那是一場國力的競爭。這些參與其中的國家對於超級
+電腦中的硬體、軟體、和應用程式都有獨立發展的能力，而且在硬體的建構上
+都很不一樣。但是發展到後來，大家目前都面臨到一個瓶頸，那就是硬體系統
+過於龐大，以往不會發生問題的情況，在大系統中都成了嚴重的問題，例如電
+力、錯誤率、通訊時間、編成問題。但是各國專家都有一個共識，那就是這些
+問題都必須以軟體的方式解決。因此，一個以研討下一世代超級電腦軟體發展
+的研討會(International Exascale Software Project)自 2008 年，以每年兩
+次的頻率，廣邀各國高效能計算專家一起來開會，研究在 exascale 這樣巨大的
+超級電腦中，如何以軟體的方法來保證程式能正確快速執行。 
+目前 IESP 已經八屆，有許多的討論留下，主要的貢獻是明確的指出在發展
+exascale 等級的超級電腦時，最主要的問題是甚麼，而這些討論也蔓延到各大
+□ 赴國外出差或研習 
+□ 赴大陸地區出差或研習 
+■ 出席國際學術會議 
+□ 國際合作研究計畫出國 
+心得報告 
+計 畫 名 稱  計 畫 編 號  
+報 告 人 
+姓 名 
+李哲榮 
+服 務 機 構 
+及 職 稱 
+資訊工程系 
+會議/訪問時間 
+ 地點 
+2012/5/7-2012/5/10 
+新加坡 
+會 議 名 稱 
+A*CRC Workshop on Accelerator Technologies in High Performance 
+Computing: Does Asia Lead the Way? 
+發表論文題目 
+（檢附論文檔案）Synchronization on GPUs: Performance Curse or 
+Blessing?  
+ 
+一、主要任務摘要（五十字以內） 
+The purpose of this workshop is to analyze the current state-of-the-art accelerated HPC 
+architectures from an Asian perspective and experience, including practical issues of use, 
+code development, and performance, as well as the advantages and limitations of accelerated 
+HPC systems.  The focus is on the practical aspects of scientific and engineering 
+applications, experiences with program development, porting, tuning, performance 
+optimization, efficiency, hardware utilization, time to solution, and the outlook for 
+near-future trends and prospects for accelerated HPC. 
+ 
+二、對計畫之效益（一百字以內） 
+There are several benefits to the project, especially for the middle way software system. 
+1. Outreach the experts in this area for high performance computing and accelerators. 
+2. Present our work to the experts from all over the world. 
+3. Learn the progress of other research institutes. 
+ 
+三、經過 
+7 May 2012 
+Location Exploration Theatre Discovery Theatre 
+Time Speaker Title Speaker Title 
+08:00 - 08:30 Registration 
+08:30 - 08:40 
+David KAHANER, Marek 
+MICHALEWICZ 
+Welcome Address     
+08:40 - 08:50 
+Raj THAMPURAN 
+A*STAR, SERC 
+Welcome Speech     
+08:50 - 09:30 
+Keynote 1 
+Satoshi MATSUOKA 
+Tokyo Institute of 
+Technology JAPAN 
+Accelerating Beyond Petaflops --- 
+Isssues and Prospects 
+    
+09:30 - 10:05 
+Lecture 1 
+Michael LEVINE 
+Pittsburgh 
+Supercomputing Center 
+USA 
+Computational Accelerators in the 
+US/NSF Extreme Science and 
+Engineering Discovery Environment 
+    
+10:05 - 10.20 Coffee/Tea Break 
+10:20 - 10:55 
+Lecture 2 
+Wei GE 
+State key Laboratory of 
+Multi-phase Complex 
+Systems, Institute of 
+Process Engineering, 
+Chinese Academy of 
+Sciences CHINA 
+Petaflops simulation in chemical and 
+process engineering 
+    
+  Chair: Marek MICHALEWICZ Applications 1: CFD Chair: TBA Infrastructure 1 
+11:00 - 11:40 
+Keynote 6 
+Thomas STERLING 
+Indiana University 
+USA 
+Accelerating System Software for Extreme 
+Scale Computing 
+    
+  Chair: Michael LEVINE  Software Tools Chair: Wei GE Applications 3 
+11:40 - 12:10 
+Kengo NAKAJIMA 
+University of Tokyo 
+JAPAN 
+ppOpen-HPC: Open Source Infrastructure 
+for Development and Execution of 
+Large-Scale Scientific Applications on 
+Post-Petascale Supercomputers with 
+Automatic Tuning (AT) 
+Matthew SMITH 
+National Center for 
+High-performance 
+Computing (NCHPC) 
+TAIWAN 
+Challenges and Achievements of GPU-centered HPC 
+using Taiwan’s Formosa 4 
+12:10 - 12:30 
+V.C.V. RAO 
+C-DAC INDIA 
+C-DAC's Efforts : Application Kernels on 
+HPC GPU Cluster 
+NCHC, NARL 
+Fang-An KUO 
+NCHC, NARL TAIWAN 
+Presenting w/ Matthew Smith 
+12:30 - 12:40 Q & A Session 
+12:40 - 13:15 Lunch - Food Court at Matrix Building, Biopolis 
+13:45 - 14:20 
+Ed TURKEL 
+HP 
+USA 
+Accelerating innovation in HPC     
+  Chair: Satoshi MATSUOKA Software Tools Chair: Jack DONGARRA Software Tools 
+14:20 - 14:40 
+Hongwei LIU 
+CAS/IGG CHINA 
+GPU/CPU collaborative computing 
+technology in seismic data pre-stack 
+migration 
+Weichung WANG 
+Department of 
+Mathematics, National 
+Taiwan University 
+TAIWAN 
+Modeling and Optimizing the Performance of 
+Multifrontal Linear System Solver on Hybrid 
+CPU-GPU System 
+14:40 - 15:00 
+Che-Rung LEE 
+NTHU TAIWAN 
+Synchronization on GPUs: Performance 
+Curse or Blessing? 
+Yunquan ZHANG 
+Institute of Software 
+(IoS), Chinese Academy 
+of Sciences (CAS) CHINA 
+An Insightful and Quantitative Performance 
+Optimization Chain for GPUs 
+15:00 - 15:10 Q & A Session 
+15:10 - 15:25 Coffee/Tea Break 
+15:25 - 16:00 
+Nagarajan 
+KATHIRESAN 
+IBM 
+INDIA 
+Implementation of Green computing in IBM 
+HPC software stack on Accelerator based 
+super computer 
+    
+  Chair: Thomas STERLING Software Tools 
+ 
+16:00 - 16:20 
+Yifeng CHEN 
+School of Electronic 
+Engineering and 
+Computer Science, 
+Peking University 
+CHINA 
+PARRAY: The Array-Based GPU 
+Programming Technology 
+    
+16:20 - 16:40 
+Jaejin LEE 
+School of Computer 
+Science and 
+Engineering, Center 
+for Manycore 
+Programming, Seoul 
+National University 
+(SNU) KOREA 
+SnuCL and an MPI+OpenCL 
+Implementation of HPL on Heterogeneous 
+CPU/GPU Clusters 
+    
+16:40 - 16:50 Q & A Session 
+16:50 - 17:30 
+Keynote 7 
+Jeffrey VETTER 
+Oak Ridge National 
+Laboratory USA 
+On the road to Exascale: Lessons from 
+Contemporary Scalable GPU Systems 
+    
+17:30 - 18:00 Panel 
+18:00 - 18:10 Final Remarks 
+  
+ 9 May 2012 
+Time Event Location 
+8.30am - 12.30pm Basic nVidia Cuda training Exploration Theatrette 
+8.30am - 12.30pm Intel MIC Workshop Discovery Theatrette 
+9.00am - 12.00pm Site Visit Biopolis (GIS, BII) 
+12.00pm - 2.00pm Lunch - Food Court at Matrix Building, Biopolis 
+2.00pm - 4.00pm CAPS Enterprise Workshop Exploration Theatrette 
+2.00pm - 5.00pm Site Visit Fusionopolis (IHPC, A*CRC, I2R) 
+ 10 May 2012 
+Time Event Location 
+8.30am - 12.30pm Advanced nVidia Cuda training Exploration Theatrette 
+9.00am - 12.00pm Site Visit 
+Institute of Materials Research and Engineering 
+National University Singapore High Performance Computing Centre 
+12.00pm - 1.00pm Lunch - Food court at NUS 
+1.00pm - 3.00pm Site Visit Nanyang Technological University High Performance Computing Center 
+ 
+ 
+四、心得 
+國立清華大學補助教師及研究人員出國參加國際學術活
+動、爭取國際會議主辦權辦法報告 
+                                    序號： 
+姓    名 李哲榮 單  位 資工系 職  稱 助理教授 
+會議期間 2012/05/21-2012/05/25 會議地點 中國上海 
+會議名稱 2012 IEEE 26th International Parallel and Distributed Processing Symposium  
+論文名稱 
+1. I-Hsin Chung, Che-Rung Lee, Jiazheng Zhou, Chung-Yi Chou, and Yeh-Ching 
+Chung, Scalable Communication-aware Task Mapping Algorithms for 
+Interconnected Multicore Systems.  HCW 2012 
+2. Che-Rung Lee, Zhi-Hung Chen, and Quey-Liang Kao, Parallelizing the 
+Hamiltonian Computation in DQMC Simulations: Checkerboard Method for 
+Sparse Matrix Exponentials on Multicore and GPU, AsHES 2012  
+報告內容 
+ 
+1. 參加會議經過  
+MONDAY, May 21, 2012 
+IPDPS 2012 Monday Workshops 
+TUESDAY, May 22, 2012 
+Plenary Keynote Session 
+Chair: Leonid Oliker 
+Keynote Speech: Large-Scale Visual Data Analysis 
+Chris Johnson, University of Utah, USA 
+Session 1: Parallel Linear Algebra Algorithms I 
+Chair: Zhaojun Bai 
+Session 2: Bioinformatics and Performance Modeling 
+Chair: Mark Clement 
+Session 3: Dynamic Pipeline and Transactional Memory Optimizations 
+Chair: Dhabaleswar Panda 
+Session 4: Software Scheduling 
+Chair: Cho-li Wang 
+Session 5: Multicore Algorithms 
+Chair: Bo Hong 
+Session 6: Scheduling and Load Balancing Algorithms I 
+Chair: Denis Trystram 
+Session 7: Scientific Applications 
+Chair: Manish Parashar 
+Session 18: Scheduling and Load Balancing Algorithms II 
+Chair: Luc Bougé 
+Session 19: Parallel Graph Algorithms II 
+Chair: Edmond Chow 
+Session 20: Data Intensive and Peer-to-Peer Computing 
+Chair: Alexey Lastovetsky 
+Session 21: Disk and Memory Software Optimization 
+Chair: Hai Jin 
+THURSDAY, May 24, 2012 
+Plenary Keynote Session 
+Chair: Zhihui Du 
+Keynote Speech: Building Billion-Threads Computer and Elastic Processor 
+Guo-jie Li, Institute for Computing Technology, China 
+Plenary Session – Best Papers 
+Chair: Leonid Oliker 
+Session 22: Network Algorithms 
+Chair: Jian Cao 
+Session 23: GPU Acceleration 
+Chair: Frank Mueller 
+Session 24: Interconnection Networks 
+Chair: Tarek El-Ehazawi 
+Session 25: Software Reliability 
+Chair: Bronis de Supinski 
+Session 26: Communication Protocols and Benchmarking Algorithms 
+Chair: Julien Langou 
+Session 27: Parallel Algorithms 
+Chair: Umit Catalyurek 
+Session 28: Software Performance Analysis and Optimization 
+Chair: Pavan Balaji 
+Session 29: Performance Optimization Frameworks and Methods 
+Chair: Junwei Cao 
+FRIDAY, May 25, 2012 
+IPDPS 2012 Friday Workshops 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2012/10/28
+國科會補助計畫
+計畫名稱: InfiniBand的虛擬化(雲端計算及雲端資安技術研發)
+計畫主持人: 李哲榮
+計畫編號: 100-2218-E-007-013- 學門領域: 推動計畫-資安
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+Open source code on open foundry 
+http://www.openfoundry.org/of/projects/1992 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

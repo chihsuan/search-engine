@@ -1,0 +1,813 @@
+ 
+以模糊關聯規則為基礎的網路入侵偵測系統 
+ 
+ 
+摘要 
+本文是利用模糊關聯規則來設計並實作一個異常網路入侵偵測系統。所謂異常偵測是
+根據網路行為來判斷，有別於誤用偵測是根據特定字串或特徵來做判斷。由於網路行為本
+身容許一定程度的變動，傳統資料探勘中使用的關聯規則無法有效處理，導入模糊的觀念
+來強化關聯規則的適應性，更能符合異常偵測的實際需要。網路攻擊行為形形色色、種類
+繁多，本研究主要是以阻斷式服務攻擊(Denial of Services, DoS)作為實驗的對象。實驗結果
+證實在適當調整系統参數之後，對於所有測試的DoS攻擊，我們的系統皆能正確的辨識出
+來。瞬間大量封包是DoS攻擊的一個重要特徵，我們的實驗也驗證在瞬間大量FTP正常封包
+流量情況下，本系統不會造成誤判。 
+ 
+關鍵字：網路安全、糊模理論、關聯規則、糊模關聯規則、阻斷式服務攻擊、資料探勘 
+ 
+ 
+ 
+ 
+Abstract 
+The paper presents an anomaly network intrusion detection system (NIDS) based on fuzzy 
+association rules. In contrast to misused NIDS which detects attacks by signatures, anomaly 
+NIDS detects attacks by analyzing network traffic. If the behavior was deviated from the normal 
+profile too far, an attack event was possibly occurred. Since network traffic is variable frequently, 
+we apply fuzzy association rules to model network behavior. Attack types are too much and 
+changed every day, in the paper we focus on DoS (Denial of Services). We categorize DoS 
+attacks into three classes and pick a typical one for each class to evaluate our system. According 
+to our experiments, after some system parameters were set carefully the system can actually 
+detect all the attacks. Since a lot of sudden traffic is the common phenomenon of DoS attacks, 
+using several computers to download massive files by FTP we can demonstrate that our system 
+didn’t cause a false alarm.  
+ 
+Keywords: Network Security, Fuzzy Logic, Association Rules, Denial of Services (DoS), Data 
+Mining  
+標主機不會收到來源端的 ACK 的回應；此時
+連線此時處在半開啟狀態，直到連線逾時為
+止。攻擊者用不斷的連線請求來塞爆目標主機
+的通訊埠，比 TCP 逾時速度還要快，造成目標
+主機沒辦法接受新的連線請求。 
+ Ping Of Death － 攻擊是經由發送負載
+(payload) 過大的  ping request (ICMP echo 
+request 封包) 達成。Fragmentation 容許傳送這
+一個負載過大的封包，但當這個封包重新組合
+時即超出緩衝區限制的大小而造成超載，被攻
+擊的電腦會有不正常的動作甚至當機。此攻擊
+並不限於 ICMP而是可利用所有 IP上的通訊協
+定。 
+ Smurf Flood －  此攻擊方式也是透過
+ICMP message 的方式來進行攻擊，只不過這
+次的目標不是指向一般的主機而是指向廣播位
+址(broadcast address)。使得此網段下每台主機
+傳回大量的 ICMP echo reply 封包給目標主
+機，以此達到服務阻斷攻擊並且使網路壅塞。 
+目前流行的電腦蠕蟲(worm)，雖是自行產
+生大量攻擊封包，然對受害電腦或網段而言，
+皆是有異常封包大量出現的情形；也就說，手
+法固然不同，但徵兆與結果相同。所以對於蠕
+蟲所產生的 DoS 攻擊，本系統仍可以偵測出
+來。 
+ 
+ 
+3 模糊關聯規則演算法 
+ 
+3.1 關聯規則演算法 
+關聯規則(association Rules)[20]的描述如
+下：令I = {i1, i2, … , im}是所有相異物品項目
+(items)所成的集合，資料庫D是所有交易記錄
+(transaction)T的集合，T是在I中任意物品項目的
+子集合。一個集合X ⊆ I 稱為項目集(itemset)，
+此項目集所包含的物品項目之個數稱為此項目
+集的長度，若其長度為k，則稱此項目集為k-項
+目集(k-itemset)。一筆交易記錄若可支持一個項
+目集X，則此交易記錄必包含此項目集的所有物
+品項目，X ⊆ T，記為support(X)。關聯規則的
+表示形式為X ⇒ Y，X, Y ⊆ I 且X ∩ Y = ∅。關
+聯規則靠支持度(support)及可靠度(confidence)
+兩個參數來判斷此關聯規則是否有意義；支持
+度為資料庫中包含X ∪ Y 的交易記錄所佔百分
+比，記為support(X ∪ Y)；而可靠度則是定義此
+關聯規則可信的程度，也就是X 出現的條件
+下， Y 也會跟著出現的條件機率，記為
+support(X ∪ Y) / support(X)。一個有效的關聯規
+則，其支持度及可靠度必須要大於或等於使用
+者所定之門檻值，也就是最小支持度(minimum 
+support)及最小可靠度(minimum confidence)。一
+般最廣為人知的關聯規則演算法便是Apriroi 
+演算法[20]。 
+ 
+3.2 模糊關聯規則演算法 
+Apriroi 演算法之 support(X)是以項目集 X
+中的項目同時出現在資料庫D中記錄的筆數來
+計算，而用在入侵偵測上，每個項目在每筆記
+錄中都會出現，但每個項目都會有一個量化的
+值。檢查資料庫 D，從記錄的描述上就可以明
+白兩者的差異。假設 I = (A, B, C, D, E)且資料
+D 中有五筆記錄，圖一(a)是在傳統 Data Mining
+中對記錄的描述，而圖一(b)則是用在網路入侵
+偵測上對記錄的描述。圖一(b)中的第一筆記錄
+表示經統計在某個單位時間內的網路流量，擁
+有 A 特徵的封包數是 25 個，擁有 B 特徵的封
+包數是 53 個，擁有 C 特徵的封包數是 9 個，
+擁有 D 特徵的封包數是 21 個，擁有 E 特徵的
+封包數是 12 個；下個單位時間內的網路流量，
+則由第二筆記錄描述之，依此類推。 
+對於量化的資料庫，傳統的 Apriori 演算
+法並不適用。資料探勘領域中對於這種項目量
+化的問題也有若干方法被提出，本文是採用
+Fuzzy Logic 的觀念來挖掘這種量化的資料
+庫，所挖掘出來的關聯規則，稱之為模糊關聯
+規則。對於量化資料，一個最直接簡單的方法
+就是對於每個項目的數值給予明確的切割以判
+定等級。如果對於 A 這個項目，我們設定 20
+以下為 Low，21~60 之間為 Medium，61 以上
+為 High; 對於 B 這個項目，我們設定 100 以下
+只要 Sig<F, S> ≥ mini_significance，這個 itemset
+即是一個 large-itemset 。找出所有長度的
+large-itemsets 之後，接著就要產生所有穩定度
+(Certainty) ≥ mini_certainty 的模糊關聯規則。
+穩定度的計算定義如下：假設<F, S>是衍生此
+規則的 large-itemset，且<F′, S′>是此規則(條件
+式敘述)的前提項目集。則此規則的穩定度,表
+示為 Cer<<F′,S′>,<F,S>>，計算為 
+∑ ∏
+∑ ∏
+∈ =
+∈ =
+><
+><>><><
+=
+=
+Drecord
+k
+j
+jj
+Drecord
+l
+i
+ii
+SF
+SF
+SFSF
+fitemofvlaueFS
+fitemofvlaueFS
+Sig
+Sig
+Cer
+1
+1
+','
+,
+,,','
+)(
+)(
+      (2) 
+，其中 l 是<F, S>的長度而 k 是<F′, S′>的長度。
+每條規則穩定度的計算為 Sig<F,S> / Sig<F′,S′>, 所
+有穩定度大於或等於 mini_certainty 的規則會
+被留下，其餘的會被刪除。 
+ 
+3.3 相似度計算 
+我們先介紹兩條模糊關聯規則之間相似度
+的計算，再介紹兩組模糊關聯規則之間的相似
+度計算。設 r1, r2是兩條模糊關聯規則，s1與 c1
+分別代表 r1 的重要性(Significance)及穩定度
+(Certainty)；s2 與 c2 分別代表 r2 的重要性及
+穩定度。規則 r1 與 r2 的相似度計算為[15]: 
+ 
+⎪⎩
+⎪⎨
+⎧
+=−−−
+≠
+= 21))
+)2,1max(
+21
+,
+)2,1max(
+21
+max(1,0max(
+21,0
+)2,1( rrif
+ss
+ss
+cc
+cc
+rrif
+rrsim
+ 
+ 
+所 謂 r1=r2, 是 指 兩 條 件 式 敘 述 的 前 提
+(antecedent)及結論(consequent)皆相同。也就是
+說，不相同的規則無法比較，直接令其相似度
+為 0;相同的規則，才按上式計算其相似度。至
+於兩組模糊關聯規則,設為S0與S1,的相似度計
+算則為[15] 
+10
+)1,0(
+S
+Score
+S
+ScoreSSSimilarity ×= ,     (4) 
+where ∑
+∈∀
+∈∀
+=
+11
+00
+)1,0(
+Sr
+Sr
+rrsimScore ， 
+⏐Si⏐代表 Si 的規則數目，i=0, 1. 
+ 
+ 
+4 系統流程 
+ 
+雖然[13-15]都是採用模糊關聯規則來做入
+侵偵測的研究，但是他們的並沒有將此方法實
+作於線上即時的偵測系統上。也就是說，他們
+都是收集一段較長的封包資訊後，再離線式地
+分析此長時段的封包流量是否異常；如此的方
+式並無即時反應之效。更嚴重的是若攻擊時間
+短暫，在長時段的封包流量中，具攻擊特徵的
+筆數會無法滿足最小支持度而被忽略。另外，
+[13-15]中並未提及特徵如何產生；本文中的特
+徵是執行自行收集的 150 個 DoS 攻擊程式，檢
+視可能的特徵並按 Information Gain [22]值排
+序，在考量系統能即時處理的前提下，挑出擁
+有較大 Gain 值的前 12 個特徵。最後，本系統
+於實作中在能確定來源位址、固定通訊埠的情
+況下，可以動態更改防火牆(Linux 之 iptable)
+過濾規則。 
+本系統程式使用 Microsoft Visual C++ 6.0
+撰寫，並且使用 MFC 來達到視窗化介面的目
+的，另外也必須安裝 Winpcap 3.0[23]並用其
+packet.dll 所提供的函數設定網路卡、讀取所有
+經過之封包；系統處理流程如圖三所示。由於
+本系統是採用封包流量資訊所探勘出來的模糊
+關聯規則做為判斷的依據，封包流量會影響到
+若干參數的設定，所以事前的訓練與實際測試
+應該要在整個網路拓墣中的相同位置，才會有
+比較好的偵測效果。訓練時，我們在特定的網
+路拓僕位置上收集 3 個小時的封包，先確認這
+些封包是沒有 DoS/DDoS 的攻擊，然後訓練出
+一組供比對之用的模糊關聯規則。步驟是每單
+位時間(設為 2 秒)統計一次封包流量算出所要
+的 12 個特徵值，形成一筆記錄，如此共有
+3×60×60/2=5400 筆記錄，記為 ri,0≤i≤5399，i
+為記錄的編號。我們最後只要 3 筆記錄，所以
+(3)
+的常數 a, c 分別為 0.3, 20, Medium 的常數 a, b, c
+分別為 15, 2,50, High 的常數 a, c 分別為-0.3, 80。 
+實作上，我們調整係數，讓 Information 
+Gain 值愈大的特徵，重疊區域愈大；因其所代
+表的意義愈大。並非所有特徵的統計量都適用
+於同一組模糊成員函式，所以必須經過許多次
+的測試實驗才能將每個成員函式微調到適當的
+數值，每個特徵都要算出屬於個別成員函數的
+權重(grade)。一筆記錄有 12 個特徵，每個特徵
+要帶入三個不同的成員函數算出比重；換言之，
+每筆記錄都有 36 個項目，i.e., f0.low, f0.medium, 
+f0.high, …, f11.low, f11.medium, f11.high, 所以 3
+筆記錄就可探勘出不少規則。 
+ 
+5 實驗結果與分析 
+系統參數的設定會因使用環境的不同而
+異，實驗時也要考慮時段(早上，中午，下午、
+晚上、深夜)會比較精準，也就是早上所訓練的
+規則最好只用於早上的網路攻擊偵測，因為ㄧ
+天之中，不同時段的網路流量型態有時變化甚
+大。本節的實驗都是在晚上時間做，地點為本
+校 S 棟大樓與學生宿舍兩個地方。我們於所收
+集到的 150 個 DoS 攻擊軟體中，用其中 100
+個 做 為 訓 練 尋 找 上 節 所 列 1 2 個 特 徵
+(Information Gain 較大)，其餘 50 個程式作為測
+試的對象。我們挑選第二節所列三種型態的攻 
+ 
+Low：f ( x ) = 1 / ( 1 + exp( a ( x - c) ) ) 
+Medium：f ( x ) = 1 / ( 1 + | ( x - c) / a | ^ 2b ) 
+High：f ( x ) = 1 / ( 1 + exp( -a ( x - c) ) ) 
+   
+ 
+圖五 成員函數 Low, Medium, and High 
+ 
+擊,i.e. SYN Flood，Ping Of Death 及 Smurf 來做
+實驗，以測試本系統的偵測效果。本節的實驗，
+每單位時間均設定為 2 秒，每三個單位時間即
+做一次 mining(一次判斷)，所以圖六和圖七中
+橫軸一個單位即代表 6 秒鐘。而訓練階段的模
+範規則則是由一段長時間的封包累積量，取三
+筆平均並帶入模糊關聯規則演算法所得到的。
+長時間的收集取平均較能反映常態，不過我們
+就要花比較多的時間來確認這些封包沒有含
+DoS 攻擊封包。 
+圖六中長條圖的值是每6秒線上封包資訊
+所探勘的規則與模範規則之相似度，相似度若
+小於0.1(10%)，就判斷為攻擊。圖六(a)為晚間
+在學校用Ｓmurf型DoS攻擊(IGMPNUKE V1_0)
+的實驗結果，在前兩個時間點都還是屬於正常
+的網路行為，但是到了第三個時間點的後期，
+我們執行了攻擊程式並持續的攻擊，可以發現
+接下來的時間點所探勘出來的規則與模範規則
+差異極大(相似度低)。圖六(b)及(c)是遭受Ping 
+of Death攻擊(TosserV2.1)時分別於學校及宿舍
+所量測的情形，圖六(b)中的6、7、8、9這四個
+時間點是受到Tosser持續的攻擊，由圖中便能
+夠很明顯的發現與正常網路行為差距太大。第
+一個區段雖沒遭受攻擊但相似度偏低，有可能
+是因為特殊的網路行為所形成的(例如上課開
+始教室內多台電腦同時開機)。在一般的宿舍
+裏，比較不會有多台電腦同時做一件事的情形
+發生，故在此地受到到TosserV2.1攻擊時也比
+較明顯，圖六(c)即可很明顯看到此現象。 
+ 
+ 
+ 
+(a)Smurf 型攻擊(學校)   (b)Ping Of Death 型攻擊(學校) 
+ 
+Feature 
+value 
+grade 
+[3] 沈文吉，網路安全監控與攻擊行為之分析
+與實作，碩士論文，台灣大學資訊管理學
+系，民國 91 年。 
+[4] A. Bivens, C. Palagiri R. Smith, and B. 
+Szymanski, ″Network-Based Intrusion 
+Detection Using Neural Networks,″ 
+Intelligent Engineering Systems through 
+Artificial Neural Networks, Vol. 12, 2002, 
+pp. 579-584. 
+[5] M. S. Alam, Q. Javed, M. Akbar, M. R. U. 
+Rehman, and M. B. Anwer, ″Adaptive load 
+balancing architecture for SNORT,″ 
+Proceedings of the IEEE International 
+Conference on Networking and 
+Communication, 2004, pp. 48-52. 
+[6] Jun Li and C. Manikopoulos, ″Early 
+Statistical Anomaly Intrusion Detection of 
+DOS Attacks Using MIB Traffic 
+Parameters,″ IEEE Systems, Man and 
+Cybernetics Society Information Assurance 
+Workshop, 2003, pp. 53-59. 
+[7] Li Zhi-Tang and Li Jia-Chun, ″Application 
+of Fuzzy Neural Networks to Intrusion 
+Detection,″ Mini-Micro Systems, Vol. 23, 
+Issue 10, 2002, pp. 1235-1238. 
+[8] Sampada Chavan, Khusbu Shah, Neha Dave 
+and Sanghamitra Mukherjee, ″Adaptive 
+Neuro-Fuzzy Intrusion Detection Systems,″ 
+Proceedings of the IEE International 
+Conference on Information Technology: 
+Coding and Computing (ITCC), 2004. 
+[9] Udo Payer, ″State-driven stack-based 
+network intrusion detection system,″ The 7th 
+International Conference on 
+Telecommunications (ConTEL), 2003, pp. 
+613- 618. 
+[10] Zonghua Zhang and Hong Shen, ″Online 
+Training of SVMs for Real-time Intrusion 
+Detection,″ Proceedings of the 18th 
+International Conference on Advanced 
+Information Networking and Application 
+(AINA), 2004. 
+[11] Dong Seong Kim, Ha-Nam Nguyen and 
+Jong Sou Park, ″Genetic Algorithm to 
+Improve SVM Based Network Intrusion 
+Detection,″ Proceedings of the 19th 
+International Conference on Advanced 
+Information Networking and Applications 
+(AINA), 2005.  
+[12] T. Draelos, D. Duggan, M. Collins, and D. 
+Wunsch, ″Adaptive Critic Designs for 
+Host-Based Intrusion Detection,″ 
+Proceedings of the 2002 International Joint 
+Conference on Neural Networks (IJCNN), 
+Vol. 2, 2002, pp. 1720-1725. 
+[13] German Florez , Susan M.Bridges , and 
+Rayford B. Vaughn, ″An Improved 
+Algorithm for Fuzzy Data Mining for 
+Intrusion Detection,″ Proceedings of the 
+Fuzzy Information Processing Society, June 
+2002, pp. 457-462. 
+[14] Susan M. Bridges and Rayford B. Vaughn, 
+″Intrusion Detection Via Fuzzy Data 
+Mining″, Proceedings of the twelfth Annual 
+Canadian Information Technology Security 
+Symposium, June 19-23, 2000. 
+[15] Dickerson, J.E. and Dickerson J.A., ″Fuzzy 
+network profiling for intrusion detection,″ 
+Fuzzy Information Processing Society, 2000, 
+pp. 301-306. 
+[16] Chang-Tien Lu, Arnold P. Boedihardjo and 
+Prajwal Manalwar, ″Exploiting efficient data 
+mining techniques to enhance intrusion 
+detection systems,″ Proceedings of the IEEE 
+International Conference on Information 
+Reuse and Integration, 2005, pp. 512- 517. 
+[17] Srinivas Mukkamala1 and Andrew H. Sung, 
+″A Comparative Study of Techniques for 
+Intrusion Detection,″ Proceedings of the 
+15th IEEE International Conference on 
+Tools with Artificial Intelligence (ICTAI), 
+2003. 
+[18] Verwoerd, T. and Hunt, R., ″Intrusion 
+Detection Techniques and Approaches″, 
+Computer Communica- tions, Vol. 25, Issue 
+15, 2002, pp. 1356-1365. 
+[19] CERT® Coordination Center , Trends in 
+Denial of Service Attack Technology(v1.0), 
+October 2001. 
+[20] R. Agrawal and R. Srikant, ″Fast Algorithm 
+for Mining Association Rules in Large 
+Databases,″ Proceedings of the International 
+Conference on VLDB, 1994, pp. 487-499. 
+[21] Chan Man Kuok, Ada Fu, and Man Hon 
+Wong, ″Mining Fuzzy Association Rules in 
+Database″, ACM SIGMOD Record, Vol 27, 
+Issue 1, 1998, pp. 41-46. 
+[22] Quinlan, J.R., ″Induction of Decision Tree″, 
+Machine Learning, 1986, pp.81-106. 
+[23] WinPcap: The Windows Packet Capture 
+Library, http://www.winpcap.org/. 
+ 
+ 
+ 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 NSC 95-2221-E-130-003- 
+計畫名稱 以模糊關聯規則為基礎的網路入侵偵測系統 
+出國人員姓名 
+服務機關及職稱 
+蘇民揚  
+銘傳大學資訊工程學系副教授 
+會議時間地點 2007-5-14 ~ 5-19, 加拿大新布倫瑞克省(New Brunswick, Canada) 
+會議名稱 第五屆通訊網路與服務研討會(Fifth Annual Communication Networks and Services Research; CNSR2007) 
+發表論文題目 An Efficient and Secured Internet Key Exchange Protocol Design 
+ 
+一、參加會議經過 
+2007-5-14 出發，經約 24 小時飛行、轉機後，抵加拿大東岸新布倫瑞克省(New Brunswick, 
+Canada)省都城市 Fredericton，隨即下禢舉行此會議之飯店。接著持續四天，每天上、下午兩
+時段都全程參與會議之進行；同時也發表論文一篇，如附件。此會議發表之論文，將收錄於
+IEEE Computer Society。最後一天(2007-5-19)，早上 check out 後，自行徒步市區遊覽，下午
+隨即搭機返台。 
+ 
+二、與會心得 
+這個會議是有關網路技術與服務的學術研討會，以學術性論文發表為主，每天的 keynote 演
+講則是邀請擁有國際性聯盟的研發團隊領導人發表對最新產品與趨勢的看法。在此期間，聽
+了十幾場的論文與專題發表，除了自己熟悉的網路安全領域有更深入的認知外，對於以往較
+少接觸的領域，如感測網路(sensor network)與隨意式網路(ad hoc network)也受惠良多，引發興
+趣。未來可以將有線網路上的安全議題與解法，帶入上述的無線網路討論，應可以找到許多
+研究的新題材。很高興，這五、六天的奔波長途飛行除了將自己的研究結果順利發表外，不
+僅可以在自己最熟知的領域上與其他學者討論交換意見且受益良多；同時也觸發不少新的構
+想，相信對未來的研究工作，會有很大的幫助。 
+ 
+ 
+附、發表之論文 
+2. Related works 
+ 
+Internet Key Exchange (IKE) [1] is the proposed 
+key exchange standard by the Internet Engineering 
+Task Force (IETF) for IPSec. IKE is a hybrid protocol 
+that implements Oakley [17] and Skeme [18] key 
+exchanges inside the Internet Security Association and 
+Key Management Protocol (ISAKMP) [19] framework.  
+ 
+2.1 Original IKE and other IKEs 
+ 
+Security Association (SA) is a set of confidential 
+parameters including key materials, used to provide 
+IPSec services. The IKE [1] consists of two phases: 
+Phase 1 for establishing IKE SA and Phase 2 for 
+establishing IPSec SA. Since Phase 2 negotiation is 
+protected by IKE SA, the negotiation of Phase 1 is of 
+major concern. There are eight variants of Phase 1 of 
+IKE. This is because there are four different 
+authentication methods, and each of them has two types 
+of exchanges: Main Mode and Aggressive Mode. 
+Figure 1 depicts the IKE Main mode using public key 
+signature for authentication, which is the basic form of 
+the eight variants. For the sake of neatness, the 
+ISAKMP headers are omitted in the figure. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Figure 1. IKE Main mode with signature authentication 
+ 
+In Figure 1, g, N, ID, CERT and SIG are 
+Diffie-Hellman exponentials, nonce, identity, public 
+key certificate and signature, respectively. 
+Subscripts/superscripts i and r are used to represent the 
+data generated by or belonging to initiator or responder, 
+respectively. Data like CERT put in parenthesis can be 
+omitted if not necessary. SAi is the IKE SA proposal 
+proposed by the initiator, and SAr is the IKE SA reply 
+from the responder. After exchanging D-H public keys 
+and nonce values (in the second round-trip), the 
+communication parties begin to authenticate each other 
+using the third round-trip exchange. The confidential 
+information including ID, CERT, and SIG would be 
+encrypted by the symmetric key skeyid_e, which is 
+basically derived from the two nonce values and the gir 
+shared session key. SIGi (SIGr) is the digital signature 
+of applying the initiator’s (responder’s) private key to 
+sign a hash value. The detailed process can be found in 
+[1].  
+The original IKE has two apparent weaknesses to 
+DoS attack. Firstly, the responder does keep in state 
+after receiving message 1 because cookie of the 
+initiator that is contained in the ISAKMP header 
+(omitted in Figure 1) should be stored in the 
+responder’s buffer. Cookies of both parties are essential 
+materials for deriving keys [1]. Secondly, the 
+complicated exponential computation gir is performed 
+before authentication each other. The former weakness 
+makes the responder easy to be memory exhausted, and 
+the latter weakness makes the responder easy to be 
+CPU exhausted.     
+Some researches [6-10] pointed out many other 
+deficiencies of the original IKE, so IKEv2 [11] was 
+proposed in 2002 for a substitution. Compared with the 
+original IKE, IKEv2 reduces exchange messages from 
+nine to four by merging Phase 2 into Phase 1. While, if 
+necessary, IKEv2 also supports a Phase2 exchange, 
+similar to the Phase 1 / Phase 2 separation in the 
+original IKE; thus it can create subsequent IPSec SAs 
+(Phase 2) with a single IKE SA negotiation (Phase 1). 
+Except for IKEv2, IKE-SIGMA [13], JFK [12] and 
+Arcanum protocol [14] are other alternatives.   
+ 
+2.2 Haddad et al.’s protocol 
+ 
+Hirose and Matsuura [20] proposed in 2001 a 
+general authenticated Diffie-Hellman key agreement 
+protocol that is resistant to Denial-to-Service attacks. 
+Haddad et al. [15] modified the protocol to become a 
+new IKE version in 2004. In the design, again there are 
+two phases: Phase 1 for negotiating IKE SA and Phase 
+2 for IPSec SA. Figure 2 depicts Haddad et al.’s 
+version of Phase 1 for constructing IKE SA. Foe each 
+message received either by the responder or the 
+initiator, the procedure it has to do is listed in the block 
+below the message. Phase 2 for IPSec SA is the same 
+as that of IKEv1. Since the protocol is the latest in 
+literature and most related to our proposed one, we 
+describe the protocol in more detail here. The 
+comparison of our protocol and Haddad et al.’s 
+protocol is given in Section 5.  
+ 
+ 
+ 
+ 
+Initiator                   Responder 
+SAi
+SAr
+gi, Ni 
+gr, Nr 
+{IDi, (CERTi), SIGi}skeyid_e 
+{IDr, (CERTr), SIGr}skeyid_e 
+Initiator                        Responder
+ui, SAi 
+er = H(xr , ur , ui)
+wr = rr + erkr + er2sr mod q
+cr = Er(kr , TS , ur , xr)
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+* ci, cr and ec are encrypted data 
+Figure 3. Our proposed IKE protocol 
+ 
+There are four messages, two round trips, in the 
+protocol. The correctness proof and description about 
+the protocol are stated below. After receiving the 
+connecting request, Msg1, the responder uses its two 
+ephemeral keys ur and xr, and one of initiator’s 
+ephemeral key ui that is contained in Msg1 to get a 
+hash value er. The responder “signs” er with its 
+long-term private key sr mixed with corresponding 
+ephemeral private keys rr and kr to compute wr. Then 
+use a symmetric key, say skey, to encrypt the 
+concatenation of the Index (referred to currently used 
+key parameters) and time stamp (TS). The symmetric 
+key skey is only used in the responder to protect the 
+index and time information. It could be used for a fairly 
+long period of time. Since the encrypted data cr will be 
+returned to the responder later by the protocol, the 
+responder does not need to store any information so far 
+and thus is stateless. To make the responder stateless at 
+the beginning during negotiation is an important 
+strategy for avoiding buffer exhaustion DoS attacks.  
+On the other hand, after receiving Msg2, the 
+initiator computes zr by the responder’s long-term 
+public key vr. If the two communicating parties are 
+honest so far, zr should be equal to xr.   
+zr = gwrurvrer mod p = grr+kr+ersrur(g -sr)
+er mod p 
+ = grrgkrgersrg -krg -srer mod p = grr mod p = xr 
+ 
+That is, the following check of whether er = H(zr, ur, 
+ui) in the protocol will pass. The initiator compute a 
+shared session key CKi and use the key to encrypt its 
+identification (IDi) and IPSec SA proposal (SAi2, Phase 
+2 SA). Then initiator creates a message digest ei and 
+uses its two ephemeral private keys and long-term 
+private key to “sign” ei to get wi. 
+Once the responder receives Msg3, using its own 
+symmetric key skey to decrypt cr the responder first 
+check whether the index makes sense (matching to two 
+ephemeral key pairs in the key pool) and has not been 
+applied (Boolean flag = 0). Also check the time stamp 
+contained in cr is the same as that in Msg3 (TS = TS’ ?). 
+The former check resists DoS attack and the latter 
+protects from replay attack. If such double checks pass, 
+sets flag to 1 and goes on. Otherwise, drop the packet 
+and terminates the negotiation. Next the responder 
+generates a shared session key CKr and use the key to 
+decrypt ci in Msg3 to get IDi and SAi2. Equivalent of 
+the two shared session keys established by the two 
+entities, i.e., CKi and CKr, is assured below.         
+ 
+CKi = ur-ki mod p = (g-kr)-ki mod p = (g-ki)-kr mod p 
+ = ui-kr mod p = CKr 
+ 
+After decrypting ci with CKr, the responder knows the 
+initiator’s identification and the proposal for Phase 2 
+(IPSec) SA. To use the initiator’s long-term public key 
+vi and other information wi, ui, and ei contained in 
+Msg3, the responder can compute zi. If all the factors 
+are correct, zi should be equal to xi as follows.  
+ 
+zi = gwiuiviei mod p = gri+ki+eisiui(g -si)
+ei mod p 
+ = grigkigeisig -kig -siei mod p = gri mod p = xi 
+ 
+Remind that xr = zr and CKr = CKi if both entities are 
+honest. So the following check of whether ei = H(zi, ui, 
+ur, xr, TS, CKr) in the protocol will pass. Finally, the 
+responder sends SAr2 (the reply of IPSec SA proposal), 
+zi, and xr all encrypted using CKr, to the initiator. The 
+initiator, after decryption using CKi checks whether 
+both zi = xi and xr = zr. If positive, IPSec SA is being 
+securely established and the IKE protocol completes.  
+ 
+4. Discussion about our IKE protocol 
+ 
+In addition to long term private-public key pairs, 
+each entity needs two ephemeral key pairs for each 
+successful negotiation, say (ki, ui) and (ri, xi) for the 
+initiator, and (kr, ur) and (rr, xr) for the responder. One 
+pair is used to exchange public value for agreeing on a 
+shared session key, and the other pair is used to 
+authenticate each other. Only public keys of the former 
+pair, i.e., ui and ur for initiator and responder 
+respectively, are exchanged through the Internet; the 
+other 3 keys of each entity should be kept securely 
+before applied. Such ephemeral key pairs are 
+independent to the communication opposite, so they 
+Msg3:       ui, ei, wi, TS’, ci ,cr 
+(Index, TS) ← Dskey(cr)
+Valid Index?
+(Reasonable Index and no replicate)
+TS = TS’ ?
+CKr ← ui–kr mod p
+(IDi , SA2p) ← DCKr(ci)
+zi ← gwiuiviei mod p
+ei = H(zi , ui , ur , xr , TS, CKr)?
+   ec ← ECKr(SAr2, zi , xr)
+Msg4:               ec 
+(SAr2, zi , xr) ← DCKi (ec) 
+zi = xi ? and xr = zr ? 
+is invalid in checking the hash value hi. In other words, 
+the responder would spend much time to check whether 
+an incoming non-replicated Msg3 is invalid if the 
+adversary honestly executes the first half of negotiation 
+until it launches an attack. Compared to our protocol, 
+such invalid Msg3 would be dropped immediately after 
+once symmetric decryption and once table look-up. 
+Because each set of two ephemeral key pairs is 
+associated with a Boolean flag and they can be only 
+used once in the design. 
+2. Our protocol is one phase (the first round-trip 
+exchange for negotiating IKE SA and the second 
+round-trip exchange for IPSec SA), whereas Haddad’s 
+protocol needs two phases.  
+3. Haddad’s protocol is implicit Key Confirmation, 
+whereas our protocol is explicit Key Confirmation. 
+4. Our protocol is more efficient than Haddad’s version 
+from packet payload length and operations that both 
+entities have to perform.  
+We have implemented the proposed protocol in 
+Linux Platform by C++ Language. All of the 
+encryption/decryption and hash algorithms in the 
+protocol were done by OpenSSL function calls. The 
+simulation environment is illustrated in Figure 4. A lot 
+of forged packets are flooded to the responder from the 
+attacker. No other program is executed in the responder, 
+except for the system kernel and the protocol. Two 
+types of packets are considered to be flooded separately: 
+Msg1 and Msg3.          
+ 
+ 
+ 
+ 
+Figure 4. Simulation Environment 
+ 
+Since our protocol is stateless, memory exhaustion 
+is impossible to occur. We only concern CPU 
+exhaustion attack. Under 500 Msg1s per second and 
+1000 Msg1s per second flooding attacks, the CPU 
+utilization were illustrated in Figure 5(a) and 5(b), 
+respectively. In Figure 5(a), more that 50% CPU time is 
+still idle, the user (protocol) program occupies about 
+20% CPU time, and the system occupies nearly 30%. 
+While the flooding packet is augmented to 1000 Msg1s 
+per second, the CPU idle is less than 10% and more 
+than 90% CPU time is consumed by the protocol and 
+system programs, as shown in Figure 5(b).  
+ 
+500 Msg1s per second
+0
+10
+20
+30
+40
+50
+60
+70
+80
+90
+100
+1 11 21 31 41 51 61
+time (second)
+CP
+U 
+uti
+liz
+ati
+on
+ (%
+)
+User Sys Idle
+ 
+(a) 500 Msg1s per second 
+ 
+1000 Msg1s per second
+0
+10
+20
+30
+40
+50
+60
+70
+80
+90
+100
+1 11 21 31 41 51 61
+time (second)
+CP
+U 
+uti
+liz
+ati
+on
+ (%
+)
+User Sys Idle
+ 
+(b) 1000 Msg1s per second 
+Figure 5. CPU utilization under Msg1 flooding attack 
+ 
+Under the two kinds of attacks, the responder’s 
+CPU has not been exhausted completely; so any 
+initiator can negotiate with the responder without 
+significant affection. See the first three rows in Table 1. 
+We connect 110 times and show the average values for 
+each case in the table. In the experiment, three different 
+symmetric encryption algorithms are considered 
+separately. One successful negotiation takes about 0.02 
+second in average. As flooding Msg1 packets is more 
+than 1065 per second, the responder’s CPU is 
+exhausted and thus some of connection requests from 
+the legitimate initiator would be missed. See the 3DES 
+column in Table 1 for example. When the attacker 
+flooded Msg1s to the responder up to 1065 per second, 
+the legitimate initiator could successfully complete 95 
+OS: Linux 
+CPU: 450MHZ 
+Memory: 512MB 
+OS: Linux 
+CPU: 1.8GHZ 
+Memory: 512MB 
+Attacker 
+OS: Linux   
+CPU: 3.2GHZ Memory: 512MB 
+Switch 
+10/100 Mb/s Ethenet 
+Initiator Responder
+LAN

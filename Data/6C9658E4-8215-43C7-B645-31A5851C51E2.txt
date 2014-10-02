@@ -1,0 +1,651 @@
+i 
+摘要 
+    本計畫研發以結構光(Structured Light)的方式，利用照相機與投影機取得物體表面
+3D座標的方法。由於照相機的鏡頭是由球面鏡所組成，因此拍攝的影像都會有變形(Lens 
+Distortion)的問題，我們必須先用非線性的方式(non-linear)校正照相機之影像後，才能利
+用照相機之影像作為計算座標的來源。另外投影機所投影出來的顏色也會有色偏(Color 
+Distortion)的現象，顏色是由不同的基本色組成，輸出顏色時會有基本色比例上的誤差，
+因此，在我們要投出影像之前，必須先校正所有的顏色，使投影機投出的各種顏色能夠
+接近理想值。結構光3D取像的方式是利用照相機與投影機間的同位(Corresponding)資訊
+來計算座標，我們利用 紅、綠、藍、黃、青、紫、白顏色，而我們給予每個顏色一個
+數字代表，並且使用這些顏色排列組合(Computation)的方式編碼來產生圖樣(Pattern)，
+經由投影機將圖樣投影於被掃瞄物體上，再使用照相機取像，藉由取得圖樣的解碼與照
+相機的同位資訊，利用這些資料來計算出物體表面的3D座標，由於編碼是由顏色所組
+成，所以在解碼時必須先取得影像中的顏色群組(Color Group)，將此顏色群組依照其顏
+色的排列，求出此一顏色群組再所有群組中的順序，進而求出此顏色群組中每一個顏色
+的順序，得知每一個顏色的順序後即可求得該顏色的角度。將顏色轉換成數字的過程
+中，我們使用色調(Hue)的數值來判別顏色，使用色調來判別的方法可以去除亮度
+(Luminance)對我們判別顏色的影響。另外我們也利用排列組合的特性來過濾部分物體表
+面所造成的錯誤，使得在缺少部分線條的狀況下，可以取得現有的正確顏色資訊，也就
+是提供錯誤容忍(Fault Tolerance)機制，除此之外，使用排列組合編碼，在解析度上以及
+執行速度上都有不錯的表現，在我們的實驗中也掃描各類物件，實驗證明此方法可以正
+確的取得物件3D座標，並且與其他方式比較解析度，我們使用的編碼方式確實能夠提升
+物件3D取像的解析度，與目前最高的 De Brujin 編碼方式比較，可以提升46%的解析度。 
+ 
+關鍵字：結構光，三維掃描，面部掃描，圖像校正，顏色校正，三維坐標，三維重建 
+ 
+          
+iii 
+ 
+目錄 
+摘要 ................................................................................................................................ i 
+Abstract ........................................................................................................................ ii 
+1. 前言 ....................................................................................................................... 1 
+2. 研究目的 ............................................................................................................... 1 
+3. 文獻探討 ............................................................................................................... 1 
+3.1 結構光(STRUCTURED LIGHT)取像的原理........................................2 
+3.2 照相機影像校正(IMAGE CALIBRATION).........................................2 
+4. 研究方法 ............................................................................................................... 2 
+4.1 圖樣編碼設計 ..........................................................2 
+4.2 距離與角度的轉換 ......................................................5 
+4.3 取像與解碼 ............................................................6 
+4.4 座標計算 ..............................................................8 
+5. 結果與討論 ......................................................................................................... 14 
+5.1 準確度掃描分析 .......................................................14 
+5.2 形體之掃描分析 .......................................................15 
+5.3 討論分析 .............................................................17 
+5.4 結論與未來展望 .......................................................18 
+參考文獻 ..................................................................................................................... 19 
+可供推廣之研發成果資料表 ..................................................................................... 21 
+          
+2 
+確的物體表面座標。 
+ 
+3.1 結構光(structured light)取像的原理 
+   利用投影機投出已知的圖像，使影像在欲取得的物體表面呈像，並且使用照
+相機取得物體表面之影像，藉由投影與取像的行經光線角度計算出表面每一個點
+像的位置，如圖 1 所示 
+ 
+ 
+圖 1 : 結構光取像原理 
+ 
+   結構光的取像類型可分成三個主要類型，分時投影(Time-multiplexing)、
+空間區域(Spatial Neighborhood)、與指向編碼(Direct Coding)，不同的類型
+提供不同的掃描特性，也應用在不同的使用環境或是物件類型，這三個類型的掃
+描方式主要都是使用照相機與投影機做為硬體架構，並且使用三角函數的方式來
+進行座標的計算，差別在於使用圖樣(Pattern)的差異。 
+ 
+3.2 照相機影像校正(Image Calibration) 
+    由於 3D 座標之計算需要照相機與投影機的同位(Corresponding)資訊，因此
+影像的正確性會影響取像的準確度，目前的照相機的鏡頭皆由球面鏡所組成，所
+以照相機的拍攝影像都有變相的問題存在，在拍攝影像時必須先校正照相機之影
+像，才能使用校正後的影像來進行座標計算，照相機的影像校正的方式是先量測
+影像的變形分布，在依照與實際物體的比對，將變形的區域修正回原始的影像，
+而影像校正的方式主要分成兩個類型，模型量測分析(Modeling Based)[11]與影
+像變形量測[12]: 
+ 
+4. 研究方法 
+4.1 圖樣編碼設計 
+    利用排列組合將 R、G、B、Y、C、M、W 七個顏色做編碼，其中W做為
+          
+4 
+溶色的結果，將會造成解碼時的困難，甚至無法解碼，在每個顏色中間必須插入
+一個黑色的空格，圖樣原本的色調並不會因為投影的散射而造成顏色的變化，另
+外加入黑色間隔較容易突顯每個顏色的分隔，也就是可以從亮度(Luminance)來
+判別顏色的峰值(Peak)，圖4(a) 中無法分辨每一個顏色的位置，(b)圖中可以明顯
+的判別每個顏色的位置與峰值 
+ 
+(a)                             (b) 
+圖 4 : 圖樣有無黑色間隔線條的顏色分佈比較 
+ 
+顏色碼產生公式: 
+ 
+             (方程式 1) 
+ 
+N:使用的顏色數量(不包含白色) 
+j:第 j 組 
+ 
+ 
+ 
+ 
+ 
+S (k): Get the k-th number from array.  
+If k = 2，取出＂2＂，若下次取出時 k=2，取出的數字為＂3＂。(圖 5) 
+          
+6 
+ 
+圖 1 : 角度轉換方式 
+ 
+    在計算座標之前必須先計算的角度有(1) 照相機影像之垂直線的水平角度 
+(2) 照相機影像之水平線的垂直角度 (3) 投影機投出每條顏色線的垂直角度，
+這些資訊在座標計算中使用。 
+ 
+4.3 取像與解碼 
+    在取得相機擷取影像後，從上而下(或由左而右; 依照相機與投影機的擺放
+形式而定)讀取點像的資訊，並且依照編碼原則中的顏色代碼定義給予相對的代
+碼，如圖 6 所示，當讀取到白色資訊時，將之前的六個碼依照讀取順序排列，以
+圖6為例，讀取到顏色資訊為123456，白色本身的資訊不納入計算，編碼是123456
+解碼後可得知這是第一組碼，而第一組碼的表現範圍為 1~7，依照顏色可以得知
+每一條線的順序，取得線條的順序後，可利用 3.1 (方程式 1)的概念來計算出每
+一條顏色線的投影角度。 
+ 
+          
+8 
+ 
+ 
+線條錯誤 2: 
+ 
+ 
+線條錯誤 3: 
+ 
+若有線條多出的問題，先依照重複編號線條的數值來比較，將相同編號數值較低
+的移除，移除後再依照上述的三種狀況進行資訊偵測。 
+ 
+4.4 座標計算 
+    座標計算的概念如圖 33 所示，主要是利用照相機與投影機的已知條件，若
+加上物件表面的任一點，即構成一個三角形的區域，利用三角函數的方式來求取
+物件表面該點的座標。 
+ 
+圖 7 : 座標計算的概念 
+          
+10 
+    座標計算僅需要使用三角函式即可計算出點 Pi 的 3D 座標，以圖 10 左圖為
+例，而以幾何方式顯示為右圖，為計算方便重新定義角度位置如圖 11 所示， 
+ 
+ 
+圖 10 : 座標計算之示意圖 
+ 
+ 
+圖 11 : 座標計算之示意圖 
+ 
+ 
+ 
+ , 結合上面兩個式子得到此式。 
+ (化簡後的結果) 
+     
+其中θp與θc為已知資料，E (Epi-Polar)也是已知條件，因此可以求的Δ
+的數值，已知前定義來說，Camera 的中心線為原點，Δ則是等於 Y 軸的數值，
+所以此處的Δ數值及為-Y。則 Z可由下列式子求出: 
+ 
+ 
+    座標計算時依照待測點的位置，可分成三個區域，計算時需依照這三個區域
+的分類使用不同的計算公式，區域的分界限為 (1)照相機中央水平線以上區域 
+          
+12 
+ 
+圖 14 : 第二區座標計算範圍 
+ 
+條件: θc < 0 and θp > 0 
+ θH = |θc|，θL=|θp|，E=Epi-Polar (照相機與投影機的鏡頭內焦點的距離) 
+ 
+                                     (方程式 6) 
+                                          (方程式 7) 
+                                                  (方程式 8) 
+; θx 為 P 點的水平角度 
+ 
+第三區 (Region3): 
+ 
+ 
+圖 15 : 第三區座標計算範圍 
+ 
+條件: θc < 0 and θp <= 0 
+ θH = |θc|，θL=|θp|，E=Epi-Polar (照相機與投影機的鏡頭內焦點的距離) 
+ 
+                                   (方程式 9) 
+          
+14 
+5. 結果與討論 
+5.1 準確度掃描分析 
+ 
+    在座標準確性的測試中，我們針對一階梯物件進行測試，此物件分成三個階
+層，物件的尺寸為圖 18(a)所示，其中 a = 56 (mm), b = 88 (mm), c = 23 (mm)，
+每個階層量測六個測試點，整個物件總共量測 18 個測試點(圖 18(b))。圖 19 為
+階梯物件之掃描結果。圖片中(a)為白光下物件之原始影像，(b)為圖樣以投影機
+投影於物體之影像，(c)為掃描後之 3D 座標影像，(d)以 3D 座標所建立網格後之
+影像。 
+ 
+(a)                                    (b) 
+圖 18 : 階梯物件之尺寸與量測點 
+ 
+ 
+(a) (b) 
+ 
+(c)                                  (d) 
+圖 19 : 階梯物件之掃描結果 
+          
+16 
+而造成影像的失真現象。 
+ 
+(a)               (b)               (c)                (d) 
+圖 21: 石膏像之左側掃描 
+圖 21 圓圈部份，因為角度與陰影所產生色偏現象，深度變化較大時，投影在失
+焦情況下容易產生色偏，使得運用顏色解碼的效過降低。 
+ 
+(a)               (b)               (c)                (d) 
+圖 22 : 石膏像之右側掃描 
+圖 22 整個構圖完整，掃描結果與圖 20 相同，座標資訊也較完整。 
+ 
+(a)               (b)               (c)                (d) 
+圖 23 : 石膏像之背部掃描 
+圖 23 有零散的小區域失真，整體掃描結果都有不錯的表現，頭髮部份的形狀變
+化性高，整個髮型的紋路變化都能夠正確掃描。 
+ 
+ 
+          
+18 
+ 
+5.3.2 物體表面顏色的影響: 
+    由於我們是使用彩色圖樣的取像方式，也就是投出彩色圖樣的影像，若物體
+表面已經存在某些顏色，將會導致使用顏色解碼的問題，狀況就是我們可能讀取
+到非圖樣所產生的顏色，或是改變圖樣本身的顏色，這兩種情況都會造成顏色群
+組中顏色的遺失，而造成顏色群組解碼的失敗(圖 26)。 
+ 
+圖 26 : 物體表面顏色的影響 
+ 
+5.4 結論與未來展望 
+ 
+本計畫提供了圖樣的編碼方式以及投影機顏色校正的概念，在圖樣的編碼除
+了可以降低運算的時間，也提供了一定能力的錯誤容忍能力，使得錯誤率降低，
+相對的以提高了掃描的解析度，以往的研究中，有些使用 Dynamic Programming 
+[15][16]的方式來解決解碼的問題，這樣的方式在解碼的速度上有較差的成效，
+也消耗較多的計算時間，當然也有其他研究提出類似的群組概念，例如 De 
+Brujin[17]編碼方式，但又無法提供較好的錯誤容忍力，本計畫使用的編碼方
+式，除了能夠提供較高解析度的圖樣，在解碼的計算上也將低了運算時間，使得
+解碼的複雜度為 O = CN， 在顏色校正方面，以往許多研究中都一樣使用色調[18]
+來來區分顏色以及編碼，但是都未提出類似的概念，使用顏色校正後能夠提高顏
+色的準確率，也使得解碼的過程能夠有較好的判別結果。 
+ 
+目前物件 3D 掃描系統已經能夠正確的掃描出物體的表面座標，但是在影像
+變形校正[19]以及顏色校正還是以手動的方式來進行校正，希望未來能夠完成這
+兩項功能的自動化，目前影像變形校正，是經由實際測量變形狀況，將數據填入
+計算公式中，在校正後觀察變化情況，雖然可以實踐影像變形校正的工作，但是
+花費較多的時間與不便，投影機顏色校正也是取像後，再依照顏色的分布逐一調
+整 RGB 的數值，也是花費較多的時間與較差的效益，因此影像變形的自動化與顏
+色校正的自動化會是未來可以研究的方向。 
+          
+20 
+vision metrology using off-the-shelf TV cameras and lenses, IEEE Journal of 
+Robotics and Automation RA-3 (1987), no. 4. 
+[13] Tehrani, M.A.; Saghaeian, A.; Mohajerani, O.R. “A New Approach to 3D 
+Modeling Using Structured Light Pattern”, Information and Communication 
+Technologies: From Theory to Applications, 2008. ICTTA 2008. 
+[14] J. Salvi, J. Pag`es, and J. Batlle. Pattern codification strategies in structured light 
+systems. Pattern Recognition, 37(4):827–849, 2004. 
+[15] David B. Wagner, "Dynamic programming," The Mathematica Journal, 1995. 
+[16] L. Zhang, B. Curless, and S. M. Seitz, “Rapid shape acquisition using color 
+structured light and multi-pass dynamic programming,” in The 1st IEEE 
+International Symposium on 3D Data Processing, Visualization, and 
+Transmission, pp. 24–36, June 2002. 
+[17] H. Fredricksen, A survey of full length nonlinear shift register cycle algorithms, 
+Society of Industrial and Applied Mathematics Review 24 (2) (1982) 195–221. 
+[18] Fechteler,P. “Fast and High Resolution 3D Face Scanning”, IEEE International 
+Conference. Image Processing, 2007. 
+[19] Cui Haihua, Dai Ning, Yuan Tianran, Cheng Xiaosheng, Lio Wenhe, “Calibration 
+Alogrithm for Structured Light 3D Vision Mesuring System”, 2008 Congress on 
+Image and Signal Processing. 
+[20] Molinier, Thierry; Fofi, David; Salvi, Joaquim; Gorria, Patrick,"2D virtual texture 
+on 3D real object with coded structured light", Image Processing: Machine Vision 
+Applications. Proceedings of the SPIE, Volume 6813, pp. 68130Q-68130Q-9 
+(2008). 
+ 
+表 Y04       2 
+ 
+圖二 
+ 
+三天會議安排了三個場次之專題演講分別是第一天由日本京都大學的副校長
+Takashi Matsuyama 教授演講, 主題是 The State of the Art of 3D Video Technologies, 第二
+天由韓國大學的 Hyoung Joong Kim 教授演講, 主題是 Data Compression by Data Hiding, 
+第三天由中國大陸浙江大學 Jianrong Tan 教授演講, 主題是 Multimodal Information 
+Fusion in the Virtual Environment and Its Applications in Product Design。這三位教授在各
+自領域均學有所成, 演講內容亦十分精彩, 尤其是京都大學的 Takashi Matsuyama教授的
+演講內容與本人目前國科會計畫的研究內容有相關, 因此可說是收獲良多。詳細論文報
+告場次規劃可參考議程表。本人之論文『Human Behavior Description Model Based on 
+Action Recognition』被安排在第一天的上午 section A01 之場次發表, 如圖三所示。本
+次會議尚有許多台灣之其他論文發表,經過三天完整會議研討,與會者均有豐富的收穫。
+此外會議主辦單位特別在第一天晚上安排了歡迎酒會及第二天晚上安排晚宴, 使與會者
+之間有互相交流的機會。 
+ 
+ 
+圖三 
+ 
+HUMAN BEHAVIOR DESCRIPTION MODEL BASED ON  
+ACTION RECOGNITION 
+ 
+Fang-Hsuan Cheng and Cheng-Yuan Chang 
+ 
+ Dept. of Computer Science and Information Engineering 
+Chung Hua University 
+E-mail: fhcheng@chu.edu.tw 
+ 
+ 
+ABSTRACT 
+ 
+Based on human action recognition, this paper 
+proposes a new description model to record human 
+behavior. The paper makes use of action recognition 
+result and regards time information accumulated in 
+action recognition as features, records human actions 
+and time spent in these actions, then identifies events 
+through action combination and gives effective 
+processing toward these identified events. In order to 
+prove feasibility of human behavior description model, 
+we take events produced when pedestrians pass 
+through cross-road as example. Under cross-road 
+context in the experiment, total 60 films are shot 
+when five pedestrians are passing through cross-road, 
+producing 191 events. 187 events are correctly 
+detected in the experiment with correct rate of 98%.  
+ 
+ 
+1. INTRODUCTION 
+ 
+With science and technology gaining progress, 
+more and more intelligent surveillance systems use 
+digital media to store image data, whereas these 
+image materials are not effectively treated on the 
+first time spot of sudden accidence occurring, and 
+the happening events of video characters are only 
+known after people are required to review films. 
+Regarding this, we propose a description model of 
+human behavior to identify human action, and detect 
+events through action combination. When event is 
+identified, it will be given with most instant and 
+correct processing. However, even though it solves 
+the general problem of behavior recognition system 
+in action recognition, we still have no way to 
+understand action and behavior modes happening on 
+human, thus it is expected to achieve preventative 
+protection and emergence event processing in future.  
+ 
+System framework of this paper is described in 
+Fig. 1. We summarize a complete behavior analysis 
+framework, which is divided into object detecting, 
+object tracking, action recognition, human behavior 
+description model and event detecting, event 
+recording, event control and processing. It is wished 
+to introduce event prediction in new methods in 
+future. This paper follows methods proposed by our 
+lab. in the first three parts and introduces new 
+characteristics value and new action in action 
+recognition. After action recognition is made, the 
+processing procedure will adopt a model framework 
+proposed by this paper and describe event occurring 
+in human, thus make decision identification toward 
+processing mechanism. 
+ 
+ 
+ 
+Fig.1 System framework diagram 
+ 
+ 
+2. RELATED WORK 
+ 
+Current techniques are mainly based on action 
+recognition. In the recent years, research and relevant 
+articles on events gradually emerge. Articles relating 
+to events are currently under establishment. Therefore, 
+this paper proposes a human behavior description 
+model, taking pedestrian passing through cross-road 
+as example, make whole and experimental analysis 
+toward event detection, and thus validate the 
+probability of this description model. This paper 
+mainly integrates multiple actions to provide 
+reference for event detection. Time is very essential in 
+action recognition, thus the method is divided into 
+time-unrelated and time-related in the research areas. 
+ 
+Time-unrelated method: 
+ 
+Thomas Kleinberger [1] proposes a certain 
+conditions required in ambient intelligence based 
+home care systems (AHCS), makes discussion toward 
+2009 Fifth International Conference on Intelligent Information Hiding and Multimedia Signal Processing
+978-0-7695-3762-7/09 $26.00 © 2009 IEEE
+DOI 10.1109/IIH-MSP.2009.104
+1022
+understand what actions are made by human in an 
+event. We also record occurring situation through 
+action combination, based on action recognition result, 
+record spending time of individual i-action as ( iT ). 
+We record time of producing all actions by human in 
+a period and record it as T , seen in Eq. (1): 
+ 
+1
+n
+nT T                                                               (1) 
+ 
+Method of storing action queue in Fig. 2 is seen 
+in Eq.(2)，among which action queue collects all 
+recognized actions of human in frame with total 
+number of i. After colon, how much time is 
+experienced from start to end of i-action moving is 
+recorded. Null means no action occur or no action yet 
+to be recognized in this paper. Therefore, when action 
+doesn’t occur or no action is to be recognized, 
+sustaining time of Null is still recorded, seen in Eq. 
+(3). 
+ 
+1 2{ _1: , _2: ,..., _ : }iAQ Action T Action T Action i T    (2) 
+1 2{ _1: , _2: ,..., _ : }iAQ Null T Action T Action i T   (3) 
+ 
+ 
+ Fig. 2 Human Behavior Description model 
+ 
+In order to help understanding functions of this 
+model, we provide a simple example for explanation. 
+This paper takes walking actions made by pedestrian 
+under yellow traffic light when passing through cross-
+road as example. Pedestrian will walk for about 2 
+seconds, and fall down in the middle of crossing road 
+for 9 seconds. We actually put this example in our 
+model. Fig. 3 put the following characteristics in 
+event conditions, including action queue, emergency 
+time and pedestrian location iCx 。 
+Action queue (AQ) record occurring action of 
+human and occurrence time of action, and deliver 
+them in event conditions. Emergency time (ET) is 
+recorded from time of falling down to recovering 
+walking or sounds alarm due to time of falling down 
+lasts too long. We use C to represent gravity center 
+location of pedestrian, Cx represents coordinates in 
+X axis of gravity center, 1 2,Cx Cx represents 
+coordinates in X axis of gravity center when 
+pedestrian stays in different time.  
+We use a step-by-step procedure to make 
+people understand the whole procedure, seen as 
+follows:  
+Step1: 
+When pedestrian passes through road and enters in 
+frame, we could know walking action of human 
+through action recognition. 
+Step2: 
+We transfer the walking action and time of 
+accumulating actions to action queue. 
+Step3: 
+We deliver action and time information of actions 
+accumulated in action queue to event condition for 
+decision. At this time, pedestrian only walks 2 
+seconds conforming to condition c rather than a and b 
+condition，thus step 4 is returned.  
+Step4: 
+If not conforming to event condition, we still return 
+state of inputting action recognition. 
+Step5: Action recognition system detects action of 
+falling down of pedestrian; AQ=FD. 
+Step6: 
+Lasting time of falling down is recorded. Falling 
+down for 9 seconds of pedestrian is transferred to 
+action queue.  
+Step7: 
+At this time, AQ=FD，Cx1, Cx2>0， ET>8sec，
+decision formula a, b and c is valid, and skip to Step8 . 
+Step8: 
+If conforming to condition of decision formula, it is 
+known that pedestrian falls down and lies down for 9 
+seconds, event 12 will be output.  
+  
+ 
+1 2
+a.ET>8sec
+b.AQ=FD
+c.C , 0x Cx
+     
+ 
+Fig. 3 Human Behavior Description model (example) 
+ 
+ 
+4. EXPERIMENTAL RESULT 
+ 
+In order to validate feasibility of human 
+behavior description model proposed in this paper, we 
+make an experiment toward pedestrian who are 
+passing through cross-road which is shot by DV and 
+regarded as the experimental scene. There are totally 
+60 films for five different pedestrians shot in the 
+1024
+表 Y04       1 
+行政院國家科學委員會補助國內專家學者出席國際學術會議報告 
+                                                          99 年 9 月 30 日 
+報告人姓名 鄭芳炫 服務機構
+及職稱 
+中華大學資工系教授 
+ 時間 
+會議地點 
+2010/9/21~2010/9/24 
+中國上海  
+本會核定
+補助文號
+NSC98-2221-E-216-031 
+會議 
+名稱 
+ (中文) 第 11 屆太平洋區多媒體國際研討會 
+ (英文) The 11-th Pacific Rim Conference on Multimedia (PCM-2010) 
+發表 
+論文 
+題目 
+ (中文) 一個嶄新以 ASM 為基礎的二階段臉部地標偵測方法 
+ (英文) A novel ASM-based two-stage facial landmark detection method 
+一、參加會議經過 
+本次會議地點在上海, 原本桃園上海就是熱門航線不容易訂機位, 再加上適逢世博
+期間, 更是雪上加霜, 因此便訂了較冷門的航線桃園寧波, 然後再搭陸路走杭州灣跨海
+大橋進上海。杭州灣跨海大橋全長 36 公里, 目前是全世界最長的跨海大橋。雖然工程十
+分浩大, 但完全是由中國獨立設計及建造完成, 沒有借助國外的技術, 顯見中國大陸在
+開革開放後的進步。我和系上另一位老師一同參加此會議, 9 月 20 日出發當天因凡那比
+颱風侵襲大陸, 造成回程飛機延飛, 以致於我們的飛機也連帶被耽誤了時間, 延後近二
+小時才飛。因此之故, 行程中一直耽心會趕不上當天進住上海的旅館, 所幸在一切順利
+的情況下安全的抵達。本次會議由上海復旦大學主辦, 會議地點選在學校附近自營的復
+宣酒店內, 因我們並不住在復宣酒店內, 因此一早便搭地鐡出發再加上短程的計程車很
+順利的到達了會場報到, 見圖一。 
+ 
+ 
+圖一 
+ 
+會議前後安排共四天, 第一天為 tutorial, 第二天到第四天則為論文發表。會議的開
+幕典禮由主辦單位與會議的委員會主席簡單的致歡迎詞後，隨即展開,見圖二。由於本會
+議為一個中型的研討會,因此只安排了二個場地同時進行。本屆會議共有將近 20 個國家
+261 篇論文投稿, 每篇論文都經過二位評審嚴格的審查後, 最後只通過 75 篇口頭發表論
+文(oral)及 56 篇海報論文(poster), 論文通過率只有 50%, 算是十分嚴謹的。大會安排了
+三天的論文會議發表議程,安排方式是每天上午先有一場專題演講再加一場論文口頭報
+告分二個場地同時進行及一場海報論文發表, 下午則是有二場論文口頭報告亦分二個場
+地同時進行及一場海報論文發表。 
+附件三
+ 
+表 Y04       3 
+ 
+演講及論文發表的議程外, 若能安排半天的行程到會議主辦大學做參訪, 應該更能達到
+交流的目的。 
+ 
+ 
+三、考察參觀活動(無是項活動者省略) 
+本會議的定位是專業精緻之研討會,四天的會議安排得十分緊湊, 每天都是從上午
+9:00 至下午 5:10 止, 因此並無安排做考察參觀活動。只有在 9 月 22 日晚上有安排黃埔
+江夜遊, 可看到漂亮的黃埔江夜景及租界區各國的建築, 感受上海的風華。 
+ 
+ 
+四、建議 
+PCM會議從 2000年第一次在澳洲雪梨舉辦至今已十一屆, 期間曾在北京,新竹,新加
+坡,東京,濟州,浙江,香港,台南,曼谷等處舉辦過,台灣在過去十屆中就舉辦過二次。每次參
+加研討會常常會在會場碰到許多台灣去的學者教授,不過這一次台灣與會者並不多,只遇
+到中研院,工研院與清華大學的學者。中國大陸近年來積極的主辦大型的國際研討會,但
+其中良莠不齊,常常有些研討會只要繳註冊費就好了,出不出席研討會不是很重要,而
+PCM 是一個專業的研討會,今年已是第十一屆,建議台灣的學者若選擇大陸舉辦的研討
+會,應選擇審查嚴謹且較有歷史的研討會如 PCM2010 即是。希望明年 PCM2011 在澳洲
+雪梨舉辦會有更多台灣的學者參予。 
+ 
+ 
+五、攜回資料名稱及內容 
+本次會議攜回二本紙本的會議論文集 ,資料名稱為 Advances in Multimedia
+Information Processing – PCM2010, LNCS 6297 及 6298。此次會議並沒有提供會議的資料
+光碟。此外, 有提供第一天的二場 Tutorial 的投影片講義。另外在會議現場有其他研討
+會的宣傳資料, 如 PCM2011 在澳洲雪梨, ICASSP 2012 在日本京都舉辦等。 
+ 
+ 
+六、其他 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：鄭芳炫 計畫編號：98-2221-E-216-031- 
+計畫名稱：三維物件掃瞄及祼眼立體投影顯示系統開發 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 1 100%  
+研究報告/技術報告 1 1 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 4 4 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 1 1 100% 
+人次 
+ 
+期刊論文 0 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 2 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

@@ -1,0 +1,207 @@
+ 2
+DVFS) 電源管理機制。Grouping-Based DVFS主要
+想法為將想同行為的執行緒分成同一群組，並針對
+各個群組調整適當的處理器頻率。Grouping-Based 
+DVFS 主要工作分為三大部份：程式行為預測 
+(Program Behavior Predictor, PBP)、群組 DVFS頻率
+控制 (Per-Group DVFS Controller, PGDC)及行為取
+向之工作平衡  (Phase-Based Workload Migration, 
+PBWM)。PBP主要用以判斷程式執行行為與預測其
+未來；PGDC 則針對不同工作群組調整適當的執行
+頻率；而 PBWM 的主要工作為將相似行為的工作
+分配為同一群組。 
+為評估 Grouping-Based DVFS之執行效率，我
+們首先將其實現於 Linux 2.6 系統中。其二我們利
+用 SPEC CPU2006與 Phoronix兩大測試程式評估其
+效能，並與未使用DVFS之系統及使用Thread-based 
+DVFS 之系統比較其執行時間、系統耗能、耗能時
+間比 (Energy-Delay Product, EDP) 及 DVFS次數。
+根據實驗結果，Grouping-Based DVFS 可在僅降低
+2-10%的執行效能下改善 15-40%的電源消耗。與
+Thread-based DVFS相比較，Thread-based DVFS雖
+然減少許多的電源消耗，但大量的 DVFS負擔卻造
+成執行效率大幅下降。此外實驗結果證實
+Grouping-Based DVFS 可以改善 94-97.5%的 DVFS
+負擔，遠優於 Thread-based DVFS。 
+ 
+2. Linux 2.6 排班程序 
+本 研 究 提 出 一 群 組 概 念 的 DVFS 
+(Grouping-Based DVFS) 電源管理機制，並將此一
+機制實驗於 Linux 2.6 作業系統中。為詳細描述
+Grouping-Based DVFS 之架構，本章節首先介紹
+Linux 2.6之排班機制。 
+在 Linux 2.6排班機制中，排班機制將工作分配
+到各個核心處理器中。各個核心處理器的工作被分
+為兩個工作群組：執行佇列 (Active queue) 與等待
+佇列 (Expired queue)，如圖一所示。執行佇列主要
+包含著正要被執行的工作；等待佇列則為接下來將
+要被執行的工作。各個工作被分配定額的時間用量 
+(Timeslice)，表示其可佔用處理器的執行時間量。
+當一個位於執行佇列的工作已被執行並用完其時間
+用量，卻仍未完成時，該工作將被放置於等待佇列
+中。當執行佇列中的工作皆已被執行，等待佇列與
+執行佇列將被交換，也就是說等待佇列成為執行佇
+列，反之亦然。 
+ 
+ 
+圖一 多核心系統之群組示意圖 
+ 
+Grouping-Based DVFS 將各佇列視為一工作群
+組，並在佇列交換時，分析位於新執行佇列 (即原
+等待佇列) 中工作的行為模式，並決定一適當的執
+行頻率。 
+ 
+3. Grouping-Based DVFS 
+ 
+Grouping-Based DVFS 主要工作分為三大部
+份：程式行為預測  (Program Behavior Predictor, 
+PBP)、群組 DVFS 頻率控制  (Per-Group DVFS 
+Controller, PGDC) 及 行 為 取 向 之 工 作 平 衡 
+(Phase-Based Workload Migration, PBWM)。PBP主
+要用以判斷程式執行行為與預測其未來；PGDC 則
+針對不同工作群組調整適當的執行頻率；而 PBWM
+的主要工作為將相似行為的工作分配為同一群組。
+本章節將進一步介紹Grouping-Based DVFS 電源管
+理機制。 
+ 
+3.1 The Program Behavior Predictor 
+一般程式行為略分為記憶體存取階段 
+(Memory-Intensive Phase) 與處理器運算階 段 
+(Processor-Intensive Phase)，當程式為記憶體存取階
+段時，處理器多數時間處於等待記憶體資料並產生
+空閒週期 (Stall Cycle)，調整低速頻率不僅可以在
+不失執行效能的情況下減少處理器空閒時間，更能
+進一步地降低系統耗能。 
+為了分析程式的執行行為，本研究觀察
+Performance Monitors (PMs) 中的兩事件：Instr_Ret
+與 IFU_Mem_Stall，其中 Instr_Ret記錄著程式所執
+行的指令數，而 IFU_Mem_Stall則記錄著程式執行
+過程所產生的 Stall Cycle個數。我們透過此兩記錄
+ 4
+ 
+為了避免多餘的負擔，我們提出一群組概念，
+將工作以群組作為單位，根據不同群組調整其適合
+的執行頻率。如第二節所述，我們將一個工作佇列
+視為一工作群組，當等待佇列與執行佇列互換時，
+將分析新執行佇列內所有工作之行為，並決定一適
+當的執行頻率。 
+ 
+ 
+圖四 工作佇列之計數器 
+ 
+為了定義適當的工作頻率，本研究首先改寫工
+作佇列的結構，在每個工作佇列加入三個計數器
+memory_phase、processor_phase及 unknown_phase，
+如圖四所示。此三個計數器則分別記錄： 
+z memory_phase：在此工作佇列中，處於記憶體
+存取階段之工作個數。 
+z processor_phase：在此工作佇列中，處於處理
+器存取階段之工作個數。 
+z unknown_phase：在此工作佇列中，尚未被執
+行 (即其工作行為未知) 之工作個數。 
+配合此三個計數器，我們使用方程式 (2) – (3) 選定
+適合的處理頻率。其中 m為可使用的頻率，越小表
+示相對應的頻率越高；level則為某一頻率相對應的
+等級。 
+ 
+ 
+ 
+演算法 2為 PGDC的詳細流程。PGDC首先透
+過方程式 (3) 決定一個工作群組的工作頻率。舉個
+例子，一 Intel Pentium M 1.6 GHz的處理器具有 6
+個 level的工作頻率，分別為 level 1：1.6 GHz、level 
+2：1.4 GHz、level 3：1.2 GHz、level 4：1.0 GHz、
+level 5：800 MHz及 level 6：600 MHz。工作佇列中
+若有 25個工作，其中 12個為存取階段記憶體，則
+PGDC將選擇 level 3，並設定工作頻率為 1.2 GHz。 
+ 
+ 
+ 
+3.3 The Phase-Based Workload Migration 
+雖然針對群組調整頻率可以有效地減少
+Processor unavailable time，但群組中少數工作將可
+能因為不適合的工作頻率導致執行效能下降。一種
+減少此問題的方法稱為工作遷移 (Migration)。工作
+遷移主要目標在將特定的工作從一處理器的佇列移
+至另一處理器的佇列中。工作遷移不僅能提升處理
+器間的合作關係，若將相同行為之工作遷移至同一
+群組更能提升 PGDC的正確性。 
+工作遷移雖然有著許多顯著的優點，卻仍然存
+在著一些缺點。首先，當工作遷移進行時，它將暫
+時凍結來源與目標處理器的工作佇列，直到工作遷
+移結束。如果工作遷移被頻繁地執行，處理器的執
+行效率將被大大地影響。再者，有些工作無法被遷
+移： 
+z running thread：正在執行的工作。 
+z exclusive thread：只能在特定處理器上執行的
+工作。 
+z cache hot thread：佔用多數快取空間的工作。 
+為了避免頻繁的遷移，我們提出一稱為 Phase-Based 
+Workload Migration (PBWM) 的遷移機制。PBWM
+在處理器間工作量不平衡時啟動，並每隔 200 ms檢
+查處理器間的工作量。當處理器間的工作量不平衡
+時，PBWM 首先偵測到一工作量較少的等待佇列 
+Starveling Expired Queue (SEQ)，接著 PBWM將找
+尋另一個等待佇列 Victim Expired Queue (VEQ)，並
+ 6
+器會在經過 processor core unavailable time的時間調
+整至相對頻率。 
+ 
+表一 Intel Core 2 Quad Q6600可用頻率表 
+ 
+ 
+    一個普遍被使用的動態電力消耗量測法被定義
+於[3]中。動態電力消耗量測法可以表示為： 
+ 
+其中 C 為切換電容；Vdd 為提供電壓；f 則為工作
+頻率。本研究採用方程式(10)量測電力消耗。 
+ 
+4.2 SPEC CPU2006效能評估 
+    在我們的實驗中，未採用電源管理的系統被命
+名為 FullFrequency，採用 Thread-based DVFS電源
+管理的系統則稱為 PerThreadDVFS，而使用
+Grouping-based DVFS 的 系 統 則 稱 為
+PerGroupDVFS 。 為 利 於 比 較 ， 實 驗 結 果 以
+FullFrequency作為基準作正規化。 
+    圖五為本研究的實驗結果，左半邊為 SPEC 
+CPU2006的實驗結果。從上到下為效能比較、電源
+消耗比較、Energy-Delay Product (EDP) 比較及
+DVFS 調 頻次數比較。如圖五  (a)所示，
+PerThreadDVFS 由 於 頻 繁 地 調 整 頻 率 導 致
+23%~50%的效能下降。而 PerGroupDVFS則僅有最
+多 8%的效能下降。於圖五 (b)顯示，PerThreadDVFS
+能降低 16%~63%的電源消耗，而 PerGroupDVFS則
+能減少 10%~43%的電源消耗。圖五 (c)更說明了在
+整體的系統效能比較下，PerGroupDVFS的 EDP較
+PerThreadDVFS 佳。與 FullFrequency 比較，
+PerGroupDVFS能夠在僅降低平均2%的執行效能情
+況下，改善 21%的 EDP。圖五  (d)則顯示
+PerGroupDVFS不僅能減少 97.5%的調頻次數，更能
+減少 97.5%的調頻負擔。 
+ 
+4.3 多緒應用程式效能評估 
+為進一步比較效能，我們測式了由 Phoronix 
+Test Suite [8]所提供的多執行緒應用程式，其中包含
+了 7-Zip 壓縮程式、Java 2D 繪圖程式、Sunflow 
+Rendering System、 MySQL、 Apache Builder、
+ImageMagick Builder與 PHP Builder。 
+    圖五右半邊為多執行緒程式的測試結果。如圖
+五 (a)所示，PerThreadDVFS 由於頻繁地調整頻率
+導致 31%~55%的效能下降。而 PerGroupDVFS則僅
+有最多 12%的效能下降。於圖五  (b)顯示，
+PerThreadDVFS 能降低 19%~67%的電源消耗，而
+PerGroupDVFS 則能減少 7%~55%的電源消耗。圖
+五  (c)更說明了在整體的系統效能比較下，
+PerGroupDVFS 的 EDP 較 PerThreadDVFS 佳。與
+FullFrequency 比較，PerGroupDVFS 能夠在僅降低
+平均 5%的執行效能情況下，改善 24%的 EDP。圖
+五 (d)則顯示 PerGroupDVFS 不僅能減少 94%的調
+頻次數，更能減少 94%的調頻負擔。 
+ 
+ 
+圖五 實驗結果 
+5. 結論 
+    在過去以 Thread 作為調頻單位的電源管理系
+統中，在面對多執行緒的應用程式時，將由於頻繁
+的調頻產生過量的 processor core unavailable time，
+並降低整體系統效能。未避免此一情況，本研究提

@@ -1,0 +1,552 @@
+Test Plan Generation for Concurrent Real-Time 
+  Systems Based on Zone Coverage Analysis 
+ 
+Abstract 
+The state space explosion due to concurrency and timing 
+constraints of concurrent real-time systems (CRTS) presents 
+significant challenges to the verification engineers. In this paper, 
+we investigate how to use coverage techniques to generate eﬃcient 
+test plans for such systems. We first discuss how to use 
+communicating timed automata to model CRTS. We present a new 
+coverage technique, AZC (active zone coverage), based on the 
+zone equivalence relation between states of CRTS. We discuss 
+techniques to estimate AZC values of active zones represented in 
+BDD-like diagrams. We explain how to construct zone trees and 
+map their root-to-leaf paths to test cases. We then present an 
+algorithm to generate test plans by prioritizing the test cases. The 
+test plans that we generate can eﬃciently achieve full coverage in 
+AZC. We have implemented our ideas with our TCTL 
+model-checker RED. Experiment report with the Bluetooth L2CAP 
+showed improvement of thecoverage growth rate in the test plan 
+execution. 
+Keywords: test plan generation, real-time systems, 
+verification, zone coverage analysis 
+1 Introduction 
+Although there have been several alternative technologies, 
+e.g. model-checking and simulation, testing [4, 19, 29, 30] 
+is still the major verification technique in the software 
+industry over the last few decades. To verify a system 
+under test (SUT), we need a set of test cases. Each test 
+case specifies a sequence of input events and expects 
+output events from the SUT. A test plan is a sequence of 
+test cases to be executed in succession. A bad test plan 
+may spend valuable time in repetitively testing equivalent 
+behaviors and missing some other faulty behaviors. In 
+contrast, a good test plan can methodically and eﬃciently 
+execute test cases to give us high confidence of the SUT 
+in a short time. At this moment, the generation of 
+eﬃcient test plans is still in the center of software testing 
+research. 
+   However, the complexity of new-generation 
+concurrent real-time systems (CRTS) is driving the cost 
+of testing to over fifty percent of the development budgets. 
+Especially, for CRTS, there are infinitely many time 
+instances in which an event can happen. Thus it is 
+impossible to test all behaviors in either theory or practice. 
+In the last few decades, the software industry has heavily 
+relied on the wisdom of coverage techniques [29, 30] to 
+maintain the high quality of software systems. Coverage 
+techniques partition the behavior space of an SUT into 
+finitely many equivalence classes. Coverage techniques 
+can be used to measure how much of an SUT has been 
+tested. In general, the more coverage you get, the more 
+confidence you have in your SUT. 
+ 
+K. Suzuki et al. (Eds.): TestCom/FATES 2008, LNCS 5047, pp. 234–249, 
+2008. c IFIP International Federation for Information Processing 2008 
+One coverage techique is the visited-state coverage [2,22] 
+that uses the ratio of the number of visited states over the 
+number of reachable states to measure the progress of test 
+execution. Visited-state coverage has great discerning 
+power since each state records the information necessary 
+for the reaction to all future events from the states. 
+However for CRTS, visited-state coverage is neither 
+practical since the number of states is usually infinite [1]. 
+In this work, we investigate how to use state-based 
+coverage techniques for CRTS. In [1], a very fine partition 
+of dense-time state-spaces is proposed. In this partition, an 
+equivalence class is called a region. Given a description of 
+a CRTS, the number of regions in a state-space is usually 
+exponential to the description size. It is usually infeasible 
+to cover all regions in a testing task. Another partition is 
+with the equivalence classes of zones [14]. Zones can be 
+constructed with on-the-fly techniques and usually partition 
+a state-space in a coarse but precise enough granularity for 
+the model-checking of dense-time models. In this work, we 
+investigate how to adapt the zone technology for the 
+eﬃcient generation of test plans for CRTS. Specifically, 
+we propose the following techniques.  
+ 
+• Communicating timed automata (CTA) [23,31,32] for the 
+modeling of CRTS. A CTA may have many processes that 
+interact through message channels and measure event 
+intervals with dense-time clocks. 
+• Active zone coverage (AZC) for the progress estimation 
+of testing tasks for CRTS. We first propose zone-coverage 
+(ZC) for the measurement of progress of testing tasks for 
+CRTS. We then propose a technique, based on inactive 
+variable analysis, to enhance ZC to active ZC (AZC) for 
+the construction of eﬃcient test plans. With AZC, an 
+equivalence class is called an active zone. 
+• Test plan generation with priority for gains in AZC. We 
+first present an algorithm to construct zone trees that 
+symbolically represent the branching structure of a CRTS. 
+Then we discuss how to convert paths in the zone trees to 
+linear test cases. Then we present a heuristic algorithm that 
+prioritizes the test cases and construct a test plan. We 
+prove that the test plan can always be constructed and 
+visits all active zones. 
+We have implemented our ideas and experimented with 
+the Bluetooth L2CAP [11, 32]. The experiment result 
+shows that comparing with non-prioritized test plans, the 
+prioritized test plans indeed improve the eﬃciency for 
+high AZC coverage. 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Fig. 2. A path of the bus-contending protocol 
+Definition 2. Communicating timed automata (CTA): A 
+CTA A of m processes is a tuple Σ, P1 , P2 , . . . , Pm , where 
+Σ is the set of synchronization channels and for each 1 ≤ p 
+≤ m, Pp = Xp , Σ, Qp , Ip , µp , Ep , δp , λp , τp , πp is the PTA 
+for process p and for each 1 ≤ p < p ≤ m, Qp ∩ Qp = ∅. 
+   A valuation of a set is a mapping from the set to another 
+set. Given an η ∈ B( 1≤p≤m Qp , 1≤p≤m Xp ) and a valuation ν 
+of 1≤p≤m (Xp ∪ Qp ), we say ν satisfies η, in symbols ν |= η, 
+iﬀ η is evaluated true when the variables in η are 
+interpreted according to ν. 
+Definition 3. States: Suppose we are given a CTA A = Σ, P1 , 
+P2 , . . . , Pm such that for each 1 ≤ p ≤ m, Pp = Xp , Σ, Qp , Ip , 
+µp , Ep , δp , λp , τp , πp . A state ν of A is a valuation of 1≤p≤m 
+(Xp ∪ Qp ) with the following constraints. 
+• For each q ∈ 1≤p≤m Qp , ν(q) ∈ {false, true}. Moreover for 
+each 1 ≤ p ≤ m, there is exactly a q ∈ Qp such that 
+                        ν(q) ∧ ∀q ∈ Q − {q}(¬ν(q )). 
+  Given q ∈ Qp , if ν(q) is true, we denote q as modep (ν). 
+• For each x ∈ 1≤p≤m Xp , ν(x) ∈ R≥0 such that ν |= 1≤p≤m µp 
+(modep (ν)). 
+For any t ∈ R≥0 , ν + t is a state identical to ν except that 
+for every clock x ∈ 1≤p≤m Xp , (ν + t)(x) = ν(x) + t. 
+A global transition γ of a CTA is a mapping from process 
+indices p, 1 ≤ p ≤ m, to Ep ∪{⊥}, where ⊥ means no transition 
+(i.e., a process does not participate in γ). A legitimate global 
+transition has to be synchronized, that is, each output event 
+from a process is received by exactly one unique 
+corresponding process with a matching input event. In 
+arithmetic, that is ∀e ∈ E, 1≤p≤m;γ(p)=⊥ λ(e, γ(p)) = 
+0. Moreover, to be compatible with the popular interleaving 
+semantics, we require that a global transition must be minimal, 
+i.e., it cannot be broken down to two non-empty synchronized 
+global transitions. For example, in figure 1, we may have a 
+legitimate global transition γ with γ(1) = 1, γ(2) =⊥, and γ(3) = 
+6. In contrast, another global transition γ with γ (1) =⊥, γ (2) 
+=⊥, and γ (3) = 6 is not. In the following, whenever we say 
+“global transition”, we actually mean “legitimate global 
+transition” for briefness. Given a CTA A, we let Γ (A) be the 
+set of legitimate global transitions of A. 
+                                                                        
+γtGiven two states ν, ν and t ∈ R≥0 , ν −→ ν iﬀ ν = ν + t. Also ν 
+−→ ν iﬀ 
+ 
+• ν |= 1≤p≤m;γ(p)=⊥ τp (γ(p)), and 
+• ν is identical to ν except that for all 1 ≤ p ≤ m, 
+  − if γ(p) =⊥, modep (ν) = modep (ν ) and ∀x ∈ Xp (ν(x) = ν (x)). 
+  − if γ(p) =⊥, then 
+       ∗ δ(γ(p)) = (modep (ν), modep (ν )), 
+       ∗ ∀x ∈ (Xp ∩ πp (γ(p)))(ν (x) = 0), and 
+       ∗ ∀x ∈ (Xp ∩ πp (γ(p)))(ν (x) = ν(x)). 
+   In the verification of a CRTS A, usually we are given a 
+specification formula φ and want to check whether φ is 
+violated in the test execution. We assume the framework of 
+safety analysis, in which the specification is a safety predicate 
+in φ ∈ B( 1≤p≤m Qp , 1≤p≤m Xp ). 
+4 Test Cases from a CTA 
+Suppose we are given a path through zones ζ0 , ζ1 , . . . , ζn 
+in a zone forest such that for each 0 ≤ i < n, ζi+1 = post(ζi , 
+γi+1 ). We can represent the path with the following 
+notations. 
+ζ0 −→ ζ1 −→ · · · −→ ζn 
+We call a path in this representation a symbolic trace. In 
+figure 2, we show such a symbolic trace of the 
+bus-contending protocol (in figure 1). The trace describes 
+that the two senders both send messages to the bus. After 
+detecting the collision, A3 retransmits its message. 
+ζ0 
+γ1 
+ζ1 
+γ2 
+ζ2 
+γ3 
+Experiment 
+ζ3 
+γ4 
+ζ4 
+γ1 
+γ2 
+γn 
+ζ0 : mode1 = idle ∧ mode2 = wait ∧ mode3 = wait 
+ζ1 : mode1 = active ∧ mode2 = wait ∧ mode3 = transmit ∧ x1 = x3 
+ζ2 : mode1 = collision ∧ mode2 = transmit ∧ mode3 = transmit∧ 
+     x1 < 26 ∧ x2 < 26 ∧ x1 = x2 ∧ x3 < 52 ∧ x3 − x1 < 26 ∧ x3 − x2 < 26 
+ζ3 : mode1 = idle ∧ mode2 = retry ∧ mode3 = retry ∧ x2 < 52 ∧ x3 < 52 ∧ x2 
+= x3 
+ζ4 : mode1 = active ∧ mode2 = wait ∧ mode3 = transmit∧ 
+     x1 < 52 ∧ x2 < 52 ∧ x3 < 52 ∧ x1 − x2 ≤ 0 ∧ x1 = x3 ∧ x3 − x2 ≤ 0 
+γ1 (1) = 1 γ1 (2) =⊥ γ1 (3) = 6 
+γ2 (1) = 4 γ2 (2) = 6 γ2 (3) =⊥ 
+γ3 (1) = 5 γ3 (2) = 11 γ3 (3) = 11 
+γ4 (1) = 1 γ4 (2) =⊥ γ4 (3) = 12 
+   Given a symbolic trace ζ0 −→ ζ1 −→ · · · −→ ζn , we 
+may write ζ0ζn . 
+We borrow the techniques of generating a test case from 
+[16]. Given a symbolic trace of a CTA, we can extract a 
+test case in TTCN format [9] for testing the CTA. A test 
+case consists of a sequence of input events and expected 
+output events annotated with symbolic timing-constraints 
+between events. The global transitions in a symbolic 
+trace correspond to the events in the test case. The zone 
+descriptions in between transitions correspond to timing 
+constraints between events. For the second sender 
+process in figure 2, we can convert the path in figure 2 to 
+the following test case in TTCN format. 
+There is a global clock called Time. There are two 
+TTCN commands, START (to start the ticking of a 
+clock from zero) and READTIMER() (to read the 
+current reading of a clock and save the reading in a 
+variable). The test case can be used to check if a sender 
+retries the transmission within 52 time unit after a bus 
+collision is detected. Given a symbolic trace ρ, we 
+denote the test case constructed out of ρ as testcase(ρ). A 
+symbolic trace in ZoneForest(A, φ) is root-to-leaf if its 
+first zone is a root and its last zone is a leaf. 
+5 
+We have implemented our ideas in RED [26, 31, 28], a 
+model-checker/simulator for CTAs and linear hybrid 
+systems based on a BDD-like diagram called Clock- 
+Restriction Diagram.  
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Abstract.  
+In software engineering, graphical formalisms, like 
+state-transition tables and automata, are very often 
+indispensable parts of the specifications. Such a 
+formalism usually leads to specification refinement 
+that maintains the simulation/bisimulation relation 
+between an implementation and a specification. 
+We investigate how to use formal techniques to 
+generate suggestions for repairing a program that 
+breaks the bisimulation relation with a graphical 
+specification. We use state graphs as a unified 
+representation of the program models and 
+specifications. We propose a technique that may 
+evaluate the cost of a repair. 
+We present a PTIME heuristic algorithm that 
+suggests how to repair a model state graph. We 
+then explain how to derive repair suggestions for 
+programs from the repair for state graphs. Finally, 
+we report our experiment that checks the 
+performance of our repair algorithms and the costs 
+of our repairs. 
+Keywords: state graph, state transition relation, repair, 
+graph theory,cost, evaluation, equivalence, bisimulation. 
+1 Introduction 
+The construction of large complex software with quality 
+assurance is becoming more important than ever. In 
+general, quality assurance is achieved with verification 
+techniques, i.e., checking if the behavior of a design meets 
+a specification. Up to now, for program verification, 
+various techniques have been developed, including testing 
+[14] and model checking [5]. Once a bug is reported in the 
+verification process, locating and repairing the bug still 
+rely heavily on human intervention which is costly, 
+time-consuming, and error-prone. In fact, the process of 
+program repair remains to be the least automated in system 
+development. When talking about repairing, the cost is 
+usually taken into account. Thus, without taking repair cost 
+into consideration, research work in program repair is not 
+likely to be useful in practice. This work is to develop 
+techniques for repair suggestions of programs with a cost 
+concept against graphical state-transition specifications. 
+   Graphical specification formalisms have been widely 
+used in software engineering and telecommunication 
+industry. Examples are the state-transition diagrams used 
+in the specification of many protocols, the statecharts of 
+UML, the abstract machines of SDL, automat, etc. In this 
+work, we adopt such a formalism, called state graph, as a 
+unified representation for both program models and 
+state-transition specifications. There are many algorithms 
+and tools that can construct the state graphs of programs 
+automatically [1]. 
+ 
+2 Related Work 
+Jobstmann et al. viewed the program repair problem as a 
+game. Given a set of suspicious statements (information 
+from fault localization), they first relax the constraints on 
+those suspicious statements and then look for a further 
+constraint of the statements to make the program satisfy 
+specifications [12]. Thus the possible program repairs are 
+restricted to the original architectures of the models. 
+The work of Griesmayer et al. could be viewed as an 
+extension in this direction [9]. In contrast, our framework 
+does not constrain ourselves to those repairs conforming to 
+the original architectures of the model automata. We allow 
+for any repaired model that can be represented as a state 
+graph. Our framework also enables the analysis of repair 
+costs. Moreover, our framework does not rely on the 
+availability of a fault localizer. 
+   There have been discussions in the Artificial 
+Intelligence (AI) community on repair automation. We 
+discuss two of them in the following. Buccafurri et al. 
+argued, with examples, for the connection between the 
+system repair problem and abductive theory revision 
+problem [3]. They also argued that the repair cost can be 
+estimated with the length of the corresponding edit 
+operation sequence and proposed heuristics to avoid 
+redundancy and optimize in the search of the minimum 
+repair. 
+   Ding and Zhang defined the basic repair steps of 
+Kripke model for specifications in LTL (linear-time 
+temporal logic) [6]. To formalize the concept of repair cost, 
+they defined the ordering among repairs and presented 
+theorems in characterizing the minimum repairs for 
+specifications like F ψ and ψ1 ∧ ψ2 . They also presented 
+an algorithm to repair Kripke models for CTL 
+specifications [7]. 
+   In this work, we also present a logic-based algorithm 
+for the calculation of MCS between graphs. At this 
+moment, there are many tools that can construct the MCS 
+between two graphs, for instance, SimPack [16]. But, to 
+our knowledge, no existing tools support the construction 
+of MCS’ of graphs with both arc and vertex labels. 
+3  Repairs and Their Cost Estimation 
+As we have said that, there are good repairs and bad repairs. 
+It is in general diﬃcult to evaluate how good a repair is. We 
+first formalize the concept of repairs to state graphs. As in 
+[3,6,7], we may define a repair of a model state graph as a 
+sequence of graph-edit operations that transforms the graph 
+to one that is bisimulation equivalent to a specification. In a 
+repair, we allow the following four types of basic edit 
+operations. Suppose we are given a state graph A = (Q, P, µ, 
+Σ, E). 
+Program Repair Suggestions from Graphical 
+State-Transition Specifications 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+   Assume that Am B(Am ,As ) = (Qb , P, µm , Σ, 
+Eb ). The diﬀerence from Am to Am B(Am ,As ) , in 
+symbols Am − Am B(Am ,As ) , can be 
+straightforwardly defined as the following state graph. 
+ 
+ 
+Lemma 7. For every state graphs Am and As , 
+RepairedB (Am , As ) is bisimulation equivalent to 
+As . 
+Lemma 8. RepairedB (Am , As ) is constructible in PTIME. 
+ 
+As for the complexity of the aglorithm, it is easy to see that 
+this algorithm only incurs polynomial numbers of set 
+subtractions, graph subtractions, bisimulation computations, 
+and graph edit operations. This justifies that the algorithm is in 
+PTIME and only uses polynomial complexity of memory. Due 
+to page limit, we choose to omit the detailed complexity 
+analysis. 
+ 
+{q | q ∈ Qm − Qb }, P, µm , Σ, ([q], a, [q ]) 
+(q, a, q ) ∈ Em , 
+q ∈ Qm − Qb , q ∈ Qm − Qb 
+We need to disable the eﬀect of Am − Am B(Am ,As ) 
+for the repair. 
+   Assume that As B(Am ,As ) = (Qb , P, µm , Σ, 
+Eb ). Similarly, we can also define As – As B(Am ,As ) 
+and use it as the diﬀerence from As to As B(Am ,As ) 
+However, the ‘diﬀerence’ could still be too big. We 
+propose only to glue the diﬀerence from the 
+bisimulation quotient of As to As B(Am ,As ) . 
+Specifically, we define this diﬀerence, in symbols [As 
+− As B(Am ,As ) , as the following state graph. 
+ {[q] | q ∈ Qs − Qb }, P, µ, Σ, ([q], a, [q ]) 
+(q, a, q ) ∈ Es , 
+q ∈ Qs − Qb , q ∈ Qs − Qb 
+We require that for each q ∈ Qs − Qb , µ([q]) = µs (q). 
+This graph captures the behavior of those states in Qs − 
+Qb in the bisimulation quotient of As . 
+5.3 Constructing Repair Based on the 
+Common Structure and the Diﬀerence 
+With the concepts defined in the above, we are now 
+ready to present our PTIME algorithm for the repair of 
+Am for As . For convenience, assume that Am = =(Qs , 
+P, µs , Σ, Es ),Am B(Am ,As )=(Qm , P, µm , Σ, Em ), 
+As (Qb , P, µm , Σ, Eb ), and [As ] − As B(Am ,As ) = 
+(Qd , P, µs , Σ, Ed ). Intuitively, the algorithm consists 
+of the following two steps. 
+  • Disabling Am − Am B(Am ,As ) in Am . We 
+need to delete all initial states in Am − Am 
+B(Am ,As ) . In addition, we also need to delete all 
+transitions to and from those initial states in Am − 
+Am B(Am ,As ) . 
+  • Gluing [As ] − As B(Am ,As ) to Am B(Am ,As ) 
+This involves the construction of appropriate 
+transitions between [As ] − As B(Am ,As ) and Am 
+B(Am ,As ) .The repair generates a graph (Qb ∪Qd , 
+P, µ, Σ, E) with the following constraints. 
+  • E = Eb ∪ Ed ∪ {(q1 , a, [q2 ]) | ∃(q1 , q ) ∈ 
+B(Am , As )((q , a, q2 ) ∈ Es ∧ [q2 ] ∈ Qd )} ∪ 
+{([q2 ], a, q1 ) | ∃(q1 , q ) ∈ B(Am , As )((q2 , a, q ) ∈ 
+Es ∧ [q2 ] ∈ Qd )} 
+  • For each q ∈ Qb , µ(q) = µm (q). For each [q] ∈ 
+Qd , µ([q]) = µs (q). 
+ 
+We denote this graph as RepairedB (Am , As ). Then 
+we can establish the following 
+lemma. 
+Our experimental tool ModelRepair ver.0.1 realizes part of our 
+ideas in finding a minimum repair. The tool supports the 
+construction of MCS, the exploration of a repair space in 
+searching for a repair, and repair construction with the PTIME 
+heuristic algorithm. The tool is available at http://cc.ee.ntu.edu. 
+tw/∼val. To visualize the model, we oﬀer interfaces to convert 
+our graph representations into the GOAL format [17]. The users 
+can thus conveniently see the diﬀerences between a repaired 
+model and an original model. 
+     
+6 Implementation and Experiment 
+Such suggestions may not lead to the best repair that the 
+engineers may have in mind. But we feel it is certainly a 
+good mechanical support for some initial ideas in repairing a 
+program. 
+• For every initial state in Am − Am B(Am ,As ) , we suggest 
+to the engineers that for such a state, its entry statements 
+should not be the entry points of the program. 
+• For each transition from a state q1 in Am B(Am ,As ) to a 
+state q2 in Am − Am B(Am ,As ) , we suggest to the engineers 
+that the exit statement for the transition from q1 to q2 should 
+be disabled. 
+• We suggest that a program segment that implements [As ] − 
+As B(Am ,As ) should be there. 
+• For each transition from a state q1 in Am B(Am ,As ) to a 
+state q2 in [As ] − As B(Am ,As ) , we suggest to the engineers 
+that we should change a statement of q1 to a conditional 
+branch statement that may branch to q2 . 
+• For each transition from a state q1 in [As ] − As B(Am ,As ) 
+to a state q2 in Am B(Am ,As ) , we suggest to the engineers 
+that we should enter an entry statement of q2 from an exit 
+statement of q1 . 
+The repairs that we may construct in subsection 6.3 are for 
+model state graphs. The engineers still need to know how 
+such repairs can be used as repair suggestions for their 
+programs. Here we give the following rules for deriving re- 
+pair suggestions for programs. Again, suppose Am = (Qm , P, 
+µm , Σ, Em ), As = (Qs , P, µs , Σ, Es ), Am B(Am ,As ) = 
+(Qb , P, µb , Σ, Eb ), and [As ]− As B(Am ,As ) = (Qd , P, µs 
+Σ, Ed ). We also assume that for each state in Am , we still 
+have the information of its entry statements and exit 
+statements in the original program. 
+5.4 Suggestions for Repairing Programs 

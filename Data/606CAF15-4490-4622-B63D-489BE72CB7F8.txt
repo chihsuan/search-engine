@@ -1,0 +1,166 @@
+2的語法結構，後者根據語法結構生成目的
+結構，圖、一說明了此程式設計架構。我
+們採取以語法結構驅動的目的結構合成，
+在較高階的概念上寫結構合成的程式，避
+免低階的跋涉剖析物件的程序所造成的複
+雜度。本計畫除了RDF 剖析器的製作外，
+將在合成部份針對關聯式資料庫結構製作
+合成程式。將RDF 文件剖析後的結果儲存
+在資料庫中以便讓前端服務程式使用。
+圖、一：RDF 轉換程式之架構
+三、以 lex/yacc 為基礎建立 RDF 剖析器
+本研究以 lex/yacc[4]來製作 RDF 語
+法剖析程式。製作方法如下步驟：一、將
+RDF 詞類表示成 lex 語法，二、將 RDF 語法
+規則表示成 yacc 規則形式，三、產成 RDF
+剖析程式並測試剖析程式。
+第一步，我們依據 W3C 的 RDF/XML
+Syntax Specification 中的 7.1 Grammar
+summary[5]來定義詞類，本研究定義的詞
+類可以分成三大類，分別如下所示：第一
+類為基本符號,目的是為了能處理在RDF文
+件中的標點符號，例如"<"、">"、":"、"/"、
+"\"。第二類︰RDF 文件保留關鍵字，用以
+處理 RDF 文件中標籤內的字詞，如
+下:"rdf"、"RDF"、"Description"、"about"、
+"parseTypeResource"、"resource"、"Bag"、
+"Alt"、 "Seq"、 "li"、 "xmlns"、 "ID"、
+"aboutEach"、"aboutEachPrefix"、"bagID"。
+第三類︰字元集合，用以處理 RDF 文件中
+之 XML 宣告、URI 字串辨別、literal 等。
+而將把上列詞類表示成 lex 所需要的
+形 式 ， 則 利 用 常 規 表 示 法 (Regular
+Expression)[6]來達成， 常規表示法是一
+種字串表達的方式,使用者可使用一個簡
+短的常規表示法來表示 "具有某特徵"或
+者"複雜難以描述"的所有字串, 轉換後的
+形式如下所示︰
+第一類和第二類:由於這兩種都是屬於簡
+單的符號或是固定的字串，只要直接用雙
+引號包住欲表達的內容即可，像是"<"、
+">"、":"、"rdf"、"RDF"…等。第三類：
+由於是許多字元之集合非固定字串，要用
+到常規表示法中的特殊字元來表示此詞類
+的樣子，如欲處理 XML 宣告時，可寫成
+XML_declaration=("<?"[^\n]+"?>")，在
+此宣告中中,等號左方是當 RDF 文件經過
+lex 處理過後傳送給後端 yacc 使用時候之
+名稱，等號右方則是常規表示法，利用()
+來用以括住一群字元,且將之視成一個群
+組，而雙引號所括住之內容便即為其所表
+示內容，[^]用以產生字元集合的補集，又
+\n 表示換行符號所以上述內容即表示除了
+換行符號之外所有的字元，加上”+”表示其
+前的字元或字元集合出現一次或一次以
+上，所以其意義便為除了換行符號之外的
+字元至少出現一次以上，此宣告處理的內
+容便如<?xml version="1.0"?>。
+第二步，我們將建立 RDF 規範中的語
+法規則表示成yacc形式。W3C中對RDF/XML
+總共定義了 34 條語法，我們根據 yacc 的
+規則將這 34 條語法轉換成對應的形式，在
+此以 Java CUP(Java 版的 yacc)來說明。在
+CUP 中首先要定義終端符號(terminal
+symbol)和非終端符號(non terminal)，終
+端符號就是由第一步經過 lex 後產生的詞
+類，通常會用大寫表示，非終端符號是在
+yacc 中才定義的，是由終端符號和非終端
+符號的組合遞換而成。Java CUP 中每一條
+語法是由”::=”分隔左邊和右邊，左邊是一
+個非終端符號，右邊則是由數個終端符號
+與非終端符號組成，當輸入的詞類符合右
+邊的組合就會遞換成左邊的符號，重複這
+樣的動作直到遞換到第一條語法的左邊符
+號(start symbol)且剛好消耗掉由 lex 產
+生的所有詞類，代表這份輸入的 RDF 文件
+符合定義的語法規則，是一份合法的 RDF
+文件。舉例來說，在 RDF/XML 的語法規則
+第 24 條定義如下：
+7.2.24 aboutAttr ::= attribute(URI ==
+rdf:about, string-value == URI-reference )
+這條規則是說明 aboutAttr 是由
+rdf:about 這個屬性組成，而此屬性的值為
+一個 URI。將其轉換成對應於 Java CUP 的
+4產生有關的語法為下面這幾條，也就是說
+我們要這幾條語法下加上產生三元組的程
+式碼：
+aboutAttr ::= RDF COLON ABOUT EQUAL
+QUOTE URI:uri QUOTE
+{: RESULT = uri; :} ;
+aboutAttr 這條語法代表要被描述的主體，
+由於我們要取得 URI 這個符號裡面的值，
+我們給予它一個變數名稱 uri，並將此變數
+的值傳給 aboutAttr。遇到這條文法時由於
+只有三元組的主體，所以要先將主體儲存
+下來往更高層的語法傳遞，等到附屬於這
+個主體的屬性和值都出現時才一併輸出代
+表一個三元組的產生。
+propertyElt ::= LPAREN propName:propName
+idAttr_empty RPAREN value:value
+LPAREN SLASH propName RPAREN
+{: System.out.println(propName+ " " +value+ "\n"); :} ;
+propertyElt 關係著三元組的屬性和屬性
+值，propName 存放著屬性名稱，value 則
+存放著屬性的值。
+description ::= LPAREN RDF COLON DESCRIPTION
+idAboutAttr_empty:idAboutAttr
+{: System.out.println("idAboutAttr); :}
+bagIdAttr_empty propAttrs RPAREN
+propertyElts LPAREN SLASH RDF
+COLON DESCRIPTION RPAREN ;
+description 意味著至少一個完整三元組
+的出現，剛剛往上傳遞的代表主體的
+aboutAttr 到這裡才以 idAboutAttr 的名
+稱被輸出，而 propertyElts 為這個主體的
+屬性和值，由於可能不只一個，所以在
+propertyElt 這條語法規則時就會被輸出。
+五、存入 RDF 儲存庫
+資料庫的存在可以讓資料被加以整
+理，並且能隨時依各種目的來使用。總和
+前面敘述的，我們將輸入的 RDF 經由
+lex/yacc 的處理後轉換為三元組來代表這
+份 RDF，在這個流程的最後，要將轉換後的
+三元組使用資料庫儲存，儲存的三元組之
+後可以根據個別使用者的需求來加以利
+用，或者讓其它在語意網上運作的應用程
+式使用，當作一個共用的後端資料庫。
+而在各種類型的資料庫中，由於關聯
+資料庫是使用邏輯概念來表達資料間的關
+係，讓使用者可以輕易上手，而成為現今
+市場上的主流，因此，在資料庫的選擇上，
+我們選擇了關聯資料庫來當作RDF儲存庫。
+使用 lex/yacc 在語法上高階地建立
+RDF 剖析器的優點在這裡可以清楚顯現，生
+成目的碼在這由上一節的三元組變成了儲
+存庫，我們不需要重新撰寫整個程式，只
+要更改在 yacc 中每條語法對應的動作，將
+原本產生三元組的程式碼改成 SQL 語法即
+可，以上一節為例，原本的程式碼為：
+aboutAttr ::= RDF COLON ABOUT EQUAL
+QUOTE URI:uri QUOTE
+{: RESULT = uri; :} ;
+透過 JDBC 我們在這只要將動作程式碼改
+成：
+{: INSERT INTO resource VALUES (recourceId,uri) :} ;
+就能將代表主體的uri存在resource這個
+表格裡。除了將原本生成三元組的程式碼
+用 SQL 語法取代外，在 RDF 儲存庫中，還
+額外定義了一個表格用來儲存名稱空間的
+縮寫和其全名，我們在 yacc 的 namespace
+語法加入了這樣的動作：
+namespace ::= XMLNS COLON NSprefix:nsprefix EQUAL
+QUOTE URI:uri QUOTE
+{: INSERT INTO namespace VALUES (namespaceId,
+nsprefix,uri) :}
+Nsprefix 為名稱空間的縮寫而 uri 為其全
+名。
+在關聯式資料庫中，我們總共使用了
+五個表格，其 ER 模型如圖、三所示，分別
+說明如下：
+‧namespace：儲存名稱空間的縮寫和其對
+應的完整 URI
+‧triple：儲存剖析後的三元組
+‧resource：儲存資源，而資源在三元組
+中扮演的角色可能是主體或屬性值
+‧property：儲存對應於主體的屬性
+‧value：儲存屬性的值

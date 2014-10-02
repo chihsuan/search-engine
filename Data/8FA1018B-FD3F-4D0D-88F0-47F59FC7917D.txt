@@ -1,0 +1,498 @@
+23.1 模型訓練
+訓練階段的主要處理流程如圖 1 所示。首
+先我們進行語料的錄音，然後對語料作標音、
+切音的處理；之後使用基於離散倒頻譜
+(discrete cepstrum)之頻譜包絡估計方法，去估
+計出一個音節各音框的頻譜參數；接著對各個
+語句的組成音節進行 DTW 匹配來求得頻演
+(頻譜演進)路徑，以便依此路徑來對相同拼音
+的音節發音作分群；分群後，再對各群的音節
+發音作 HMM 模型訓練。此外，我們也對各個
+切音得到的音節，量測它的音長(duration)，再
+配合文句分析所得到的資料，用以訓練 ANN
+音長模型。
+圖 1 訓練階段之主要處理流程
+3.1.1錄音、標音
+我們邀請一位男性語者來錄製 1,208句的
+訓練語料，共有 10,173 個音節。此外，也請他
+錄 407 個國語基本音節的單獨發音，以便用於
+DTW匹配方塊。錄好之後，先使用 HTK (HMM
+tool kit)來作音節邊界之 forced alignment 處
+理，即自動標音；然後使用 Wavesurfer 軟體來
+對音節邊界作人工微調、更正。之後依此標音
+結果來進行切音，以切出各個音節之信號檔。
+3.1.2頻譜參數擷取
+一個音檔的信號先分割成長度 512 點、且
+重疊一半的音框序列，然後各個音框以圖 2 的
+流程作處理，以求得一個 39 維度的離散倒頻
+譜係數(DCC, discrete cepstrum coefficient)向
+量。
+speech
+frame
+fundamental
+frequency
+detection
+Hanning
+windowing
+FFT
+DCC
+coeff.
+spectral
+peak
+selection
+frequency
+axis
+scaling
+discrete
+cepstrum
+computation
+圖 2 擷取 DCC 係數之處理流程
+3.1.3 DTW匹配與音節分群
+從句子發音裡切出的各個音節，放在 X
+軸，而它對應的單獨發音音節放於 Y 軸，然後
+進行 DTW 匹配，匹配出的路徑稱為頻譜演進
+路徑(SPP, spectrum progression path)，在此把
+SPP 表示成一個向量，即 X 軸上 32 個正規化
+時間點上的 Y 軸時間值。
+對於同一個音節(不區分聲調)的多次發音
+(在不同語句裡)，我們依據 SPP 向量進行
+K-means 分群之處理，以把具有類似 SPP 之音
+節分到同一群。
+3.1.4 HMM模型訓練
+一個音節的發音經過分群後，各群的發音
+再分別去訓練各自的一個掌握頻譜演進之
+HMM 模型。在此令 HMM 的狀態數為 8，每
+一 狀 態 上 只 設 一 個 高 斯 混 合 (Gaussian
+mixture)，而 HMM 的結構則設定成由左至右
+(left-to-right)。除了 DCC 頻譜係數之外，我們
+也取相鄰音框之間的 DCC 差分值作為特徵。
+HMM 模型的訓練方法，我們使用的是
+segmental K-means 方法。
+3.1.5 ANN韻律模型訓練
+韻律模型負責產生出韻律參數，其中一項
+是音節音長，在此我們使用先前開發的 ANN
+模型的訓練程式，來對新錄的語料(共 10,173
+個音節)作音長 ANN 模型的訓練。另外一項重
+要的韻律參數是音節的基週軌跡，在此直接使
+用先前開發的基週軌跡產生程式。至於音節的
+音量，我們並未採用獨立的音量模型，而是直
+接依據HMM各狀態上的高斯混合平均向量裡
+的 c0參數。
+3.2 語音合成處理
+合成階段的主要處理流程如圖 3 所示。當
+一個輸入的文句作完文句分析與斷詞之後，接
+著使用 ANN 模型來產生該文句各音節的音長
+與基週軌跡之韻律參數；然後，依據各個音節
+Start
+標音、切音
+DTW 匹配
+音節發音之分群
+頻譜參數求取
+頻譜 HMM 訓練
+End
+音節信號
+語料庫
+HMM 參數
+文句分析
+音長 ANN 訓練
+ANN 參數
+Start
+End
+4分析，我們的決定是要作，以減少特徵參數的
+維度，及增進對映機制的對映效能。關於對映
+機制的選擇，文獻上可發現使用 GMM 的佔多
+數，而使用 ANN 的較少，不過我們較偏好具
+有非線性對映能力的機制，因此選擇使用
+ANN。
+作了前述的選擇之後，接著我們從訓練階
+段和合成階段，分別規劃音色變換的處理流
+程，結果如圖 5 與圖 6 所示:
+圖 5 音色變換之訓練階段流程圖
+在訓練階段，來源(source)語者和目標
+(target)語者的語音信號，先作收集、及標記拼
+音符號。接著，兩個語者的語料分別去作 DCC
+係數擷取。求得 DCC 係數之後，依照聲母和
+韻母各別的分類規則(聲母分成 101 類、韻母
+分成 135 類)，並且分別作聲母和韻母的分
+類，即一個音節發音會重複參加聲母和韻母
+的分類，把具有同一類聲母(或韻母)的音節發
+音蒐集起來，以訓練出一個對應於該類聲母
+(或韻母)的 8 個狀態之 HMM 模型。然後經由
+Viterbi decoding，就可把參加同一個 HMM 訓
+練的各個音節發音的音框分割到 HMM 的八
+個狀態中，再將落到同一狀態的 DCC 向量作
+平均。如此每個音節發音，當它參加聲母和
+韻母的分類時，都可得到固定八個狀態的平
+均 DCC 向量。接著把每個音節發音的八個
+DCC 平均向量串接成一個超向量 (super
+vector)。
+圖 6 音色變換之合成階段流程圖
+文句分析
+音長
+ANN
+基週軌跡
+ANN
+Eigen
+vectors
+音節 HMM 產生
+HNM 合成
+Synthetic speech
+音框頻譜參數
+產生
+音節主成分係數
+尋找
+基週軌跡
+音長
+ANN
+weights
+主成分
+係數值
+聲、韻母
+ANN mapping
+文句輸入
+Text context
+Target
+speech
+Source
+speech
+頻譜參數擷取
+頻譜參數擷取
+聲韻母分類 PCA
+ANN train
+HMM 訓練
+聲韻母分類 PCAHMM 訓練
+ANN
+weights
+Eigen
+vectors
+主成分
+係數值
+6系統。接著進行聽測實驗，結果顯示，合成出
+語音的音色會相當接近目標語者的音色。
+七、參考文獻
+[1] K. Tokuda, et al., “Speech Parameter Generation 
+Algorithms for HMM-based Speech Synthesis”, 
+ICASSP, Istanbul, Turkey, pp. 1315-1318, 2000.
+[2] K. Tokuda, H. Zen, and A. W. Black, “An 
+HMM-based Approach to Multilingual Speech
+Synthesis”, in Text to Speech Synthesis: New 
+Paradigms and Advances, Editors: S. Narayanan
+and A. Alwan, Prentice Hall, NJ, pp. 135-153,
+2004.
+[3] Y. Qian, F. Soong, Y. Chen, and M. Chu, “An 
+HMM-Based Mandarin Chinese Text-to-Speech
+System”, ISCSLP, Singapore, pp. 223-232, 2006.
+[4] Y. Stylianou, Harmonic plus Noise Models for
+Speech, Combined with Statistical Methods, for
+Speech and Speaker Modification, Ph.D. thesis,
+Ecole Nationale Supèrieure des
+Télécommunications, Paris, France, 1996.
+[5] O. Cappé and E. Moulines, “Regularization
+Techniques for Discrete Cepstrum Estimation”,
+IEEE Signal Processing Letters, Vol. 3 (4), pp.
+100-102, 1996.
+[6] H. Y. Gu and Y. Z. Zhou, “An HNM Based 
+Scheme for Synthesizing Mandarin Syllable
+Signal”, Int. Journal of Computational
+Linguistics and Chinese Language Processing,
+Vol. 13, No. 3, pp. 327-342, 2008.
+[7] H. Y. Gu and C. Y. Wu, “Model 
+Spectrum-progression with DTW and ANN for
+Speech Synthesis”, in Proc. ECTI-CON 2009,
+Pattaya, Thailand, pp. 1010-1013, 2009.
+[8] H. Y. Gu and S. F. Tsai, “A Discrete-cepstrum
+Based Spectrum-envelope Estimation Scheme and
+Its Example Application of Voice
+Transformation”, Int. Journal of Computational
+Linguistics and Chinese Language Processing,
+Vol. 14(4), pp. 363-382, 2009.
+[9] L. Rabiner and B. H. Juang, Fundamentals of
+Speech Recognition, Prentice-Hall, 1993
+[10] Meng Zhang, J. Tao, J. Nurminen, J. Tian, X.
+Wang, “Phonetic anchor based state mapping for
+text-independent voice conversion,” International 
+Conference of Signal processing, Beijing, China,
+Vol. 1, pp.723-727, 2008.
+[11] Elina Helander, Jani Nurminen and Moncef
+Gabbouj, “LSF mapping for voice converison
+with very smal training sets,”ICASSP , Las
+Vegas, U.S.A, pp.4669-4672. 2008.
+[12] T. Toda, Y Ohtani, and K. Shikano, ”Eigenvoice 
+conversion based on Gaussian mixture model,” 
+ICSLP, Pittsburgh , USA, pp.2446-2449, 2006.
+[13] Stylianou Y., Capp´e O., Moulines
+E, ”Continuous Probabilistic Transform forVoice
+Conversion,” IEEE Transactions on Speech and 
+Audio Processing, Vol. 6, No. 2,
+pp.131–142.1998.
+[14] Srinivas Desaiy, E. Veera Raghavendray, B.
+Yegnanarayanay, Alan W Blackz, Kishore
+Prahallad, “Voice conversion using artificial 
+neural networks,” ICASSP, Taipei, Taiwan, 
+pp.3893–3896, 2009.
+[15] Zhiwei Shuang; Fanping Meng; Yong Qin,
+“Voice Conversion by Combining Frequency
+Warping with Unit Selection,” ICASSP, Las 
+Vegas, U.S.A , pp.4661-4664, 2008.
+2Processing, Filter Design & Digital Filters, Signal Representation and Transforms,…等等。
+在行程方面，由於 10 月 16 日學校裡有會議必需參加，所以只好決定搭乘 10 月 17 日 9 點
+多的班機經由香港前往天津，到達會場時已是當日的 18 點多。參加研討會後，則於 19 日晚上
+搭乘中國的國內線班機前往上海，以便於 20日早上搭乘直航台北松山機場的班機，如此可於 20
+日 11 點半就回國，而可備課準備下午的課程。不過，由於國內線班機的延誤，以致於抵達上海
+虹橋機場時時，已是晚上 11 點多，找了三家旅館，不是客滿就是不接待台灣人(台胞)，所以，
+旅館還是預先訂好比較妥當。
+二、與會心得
+雖然語音信號處理方面的論文不多，大致上只有 18 篇，但是它們分布於語音處理的多個子
+領域之中，例如語音編碼、語音辨識、語者辨識、語言辨識、語音合成、語音特徵分析等。在
+這些論文之中，有一篇提出以多模矩陣量化來達到 450bps 資料率的語音編碼演算法，這讓我有
+驚訝之感，現在編碼已經往這麼低的資料率前進了，不過與作者相談，得知解出的語音其實已
+不知說話者的身分。此外，有一篇研究以脈衝產生器，來取代聲帶的功用，這也令人覺得很新
+鮮。跟我的論文比較相關的是語音合成，不過語音合成方面的論文，只有另外兩篇，一篇是作
+土耳其語(Turkish)的合成，而另一篇是嘗試把語音參數(如 MFCC)再合成出語音信號，用以聽語
+音參數。
+4spectral envelope that is represented with some cepstrum
+coefficients. A figure that shows the division of magnitude
+spectrum into two parts is drawn in Fig. 1. In this figure,
+the pulses at the left side represent the harmonic partials
+while the smooth curve at the right side represents the
+spectral envelope of the high frequency noise.
+MVF noiseharmonicdB
+Hz
+Fig. 1. Spectrum partitioned to harmonic and noise parts.
+Here, we denote the frequency, amplitude, and phase of
+the i-th partial with fi, ai, i for a source spectrum (i.e.,
+before timbre transformation). As for the noise part, the
+spectral envelope across entire frequency range is
+represented with 20 cepstrum coefficients although in Fig.
+1, only the envelope after the MVF is drawn. When the 20
+coefficients are appended with zeros and discrete Fourier
+transformed, the frequency bins and their amplitudes are
+denoted here with gj and bj, respectively. Based on the
+spectrum model of HNM, two timbre transformation
+methods, FAS and PLFM, are studied.
+2.1. Frequency axis scaling
+As indicated by the name FAS, this method just
+multiply the frequencies, fi and gj, with a scaling factor, ,
+and keeps the amplitude and phase values intact. That is,
+let the frequency value of the i-th harmonic partial be
+if=fi after timbre transformation. Similarly, let jg=gj.
+If is smaller than 1, the transformed spectrum would
+have the formant frequencies lowered, which is equivalent
+to lengthen the vocal-track. Then, a more manful timbre
+can be synthesized by using the transformed spectrum. An
+example spectrum obtained by transforming the spectrum
+in Fig.1 with FAS and = 0.8 is shown in Fig. 2. From
+this figure, it can be seen that the spectral envelopes for the
+harmonic and noise parts are both shrunk in frequency axis,
+and hence formant frequencies and MVF are all lowered.
+Also, another observable effect is that the spectrum for the
+frequency range, from nearby 9,000Hz to the Nyquist
+frequency 11,025Hz, become empty. Therefore, in our
+synthesis program, we do not synthesize noise signals
+within such frequency range.
+dB
+Hz
+first formant
+second formant
+Fig. 2. Transformed spectrum with FAS under= 0.8.
+In contrast, if  is greater than 1, the transformed
+spectrum would have the formant frequencies raised,
+which is equivalent to shorten the vocal-track. This raising
+of formant frequencies can be seen from the example
+transformed spectrum in Fig. 3. Also, another effect that
+can be seen is the envelope curve for the noise part is cut
+out partially for those bins with frequencies, jg, greater
+than the Nyquist frequency.
+dB
+Hz
+first formant
+second formant
+Fig. 3. Transformed spectrum with FAS under= 1.25.
+2.2. Piece-wise linear frequency mapping
+We develop this method by applying the acoustic
+knowledge about vowel production [2]. This method needs
+not to know the voice content in advance, and is simple to
+implement. In this method, the formant frequencies, F1, F2,
+and F3, of the vowels /u, a, i/ uttered by the female who
+records the synthesis units for our speech synthesis system
+are analyzed first. Then, the values of F1 and F2 for the
+vowel /u/ are averaged to define the first reference
+frequency, R1. The values of F1 and F2 for the vowel /a/ are
+averaged to define the second reference frequency, R2. As
+to the third reference frequency, R3, it is defined by
+averaging the values of F2 and F3 for the vowel /i/. On the
+other hand, we select a male whose timbre is manful
+enough to record the vowels for analyzing formant
+frequencies. Then, we can similarly obtain another set of
+reference frequencies, U1, U2, and U3. Next, the two sets of
+reference frequencies are associated one to one, and 5
+frequency pairs are formed, i.e., (R1, U1), (R2, U2), and (R3,
+U3) plus (0, 0) and (11,025, 11,025).
+According to the 5 frequency pairs, a piece-wise linear
+frequency mapping function, M(), can thus be constructed.
+By using this mapping function, a source spectrum’s
+formant frequencies that are nearby R1, R2, or R3 will be
+mapped to the frequencies nearby U1, U2, or U3. In general,
+the frequency of the i-th partial, fi, in the source spectrum
+is mapped to M(fi). Similarly, the frequency, gj, of a bin in
+the noise part is mapped to M(gj). Take the spectrum in Fig.
+1 as an example source spectrum. When this spectrum is
+transformed by using the method PLFM, the resulted
+spectrum would be the one drawn in Fig. 4. From this
+figure, it can be seen that the spacing between two adjacent
+harmonic partials is incrementally increased from the low
+frequency end to the MVF.
+6across the control points that have their pitches tuned. One
+principle is to keep the spectral envelope of each control
+point unchanged. Therefore, the spectral envelope of a
+control point must be estimated from the pitch-original
+harmonic partials before computing the pitch-tuned
+harmonic partials’amplitude, frequency, and phase values.
+Spectral envelope can be estimated with a global [11] or
+local approximation method. Here, for directly making use
+of HNM parameters and computation-efficiency
+consideration, we adopt a Lagrange interpolation based
+local approximation. Let kF and kA denote the
+frequency and amplitude of the k-th tuned harmonic partial.
+To compute the value of kA, we first find a pitch-original
+harmonic frequency jF , from 1F , 2F , 3F , …, that is 
+nearest to and less than kF. Then, the four pitch-original
+partials of the frequencies, -1jF , jF , +1jF , and +2jF ,
+are used to perform order three Lagrange interpolation.
+That is,
+22
+1 1
+jj
+k h
+k m
+m hm j h j
+h m
+F F
+A A
+F F
+
+ 
+
+ 
+ 
+ (2)
+If Lagrange interpolation of Equation (2) is applied to
+the partials in the harmonic part of Fig. 1, the estimated
+spectral envelope would be the curve shown in Fig. 6.
+Hz
+dB
+Fig. 6. Spectral envelope by Lagrange interpolation
+3.4. Synthesis of speech signal with HNM
+For the harmonic signal, H(t), between the n-th and
+(n+1)-th control points, its sample values are computed
+with these equations (rewritten by us):
+   
+0
+cos ( ) , 0,1,...,99 ,
+L
+n n
+k k
+k
+H t a t t t
+
+   (3)
+1( ) ( ) ,
+100
+n n n n
+k k k k
+t
+a t A A A     (4)
+ˆ( ) ( 1) 2 ( ) 22,050 , (0) ,n n n n nk k k k kt t f t        (5)
+1( ) ( ) ,
+100
+n n n n
+k k k k
+t
+f t F F F     (6)
+where L is number of harmonic partials, 100 is the
+number of samples between adjacent control points,
+22,050 is the sampling rate, ( )nka t is the time-varying
+amplitude of the k-th partial at time t from the start of the
+n-th control point, ( )nk t is the cumulated phase for the k-
+th partial, ( )nkf t is the time-varying frequency for the k-th
+partial, and nˆ
+k is unwrapped phase of nk versus 1ˆnk . In
+Equations (4) and (6), linear interpolation is used, which
+seems enough according to perception tests.
+For the noise signal, N(t), we decide to synthesize it as a
+summation of sinusoidal signal components [6]. Then, the
+values of the noise-signal samples between the n-th and
+(n+1)-th control points can be computed as a summation of
+sinusoidal components whose amplitudes and frequencies
+are linearly varied as in Equations (4) and (6).
+4. Perception tests
+Our Mandarin speech synthesis system is developed in
+previous studies [10, 12]. This system can be subdivided
+into three components, i.e., text analysis, prosody
+parameter generation, and signal waveform synthesis. Here,
+we integrate the timbre transformation methods, FAS and
+PLFM, into the component of signal waveform synthesis.
+That is, the original HNM based syllable signal synthesis
+scheme [10] is extended, and an HNM based timbre-
+transformation and synthesis scheme as shown in Fig. 5 is
+obtained.
+To conduct perception tests, we prepare 6 synthetic
+speech files beforehand, which are denoted as AA, AB, AC,
+AD, AX, and AY, respectively. In synthesizing AA, AB, AC,
+and AD, the method, FAS, is used to transform their
+timbres. The scaling factor, , is set to 0.9, 0.8, 0.7, and
+0.6, respectively. On the other hand, AX is synthesized by
+using PLFM and AY is synthesized by using PLFM+FAS,
+i.e. FAS with scaling factor, 0.9, is executed after
+executing PLFM. The 6 speech files can be downloaded
+from the web page, http://
+guhy.csie.ntust.edu.tw/TmbrHNM/F2M.html.
+Here, 12 persons are invited to participate in the tests.
+For each person, we allow him to play each of the 6 files
+again and again. Then, he is asked which timbre of AA, AB,
+AC, and AD is most similar to the timbre of AX. Similarly,
+he is asked which of the four timbres is most similar to that
+of AY. As a result, 11 of the 12 persons recognize that AB
+is most similar to AX, and 9 persons recognize that AC is
+most similar to AY. Based on these results, we
+consequently ask each of the participants to compare AB
+with AX, and give scores about which is more manful and
+which is more intelligible. Here, the score, 2 (or -2), is
+defined as that AX is significantly more (or less) manful or
+intelligible than that of AB. If AX is just slightly more (or
+less) manful or intelligible than AB, the score, 1 (or -1), is
+defined. Otherwise, the score, 0, should be given to
+indicate that they cannot be distinguished. Similarly, we
+also ask each of the participants to compare AC with AY,
+and give scores about timbre-manfulness and intelligibility.
+After analyzing the scores given by the participants, we
+obtain the averaged scores and standard deviations as
+shown in Table 1. According to the averaged scores, 0.75
+無研發成果推廣資料 
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+尚無其它成果. 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

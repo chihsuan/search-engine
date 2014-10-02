@@ -1,0 +1,796 @@
+一、中、英文摘要 
+(一) 計畫中文摘要 
+本計畫將以目前主流之視訊壓縮格式 H.264/AVC 為目標，在 TI 之雙核心處理器 SoC 上設計與實
+現手持式多媒體錄影系統。計畫目標為壓縮 H.264/AVC Baseline Profile 於 D1 解析度(720×480 畫素)時
+達到每秒 25 張畫面之壓縮效率。採用之方法包含，一、開發 Inter Frame Prediction 之快速 ME 演算法，
+二、開發 Intra Frame Prediction 之快速 Mode Decision 演算法，三、整合 ARM、DSP、與 DMA 並利用
+多執行緒程式技巧，四、DSP 組合語言程式碼。 
+ 
+關鍵詞：TI 雙核心處理器(DM6446)、H.264/AVC 快速演算法、多執行緒、數位訊號處理器 
+ 
+ 
+(二) 計畫英文摘要 
+In this project, we focus on the main-stream H.264/AVC compression and realization it on the TI dual 
+core SoC (DM6446) for the portable video recorders. The target aims at the compression of H.264/AVC 
+baseline profile at D1 resolution (720×480 pixels) with 25 fps (frame per second). We adopt four approaches 
+to meet the specification. It includes: 1. development a fast motion estimation algorithm for the inter frame 
+prediction; 2. development a fast mode decision algorithm for the intra frame prediction; 3. combination the 
+ARM, DSP, and DMA using multi-thread technology; 4. DSP assembly coding. 
+ 
+Keywords：TI dual core SoC (DM6446)、H.264/AVC fast mode decision、multi-thread、DSP 
+ 
+二、前言 
+多媒體視訊已經成為手持式行動裝置之必要功能，例如：i-Pod、PMP (Portable Media Player)、
+i-Phone、PDA Phone、SONY PSP…等。然而面對越來越多元的視訊壓縮格式，如 MPEG-2、MPEG-4、
+JH.243/AVC、VC-1、AVS、…等。造成傳統之硬體 SIP 架構已無法彈性處理如雨後春筍般的新視訊格
+式。因此由嵌入式處理器與 DSP(數位訊號處理器)整合高效能 DMA 的系統單晶片將成為未來可程式化
+之多媒體系統解決方案。所以具多視訊壓縮標準功能之異質雙核心手持式行動裝置，將成為未來嵌入
+式多媒體系統之主流硬體架構。故本計劃針對此架構開發快速演算法並在嵌入式處理器、DSP、DMA
+間利用多執行緒技術達成各硬體平行協同處理之方式，達到高效率、高畫質視訊編碼功能，相信應具
+高度應用價值及提升相關資訊、電子業之產業競爭力。 
+ 
+三、研究目的 
+本計畫將以目前主流之視訊壓縮格式 H.264/AVC 為目標，在 TI 之雙核心處理器 SoC 上設計與實
+現手持式多媒體錄影系統。計畫目標為壓縮 H.264/AVC Baseline Profile 於 D1 解析度(720×480 畫素)時
+達到每秒 25 張畫面之壓縮效率。採用之方法包含，一、開發 Inter Frame Prediction 之快速 ME 演算法，
+二、開發 Intra Frame Prediction 之快速 Mode Decision 演算法，三、整合 ARM、DSP、與 DMA 並利
+用多執行緒程式技巧，四、DSP 組合語言程式碼等，四種方法達成計畫目標，並將最後開發成果登於
+國外期刊論文、提出相關技術專利並提供國內電子產業之關鍵技術。 
+ 
+四、研究方法與文獻探討 
+and Chang [6] 所提出 Fast Fractional Pel Motion Estimation Algorithm此種移動搜尋演算法主要可以發現
+有非常高的機率搜尋出 Cost 最小之非整數點會接近整數中心點，所以第二次收尋時可以在整數中心點
+附近尋找，此種方式好處是可以跳過一些可能性較低的點，而大大降低整體運算量。(3) Huang Hsieh，
+Chien，Ma and Chen [7] 提出的演算法主要觀念在於降低 Multiple Reference Frame 的運算量，因此提
+出了 Context-based Adaptive 方式加速 Multiple Reference Frame ME。 
+除此之外國內外之重要研究與貢獻尚包含：台大陳良基教授提出之「Analysis and architecture design 
+of variable block-size motion estimation for H.264/AVC」[16]、「Bandwidth optimized motion compensation 
+hardware design for H.264/AVC HDTV decoder」[17]、「Fast Algorithm and Architecture Design of 
+Low-Power Integer Motion Estimation for H.264/AVC」[18]；成大楊家輝教授提出之「Fast H.264 Inter 
+Mode Decision Based on Inter and Intra Block Conditions」[19]、「Matched Block Detection and Motion 
+Vector Salvage Methods for Fast H.264/AVC Inter Mode Decision」[21]、「Two-layer and Adaptive Entropy 
+Coding Algorithms for H.264-based Lossless Image Coding」[22]；成大王駿發教授提出之「Fast inter mode 
+decision based on hierarchical homogeneous detection and cost analysis for H.264/AVC」[20]；中正大學郭
+峻因教授提出之「A Low Complexity High Quality Integer Motion Estimation Architecture Design for 
+H.264/AVC」[22]、「Low Complexity High Quality Fractional Motion Estimation Algorithm and Architecture 
+Design for H.264/AVC」[23]；清大王家祥教授所提出之「Computation-aware scheme for software-based 
+block motion estimation」[28]…等。 
+ 
+三、Intra Prediction 目前研究現況: 
+所謂的畫面內預測(Intra-Prediction) 並不僅僅是用於 I Frame，在 P Frame 中也是每個區塊都會啟動
+畫面內預測(Intra-Prediction)的機制，當 Motion Estimation 在前一張畫面中找不到最接近的區塊時，此
+區塊將會利用畫面內預測(Intra-Prediction)當作此區塊的編碼機制，由此可見畫面內預測(Intra-Prediction) 
+的運算量也是非常的驚人，如何降低其運算複雜度也成為重要的課題，許多人也致力於這方面的研究。
+在 Paper [8][9]，提出了利用 Threshold 來決定較有可能出現的 Mode ，藉此來減少運算的複雜度，但
+是此演算法並不適合於硬體實現。在 Paper [10] 提出了在 Inter Frame 中決定是否需要執行 Intra 
+Prediction，同樣地，作者提出了一個 Threshold 的公式，如果區塊落在 Inter Frame 時，其當做完 Motion 
+Estimation 後，會去和 Threshold 做比較，當做完 Motion Estimation 的 Cost 小於 Threshold ，則可以
+省去 Intra Prediction 的運算，藉此降低運算量。在 Paper [10]中提出了一個利用 AC/DC 比例的方式，
+來決定此區塊為平滑區塊，亦或是非平滑區塊，演算法概念在於，當其比例越大時，其 Intra 4x4 出現
+的機率越高，反之則 Intra 16x16 出現的機率較高，此外針對 Intra Prediction ，作者還提出了一個節省
+運算量的方法，稱為三階段演算法。Paper [11]中提出了一個利用邊緣區塊關係來做預測的演算法，利
+用邊緣區塊的Mode 來預測此區塊最有可能出現的Mode ，藉此來達到節省運算量的效果。在Paper [11]
+中提出了利用統計的關係，統計出邊緣區塊和待編碼區塊關係的機率表，來預測待編碼區塊最有可能
+出現的 Mode。經由以上的分析我們不難發現，其這些演算法大部份只適合於軟體模擬，並不適合於真
+正的硬體實現，其演算法最大的特點為能真正的實現於硬體實作上，且能維持 H.264 原本的畫面品質。 
+Paper [12]中提出了降低 Mode Decision 運算量的作法，因 H.264 在做最後的 Entropy Coding，必須
+要經過運算龐大的 Mode Decision，就是要將所有的 Mode 都執行過以取得 Cost 值，最後選最小的 Cost
+當成最佳的 Block Mode 再執行編碼，為了減少運算量，在畫質損失極小的狀態下提出快速 Intra Mode 
+Decision 的演算法，此演算法會先分析原本畫面的內容像顏色的變化、畫面邊緣等等，決定出 4 種 Intra
+將要做 Mode Decision 的 Mode，相較於原本 JM Intra Prediction 9 種 Mode 作法，減少了 76% 運算量且
+其 PSNR 只降低了 0.2 dB。 
+除了以上的作法外，在 Paper [13] Liu’s 提出演算法中，同樣針對 H.264 Mode Decision 提出了低複
+雜度的快速 Intra Prediction 作法，減少不必要的 Candidate Mod 收尋，其使用了 Discrete Cross Differences 
+(DSD)，及 Simplified Discrete Cross Differencing (SDCD)方式。DSD 作法為利用邊界偵測(Edge Detection)
+對 JM Reference Software 分別對 QCIF、CIF 和 D1 所作的 I4 Mode 和 I16 Mode 出現次數的平均統計圖。 
+ 
+圖 5、QCIF，CIF 及 D1 之 I4 Mode 和 I16 Mode 平均出現次數統計圖 
+ 
+由圖 5 可得知當 QP 越小時，使用 I4 Mode 的機率越高，當 QP 越大時，使用 I16 Mode 的機率越高。
+然而 QP 越小時，其影片的品質越好，但相對的其壓縮的效果較差，所以當 QP 越小時，I4 Mode 出
+現的機率越高，同理，QP 越高時，I16 Mode 時出現的機率越高。根據上述之分析結果，本研究將根
+據不同之 QP 值開發相對應之 Fast Intra Prediction algorithm，其基本概念為當 QP 值大時將由 I16 Mode 
+Type 預測 I4 Mode Type，反之當 QP 值小的時候將由 I4 Mode Type 預測 I16 Mode Type，如此方式將可
+以降低 Intra Prediction 之運算複雜度，以達加速之效能。 
+另外本研究將改變取點之方式，其優點是當在硬體實作時可以減少 Transpose Memory 的使用，進
+而降低成本的消耗，我們分別針對可以減少 Transpose Memory 的取點方式做一個分析，發覺總共有 24
+種的取點方式可以達到減少 Transpose Memory 的目的，此外在做差值相減時，如果我們以高 4 Bit 相減，
+而忽略低 4 Bit，則如此一來我們也可以在運算器上可節省一半的 Bit 數，藉此達到節省 DSP 運算的目
+的，因此我們分別針對這 24 種方式做模擬，由表 1 所示，其包含了 12 組的 CIF 大小的 Sequence，
+最後在 QCIF、CIF 和 D1 共 22 組 Sequence 平均差了-0.056 dB，因此我們利用此種取點方式作為我們
+演算法最終的版本。 
+ 
+ 
+ 
+表 1、24 種不同的取點方式在 22 組 Sequence (QCIF、CIF 和 D1)下和 JM 9.3 的 PSNR 差距 
+ 
+ 
+② H.264 DSP Inter Prediction 演算法 
+本計劃中我們提出一個低運算複雜度高品質的 Integer Motion Estimation 演算法，將它命名為
+Half-word Down-sample Local Full Search Integer Motion Estimation (HDLFS IME) Algorithm。在 HDLFS 
+IME 是將 Integer Motion Estimation 分成兩階段的搜尋，以循序漸進的方式快速求得最匹配的移動向
+量，有效又具有判斷性的刪除不需要的搜尋點，大量降低搜尋的複雜度，圖 6 為 HDLFS 流程圖。 
+15.3%
+23.6%
+2.6%
+9.7%
+18.4%
+1.4%
+7.2%
+1.0%
+16.4%
+4.4%
+ME
+Interpolation
+Memory Access
+Intra Prediction
+Texture Coding
+Math-Lib 
+VLC
+Header
+Deblocking
+Others
+ 
+圖 8、H.264 Encoder 效能需求分析(CIF Realtime=5217 MIPS) 
+ 
+圖 8 為 H.264 Encoder 在 CIF(352X288 畫素)格式每秒 30 張畫面，Motion Estimation 搜尋範圍在±16
+畫素下之效能需求與運算量分布，總共需要 5217 MIPS。而此分析已經是加入我們以往在其他計畫中
+經過最佳化並降低運算量後之演算法為基礎分析得到之數據。粗略估計在 D1 (720X480 畫素)每秒 30
+張畫面時需要17785 MIPS。而根據TI DM6446硬體規格將ARM9EJ-S與DSP部分加總在理想狀況下(不
+考慮 Data Dependency，100% Parallelism)可提供約 2376 MIPS 等效之運算。所以在計畫執行時須對所
+有演算法做改進並搭配雙核心架構作設計且提高整體系統平行度方能達到計畫所列規格，挑戰很大。 
+ 
+四: Parallel Programming Design 
+本計劃根據 Profiling 的分析結果，將設法讓 ARM Core 與 DSP Core 各別的負載達到平衡，以達到
+多核心系統之最高效能。然而此一目標將面臨兩大問題的嚴峻挑戰，第一點就是 Inter Processor 
+Communication(IPC)，核心與核心之間的資料傳遞，一般來說皆必須經過系統匯流排存取 Share 
+Memory，假若有大量的資料需要傳遞時，那將會發生另一核心在等待匯流排之使用權而造成無效之
+Parallel Programming Design；第二點就是資料相依性之議題，一般來說 Multimedia 皆有資料相依性存
+在，所以導致平行度無法展開，致使多核心之效能無法發揮到極致。因此本研究在分配各個核心之工
+作項目致使其達到負載平衡時將先分析下列兩個項目： 
+1. Cache 架構之分析：如上述所說，IPC 將會影響 Parallel Programming Design 的效能，因此設計的第
+一要點即是減少核心之間的資料傳遞。分析平台的匯流排與 Cache 架構將可以提供資訊給設計者，
+設計者將可以根據 Cache 的架構，讓相同的 Data Base 的工作一次做完，如此方式將可以使得資料
+進出記憶體與快取區的次數得到最少，降低 IPC 次數以提昇其效能。 
+2. 應用項目資料相依性之分析：如上述所說，要使得 Parallel Programming design 得到最好的效能，理
+想上就是每一個核心之使用率要達百分之百，但是唯有完全的資料無相依性的應用才有機會達成，
+因此本研究將會分析 H.264 編碼端的資料相依性，並且將其畫成一個樹狀圖，以提供設計者資訊進
+而分配每一個核心之工作。但 H.264 一定存在資料相依性之模組，因此為了提昇多核心之效能，本
+研究也將提出相關「預測」的公式來解決相依性的問題。 
+ 
+五: Multi-Thread 及 ARM&DSP Partition 方式 
+當每一個核心的負載已經根據上述的分析結果設計完畢之後，本研究將會以 Multi-Thread 的方式
+來實現此一系統。Thread 與 Process 相似，但是 Thread 與 Process 不同的地方在於 Thread 是共享系統
+的資源，多個 Thread 在同一個地址空間內執行，但 Process 是個別佔用系統的資源，每個 Process 都需
+要開一段地址空間給 Process 執行，故相同的內容交換時 Process 產生的內容相互交換比較困難，Thread
+因共享資源，所以較簡單快速。而且 Thread 在多核心的使用上，可以讓每個核心都同步使用，如果是
+單核心使用也可讓跑程式時產生的休息空檔，去做別的程式，節省閒置的時間。但 Process 只能在單一
+的核心上執行，所以相當浪費資源，如表 2 及圖 9 所示。 
+  NOP   
+  ADD .L1 A4,A6,A6 
+  SUB .L2 B0,1,B0 
+ [B0] B .S1 LOOP 
+  NOP  5 
+(a) 原始乘加程式 (整體 16 Cycle) 
+  NOP   
+  ADD .L1 A4, 6,A6 
+  SUB .L2 B0,1,B0 
+ [B0] B .S1 LOOP 
+  NOP  5 
+(b) 加入平行符號後的乘加程式 
+情況 計算量 
+無最佳化時 16 Cycle × 40 次重複=640 
+平行指令使用最佳化時 15 Cycle × 40 次重複=600 
+(c) 平行指令使用比較 
+圖 11、平行指令使用說明與比較結果 
+ 
+(2) 對 NOP 延遲指令進行取代或移除 
+NOP 延遲指令在程式中若沒有最佳化，對程式而言是浪費執行的週期數，因此，若將程式碼重新
+安排或使用一些小技巧，來把 NOP 取代或移除掉，就可以減少程式指令週期數(Cycle)，如圖 12 為例。
+在圖 12(a)中的程式碼第三行，因執行 LDH 指令後必須延遲 4 Cycle，若將這延遲 4 Cycle 中安排執行
+其它沒有資料相關性指令，除了不會浪費週期數外，也可以有效提升執行效率。因此，將整個程式碼
+稍微調整後，發現原來 Branch 指令(B)後的 5 個延遲消失(圖 12(b)所示)，且使得最後指令週期數從原
+本的 640 Cycle 減少到原先未最佳化的一半 320 Cycle，其整體執行比較結果如圖 12(c)的表格所示。 
+LOOP:     
+  LDH .D1 *A8++,A2 
+||  LDH .D2 *B9++,B3 
+  NOP  4 
+  MPY .M1 A2,B3,A4 
+  NOP   
+  ADD .L1 A4,A6,A6 
+  SUB .L2 B0,1,B0 
+ [B0] B .S1 LOOP 
+  NOP  5 
+(a) 平行符號後的乘加程式 
+LOOP:     
+  LDH .D1 *A8++,A2 
+||  LDH .D2 *B9++,B3 
+  SUB .L2 B0,1,B0 
+ [B0] B .S1 LOOP 
+  NOP  2 
+  MPY .M1 A2,B3,A4 
+  NOP   
+  ADD .L1 A4,A6,A6 
+ 
+(b) 對 NOP 延遲指令進行最佳化後的程式 
+情況 計算量 
+無最佳化時 16 Cycle × 40 次重複=640 
+平行指令使用最佳化時 15 Cycle × 40 次重複=600 
+取代延遲槽最佳化 8 Cycle × 40 次重複=320 
+(c) 對 NOP 延遲指令進行程式最佳化後的比較 
+圖 12、對 NOP 延遲指令進行取代或移除說明與比較結果 
+(3) 迴圈的展開 
+其方法是將迴圈內容做重覆的部分，複製起來並展開來取代迴圈重覆的部分。下面將以 4 次乘加
+程式為例來說明，如圖 13 所示。 
+從下面各個範例程式(圖 13(a)~圖 13(d))中，每個程式以迴圈展開方式來實現程式最佳化，其各個
+整體執行比較結果如圖 13(e)表格所示，從表格中可看出迴圈數不一定等於演算法重覆的次數，但可以
+確定的是通常迴圈展開的方式，一般會增進其速度和執行效率，但相對的也增加程式碼的大小。以圖
+17(e)表格中的原範例(圖 13(a))與範例 3(圖 13(d))線性方式展開來比較，迴圈數從 4 降到 0，指令週期數
+圖 14(c)管線化程式碼中，發現以非管線化程式碼的設計有點浪費週期數。其結果如圖 14(c)所示，以執
+行 3 次範例程式為例，需花的週期數從 9 Cycle 減少到 5 Cycle，明顯感覺到週期數的減少，且效率提
+高 55%，由此可知軟體管線化處理對於實際應用上的重要性。 
+ LDH 
+      
+|| 
+LDH 
+ MPY 
+ ADD 
+(a)範例程式 
+Cycle .D1 .D2 .M1 .M2 .L1 .L2 .S1 .S2
+1 LDH LDH       
+2   MPY      
+3     ADD    
+4 LDH LDH       
+5   MPY      
+6     ADD    
+7 LDH LDH       
+8   MPY      
+9     ADD    
+(b) 非管線化程式碼 
+ 
+Cycle .D1 .D2 .M1 .M2 .L1 .L2 .S1 .S2 
+1 LDH LDH       
+2 LDH LDH MPY      
+3 LDH LDH MPY  ADD    
+4   MPY  ADD    
+5     ADD    
+(c)管線化程式碼 
+圖 14、軟體管線最佳化技術範例說明 
+ 
+使用方式 使用的週期數 
+非管線化程式碼 9 Cycle 
+管線化程式碼 5 Cycle 
+(5) C 語言 if - else 轉譯成 Assembly 的使用 
+在德州儀器(TI)的 C64x+組合語言格式當中，其中一項為條件式暫存器([ ])，此條件暫存器可以控
+制該指令是否要執行，因此這樣的執行方式在 C 語言來說，if - else 的使用就可以透過條件式暫存器來
+轉譯成 Assembly 方式來進行撰寫。下面舉例一個簡單的範例程式(圖 15)來說明使用方法。 
+其實 C 語言 if – else 這樣的寫法在執行程式時，若是大量的使用的話，經由編譯器產生出的最佳
+化 Assembly 程式，並不一定是最佳化的程式碼，且容易造成整體執行的效率降低，因此若轉譯成
+Assembly 且使用這樣的方式來進行撰寫，若大量的使用的話，整體的執行效率除了可以提升外，也減
+少執行的週期數。 
+C 語言 if – else 撰寫方式： 
+if (a==0) 
+{ 
+   b=1; 
+} 
+else 
+{ 
+    b=0; 
+} 
+組合語言撰寫方式： 
+假設 a=A0， b=B4。 
+Cycle     
+0 [A0] MVK .L1 0,B4 
+1 [!A0] MVK .L1 1,B4 
+指令說明： 
+MVK  搬移指令 
+圖 15、C 語言 if – else 轉譯成 Assembly 的用法 
+ 
+一、 論文部分 
+已經發表 3rd Asia-Pacific Embedded Systems Education and Research Conference 會議論文與
+IEEE Trans. Circuits & Systems for Video Technology 兩論文。 
+ 
+二、 專利部分 
+相關 3 個發明專利以通過學校專家審查，並委託專利事務所分別提出中華民國專利與美國專
+利。 
+ 
+三、 技轉部分 
+已經與「倚強科技股份有限公司」完成相關技術轉換，名稱為「適用於視訊壓縮硬體設計之
+移動向量快速運算技術」，技轉金已繳交至國科會。 
+ 
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價值（簡要敘述成果所
+代表之意義、價值、影響或進一步發展之可能性）（以 500 字為限） 
+ 
+一、 學術成就方面 
+1、可將本計劃開發之 Inter Frame Prediction 及 Inter Frame Prediction 快速演算法(Fast Motion 
+Estimation)發表至會議論文中發表。 
+2、將計畫成果技轉國內上市 IC 設計公司，該公司應用於 ME 硬體架構設計並導入生產，已
+達計畫之產業效益。 
+3、國外期刊與國外會議論文各一篇。 
+二、 技術創新方面 
+本計劃提出之 Inter Frame Prediction 及 Inter Frame Prediction 快速演算法及 Multi-thread 
+(ARM+TI DSP)多執行緒分割技術，均為根據 H.264 視訊壓縮及 TI DM6446 嵌入式系統所開
+發之創新技術。 
+三、 社會影響方面 
+嵌入式處理器與 DSP (數位訊號處理器)整合 DMA 之異質多核心系統單晶片，將成為未來可
+程式化之多媒體系統解決方案，所以雙核心架構未來為重要手持式行動裝置技術，因此本計
+畫可提升多媒體裝置效能，對視聽娛樂等方面具正面影響。 
+四、 教育貢獻方面 
+以計畫成果帶領學生參與教育部主辦競賽獲獎、培養碩士專業人才投入業界研發。 
+ 
+六、參考文獻 
+[1] Shu-feng Wang, Zhang-qin Huang and Yi-bin Hou, “A Design of Low-Cost Low-Bandwidth Mobile 
+Video Surveillance System Based on DM6446,” 2007 IEEE International Conference Wireless 
+Communications, Networking and Mobile Computing (WiCom), pp. 3079-3083, Sept. 2007  
+[2] Zhang Xin, Wu Yun, “ Research on GPRS interface based on DM6446 for H.264 standard stream media 
+files,“ 2008 IEEE International Conference Anti-counterfeiting, Security, Identification(ASID), pp. 
+163-167, Aug. 2008 
+[3] Xiangdong Fu, Tran, Tran, “A Personal Video Recording System Using H.264 and MPEG-2 Transport 
+Stream,” Digest of Technical Papers, International Conference on Consumer Electronics (ICCE), pp. 1-2, 
+Jan. 2007  
+[4] K. Rapaka, M. Mody, and K. Prasad, “Scalable software architecture for high performance video codec’s 
+on parallel processing engines,” In Proceedings of the IEEE International Symposium on Consumer 
+[20] H. M. Wang, J. K. Lin, and J. F. Yang, “Fast inter mode decision based on hierarchical homogeneous 
+detection and cost analysis for H.264/AVC,” in Proc. IEEE ICME, pp. 709-712, July 2006 
+[21] J. K. Lin, H. M. Wang, and J. F. Yang, "Matched Block Detection and Motion Vector Salvage Methods 
+for Fast H.264/AVC Inter Mode Decision", Proceedings of IEEE Asia Pacific Conference on Circuit and 
+Systems, Canada, Nov 2006 
+[22] J. R. Ding, J. Y. Chen, F. C. Yang, and J. F. Yang . “Two-layer and Adaptive Entropy Coding Algorithms 
+for H.264-based Lossless Image Coding,” IEEE International Conference on Acoustics, Speech, and 
+Signal Processing, pp.1369-1372 ,2008 
+[23] Ching-Lung Su, Wei-Sen Yang, Ya-Li Chen, Yao-Chang Yang, Ching-Wen Chen, and Jiun-In Guo, “A 
+Low Complexity High Quality Integer Motion Estimation Architecture Design for H.264/AVC,” IEEE 
+Asia Pacific Conference on Circuits and Systems (APCCAS), 2006, pp. 398-401, Dec. 2006 
+[24] Ching-Lung Su, Wei-Sen Yang, Ya-Li Chen, Ching-Wen Chen, Yao Li, Ching-Wen Chen and Jiun-In Guo, 
+“Low Complexity High Quality Fractional Motion Estimation Algorithm and Architecture Design for 
+H.264/AVC,” IEEE Asia Pacific Conference on Circuits and Systems (APCCAS), 2006, Invited Paper, pp. 
+578-581, Dec. 2006 
+[25] C.-H. Tsai, Y.-W. Huang, and L.-G. Chen, “Algorithm and Architecture Optimization for Full-mode 
+Encoding of H.264/AVC Intra Prediction,” Proceedings of 2005 International Midwest Symposium on 
+Circuit and Systems (MWSCAS 2005), 2005 
+[26] Y. K. Lin, and T. S. Chang, “Fast block type decision algorithm for intra prediction in H.264 FRext,” in 
+Proc. IEEE Int. Conf. on Image Processing, pp. 585-588 Sep. 2005 
+[27] Jhing-Fa Wang, Jia-Ching Wang, Jang-Ting Chen, An-Chao Tsai, Anand Paul,”A Novel Fast Algorithm 
+for Intra Mode Decision in H.264/AVC Encoders", 2006 IEEE International Symposium on Circuits and 
+Systems, Kos Greece, May 21-24, 2006 
+[28] Pol-Lin Tai, Shih-Yu Huang, Chii-Tung Liu, and Jia-Shung Wang, “Computation-aware scheme for 
+software-based block motion estimation,” Circuits and Systems for Video Technology, IEEE Transactions 
+on Volume 13, Issue 9, Sept. 2003 
+[29] Hwang, S. Zhuang, and S.-H. Lai, “Efficient intra mode selection using image structure tensor for 
+H.264/AVC”, Proc. International Conference on Image Processing (ICIP), San Antonio, USA, Sep. 2007 
+ 
+ 
+ 18
+14:50 – 15:20 Afternoon Break Poster Session & Afternoon Break 
+15:20 – 16:50 Embedded System Education I Tutorial III Tutorial IV 
+18:00 - 21:00  Conference Banquet (@ Asia-Pacific Breweries) 
+ 
+在參與會議當中，可發現這個會議將嵌入式系統設計、多核心開發、低功率電源管
+理、、等相關主題皆納在內，因此不管是哪一個研究領域，都可以在這個會議當中看到
+最新的成果。 
+ 
+二、與會心得 
+本次會議，參與者來自各國，尤其以新加坡本國專家學者居多，其所能錄取的論文
+為其中的精華，因此從中可以獲得各國研究人員與業界技術的心得，並且有助於擴展
+視野，並能增加與各國人士交流之能力。 
+在會場中，常見到許多國外的學者、研究生、業界人士積極參與會議，但國內參加
+此會議的專家學者並不多，研究生更寥寥可數。可能是此會議之接受率不高，且註冊
+費相當昂貴。造成國內學者與會不多之原因。然而該會議發表多為相當先進之成果，
+因此本國學者參與的不多，實為可惜。 
+藉著此次國際會議參與，不僅認識及接觸一些嵌入式系統設計與應用等領域的一流
+研究人員，跟他們交換彼此設計技術與研究心得，並探討未來嵌入式系統之研究方向，
+誠為一不可多得之自我學習機會，與會人士也對我國在嵌入式系統技術上的成就和發
+展贊賞有加，可見國家政府歷年來在此領域上之經費投資，使國內的研究水準能獲得
+國際間的相當肯定，參加此次國際會議研討後，筆者個人心得與收穫可歸納如下： 
+1、 與相同領域學者專家交換研究成果及心得，並修正未來研究方向； 
+2、 廣泛接觸其他研究領域之學者專家在，增廣見聞，並將相關資料帶回給系上同
+仁或國內其他研究人員參考； 
+3、 由 Keynote, Tutorial 與 Poster 討論，可了解世界在嵌入式系統上之研究趨勢，
+並從問題討論過程中，確定未來研究方向與重點； 
+4、 認識了許多可以互相討論問題的對象，當然，也為所指導的研究生帶回警訊與
+資料，促使大家更為努力，作出更好的成果。 
+ 
+三、建議 
+如此之國際會議，對於研究生有相當之助益，各國雖皆用英文交流，但因為各國學
+者部分口音極重。但是其學術成果卻不容忽視，因此要從中了解，並能回答，乃是需
+要這樣的國際會議，才能有所磨練。政府應對於學生多與以鼓勵與獎勵，建議不僅讓
+我國博士生可以有出國機會，也應提供研究生出國其發表文章機會，其不僅可提升國
+家的學術地位，亦可以增加學生相關技術與溝通的能力。 
+ 
+ 20
+Processing of Subtitle Effects and its Implementation on a Heterogeneous Dual Core Embedded 
+System 
+1Ching-Lung Su, 1Hsiang-Chieh Kao, 1Jin-Yu Zeng, 2Kun-Xiu Cai, 3 Ming-Wei Iv, 1 Kang-Ning Pang, 1-4Tse-Min 
+Chen, 
+4 Shau-Yin Tseng 
+1Department of Electronics Engineering, National Yunlin University of Science Technology, 
+Yun-Lin, 64002, Taiwan, R.O.C. 
+2National Taiwan University, 
+Taipei, 10617 Taiwan,R.O.C 
+3National Chung Hsing University, 
+Taichung,402 Taiwan,R.O.C 
+4SoC Integration Division of STC, ITRI 
+Hsinchu, 300, Taiwan, R.O.C. 
+E-mail: {kevinsu, g9713701, g9610809, g9513701}@yuntech.edu.tw, tseng@itri.org.tw 
+ 
+Abstract 
+ 
+Subtitle in video applications is important, for example, 
+audiences are able to understand foreign movies 
+through translated subtitles, hearing disable people are 
+capable to appreciate movies and lyrics in music videos 
+help people to sign. However, due to small size display 
+and low resolution on portable devices, which lead to 
+the problems of small font and unclearness in video 
+content. This paper presents not only the algorithm and 
+embedded system but also aims at subtitle quality and 
+low operational complexity. The flow of the proposed 
+method goes through noise removal, text area detection 
+and segmentation by chrominance and segmentation by 
+luminance with text enlargement output. Besides, the 
+dedicated 3D accelerator merged into embedded system 
+is in trend, therefore, after text segmentation, we apply 
+Open GL language for anti-aliasing in which to get 
+scientific effects such as text rotation, tridimensional 
+outcome and etc. This work also adopts TI 
+TMS320DM6446 as a developed platform which has 
+contained ARM926EJ-S with 279 MHz and DSP with 
+597 MHz. The experimental result shows the 
+identification rate of text extraction reached to 99% at 
+D1 resolution (720 x 480 pixels) and 30 fps in the 
+real-time requirement.  
+ 
+1. Introduction 
+ 
+Even we all see the trend of watching video from 
+portable devices, there are still some inconveniences 
+carried by the devices, for example small size displays 
+may result in low resolution, small font of subtitles and 
+other interferences. Besides, most on-line movies and 
+other small quantities of movies have been subtitled and 
+embedded in movies themselves; it is not possible to 
+dilate font size as we wish. Therefore, in this paper, we 
+approach to overcome the problems described 
+previously by adopting the movies without individual 
+subtitle files for resolution. For the idea of offering 
+users to watch video more facilitated, we extract 
+subtitles out for modification and dilation and also for 
+kinds of scientific effects.  
+Related studies have looked at techniques for detecting 
+subtitles [1-6] in ways of subtitles locating and 
+extracting [4-6]. Moreover, by using different kinds of 
+high pass filters [5] for images detection and for noise 
+removal. In applying medium filter [5] or threshold to 
+respectively remove salt and pepper and to remove 
+noise [4, 6], edges of subtitles can be located; then 
+operation is processed mainly at this area. Further, from 
+reference [6], subtitles and movies are divided into three 
+parts for operation: 1). subtitle and backgrounds are 
+fade-out at the same time, 2). subtitles are disappeared 
+in advance under one background and 3). backgrounds 
+are changed under one subtitle area. 
+With the references of previous studies in the 
+methodology of subtitles and movies, the algorithm we 
+proposed is more efficient with low complexity. 
+Subtitles detection needs a large complexity, users only 
+need to dilate subtitles without going through subtitles 
+detections during movie watching. This paper focuses 
+particularly on the stages of decoding and displaying. 
+So, when algorithm is performing, the original files are 
+not changed and additional files for portable devices are 
+unnecessary either.   
+The framework of the paper is organized as follows. 
+Section I discusses reasons to research and other 
+relevant references. In Section II, we first describe the 
+algorithm of subtitle detection and the method of 
+subtitle modification and then the diagram of design 
+flow. Section III is implementation of soft and hard 
+ware and its output. The experimental results and 
+discussion are reported in Section. 
+ 
+2. Implementation Flow 
+ 
+In video compressions, the quantization of transformed 
+frequency coefficients may cause subtitle blurred that 
+lowers the quality of the subtitle extractions from 
+decoded video. To overcome the restriction described 
+above, we propose a new implementation flow. Figure 2 
+illustrates the flow of the proposed implementation. 
+First, the video is fed as the YUV file format. The data 
+ 22
+ 
+Figure 8. Diagram of filtered Texts and Noise 
+ 
+ 
+Figure 9. Cb High and Low threshold values 
+ 
+ 
+Figure 10. Cr high and low threshold values  
+ 
+2.1.4 Text Edge Detection 
+ 
+From the result of luminance and chrominance erosion, 
+we are able to detect ROI and coordinate of subtitles 
+and also to record their width and height.  In Figure 9, 
+subtitle extractions are processed in ROI zones where 
+original subtitles have been placed; to prevent extra 
+calculations and other influences. Chrominance and 
+Luminance are scanned horizontally. To gather the 
+luminance statistic as in Figure 10, luminance places are 
+marked as 1. For luminance and chrominance vertical 
+scanning in Figure 11, where horizontal and vertical 
+lines are met is the place for ROI. 
+ 
+Figure 10. Horizontal scanning 
+ 
+ 
+Figure 11. Vertical scanning 
+ 
+2.2 Subtitle Extraction  
+ 
+Within a selected ROI zone, we draw a histogram of 
+luminance. Subsequently, in Figure 12, we adopt Otsu 
+method[7] to calculate two threshold values as 
+standards for selections. According to high threshold 
+value, since the standard is high; noise is filtered, the 
+extracted subtitles are ruined as shown in figure 13. On 
+the other hand, using low threshold standard, Figure 14; 
+texts are better generated, whereas noise is not filtered 
+completely. So, we choose these two diagrams for 
+performing contrast and produce ideal subtitle 
+extractions.  
+ 
+ 
+Figure 12. High and low threshold values 
+ 
+ 
+Figure 13. Using high threshold standard image 
+ 
+ 
+Figure 14. Using low threshold standard image 
+ 
+2.3 Anti- Aliasing   
+  
+When the quality of image and the analysis are less 
+strong, the subtitle extractions may be saw- like 
+appearances as shown in Figure 15. The appearances 
+are not apparently seen in small size displays, but, in 
+larger displays. Saw-like appearances happened are 
+because of low quality of images and the analysis of the 
+original images. To overcome this problem, we use dots 
+implantation. First, we make the solid subtitle into 
+edge-detections and keep texts surroundings only. 
+Second, to recognize saw-like regions is to measure the 
+width of corners of the surroundings that have more 
+ 24
+4. Stimulate Result 
+We have chosen original images from sections of four 
+DVDs. By extracting four paragraphs of subtitles from 
+movies for D1(720x480) and CIF (352x288) analyses. 
+On TMS320DM6446 platform, for 720x480 analysis 
+result has approached to 29.1 fps (96.84% of average 
+rate of detection ) in Table 1 while for 352x288 analysis 
+result has reached to 81.3 fps with an average rate of 
+93.75% described in Table 2. 
+ 
+Table 1 
+Video name total frames 
+error 
+frames 
+complete 
+rate 
+The Dark Knight 4541 152 96.65% 
+The Mummy : 
+Tomb of the 
+Dragon 
+4825 149 96.91% 
+The Return of the 
+King 4428 354 92.00% 
+Iron Man 5212 531 89.81% 
+ 
+Table 2 
+Video name total frames 
+error 
+frames 
+complete
+rate 
+The Dark Knight 4541 42 99.08% 
+The Mummy : 
+Tomb of the 
+Dragon 
+4825 98 97.97% 
+The Return of the 
+King 4428 144 96.74% 
+Iron Man 5212 316 93.93% 
+ 
+5. Conclusion 
+ 
+By the purposes of offering better quality for subtitles in 
+movies, subtitle extraction and its modification are 
+necessary for improving condition of displaying. Thus, 
+we have presented a complete flow of subtitle 
+extractions that has been conducted by the following 
+processes: 
+1. Subtitle Locating: the data of luminance and 
+chrominance are going through high pass filter and 
+erosion for locating subtitles.  
+2. Judgments of Subtitle Extractions: if a frame has 
+subtitles and the frame is the first frame, then 
+subtitles in the first frame are extracted.   
+3. Subtitle Extraction: after gathering statistics, and 
+then applying Otsu method to obtain high and low 
+thresholds to finish subtitles extractions. 
+Subtitle dilation and effects: through subtitles dilation 
+and effects produced by Open GL, accomplished 
+extraction rate has come to approximately 96.84% 
+under the D1 standard and in real time displaying rate 
+has approached to 30 fps under TI DM6446 dual core 
+platform.    
+ 
+REFERENCES  
+[1]  V. Wu, R. Manmatha, and E. M. Riseman, 
+“Textfinder: An automatic system to detect and 
+recognize text in images”, IEEE Transactions on 
+Pattern Analysis and Machine Intelligence,20(11), 
+pp. 1224-1229, 1999. 
+[2]  M. Cai, J. Song, and M. R. Lyu, “A new approach 
+for video text detection”, IEEE International 
+Conference on Image Processing, vol. 1, pp. 
+I/117 –I/120. 2002. 
+[3]  E. K. Wong and M. Chen, “A new robust 
+algorithm for video text extraction” Pattern 
+Recognition, vol. 36, pp. 1397–1406,2003. 
+[4]  M. R. Lyu, J. Song, and M. Cai, "A 
+comprehensive method for multilingual video text 
+detection, localization, and extraction," IEEE 
+Transactions on Circuits and Systems for Video 
+Technology, vol. 15, pp. 243-255, 2005. 
+[5]  Agnihotri,L., Dimitrova,N.,”Text Detection for 
+Video Analysis ”, IEEE Workshop on CBAIVL, 
+1999,pp. 109-113 
+[6]  Y.-P. Huang, L.-W. Hsu and F.E. Sandnes, “An 
+intelligent subtitle detection model for locating 
+television commercials,” IEEE Trans. on Systems, 
+Man, and Cybernetics, Part B: Cybernetics, vol. 37, 
+no. 2, pp.485-492, April 2007.  
+[7]  DongjuLiu, and JianYu, “ Otsu method and 
+K-means”, IEEE DOI 10.1109/HIS.2009.74, 2009 
+ 
+ 
+ 
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：蘇慶龍 計畫編號：98-2221-E-224-048- 
+計畫名稱：雙核心系統晶片之多執行緒 H.264 視訊壓縮設計與實現 
+量化 
+成果項目 
+實際已達
+成數（被
+接受或已
+發表）
+預期總達
+成數(含實
+際已達成
+數) 
+本計畫
+實際貢
+獻百分
+比 
+單位
+備註（質化說明：如數個計畫
+共同成果、成果列為該期刊
+之封面故事...等） 
+期刊論文 2 0 100%  
+研究報告/技術報
+告 1 1 100%  
+研討會論文 4 1 100% 
+篇
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 3 1 100%  
+專利 已獲得件數 1 1 100% 件
+中華民國專利：「視訊編碼之演算
+法」中華民國專利第 I324482 號
+專 利 期 間 ：
+2010/05/01~2026/06/08 
+件數 1 0 100% 件  
+技術移轉 
+權利金 500 0 100% 千元
+2010 股票上市公司倚強科技股份
+有限公司 「適用於視訊壓縮硬體
+設計之移動向量快速運算技術」技
+術移轉授權 
+碩士生 3 2 100%  
+博士生 1 1 100%  
+博士後研究員 0 0 100%  
+國
+內 
+參與計畫人
+力 
+（本國籍） 
+專任助理 0 0 100% 
+人次
+ 
+期刊論文 1 1 100% 
+Hsiu-Cheng Chang, Jia-Wei 
+Chen, Bing-Tsung Wu, 
+Ching-Lung Su, Jinn-Shyan 
+Wang, and Jiun-In 
+Guo, ＇ ＇ ＇ ＇ ＇ ＇ ＇ ＇ A 
+dynamic quality-adjustable 
+H.264 video encoder for 
+power-aware video 
+applications,＇＇＇＇＇＇＇＇
+IEEE Trans. Circuits &amp ；
+Systems for Video Technology, 
+EEE Trans. Circuits &amp ；
+Systems for Video Technology, 
+vol. 19, no. 12, pp. 1739-1754, 
+Dec. 2009. 
+研究報告/技術報
+告 0 0 100%  
+國
+外 論文著作 
+研討會論文 2 1 100% 
+篇
+ 
+其他成果 
+(無法以量化表達
+之成果如辦理學
+術活動、獲得獎
+項、重要國際合
+作、研究成果國際
+影響力及其他協
+助產業技術發展
+之具體效益事項
+等，請以文字敘述
+填列。) 
+教育部主辦 九十八年度全國微電腦應用系統設計製作競賽-大專組-信號處理與通
+訊類 第三名 吳國暄、俞喬凱、房煥偉 (比賽日期：2009/10/16 比賽地點：成功
+大學)  
+ 
+教育部主辦 九十八年度全國微電腦應用系統設計製作競賽-大專組-信號處理與通
+訊類 佳作 陳怡佑、周芷泰 (比賽日期：2009/10/16 比賽地點：成功大學)  
+ 
+2009 教育部主辦 技專院校國際技藝競賽 數位訊號處理創思設計競賽 軟體系統
+應用組  佳作 黃龍旺、洪承孺、林子暉 (比賽日期：2009/10/26 比賽地點：南台
+科技大學)  
+ 
+2009 教育部主辦 技專院校國際技藝競賽 數位訊號處理創思設計競賽 影音訊號
+處理組  佳作 陳怡佑、周芷泰 (比賽日期：2009/10/26 比賽地點：南台科技大學) 
+ 
+2010 教育部主辦 98 學年度大學校院積體電路(IC)設計競賽 大學組可程式邏輯設
+計 優等 吳國暄、房煥偉  
+ 
+2010 教育部主辦 98 學年度大學校院積體電路(IC)設計競賽 大學組可程式邏輯設
+計 佳作 蘇緯翔、林耘生  
+ 
+2010 參加 98 學年度 教育部主辦全國大學校院積體電路(IC)設計競賽得獎對伍獲
+得全國前十強實驗室 (主辦單位統計發佈消息)  
+ 
+2010 98 學年度大學校院嵌入式系統設計競賽 嵌入式系統軟體組 設計完成獎 黃瑞
+竣、朱諺汝、華智豪 (比賽日期：2010/05/22 比賽地點：成功大學)  
+ 
+2010 倚強科技股份有限公司 「適用於視訊壓縮硬體設計之移動向量快速運算技
+術」技術移轉授權  
+ 
+2010 中華民國資訊學會通訊 (Institute of Information &amp； Computing 
+Machinery Communication) Android 專刊編輯  
+ 
+2010 教育部 PAL 聯盟成果發表會「SoC 學程」成果競賽 特優 （比賽日期：
+2010/10/08）  
+ 
+2010 教育部 PAL聯盟成果發表會「專題製作競賽」特優（比賽日期：2010/10/08）
+ 
+教育部主辦 九十九年度全國微電腦應用系統設計製作競賽-大專組-信號處理與通
+訊類 佳作 江嘉羚、溫航瑞、黃龍聖 (比賽日期：2010/10/15 比賽地點：成功大
+學)  
+ 
+教育部主辦 九十九年度全國微電腦應用系統設計製作競賽-大專組-信號處理與通
+訊類 佳作 蘇煒翔、賴柏廷、陳凱萍 (比賽日期：2010/10/15 比賽地點：成功大
+學)  
+ 
+教育部主辦 九十九年度全國微電腦應用系統設計製作競賽-大專組-嵌入式系統類
+佳作 黃瑞竣、朱諺汝、華智豪 (比賽日期：2010/10/15 比賽地點：成功大學)  
+ 
+ 

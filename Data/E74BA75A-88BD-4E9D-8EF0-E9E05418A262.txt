@@ -1,0 +1,923 @@
+ 1. 研究目的 
+ 
+以往的中央處理器(CPU)與繪圖處理器(GPU)扮演極為不同的角色，兩者所擅長的程式
+類型及資料型態也涇渭分明，然而隨著新一代繪圖處理器(GPU)性能的提高，以及可程
+式化能力日益提升，GPU 的已逐漸脫離原有純繪圖的功能，如近年來，許多需要大量
+運 算 資 源 的科 學 計 算 (scientific computing) 開 始 移至 GPU ， 於是 形 成所 謂
+General-Purpose GPU (GPGPU)的領域 [1]。雖然目前的 GPGPU 仍有許多架構上的限
+制，並非所有程式都能被移植到 GPGPU，即使能被移植到 GPGPU 的程式，也需針對
+GPU 的架構加以調校後才能達到較高的速度，但隨著 GPU 功能的演進(如 Microsoft 
+DirectX 9 至 DirectX 10 應用程式介面的改進)，所提供的可程式化架構，也日漸接近
+多核心處理器，如 NVIDIA 最近發表的 CUDA [2]已與 C 語言極為類似。我們不禁要
+問，是否 GPU 有一天會變成另一個一般用途(general purpose)的多核心處理器?從另一
+方面看，中央處理器(CPU)則往多核心發展，當多核心處理器由現今的雙核心或四核
+心，演變至未來的三十二、六十四、或更多核心時，我們是否就不需要 GPU 了呢? 這
+些都是值得玩味和深入探討的問題。 
+ 探討多核心處理器與繪圖處理器的差異，是個十分廣泛的課題，需要具有繪圖領
+域的知識，特別是對近年來針對 GPU 可程式化著色器(programmable shader)的相關研
+究方面的了解，以及一個可供實驗驗證的硬體平台，本計劃所屬的整合計畫，正提供
+了一個這樣的機會。 
+ 本計劃的目的，不在於以完全以多核心處理器複製 GPU 上的繪圖演算法，因為目
+前的 GPU 繪圖演算法主要仍以 triangle rasterization 為主，適合 GPU 的硬體加速，但
+不利於 CPU 的架構。我們的主要目的，在於探討如何以多核心處理器，產生目前 GPU
+上最受注目的高品質畫面效果，如模擬全域照明(global illumination)的反射、折射、柔
+化陰影(soft shadow)、間接光源（indirect lighting）等效果。針對這些項目的主要原因，
+是在於它們在傳統 GPU 上並不易產生，而是在 GPU 可程式化著色器(programmable 
+shader)出現之後才逐漸興起。而這些效果卻早已存在以光線追蹤(ray tracing)為基礎，
+且不必使用到 GPU 的演算法中。然而 GPU 的可程式化著色器誕生，的確讓這些原屬
+於非即時(non-real time)的 ray tracing 全域照明效果，出現在需要及時成像(real-time 
+rendering)的應用中，因此，這一類的全域照明效果也最能代表 GPU 架構上的優勢。 
+ 目前國外已有許多機構，如 Intel [3] 和 University of Texas [4,5]，開始探討在多核
+心處理器上，以 ray tracing 架構開發與 GPU 可抗衡的繪圖系統。本計劃亦朝類似的方
+向研究，但我們認為原有的 ray tracing 架構並不適合多核心處理器，而且目前 GPU 上
+的全域照明效果，也未達到 ray tracing 的完整功能，這意味著，若在多核心處理器上
+只是純粹將 ray tracing 演算法平行化，勢必無法達到可與 GPU 抗衡的效能。我們相信
+在此領域仍有許多未探討的課題(open problems)值得深入研究，尤其是在於發展出一套
+遵循 ray tracing 模式(即不同於 rasterization 方式)，且適用於多核心處理器架構的全域
+照明繪圖系統。 
+透過上述的研究，特別是在探討如何讓多核心處理器也能達到近似 GPU 的即時全
+域照明效果，我們預期將對多核心處理器和 GPU 的基本設計原理，以及如記憶體架構
+等方面的硬體架構有深入的認識，並提供給整合計畫中的硬體設計部分的重要參考。 
+為了解傳統 triangle rasterization 以及即時光線追蹤方法的差異，必須藉由分析兩
+者在演算法以及各種硬體平台上的表現差異找出兩種演算法在何種的情況下具有優
+物理計算或商業應用等提供更快速之處理能力。 
+ 
+ 
+ 
+圖 2. Bitonic merge sort 演算法 [6]。 
+ 
+ 
+圖 3. 異質多核心的處理器架構，以滿足通用計算方面之需求及加速 3D 繪圖串流運
+算、影音解碼、物理計算或商業應用。 
+ 
+ 
+2.2 Ray Tracing   
+ 
+Whitted [16] 1980 年提出 ray tracing 這項技術。這種模擬人類瞳孔成像原理的技術，已
+經成為目前電腦繪圖軟體模擬真實影像的基礎之一，其中該項技術最基本元件就是計
+算 ray-surface intersection。又因該項技術是產生擬真影像的基礎，這幾年來，不斷有
+學者嘗試利用 GPU 平行處理的能力來加快使用 Ray Tracing 產生影像所需的時間。例
+如 Carr 等人[17]使用兩張 texture 分別存放各個 ray 的起始點與方向，另外使用三張
+texture 存放三角形串流，於 fragment shader 中進行 ray-triangle intersection 計算。Purcell 
+[18]將整個場景使用 uniform grid 来表示，將所有三角形的 vertex 組織成三張 texture，
+並額外建立一個三角形索引 texture，再使用 fragment shader進行 ray-triangle intersection
+計算。這些方法基本上都是透過設計合適的資料結構來定義幾何空間，且該資料結構
+具有減少 ray-triangle intersection 計算數量的特性，接下來基於其定義之資料結構於
+fragment shader 中同時執行數個 ray-surface intersection 計算。 
+ 
+2.2.1 基於以 GPU 為基礎的 Ray tracing 近似方法 
+relief mapping [21]的方法相同。 
+Policarpo [21]的 relief mapping 中，作者利用高度場(height field)來表示物體細微表
+面，把高度場貼在物體上(見圖 5)；在計算的時候，先透過硬體計算得到物體表面上的
+點 B，然後計算出指定厚度上的點 A，然後透過 AB 線段上的點與高度場的比較得到
+圖 5 中”3”這個點的位置。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+圖 5.  利用高度場上的 binary search 達成 ray-surface intersection 的計算 (摘自[21]) 。 
+ 
+2.2.2 Ambient occlusion 
+Ambient occlusion 為一種計算漫射光(ambient)強度一種技術[23,24]，使得物體之間呈
+現 soft shadow 的效果(見圖 6)，該技術需對物體表面每一點計算所有來自四面八方光
+線有多少百分比可直接照射該點： 
+ 
+  
+
+dn)V(x,
+1
+n)A(x,  
+
+          (1) 
+其中 x 為物體表面某一點，n 為該點之法向量(normal)， )V(x,  為 visibility function：
+當延著方向ω無遮蔽物其值為一反之為零。所以 ambient occlusion 與 ray tracing 一樣
+其基本元件都是執行 ray-surface intersection 計算。同樣的該技術也必須對所繪製場景
+建構一資料結構以利 ray-surface intersection 計算。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+圖 6. 方型木塊對周遭環境及彼此間產生 soft shadow 效果(摘自[24])。 
+ 
+ 
+台的應用程式演算法。此應用程式計畫將以光線追蹤為主要研究對象，以多次光線反
+射折射以及即時成像為目標。此外，也研究利用光線追蹤的 Secondary Ray 的同質性
+來加速或發展新的演算法。 
+ 
+步驟3. 在多核心平行程式模擬器平台上的實作。 
+在尚未拿到其他子計畫所提供的多核心計算平台之前，先使用現今已經有的在多
+核心平行程式模擬器平台架構實作步驟二中所提出的演算法，並藉此得到多核心架構
+下的經驗輔助之後的工作。這裡主要使用 NVIDIA 的 CUDA 作為多核心模擬器平台。 
+ 
+步驟4. 移植到其他子計畫所提供的多核心 FPGA 平台。 
+拿到其他子計畫所提供的 programming model 以及多核心 FPGA 硬體平台之後，開
+始嘗試將步驟三中的應用程式移植到其上。 
+ 
+步驟5. 最佳化。 
+分析應用程式的瓶頸嘗試將發展之應用程式在演算法上以及程式寫作上對其他子
+計畫所提供的多核心平台做最佳化。此外，根據該多核心處理器之全域照明演算法分
+析目標硬體之效能瓶頸，希望還能夠透過此步驟的分析給予硬體設計上的回饋，使得
+應用程式效能大幅提升。例如：快取記憶體存取資料的 pattern 等等。 
+  
+執行進度： 
+ 
+<第ㄧ年> 改進多核心處理器上的全域照明演算法，並移植至整合計畫的目標硬體及程
+式環境上。 
+ 在多核心處理器上產生可與 GPU 比擬的全域照明效果。 
+ 使多核心處理器上的全域照明演算法達到與 GPU 同等級的速度。 
+ 成功移植至整合計畫的目標硬體及程式環境上。 
+ 
+<第二年> 最佳化 -根據該多核心處理器之全域照明演算法分析目標硬體之效能瓶頸。 
+ 針對整合計畫之目標硬體及程式環境之最佳化。 
+ 分析相關數據提出未來硬體設計相關建議。 
+ 
+1. 預期完成之工作項目 
+第一年 
+重點工作項目 技術指標 完成時間 
+改進多核心處理器上
+的全域照明演算法，並
+移植至整合計畫的目
+標硬體及程式環境上。 
+在多核心處理器上產生可與 GPU 比擬的全域
+照明效果。 
+第一年 Q1 
+使多核心處理器上的全域照明演算法達到與
+GPU 同等級的速度。 
+第一年 Q2 
+成功移植至整合計畫的目標硬體及程式環境
+上 
+第一年 Q3 
+ 
+ 
+圖 8、圖 9 和圖 10 呈現此兩種演算法分別在此三個變因下誰佔優勢，其中 Ray 
+tracing 在第一個變因（三角片頂點數量）占優勢，Rasterization 在第二個變因（繪製
+畫面大小）占優勢，Ray tracing 在第三個變因（可程式化程式複雜度）占優勢。 
+ 
+ 
+圖 7.  測試場景及其視角(viewoport)設定。上排由左至右依序為 Sponza(66k、132k、
+265k 和 531k) 、Teapot(6k)、Bunny(69k) ，下排由左至右依序為 Fairy Forest(174k)、
+Conference Room(282k)、Dragon(47k、202k 和 871k)。 
+ 
+ 
+圖 8.  橫軸為三角形個數。縱軸為繪製時間(單位:millisecond)。藍線及紅線分別表示
+Ray tracing 與 Rasterization 隨著場景變複雜所花費繪圖時間呈現 logrithmic 與線性
+(linear)成長。故 Ray tracing 在第一個變因（三角片頂點數量）下占優勢。 
+ 
+Ray tracing 在上述三個變因中三角片頂點數量與可程式化程式複雜度占優勢，然而根
+據目前實驗平台所測得數據顯示Ray tracing 與 rasterization 繪圖速度仍存在一約六倍
+差距如表 1 及表 2 所示，該差距來自於目前 Ray tracing 與 Rasterization 使用平台之計
+算能力及貼圖能力均不相等，其中計算能力差距為三倍(96*1.2GHz/(4*2.41GHz*4，其
+中前者 4 為 processor 個數、後者 4 為 SIMD 寬度)，貼圖能力差距為五倍如圖 11 說明 。 
+ 
+ 
+ 
+圖 11.  上圖為一個至五個貼圖指令參雜數個數學指令所花 CPU 時間。下圖為一個至
+五個貼圖指令參雜數個數學指令所花 GPU 時間。其中橫軸為數學運算指令個數，縱
+軸為繪製時間 (單位 :millisecond)。  一個貼圖指令在 CPU-based ray tracing 與
+GPU-based Rasterization 所花費時間分別為 2 milliseconds 與 0.4 millisecond。因 GPU
+使用 hardware-threading 方式隱藏讀取貼圖所造成之延遲，故一個貼圖指令約等同 50
+個數學運算指令。因目前 CPU 中並沒有貼圖硬體，其貼圖功能所花費指令數約 500
+個。 
+ 
+ 
+768
+2
+, x20 9.36  9.71  7.53  Var: 6.18 
+1024
+2
+, x20 9.81  10.36  9.45   
+384
+2
+, x40 7.22  6.74  4.64   
+512
+2
+, x40 7.52  7.35  5.90  Ave: 7.08 
+768
+2
+, x40 7.98  8.11  6.90  Var: 1.83 
+1024
+2
+, x40 8.37  8.82  8.15   
+384
+2
+, x90 6.60  5.88  4.95   
+512
+2
+, x90 6.96  6.59  5.29  Ave: 6.50 
+768
+2
+, x90 7.44  7.40  6.28  Var: 1.26 
+1024
+2
+, x90 7.84  8.14  7.49   
+ 
+表 2. Ray tarcing 與 rasterization 繪圖時間比例。測試場景：Dragon(47k、202k 和 571k)。
+橫軸為三角形個數。縱軸為畫面大小與可程式化程式複雜度。其中 Ave 與 Var 分別表
+示在同一可程式化程式複雜度下所有不同畫面大小及不同三角形個數之場景的平均值
+與變異數。 
+ 
+關於項目(2)的部份，已完成的有下列的成果: 
+光線追蹤技術在 GPU 上常見的一種應用－利用存高度圖取代原本複雜繁多的三
+角片；在平面，這類技術上已經被廣泛的討論，但是相同的技術並無法正確的套用在
+任意曲面上，因此我們針對這個問題提出了一套解決方法，使得原本方法無法在任意
+曲面上表現出來的輪廓也能正確的表現出來。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+過去也有嘗試解決這個問題的研究，不過不是速度太慢(Prism-based method)，就
+是結果不夠好；我們所提出的方法就介於兩者之間，不像 prism-based method 每個 thread
+需要過多的 registers 以及額外的三角片，卻也可做到取得跨三角片資訊計算的結果。
+不像 CRM 一樣常常產生過於不正確的結果。簡而言之，我們提出的方法使用兩張額
+外的紋理圖儲存整個模型與高度圖的轉換資訊，並在 GPU 的光線追蹤的過程中，每一
+步都跟新高度圖與模型的對應關係。 
+第二年應完成的項目有: 
+ 針對整合計畫之目標硬體及程式環境之最佳化。 
+ 分析相關數據提出未來硬體設計相關建議。 
+ 
+我們完成下列的成果: 
+1. CUDA-based ray tracer 之最佳化 
+我們修改第一年完成之 CUDA-based ray tracer 雛形並加入貼圖功能。相對於
+Rasterization-based 的繪圖方式貼圖座標是隨手可得的，但對 CUDA-based ray tracer 來
+說其需要額外於 Intersection 階段依據三角形之三個貼圖座標內插計算該點對應貼圖座
+標。以下列出該版本 ray tracer 與 rasterization 在相同平台下之繪圖速度比較： 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+表  3. Rasterization with shadows on NVIDIA GeForce 8800 GTS。測試場景：
+Sponza(66k、132k、265k 和 531k) 、Bunny(69k) 、 Teapot(6k) 、Conference Room(282k) 
+and Fairy Forest(174k)。量測單位：millisecond。橫軸為三角形個數。縱軸為畫面大小。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+表 4. CUDA Ray tracing with shadows on NVIDIA GeForce 8800 GTS。測試場景：
+Sponza(66k、132k、265k 和 531k) 、Bunny(69k) 、 Teapot(6k) 、Conference Room(282k) 
+and Fairy Forest(174k)。量測單位：millisecond。橫軸為三角形個數。縱軸為畫面大小
+(Output image size)。 
+ 
+Rasterization - Sponza 
+ 66k 132k 265k 531k 
+1024
+2 5.11 7.55 11.25 19.02 
+768
+2 3.91 6.27 9.97 17.95 
+512
+2 3.13 5.05 9.00 17.09 
+384
+2 2.56 4.66 8.93 17.01 
+Rasterization  
+ Bunny Teapot Conference Fairy 
+1024
+2 2.65 0.71 9.62 6.1 
+768
+2 2.52 0.55 9.43 5.89 
+512
+2 2.41 0.43 9.2 5.84 
+384
+2 2.39 0.39 9.15 5.71 
+CUDA-Ray Tracer - Sponza 
+ 66k  132k  265k  531k  
+1024
+2 38.96  44.31  48.19  55.16  
+768
+2 24.10  27.53  30.24  35.17  
+512
+2 12.63  14.65  16.28  19.23  
+384
+2 7.90  9.31  10.47  12.52  
+CUDA-Ray Tracer  
+ Bunny Teapot Conference Fairy 
+1024
+2 30.69  15.27  31.05  48.01  
+768
+2 20.32  9.62  19.18  30.23  
+512
+2 11.90  5.18  10.19  16.57  
+384
+2 8.14  3.44  6.52  10.47  
+上述的研究成果並已發表於: 
+(1) Ying-Chieh Chen and Chun-Fa Chang.  “A Prism-Free Method for Silhouette 
+Rendering in Inverse Displacement Mapping.”  Computer Graphics Forum, Vol.27, 
+No.7, October 2008. (SCI) 
+(2) Su-Ian Eugene Lei and Chun-Fa Chang.  “A Particle-Guided Method for Animating 
+Splashing Stream Water in Real Time.”  Poster in Pacific Graphics (PG) 2008. 
+(3) Chun-Fa Chang, Bo-Quan Lin, Ying-Chieh Chen, and Yung-Feng Chiu. “Real-Time 
+Soft Shadow for Displacement Mapped Surfaces.”  IEEE International Conference 
+on Multimedia & Expo (ICME) 2009. (EI). 
+(4) Min Shih, Yung-Feng Chiu, Ying-Chieh Chen, and Chun-Fa Chang. “Real-Time Ray 
+Tracing with CUDA.” International Conference on Algorithms and Architectures for 
+Parallel Processing (ICA3PP) 2009. (EI) 
+(5) Ko-Fan Lu and Chun-Fa Chang. “Acceleration of Photon Mapping: Adaptive 
+Sampling of Irradiance Cache by Components.” APSIPA Annual Summit and 
+Conference (APSIPA ASC) 2009. (EI) 
+(6) Ying-Chieh Chen, Chun-Fa Chang, and Wan-Chun Ma. “Asynchronous Rendering.” 
+Poster in ACM Symposium on Interactive 3D Graphics and Games (I3D) 2010. 
+(7) William Faure and Chun-Fa Chang. “Metalights: Improved Interleaved Shading.” 
+Computer Graphics Forum, Vol.29, No.7, September 2010. (SCI) 
+ 
+5. 參考文獻 
+ 
+[1] Owens et al.  A Survey of General-Purpose Computation on Graphics Hardware.  In 
+Graphics Forum 2007, Volume 26. 
+[2] NVIDIA CUDA. http://developer.nvidia.com/object/cuda.html 
+[3] Hurley, J. Ray Tracing Goes Mainstream. Intel Technology Journal 2005. 
+[4] William R. Mark and Donald Fussell. Real-Time Rendering Systems in 2010. The 
+University of Texas at Austin, Department of Computer Sciences. Technical Report 
+TR-05-18, May 2, 2005. 
+[5] Ikrima Elhassan. An Analysis Of GPU-based Interactive Raytracing. The University of 
+Texas at Austin, Department of Computer Sciences. Honor thesis, June 12, 2006. 
+[6] Tim Purcell, Craig Donner, Mike Cammarano, Henrik Wann Jensen, and Pat Hanrahan: 
+"Photon Mapping on Programmable Graphics Hardware". Graphics Hardware 2003. 
+[7] Kenneth E. Batcher. Sorting networks and their applications. Proceedings of AFIPS 
+Spring Joint Computing Conference, 32:307.314, 1968. 
+[8] NVIDIA GeForce 8800.  http://www.nvidia.com/page/geforce8.html 
+[9] Scott Wasson. Nvidia's GeForce 8800 graphics processor. 
+http://techreport.com/reviews/006q4/  geforce-8800/index.x?pg=1 
+[10] Anand Lal Shimpi and Derek Wilson. NVIDIA's GeForce 8800 (G80): GPUs 
+Re-architected for DirectX 10. http://www.anandtech.com/showdoc.aspx?i=2870&p=1 
+Pacific Graphics 2010
+P. Alliez, K. Bala, and K. Zhou
+(Guest Editors)
+Volume 29 (2010), Number 7
+Metalights : Improved Interleaved Shading
+William Faure † and Chun-Fa Chang ‡
+National Taiwan Normal University
+Abstract
+We present metalights, a novel Virtual Point Light (VPL) encapsulating structure which enhances classic inter-
+leaved shading by improving VPL sampling, based on few initial screen space samples to estimate VPL con-
+tribution to current view. Our method leads to important noise variance reduction in the final picture by only
+adding a small fraction of computation. The implementation is straight-forward and well adapted to both CPU
+and GPU-based engines. We also present different image-space assignment schemes for the VPL subsets to break
+the regularity of the noise pattern or to adapt it to simple antialiasing.
+Categories and Subject Descriptors (according to ACM CCS): I.3.7 [Computer Graphics]: Three-Dimensional
+Graphics and Realism—Raytracing
+1. Introduction
+Instant Radiosity [Kel97] is an elegant method for render-
+ing global illumination effects by casting virtual point lights
+(VPL) from primary light sources onto the geometry surface.
+VPLs can also bounce over the geometry to render multiple
+levels of indirect lighting. The final image including global
+illumination effects is then rendered in a single pass by sim-
+ply accumulating the contribution of the primary sources and
+the VPLs.
+However, the number of VPLs required to accurately sim-
+ulate indirect lighting of a scene highly depends on the com-
+plexity of the geometry and is hardly predictable, e.g. when
+the lights are widely distributed (HDR environment lights,
+multiple light bounces, etc). Tens or hundreds of thousands
+of VPLs are usually necessary to completely remove arti-
+facts.
+Keller and Heidrich [KH01] describe a general frame-
+work for expanding the period of the sampling grid used,
+e.g. to improve antialiasing supersampling. Originally de-
+signed as a geometry sampling method, it also provides a
+way to distribute the shading over blocks of adjacent pixels
+(Interleaved Shading) by assigning different VPLs to dif-
+ferent pixels. The image space is organized into multiple,
+† Contact: william.faure@gmail.com
+‡ Contact: chunfa@ntnu.edu.tw
+identical size blocks, in which each pixel is shaded using a
+different subset of VPLs.
+This method is especially well adapted to hardware and
+network rendering and dramatically accelerates rendering,
+at the cost of an ordered noisy overlay on the picture. The
+solution adopted in current literature about interleaved shad-
+ing is to simply filter it in order to reduce the variance of
+the noise. However, the quality of these filters is highly de-
+pendent on the scene (complexity and scale of the objects,
+point of view, partition of the VPLs into subsets), and un-
+fortunately removes many important details along with the
+noise itself, or does not correctly handle high variance noise
+in some areas. Two commonly used filters are presented in
+Figure 1 in an unfavorable yet common situation in which
+the lighting is mostly indirect, producing complex combina-
+tions of hard and soft shadows. The failure of these filtering
+algorithms is mainly due to the high variance of the heavy
+noise they have to clean.
+To our knowledge, no previous work presents a robust
+method to reduce interleaved shading noise before any fil-
+ter is applied and our metalight structure provides a solution
+by adapting the VPLs selection to the specific constraints of
+interleaved shading.
+1.1. Main contribution
+In this paper, we propose a simple algorithm to improve
+quality of interleaved shading by encapsulating the global
+c© 2010 The Author(s)
+Journal compilation c© 2010 The Eurographics Association and Blackwell Publishing Ltd.
+Published by Blackwell Publishing, 9600 Garsington Road, Oxford OX4 2DQ, UK and
+350 Main Street, Malden, MA 02148, USA.
+W. Faure & C.-F. Chang / Metalights : Improved Interleaved Shading
+Figure 3: Metalights shading examples: Sponza, Reflective Dragon, Four Columns.
+based on their absolute position. [WABG06] extend the con-
+cept presented in [WFA∗05] to other dimensions of the ren-
+dering equation. For each pixel, a set of points spread in
+space, time, lens surface and pixel area are generated and
+a subset is selected to be shaded by a cut in the light tree.
+Banding of the shadows seen in Lightcuts is usually absent,
+replaced by noise. However, this noise cannot be easily re-
+moved because of the incoherent shading within each pixel.
+[HPB07] proposes to reorganize the VPLs into clusters
+based on their contribution to the lighting of the scene, as
+seen from the current point of view.
+Both of these methods then select an adequate set of clus-
+ters that can produce a satisfactory approximation of the
+lighting and choose one single VPL in each cluster to be ren-
+dered (in place of the whole clusters). However, as large sets
+of sources are approximated using a single point light, both
+Lightcuts and [HPB07] produce distracting shadow banding,
+particularly in highly occluded scenes.
+2.2. VPL selection by unoccluded intensity
+[War94] sorts the light sources by local, unoccluded, con-
+tribution. It then accumulates shading until a certain thresh-
+old of correctness is obtained. Using the visibility statistics
+from the previously processed light sources at each pixel,
+it extrapolates the residue of illumination required to ob-
+tain the final illumination. However, it relies on unoccluded
+light contribution, failing to speed up rendering in highly oc-
+cluded scenes.
+2.3. Adaptive importance sampling
+[DWF06] presents a complex algorithm to adapt the shading
+to the image-space data. First, a global cluster tree structure
+is built to store lights and the image-space is split into sev-
+eral blocks. The scene is then rendered block by block, in
+several passes, by incrementally updating local image-space
+visibility statistics and selecting adequate light clusters to
+shade the fragments in the current block. Color variance of
+the shaded fragments over the consecutive passes is used as
+a stopping criterion for the shading procedure using a mini-
+mal threshold. This method works well for highly occluded
+environments and can produce adaptive antialiasing. How-
+ever, the light clustering principle relies upon the concentra-
+tion of the light sources in packets and the highly organized
+structure of the HDR lighting map. In many cases, VPLs are
+randomly spread over unknown shapes and therefore it is not
+clear whether [DWF06] can be applied to efficiently render
+Instant Radiosity solution in such environments. [WBS03]
+proposes to sample one VPL per pixel in a first pass over
+the entire image to build a PDF that will then be used as
+a guide for path tracing. A distributed version of this algo-
+rithm is based on [WKB∗02]. However, the subsets of VPLs
+assigned to the parallel processes are not optimal and do not
+take into account the VPLs importance in image-space.
+[SKS09] use error diffusion to reduce the number of sam-
+ples required to shade using both distant and unstructured
+VPLs. [CETC06, CJAMJ05] use importance sampling for
+distant lights, HDR environment lights and large area lights.
+Importance sampling is also used in [BGH05] to shade with
+structured VPLs, and is adapted to unstructured VPLs in
+[WÅ09] by taking advantage of a light tree. However, such
+method uses a world-space clustering structure for the VPLs
+which is not used in the case of metalights. As precised
+in [WÅ09] and [Vea97], importance sampling of wide light
+sources (such as scattered VPLs) from diffuse surfaces does
+not work very well without the aid of world space structures
+or hybrid sampling methods.
+We do not use any importance sampling but rather use
+VPL contribution statistics for a double stratified sampling,
+the first one to build VPL subsets and the second to sample
+VPLs within subsets.
+2.4. Filtered interleaved shading
+[KH01] is adapted in [WKB∗02] to work as a
+network-distributed application for Interleaved Shading and
+[SIMP06] applies it to work on current GPU hardware.
+c© 2010 The Author(s)
+Journal compilation c© 2010 The Eurographics Association and Blackwell Publishing Ltd.
+W. Faure & C.-F. Chang / Metalights : Improved Interleaved Shading
+Figure 4: Metalight balancing.
+(Figure 4). It can be seen as a deterministic stratified sam-
+pling of Ω.
+This distribution scheme allows a fair spreading of the
+VPLI over all the Ωk subsets (hence over all the pixels in a
+given n×m block) while keeping the Ωk subsets size identi-
+cal. This can be seen in Figure 4 with the subsets VPLI func-
+tions having similar shapes. This has a double visual conse-
+quence leading to the reduction of the distracting shadow
+banding artifacts in favor of a very soft noise:
+• A given pixel will receive representatives of as many vi-
+sual importance values (VPL kinds) as possible, allowing
+it to render a wide range of possible shading behaviors.
+• Visually similar VPLs will be assigned to different pixels,
+thus allowing a better shading coherence between pixels.
+3.4.2. Light selection in Ωk and Ω for final rendering
+Once the subsets are balanced, we render the final pic-
+ture using interleaved shading. The parameter α can be
+changed to control the quality/speed trade-off. Additional
+post-processing, possibly geometry-aware, can also be ap-
+plied to obtain antialiasing or smoother shading.
+As presented in Section 3.4, the Ωk subsets are designed
+in such a way that they individually cover the widest range
+possible of visual importance. In this section, we consider
+Ωk a given subset of VPLs assigned to a particular pixel, and
+we suppose α < 1. We then hope to select good representa-
+tives in Ωk so that shading with α Nn×m will be equivalent to
+using the whole Ωk subset.
+However, a direct random sampling of Ωk would result
+into a great variance in the shading. In order to reduce the
+noise, stratified sampling is used to select representative
+VPLs. We use the VPLI as a ruler for strata definition, which
+Figure 5: Regular vs. irregular MSM.
+is also well adapted to the sorted structure of the metalight.
+Ωk is split into
+⌊
+1
+α
+⌋
+strata containing the same number of el-
+ements and a single VPL is chosen in each stratum to shade
+the current fragment. The randomly selected VPLs are thus
+well distributed over the entire subset Ωk.
+3.5. Assigning the Ωk subsets to the pixels
+FΩ : (x ; y)→ 0...n×m
+is called the metalight shading map, or MSM, and is a func-
+tion of the image-space assigning ΩFΩ(x ; y) to the pixel (x ; y).
+Since metalights can be implemented in both GPU-based
+and CPU-based rendering frameworks, we tried to design
+different functions that such frameworks would allow us to
+use, for example to break the periodicity of the structured
+noise pattern or optimize the noise structure. In our imple-
+mentation, the MSM is created beforehand and can be reused
+in consecutive renderings.
+Regular interleaved MSM. This is the most common
+MSM, well adapted to GPU rendering for which we usually
+set n = m = 2p :
+FΩregular : (x ; y) 7−→Mod(y , m)×n+Mod(x , n)
+Irregular interleaved MSM. We assume here that n = m =
+2q+ 1 , which ensures that each block is square and has a
+center point (which will be used as the filter matrix center
+point when using antialiasing). The screen space is split into
+elementary zones, as visually described in Figure 6:
+• A & D are 1×q pixels blocks;
+• B & C are q×1 pixels blocks;
+• W , X , Y , Z are q×q pixels blocks.
+q VPL subsets are allocated to A, B, C, D blocks, and q2 sub-
+sets are allocated to W , X , Y , Z blocks. An additional shuf-
+fling of the VPL subsets within each block of pixels is also
+possible to further break the noise structure. The resulting
+irregular MSM FΩirregular is compared to F
+Ω
+regular in Figure 5
+c© 2010 The Author(s)
+Journal compilation c© 2010 The Eurographics Association and Blackwell Publishing Ltd.
+W. Faure & C.-F. Chang / Metalights : Improved Interleaved Shading
+Hz
+90 100 110 120
+10-4
+0.001
+0.01
+0.1
+Hz
+90 100 110 120
+10-4
+0.001
+0.01
+0.1
+Figure 7: 1D Fourier transform of (top) average row and
+(bottom) average column of the noise layer from the scene in
+Figure 10). Blue: standard interleaved shading. Red: metal-
+ights. Solid lines: no filtering. Dashed lines: σ= 1.7. Dotted
+lines: σ= 3.0.
+Σ=1.7
+Σ=3.0
+Σ=1.7
+Σ=3.0
+Original Original
+Standard I.S. Metalight
+Figure 8: 2D Fourier transform Log-amplitude of the noise
+layer (scene from Figure 10).
+æ
+æ
+æ
+æ
+æ
+æ
+æ
+æ
+æ æ æ æ æ æ
+à à à à à à à à à à à à à à
+ì
+ì
+ì
+ì
+ì
+ì
+ì ì ì ì ì ì ì ì
+ò ò ò ò ò ò ò ò ò ò ò ò ò ò2 3 4 5 62022
+2024
+2026
+2028
+202:
+2032
+2034 Rgcm"pqkug"htgswgpe{"*32406"J¦+"cornkvwfg
+Σ
+ò Ogvcnkijv Hcxgtcig eqnwopL
+ì Uvcpfctf K0U Hcxgtcig eqnwopL
+à Ogvcnkijv Hcxgtcig"tqyL
+æ Uvcpfctf K0U Hcxgtcig"tqyL
+Figure 9: Filtering of the peak noise frequency in the noise
+layer (scene from Figure 10) when applying a gaussian filter
+with standard deviation σ.
+4.4. Variance reduction
+Metalights reduce noise variance both globally and locally,
+especially when a limited number of VPLs is sampled. In
+that case, the noise loses its periodicity, and Fourier trans-
+forms are replaced by global variance estimation of the noise
+layer for varying α (Figure 11) and false-color variance plot
+for α= 1 (Figure 10).
+Using a metalight greatly reduces the local and global
+variance of the noise layer, even in irregular zones such as
+the back of the dragon and the inner parts of the body folds.
+Also note that the VPL set Ω is kept identical for both stan-
+dard and metalight-based interleaved shading (i.e. we do not
+discard VPLs with zero VPLI). The significantly faster con-
+vergence of the variance when using metalights validates
+VPLI as a good criterion for stratified sampling.
+4.5. Antialiasing quality
+Figure 1 showed that blurring schemes are not robust enough
+in some situations. Metalights improve the quality of the fil-
+tered image, while keeping advantage of the speed-up from
+interleaved shading. We use 3×3 supersampling and a 5×5
+Lanczos kernel to filter supersampled, interleaved shaded
+pictures; the reference picture is rendered and filtered at that
+same resolution, except that all VPLs are used to shade every
+supersample.
+Figure 12 compares rendering times and quality for the
+four-columns scene using Lanczos filtering, for identical fi-
+nal image size. Images are rendered at supersampled resolu-
+tion 2100× 2100 and use all VPLs, Card(Ω) = 10000 and
+25 subsets. The metalight uses λ = 400 initial screen space
+samples to set up the VPLI. All pictures have a final size of
+700×700 pixels. We can notice the quality and performance
+of a metalight to handle supersampling without having to
+manually select scene-dependent filtering parameters.
+c© 2010 The Author(s)
+Journal compilation c© 2010 The Eurographics Association and Blackwell Publishing Ltd.
+W. Faure & C.-F. Chang / Metalights : Improved Interleaved Shading
+[CJAMJ05] CLARBERG P., JAROSZ W., AKENINE-MÖLLER T.,
+JENSEN H. W.: Wavelet importance sampling: Efficiently eval-
+uating products of complex functions. In Proceedings of ACM
+SIGGRAPH 2005 (2005), ACM Press. 3
+[DWF06] DONIKIAN M., WALTER B., FERNANDEZ S.: Accu-
+rate direct illumination using iterative adaptive sampling. IEEE
+Transactions on Visualization and Computer Graphics 12, 3
+(2006), 353–364. 3
+[HPB07] HAŠAN M., PELLACINI F., BALA K.: Matrix row-
+column sampling for the many-light problem. In SIGGRAPH
+’07: ACM SIGGRAPH 2007 papers (New York, NY, USA, 2007),
+ACM, p. 26. 3, 8
+[Kel97] KELLER A.: Instant radiosity. In SIGGRAPH ’97: Pro-
+ceedings of the 24th annual conference on Computer graphics
+and interactive techniques (New York, NY, USA, 1997), ACM
+Press/Addison-Wesley Publishing Co., pp. 49–56. 1
+[KH01] KELLER A., HEIDRICH W.: Interleaved sampling. In
+Proceedings of the 12th Eurographics Workshop on Rendering
+Techniques (London, UK, 2001), Springer-Verlag, pp. 269–276.
+1, 3
+[LSK∗07] LAINE S., SARANSAARI H., KONTKANEN J.,
+LEHTINEN J., AILA T.: Incremental instant radiosity for real-
+time indirect illumination. In Proceedings of Eurographics Sym-
+posium on Rendering 2007 (2007), Eurographics Association,
+pp. 277–286. 2, 4, 6
+[SIMP06] SEGOVIA B., IEHL J. C., MITANCHEY R., PÉROCHE
+B.: Non-interleaved deferred shading of interleaved sample
+patterns. In GH ’06: Proceedings of the 21st ACM SIG-
+GRAPH/EUROGRAPHICS symposium on Graphics hardware
+(New York, NY, USA, 2006), ACM, pp. 53–60. 2, 3, 6
+[SKS09] SZIRMAY-KALOS L., SZÉCSI L.: Deterministic impor-
+tance sampling with error diffusion. Computer Graphics Forum
+28, 4 (2009), 1055–1064. 3
+[Vea97] VEACH E.: Robust Monte Carlo Methods for Light
+Transport Simulation. PhD thesis, Stanford University, Stanford,
+California, Dec. 1997. 3
+[WÅ09] WANG R., ÅKERLUND O.: Bidirectional importance
+sampling for unstructured direct illumination. Computer Graph-
+ics Forum 28, 2 (Apr. 2009), 269–278. 3
+[WABG06] WALTER B., ARBREE A., BALA K., GREENBERG
+D. P.: Multidimensional lightcuts. In SIGGRAPH ’06: ACM
+SIGGRAPH 2006 Papers (New York, NY, USA, 2006), ACM,
+pp. 1081–1088. 3
+[War94] WARD G.: The radiance lighting simulation and ren-
+dering system. In SIGGRAPH ’94: Proceedings of the 21st
+annual conference on Computer graphics and interactive tech-
+niques (New York, NY, USA, 1994), ACM, pp. 459–472. 3
+[WBS03] WALD I., BENTHIN C., SLUSALLEK P.: Interactive
+global illumination in complex and highly occluded environ-
+ments. In EGRW ’03: Proceedings of the 14th Eurographics
+workshop on Rendering (Aire-la-Ville, Switzerland, Switzerland,
+2003), Eurographics Association, pp. 74–81. 3
+[WFA∗05] WALTER B., FERNANDEZ S., ARBREE A., BALA
+K., DONIKIAN M., GREENBERG D. P.: Lightcuts: a scalable
+approach to illumination. In SIGGRAPH ’05: ACM SIGGRAPH
+2005 Papers (New York, NY, USA, 2005), ACM, pp. 1098–1107.
+2, 3
+[WKB∗02] WALD I., KOLLIG T., BENTHIN C., KELLER A.,
+SLUSALLEK P.: Interactive global illumination using fast ray
+tracing. In EGRW ’02: Proceedings of the 13th Eurographics
+workshop on Rendering (Aire-la-Ville, Switzerland, Switzerland,
+2002), Eurographics Association, pp. 15–24. 3
+Guvkocvkqp"gttqt"*'+
+Ucorng"uk¦g"*'"qh"っ+
+2% 47% 72% 97% 322%-62%
+-52%
+-42%
+-32%
+2%
+32%
+42%
+52%
+62%
+(a) Error % for increasing sample
+size.
+Guvkocvkqp"gttqt"*'+
+Vguv"pwodgt"*6'"qh"っ+
+72 322 372 422 472 522
+-52%
+-42%
+-32%
+2%
+32%
+42%
+52%
+(b) Visual representation of the
+variance at low sample rate
+(4% of Ω) for 300 tests.
+Figure 13: Influence of a rough sorting before stratification
+starts. Green: random stratification , Blue: rough sorting
+Guvkocvkqp"gttqt"*'+
+Ucorng"uk¦g"*'"qh"っ+
+2% 47% 72% 97% 322%-62%
+-52%
+-42%
+-32%
+2%
+32%
+42%
+52%
+62%
+(a) Error % for increasing sam-
+ple size.
+Guvkocvkqp"gttqt"*'+
+Ucorng"uk¦g"*'"qh"っ+
+2% 3% 4% 5% 6%-62%
+-52%
+-42%
+-32%
+2%
+32%
+42%
+52%
+62%
+(b) Low sampling rate behaviour.
+Figure 14: Stratified sampling convergence speed when the
+samples order is known (not their actual value). Green: ran-
+dom stratification, Blue: perfect sorting.
+Appendix A: Stratified sampling performance
+To motivate our approach of sorting VPL by their average
+contribution before stratification, we propose here a numer-
+ical test to compare random stratification to ordered strati-
+fication. We sample x elements from a fixed set Ω random
+numbers. We then extrapolate the total sum of Ω by multi-
+plying the sum of the chosen samples by Card(Ω)x .
+Random stratification is done by splitting Ω into x equal
+size subsets (±1 element) and sampling one element from
+each subset.
+Ordered stratification is built by sorting the elements in Ω
+using rough estimates. This is done by adding a small error
+(25% of the peak value) to the real value of the elements to
+simulate the VPLI estimation-based sorting from our algo-
+rithm. The stratified sampling then runs as described above.
+Figure 13 shows that sum converges faster when we sort
+the elements in Ω even if our estimates contain errors. Fig-
+ure 13b shows that this is still true at very low sampling rate
+(when we only sample 4% of the set, which corresponds
+to the partitioning used for 5× 5 interleaved shading) and
+Figure 14 shows the convergence speed if we know the ex-
+act order of the samples prior to the stratification (without
+knowledge of their actual values).
+c© 2010 The Author(s)
+Journal compilation c© 2010 The Eurographics Association and Blackwell Publishing Ltd.
+Multi-Fragment Effects”，這題目很吸引人，因為大家都在找尋一個繪圖的最好架構，
+這篇則是利用CUDA來實作整個Graphics Pipeline並加以比較，可惜的是這篇內容並沒
+有讓我們得到想知道的答案，因此大家還是必須繼續努力去找出這個答案。這天另一
+個讓人覺得有趣的是第二節的討論，”Interactive Volume Caustics in Single-Scattering 
+Media”以及Epipolar Sampling for Shadows and Crepuscular Rays in Participating Media 
+with Single Scattering”這兩篇嘗試把光線停留在空氣中的效果即時畫出來，這效果本身
+已經相當不錯了，可是能夠即時的畫出來真的是相當驚人。最後一節中，”Radiance 
+Scaling for Versatile Surface Enhancement”提出透過一個Scaling function把原本正常繪圖
+無法表現的細節變的明顯，是個有趣的題目。議程下午則是Poster and Demo，我們則
+在這發表了”Asynchronous Rendering”的海報論文，先有一個一分鐘的fast forward 
+session讓我們宣傳一下自己的論文，然後在於飯店大廳對參訪的學者解釋並展示成
+果。在展示時，我攜帶自己的筆記型電腦以及iPhone，實機展示在能力有限的行動裝置
+上利用雲端計算繪製環境光源的架構與成果，觀眾對於我們提出的架構與效果皆給予
+高度肯定，其中來自NVIDIA Research的學者提出願意提供Tegra2 SDK工具做為後續研
+究的比較。 
+第三天議程中最有看頭的就是得到最佳論文的”Stochastic Transparency”，利用一個
+簡單的filter來做Transparency的效果，使得頭髮等需要多層半透明效果才能繪製的物體
+也能很簡單的在一個Pass中搞定。另外比較有趣的是本篇四個作者參與這個計畫的時間
+都沒有重疊。另一篇”Efficient Irradiance Normal Mapping”則是另一個引起我興趣的另一
+個引起我興趣的論文，他提出了一套新的spherical basis，可以用六個Basis達到比原本
+用九個Basis表示光源顏色的誤差還小。這天有一場Capstone Talk，主講者式Peter-Pike 
+Sloan 目前任職於 Disney Interactive Studio ，主講的題目為 ”The Evolution of 
+Pre-computed Lighting for Game”，他所提出的Pre-computed Radiance Transfer (PRT)是圖
+學很重要的技術之一，也是我這次發表的海報論文中所賴以計算環境光源的技術之
+一。最後，就是最佳論文頒獎，獲獎的就是今年論文封面圖的Eric Enderton。 
+     
+三、攜回資料名稱及內容 
+I3D 2010會議論文集一冊及光碟片一片。 
+ 
+四、結語 
+在此相當感謝本計畫提供的補助使得我能參與此次電腦圖學的討論盛會，讓我有
+機會與國外學者互相交流目前研究成果及對電腦圖學技術發展的心得與方向。 
+ 
+ 
+ 
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：張鈞法 計畫編號：98-2220-E-003-001- 
+計畫名稱：系統層級之多核心嵌入式系統發展與驗證環境--子計畫四：多核心嵌入式系統應用程式發
+展(2/2) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 1 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 3 3 100%  
+博士生 2 2 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

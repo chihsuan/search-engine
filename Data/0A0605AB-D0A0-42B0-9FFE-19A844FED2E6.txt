@@ -1,0 +1,1138 @@
+ASpace-Efficient Frameworks for Top-k String Retrieval
+Wing-Kai Hon, National Tsing Hua University
+Rahul Shah, Louisiana State University
+Sharma V. Thankachan, Louisiana State University
+Jeffrey Scott Vitter, The University of Kansas
+The inverted index is the backbone of modern web search engines. For each word in a collection of web
+documents, the index records the list of documents where this word occurs. Given a set of query words,
+the job of a search engine is to output a ranked list of the most relevant documents containing the query.
+However, if the query consists of an arbitrary string — which can be a partial word, multiword phrase, or
+more generally any sequence of characters — then word boundaries are no longer relevant and we need a
+different approach. In string retrieval settings, we are given a set D = {d1, d2, d3, . . . , dD} of D strings with
+n characters in total taken from an alphabet set Σ = [σ], and the task of the search engine, for a given query
+pattern P of length p, is to report the “most relevant” strings in D containing P . The query may also consist
+of two or more patterns. The notion of relevance can be captured by a function score(P, dr), which indicates
+how relevant document dr is to the pattern P . Some example score functions are the frequency of pattern
+occurrences, proximity between pattern occurrences, or pattern-independent PageRank of the document.
+The first formal framework to study such kinds of retrieval problems was given by Muthukrishnan [SODA
+2002]. He considered two metrics for relevance: frequency and proximity. He took a threshold-based ap-
+proach on these metrics and gave data structures that use O(n logn) words of space. We study this problem
+in a somewhat more natural top-k framework. Here, k is a part of the query, and the top k most relevant
+(highest-scoring) documents are to be reported in sorted order of score. We present the first linear-space
+framework (i.e., using O(n) words of space) that is capable of handling arbitrary score functions with near-
+optimal O(p + k log k) query time. The query time can be made optimal O(p + k) if sorted order is not
+necessary. Further, we derive compact space and succinct space indexes (for some specific score functions).
+This space compression comes at the cost of higher query time. At last, we extend our framework to han-
+dle the case of multiple patterns. Apart from providing a robust framework, our results also improve many
+earlier results in index space or query time or both.
+Categories and Subject Descriptors: E.1 [Data]: Data Structures—Trees; E.4 [Data]: Coding and Informa-
+tion Theory—Data Compaction and Compression; F.2.2 [Nonnumerical Algorithms and Problems]: Pat-
+tern Matching; H.3.1 [Information Storage and Retrieval]: Content Analysis and Indexing—Indexing
+Methods
+General Terms: Algorithms, Theory
+Additional Key Words and Phrases: String Matching, Document Retrieval, Top-k Queries
+ACM Reference Format:
+Hon, W. K., Shah, R., Thankachan, S. V., and Vitter, J. S. 2012. Space-Efficient Frameworks for Top-k String
+Retrieval. J. ACM V, N, Article A (January YYYY), 37 pages.
+DOI = 10.1145/0000000.0000000 http://doi.acm.org/10.1145/0000000.0000000
+This work is supported in part by Taiwan NSC Grants 99-2221-E-007-123 and 102-2221-E-007-068 (W. K.
+Hon), and US NSF Grant CCF-1017623 (R. Shah and J. S. Vitter). This work builds on a preliminary version
+that appeared in the Proceedings of the IEEE Foundations of Computer Science (FOCS), 2009 [Hon et al.
+2009] and more recent material in [Hon et al. 2010; Hon et al. 2012; Hon et al. 2013].
+Permission to make digital or hard copies of part or all of this work for personal or classroom use is granted
+without fee provided that copies are not made or distributed for profit or commercial advantage and that
+copies show this notice on the first page or initial screen of a display along with the full citation. Copyrights
+for components of this work owned by others than ACM must be honored. Abstracting with credit is per-
+mitted. To copy otherwise, to republish, to post on servers, to redistribute to lists, or to use any component
+of this work in other works requires prior specific permission and/or a fee. Permissions may be requested
+from Publications Dept., ACM, Inc., 2 Penn Plaza, Suite 701, New York, NY 10121-0701 USA, fax +1 (212)
+869-0481, or permissions@acm.org.
+c© YYYY ACM 0004-5411/YYYY/01-ARTA $10.00
+DOI 10.1145/0000000.0000000 http://doi.acm.org/10.1145/0000000.0000000
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:3
+the documents which have at least K occurrences of the pattern P . This basically
+amounts to thresholding by term frequency. In the K-repeats problem, the query
+asks for all the documents in which there is at least one pair of occurrences of the
+pattern P such that these occurrences are at most distance K apart. This relates
+to another popular relevance measure in information retrieval called term proxim-
+ity. He gave O(n log n)-word data structures for these problems that can answer the
+queries in optimal O(p + output) time. Here, output represents the number of quali-
+fying documents for the given threshold. These data structures work by augmenting
+suffix trees with additional information. Based on Muthukrishnan’s index for K-mine
+problem, Hon et al. [2010] designed an O(n log n)-word index for top-k frequent docu-
+ment retrieval problem (i.e., the relevance metric is term frequency) with near-optimal
+O(p + k + log n log log n) query time. The main drawback of the above indexes was the
+Θ(log n) factor of space blow-up when compared with the “linear-space” suffix tree.
+In modern times, even suffix trees are considered space-bloated, as its space occu-
+pancy can grow to 15 – 50 times the size of the text. In the last decade, with advances
+in succinct data structures, compressed alternatives of suffix trees have emerged that
+use an amount of space close to the entropy of the compressed text. The design of
+succinct/compressed text indexing data structures has been a field of active research
+with great practical impact [Grossi and Vitter 2005; Ferragina and Manzini 2005].
+Sadakane [2007b] showed how to solve the document listing problem using succinct
+data structures that take space very close to that of the compressed text. He also
+showed how to compute the TF-IDF scores [Witten et al. 1999] of each document with
+such data structures. However, one limitation of Sadakane’s approach is that it needs
+to first retrieve all the documents where the pattern (or patterns) occurs, and then find
+their relevance scores. The more meaningful task from the information retrieval point
+of view, however, is to get only some of the highly relevant documents. In this sense,
+it is very costly to retrieve all the documents first. Nevertheless, Sadakane did show
+some very useful tools and techniques for deriving succinct data structures for these
+problems.
+Apart from fully succinct data structures, the document listing problem has also
+been considered in the compact space model, where an additional n logD bits of space
+is allowed [Va¨lima¨ki and Ma¨kinen 2007; Gagie et al. 2009; Gagie et al. 2010]. Typically,
+fully succinct data structures take space that is less than or comparable to the space
+taken by the original text collection; compact data structures are shown to take about 3
+times the size of the original text. Both succinct and compact data structures are highly
+preferable over the usual suffix-tree-based implementations, but they are typically
+slower in query time.
+The document listing problem has also been studied for multiple patterns. For the
+case of two patterns P1 and P2 (of lengths p1 and p2, respectively), an index proposed by
+Muthukrishnan’s [2002] takes O˜(n3/2) space (which is prohibitively expensive) and re-
+port those ndoc documents containing both P1 and P2 in O(p1 + p2 +
+√
+n+ ndoc) time.1
+Cohen and Porat [2010] gave a more space-efficient version taking O(n log n) words of
+space while answering queries in O(p1 + p2 +
+√
+(ndoc + 1)× n log n log2 n) time.
+In our paper, we introduce various frameworks, by which we provide improved so-
+lutions for some of the known document retrieval problems, and also provide efficient
+solutions for some new problems. In the remaining part of this section, we first list
+our main contributions, and then briefly survey the work that happened in this line of
+research after our initial conference paper [Hon et al. 2009].
+1The notation O˜(·) ignores polylogarithmic factors.
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:5
+case where the relevance metric is term frequency or static importance score. Most
+of the succinct indexes used a key idea from an earlier paper by Sadakane [2007b],
+where he showed how to compute the TF-IDF score of each document, by maintaining
+a compressed suffix array CSA of T along with a compressed suffix array CSAr of each
+document dr (see Section 2.3 for the definition of CSA).
+Table I. Indexes for Top-k Frequent Document Retrieval
+(assuming σ ≤ D = o(n/ logn), with logD and log(D/k) simplified to the worst-case bound of logn in the reporting time)
+Source Space (in bits) Per-Document Reporting Time
+Hon et al. [2010] O(n logn+ n log2D) O(1)
+Ours (Theorem 3.8) O(n logn) O(log k)
+Navarro and Nekrich [2012b] O(n(logD + log σ)) O(1)
+Shah et al. [2013] O(n logn) O(1)
+Hon et al. [2009] 2|CSA∗| + o(n) O(tsa log3+ n)
+Gagie et al. [2010] 2|CSA∗| + o(n) O(tsa log3+ n)
+Belazzougui et al. [2013] 2|CSA∗| + o(n) O(tsa log k log1+ n)
+Ours (Theorem 5.6) 2|CSA∗| + o(n) O(tsa log k log n)
+Tsur [2013] |CSA| + o(n) O(tsa log k log1+ n)
+Navarro and Thankachan [2013] |CSA| + o(n) O(tsa log2 k log n)
+Gagie et al. [2010] |CSA| + n logD(1 + o(1)) O(log2+ n)
+Belazzougui et al. [2013] |CSA| + n logD(1 + o(1)) O(log k log1+ n)
+Gagie et al. [2010] |CSA| +O( n logD
+log logD
+) O(tsa log
+2+ n)
+Belazzougui et al. [2013] |CSA| +O( n logD
+log logD
+) O(tsa log k log
+1+ n)
+Belazzougui et al. [2013] |CSA| +O(n log log logD) O(tsa log k log1+ n)
+Ours (Theorem 4.5) |CSA| + 2n logD(1 + o(1)) O(log log n+ log k)
+Ours (Theorem 4.6) |CSA| + n logD(1 + o(1)) O(log2 logn+ (log σ log logn)1+ + log k)
+In our initial conference paper [Hon et al. 2009], we proposed the first succinct
+index for top-k frequent document retrieval. The index occupies 2|CSA∗| + o(n) +
+D log nD + O(D) bits of space and answers a query in O(ts(p) + k × tsa log3+ n) time.
+While retaining the same space complexity, Gagie et al. [2010] improved the query
+time to O(ts(p) + k × tsa logD log(D/k) log1+ n), and Belazzougui et al. [2013] fur-
+ther improved it to O(ts(p) + k × tsa log k log(D/k) log n). Our result of Theorem 5.6
+in this paper (initially appeared in [Hon et al. 2013]) achieves an even faster
+query time of O(ts(p) + k × tsa log k log n). An open problem of designing a space-
+optimal index is positively answered by Tsur [2013], where he proposed an in-
+dex of size |CSA|+ o(n) +O(D) +D log(n/D) bits with O(ts(p) + k × tsa log k log1+ n)
+query time; very recently, Navarro and Thankachan [2013] improved the query
+time further to O(ts(p) + k × tsa log2 k log n). Top-k important document retrieval
+(i.e., the score function is document importance) is also a well-studied problem,
+and the best known succinct index appeared in [Belazzougui et al. 2013]. This in-
+dex takes |CSA|+ o(n) +O(D) +D log(n/D) bits of space, and answers a query in
+O(ts(p) + k × tsa log k log n) time.
+The document array (refer to Section 2.4 for the definition) is a powerful data struc-
+ture for solving string retrieval problems, and its space occupancy is ndlogDe bits.
+This was first introduced in [Va¨lima¨ki and Ma¨kinen 2007] for solving the document
+listing problem. Later, Culpepper et al. [2010] showed how to efficiently handle top-k
+frequent document retrieval queries using a simple data structure, which is essentially
+a wavelet tree maintained over the document array. Although their query algorithm
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:7
+the locus of a pattern P , if it is the highest node path(x) prefixed by P . The total space
+consumption of GST is O(n) words and the time for computing the locus node of P
+is O(p). When D contains only one document dr, the corresponding GST is commonly
+known as the suffix tree of dr [Weiner 1973].
+2.2. Suffix Array (SA)
+The suffix array SA[1..n] is an array of length n, where SA[i] is the starting position
+(in T) of the ith lexicographically smallest suffix of T [Manber and Myers 1993]. In
+essence, the suffix array contains the leaf information of GST but without the tree
+structure. An important property of SA is that the starting positions of all the suffixes
+with the same prefix are always stored in a contiguous region of SA. Based on this
+property, we define the suffix range of P in SA to be the maximal range [sp, ep] such that
+for all i ∈ [sp, ep], SA[i] is the starting point of a suffix of T prefixed by P . Therefore, `sp
+and `ep represents the first and last leaves in the subtree of the locus node of P in GST.
+2.3. Compressed Suffix Arrays (CSA)
+A compressed representation of suffix array is called a compressed suffix array
+(CSA) [Grossi and Vitter 2005; Ferragina and Manzini 2005; Grossi et al. 2003]. We
+denote the size (in bits) of a CSA by |CSA|, the time for computing SA[·] and SA−1[·]
+values by tsa, and the time for finding the suffix range of a pattern of length p by ts(p).
+There are various versions of CSA in the literature that provide different performance
+tradeoffs (see [Navarro and Ma¨kinen 2007] for an excellent survey). For example, the
+space-optimal CSA by Ferragina et al. [2007] takes nHh + o(n log σ) bits space, where
+Hh ≤ log σ denotes the empirical hth-order entropy of T.2 The timings tsa and ts(p)
+are O(log1+ n log σ) and O(p(1 + log σ/ log log n)), respectively. Recently, Belazzougui
+and Navarro [2011] proposed another CSA of space nHh + O(n) + o(n log σ) bits with
+ts(p) = O(p) and tsa = O(log n).
+2.4. Document Array (E)
+The document array E[1..n] is defined as E[j] = r if the suffix T[SA[j]..n] belongs to
+document dr. Moreover, the corresponding leaf node `j is said to be marked with docu-
+ment dr. By maintaining E using the structure described in [Golynski et al. 2006], we
+have the following result.
+LEMMA 2.1. The document array E can be stored in n logD + o(n logD) bits and
+support rankE, selectE and accessE operations in O(log logD) time, where
+— rankE(r, i) returns the number of occurrences of r in E[1..i];
+— selectE(r, j) returns the location of jth leftmost occurrence of r in E; and
+— accessE(i) returns E[i].
+Define a bit-vector BE[1..n] such that BE[i] = 1 if and only if T[i] = $. Then, the
+suffix T[i..n] belongs to document dr if r = 1 + rankBE(i), where rankBE(i) represents the
+number of 1s in BE[1..i]. The following is another useful result.
+LEMMA 2.2. Using CSA and an additional structure of size |CSA∗| + D log nD +
+O(D) + o(n) bits, the document array E can be simulated to support rankE operation
+in O(tsa log log n) time, and selectE and accessE operations in O(tsa) time.
+PROOF. The document array E can be simulated using the following structures:
+(i) compressed suffix array CSA of T (of size |CSA| bits), where SA[·] and SA−1[·] rep-
+resent the suffix array and inverse suffix array values in CSA; (ii) compressed suf-
+2The space bound holds for all h < α logn/ log σ, where α is any fixed constant with 0 < α < 1.
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:9
+The functions TF(P, dr) and TP(P, dr) are directly associated with K-mine and K-
+repeats problems, respectively. The importance metric captured by docrank(P, dr) can
+be realized in practice by the PageRank [Page et al. 1999] of the document dr, which is
+static and invariant of P .
+In our paper, we focus on obtaining the top k highest-scoring documents given the
+pattern P . In the design of our succinct/compressed solutions, some of the score calcula-
+tion will be done on the fly. We call a score function succinctly calculable if there exists
+a data structure on document dr of O(|dr| log σ) bits that can calculate score(P, dr) in
+O( poly (p, log |dr|)) time; here, |dr| denotes the number of characters in dr. Note that
+TF(P, dr) and docrank(P, dr) are succinctly calculable (see Lemma 2.2 and Lemma 2.4),
+but it is yet unknown if TP(P, dr) is succinctly calculable.
+2.7. Top-k using RMQs and Wavelet Trees
+Let A be an array of length n. A range maximum query (RMQ) on A asks for the position
+of the maximum between two specified array indices i and j. That is, the RMQ should
+return an index k such that i ≤ k ≤ j and A[k] ≥ A[x] for all i ≤ x ≤ j. Although solving
+RMQs is as old as Chazelle’s original paper on range searching [Chazelle 1988], many
+simplifications [Bender and Farach-Colton 2000] and improvements have been made,
+culminating in the index of size 2n + o(n) bits by Fischer and Heun [2011]. Even our
+results shall extensively use RMQ as a tool to obtain the top k items in a given set of
+ranges.
+LEMMA 2.5. Let A[1..n] be an array of n numbers. We can preprocess A in linear
+time and associate A with an RMQ data structure of size 2n+ o(n) bits, such that given
+a set of z non-overlapping ranges [L1, R1], [L2, R2], . . . , [Lz, Rz], we can find (i) all those
+output numbers in A[L1..R1]∪A[L2..R2]∪· · ·∪A[Lz..Rz] which are greater (or less) than
+a given threshold value in O(z+output) time, or (ii) the largest (or smallest) k numbers
+in A[L1..R1] ∪ A[L2..R2] ∪ · · · ∪ A[Lz..Rz] in unsorted order in O(z + k) time.
+PROOF. We use the following result of Frederickson [1993]: the kth largest number
+from a set of numbers maintained in a binary max-heap ∆ can be retrieved in O(k)
+time by visiting O(k) nodes in ∆. In order to solve our problem, we may consider a
+conceptual binary max-heap ∆ as follows: Let ∆′ denote the balanced binary subtree
+with z leaves that is located at the top part of ∆ (with the same root). Each of the z− 1
+internal nodes in ∆′ holds the value ∞. The ith leaf node `i in ∆′ (for i = 1, 2, . . . , z)
+holds the value A[Mi], which is the maximum element in the interval A[Li..Ri]. The
+values held by the nodes below `i will be defined recursively as follows: For a node `
+storing the maximum element A[M ] from the range A[L..R], its left child stores the
+maximum element in A[L..(M − 1)] and its right child stores the maximum element
+in A[(M + 1)..R]. Note that this is a conceptual heap which is built on the fly, where
+the value associated with a node is computed in constant time based on the RMQ
+structures only when needed.
+For (i), we simply perform a preorder traversal of ∆, such that if the value (6= ∞)
+associated with a node satisfies the threshold condition, we then report it and move to
+the next node; otherwise, we discard it and do not check the nodes in its subtree. The
+query time can be bounded by O(z + output). For (ii), we first find the (z − 1 + k)th
+largest element X in this heap by visiting O(z + k) nodes (with O(z + k) RMQs) using
+Frederickson’s algorithm [1993]. Then, we obtain all those numbers in ∆ that are ≥ X
+in O(z + k) time by a preorder traversal of ∆, such that if the value associated with a
+node is < X, we do not check the nodes in its subtree. However, if the number of values
+≥ X is ω(z+k), we may end up visiting ω(z+k) nodes, resulting in ω(z+k) query time.
+To avoid this pitfall, we do the following: First, we report all those nX values which
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:11
+score of A[i′]. This takes O(log pi+ tscore) time, so that the total time will be bounded by
+O(log pi + (2 log pi + k)(log pi + tscore)) = O((log pi + k)(log pi + tscore)). uunionsq
+2.8. Differentially Encoding a Sorted Array
+Let A[1..m] be an array of integers such that 1 ≤ A[i] ≤ A[i + 1] ≤ n. The array A can
+be encoded using a bit vector B = 10c110c210c3 · · · 10cn , where ci denotes the number of
+entries A[·] = i. The length of B is m+n, and hence B can be maintained in (m+n)(1 +
+o(1)) bits (along with constant-time rank/select structures [Munro et al. 2001; Clark
+1996]). Then, for any given j ∈ [1,m], we can compute A[j] in constant time by first
+finding the location of the jth 0 in B, and then counting the number of 1s up to that
+position.
+3. LINEAR SPACE STRUCTURES
+In this section, we describe our linear-space data structures with near optimal
+query times. Although we describe our result in terms of the frequency metric (i.e.,
+score(·, ·) = TF(·, ·)), it works directly for any other score function. First, we build a
+generalized suffix tree (GST) of D and augment with the following structures described
+below. The number of leaves in the subtree of a node v in GST that are marked with
+document dr is represented by freq(v, r). Note that freq(v, r) = TF(path(v), dr).
+3.1. N-structure
+At any node v of GST, we store an N-structure Nv, which is an array of 5-tuples
+〈document id r, score s, pointer t, first depth δf , last depth δl〉. First, Nv for any leaf
+node `i (recall that `i represents the ith leftmost leaf node in GST) will contain exactly
+one entry with document id E[i] and score 1. For an internal node v, an entry with doc-
+ument id r occurs in Nv if and only if at least two children of v contain leaves marked
+with document dr in their subtrees. In case the entry of document dr is present in Nv
+then its corresponding score value s denotes the number of leaves in the subtree of v
+marked with document dr (i.e., freq(v, r)). The pointer t stores two attributes: origin
+and target. The origin is set to node v, while the target is set to the lowest ancestor
+of v that also has an entry of document dr. Note that such an ancestor always exists,
+unless v is the root (in this case, the target of t is a dummy node which is regarded as
+the parent of the root). For δf and δl, we shall give their definitions and describe their
+usage later. See Figure 1 for an illustration of some N-structure entries, each showing
+the first three fields of the 5-tuple.
+OBSERVATION 1. Let `i and `j be two leaves belonging to the same document dr. If
+v is the lowest common ancestor lca(`i, `j), then Nv contains an entry for document dr.
+PROOF. Leaf `i and leaf `j must be in the subtree of different children of v (oth-
+erwise, v cannot be their lowest common ancestor). Thus, at least two children of v
+contain leaves marked with document dr, so that Nv contains an entry for dr. uunionsq
+OBSERVATION 2. If for two nodes u and w, both Nu and Nw contain an entry for
+document dr, then the node z = lca(u,w) also has an entry for document dr in Nz.
+PROOF. Nodes u and w must be in the subtree of different children of z (otherwise,
+z cannot be their lowest common ancestor). Since Nu and Nw both contain an entry for
+document dr, the subtree of u and the subtree of w must each contain some leaf marked
+by dr. Consequently, at least two children of z contain leaves marked with dr, so that
+Nz contains an entry for dr. uunionsq
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:13
+ated with a node w. If the target of t is v, then Iv stores a triplet 〈document id r, score s,
+origin w〉.
+The entries in the I-structure Iv are sorted, in ascending order, by the preorder ranks
+of the origins. We store Iv by three separate arrays Docv, Scov, and Oriv such that the
+jth entry of Iv is denoted by Iv[j], and has the value 〈Docv[j],Scov[j],Oriv[j]〉. Note that
+some entries in Iv may have the same origin value (say w), if Nw contains more than one
+entriy targeting v; in this case these entries are further ordered by the document ids
+within Iv. Also, an Iv may have entries with the same document id (when these entries
+have different origins). Finally, we store a Range Maximum Query (RMQ) structure on
+the array Scov [Fischer and Heun 2011].
+LEMMA 3.3. The total number of entries
+∑
+v |Iv| in all I-structures is at most 2n.
+PROOF. The total number of entries in I-structures is the same as the total number
+of pointers. This in turn is the total number of entries in N-structures. By Lemma 3.2,
+the total number of such entries inside all internal nodes is at most
+∑D
+r=1(|dr|−1) ≤ n.
+On the other hand, the number of such entries inside all leaves is exactly n, so that
+the total number is at most 2n. uunionsq
+3.3. Answering Queries
+To answer a query, we match the pattern P in GST in O(p) time and reach at locus
+node vP . By the property of GST, all the leaves in the subtree of vP correspond to the
+occurrences of P . Now, by Lemma 3.1, for each document dr that appears in the subtree
+of vP , there will be a unique pointer, originating from some node in the subtree of vP ,
+that targets to some ancestor node of vP . Note that the score value s associated with
+that pointer is exactly the same as TF(P, dr). Thus, the top k documents can be reported
+by first identifying such pointers, selecting those k highest-scoring ones among them,
+and then reporting the corresponding document ids.
+By the definition of the I-structure, we know that each of these pointers must target
+to one of the ancestors of vP . For the locus vP we have just reached, let v′P be the
+rightmost leaf in the subtree of vP (i.e., v′P is the highest preorder rank of any node in
+the subtree of vP ). Note that all the nodes in subtree of vP have contiguous preorder
+ranks. Thus, nodes in the subtree of vP can be represented by the range [vP , v′P ].
+Now, for each ancestor u of vP , the entries in the I-structure Iu are sorted according
+to the preorder ranks of the origins. The contiguous range in the origin array Oriu,
+with values from [vP , v′P ], will correspond to pointers originating from the nodes in
+the subtree of vP (that point to u). Suppose such a range can be found in the array Iu
+for each ancestor u. That is, we can find Lu and Ru such that Oriu[Lu] and Oriu[Ru],
+respectively, are the first and last entries in Oriu that are at least vP and at most v′P .
+Then we can examine the score array Scou[Lu..Ru] for each Iu and apply Lemma 2.5 to
+return those k documents with the highest score (See Figure 2.).
+The range [Lu, Ru] for each Iu can be found in O(log log n) time if we have maintained
+a predecessor search structure [Willard 1983] over the array Oriu for each u. The num-
+ber of ancestors of vP is at most depth(vP ), where depth(vP ) denotes the number of
+nodes in GST from root to vP . Since depth(vP ) ≤ p, this range translation takes at most
+O(p log log n) time overall. The subsequent step by using Lemma 2.5 then takesO(p+k)
+time. So in total, the top k frequent documents can be returned inO(p log log n+k) time.
+The outputs can be obtained by score by spending another O(k log k) time.
+3.4. Improvement: Reducing O(p log logn) to O(p)
+To achieve optimal query time, the main bottleneck comes from querying the prede-
+cessor structure for range translation, which costs us O(p log log n) time. We shall see
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:15
+y  
+w  
+x  
+ǁ͛  
+z  
+e  Ğ͛  
+I-­‐structure  Iy  ͘͘Ğ͛Ğ͘͘  
+Entry  e  is  the  first  one  in  the  
+subtree  of  w  whose  target  is  y,  
+but  not  the  first  one  in  the  
+subtree  ŽĨǁ͛сƉĂƌĞŶƚ;ǁͿ  
+  
+Î    Gf  of  entry  e  =  depth(w)  
+Fig. 3. δf field
+is z, and the corresponding N-structure entry is e′. Then, δf of e is 1 + depth(lca(z, x)) if
+z 6= x; else, it is∞.
+PROOF. If z = x, the entry e cannot be the first one originating from the subtree of
+any ancestor of x with target y (since e′ will always appear before e), so that δf is∞.
+If z 6= x, let w′ denote the lca node lca(z, x). Since Iy entries are sorted by the preorder
+ranks of the origins, z < x in the preorder rank. Let w be the child of w′ whose subtree
+contains x. Then, δf ≤ depth(w) since e is the first entry in the subtree of w with
+target y. However, δf > depth(w′) since e cannot be the first one originating from the
+subtree of w′ with target y (since e′ will always appear before e). Because w′ is the
+parent of w, depth(w′) = 1 + depth(w), so that δf must be equal to 1 + depth(w′) =
+1 + depth(lca(z, x)) as claimed (See Figure 3). uunionsq
+Remark. In the above lemma, we differentiate the case of z = x from the other
+cases, where we set δf = ∞. Indeed, we may as well adopt a unified approach by
+setting δf = 1 + δ(lca(z, x)) for all cases. Note that there is no information loss, since
+δf > depth(x) if and only if the original δf is ∞; also, no change is needed with the
+query answering algorithm. Nevertheless, we shall stick to the original definition of δf
+as it is more intuitive.
+Let us now get back to the original problem of finding the left and right boundaries
+in Iu of each ancestor u of vP . Based on the definitions of δf and δl, we have the following
+lemma:
+LEMMA 3.6. Consider all the pointers originating from the subtree of v (i.e., the
+pointers that are in the N-structure of some descendant of v). If one such pointer satisfies
+δf ≤ depth(v) (resp. δl ≤ depth(v)), then there exists an ancestor u of v such that this
+pointer is the first (resp. last) among all the pointers in the I-structure Iu that originate
+in the subtree of v.
+Conversely, for any ancestor u of v, if a pointer t is the first (resp. last) pointer among
+all the pointers in Iu that originate in the subtree of v, then t satisfies δf ≤ depth(v)
+(resp. δl ≤ depth(v)).
+PROOF. For the first part of the lemma, consider a pointer t originating in the sub-
+tree of v that satisfies δf ≤ depth(v). Suppose that t points to I-structure Iu for some
+ancestor u of v. Now assume to the contrary that t is not the first pointer originating
+in subtree of v that reaches Iu. Then, there exists another pointer q originating in the
+subtree of v also reaching Iu, and the preorder rank of the origin of q is just less than
+that of t. In this case, δf of t must be strictly more that the depth of the lca of these
+two originating nodes (Lemma 3.5). Since both nodes are in the subtree of v, the lca is
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:17
+subtree sizes along the traversal. In total, the first three tuples of all entries in all
+N-structures (i.e., document id r, frequency score s, and pointer t) can be initialized in
+O(n) time.
+Next, we traverse the GST in preorder, and corresponding to each pointer in the N-
+structure encountered, we add an entry to the I-structure of the respective node. Once
+the entries in each I-structure are ready, we visit each I-structure and construct an
+RMQ data structure over it. This overall takes O(n) time.
+Now, it remains to show how to calculate the δf (similarly δl) values. For this, we
+traverse each of the I-structures Iw sequentially and get the list of origin nodes (they
+appear in preorder). Now, we take successive lca queries between consecutive origin
+nodes. The δf value for a particular node v is exactly equal to 1 plus the depth of
+the lca of v and its previous node in Iw, which can be computed in O(1) time (see
+Lemma 3.5).6 After computing all the δf values in all entries, we traverse all the N-
+structures in preorder and construct an RMQ structure over δf values. All of this can
+be accomplished in O(n) time.
+In the case of term proximity as the score function, we need more time to evaluate
+the score function; this is the only change. Precisely, the scores are first calculated over
+the suffix tree of each document dr. For this, we do a recursive computation. Say at a
+node v, we have two children v1 and v2. Also assume that the following is available at
+v1 (and v2): (1) mindist(v1);7 (2) a list L1 of text positions appearing in the subtree of v1
+in sorted format (stored as a binary search tree). Then, we first merge the list L1 at v1
+and the list L2 at v2 to obtain the list L at v, and also during this merge operation we
+find out the closest pair of positions with one coming from the list at v1 and the other
+from v2. Now we compare the distance of this pair with mindist(v1) and mindist(v2) and
+obtain mindist(v) for v. This merging step can be done in O (|L1| log(|L2|/|L1|)) time (as-
+suming that |L1| ≤ |L2|) using the merging algorithm of Brown and Tarjan’s [1979].
+This follows from finger-searching for list L1’s elements in the binary search tree for
+list L2. The total time is O(|dr| log |dr|) time, which can be shown by induction as fol-
+lows. Without loss of generality, assume that the root of the suffix tree for dr has two
+children v1 and v2 (if there are more children then we can merge them two at a time).
+Let n1 be number of leaves in the subtree of v1 and n2 similarly for v2 with n1 ≤ n2.
+Thus, n1 + n2 = |dr|. By induction, we can assume that computing mindist over all
+nodes in subtree of v1 (resp. v2) takes O(n1 log n1) time (resp. O(n2 log n2) time). Then,
+computing mindist over the whole suffix tree of dr involves merging these two lists and
+obtaining the mindist value at the root, taking a total of (ignoring constant factors)
+n1 log n1 + n2 log n2 + n1 log(n2/n1) ≤ |dr| log n2 ≤ |dr| log |dr| time; this completes the
+argument for the induction. (See a similar analysis in Shah and Farach-Colton [2002].)
+As the time to calculate mindist scores over the suffix tree of a document dr is
+O(|dr| log |dr|), this implies an O(n log n)-time algorithm for calculating mindist scores
+of all the N-structure entries in the GST. In general, the construction algorithm takes
+linear time plus a linear number of score function calculations.
+4. COMPACT SPACE STRUCTURES
+We first give a brief overview of the techniques we used for obtaining our space ef-
+ficient (i.e., compact and succinct) indexes. The component GST can be replaced by
+its compressed version. However, the challenge is to efficiently encode the augmented
+information within small space; in particular δf and δl fields in N-structures 8 and
+6If the lca is the node itself, then we set δf to be∞.
+7mindist(v1) denotes the minimum distance between the positions appearing in the subtree of v1. If we stick
+to the earlier definition, this is exactly TP(path(v1), dr).
+8Notice that the other three fields within N structures are used only for construction.
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:19
+entries, which is at most 2n (Lemma 3.3). Therefore, the overall space can be bounded
+by O(n) words.
+4.1.1. Answering Queries. Recall the notation from previous sections, where vP repre-
+sents the locus node of P and v′P represents the rightmost leaf in the subtree of vP . Let
+u1, u2, . . . , udepth(vP ) denote the (proper) ancestors, and u
+∗
+1, u
+∗
+2, . . . , u
+∗
+ddepth(vP )/pie denote
+the marked (proper) ancestors of vP , respectively, in the order in which they appear on
+the path from vP to root.9 Note that both udepth(vP ) and u∗ddepth(vP )/pie denote the root
+node.
+Let λ be an integer such that uλ is the child of u∗1 on the path from u∗1 to vP (if the
+parent of vP is marked, then we say λ = 0). Therefore, uλ+1 and u∗1 denote the same
+node. Now, we show that instead of looking for answers from all those depth(vP ) I-
+structures Iu1 , Iu2 , . . . , Iroot, it is sufficient to search for answers within a fewer number
+of carefully chosen Ir-structures and Ic-structures, as shown in Figure 4.
+LEMMA 4.2. Let [Li, Ri], [Lri, Rri] and [Lci , Rci ] be the maximal contiguous ranges in
+Iui , I
+r
+ui and I
+c
+u∗i
+, respectively, such that all those entries in Iui [Li, Ri], Irui [L
+r
+i, R
+r
+i], and
+Icu∗i [L
+c
+i , R
+c
+i ] for i ≥ 1 originate from the subtree of vP . Then,
+(1) entries in
+λ+1⋃
+i=1
+Irui [L
+r
+i, R
+r
+i] are the same as the near entries in
+depth(vP )⋃
+i=1
+Iui [Li, Ri].
+(2) entries in Icu∗1 [L
+c
+1, R
+c
+1] with Dep
+c
+u∗1
+[·] < depth(vP ) − depth(u∗1) correspond to the far
+entries in
+λ⋃
+i=1
+Iui [Li, Ri].
+(3) entries in
+ddepth(vP )/pie⋃
+i=2
+Icu∗i [L
+c
+i , R
+c
+i ] correspond to the far entries in
+depth(vP )⋃
+i=λ+1
+Iui [Li, Ri].
+PROOF. Any entry in Iui originating in the subtree of vP is a far entry if i > λ + 1,
+because uλ+1 is the first marked node from vP to the root. Thus, all the near entries in
+all the I-structures Iui that originate in the subtree of v must be exactly those entries
+in Iru1 , I
+r
+u2 , . . . , I
+r
+λ+1. This gives the result in (1).
+For each far entry e in
+⋃λ
+i=1 Iui [Li, Ri], there will be a corresponding entry e
+′ in
+Icu∗1 [L
+c
+1, R
+c
+1]. However, the converse is not true; Icu∗1 [L
+c
+1, R
+c
+1] may contain some entry b′
+whose corresponding far entry is not within
+⋃λ
+i=1 Iui [Li, Ri]. This happens if and only
+if the target node of b is not an ancestor of vP (See Figure 4 for an example). We can
+remove such entries with the constraint Depcu∗1 [·] < depth(vP )− depth(u∗1); this gives theresult in (2).
+Finally, for entries in
+⋃ddepth(vP )/pie
+i=2 I
+c
+u∗i
+[Lci , R
+c
+i ], each of their target nodes must be an
+ancestor of vP ; thus, they are exactly the far entries in
+⋃depth(vP )
+i=λ+1 Iui [Li, Ri]. This gives
+the result in (3). uunionsq
+Based on the above lemma, after the initial pattern search in O(p) time, we can
+compute k candidate entries from each category, and then compute the actual top k
+answers by comparing the scores of these 3k entries. In category (i), we have λ + 1 ≤
+pi = log log n boundaries to be searched, which takes O(pi log log n) time, and then we re-
+trieve the k candidate answers in unsorted order in O(pi+k) time using RMQ structure
+(Lemma 2.5) over the Scor{·}-arrays. In category (iii) we search for at most ddepth(vP )/pie
+boundaries, which takes O((p/pi + 1) log log n)) time, and then we retrieve the k candi-
+date answers, unsorted, in O(p/pi + k) time with the RMQ structure (Lemma 2.5) over
+9Assume that P is not an empty string.
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:21
+rences of r in E[i..j], where `i and `j are the leftmost leaf and the rightmost leaf of v,
+respectively. Thus, given the values v and r, we can find i and j in constant time based
+on the tree encoding of GST, and then compute freq(v, r) in O(log logD) time based on
+two rank queries on E. Therefore, we can safely discard the score field completely for
+all Ic- and Ir-structures, but instead keep the RMQ structures over them; this requires
+only 2 + o(1) bits per entry [Fischer and Heun 2011].
+4.2.3. Origin Encoding. Encoding the origin arrays (Orir{·} and Ori
+c
+{·}) is the trickiest part
+and is based on the following lemma.
+LEMMA 4.3. For any given document dr and any child node wq of w (where wq
+denotes the qth leftmost child of w) , there cannot be more than one entry in Iw with
+document id r and origin from the subtree of wq.
+PROOF. This can be proved via contradiction. Assume that there are two or more
+such entries. Then the lca of their origins must be a node in the subtree of wq, and
+hence these entries will be associated with an I-structure of some node in the subtree
+of wq instead of w. uunionsq
+From the definition of N-structures, if there exists an entry in Iw with document
+id r and origin a node in the subtree of wq for some q ∈ [1, degree(w)], then this origin
+node is the lca of the leftmost leaf and the rightmost leaf with document id r in the
+subtree of wq. To compute this origin node, we can use the document array E and the
+tree encoding of GST as follows: First find the leftmost leaf `a and the rightmost leaf `b
+in the subtree of wq in O(1) time (using lmost leaf (wq)/rmost leaf (wq) operations on
+the tree encoding of GST, refer to Section 2.5), then find the first and last occurrences
+of r, say E[a′] and E[b′], among the entries in E[a..b] in O(log logD) time, and finally
+compute the lca of `a′ and `b′ . In light of these findings, we show how to efficiently
+encode Orir{·}-arrays and Ori
+c
+{·}-arrays.
+Encoding Orir{·}-arrays. Instead of maintaining Ori
+r
+w-array, we maintain another ar-
+ray Ori childrw, such that Ori child
+r
+w[j] = q if node Ori
+r
+w[j] is from the subtree of wq.
+As the elements in Orir{·} are monotonically increasing, the elements in Ori child
+r
+{·}
+are also monotonically increasing. In addition, the value of each entry is between
+1 and degree(w). Therefore, we shall encode Ori childrw in (|Irw|+ degree(w))(1 + o(1))
+bits (refer to Section 2.8), so that we can decode Ori childrw[j] for any given j in con-
+stant time. Then, from Ori childrw[j], we can decode Ori
+r
+w[j] in O(log logD) time as
+described earlier. The total space for encoding all Orir{·}-arrays can be bounded by
+O(
+∑
+w∈GST(|Irw|+ degree(w))) = O(n) bits.
+Encoding Oric{·}-arrays. First we introduce the following notions. Let w∗ be a marked
+node in GST, then another node w∗q is called its qth marked child, if w∗q is the qth small-
+est (in terms of preorder rank) marked node with w∗ as its lowest marked ancestor.
+Given the preorder rank of w∗, the preorder rank of w∗q can be computed in constant
+time by maintaining an additional O(n)-bit structure as follows: Let GST∗ be the tree
+induced by the marked nodes in GST, so that w∗ is the lowest marked ancestor of w∗q
+in GST if and only if the node corresponding to w∗ in GST∗ (say, w) is the parent of the
+node corresponding to w∗q (say wq) in GST
+∗. Moreover, w∗q is said to be the qth marked
+child of w∗ in GST, if wq is the qth child of w in GST∗. Given the preorder rank of any
+marked node in GST, its preorder rank in GST∗ (and vice versa) can be computed in
+constant time by maintaining an additional bit vector of size 2n+ o(n) that maintains
+the information if a node is marked or not. We remark that this works only because
+the encoding is in preorder.
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:23
+The space can be further reduced by n logD bits from the following observation: The
+term frequency is 1 for any entry whose origin is a leaf in GST, and there are n such
+entries (in Ic and Ir structures combined). We shall delete all such entries, only that
+a problem will arise when we query a pattern P for the top k answers, and k′ < k
+documents are reported. In this case, since only documents with term frequency of at
+least 2 are reported, we need check if there are documents with term frequency 1 to
+make up the top k answers.
+To get documents with term frequency 1, we shall apply Muthukrishnan’s chain
+array idea [Muthukrishnan 2002]. The chain array C[1..n] is defined with C[i] = j,
+where j < i is the largest number with E[i] = E[j]. As the chain array can be simu-
+lated using E as j = selectE(E[i], rankE(E[i], i) − 1) in O(log logD) time, it will not be
+maintained explicitly. In addition, we will maintain an RMQ structure over C, taking
+2n + o(n) = o(n logD) bits. Let [sp, ep] be the suffix range of P in the CSA. Then, we
+can obtain all those documents dE[i] such that sp ≤ i ≤ ep and C[i] < sp using repeated
+RMQs; these documents are exactly those that contain P and are distinct [Muthukr-
+ishnan 2002]. To address our current problem, once we have obtained a document dE[i]
+from the above procedure, we check if its term frequency is 1 in O(log logD) time. Note
+that we only need to obtain and check up to k documents for our purpose, in which case,
+there will be k − k′ documents with term frequency 1 to make up the top k answers.10
+The overall time complexity is increased by O(k log logD), and is thus unchanged.
+THEOREM 4.5. A given collection D of D documents with n characters in total taken
+from an alphabet set Σ = [σ] can be indexed in |CSA|+ 2n logD+ o(n logD+n log σ) bits
+of space, such that whenever a pattern P (of p characters) and an integer k come as a
+query, the index returns those k documents with the highest TF(P, ·) values in decreasing
+order of TF(P, ·) in O(ts(p) + p+ log4 log n+ k log log n+ k log k) time, where TF(P, dr) of
+a document dr counts the number of times P occurs in dr.
+The index space can be further improved as summarized in the following theorem.
+THEOREM 4.6. A given collection D of D documents with n characters in total taken
+from an alphabet set Σ = [σ] can be indexed in |CSA|+ n logD+ o(n logD+ n log σ) bits
+of space, such that whenever a pattern P (of p characters) and an integer k come as a
+query, the index returns those k documents with the highest TF(P, ·) values in decreas-
+ing order of TF(P, ·) inO(ts(p) + p+ log6 log n+ k((log σ log log n)1+ + log2 log n+ log k))
+time, where TF(P, dr) of a document dr counts the number of times P occurs in dr, and
+ > 0 is any constant.
+PROOF. If logD ≤ (log σ log log n)1+, we shall use an alternative index as de-
+scribed in Lemma 5.5 in Section 5.1 (with constants adjusted properly) to
+achieve the result. Otherwise, logD > (log σ log log n)1+. Then, instead of us-
+ing n logD(1 + o(1)) bits to represent E, we choose the representation described
+in Corollary 2.3, whose space is O(n log σ log log n) = o(n logD) bits. The re-
+sulting query time is O(ts(p) + (p/pi + pi) log log n× log2 log n+ k log2 log n+ k log k), as
+the time for rankE operation is now O(log2 log n). By choosing pi = log3 log n,
+we achieve an index of total size |CSA| + n logD(1 + o(1)) bits with query time
+O(ts(p) + p+ log
+6 log n+ k((log σ log log n)1+ + log2 log n+ log k)). The theorem thus
+follows. uunionsq
+10In the boundary case where P occurs in fewer than k documents, we shall report all the documents ob-
+tained from querying the chain array.
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:25
+Let top(x, k) represent the list (or set) of top-k documents corresponding to a pattern
+with node x as the locus. Maintaining top(x, k) explicitly for all possible x values and
+k values is not possible in compressed space. Instead, we maintain top(x, k) only for
+marked nodes x (with respect to various carefully chosen g values) and for values
+of k that are powers of 2, such that top(x, k) for the general x and k can be efficiently
+computed on the fly. We next prove the following lemma.
+LEMMA 5.2. By maintaining an index called GSTg of size O((n/g) log g) +
+O(n/ log2 n) bits, the following query can be answered in O(1) time: Given a suffix range
+[sp, ep] of a pattern P as an input, find the node v∗P and the range [sp∗, ep∗], where (i)
+v∗P denotes the highest-marked descendent of the locus node vP of P , and (ii) `sp∗ and
+`ep∗ denote, respectively, the leftmost leaf and the rightmost leaf in the subtree of v∗P .
+PROOF. The index GSTg, requiring O((n/g) log g) +O(n/ log2 n) bits of space, con-
+sists of the following components:
+(1) A compact trie obtained by retaining only those nodes in GST that are marked.
+Then, corresponding to every marked node in GST, there will be a unique node in
+this trie and vice versa. As the number of marked nodes is O(n/g), the topology of
+this trie can be maintained in O(n/g) bits of space (refer to Section 2.5).
+(2) A bit-vector Bno[1..2n], where Bno[i] = 1 if the ith node in GST is marked, else 0. This
+can be maintained in |Sg| log(n/|Sg|) + O(|Sg|) + O(n/ logO(1) n) = O((n/g) log g) +
+O(n/ log2 n) bits of space [Patrascu 2008],11 so that the operations selectBno(j) (the
+position of the jth 1 in Bno) and rankBno(i) (the number of 1s in Bno[1..i]) can be
+supported in O(1) time.
+(3) A bit-vector Ble[1..n], where Ble[i] = 1 if the ith leftmost leaf in GST is marked,
+else 0. As in the case of Bno, Ble will be maintained in O((n/g) log g) + O(n/ log2 n)
+bits, so that it can support selectBle(·) and rankBle(·) operations in O(1) time.
+Given an input suffix range [sp, ep], the sp∗th leaf is the first marked leaf towards
+the right side of `sp (inclusive), and the `∗epth leaf is the last marked leaf towards the
+left side of `ep (inclusive), in GST. These two leaves will correspond to the sp′th and the
+ep′th leaves in the compact trie, where
+sp′ = 1 + rankBle(sp− 1) and ep′ = rankBle(ep);
+the desired values of sp∗ and ep∗ can thus be computed, in O(1) time, by sp∗ =
+selectBle(sp
+′) and ep∗ = selectBle(ep′).
+We now show how to find v∗P , which is the lca of `sp∗ and `ep∗ in GST. As GST is not
+stored explicitly, we shall find v∗P in an indirect way. First, we identify the leaf nodes
+corresponding to `sp∗ and `ep∗ in the compact trie, which is its sp′th and ep′th leaves.
+Next, we find their lca (say, with preorder rank x) in the compact trie; such a node will
+correspond to v∗P in GST. It follows that v∗P is the xth marked node in GST, so that we
+can finally find (the preorder rank of) v∗P in GST by selectBno(x). The procedure again
+takes O(1) time in total, as it involves only a constant number of rank/select operations
+and an lca operation. uunionsq
+11In the word-RAM model, we can represent a bit vector of length n with m 1s in log2
+(n
+m
+)
++O(n/ logt n) +
+O(n3/4 logO(1) n) bits of space, so that each rank/select query can be supported in O(t) time, where t is
+any positive integer constant (refer to Theorem 2 in [Patrascu 2008]). Moreover, log
+(n
+m
+) ≤ m log(ne/m) ≈
+m log(n/m) + 1.44m [Pagh 2001].
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:27
+is the highest marked descendent of vP (if it exists), and [sp∗, ep∗] is the suffix range
+corresponding to v∗P in GST (refer to Lemma 5.2). Then,
+top(v∗P , k) ∪
+{
+dE[j] | j ∈ [sp, sp∗ − 1] ∪ [ep∗ + 1, ep]
+}
+will be a candidate set.12 The number of documents in top(v∗P , k) is at most k,
+and the number of remaining documents in the candidate set is at most 2g (refer
+to Lemma 5.1). To construct the candidate set, we first retrieve all documents in
+top(v∗P , k) in O(k) time, as these documents are precomputed and explicitly stored
+at v∗P ; then, since each E[·] value can be decoded in O(tsa) time (refer to Lemma 2.2),
+we retrieve all the remaining documents in O(g × tsa) time. In summary, we ob-
+tain a candidate set of O(g + k) documents in O(g × tsa + k) time. Combining
+with Lemma 5.4, the top-k documents can be answered in another O((g + k) ×
+tsa log log n) time. By substituting g = k log2+ n the resulting query time will be
+O(ts(p) + k × tsa log2+ n log log n) = O(ts(p) + k × tsa log2+ n) (the log log n term is ab-
+sorbed in the log n term).
+5.1.2. Index for Top-k Queries for General k. To support top-k queries for general k, we
+maintain CSA, E, and (at most) logD auxiliary structures of Section 5.1.1 for any
+fixed k that is a power of 2 (i.e., k = 1, 2, 4, 8, . . . , D). Since an auxiliary structure for
+a specific k requires o(n/ log n) bits, the overall increase in total space is bounded by
+o(n) bits. Now, a top-k query for a general k can be answered by choosing z = 2dlog2 ke
+and retrieving the top-z documents by querying on the auxiliary structure specific
+to z. Then, we select the k highest-scoring documents (using [Blum et al. 1973]) and
+report them in decreasing order of score. Since k = Θ(z), the resulting query time will
+be O(ts(p) + k × tsa log2+ n). This completes the proof of Theorem 5.3.
+As a corollary, we can obtain a simple compact index by rederiving Theorem 5.3 with
+g = z log1+D, and maintaining E explicitly as in Lemma 2.1. The resulting query time
+will be O(ts(p) + k log1+D log logD + k log k) = O(ts(p) + k log1+D) (the log logD term
+is absorbed in the logD term).
+LEMMA 5.5. There exists an index of size |CSA|+ n logD(1 + o(1)) bits for the top-k
+frequent document retrieval problem with O(ts(p) + k log1+D) query time, where  > is
+any constant.
+5.2. Faster Compressed Index
+This section describes how to improve the index to speed up the query. The idea is
+to choose a smaller grouping factor, thereby reducing the size of the candidate set.
+However, this will result in more marked nodes, so that explicit storage of precomputed
+answers (with logD bits per entry) at these marked nodes will lead to a non-succinct
+solution. Our key contribution is to show how these precomputed lists can be encoded
+in O(log log n) bits per entry. Our main result is summarized as follows.
+THEOREM 5.6. A given collection D of D documents with n characters in total taken
+from an alphabet set Σ = [σ] can be indexed in 2|CSA∗| + D log nD + O(D) + o(n) bits of
+space, such that whenever a pattern P (of p characters) and an integer k come as a query,
+the index returns those k documents with the highest TF(P, ·) values in decreasing order
+of TF(P, ·) in O(ts(p) + k× tsa log k log n) time; here, |CSA∗| denotes the maximum space
+(in bits) to store either a compressed suffix array (CSA) of the concatenated text with
+12In the boundary case where v∗P does not exist, the candidate set is simply {dE[j] | j ∈ [sp, ep]}, whose size
+is at most 2g (refer to Lemma 5.1).
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:29
+Once Shcand is given, it takes only an extra O((h + k) × tsa log log n) = O(k ×
+tsa log k log
+ n) time for answering a top-k query (using Lemma 5.4). Note that the doc-
+uments dE[j] for j ∈ [sp, sp′−1]∪[ep′+1, ep] can be computed on the fly in O(h×tsa) time,
+which will not affect the overall time complexity. It remains to show how to obtain the
+list top(v′P , k) efficiently. By the following lemma, the total query time can be bounded
+by O(ts(p) + k × tsa log k log n).
+LEMMA 5.7. We can encode top(·, k) corresponding to every prime node in a total of
+O(n/(log k log n)) + o(n/ log n) bits of space, such that top(w′, k) of any prime node w′
+can be decoded in O(k × tsa log log n) time.
+PROOF. We shall give an encoding of top(w′, k) for each prime node w′ that allows us
+to obtain a candidate set corresponding to w′ as the locus. Then, by using Lemma 5.4,
+we can compute the desired top(w′, k) based on the candidate set.
+Let w∗ be the highest marked descendent of w′ (if it exists). Let [L′, R′] and [L∗, R∗],
+respectively, denote the range of leaves in the subtree of w′ and w∗. A candidate set
+corresponding to w′ as the locus (i.e., a superset of top(w′, k)) is given by
+top(w∗, k) ∪ {dE[j] | j ∈ [L′, L∗ − 1] ∪ [R∗ + 1, R′]} .
+The set top(w∗, k) can be obtained inO(k) time by maintaining top(·, k) for each marked
+node explicitly, which requires a total of O((n/g)k logD) = o(n/ log n) bits. For the
+set {dE[j] | j ∈ [L′, L∗ − 1] ∪ [R∗ + 1, R′] } of the remaining documents, we select only
+the subset of its top k documents; then we see that this subset, when combined with
+top(w∗, k), still forms a candidate set corresponding to w′ as the locus. In other words,
+even though we have O(g) documents in this category, only at most k of them can be
+among top(w′, k). Now, suppose that these k documents can be encoded in O(k log log n)
+bits, while supporting decoding in O(k × tsa) time. Thus, the total space for all the en-
+codings in all the prime nodes is O(n/(log k log n)) bits, and we can obtain the desired
+candidate set in a total of O(k × tsa) time. Consequently, top(w′, k) can be computed in
+O(k × tsa log log n) time using Lemma 5.4.
+It remains to show how to encode the selected top k documents with the claimed
+performance. For each such document dj , it can be associated with an integer i ∈
+[L′, L∗ − 1] ∪ [R∗ + 1, R′] such that E[i] = j. If we replace each such i by its relative
+position in [L′, L∗ − 1] ∪ [R∗ + 1, R′], this problem can be rephrased as the encoding of
+k distinct integers drawn from [1, 2g]. An encoding with O(k log log n) bits of space and
+O(k) decoding time can be achieved, by maintaining a bit vector Bw′,k with constant-
+time select operations supported [Raman et al. 2007]; here, Bw′,k[1..2g] is defined such
+that Bw′,k[i] = 1 if and only if i is an integer to be stored. Therefore Bw′,k can be
+maintained in k log(2g/k) + O(k) = O(k log log n) bits of space, and the stored integers
+can be decoded by selectBw′,k(j) queries for j = 1, 2, 3, . . . , k. Finally, given these integers
+(relative positions), the corresponding document can be retrieved in O(tsa) time. This
+completes the proof. uunionsq
+Putting everything altogether, we have the following lemma.
+LEMMA 5.8. The auxiliary structure for a specific k takes O(n/(log k log n)) +
+o(n/ log n) + o(n/k) bits of space. Given the suffix range [sp, ep] of a pattern P , a top-
+k frequent document retrieval query can be answered in O(k × tsa log k log n) time.
+5.2.2. Index for Top-k Queries for General k. To support top-k queries for general k,
+we maintain CSA, E, and (at most) logD auxiliary structures of Section 5.2.1 for
+k = 1, 2, 4, 8, . . . , D, analogous to how we handle the general k case as in Section 5.1.2.
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:31
+auxiliary structure is thus bounded by O(n/g) + O((n/g) × (n/g) × z logD) = O(n)
+bits, so that the total space for all the O(logD) auxiliary structures is bounded by
+O(n logD) = O(n log n) bits, which is O(n) words.
+Query Answering. The algorithm to answer a query is analogous to that of our suc-
+cinct index in Section 5. First, we find the locus nodes uP1 and uP2 of P1 and P2, re-
+spectively, in O(p1 + p2) time using GST. Next, we set z = 2dlog ke (the minimum power
+of 2 greater than or equal to the input integer k). Then, using the auxiliary structure
+specific to this z (with grouping factor g =
+√
+nz logD), we find the highest marked de-
+scendent of nodes, u∗P1 and u
+∗
+P2
+, of the locus nodes uP1 and uP2 , respectively. Afterwards,
+the set
+top(u∗P1 , u
+∗
+P2 , z) ∪ {dE[i] | `i ∈ Leaf (uP1\u∗P1) ∪ Leaf (uP2\u∗P2) }
+will be a candidate set Scand that contains the desired top k answers.
+Hence, by computing score(P1, P2, dr) of each document dr ∈ Scand, and by choosing
+those k highest-scoring documents, we obtain the final output. Given the suffix ranges
+of P1 and P2, the score of any particular document can be computed in O(log log n) time
+using E (refer to Lemma 2.2 and Lemma 2.4, as TF(P, dr) can be evaluated by rankE,
+given the suffix range of P , and tsa = O(1) when SA is stored explicitly). As |Scand| =
+O(g + z), the overall query time can be bounded by O(p1 + p2 +
+√
+nk logD log log n).
+THEOREM 6.1. A given collection D of D documents with n characters in total taken
+from an alphabet set Σ = [σ] can be indexed in O(n) words of space, such that whenever
+two patterns P1 and P2 (of p1 and p2 characters, respectively) and an integer k come
+as a query, the index returns those k documents with the highest score(P1, P2, ·) val-
+ues in decreasing order of score(P1, P2, ·) in O(p1 + p2 +
+√
+nk logD log log n) time; here,
+score(P1, P2, dr) = TF(P1, dr) + TF(P2, dr) if both TF(P1, dr) and TF(P2, dr) are greater
+than 0, and is zero otherwise.
+The space of the index described in the above theorem can be easily made succinct by
+the following modifications: (i) replace GST by its compressed version (space required
+is |CSA|+O(n) bits), (ii) replace E by its compressed version as described in Lemma 2.2,
+and (iii) build the auxiliary structure by choosing a higher grouping factor of g =√
+nz logD. The overall space occupancy can thus be bounded by 2|CSA∗| + O(n) bits,
+however the query time will be increased to O(ts(p1)+ ts(p2)+
+√
+nk logD× tsa log log n).
+We summarize the result in the following theorem.
+THEOREM 6.2. A given collection D of D documents with n characters in total taken
+from an alphabet set Σ = [σ] can be indexed in 2|CSA∗| + O(n) bits of space, such that
+whenever two patterns P1 and P2 (of p1 and p2 characters, respectively) and an integer
+k come as a query, the index returns those k documents with the highest score(P1, P2, ·)
+values in decreasing order of score(P1, P2, ·) in O(ts(p1)+ts(p2)+
+√
+nk logD×tsa log log n)
+time; here, score(P1, P2, dr) = TF(P1, dr) + TF(P2, dr) if both TF(P1, dr) and TF(P2, dr) are
+greater than 0, and is zero otherwise, |CSA∗| denotes the maximum space (in bits) to
+store either a compressed suffix array (CSA) of the concatenated text with all the given
+documents in D, or all the CSAs of individual documents, tsa is the time decoding a
+suffix array value, ts(p) is the time for computing the suffix range of P using CSA
+The above indexes can readily be adapted to handle the case with other score func-
+tions, with tradeoffs between the space for storing a data structure that can compute
+score(·, ·, ·) on the fly, and the per-document reporting time. In particular, the space
+remains O(n) words for linearly-calculable score functions, where score(·, ·, dr) can be
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:33
+THEOREM 6.5. A given collection D of D documents with n characters in total taken
+from an alphabet set Σ = [σ] can be indexed in O(n) words, such that whenever two
+patterns P1 and P2 (of p1 and p2 characters, respectively) and an integer k come as a
+query, then among all those documents containing both P1 and P2, the index returns k
+documents with the lowest TPtwo(P1, P2, ·) values in increasing order of TPtwo(P1, P2, ·)
+in O(p1 + p2 +
+√
+nk logD log n) time, where TPtwo(P1, P2, dr) of a document dr is the
+distance between the closest occurrences of P1 and P2 in dr.
+PROOF. The index construction is exactly same as that of the result in Theorem 6.1
+except that we use a different score function here. Additionally we maintain an orthog-
+onal range successor/predecessor search structure over the suffix array SA. For this, we
+use the O(n)-word space structure by Navarro and Nekrich [2012a]. Therefore, given
+any suffix range [L,R] and a position pos as input, the smallest (resp., the largest) SA[i]
+value, where i ∈ [L,R], succeeding (resp., preceding) pos can be computed in O(log n)
+time, where  > 0 is any small constant. Using similar analysis as that of Theorem 6.1,
+the total space occupancy can be bounded by O(n) words.
+We use the same terminologies as that of the proof of Theorem 6.1. The only differ-
+ence in query algorithm, compared to that of Theorem 6.1 is the way we compute score
+of documents corresponding to {dE[i] | `i ∈ Leaf (uP1\u∗P1)∪Leaf (uP2\u∗P2) }. Let [sp∗1, ep∗1]
+and [sp∗2, ep∗2] represents the range of leaves in the subtree of u∗P1 and u
+∗
+P2
+respectively.
+Assume that a document dE[i] is a top-k candidate, and that its candidacy is due to an
+occurrence of P1 (resp., P2) at position SA[i], then the corresponding TPtwo(·, ·, ·) value
+can be computed in O(log n) time by retrieving the successor and predecessor of SA[i]
+with [ep∗2, ep∗2] (resp., [sp∗1, ep∗1]) as the input range, so that we can find the distance
+from the closest occurrence of P2 (resp., P1) from it. Therefore, using similar analysis
+the query time can be bounded by O(p1 + p2 +
+√
+nk logD log n). uunionsq
+6.1. Handling m > 2 Patterns
+All the above results can be extended to handle the case where the query consists of a
+set of m > 2 patterns P = {P1, P2, . . . , Pm}, with pi denoting the length of Pi. Precisely,
+for a specific 2-power z, we choose a grouping factor g = n1−1/m(z logD)1/m, identify
+the marked nodes in GST, and maintain top-z documents corresponding to each com-
+bination of (u∗1, u∗2, . . . , u∗m), where u∗i for any i denotes a marked node in GST. Over
+all logD choices of z, the total space can be bounded by O((n/g)mz logD) × logD =
+O(n log n) bits, or equivalently by O(n) words. Note that m is fixed at index con-
+struction time. Then, whenever a query comes, we can quickly find a candidate set
+Scand of O(n1−1/m(k logD)1/m) documents, compute the score of a document (if needed)
+in Scand in O(m log logD) time, and finally output the k highest-scoring ones among
+them. Putting everything together, we can obtain an O(n)-word index with query time
+O(
+∑m
+i=1 pi +mn
+1−1/m(k logD)1/m log logD).
+7. CONCLUSION
+In this paper, we presented space-efficient frameworks for desiging indexes for top-
+k string retrieval problems. Our frameworks are based on annotating suffix tree (or
+compressed suffix tree) with additional information. In particular, we maintain a suffix
+tree of the concatenated documents, superimpose the local suffix trees of the individual
+documents in terms of “pointers”, and solve geometric range problems on these point-
+ers. Our compact framework is based on encoding these pointers in smaller amount
+of bits, while the compressed framework further samples these pointers as they pass
+through some specially chosen nodes. These frameworks are fairly general and have
+also been shown to be practical [Patil et al. 2011; Culpepper et al. 2012; Navarro et al.
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:35
+CHIEN, Y. F., HON, W. K., SHAH, R., THANKACHAN, S. V., AND VITTER, J. S. 2013. Geometric BWT:
+Compressed Text Indexing via Sparse Suffixes and Range Searching. Algorithmica. To appear.
+CLARK, D. R. 1996. Compact Pat Trees. Ph.D. thesis, University of Waterloo.
+COHEN, H. AND PORAT, E. 2010. Fast Set Intersection and Two-Patterns Matching. Theoretical Computer
+Science 411, 40–42, 3795–3800.
+COLE, R., GOTTLIEB, L.-A., AND LEWENSTEIN, M. 2004. Dictionary Matching and Indexing with Errors
+and Don’t Cares. In Proceedings of Symposium on Theory of Computing. 91–100.
+CULPEPPER, J. S., NAVARRO, G., PUGLISI, S. J., AND TURPIN, A. 2010. Top-k Ranked Document Search in
+General Text Databases. In Proceedings of European Symposium on Algorithms. 194–205.
+CULPEPPER, J. S., PETRI, M., AND SCHOLER, F. 2012. Efficient in-memory top-k document retrieval. In
+Proceedings of SIGIR Conference on Research and Development in Information Retrieval. 225–234.
+FARACH, M. 1997. Optimal Suffix Tree Construction with Large Alphabets. In Proceedings of Symposium
+on Foundations of Computer Science. 137–143.
+FERRAGINA, P. AND MANZINI, G. 2005. Indexing Compressed Text. Journal of the ACM 52, 4, 552–581.
+FERRAGINA, P., MANZINI, G., MA¨KINEN, V., AND NAVARRO, G. 2007. Compressed Representations of Se-
+quences and Full-Text Indexes. ACM Transactions on Algorithms 3, 2.
+FISCHER, J., GAGIE, T., KOPELOWITZ, T., LEWENSTEIN, M., MA¨KINEN, V., SALMELA, L., AND VA¨LIMA¨KI,
+N. 2012. Forbidden Patterns. In Proceedings of Latin American Symposium on Theoretical Informatics.
+327–337.
+FISCHER, J. AND HEUN, V. 2007. A New Succinct Representation of RMQ-Information and Improvements
+in the Enhanced Suffix Array. In Proceedings of Symposium on Combinatorics, Algorithms, Probabilistic
+and Experimental Methodologies. 459–470.
+FISCHER, J. AND HEUN, V. 2011. Space-Efficient Preprocessing Schemes for Range Minimum Queries on
+Static Arrays. SIAM Journal on Computing 40, 2, 465–492.
+FREDERICKSON, G. N. 1993. An Optimal Algorithm for Selection in a Min-Heap. Information and Compu-
+tation 104, 2, 197–214.
+FREDMAN, M. L., KOMLO´S, J., AND SZEMERE´DI, E. 1984. Storing a Sparse Table with O(1) Worst Case
+Access Time. Journal of the ACM 31, 3, 538–544.
+FRIGO, M., LEISERSON, C. E., PROKOP, H., AND RAMACHANDRAN, S. 1999. Cache-Oblivious Algorithms.
+In Proceedings of Symposium on Foundations of Computer Science. 285–298.
+GAGIE, T., KARHU, K., NAVARRO, G., PUGLISI, S. J., AND SIRE´N, J. 2013. Document Listing on Repetitive
+Collections. In Proceedings of Symposium on Combinatorial Pattern Matching. 107–119.
+GAGIE, T., NAVARRO, G., AND PUGLISI, S. J. 2010. Colored Range Queries and Document Retrieval. In
+Proceedings of International Symposium on String Processing and Information Retrieval. 67–81.
+GAGIE, T., NAVARRO, G., AND PUGLISI, S. J. 2012. New Algorithms on Wavelet Trees and Applications to
+Information Retrieval. Theoretical Computer Science 426, 25–41.
+GAGIE, T., PUGLISI, S. J., AND TURPIN, A. 2009. Range Quantile Queries: Another Virtue of Wavelet Trees.
+In Proceedings of International Symposium on String Processing and Information Retrieval. 1–6.
+GOLYNSKI, A., MUNRO, J. I., AND RAO, S. S. 2006. Rank/Select Operations on Large Alphabets: A Tool for
+Text Indexing. In Proceedings of Symposium on Discrete Algorithms. 368–373.
+GROSSI, R., GUPTA, A., AND VITTER, J. S. 2003. High-Order Entropy-Compressed Text Indexes. In Pro-
+ceedings of Symposium on Discrete Algorithms. 841–850.
+GROSSI, R. AND VITTER, J. S. 2005. Compressed Suffix Arrays and Suffix Trees with Applications to Text
+Indexing and String Matching. SIAM Journal on Computing 35, 2, 378–407.
+HON, W.-K., PATIL, M., SHAH, R., THANKACHAN, S. V., AND VITTER, J. S. 2013. Indexes for document
+retrieval with relevance. In Space-Efficient Data Structures, Streams, and Algorithms. 351–362.
+HON, W. K., PATIL, M., SHAH, R., AND WU, S. B. 2010. Efficient Index for Retrieving Top-k Most Frequent
+Documents. Journal of Discrete Algorithms 8, 4, 402–417.
+HON, W. K., SHAH, R., AND THANKACHAN, S. V. 2012. Towards an Optimal Space-and-Query-Time Index
+for Top-k Document Retrieval. In Proceedings of Symposium on Combinatorial Pattern Matching. 173–
+184.
+HON, W. K., SHAH, R., THANKACHAN, S. V., AND VITTER, J. S. 2010. String Retrieval for Multi-pattern
+Queries. In Proceedings of International Symposium on String Processing and Information Retrieval.
+55–66.
+HON, W. K., SHAH, R., THANKACHAN, S. V., AND VITTER, J. S. 2012. On Position Restricted Substring
+Searching in Succinct Space. Journal of Discrete Algorithms 17, 109–114.
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+Space-Efficient Frameworks for Top-k String Retrieval A:37
+VA¨LIMA¨KI, N. AND MA¨KINEN, V. 2007. Space-Efficient Algorithms for Document Retrieval. In Proceedings
+of Symposium on Combinatorial Pattern Matching. 205–215.
+VITTER, J. S. 2008. Algorithms and Data Structures for External Memory. Foundations and Trends R© in
+Theoretical Computer Science 2, 4, 305–474.
+WEINER, P. 1973. Linear Pattern Matching Algorithms. In Proceedings of Symposium on Switching and
+Automata Theory. 1–11.
+WILLARD, D. E. 1983. Log-Logarithmic Worst-Case Range Queries are Possible in Space Θ(N). Information
+Processing Letters 17, 2, 81–84.
+WITTEN, I., MOFFAT, A., AND BELL, T. 1999. Managing Gigabytes: Compressing and Indexing Documents
+and Images. Morgan Kaufmann Publishers, Los Altos, CA, USA.
+Journal of the ACM, Vol. V, No. N, Article A, Publication date: January YYYY.
+四、心得 
+ 
+此行最重要的是能聆聽與本人研究方向有密切關係的演講，並與其中作者們 
+交流。與以往此會議最大的不同是本年缺少了本人領域的大師如 Prof.  
+Maxime Crochemore 或 Prof. Gonzalo Navarro 的參與，取而代之的是大師們 
+多名優秀的學生，如 Alessio Langiu 、 Roberto Konow 、 Susana Ladra 及 
+Alberto Ordonez 等。此外，本年的會議在文字壓縮相關的報告亦較往年為多， 
+共有4個Session（總計只有11個Session）。另一方面，本人也十分幸運能與  
+Prof. R Shah 及 Dr. NJ Larsson 會面，故此行獲益良多。 
+註一︰ Prof. R Shah 及本人為長期合作伙伴。 
+註二︰ Dr. NJ Larsson 為本人領域內著名的 Larsson-Sadakane Suffix Sorting  
+        演算法發明人之一，此次為首度會面，能與其攀談討教，實屬難得。 
+ 
+五、建議與結語 
+ 
+    本人相信出席學術會議能對主流研究有更好的掌握，亦能增加國際合作 
+的機會，長遠而言能提升研究品質，以及能開拓研究人員的眼界。 
+最後，本人謹此感謝國科會對本人研究上的支持。 
+ 
+   
+ 
+99年度專題研究計畫研究成果彙整表 
+計畫主持人：韓永楷 計畫編號：99-2221-E-007-123-MY3 
+計畫名稱：設計最省空間之索引以快速地搜尋所需文件 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 4 5 100% 
+已被接受的四篇
+論文分別在高水
+準 期 刊 發 表
+(Algorithmica ，
+Information and 
+Computation ，
+Journal on 
+Discrete 
+Algorithms 及
+Theoretical 
+Computer 
+Science)。另外有
+一 篇 投 稿 至
+Journal of the 
+ACM (JACM)，目前
+為 revised after 
+major revision，
+其中審稿學者均
+對我們的結果正
+面支持。 
+研究報告/技術報告 0 0 100%  
+國外 論文著作 
+研討會論文 3 3 100% 
+篇 
+三篇論文分別在
+頂 尖 會 議 IEEE 
+2013(一篇)及高
+研討會/工作坊 0  
+電子報、網站 0  
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

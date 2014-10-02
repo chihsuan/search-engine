@@ -1,0 +1,596 @@
+摘要 
+現今的伺服器系統需要專業的系統管理者來維護整個系統。隨著軟體系統的
+日趨複雜，即使是專業的系統管理者也可能意外地造成系統失誤。因此一些研究
+機構開始著手研究設計下一代可自我管理 (Self-Management) 的伺服器系統。其
+中包括IBM的Autonomic Computing[ 17]及Oceano計畫[ 24]，Berkeley與Stanford大
+學 的 Recovery Oriented Computing[ 31] 計 畫 ， 以 及 Duke 大 學 的 Software 
+Rejuvenation計畫[ 36]均強調系統在面對某些環境變化 (例如：錯誤發生或負載過
+重) 時，能自我做出反應。同時，在這個以客戶為中心的時代，要如何在使用者
+察覺不到的情況下進行系統的更新及修復將是一個日漸重要的課題。 
+此外，64 位元平台的出現 (主要包含 64 位元的 CPU 與作業系統) 將逐漸佔
+據伺服器市場。然而，64 位元作業系統並非僅僅只是 32 位元作業系統的擴充。
+因為虛擬記憶體空間一旦擴充到 64 位元，整個系統的核心架構勢必需要有新的
+考量。再者，由於 Web Services 的崛起，未來大型伺服器最廣泛的應用之一便是
+作為 Web Services 的基礎平台。為了提供不間斷的 Web Service，如何讓 Web 
+Service 的核心 (i.e., Web Servers) 變成高度可用 (Highly Available) 便成為一個
+重要課題。 
+鑑於上述原因，我們提出了一個三年期計畫，目標為建立一個提供 Web 
+Services 的高可用度，自我修復，自我校調的 64 位元作業系統。我們強調這些
+修復及校調必須在使用者察覺不到的情況下進行。在第一年的計畫中，我們完成
+了 HTTP 要求的轉移及通用系統 IO 通道及伺服器代送機制，並且在計畫的第二
+年度，我們著眼於 IA64 Linux 上單一位址空間擴充 (Single Address Space 
+Extension)，以及元件化並具可部分重新啟動 (Partially Restart) 功能之 HTTP 伺
+服器。而在計畫第三年度，我們發展了高效能的 Web Server 專用快取替換策略。 
+ 
+關鍵詞：64 位元作業系統，IA64，高可用度，自我修復，自我校調，Web 服務 
+ II
+目錄 
+ 
+中文摘要.......................................................................................................................II 
+Abstract........................................................................................................................III 
+計畫之背景及目的........................................................................................................2 
+研究方法........................................................................................................................8 
+結果與討論..................................................................................................................14 
+參考文獻......................................................................................................................36 
+計畫成果自評..............................................................................................................40 
+ 1
+二十一世紀會是個以客戶為中心，服務導向的時代，任何系統的更新或
+錯誤都不應該造成使用者的任何不便。所以要如何在使用者察覺不到的
+情況下進行伺服系統的更新及修復，將是一個逐漸重要的課題。 
+此外，64 位元的平台已經開始逐漸佔據伺服器市場。作業系統方面，
+UNIX (包含 Linux) 已早有眾多 64 位元的版本 (AIX, Solaris, HP-UX, 
+Linux…等)，此外微軟的 Windows XP 亦有支援 64 位元的版本。在 CPU
+方面，Intel 與 AMD 也都推出各自的 64bit 處理器。在可預期的未來內，
+伺服器系統將會以 64 位元為主流平台。然而，64 位元作業系統並非僅
+僅只是 32 位元作業系統的擴充。因為虛擬記憶體空間一旦擴充到 64 位
+元，整個系統的核心架構勢必需要有新的考量。例如：作業系統可提供
+單一位址空間 (Single Address Space) 給不同的應用程式，如此設計可加
+快應用程式間溝通 (IPC) 的效能。或者，一個伺服器軟體程式可以將部
+分甚至整個檔案系統映對 (mapping) 到其虛擬記憶體空間。如此一來，
+原本必須透過高 overhead 的系統呼叫才能達成的檔案系統讀寫便可在直
+接透過記憶體讀寫完成了。綜言之，64 位元作業系統在設計上需要有新
+的考量，以期利用其廣大的位址空間來增進系統效能。 
+再者，大型伺服器未來最廣泛的應用之一便是提供使用者網際網路
+服務。近來，在網際網路服務的發展上起了一個重大的變革，那就是 Web 
+Services 的崛起。它定義了一套統一的介面，讓 Web 應用系統間能夠相
+互溝通，而每個 Web 應用系統亦可提供不同的服務給其他應用系統。如
+此一來，使得 Web 應用系統的開發得以有效分工，加速系統開發的時程。
+可以預見的是，未來網際網路服務上必然遍布著各式各樣的 Web 
+Services，不同 Services 間聯合成一套供需網路，共同合作以提供使用者
+方便且快速服務。然而，若 Web Services 一發生意外而中斷，則會影響
+到所有用到此 service 的系統，造成一連串的骨牌效應。就如同某一上游
+物料短缺，將導致其中下游的產業及消費者受到衝擊一般。為了提供不
+ 3
+ 此外，關於容錯或高可用度網路系統的研究，大致可分為三類。 
+第一類是將容錯機制架構在 DNS 伺服器或分配器中 (Dispatcher)，例
+如：Round Robin DNS，DNS aliasing…等等。這類機制是由分配器來偵測伺
+服器是否壞掉。如果是，則不再把要求分配到該伺服器，而當時由該伺服器
+處理的要求則被捨棄。顯而易見的，此類機制已經不適用於大型商業網站或
+處理線上交易的網站。 
+第二類的研究是透過用戶端與伺服器端互相合作來提高系統的可用
+度。例如：[ 28] 在偵測到伺服器發生錯誤時，會告知用戶端。接著用戶端
+就會重送要求給此系統的所有伺服器，系統再擇一伺服器來處理此要求。而
+[ 16]則是要擴充用戶端的 TCP 來達到轉移要求的目的。這些機制的缺點在於
+必須更改用戶端的使用環境。而我們的目標之一就是不需更動用戶端，讓使
+用者可透過標準的 WWW 瀏覽器來使用我們的系統。換言之我們必須要保
+持用戶端的透通性 (Client Transparency)。 
+第三類的研究則完全利用伺服器端的技術來提高系統的可用度並保持
+用戶端的透通性。例如：FT-TCP [ 11]可以復原一個中斷的 TCP 連線。它在
+伺服器中 TCP 的上下部分各加了一層 wrapper 來記錄 TCP 連線的資料。同
+時，在另一台機器執行 logger 程式來協助錯誤的復原。當伺服器發生錯誤
+時，logger 會準備另一台正常的伺服器，並要求它重做當時正在處理的 HTTP
+要求。等到伺服器重做至發生錯誤時的那一點後，wrapper 才允許伺服器繼
+續將結果送給用戶端。[ 18] 提出方法來復原一個 HTTP 要求。它是將原本
+要送給用戶端的資料先記錄起來，等所有的結果都被紀錄後，伺服器才能將
+結果傳回給用戶端。一旦在傳送過程伺服器損壞，系統會轉而從記錄中回傳
+資料。這類機制的共同缺點就是效能表現不佳，因為他們均牽涉到 logger
+的處理，不論是重新處理要求或記錄完結果後再送，都會對資料回應的效能
+有不小的影響。此外，對動態 HTTP 要求而言，重新處理可能會造成無法預
+ 5
+理 request 時，是一次傳輸整個完整的檔案，因此相同檔案中的 segment 
+(block) 都具有相同的使用頻率。有鑑於此，為了提高 web server 的效能，
+我們提出利用動態調整、管制每個檔案在 cache 中所佔 block 數量的方
+法。該方法除了可為小檔案設定更好的配額比例，亦可在限制較大的檔
+案佔用大部分的 cache，藉以提高整體 cache hit ratio。 
+  
+ 7
+伺服器是否正常運作。一旦 Web 伺服器失常，則 Fault Detector 會通知
+Recovery Manager 來作 HTTP 要求的轉移。 
+2. State Keeper：此元件會記錄目前各個 HTTP 要求的狀態。包括：此要求所
+對應的處理程式，使用的 Socket，傳了多少資料給用戶端…等等。這些資
+料都必須轉移給新的 Web 伺服器。 
+3. Recovery Manager：在接到Fault Detector的通知之後，此元件必須藉由State 
+Keeper 的資訊得知目前所有未完成的 HTTP 要求。啟動新的 Web 伺服器。
+並將這些要求轉移到新的 Web 伺服器上。 
+ 
+在通用系統 IO 通道方面： 
+ 
+目前網路的 redundancy 架構僅侷限在網路卡。通用系統 IO 通道即是從根
+本上來擴充目前的 redundancy 架構，讓網路出口不再只侷限在網路卡。為此，
+我們在 IA64 Linux 上加入一層通用 IO 通道架構  (Universal IO Channel 
+Framework)，它可以把所有的 IO 通道 (包括：RS232，parallel port，USB， 
+Ethernet，Wireless LAN，Bluetooth，IrDA…等等) 整合起來並提供一個統一的
+介面給 IO 通道的使用者。此架構即為伺服器代送機制的基礎，這樣的作法具
+有以下優點：一，隨著伺服器間內部溝通 IO 通道個數的增加，網路服務的
+availability 就可以透過伺服器代送機制來提昇。二，因為原本各個傳輸介面與
+核心程式(kernel)間有不同的溝通方式，現在透過統一的通用 IO 通道架構，核
+心程式便可以透過一個單一的介面與 IO 傳輸層溝通，方便核心程式後續的開
+發與維護。 
+而在此方面，我們要使用的機制很類似虛擬檔案系統(Virtual File System)。
+首先，我們必須先制訂此套通用 IO 通道的架構。我們參考各個 IO 通道的驅動
+程式介面以訂出統一的 IO 介面並對各個 IO 通道的驅動程式作修改，加入
+wrapper code 以符合上述 IO 介面。最後，修改核心程式與 IO 傳輸層間溝通的
+ 9
+ 圖 2：錯誤偵測模組 
+ 
+除此之外，我們亦針對跨網域代送的可能性加以研究。如果可行，將使網
+域不再是 SPOF。即縱使整個網域都損壞，網路的服務也可以透過另一正常的
+的網域來完成。 
+而在計畫的第二年度，我們主要著眼於 IA64 Linux 上單一位址空間擴充
+(Single Address Space Extension)，以及元件化並具可部分重新啟動 (Partially 
+Restart) 功能之 HTTP 伺服器。 
+在 IA64 Linux 上單一位址空間擴充方面，我們以劍橋大學的 Nemesis 
+[ 19]，華盛頓大學的 Opal [ 7]，以及倫敦大學的 Angel [ 24]作為主要研究對象，
+並探討如何擴充像 Linux 這樣的多位址空間作業系統，使其亦能支援單一位址
+空間的應用 (Applications)。在整個系統設計方面，我們致力於以下三方面： 
+ 
+1. 元件的管理 
+為了使元件可以獨立被執行或刪除，我們把每一個元件包成一個執行檔。而
+這種執行檔與 Linux 一般執行檔不同：所有這種執行檔的程式皆會在同一位
+址空間執行。為了達成這個目的，我們必須把這種執行檔的啟動程式整合進
+ 11
+間的介面複雜化。此外，若元件間溝通頻繁，此舉也會影響系統效能。所以
+我們在設計元件間的介面時，也考慮其對效能的影響。第二，元件狀態的儲
+存。其實若一個元件發生錯誤，其狀態資料已經不可信賴，所以似乎沒有必
+要儲存。然而，有些資料 (例如：正在處理的要求) 可以儲存起來等到此元
+件重新啟動後再處理。所以，我們必須釐定哪些資料有儲存的必要，哪些資
+料可直接捨棄。 
+ 
+當我們設計好重新啟動的功能之後，我們將此系統實作在 Linux 的單一位址
+空間擴充上。我們將每一元件實作成其執行檔格式，使其可執行在同一位址空間
+上。 
+在第三年的計畫中，我們進一步改造 IA64 Linux，使其與 Web 伺服器合作
+達到最佳效能，我們設計一個適合 Web Server 的 Cache replacement algorithm。 
+Cache，一直以來都是提升檔案存取效能的重要元件，而其中的快取替換策
+略更是設計上的重點，快取替換策略的優劣，常決定了檔案系統存取效能的好
+壞。而傳統 LRU 的演算法，因實作簡單，且效果比起單純的 FIFO 好上許多，
+因此，雖然問世己久，卻仍常見於許多的應用上。也因為這些優點，使得直到目
+前大部份快取替換策略，都還是沿用 LRU-based 的架構來發展。但大部份的研
+究均著重於快取在一般化系統(General Purpose Systems)上的表現，設計上所考慮
+的檔案存取模式常比 Web Server 的檔案存取模式複雜許多，反而使得這些演算
+法的表現受到了限制。此外，由於大部分的 LRU-based 的架構並沒有考慮到存
+取頻率等其他因素，也使該架構仍有一段不小的改進空間。因此，為了讓 Web 
+Server 能發揮更好的效率，我們根據大部分 Web Server 中存取所具有的特性，設
+計一個 Web Server 專用的快取替換策略。然而，我們不打算更動原有的系統呼
+叫介面  (system call interface) 及程式庫，如此才能使一些 user-implemented 
+programs (例如：CGI, PHP, ASP) 在撰寫時沒有額外限制，提高這些程式的移植
+性與應用性。 
+ 13
+RX
+RX
+TCP
+IP
+TX
+TX
+eth0 eth1
+InternetInternet
+Apache
+Web Server
+CGICGIMonitor
+RX
+TCP
+IP
+TX
+eth1 eth0
+Apache
+Web Server
+switch
+Log
+Transmitter
+Primary Server Backup Server
+Log
+Receiver
+DelivererDeliverer
+Fault Event
+Start Migration
+Start Seamless Redirection
+IP Failover
+ 
+(a)系統偵測到錯誤發生，開始進行重新導向 
+RX
+RX
+TCP
+IP
+TX
+TX
+eth0 eth1
+InternetInternet
+CGICGIMonitor
+RX
+TCP
+IP
+TX
+eth1 eth0
+Apache
+Web Server
+switch
+Log
+Transmitter
+Primary Server Backup Server
+Log
+Receiver
+Deliverer
+ 
+(b)重新導向後，由 backup server 繼續服務 
+圖 4：錯誤偵測與無縫式要求復原 
+ 
+如圖 4 所示，我們的機制包含：動態要求的紀錄，當偵測錯誤到發生時，系
+統會無縫式的將要求導向 backup server，並復原，所有的機制皆實現於 Linux
+作業系統核心程式中。 
+ 15
+通道的使用是透過統一的介面，所以 IO 通道的增減並不需要修改使用者的
+程式碼，如此使得使用者程式碼更易於維護。圖 6 展示的是當一個網路損毀
+時，系統偵測及啟動伺服器代送機制的流程。當 server 的 public interface 發
+生損毀時，系統會透過 private link 要求在 link 上之另一端機器轉送封包。而
+兩端建立好封包轉送的連結後，便可以透過備援伺服器轉送封包繼續提供網
+路服務。 
+ 
+(a) 當 public interface(假設 eth0)發生錯誤，系統透過 private link 建立與備援伺服器之間的連結 
+ 
+(b) 轉送連結建立後，則由備援伺服器轉送封包繼續推持服務 
+圖 6：伺服器代送機制流程 
+ 
+為了測量系統之效能，我們建置了 WWW document-serving 的實驗環
+ 17
+Time 
+ 
+圖 7：Different Parts of the Failover Time 
+ 
+其中，由於 Tmid 牽涉到機器之間的時間同步問題，因此無法直接量測。
+為了取得準確的數值，我們改由在同一台機器上進行 Tmid 的測量。換言之，
+server 從一個網路介面送出 request，透過 private link，傳送至同一台機器上
+的另一個網路介面。利用此技巧，我們可以忽略不同機器上的時間不同步的
+問題。 
+表一為利用 Pentium Timestamp Counter [39]在各個階段中所測得的結
+果。如表中所示，在目前的實作中，所需要花費的時間大約為 0.66us 再加
+上 Td(平圴 50ms)的時間，因此，可以得知大部分的時間主要是花費在 Td 之
+上。 
+表一 Results of Different Parts of the Failover Time 
+Tsvr (ns) Tmid (ns) Tsib (ns) Ttotal (ns)
+293.5 69.28 304.55 667.33 
+ 
+第二個實驗中，我們透過五台機器來模擬客戶端的行為，並與原本的
+server 加以比較，藉以測量運行 HANet 的效能負擔。而實驗的 workload 則
+是從 Surge benchmark [36]所取得，每一回合為一小時。 
+圖 8 為 throughput 的測量結果，如圖所示，將 HANet 機制加入 Linux
+並未導至大幅的效能損失。我們對於這樣的結果並不感到意外，因為主要的
+Fault 
+occurrence 
+FD 
+routine 
+invoked 
+Server 
+sends 
+the 
+request 
+Sibling 
+receives 
+the 
+request 
+Finish adding a proxy ARP 
+entry, flushing routing 
+caches, and sending 
+gratuitous ARP packets 
+Td Tsrv Tmid Tsib 
+ 19
+ 在第三個實驗中，我們測量當 Server 發生錯誤後，封包經由 private link
+轉由備援 server 處理的效能。其中，我們使用兩種介面做為 private link：
+12Mbps USB 以及 100Mbps Fast Ethernet。 
+圖 10 為 throughput 的測量結果。從圖中我們可以看出透過 private USB 
+link 轉送封包的效能到了 12Mbps 後便無法再提昇。這主要是受限於頻寬的
+因素；相對的透過 private Fast Ethernet link轉送封包的效能則與原本的 server
+相同，主要是因為 Fast Ethernet 的速度夠快，使得轉送 request 時，並不會
+有太長的時間延遲。 
+0
+20
+40
+60
+80
+100
+120
+140
+160
+50 75 100 125 150 175 200 225 250 300 350 400
+Number of Users
+Th
+rou
+gh
+pu
+t (
+req
+ue
+sts
+/se
+co
+nd
+)
+Original
+HANet-USB
+HANet-Ether
+圖 10：Throughput of the HANet Server through Private Interface 
+圖 11 為延遲的測量結果，同樣是受到頻寬的限制，private USB link 的
+延遲明顯比原本的 server 高。相對的透過 private Fast Eithernet link 的效能在
+高負載時(例：同時 400 個使用者)則較原本的 server 慢約略 1%，這也顯示
+了 packet transmission agent 的 overhead 並不高。 
+ 21
+ 圖 12：SAS Extension 
+ 
+為了實作此一 extension，我們將想要執行在此 extension 上的 service 
+application 重新編譯成 ELF 的 shared library 格式，並實作一個 program 
+loader 來 load 這類程式到 SAS 中。此外，我們也修改一些相關的系統呼叫，
+例如：fork()，使其都同處於一個位址空間中。而在同一位址空間的 processes
+都有硬體的保護機制來保護彼此不會被其他 process 損壞。我們已經完成這
+SAS extension 的實作，並進行了初步測試，結果符合預期。 
+ 
+ Partially Restartable Service 的支援機制： 
+ 
+因為要重新啟動一個複雜的 service 可能需要一段時間，此段 downtime
+可能會造成企業不少的損失。Partially restartable service 即針對此來降低服務
+重新啟動的時間。如圖 13 所示，每一個 partially restartable service 是由一堆
+fine-grained 元件組成。若某個元件 crashes, 則只要重新啟動該元件即可。 
+ 23
+專為 Web Server 檔案存取模式所設計的快取替換策略: 
+ 
+根據研究[ 29]的觀察，Web Server 的存取模式中，往往是以小檔案的
+存取頻率較高，而大檔案的存取頻率較低。再加上 Web Server 存取模式
+常是循序存取，而非隨機存取。所以對於單一檔案而言，其所有的 cache 
+blocks 大多都具有相同的存取次數。在時間上，我們也可視為具有相同
+的”Recency” (現在與上一次存取之間的時間)。如此一來，我們可將大檔
+案所佔之快取空間，視為潛在的 cold blocks 而小檔案視為潛在的 hot 
+blocks。在 cache 中所配給大檔案的空間額度予以設限，藉以保障小檔案
+停留在快取的機會，並且根據紀錄的存取次數動態調整各檔案在 cache
+中所佔的快取配額。 
+首先，我們將 Buffer Cache 以檔案為單位分成多個 partition 並串成
+一 partition list 加以管理，如圖 15 所示。一個 partition 是由一至多個 blocks
+所組成，其中，同屬於一 partition 之 blocks 也串成一 block list 管理。 
+LRU
+partition list
+MRU
+MRU
+MRU block list
+1 2
+1 2 3 4 5 6
+1 2 3 4 5 6
+1 2 3 4 5 6 7
+file0(2/7)
+file1(6/8)
+file2(6/6)
+file3(7/7)
+將 Cache 以 file 為單位，分成多個 partition 管理
+Blocks which currently reside in the cache
+Blocks to hold the whole file( file size)
+fully cached
+LRU
+ 
+圖 15：以檔案為單位，將 Buffer Cache 分為多個 Partition，並串成一 Linked List  
+ 
+ 25
+2. Block Allocation 
+當發生 File hit 的時候 (該檔案被存取時，Cache 中已有該檔案的
+blocks(最前段))，系統會檢查是否所有的 blocks 均還在快取中。若有
+尚未載入的 blocks，便將其 prefetch 進來，以縮短 response time。同樣
+地，倘若是小檔案，我們則分配給足夠的 cache blocks，若是大檔案，
+則考慮以下檔案的特性給與適當的 blocks 數。 
+z Recency： 
+根據該檔案在 partition list 中的位置，我們可得知該檔案在 hit 之
+前，與 MRU 端的距離，愈近表示該檔案在最近的時間被存取到，
+系統所配給的 Block 個數便愈多；反之，我們會配給較少的 Block
+個數。 
+z Frequency： 
+我們為每個檔案維護一個存取紀錄(reference count)，每次檔案開
+啟時，便更新其存取記錄，如果一檔案的存取頻率越高，則分配
+愈多的 cache blocks。 
+3. Block Reclaiming： 
+當 free memory低於一定量時，系統會開始挑選 partition進行 cache 
+blocks 回收的動作，直到 free memory 回到足夠的量，我們提供三種不
+同的方法來挑選回收的 partition，之後於設計實作一節，以範例加以說
+明之。 
+ 
+設計與實作 
+ 
+Partition List 的資料結構 
+在 Linux 的檔案系統中，是用 inode 來描述檔案的屬性，例如存取時間、
+ 27
+次再度被使用的機率越高，所以距離 partition list 之 MRU 端愈近的檔案
+Recency 越高，也越 Hot。因此檔案的 Recency 可以由該檔案在 partition list
+中的位置求得。 
+利用 Region 實作 Partition List 
+要算出檔案在 partition list 中的位置，必須從 list 的第一個位置開始往後
+尋找，檢查每一個 inode，直到找到該檔案的 inode，才知道該檔案的位置。
+這麼做平均每次需要花 O(N/2)的時間計算位置，在實際系統運行 overhead
+太高。實作上，我們並不需要精確數出檔案在 list 中的第幾個位置，而是將
+partition list 分成幾個區域(region)，每個區域都有自己的編號，該編號代表
+LRU 中的位置。每個 inode 會隨著時間在不同區域內移動，例如 inode A 原
+本可能位於 region 5，但是被讀取過一次後移到 MRU，因此位於 region 1，
+之後如果沒有再度被存取，就會被其他慢慢更 hot的檔案擠往 region 2, region 
+3, …移動。 
+實做中，我們在 inode 的資料結構中加入一個 pointer，指向該 inode 所
+屬的 region 的資料結構，因此要知道某個檔案的位置時，透過此 pointer 可
+以知道該檔案是在哪個 region，該 region 的編號就代表該檔案的位置，同一
+region 下所有的 inode 均視為具有相同的 recency。 
+ 29
+次 inode 搬移。 
+若是 region N 的某個 inode 被刪除，那麼後面的 inode 就需要往前移動，
+所以從 region N+1 到最後一個 region，所有的第一個 inode，都需要移動到
+前一個 region 的最後一個位置，因此平均每次 delete 需要 O(N/2) 次搬移。 
+region list
+inode head
+region head region list
+inode head
+region list 
+inode head 
+inode A 
+inode B 
+inode C 
+inode D 
+inode E
+inode F
+inode G
+inode H
+inode I 
+inode J 
+region 1 region 2 region 3 
+ 
+圖 18：Inode 在 region 中的操作 
+ 攔截 system call 
+我們在 中加入程式碼攔截 system call，藉以追蹤 kernel 何時會新
+增、讀寫、刪除 ，包括
+不是攔截 這個 kernel function
+z Open 
+file 時，kernel 會從 disk 讀取 inode 存放在 inode cache，
+接著從 讀取 存放在 。我們在 加入新
+時，判斷以下 個條件，滿足這兩個條件，我們才會將該檔案的
+加入到 中。
+ 該 ？一個 file 有可能是 directory file, device 
+等等，但只有
+kernel
+inode open, read, write 這些 system call，然而刪除並
+close system call，而是在其他 中攔截。 
+開啟一個
+disk data buffer cache kernel inode
+2 inode
+partition list  
+1. inode 是否為 regular file
+file, pipe, symbolic link, regular file, … regular file 會有
+ 31
+buffer cache 總共需要回收多少個 page，當 kernel 從 active list 的 LRU
+端開始掃描，只要遇到 buffer cache page 就將 counter 加 1，掃描完畢後
+依照 counter 中紀錄的數目，從我們的 partition list 中挑出適合的 page
+交給 kernel 回收。 
+挑選的方式 
+我們提拱三種不同的方式來回收 cache clocks，以下用例子加以說
+明，如圖 19 所示，假設需要回收七個 cache blocks： 
+Case 1： 
+橫向的回收 
+從 partition list 中 recency 最低(最靠 LRU 端)的 partition 開
+始回收七個 MRU blocks，如果不夠，再從 recency 第二的
+低的 partition 進行回收。 
+Case 2： 
+縱向的回收 
+從 partition list 中 recency 最低的七個 partition 開始回收，
+每個 partition 回收一個，如果不夠，再重複進行，直到回
+收足夠的 cache blocks。  
+Case 3： 
+結合 Case 1,2，同時由多個 partition 進行回收，但是 recency
+愈低的 partition，要求回收的 blocks 數量愈多。 
+ 33
+Hot
+Hot
+1 2 3 4 5 6 7 8
+Fa(2/2)
+Fb(6/6)
+Fc(6/6)
+Fd(8/8)
+LRU
+partition list
+block lists
+2 1
+5
+34
+7
+6
+ 
+(c) 結合橫向與縱向的回收，由 recency 最低的數個 partition 開始回收，
+但依照 recency 的高低，每個 partition 被要求回收的數量不同。 
+ 
+圖 19：橫向、縱向以及結合橫向與縱向的回收 
+ 
+ 35
+Track), pp. 595-604. 
+9. Chiueh, T. C., Venkitachalam G.,and Pradhan, P., Intra-Address Space 
+Protection Using Segmentation Hardware, Proceedings of the The Seventh 
+Workshop on Hot Topics in Operating Systems, pp 110-115, 1999. 
+10. Cristian, L., 1991. Understanding Fault-tolerant Distributed Systems. 
+Communications of the ACM, 34(2):57-78. 
+11. D. Zagorodnov, K. Marzullo, L. Alvisi, and T.C. Bressoud. Engineering 
+faulttolerant TCP/IP servers using FT-TCP. In Proc. IEEE Intl. Conf. on 
+Dependable Systems and Networks (DSN), pages 393--402, San Francisco, 
+California, USA, June 2003. 
+12. Deller L. and Heiser, G., Linking Programs in a Single Address Space, 
+Proceedings of the 1999 USENIX Technical Conference, Monterey, Ca, USA, 
+June, 1999. 
+13. Engler, D., Chelf, B., Chou, A., and Hallem, S., 2000. Checking System Rules 
+Using System-Specific Programmer-Written Compiler Extensions. In: 
+Proceedings of the 4th Symposium on Operating Systems Design and 
+Implementation (OSDI-2000). 
+14. Garland, M., Grassia, S., Monroe, R., and Puri, S., 1995. Implementing 
+Distributed Server Groups for the World Wide Web. Technical Report 
+CMU-CS-95-144, School of Computer Science, Garnegie Mellon University. 
+15. Gray, J., and Siewiorek, D. P., 1991. High-Availability Computer Systems. IEEE 
+computer, 24(9):39-48. 
+16. Horman, S., 2000. Creating Linux Web Farms – Linux High Availability and 
+Scalability. Available at http://www.vergenet.net/linux/has/html/has.html. 
+17. Jann, J., Browning, L. M., and Burugula, R. S., 2003. Dynamic Reconfiguration: 
+Basic Building Blocks for Autonomic Computing on IBM pSeries Servers”, IBM 
+ 37
+http://www.ibiblio.org/pub/Linux/ALPHA/linux-ha/High-Availability-HOWTO.
+html. 
+29. Ludmila Cherkasova, Gianfranco Ciardo, Characterizing Temporal Locality and 
+its Impact on Web Server Performance, Proceedings of ICCCN'2000, Las Vegas, 
+NV 
+30. Oppenheimer, D., Ganapathi, A., and Patterson, D. A., 2003. Why Do Internet 
+Services Fail, and What Can be Done about It? In: Proceedings of the 4th 
+USENIX Symposium on Internet Technologies and Systems (USITS '03). 
+Available at http://roc.cs.berkeley.edu/papers/usits03.pdf.  
+31. Patterson, D. A., Brown, A., Broadwell, P., Candea, G., Chen, M., Cutler, J., 
+Enriquez, P., Fox, A., Kiciman, E., Merzbacher, M., Oppenheimer, D., Sastry, N., 
+Tetzlaff, W., Traupman, J., and Treuhaft, N., 2002. Recovery-Oriented 
+Computing (ROC): Motivation, Definition, Techniques, and Case Studies. UC 
+Berkeley Computer Science Technical Report UCB//CSD-02-1175. 
+32. Rubini, A., 2000. Making System Calls from Kernel Space. Linux Magazine, 
+Nov. 2000. Available at http://www.linux-mag.com/2000-11/gear_01.html. 
+33. Snoeren, A. C., Andersen, D. G., and Balakrishnan H., 2001. Fine-Grained 
+Failover Using Connection Migration. In: Proceedings of the 3rd USENIX 
+Symposium on Internet Technologies and Systems, pp. 221-232. 
+34. Stefan Podlipnig, and Laszlo Böszörmenyi. A Survey of Web Cache 
+Replacement Strategies. ACM Computing Surveys (CSUR) Volume 35, Issue 4 
+(December 2003) Pages: 374 - 398  
+35. Stevens, W. R., 1994. TCP/IP Illustrated, Volume 1: The Protocols. Addison 
+Wesley Professional, ISBN: 0-201-63346-9. 
+36. Trivide, Software Rejuvenation Available at http://srejuv.ee.duke.edu/ 
+37. Verma, D. C., Sahu, S., Calo, S., Shaikh, A., Chang, I., and Acharya, A., 2003. 
+ 39
+可供推廣之研發成果資料表 
+□ 可申請專利  ; 可技術移轉                           日期：95年10月11日 
+國科會補助計畫 
+計畫名稱： 
+基於 64 位元作業系統之高可用度與自我管理的 Web 
+Services 平台之研究  
+計畫主持人：張瑞川 
+計畫編號：NSC 94-2213-E-009-011 
+學門領域：資訊工程 
+技術/創作名稱 
+基於 64 位元作業系統之高可用度與自我管理的 Web 
+Services 平台之研究  
+發明人/創作人 張瑞川 
+中文： 
+我們建立了一個提供 Web Services 的高可用度，自我修
+復，自我校調的 64 位元作業系統。我們強調這些修復及校調必
+須在使用者察覺不到的情況下進行。我們完成了 HTTP 要求的
+轉移及通用系統 IO 通道及伺服器代送機制，並且完成 IA64 
+Linux 上單一位址空間擴充(Single Address Space Extension)，以
+及元件化並具可部分重新啟動 (Partially Restart) 功能之 HTTP
+伺服器。此外，我們亦發展了高效能的 Web Server 專用快取替
+換策略。 
+技術說明 
+英文： 
+We have designed a next generation, and 64bit operating 
+system based, web services platform, which is able to healing and 
+tuning itself. We have completed the design and implementation of 
+the HTTP request migration and the universal IO channel systems. 
+We also focus on the Single Address Space (SAS) extension to 64bit 
+Linux and the partially-restartable service running on top of the 
+extension. We have also developed a cache replacement strategy for 
+high speed web server based on the file access pattern. 
+附件二 
+ 41

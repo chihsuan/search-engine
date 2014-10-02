@@ -1,0 +1,1035 @@
+  I 
+目錄 
+一、摘要 ........................................................................................................................ II 
+(一)中文摘要............................................................................................................. II 
+(二) Abstract .............................................................................................................. II 
+二、報告內容 ....................................................................................................................1 
+1. INTRODUCTION ..................................................................................................1 
+2. RELATED WORK .................................................................................................2 
+3. MOTIVATION AND SYSTEM MODEL ...............................................................3 
+4. THE APPROACH...................................................................................................5 
+5. DESIGNING MODE-AWARE DBP ......................................................................8 
+6. LOAD SHEDDER AND QUERY SCHEDULER ................................................. 11 
+7. ALGORITHM ANALYSIS AND EVALUATION ............................................... 12 
+8. SELF ASSEMENT ............................................................................................... 16 
+9. CONCLUSION ..................................................................................................... 16 
+三、參考文獻 .................................................................................................................. 18 
+ 
+  
+  1 
+二、報告內容 
+ 1. INTRODUCTION 
+An increasing variety of applications today 
+demand timely “on-the-ﬂy” processing of 
+stream data. Data stream management system 
+(DSMS) has quickly emerged as one gener-
+al-purpose computing system. In recent years, 
+DSMS design and implementation has at-
+tracted a great deal of research activity, re-
+sulting in significant progress. Among nu-
+merous research directions that have been 
+pursued [2], one that continues to garner 
+considerable interest is the handling of over-
+loading in DSMS [3, 5, 14, 15]. Overloading 
+is one major concern in many DSMSs own-
+ing to their high data arrival rates and bursty 
+traffic pattern. Load shedding has been 
+widely used to address the problem. For ex-
+ample, both Aurora [14] and STREAM [3] 
+detect overload situations by comparing the 
+total load on a query network with system 
+processing capacity. When load must be shed, 
+they discard tuples with the least impact on 
+QoS. 
+Clearly load shedding can reduce work-
+load on the system, but it also affects query 
+result quality. The designers of current load 
+shedding techniques have paid attention to 
+this problem. For example, the load shedding 
+technique of Tu et al. [15] minimizes tuple 
+processing delays, in addition to maintaining 
+a reasonable level of data loss. The authors 
+argued that minimizing processing delays is 
+the most critical quality requirement in many 
+data stream applications, since the value of 
+query results decreases dramatically over 
+time. While this requirement is important for 
+many stream applications such as processing 
+requests sent to web servers, we argue that in 
+some other stream applications that monitor 
+and respond to critical monitored events, 
+timeliness of query results (processing 
+stream data with specific time constraints) 
+becomes an important quality measure. Ex-
+amples of such applications include traffic 
+monitoring, environment monitoring, video 
+surveillance, monitoring of voice calls, intru-
+sion detection, etc. Like traditional deadline 
+miss ratio, tuple delays can be used to judge 
+whether a system processes tuples in a timely 
+manner. However, one can not tell, by mere-
+ly looking at tuple delay statistics, how de-
+lays occur across a time line — whether they 
+are more or less evenly distributed or many 
+of them occur consecutively. We propose 
+using an alternative timing constraint, name-
+ly the (m, k)-firm deadline model due to 
+Hamdaoui and Ramanathan [6], for a class of 
+stream applications that demand timeliness 
+of query results. An (m, k) constraint speci-
+fies that the quality of service or utility to a 
+system is maximized if at least m customers 
+(or data tuples in our case) in any window of 
+k consecutive customers are processed before 
+their deadlines. It was proposed as an alter-
+native to traditional maximum allowable 
+deadline miss ratio [6]. While both measures 
+are examples of soft deadlines, i.e., some job 
+instances are allowed to miss their deadlines, 
+the (m, k) model offers better control over the 
+distribution of deadline misses. We categor-
+ize queries in a query network into four dif-
+ferent classes based on whether they join 
+tuples from multiple streams and whether 
+they output results to multiple downstream 
+operators. (m, k) constraints apply most na-
+turally to one class of queries, called pipeline 
+  3 
+added at different arcs in the network. Asso-
+ciated with each drop insertion plan is cycle 
+saving coefficients that are used to determine 
+if the plan can shed enough load in an over-
+loading situation. Tu et al. [15] proposed a 
+control-based approach that aims to better 
+manage tuple processing delays when a 
+DSMS is overloaded. The control-based ap-
+proach allows one to find the right time and 
+amount of load shedding such that data loss 
+is minimized. Gedik et al. [5] proposed a 
+time correlation-aware load shedding 
+framework and optimization techniques for 
+m-way, windowed stream joins. It was ar-
+gued that tuple dropping, as done in [14], is 
+ineffective for such operations. Instead, one 
+should determine which tuples in a window 
+are more useful for such a join, if not all 
+tuples can be processed due to overload. In 
+[3], a load shedding method is proposed to 
+improve answer accuracy for aggregation 
+operators of pipeline queries. Wei et al. [18] 
+did an interesting study on load shedding for 
+complex nested XML data streams. In [16], 
+Tufte et al. demonstrated how to apply data 
+stream techniques to intelligent transporta-
+tion systems for efficient travel time estima-
+tion. Such systems could potentially have 
+overload situations. Overloading is also a 
+concern in the study done by Watanabe et al 
+[17].  
+3. MOTIVATION AND SYSTEM 
+MODEL 
+3.1 Why use the (m, k) timing model? 
+Data streams arise naturally in a number of 
+monitoring applications. In these applications, 
+important events manifested in some of the 
+incoming stream tuples are being watched 
+through continuous queries. Normally, when 
+a tuple that is of significance to an applica-
+tion arrives, more of such tuples will follow 
+in a row. For instance, in a traffic monitoring 
+and control system, whenever a vehicle is 
+found to exceed a preset speed threshold, this 
+situation is likely to continue for some period 
+of time. In such a system, failing to process 
+one or more of such tuples in time, particu-
+larly when the system is overloaded, may be 
+acceptable as long as other remaining tuples 
+that arrive together and relate to the same 
+event, i.e., some vehicle is speeding, meet 
+their deadlines. Traditional soft timing con-
+straint in terms of deadline miss ratio can be 
+used to specify a maximum allowable loss 
+percentage. Hence, a 10% loss rate means 
+that up to 10% of all tuples miss their dead-
+lines. This constraint and its variants have 
+long been used in the real-time community 
+[9], and recently in stream processing-related 
+studies [15, 19]. Despite its simplicity, the 
+downside of deadline miss ratio is that it can 
+not express how deadline misses should be 
+distributed in an extended period of time. 
+This weakness could become a major con-
+cern when the applications in question mon-
+itor important events as we described above. 
+In other words, if a large number of tuples at 
+a stretch can not be processed in time or are 
+discarded for load reduction, then the appli-
+cation may miss something crucial. To this 
+end, the (m, k) timing model was introduced 
+as an alternative [6]. It specifies that the 
+quality of service or utility to a system is 
+maximized if at least m data tuples out of any 
+k consecutive tuples are processed before 
+their deadlines. Ever since its introduction, 
+the model is gaining increasing attention and 
+has been investigated for its applicability in 
+  5 
+shedding approach we will introduce in Sec-
+tion 4 watches for mode changes of data traf-
+fic that flows into pipeline queries. Because 
+drop operators used in [14] can cause speci-
+fied (m, k) constraints for pipeline queries to 
+be violated, we hereafter assume that drop 
+operators are not inserted into pipeline que-
+ries. Load shedding for pipeline queries will 
+be controlled by a dedicated scheduler when 
+a mode change of inbound traffic is detected. 
+Each pipeline query 𝑞𝑞𝑖𝑖  has one input 
+stream 𝑥𝑥𝑖𝑖  , and each stream tuple processed 
+by 𝑞𝑞𝑖𝑖  has an associated deadline. We denote 
+𝑥𝑥𝑖𝑖
+𝑗𝑗  as the 𝑗𝑗𝑡𝑡ℎ  tuple that arrives at stream 
+𝑥𝑥𝑖𝑖  , and 𝑑𝑑𝑖𝑖
+𝑗𝑗  as the deadline of 𝑥𝑥𝑖𝑖
+𝑗𝑗 . If the 
+(𝑚𝑚𝑖𝑖 , 𝑘𝑘𝑖𝑖) constraint for 𝑞𝑞𝑖𝑖  is violated for any 
+consecutive 𝑘𝑘𝑖𝑖  tuples, a dynamic failure is 
+said to have occurred. A tuple that can not be 
+processed before its deadline is considered 
+useless and will be discarded. Our primary 
+goal for processing pipeline queries is to re-
+duce, rather than eliminate, the frequency of 
+occurrence of dynamic failures. This goal 
+meets the performance requirements of our 
+targeted applications, e.g., traffic or network 
+monitoring, real-time fraud detection [12]. 
+4. THE APPROACH 
+For the purpose of our study, many pipe-
+line queries essentially specify qualifying 
+conditions or “expensive predicates” [3] for 
+input tuples to satisfy. This means that while 
+input tuples are being consumed, such a 
+query will produce output results that are of 
+concern to the corresponding application for 
+ 
+Figure 1: Alternation of SAT and Non-SAT 
+intervals for a data stream with a (3, 5) constraint. 
+Some period of time. After that, the query 
+will stop producing significant results for 
+some time. For instance, all the three illu-
+strating queries described in Section 3.2 ex-
+hibit such a pattern. From this perspective, 
+inbound stream traffic will alternate between 
+these two modes as times go on. We call the 
+time intervals during which input tuples sa-
+tisfy a pipeline query’s qualifying condition 
+the SAT intervals and the remaining intervals 
+the Non-SAT intervals. Tuples that arrive 
+during a SAT interval are of SAT type. We 
+say that the stream is in SAT mode when it is 
+in a SAT interval. Hence, when a stream is in 
+Non-SAT mode, no significant output results 
+are generated by the corresponding query. In 
+view of this, the following observation can 
+be made: 
+ 
+Observation 1. The (m, k) QoS require-
+ment specified for a stream is in effect only 
+when the stream is in SAT mode. 
+ 
+With Observation 1 in mind, one may be 
+tempted to skip processing all tuples from a 
+stream that arrive when the stream is in 
+Non-SAT mode. Doing so can save 
+processing resources that can be used by 
+other queries to improve their result quality. 
+Unfortunately, we do not know when a mode 
+change (from Non-SAT to SAT mode) will 
+  7 
+tuple, the system is in good shape.  
+Observation 2 mainly concerns a data 
+stream’s transition from Non-SAT to SAT 
+mode. The concept of conjectured and 
+checked tuples also applies when a stream 
+switches from SAT to Non-SAT mode. 
+Based on Observation 1, (m, k) constraint is 
+not in effect during Non-SAT intervals. 
+Hence, a checked tuple can simply be treated 
+as a conjectured tuple in this case. Consider 
+the example shown in Figure 1 again. 𝑥𝑥𝑖𝑖7 is 
+the checked tuple for mode change (from 
+SAT to Non- SAT mode). We can assume 
+that the mode change did occur at 𝑥𝑥𝑖𝑖7, i.e., 
+𝑥𝑥𝑖𝑖
+7 is treated as the conjectured tuple.  
+Note that Observation 2 reveals a condi-
+tion the scheduler must satisfy during 
+Non-SAT intervals. We must translate that 
+into a specific (m, k) constraint for the sche-
+duler to follow. Based on Observation 2, the 
+conjectured and checked tuples together with 
+the k – m − 1 tuples between them form a 
+scheduling window of size k − m  + 1. This 
+means that as long as the scheduler checks 
+one tuple within each of such sliding win-
+dows, we are sure that the distance between 
+the conjectured and checked tuples is 
+bounded properly. We arrive at the following 
+observation.  
+ 
+Observation 3. During Non-SAT intervals, 
+the scheduler could enforce a new timing 
+constraint, viz. (1, k – m + 1).  
+ 
+Now the question is: when is enforcing 
+this new constraint, instead of the original 
+constraint (m, k), beneficial? The following 
+theorem provides an answer.  
+ 
+Theorem 1. The load imposed on the sys-
+tem, from (m, k) constraint during SAT in-
+tervals to (1, k – m + 1) constraint during 
+Non-SAT intervals, will be reduced if m > 1 
+and k > m.  
+ 
+PROOF. To show that the system work-
+load is indeed reduced, the inequality 1k−m+1 < mk  must hold. With m > 1, we have 
+k > k − m + 1. Because k > m, we have  1k < 1(k−m +1). Again because k > m, we have (k−m )k  
+< (k−m)(k−m +1). Now a simple rearrangement of 
+the inequality (k−m )k  < (k−m )(k−m +1) gives us the 
+result: mk  > 1(k−m +1) . 
+Consider the premise of Theorem 1. First 
+of all, when m = 1 or k = m, the two con-
+straints, (m, k) and (1, k − m  + 1), are iden-
+tical. It is our belief that if the timing re-
+quirements of some pipeline queries can be 
+specified by using the (m, k) constraints, then 
+it is likely that k > m, i.e., there is some 
+scheduling leeway in each sliding window of 
+size k. Hence, we believe that enforcing the 
+new constraints during Non-SAT intervals 
+should be a practical load shedding scheme 
+in some stream applications. For the illustra-
+tive example shown in Figure 1, the work-
+load is reduced from 60% (3/5) during an 
+SAT interval to 33.3% (1/3) in a Non-SAT 
+interval.  
+Note that enforcing specific (m, k) and (1, 
+k – m + 1) constraints at run-time is a sche-
+duler’s job. An important issue that concerns 
+us is whether our scheme of tuning the con-
+straints whenever a stream changes mode 
+may introduce new timing failures? Let us 
+suppose a dynamic failure occurs sometime 
+during execution when the current constraint 
+  9 
+of k binary values, with 0 and 1 representing 
+a deadline miss and a deadline meet, respec-
+tively. The processing status of recent k cus-
+tomers is stored in s with the earliest cus-
+tomer occupying the leftmost position. 
+Processing results of new customers are 
+right-shifted into s. To determine the priority 
+for the next incoming tuple, DBP looks at s 
+and considers most recent m tuples who have 
+been serviced before their deadlines. If the 
+number of such tuples is less than m, then a 
+dynamic failure has occurred and the highest 
+priority (the value ‘0’) is assigned. Otherwise, 
+DBP considers the earliest tuple of these m 
+tuples who have met their deadlines, and 
+checks to see how many more deadline 
+misses will make this tuple’s processing sta-
+tus to be shifted out of s. This measure is 
+elegantly formulated in [6] as follows:  
+ 
+𝑝𝑝𝑝𝑝𝑖𝑖𝑝𝑝𝑝𝑝𝑖𝑖𝑡𝑡𝑝𝑝𝑗𝑗+1 = 𝑘𝑘 − 𝑙𝑙(𝑚𝑚, 𝑠𝑠) +  1 ,    (1) 
+ 
+where 𝑝𝑝𝑝𝑝𝑖𝑖𝑝𝑝𝑝𝑝𝑖𝑖𝑡𝑡𝑝𝑝𝑗𝑗+1  denotes the priority 
+of the ( j + 1 )th tuple, 𝑗𝑗 ≥ 𝑘𝑘, and l(m, s) 
+denotes the position (from the right) of the 
+mth 1 in s. If there are less than m 1s in s, i.e., 
+a dynamic failure has occurred, then l(m, s) = 
+k+1. In the following, we address two issues 
+that must be resolved in order to design a 
+mode-aware DBP, called SOSA-DBP in the 
+sequel. 
+5.1 Assigning priority in growing phases 
+The processing of tuples arrived on each 
+stream can be divided into two phases: 
+growing phase and steady phase. When the 
+first tuple arrives at a stream, a growing 
+phase is launched. During a growing phase, 
+incoming tuples gradually fill up the sliding 
+window of size k. When the sliding window 
+contains k tuples, the stream reaches a steady 
+phase. Furthermore, whenever a mode 
+change occurs, a new growing phase is 
+started. Figure 2 shows the state transition 
+diagram for a stream with (2,3) constraint. It 
+includes both the growing phase with rectan-
+gle-shaped states and the steady phase with 
+ellipse-shaped states (states with dotted lines 
+denote dynamic failures). By contrast, Ham-
+daoui and Ramanathan showed a similar dia-
+gram with only the steady phase. 
+Note that Equation 1 is developed assum-
+ing s has recorded the status of recent k 
+tuples, i.e., it applies only when the stream 
+has reached a steady phase. Hamdaoui and 
+Ramanathan did not address the issue of de-
+termining the priorities for streams that are in 
+their growing phases. This is something we 
+must take care of because constant transitions 
+between the growing and the steady phases 
+are a norm in our case.  
+Let us reconsider the meaning of any giv-
+en (m, k) constraint: at most k − m tuples can 
+miss their deadlines in a window of k con-
+secutive customers. The more deadlines are 
+missed, the closer it is to a dynamic failure, 
+hence the higher priority should be assigned. 
+If more than k − m deadlines are missed, then 
+the highest priority, i.e., the value ‘0’, should 
+be assigned. Equation 2 formulates this idea; 
+it determines the priority for the ( j + 1 )th 
+tuple, 1 ≤ 𝑗𝑗 ≤ 𝑘𝑘 −  1.  
+ 
+𝑝𝑝𝑝𝑝𝑖𝑖𝑝𝑝𝑝𝑝𝑖𝑖𝑡𝑡𝑝𝑝𝑗𝑗+1 = 𝑀𝑀𝑀𝑀𝑥𝑥(𝑘𝑘 −𝑚𝑚 −𝑁𝑁𝑁𝑁𝑀𝑀(𝑗𝑗)  + 1, 0), (2)  
+ 
+where NOM(j) denotes the number of 
+deadline misses, counting from the first till 
+the jth tuples. Hence, Equation 2 applies to 
+those tuples that arrive during a growing 
+  11 
+𝑀𝑀𝑀𝑀𝑥𝑥𝑖𝑖=1𝑛𝑛 (𝑘𝑘𝑖𝑖  −  𝑚𝑚𝑖𝑖  +  1).  
+Figure 3 shows the complete algorithm 
+described above. The initial mode of each 
+stream is set to SAT, and the initial phase to 
+‘growing’. When a new tuple 𝑥𝑥𝑖𝑖
+𝑗𝑗+1 arrives 
+at stream 𝑥𝑥𝑖𝑖 , the Priority_Assign_Process 
+calculates its execution priority 𝑃𝑃𝑃𝑃𝑃𝑃𝑖𝑖
+𝑗𝑗+1. The 
+Service_Process chooses the stream with the 
+highest priority and executes its query. If 
+there is more than one stream with the same 
+priority, then we choose the stream with the 
+earliest deadline.  
+The detection of transitions between SAT 
+and Non-SAT modes can be performed at 
+operator level — each operator can be de-
+signed with the ability to report to the sche-
+duler (or load shedder) when a processed 
+tuple does/does not satisfy the qualifying 
+condition. It is not hard to see that the sche-
+duling overhead of SOSA-DBP is similar to 
+that of DBP, and the latter has been shown to 
+be equal to the overhead of EDF (earliest 
+deadline first) in the worst case. Techniques 
+such as tuple batching can further reduce the 
+scheduling overhead, but it is out of the 
+scope of this paper. 
+ 
+6. LOAD SHEDDER AND QUERY 
+SCHEDULER 
+In [14], Tatbul et al. estimate system 
+workload by using the formula ∑ 𝑃𝑃𝑖𝑖n𝑖𝑖=1 × 𝑝𝑝𝑖𝑖 , 
+where 𝑃𝑃𝑖𝑖  is the load coefficient for an input 
+stream (in terms of the number of processor 
+cycles required to push a single input tuple 
+through the network to the outputs), 𝑝𝑝𝑖𝑖  is the 
+stream’s input rate (in tuples per time unit), 
+and n is the number of input streams. Based 
+on our discussion in Section 4, data streams 
+processed by some pipeline queries alternate 
+between SAT and Non-SAT modes. Ac-
+cording to Theorem 1, the load imposed on 
+the system by such a query q𝑖𝑖  is 𝑚𝑚𝑖𝑖/𝑘𝑘𝑖𝑖 ×
+𝑃𝑃𝑖𝑖 × 𝑝𝑝𝑖𝑖  during each SAT interval, and 
+1/(𝑘𝑘𝑖𝑖 − 𝑚𝑚𝑖𝑖 +  1) × 𝑃𝑃𝑖𝑖 × 𝑝𝑝𝑖𝑖  during each Non 
+-SAT interval. As in the approach of Tatbul 
+et al., we assume a load shedder is responsi-
+ble for constantly monitoring inbound traffic, 
+and calculates up-to-date query processing 
+load when requested. When an overload situ-
+ation is detected, the load shedder chooses a 
+drop insertion plan that can discard sufficient 
+load while minimizing query result quality 
+degradation. Similarly, when the system is 
+found to be underloaded, the load shedder 
+can switch to another appropriate drop inser-
+tion plan.  
+As the load shedder strikes a balance be-
+tween system capacity and workload, the al-
+ 
+Service_Process 
+1: While there is a non-empty stream 
+2: Execute the query associated with the stream 
+    with the highest priority; if more than one 
+    stream with identical priority, then execute 
+    the query with the earliest deadline 
+3: Based on the execution result, change the mode  
+    and the phase of the stream if needed 
+4: End While 
+ 
+Priority_Assign_Process 
+1: While a new tuple 𝑥𝑥𝑖𝑖
+𝑗𝑗+1  arrives at stream 𝑥𝑥𝑖𝑖  
+2: Determing the phase of 𝑥𝑥𝑖𝑖  (growing or steady) 
+2: If 𝑥𝑥𝑖𝑖  is in SAT mode 
+3:   If 𝑥𝑥𝑖𝑖  is in its growing phase 
+4:     𝑃𝑃𝑃𝑃𝑃𝑃𝑖𝑖
+𝑗𝑗+1= Max(𝑘𝑘𝑖𝑖 − 𝑚𝑚𝑖𝑖 −NOM( j )+1, 0); 
+5:   Else 
+6:     𝑃𝑃𝑃𝑃𝑃𝑃𝑖𝑖
+𝑗𝑗+1=𝑘𝑘𝑖𝑖- l(m𝑖𝑖 − 𝑠𝑠𝑖𝑖) +1; 
+7: Else 
+8:   If 𝑥𝑥𝑖𝑖  is in its growing phase 
+9:     𝑃𝑃𝑃𝑃𝑃𝑃𝑖𝑖
+𝑗𝑗+1 = Max(𝑘𝑘𝑖𝑖 − 𝑚𝑚𝑖𝑖 −NOM( j )+1, 0) +Δ; 
+10:   Else 
+11:      𝑃𝑃𝑃𝑃𝑃𝑃𝑖𝑖𝑗𝑗+1 = 𝑘𝑘𝑖𝑖- l(m𝑖𝑖 − 𝑠𝑠𝑖𝑖) +1 +Δ; 
+12:End While 
+Figure 3: The SOSA-DBP-Δ algorithm 
+  13 
+𝑆𝑆𝑗𝑗  being in one of the 2𝑛𝑛  possible states can 
+be calculated as follows:  
+𝑃𝑃𝑝𝑝(𝑆𝑆𝑗𝑗)  = �(𝜏𝜏𝑖𝑖s𝑖𝑖 + (1 − 𝜏𝜏𝑖𝑖)(1 − s𝑖𝑖))𝑛𝑛
+𝑖𝑖=1  
+ 
+For processing each stream, the computa-
+tional load imposed on the system varies 
+with different operational modes. We refer to 
+𝐷𝐷𝑖𝑖  as the computational load of processing 
+stream i, which is defined as follows:  
+ 
+𝐷𝐷𝑖𝑖 = �𝑚𝑚𝑖𝑖𝑘𝑘𝑖𝑖 × 𝑐𝑐𝑖𝑖𝑝𝑝𝑖𝑖                    𝐼𝐼𝐼𝐼  𝜏𝜏𝑖𝑖 = 1 1(𝑘𝑘𝑖𝑖−𝑚𝑚𝑖𝑖+1) × 𝑐𝑐𝑖𝑖𝑝𝑝𝑖𝑖       𝐼𝐼𝐼𝐼  𝜏𝜏𝑖𝑖 = 0        (3) 
+ 
+𝐷𝐷𝑖𝑖  denotes the actual computational cycles 
+required in processing stream i. The compu-
+tational demands of processing all n streams 
+is defined as:  
+ 
+D(𝜏𝜏1𝜏𝜏2 . . . 𝜏𝜏𝑛𝑛−1𝜏𝜏n)=∑ 𝐷𝐷𝑖𝑖𝑛𝑛𝑖𝑖=1  
+ 
+Data streams in different states suffer dif-
+ferent dynamic failure rates due to the fluc-
+tuation of total computational demands. Let 
+F(𝑆𝑆𝑗𝑗 ) be the failure rate in system state 𝑆𝑆𝑗𝑗  . 
+When time approaches infinity, the dynamic 
+failure rate with SOSA can be computed as:     
+ 
+𝐹𝐹𝑆𝑆𝑁𝑁𝑆𝑆𝑆𝑆=∑ (Pr(𝑆𝑆𝑗𝑗 ) × 𝐹𝐹(𝑆𝑆𝑗𝑗 ))2n𝑗𝑗=1       (4) 
+ 
+Note that as computational demands in-
+crease, it gets harder for the system to meet 
+streams’ needs, hence dynamic failures will 
+become more frequent. We hereby assume 
+F(𝑆𝑆𝑗𝑗 ) increases monotonically with D(𝑆𝑆𝑗𝑗 ). 
+Further, when D(𝑆𝑆𝑗𝑗 ) = 1, i.e., when computa-
+tional demands reach system’s processing 
+capacity, we assume that F(𝑆𝑆𝑗𝑗 ) is equal to 0, 
+that is, no dynamic failure will occur. Al-
+though it has been proved that D(𝑆𝑆𝑗𝑗 ) = 1 is 
+not the sufficient condition for the schedula-
+bility of a given set of tasks with (m, k) con-
+straints [8], our preliminary experiments 
+show that a dynamic failure rate nearly close 
+to 0 can be achieved with efficient schedul-
+ing algorithms, such as DBP. Therefore, for 
+simplicity of analysis, we assume that F(𝑆𝑆𝑗𝑗 ) 
+is equal to 0 when D(𝑆𝑆𝑗𝑗 )=1.  
+With the above assumptions, we are able 
+to give an estimation of 𝐹𝐹SOSA. We partition all 
+possible system states into two finite set A = 
+{𝑆𝑆𝑗𝑗  |D(𝑆𝑆𝑗𝑗 ) > 1} and A� = {𝑆𝑆𝑗𝑗  |D(𝑆𝑆𝑗𝑗 ) ≤ 1}. 
+Then Equation 4 can be rewritten as:  
+ 
+      𝐹𝐹𝑆𝑆𝑁𝑁𝑆𝑆𝑆𝑆  = ∑ Pr(𝑆𝑆𝑗𝑗 ) × 𝐹𝐹(𝑆𝑆𝑗𝑗 )𝑆𝑆𝑗𝑗∈𝑆𝑆  
+≤ ∑ Pr(𝑆𝑆𝑗𝑗 ) × 𝐹𝐹(11. . .11�����n )𝑆𝑆𝑗𝑗∈𝑆𝑆      (5) 
+ 
+𝐹𝐹(11. . .11�����n )  is the dynamic failure rate 
+with some (m, k) scheduling algorithm that 
+does not distinguish processing modes. DBP 
+is clearly such an algorithm. Inequality 5 
+gives the upper bound of dynamic failure 
+rates when SOSA is applied to any (m, k) 
+scheduling algorithm.  
+7.2 Experiment Setup 
+We conducted simulation experiments to 
+evaluate the effectiveness of SOSA and the 
+performance of SOSA-DBP. Our simulation 
+model is based on the system model de-
+scribed in Section 3.2. Simulation parameters 
+used in our experiments are listed in Table 1.  
+The performance metric of our primary 
+concern is dynamic failure rate. Dynamic 
+failures only occur when a stream is in SAT 
+mode. To model the durations of SAT inter-
+vals, we use three different distributions, 
+namely fixed, uniform, and exponential dis-
+  15 
+higher than SOSA-DBP-2’s because they 
+only show partial concerns over modes or 
+urgencies, respectively.  
+7.3.2 Heterogeneous workload 
+In this experiment, heterogeneous streams 
+with different (m, k) constraints are simulated. 
+The parameters of these five streams are 
+listed as Group 1 in Table 2. The purpose of 
+this set of experiments is to show how 
+SOSA-DBP-Δ perform when some streams 
+have much stringent timing constraints than 
+the others. The basic unit of ASI𝑖𝑖  is period of 
+the corresponding stream. For clarity of 
+presentation, we only show SOSA-DBP-3 
+and SOSA-DBP-4 in Figure 5. They not only 
+perform best among SOSA-DBP-Δ series in 
+this case, but also gain competitive advan-
+tage over DBP, as well as the mode-only and 
+the urgency-only policies. For SOSA-DBP-3 
+and SOSA-DBP-4, neither of them can do-
+minate the other consistently. SOSA-DBP-3 
+prevails over SOSA-DBP-4 when selectivi-
+ties are low whereas SOSADBP- 4 does the 
+best in case of other values of selectivity. 
+The result indicates that one should give 
+much higher priorities to streams in SAT 
+mode when less computation cycles can be 
+saved. The reason behind is that there are 
+more chances for streams staying in SAT in-
+tervals when Non-SAT intervals become rare. 
+Then the preference of scheduler to such 
+streams will increase the probability of 
+meeting the (m, k) timing constraints. An in-
+teresting point to note is that the mode-only 
+policy here performs better than the same 
+policy in Experiment 1, relative to other 
+scheduling algorithms. This phenomenon can 
+be attributed to irregular alternation between 
+SAT and Non-SAT modes with the hetero-
+geneous workload, which renders those 
+starved tuples in Experiment 1 more chances 
+to be served in this experiment.  
+7.3.3 Impact of changing _ values 
+Recall that Δ is used to adjust the actual 
+priorities of streams captured by (mode, 
+priority level ) pairs. Actually, the effect of Δ 
+over the dynamic failure rates has been eva-
+luated in Experiment 1 and Experiment 2. To 
+get a whole picture of the impact of changing 
+Δ, this experiment compares SOSA-DBP-Δ 
+series with different Δ values by having the 
+m and k values two times larger than those in 
+Group 1 in Table 2. The other parameters 
+remain unchanged. So Δ ranges from 1 to 9 
+in the experiment. Again for clarity of pres-
+entation, we only show the best ones in Fig-
+ure 6, which happen to be SOSA-DBP-4 and 
+SOSA-DBP-7. Based on the results of Expe-
+riments 1 ~ 3, we can observe that the best 
+performance cannot be attained in one shot 
+across all selectivities. However, one should 
+choose a Δ that is near the midpoint between 
+0 and m – k + 2 to optimize the overall per-
+formance for practical use. Moreover, given 
+the apriori knowledge of selectivities, one 
+will own much precise control in picking the 
+most appropriate value of Δ according to the 
+experimental results conducted.  
+7.3.4 Impact of varying number of streams 
+In this experiment, we examine how vary-
+ing the number of streams affects the per-
+formance of SOSA-DBP. For space limita-
+tion only results of exponential distribution 
+are presented. 13 streams are simulated with 
+parameters shown in Group 2 in Table 2. We 
+select the first n streams from these 13 
+streams for simulation where n varies from 5 
+(b)Uniform
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+0.3
+0.35
+0.4
+0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+Selectivity
+D
+yn
+am
+ic
+ F
+ai
+lu
+re
+ R
+at
+e
+Mode-Only
+Urgency-Only
+SOSA-DBP-2
+SOSA-DBP-3
+SOSA-DBP-4
+SOSA-DBP-5
+Upper Bound
+DBP
+(a)Fixed
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+0.3
+0.35
+0.4
+0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+Selectivity
+D
+yn
+am
+ic
+ F
+ai
+lu
+re
+ R
+at
+e
+(c)Exponential
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+0.3
+0.35
+0.4
+0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+Selectivity
+D
+yn
+am
+ic
+ F
+ai
+lu
+re
+ R
+at
+e
+Figure 4: Homogeneous workload
+(a)Fixed
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+0.3
+0.35
+0.4
+0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+Selectivity
+D
+ya
+nm
+ic
+ F
+ai
+lu
+re
+ R
+at
+e
+(b)Uniform
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+0.3
+0.35
+0.4
+0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+Selectivity
+D
+yn
+am
+ic
+ F
+ai
+lu
+re
+ R
+at
+e
+Mode-Only
+Urgency-Only
+SOSA-DBP-3
+SOSA-DBP-4
+Upper Bound
+DBP
+(c)Exponential
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+0.3
+0.35
+0.4
+0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+Selectivity
+D
+ya
+nm
+ic
+ F
+ai
+lu
+re
+ R
+at
+e
+Figure 5: Heterogeneous workload
+(a)Fixed
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+0.3
+0.35
+0.4
+0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+Selectivity
+D
+yn
+am
+ic
+ F
+ai
+lu
+re
+ R
+at
+e
+(b)Uniform
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+0.3
+0.35
+0.4
+0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+Selectivity
+D
+yn
+am
+ic
+ F
+ai
+lu
+re
+ R
+at
+e
+Mode-Only
+Urgency-Only
+SOSA-DBP-4
+SOSA-DBP-7
+Upper Bound
+DBP
+(c)Exponential
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+0.3
+0.35
+0.4
+0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+Selectivity
+D
+yn
+am
+ic
+ F
+ai
+lu
+re
+ R
+at
+e
+Figure 6: Impact of changing ∆
+(a)Selectivity=0.1
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+0.3
+5 7 9 11 13
+Number Of Streams
+D
+yn
+am
+ic
+ F
+ai
+lu
+re
+ R
+at
+e
+(b)Selectivity=0.5
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+0.3
+5 7 9 11 13
+Number Of Streams
+D
+yn
+am
+ic
+ F
+ai
+lu
+re
+ R
+at
+e
+SOSA-DBP-2
+Upper Bound
+DBP
+(c)Selectivity=0.9
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+0.3
+5 7 9 11 13
+Number Of Streams
+D
+yn
+am
+ic
+ F
+ai
+lu
+re
+ R
+at
+e
+Figure 7: Effect of varying number of streams
+  19 
+XML stream processing. In WWW, 
+pages 855–864, 2008. 
+[19] Y. Wei, V. Prasad, S. H. Son, and J. A. 
+Stankovic. Prediction-based qos man-
+agement for real-time data streams. In 
+RTSS, pages 344–358, 2006. 
+[20] Y. Zhu and D. Shasha. Efficient elastic 
+burst detection in data streams. In KDD, 
+pages 336–345, 2003. 
+49(5):527-540, September 2006 (corresponding author; SCI; appeared as part of a 
+special issue on high assurance software systems). 
+    
+最近我們另外一篇論文「Continuous Reverse k-nearest Neighbor Monitoring on Moving 
+Objects in Road Networks」，發表在 Information Systems,其 impact factor 為 1.966, ranking
+為 31/116 = 26.7%. 
+ 
+經過過去多年的合作，個人與李教授已經建立良好的研究默契。過去三年多我們推動
+兩項研究計畫: 1. 非搶占式即時系統中節省能耗之動態電壓調節演算法(An 
+energy-efficient dynamic voltage scaling algorithm for non-preemptive real-time systems);  2. 
+針對線上資料流在滑動視窗內探勘頻繁模型之研究(Mining frequent patterns in arbitrary 
+sliding windows over online data stream) ，目前皆在投稿過程中。此次親赴武漢華中科技
+大學，個人與李教授研究團隊開始推動下列兩項新的研究計畫: 
+ 
+ 
+1. 「Deadline and period selection for real-time update transactions scheduled under EDF」 
+ 
+動機與現況: Deriving deadlines and periods for update transactions so as to maintain 
+timeliness and data freshness while minimizing imposed workload has long been recognized an 
+important problem in real-time database research. Despite years of active research, the state of 
+the art still has much room for improvement, particularly for periodic tasks scheduled by 
+earliest deadline first (EDF). In this project, we propose a practical and efficient two-phase 
+algorithm for assigning periods and deadlines to EDF-scheduled update transactions. Phase I 
+aims to find optimal solutions for most inputs in quadratic time, based on the observation that 
+the execution times of update transactions are relatively small compared to the validity interval 
+lengths of real-time data objects in many real-time applications. In the remaining cases for 
+which Phase I fails to derive solutions, Phase II is invoked by employing an existing 
+deadline-monotonic-based algorithm, which we show is also applicable to our problem. 
+ 
+2. 「Continuous k-nearest neighbor query processing over moving objects with uncertain speed 
+in road networks」 
+ 
+動機與現況: This project addresses an important problem in spatio-temporal databases, 
+namely processing continuous k nearest neighbor (CkNN) queries over objects moving at 
+uncertain speeds (CUkNN) in road networks. In contrast to previous studies, we present a novel 
+model to estimate the distances between objects and a submitted query, both of which move at 
+variable speeds in the road network. Based on the proposed distance model, we present a 
+CUkNN query monitoring method to continuously find the objects that could potentially be the 
+k-nearest neighbors (kNN) of the query point during the time period being monitored. We 
+propose an efficient method to calculate the probability of each object being a kNN of a query. 
+The key thing about the method is that the probability of an object being a kNN of query q is 
+shown to be equivalent to the probability of a special line segment being one of the k-nearest 
+lines from q, which greatly simplifies the probability calculation. 
+ 
+二、過程 
+ 
+此次藉由直航於八月三日直飛武漢，過程相當順利。自八月四日開始，個人即在李教
+授實驗室與李教授及其博士班學生李建軍與李豔紅開始密集討論。首先跟李建軍同學討
+無研發成果推廣資料 
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+本計畫成果除已發表在國際會議,也擬投稿至國際期刊.另外,我們也將評估將
+所提技術應用到國科會工程處資訊學門重點研究方向,如life caring systems, 
+smart living spaces, digital life technologies and applications 等,期
+望能對此等領域關鍵技術研發作出貢獻. 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

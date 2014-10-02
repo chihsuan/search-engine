@@ -1,0 +1,355 @@
+detection engine.  
+In this project, we improve the Linux network 
+performance in the multi-core environments. Com-pared 
+with original Linux, our system can achieve 54% 
+improvement in firewall bandwidth test. 
+ 
+英文關鍵詞： Multi-Core Processors, Linux System, Network 
+Performance 
+ 
+ 2 
+多核心架構下 Linux核心網路效能改善之研究 
+ 
+馮立琪 
+長庚大學資訊工程系 
+lcfeng@mail.cgu.edu.tw 
+ 
+摘要 
+隨著網際網路的蓬勃發展，許多企業的重要資
+料存放在電腦主機中或透過網路傳遞。近年來世界
+各地駭客事件頻傳，資訊安全技術研發成為各方研
+究的主要課題，入侵偵測系統 更是其中重要的研究
+方向。目前Giga 位元等級的網路安全產品價格都相
+當昂貴，對大部分的學術、研究機構與中小型企業
+造成非常大的負擔。 
+近來處理機朝向多核心的技術發展，逐漸成熟
+的技術使得個人電腦也能有十分強大的效能。如何
+善用多核心技術，透過 PC server 與 Linux 系統扮演
+Giga 位元等級的網路安全偵防平臺，便成為一個重
+要的發展方向。最近的研究成果顯示，Linux 系統
+在網路封包的處理上，未能充分運用到多核心的優
+勢，此一問題將大大的限制 Linux在網路伺服應用
+上的處理能量。 
+有鑑於此，本計畫針對多核心架構下 Linux 核
+心網路效能之改善進行深入的研究與實作。我們改
+良了 Linux中負責處理網路封包的 softirq機置，將
+網路封包分散到多核心架構下空閒的 core上去處
+理，藉以提高 Linux系統網路處理的效能。 
+依據初步的效能評估顯示，在 5Gbits的網路環
+境中，利用 IPTables進行防火牆頻寬測試，我們
+的系統和原本的 Linux相比，在 1000條防火牆規
+則的情形下效能改善了 10%。在 1500條防火牆規則
+的情形下效能改善了 54%。我們的貢獻不僅在防火牆
+應用，所有基於 Linux核心的網路應用，在多核心
+的架構下均可得到相似幅度的改善。 
+關鍵詞: 多核心處理器、Linux 系統、網路效
+能 
+Abstract 
+With the rapid development of Internet, re-
+gardless of the enterprise itself or customers in-
+creasingly rely on the Internet to deal with important 
+business. In recent years, hacker attacks continue to 
+occur, information security becomes an important 
+issue, and intrusion detection system is one of the 
+major development projects. There are many intru-
+sion detection products now, but their prices are 
+quite expensive. It is a huge burden for most schools 
+and small companies. 
+Recently, multi-core technology becomes ma-
+ture and popular. Because the low-cost and 
+high-performance characteristics of PC server and 
+Linux operating system, they become a good plat-
+form for intrusion detection engine.  
+In this project, we improve the Linux network 
+performance in the multi-core environments. Com-
+pared with original Linux, our system can achieve 
+54% improvement in firewall bandwidth test. 
+Keywords : Multi-Core Processors, Linux System, 
+Network Performance 
+1、 前言 
+網路安全在網際網路中一直是個很重要的課
+題。由於網際網路的蓬勃發展，許多企業的重要資
+料多存放在電腦主機中透過網路傳遞。無論是企業
+本身或客戶都日益仰賴網際網路來處理重要的業
+務，公開存取的網路成為竊賊破壞與窺探攻擊企業
+的目標。網路連結的數量越來越多、威脅的複雜度
+與惡意的程度也越來越高，像傳統的電腦病毒(Virus)
+會造成電腦系統當機、資料損毀，而近年崛起的特
+洛伊木馬(Trojan)、網路蠕蟲(Worm)不但會癱瘓電腦
+系統，甚至能讓駭客竊取資料，或利用感染主機進
+一步攻擊別人，其他像是電腦分散式阻斷服務
+（Distributed Denial of Service, DDos）的攻擊，會以
+惡意的流量癱瘓網站，讓網站變得無法存取使用，
+進而中斷正常的業務運作。 
+為了防範越來越多且類型各異的各類網路攻
+ 4 
+TCP/IP stack，每個 TCP/IP stack都有一個相對應
+的網路卡負責處理它。由於系統並不會有剛好數
+量的網路卡硬體，因此 TCP/IP stack對應的網路
+卡都會是虛擬網路卡，而作業系統會在底層對網
+路卡進行資源分配，動態的將網路卡硬體對應到
+虛擬網路卡上。這樣的設計的確可以有效的將網
+路處理分散在各 Processor上，但虛擬網路介面的
+設計需要額外一層抽象介面，它會消耗部分系統
+資源。 
+T. Vermeiren,E. Borghs和 B. Haaodorens[25]
+提出了所謂的 JNIC System，它提出所有通訊相關
+的 System Service都擁有獨立的虛擬網路卡
+(Virtual NIC；VNIC)，VNIC下以一個 Virtual NIC 
+layer進行界接並分配網路卡的資源給不同的
+VNIC使用。他們的系統同樣能夠提昇Multi-Core 
+Processor在 Linux上的網路處理效率。但首先，
+它需要額外一個Virtual NIC layer對VNIC進行資
+源分配，同樣會消耗掉系統資源。此外，它的架
+構是以 User Space的 Application為考慮對象，對
+於 Kernel Space的 Service並不合適。 
+在 Linux系統中，尤其在 Linux 2.6版之後針
+對Multi-Processor System的支援也越來越完整。
+在 Linux 2.6 scheduler中每顆 CPU都有屬於自己
+的 runqueue和 priority array，這樣的設計可以提
+昇 scheduler的執行效率[27]。 
+R. Bolla和 R. Bruschi[26]在 2008年針對
+Linux在Multi-Core Processor的封包轉送提出了
+改善方案，針對 Linux Router的路由轉換效率進
+行效能提昇。它提出在 Linux的封包轉送的機制
+中，收到封包與送出封包之間，加上一層 TX Ring
+的管理機制，透過它來分配收到封包的處理，並
+決定由哪張網路卡哪組 IRQ和Processor進行封包
+轉送。他們所提出的架構，的確能夠有效利用所
+有網路卡和 Processor的資源，也不需要額外配置
+一層網路抽象介面，可惜的是，它是針對 Linux
+封包轉送進行設計，因此它的分散處理設計在封
+包送出前，分配由不同 IRQ和 Processor來送出，
+因為它的設計是基於提昇封包轉送的效率，並無
+法改善如入侵偵測系統等封包處理的效率。 
+近來一些 Linux在Multi-Core支援的相關研
+究發現，Linux系統的網路效能並未能完全發揮
+Multi-Core架構的優勢。鄭衛斌等人 2004年 2月
+的研究結果[41]顯示 Linux在使用 NAPI技術後，
+網路封包轉送的 throughput比沒有使用時高出至
+少一倍以上，這證明了 Linux在使用 NAPI之後，
+網路的效能能夠大幅度的提昇。再來我們注意到
+Multi-Processor的表現(也包含了Multi-core)，在
+不使用 NAPI技術時Multi-Processor的環境下
+throughput僅多一些，在使用了 NAPI技術後，
+Multi-Processor系統的 throughput甚至比
+Single-Processor系統少了 1/3。所謂 NAPI[38]是
+Linux上實現網路 Polling(輪詢)I/O的一種機制。
+傳統上，以 Polling方式處理 I/O是一種低效率的
+作法，但因為目前網路的速度與頻寬越來越大，
+Polling的方式被證明有更好的效率[34-37]。 
+我們過去曾經在 Gbits的環境下探討核心內
+入侵偵測系統的設計與實作，利用 Linux核心中
+Netfilter的機制，將入侵偵測的工作插入網路封包
+處理的流程當中。雖然我們的研究達到不錯的效
+能，但也遭遇了 Linux在網路封包處理上的瓶頸。
+我們的研究發現 Linux在網路封包處理上有無法
+充份發揮多核心系統效能的現象，我們的發現如
+圖一所示:雖然有很多的工作待處理，但 CPU的工
+作(主要是網路封包的處理)卻集中在少數的核心
+上。 
+目前 Linux在處理網路工作時，往往只能夠利
+用到其中一顆CPU進行，以至於Linux在Multi-Core
+系統中，無法善用到所有CPU的資源，造成網路處
+理效能不彰。當使用了NAPI技術後，原本預期網路
+效率能夠有所提昇，但情況反而變得更加嚴重，非
+但無法提昇效能，反而成為了效能的瓶頸。在鄭衛
+斌等人的實驗中，使用NAPI技術時 Single Processor
+系統的Linux網路處理效率甚至高過Multi-Processor
+系統。 
+Linux的此一問題，不僅是影響了我們的系統，
+所有有關TCP/IP網路封包處理、轉送，IPTables防
+火牆等功能應用，都將因為此一問題導致系統效能
+難以提昇。 
+ 
+ 6 
+夠大幅度的提昇 Linux網路處理效率，但 NAPI
+的 Polling設計，反而會讓處理網路中斷的
+Processor持續保持 Polling的狀態，進一步造成所
+有網路處理被聚集在同一顆 Processor(Core)上。 
+目前 Linux在Multi-Processor系統中提出的
+兩項搭配 APIC的平衡中斷處理技術，其中 IRQ 
+Affinity[29,32] 可以將一個或多個 IRQ綁定在特
+定的一顆或多顆 Processor上，手動由指定的
+Processor來處理特定的 IRQ。另–項
+IRQBALANCE[33]則可以將系統上所有的中斷自
+動平均分配到所有 CPU上。但前者僅能指定操作
+中斷的 Processor讓負載聚集在上面；後者僅能平
+衡所有 Processor處理 IRQ的次數，無法根據網路
+資料量來平衡負載。兩者在遇到 NAPI技術時，
+甚至會讓網路處理完全聚集在特定 Processor上，
+無法轉移負載，更不能有效改善網路效能。 
+為了將Linux上網路卡的中斷處理與SoftIRQ
+分離，收到網路卡 IRQ的 CPU可以將 SoftIRQ指
+派給其他的 CPU執行，讓網路後半段的處理(包含
+TCP/IP堆疊的封包處理)能夠分散到各 CPU上，
+我們設計了一個網路封包分派模組，內部定義出
+三層架構，分別實作不同層間的不同功能。架構
+如圖二所示。 
+網路封包分派模組所包含的三個單元，分別
+說明如下: 
+ Policy Management Unit： 
+這個 Unit是整個Module的決策單元，它會
+根據 Packet Statistics Unit的資訊，將資訊交由一
+個模組化設計的 Policy Algorithm進行決策，依決
+策結果決定要處理封包的 CPU。透過模組化的設
+計，我們可以依照需要更換、改寫不同的 Policy 
+Algorithm；換句話說，我們可以依照我們的需要
+或系統的需求重新設計、改寫 Policy Algorithm，
+讓 Policy Management Unit做出符合需求的決策。 
+ Task Assignment Unit： 
+這個 Unit會根據 Policy Management Unit做
+出的決定執行，並在發出執行命令後將資訊傳遞
+給 Packet Statistics Unit進行統計。首先它會將網
+路卡收到的封包送入相對應 CPU的 Packet Queue
+當中，接著 Task Assignment Unit會要求相對應的
+CPU開始處理 Packet Queue內的封包。當工作分
+配後，接著會將封包的資料量、CPU等資訊傳遞
+給 Packet Statistics Unit，讓 Packet Statistics Unit
+能根據資訊進行統計。 
+ Packet Statistics Unit： 
+它會和分別和 Policy Management Unit以及
+Task Assignment Unit進行界接，由 Task Assign-
+ment Unit提供資訊並進行統計，統計後的結果做
+為 Policy Management Unit的參考。 
+ 
+圖二：網路封包分派模組架構圖 
+我們初步實作了三種分配策略 
+(1).Round Robin 
+當 CPU接收到一連串封包時，會以順序性的
+方式將每個封包傳遞給系統中的每個 CPU做處
+理。 
+(2).Minimum Volume Packets 
+當 CPU接收到一連串封包時，會根據當前系
+統中，須要處理封包總量最少的 CPU當作配給目
+標。 
+(3).CPU Group with RR 
+當 CPU接收到一連串封包時，考量不同的
+Physical CPU，以交錯的方式並且在每個 CPU 
+Group中以順序性的方式，將每個封包傳遞給系
+統中的每個 CPU做處理。 
+ 
+當分配策略決定目前的網路封包該由那一個
+core來處理時，我們會利用 softirq工作指派的機
+置將工作安排在指派的 core之中，並設法通知
+target core的 handler進行處理。因為目前的 Linux
+核心並不具備這樣的能力，經過深入的研究與測
+試，我們成功的修改 Linux核心中 softirq子系統，
+ 8 
+實作方法，探討其它的網路核心應用，更進一步
+提昇系統在Multi-Gbits/s環境下的效能。 
+參考文獻 
+[1] “ISS Corporation.”, http://www.iss.com.tw 
+[2] “BlackICE.”, 
+http://www.iss.com.tw/product/product-blackice.ph
+p 
+[3] “Symantec - AntiVirus, Anti-Spyware, Endpoint 
+Security, Backup, Storage Solutions.” , 
+http://www.symantec.com/index.jsp 
+[4] “Symantec ManHunt.”, 
+http://www.symantec.com/region/tw/product/sids/s
+mh/ 
+[5] “Snort.”, http://www.snort.org 
+[6] “TCPDump/Libpcap.”, http://www.tcpdump.org 
+[7] W. Lee, S.J. Stolfo, 及 C.U.N.Y.D.O.C. SCIENCE, 
+Data Mining Approaches for Intrusion Detection, 
+COLUMBIA UNIV NEW YORK DEPT OF 
+COMPUTER SCIENCE, 2000. 
+[8] W. Lee, S.J. Stolfo, P.K. Chan, E. Eskin, W. Fan, M. 
+Miller, S. Hershkop, 及 J. Zhang, “Real Time 
+Data Mining-based Intrusion Detection,” Ana-
+heim, USA, 2001, 頁. 89–100. 
+[9] A.K. Ghosh 及 A. Schwartzbard, “A study in 
+using neural networks for anomaly and misuse de-
+tection,” 1999. 
+[10] D. Marchette, “A Statistical Method for Profiling 
+Network Traffic.” , Proceedings of the Workshop 
+on Intrusion Detection and Network Monitoring 
+Santa Clara, California, USA, April 9–12, 1999 
+[11] 黃盈源, “一個重用 ip堆疊之核心內入侵偵測系
+統的研究與實作,” 長庚大學, 資訊管理研究所, 
+2002. 
+[12] Intel Corporation, “Introduction to Hy-
+per-Threading Technology,” 2001. 
+[13] D. Koufaty 及 D. Marr, “Hyperthreading tech-
+nology in the netburst microarchitecture,” Micro, 
+IEEE,  vol. 23, 2003, 頁. 56-65. 
+[14] D.T. Marr, F. Binns, D.L. Hill, G. Hinton, D.A. 
+Koufaty, J.A. Miller, 及 M. Upton, “Hy-
+per-Threading Technology Architecture and Micro-
+architecture,” Intel Technology Journal,  vol. 6, 
+2002, 頁. 4-15. 
+[15] R.M. Ramanathan 及 T. Evangelist, “Intel Mul-
+ti-Core Processors: Leading the Next Digital Revo-
+lution,” Technology, 2005, 頁. 1. 
+[16] G. Koch, “Discovering Multi-Core: Extending the 
+Benefits of Moore’s Law,” Technology, 2005, p. 
+1. 
+[17] D. Geer, “Chip makers turn to MultiCore proces-
+sors,” IEEE Computer,  vol. 38, 2005, 頁. 
+11-13. 
+[18] R. Spencer, S. Smalley, P. Loscocco, M. Hibler, D. 
+Andersen, 及 J. Lepreau, “The flask security 
+architecture: system support for diverse security 
+policies,”  Washington, D.C.: USENIX Associa-
+tion, 1999, 頁. 11-11. 
+[19] R. Durst, T. Champion, B. Witten, E. Miller, 及 L. 
+Spagnuolo, “Testing and evaluating computer in-
+trusion detection systems,” Commun. ACM,  vol. 
+42, 1999, 頁. 53-61. 
+[20] M.W. Godfrey 及 Q. Tu, “Evolution in open 
+source software: a case study,” Software Mainte-
+nance, 2000. Proceedings. International Conference 
+on, 2000, 頁. 131-142. 
+[21] A. Hars, “Working for Free? Motivations for Par-
+ticipating in Open-Source Projects,” International 
+Journal of Electronic Commerce,  vol. 6, 2002, 頁. 
+25-39. 
+[22] J. Sanders, “Linux, Open Source, and Software's 
+Future,” 1998. 
+[23] G. Hertel, S. Niedner, 及 S. Herrmann, “Motiva-
+tion of software developers in Open Source projects: 
+an Internet-based survey of contributors to the 
+Linux kernel,” Research Policy,  vol. 32, 2003, 
+頁. 1159-1177. 
+[24] S. Boyd-Wickizer, H. Chen, R. Chen, Y. Mao, F. 
+Kaashoek, R. Morris, A. Pesterev, L. Stein, M. Wu, 
+及 Y. Dai, “Corey: an operating system for many 
+Cores.” 
+[25] T. Vermeiren, E. Borghs, 及 B. Haaodorens, 
+“Evaluation of software techniques for parallel 
+packet processing on Multi-Core processors,” 
+Consumer Communications and Networking Con-
+ference, 2004. CCNC 2004. First IEEE, 2004, 頁. 
+645-647. 
+[26] R. Bolla, R. Bruschi, “An effective forwarding 
+architecture for SMP Linux routers,” Telecom-
+無衍生研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

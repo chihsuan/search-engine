@@ -1,0 +1,287 @@
+ 分散式模式模擬系統之時間管理中介層研究 
+The Time Synchronization Middleware for the Distributed Modeling and Simulation 
+System 
+計畫編號：NSC 94-2213-E-231-003 
+執行期限：94年1月1日至94年7月31日 
+主持人：董明智  清雲科技大學 資訊工程系 
+計畫參與人員：張家豪 台北大學 資訊管理研究所 
+李明耀 清雲科技大學 資訊工程系 
+ 
+(一) 摘要 
+ 
+中文摘要 
+在網路虛擬實境的研究領域中，分散式模擬是被廣泛探討的課題。在現有的技術中，IEEE 
+1516 標準制訂了一個共通性的分散式模式模擬架構，藉以規範模擬物件彼此間的訊息傳遞
+與互動機制，此規範更可以增加模擬物件的可重複使用性(Reusable)，讓模擬物件可以很容
+易的套用到新的模擬系統中，以降低新系統開發的負擔。但它涵蓋了許多相當複雜的機制，
+尤其是在分散式時間同步的規範上，必須先學習瞭解 Discrete Event Simulation 的技術，才能
+理解時間同步機制的設計。 
+本計畫以 IEEE 1516 為基礎，研究設計一個時間同步的中介層(Middle Layer)，將分散式
+模擬系統中的 Conservative Synchronization、Optimistic Synchronization、Event-Driven 
+Simulation 與 Time-Stepped Simulation 等四種分散式問題加以整合成一個共通的介面。此中
+介層的功能除了涵蓋：網路訊息的時間戳記(Timestamp)管理、分散式系統的 Lookahead 管
+理、TimeStamp Order 網路訊息管理、模擬時間(Simulation Time)管理、…等等分散式時間同
+步問題，並進一步研究 Time Warp 機制的一些重要課題：Rolling Back、Anti-Messages、Fossil 
+Collection、Error Handling、Dynamic Memory Allocation 與 Event Retraction。 
+因此，本計劃的執行方向是以Conservative的時間同步問題為基礎，增加Time Warp的演
+算法與機制，遵照FEDEP(IEEE 1516.3)的發展流程，研究出一個分散式模擬系統的時間同步
+中介層，使得分散式模擬系統能夠精確的執行。進一步而言，本計畫提出了一個中介層的類
+別程式庫(Class Library)技術，將分散式模式模擬所需的各種不同時間同步機制單一化
+(Unified)，並且將Optimistic機制所欠缺的Time-Wrap技術加以整合，讓分散式模擬系統的開
+發者，可以不用去考量不同時間同步策略，應該如何運用哪些相對應的時間機制，降低系統
+的開發門檻。 
+ 
+英文摘要 
+Distributed simulation is a widely studied technique for the networked virtual environment.  
+Among the existing technologies, the IEEE 1516 Standard establishes a common distributed 
+simulation framework, which facilitates the interoperability and reuse of simulation components.  
+However, some IEEE 1516 time synchronization services are very low-level and difficult to use, 
+especially when a simulation is designed by using a particular time synchronization mechanism.  
+This project describes a time synchronization middle-layer.  The middle-layer is used to unify the 
+time management services of the time-stepped, event-driven and optimistic time advancement in 
+the IEEE1516 specification.  The capabilities of the middle-layer include the followings: taking 
+over event’s timestamp tagging work; maintaining a lookahead value, and unifying different time 
+advance approaches provided by the IEEE 1516 interface specifications.  In addition, it adopts 
+1 
+ ordering messages, receive-order (RO) and timestamp-order (TSO).  RO messages are simply 
+placed in an FIFO queue, and immediately eligible to be delivered to the federate on their arrival.  
+Whereas each TSO message is tagged with a timestamp by the sending federate, and is delivered 
+to the receiving federate in the order of non-decreasing timestamps.  The incoming TSO 
+messages are placed in a queue within the RTI, and will not be delivered to the federate until the 
+RTI can guarantee that no straggler TSO messages will be received by the receiving federate. 
+To ensure the received TSO messages are in order, the RTI must compute a Lower Bound of the 
+Time Stamp (LBTS) of the future TSO messages that may be received from other federates.  
+Several algorithms for the LBTS computation have been proposed over the years.[11]  To 
+compute the LBTS, the RTI must consider:  
+• The smallest timestamp of any TSO message that any federate might generate in the future. 
+• The timestamps of the messages inside the RTIs and the interconnecting network. 
+The LTBS computed by RTI enables a federate to take advantage of the Time Management 
+services (as appropriate for the internal time advance mechanism of the federate), which will be 
+described in the next section. 
+As mentioned previously, the RTI guarantees that a federate will not receive any TSO messages 
+with a timestamp less than its current logical time.  With this guarantee, federates cannot 
+autonomously advance their logical times, but have to explicitly request RTI for the advancement 
+of their logical times.  This time advancement is not allowed until the RTI explicitly grants it.  
+Hence, the protocol for advancing the logical time is the core of the HLA Time Management 
+services.  A complete time management cycle consists of the following three steps [9]:  
+• The federate requests the advancement of its logical time by invoking the appropriate RTI 
+service. 
+• The federate receives zero or more TSO messages from the RTI. 
+• The federate receives a timeAdvanceGrant (TAG) callback from the RTI to indicate that its 
+logical time can be advanced. 
+The HLA specification defines three different Time Management services for the federate to 
+request the advancement of its logical time [10][13][14] which are timeAdvanceRequest (TAR), 
+nextEventRequest (NER) and flushQueueRequest (FQR).  Among them, TAR is well suited for the 
+federate to use the time-stepped mechanism internally (Refer to Algorithm1).  NER is the 
+preferred alternative for the event-driven federates (Refer to Algorithm2).  Last, FQR is used for 
+the optimistically synchronized federates to request the out-of-order delivery of events(Refer to 
+Algorithm3). 
+ 
+3. Time Advancement Analysis 
+To analyze the processing procedure of three different types of the time advance mechanism 
+defined in the HLA specification (Algorithm1,2, and 3), we notice that the differences among 
+these three Time Management services rely on how they handle the internal and external events in 
+the timestamp order.  In order to analyze them, we need to formulate the internal and external 
+events first.  For further discussions, we symbolize the timestamp of an event e as TS(e), an event 
+e with a timestamp TS(e) as e@t, an internal event j as iej, and an external event (generated by 
+other federates) i as eei.  Let the federate’s external event set be EE = { eei@t, i} and its 
+internal event set be IE = { ie
+∀
+j@t, j }.  We further define the merged and ordered IE and EE 
+event set of a federate as the set E.  That is, 
+∀
+E = { ex@t | ex  EI EE, x =1,2,3,.....,i+j} with the following property ∈ U
+TS(ea) ≤ TS(eb) when a ≤ b, ∀ ea@t , eb@t ∈E. 
+ 
+3 
+ ∀ x }. 
+TA: the specified time advance mechanism, which can be event-driven, time-stepped, or optimistic. 
+fout : the translation function to insert the timestamp into the output TSO events and to transform a time 
+advancing call into the method specified by TA. 
+fin : the translation function to extract the timestamp from the external TSO events and to read the granted 
+time from the TAG callback. 
+Now: the current federate time which is updated by fin.  Note that Now = the timestamp of the last 
+processed external / internal event when TA is optimistic.  If TA is event-driven or time-stepped, 
+then Now = the time of TAG callback value. 
+L : the lookahead value. 
+ 
+4.2 Time Maintenance 
+The Eq.(1) shows that synchronization agent maintains the federate time internally.  In the 
+HLA specification, notifications from the RTI to the federate are implemented as the callback 
+functions.  Each federate need to implement a set of predefined virtual functions and passes them 
+to the RTI via the FederateAmbassador [14].  In the discrete event simulation, each simulation 
+time changed in the system is the result of processing a timestamped event.  The callback event 
+must have an associated timestamp that indicates the logical time when the callback event should 
+be processed.  Therefore, the time-related callback functions from the RTI must be intercepted by 
+the agent translation function fin, so the timestamps can be extracted.  As illustrated in Figure 2, 
+the agent extracts and records the timestamps of the external events received from the RTI 
+callback.  These external events are then forwarded to the federate.   
+Since the federate time of both the event-driven and time-stepped federates is advanced by TAG 
+callback to the federate, the synchronization agent manages its internal federate time in the same 
+fashion.  However, the agent advances its federate time for the optimistic federate according to 
+the timestamp of the processed external/internal events.  In the optimistic federate, the agent also 
+controls the time advancement of the GVT (Global Virtual Time, is defined to be the timestamp of 
+the smallest unprocessed event in the federation.  Any checkpoint states and anti-message with 
+their timestamps less than GVT can be released from memory.  This action is called the fossil 
+collection. [15][16][17]), Tss, to set the rollback checkpoint, SS.  For the optimistic federation, SS 
+is used to restore the saved state during the rollback process and to denote the fossil-collection to 
+release the memory space. 
+The federate time is the current simulation time of a federate.  It is defined as the earliest time 
+that a regulating federate will tag an outgoing message [13].  It is possible for a regulating 
+federate to send a message at time Now+Lookahead.  As depicted in Figure 3, the 
+synchronization agent translation function fout will check every outgoing TSO event, oex, and 
+insert the timestamp, Now+Lookahead, if oex has an empty timestamp.  The agent then forwards 
+this amended event to the RTI. 
+ 
+5. The Architecture and Event Processing  
+Figure 4 illustrates the architecture of the event processing inside the synchronization agent. For 
+all federates, the agent provides a unified time advancement service called eventRequest, whether 
+the federate is time-stepped, event-driven or optimistic.  As modeled by Eq.(1), when a federate 
+invokes the eventRequest service call, the fout checks the TA value first and then translates the 
+request into an appropriate HLA time advancement service call to invoke the RTI.  This 
+procedure is transparent to the federate.  Furthermore, the fout will intercept the outgoing TSO 
+event, oex, and, if necessarily, insert timestamp Now+L into oex before forwarding it to the RTI.  
+When the RTI calls back any external events, fin will extract their timestamps first.  Furthermore, 
+5 
+ function fout checks the values of TA, Now and L in TMS first, and then transforms this call into 
+the event-driven service function, NER.  The fout will also inspect every outgoing event oex and 
+insert an appropriate timestamp into it, if it is not timestamped. 
+ 
+5.3 Optimistic Simulation  
+The final mechanism of the time advancement is the optimistic approach.  The FQR service 
+call will cause the RTI to clean its TSO queue by pushing all the received external events to the 
+requesting federate, regardless of the relative LBTS and the timestamps on the events.  The 
+federate will then advance its federate time to the timestamp of the latest processed 
+internal/external event.  However, since the RTI will pass all of the queued events to the federate, 
+some of them may have their timestamps larger than LBTS and some with smaller timestamps 
+may later arrive in the subsequent time steps.  This approach is often useful for the loosely 
+coupled federation, in which the actual interactions among federates are relatively rare.  
+The previous research on simplifying the optimistic simulation was presented by Vardanega and 
+Maziero [18] [19].  They proposed an extra mechanism, called the rollback manager, to 
+implement the state saving and the rollback management for the optimistic federate.  This project 
+adopts their concept and extends this optimistic mechanism into synchronization agent. 
+Figure 7 illustrates the event-processing diagram of the synchronization agent for the optimistic 
+simulation that transforms the unified time advance function eventRequest into a smart optimistic 
+advance mechanism.  In this case, the synchronization agent model becomes Eq.(4).  
+TMS = < SS, δ, OEã, optimistic, fout, fin, Now, L> (4) 
+Where all the components in Eq.(1) are employed in this case and 
+TA = optimistic. 
+When the agent is invoked by the federate, the eventRequest function is translated by fout into 
+FQR to interact with the RTI to obtain all the external TSO events.  The receiving process of the 
+external events is executed in two phases.  At the first phase, fin detects and extracts all “safe” 
+external events, eei@t.  That is, all of the external events eei will have their time stamps TS(eei) ≤ 
+LBTS.  These “safe” external events will not be rolled back or cancelled in the future execution.  
+The fin then advances the checkpoint time, Tss, to the maximum timestamp of these “safe” events.  
+The time Tss can be considered as the checkpoint time, which indicates a time without the risk of 
+rolling back.  The agent saves this state and its current federate time in SS as a checkpoint.  
+Furthermore, the agent issues a saveStateNotification(S, Tss) callback to notify the federate to set 
+the checkpoint state S at federate time Tss. 
+The fin then proceeds to process the rest of the callback external events.  Since the RTI cannot 
+guarantee that the external events with smaller timestamps won’t be received in the future, these 
+events are considered unsafe and may suffer from rollback.  When a rollback occurs, the 
+synchronization agent contains all of the necessary information to cancel the scheduled events and 
+notify the federate to restore to the previously saved safe state.  In addition, the fin will finish the 
+FQR process when it receives the TAG callback from the RTI.  In the meantime, the 
+FossilCollect process is triggered to release all the saved data with their timestamps less than the 
+Tss from the synchronization agent memory.  
+The synchronization agent also keeps track of all the anti-message of the outgoing events with 
+Tss < TS(oex) ≤ Now, so that they can be cancelled later.  As illustrated in Figure 8, if fin receives 
+a straggler event that has a timestamp less than the current time, Now, or receives an anti-message 
+callback, requestRetraction, the STM then begins to rollback.  The agent first sends 
+rollbackNotification[S@Tss] to notify the federate that it should rollback to the saved state S at 
+7 
+ RTI to compute the simulation time [14].  Since the synchronization agent uses the “tick” 
+function internally to manage the simulation time and deal with event traffic, the “tick” function 
+has a dramatic effect on performance and stability.  That is, the agent spends much of its time 
+idly waiting for the calling of “tick” after it has requested the time advancement or sent out events.  
+In our proto-federation, federates are doing nothing but sending and receiving messages. In 
+actual scenario, the federation is much more complicated than the proto-federation.  Since our 
+synchronization agent only deals with the transmission of events, its processing time won’t be 
+increased as the federate becomes more complex.  Due to the variation ranges are less than 0.06 
+in Figure 12, these variations are insignificant when the computational complexity of the federate 
+is considered.  Hence, the use of the synchronization agent is worthwhile.  
+ 
+7. Conclusion 
+This project presents the synchronization agent that integrates the conservative and optimistic 
+simulations into a unified synchronization mechanism.  The synchronization agent encapsulates 
+all the time synchronization factors into a basic model, TMS.  With the help of the STM, the 
+federate developers can easily utilize the HLA Time Management services without concerning 
+about time policies, message ordering definitions or logical time advance strategies for the 
+federate.  In additional, the agent provides a smart optimistic synchronization method by creating 
+a middle layer to shield the developer from the tedious work of employing the Time Management 
+service on the RTI.  Since the traditional optimistic simulation requires state saving, states roll 
+back and fossil-collection which are complicated for the designer and often it is difficult to 
+implement the applications.  The presented agent solved this problem by supporting smart 
+rollback, generic state-saving and efficient fossil-collection management for the optimistic 
+federate. 
+With the synchronization agent, different types of time advancing federates of a federation can 
+exchange messages by using a unified time advance function, eventRequest, to invoke the RTI.  
+The STM will then smartly translate the request into an appropriate HLA Time Management 
+service call.  In this case, the agent presents a unified and scalable mechanism for the user to 
+construct HLA federates with a unified time management interface to solve the synchronization 
+issue.  
+The synchronization agent helps the developer to simplify the process of building conservative 
+and optimistic federates.  All aspects of the time management issues are taken care of by the 
+agent which interacts with the RTI and extends optimistic time warp functions.  It relieves the 
+simulation developers from the complexity of the synchronizing approach.  The synchronization 
+agent is capable of identifying which time advancement approach is used by a federate, as well as 
+taking all suitable actions to ensure that the federate processes internal/external events in the 
+correct causality.  The synchronization agent will accomplish tasks that are common to every 
+synchronized federate.  However, it does not depend on a specific federate behavior.  Hence, the 
+federate program code becomes simpler due to most of the control and management of 
+synchronization is handled by the synchronization agent.  
+ 
+ 
+ 
+參考文獻 
+[1] A. Ferscha, Parallel and Distributed Simulation of Discrete Event Systems, Parallel and 
+Distributed Computing Handbook, McGraw-Hill, 1995. 
+9 
+ 圖表 
+ 
+Algorithm 1. The event-driven federate 
+While (simulation still in progress) 
+{ 
+Invoke NER(TS(iej)) 
+The RTI delivers the next external TSO event, if any exists, with TS(eei)≤ TS(iej)  
+The RTI advances federate’s logical time by calling back TAG 
+If (any external event is received from the above NER service call) 
+process the external event(s) delivered to the federate (eei@t) 
+Else 
+process the next internal event (iej@t) 
+} 
+Algorithm 2. The time-stepped federate 
+While (simulation still in progress) 
+{ 
+Invoke TAR(Now+timestep) 
+The RTI delivers all TSO events with timestamp ≤ (Now+timestep) if any exists 
+The RTI advances federate’s logical time by calling back TAG 
+Merge and order the external event(s), eei@t, and internal events, iej@t.  
+Process the events with the timestamp order 
+} 
+Algorithm 3. The optimistic federate 
+While (simulation execution is still in progress)  
+{  
+Next_Event_Time = timestamp of the next internal event 
+Invoke FQR(Next_Event_Time) 
+Honor the RTI callbacks for Reflect Attribute Values, Receive Interaction or event retractions 
+(cancellations). Place these incoming messages to queues of the federate. Process any rollbacks or 
+annihilations. Use message retraction to cancel the previously sent messages 
+The RTI advances federate’s GVT by calling back TAG 
+FossilCollect(GVT) 
+Process the next smallest timestamped message(s) and advance the federate time 
+} 
+ 
+ 
+Figure 1. The abstract view of the STM  
+11 
+  
+Figure 6. The event-processing diagram of the STM for the event-driven simulation. 
+ 
+ 
+Figure 7. The event-processing diagram of the STM for the optimistic simulation 
+ 
+ 
+ 
+Figure 8. The event-processing diagram of the STM rollback mechanism. 
+13 

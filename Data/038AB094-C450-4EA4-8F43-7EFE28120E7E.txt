@@ -1,0 +1,310 @@
+ 1
+摘要 
+影音串流技術(video streaming)已廣泛地被運用在當今 Internet 中提供即時的影音多
+媒體服務。然而由於目前 WAN 的頻寬有限，傳輸延遲過長，且多為 best-effort 服務，
+因此在下載影音時，往往必須忍受冗長的啟始等待與不穩定的串流品質。為了改善此一
+問題，本計畫之主要目的就是，依據先前 segment-based caching 理論，規劃並開發一套
+支援 Internet video streaming 的 streaming proxy server（SPS）平台，有別於傳統 web proxy 
+server 以處理靜態圖片、文字資料為主，此平台特別提供了影音片段暫存(segment-based 
+caching)的機制，它可望達成以下效益：(1)有助於資訊分享、(2)加速點播回應速度、(3)
+穩定串流品質並(4)降低廣域網路頻寬消耗。在系統規劃上，我們採用 Http1.1 通訊標準
+與 Java 語言，與現有 web 環境完全相容。特別在流量控制方面，我們設計一套 LAN- 
+stream-WAN-segment 的混合模式，來區隔 WAN 上嚴重的 delay/rate jitter，以提升 stream
+的穩定性。本計畫共計兩年完成，第一年計畫內容主要以開發 unicast 傳輸模式為主的
+segment caching 技術；第二年計畫則擴大採用 unicast/multicast hybrid 傳輸模式，開發更
+進階的 segment caching 技術。目前，我們已按既定進度，完成第一年系統開發與測試，
+從實驗中我們觀察到，無論是對國內或國外的網站環境，透過 segment caching，SPS 確
+實能顯著改善 streaming 效能；但同時也遭遇到新瓶頸，發現頻繁的檔案讀寫所造成的
+disk I/O 是影響 SPS 效能的另一項重要關鍵，因此在第二年中我們將會對此新議題，嘗
+試可能的解決方案。 
+Abstract 
+Video streaming has been prevalently used in Internet today for providing real-time 
+multimedia services. However, the video streaming is suffered from exceeding initial delay 
+and unstable transmission quality because of the limited bandwidth, long-haul network delay 
+and the best-effort transmission service offered by most wide-area-networks (WAN) deployed 
+today. For solving this problem, the aim of this project is to develop a streaming proxy server 
+(SPS) platform for supporting Internet video streaming. Different from the traditional proxy 
+server design, targeting at caching static images and texts, the SPS aims to provide 
+segment-based caching mechanisms. It shows several advantages: (1) facilitating information 
+sharing, (2) speeding up playback response, (3) stabilizing stream transmission quality and (4) 
+reducing the WAN bandwidth consumption. In terms of system development, we adopt Http 
+1.1 protocol and Java language for offering full compatibility with the present web 
+environment. Especially, we propose a LAN-stream-WAN-segment flow control scheme to 
+stabilize stream quality by isolating WAN delay/ rate jitter from LAN. This project’s time 
+schedule covers two years. The first-year focus is on developing basic unicast-based segment 
+caching mechanisms. And the second-year focus is on developing more advanced ones which 
+incorporate both unicast and multicast transmissions. So far we have finished the first-year 
+part, and from the experiments we did observer significant performance improvement 
+ 3
+在第 3 節中，針對第一年所規劃的 SPS 設計與實作做進一步說明，第 4 節中討論實驗
+結果，最後在第 5 節做一結論。 
+2. Segment-based Caching 背景 
+由於網路上所提供的服務呈多元發展，網頁中的資料形式也朝向多媒體
+（Multi-media）的方式呈現，對於影片來說，由於其本身的檔案容量很大，因此目前在
+Internet 上影片傳輸主要採用串流（streaming）技術，也就是影片以連續資料封包流的
+方式從視訊服器直接傳送至使用者，然後使用者以「邊收邊播」的模式播放影片，因此
+會佔用一定時間的網路頻寬。例如：一部 110 分鐘 MPEG-1 資料量高達 1.1GB，影片傳
+輸時需要 1.5 M bps 的頻寬。這類資料一般也稱之為連續媒體（Continuous Media/CM）。 
+目前 Internet 骨幹網路頻寬不斷提升，區域網路（LAN）的傳送速度已經非常快速，
+但是由骨幹連至區域網路可能必須經由數個區域性的路由器，其效能很可能成為主要的
+瓶頸，再加上如果未來視訊普及，使用人數不斷的提升，勢必造成大量的交通量，一味
+的提升網路頻寬無法完全解決問題。此外雖然目前 Internet streaming 的技術已有顯著的
+進步，但是目前 Internet 上仍是以 best-effort 服務為主流，因此網路延遲與頻寬的穩定
+性不佳，為了要解決這個問題，「代理伺服器輔助串流(proxy-assisted streaming)」的策
+略提供了一個極具經濟效益的方案，如圖 1 所示，當使用者點選一般網頁時，仍透過傳
+統 web proxy，但點選影片檔（如：*.mpg、*.wmv 或*.avi）時，此需求會被導向提供
+streaming 服務的 streaming proxy server，此 proxy server 通常位於相同的 local network 
+domain 中或位於 ISP 機房端，負責向遠端 web server 擷取影片資料，然後轉送給使用者，
+同時此 proxy server 會將某部分的影片片段（segment）加以暫存，好讓後來點播的使用
+者可以共享，但又不至於銷耗掉大量的空間來儲存整部影片。我們稱這種 caching 策略
+為 segment-based caching，以下介紹幾種演算法。 
+ 
+圖 1：proxy-assisted streaming 策略示意圖 
+ 5
+下載 prefix，當 prefix 下載結束時（ti+vi），由於 ti>wi，所以 suffix window 已不包
+含 suffix 的起始點資料，因此 patch 只好用 unicast 自 server 下載。同樣地，Slave
+必須備有容納 ti長度片段的 buffer。此部分與 patching scheme 同。 
+ Case 4 (ti≥Gi): 無法與 master 分享 stream，故只好扮演 master 角色，另起爐灶。 
+Prefix
+U nicast (proxy)
+M ulticast (proxy)
+patch
+Prefix
+U nicast (proxy)
+M ulticast (proxy)
+patch
+Prefix
+U nicast (proxy)
+M ulticast (proxy)
+U nicast (server)
+G i0 vi
+SW  at ti
+(1)
+(2)
+(3)
+SW  at ti+vi
+SW  at ti SW  at ti+vi
+ 
+圖 2 Suffix-window caching 示意圖 
+我們第一年的設計將採用以手動的方式實踐 unicast/non-adaptive caching policy，，
+包括 Prefix caching[1]以及 Suffix-Window caching/unicast[3]演算法，並將 Caching policy
+參數化，讓使用者可依照其需求自行調整各項參數。 
+3. SPS 設計與實作 
+3.1 系統架構 
+SPS(Segment-based Proxy 
+Server) 的系統架構如圖 3 所
+示，主要分為三個子系統，分別
+為「儲存管理子系統」、「快取策
+略子系統」、「影片串流控制子系
+統」。當使用者提出影片需
+求….(provide basic senario). 各子
+系統之功能與控制流程描述如
+下： 
+ 
+ 
+圖 3 SPS 系統架構圖 
+ 7
+的，size 越大的封包則傳送速度會相對的慢許多，因此本實驗室提出了 ATCP+的流量控
+制機制，來改善 WAN segment-based flow control 的效能。經由測試得知 1.2MB 的區段
+在網路傳輸上擁有良好的「網路傳輸效率」、以及「較佳的網路變異度適應能力」，做為
+媒體檔案分段的主要依據；在使用者端串流流量(throughput)是根據下列計算公式(1)： 
+     
+StreamT
+DThroughput =  公式(1) 
+  從連續媒體代理伺服器至遠端伺服器快取一個區段的時間為 TSegment；若由連續
+媒體代理伺服器至使用者端傳送一個區段的時間為 Tstream，而 Tstream 由公式(1)計算
+得知，假設使用者端播放流量為 1024Kbps，而 D 的大小為 1.2MB，則計算出 TStream
+約為十秒，當 ATCP+機制以分段的方式下載影片後，每十秒的間隔(interval)內必須快取
+1.2MB 的區段，若無法在十秒內完成快取，則會導致使用者端播放影片延遲的情況發
+生，換言之，Tsegment 從遠端伺服器快取區段的時間必須小於 Tstream 傳送至使用者端
+的時間，否則將會造成影片播放的延遲。 
+有鑑於上述的問題，即使以區段的方式下載還是會發生延遲的情況，因此 ATCP+
+機制採用K值將區段切為更小的區段，稱為子區段(sub-segment , L)，並運用Multi-Thread 
+Download 的技術，將子區段同時進行快取的動作，縮短下載的時間，K 值升降的標準
+是評估兩個門檻值來調整，分別為上界(H1) TStream 的 80%、及下界(H2) TStream 的
+90%，倘若 TSegment 的時間在上界前能快取完成，則 K 值會下降、子區段的容量增加，
+降低傳輸速率、減少同時下載的連線數量；若 TSegment 的快取時間超過下界， K 值將
+會上升，增加同時線連的數量，縮小子區段的容量，以提升快取速度；此外，子區段的
+最低下限為 100KB( ATCP+ 相關參數說明請參考表 1)。 
+參數 說明 預設值 
+d 網路傳送的封包大小 65500Bytes 
+D segment 單位大小 1.24MB ( d * 20 ) 
+L 每條 HTTP session 所負責抓取的封包資料量 lower-bound=100KBupper-bound=800KB
+k 同一時間 HTTP session 平行擷取的資料流數量 k = D / L 
+Tsegment Proxy 從 Sever 快取一個 Segment 開始至結束的時間。  
+Tstream Proxy 傳送 Client 一個 Segment 的時間 
+StreamT
+DThroughput =  
+H1 Tsegment / Tstream 的上界 ≤80% 
+H2 Tsegment / Tstream 的下界 ≥90% 
+表 1  ATCP+機制參數相關說明 
+3.3 系統運作流程 
+SPS 系統接收到 client 發出影片需求時的運作流程圖如圖 7 所示，當有使用者發出
+影片需求時，系統會先檢查 URL 是否正確，若 URL 確認無誤，此時 WAN 端資料的抓
+取則開始轉交給我們所設計的 ATCP+管理機制來做後續影片片段填補的支援；上述步
+ 9
+4. 實驗測試 
+  本實驗分為「功能面」、「流量控制效能」與「整體效能」三種測試。功能面測試為
+了解系統中每一個功能均能正確無誤地被執行及操作，流量控制效能旨在測試 ATCP+
+機制對於系統之流量控制效能，整體效能測試則分別在 LAN 及 WAN 中做效能測試。 
+4.1 功能面測試 
+本項測試主要是測試本專案：串流代理伺服器平台(Streaming Proxy Server Platform, 
+SPS )在將各項子系統整合後所有功能均能正確無誤的運作，本部份我們將著重在系統
+整合測試以及系統功能測試，以確認系統整合完成且各項子系統功能均能正確執行。測
+試結果如表 2。 
+編號 測試項目 結果 測試結果說明 
+(1) client 之 http request PASS 能正確接收及處理 client 之 http request 
+(2) Segment catching PASS 能正確以 segment方式自 video server抓取資料
+(3) Streaming to client PASS 能正確以 streaming 方式傳送影片資料給 client
+(4) Prefix caching PASS Prefix caching 機制能正確啟動執行 
+(5) Suffix-window caching PASS Suffix-window caching 機制能正確啟動執行 
+(6) Flow Control PASS Flow Control 機制能正確啟動執行 
+(7) 整合測試 PASS 使用者可透過本系統點播影片並播放 
+表 2 功能面測試 
+4.2 ATCP+流量控制效能測試 
+  本測試分別以國內與國外網站進行測試，利用 HTTP 快取國內外網站檔案，以測試
+ATCP+機制對於系統之流量控制情形。本測試假設使用者端的流量設為 1024Kbps，D
+的小大為 1.24MB，由公式(1)計算後得知每段 Tstream 的為 10 秒，Tsegment 從遠端伺服
+器的快取時間必須小於 Tstream 傳送至使用者端的時間，否則將會造成影片的延遲，而
+上界(H1)及下界(H2)的預設值分別為 80%和 90%。 
+圖 8 及圖 9 為透過國內網站下載影片的測試流量圖與 K 值圖，一開始 K 值為 10，
+即一次有 10 條 session 平行 caching 檔案。 
+0
+500
+1000
+1500
+2000
+2500
+3000
+1 36 71 106 141 176 211 246 281 316 351 386 421 456 491 526 561
+( 1/10 sec)
+( k
+ bi
+ts 
+)
+ATCP+
+Non-ATCP+
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+1 39 77 115 153 191 229 267 305 343 381 419 457 495 533 571
+( 1/10 sec )
+K 
+va
+lue K值
+ 
+圖 8 國內網站測試流量圖      圖 9 國內網站測試 K 值圖 
+ 11
+  根據表 3 所示，由於 video server 與 proxy 皆位於相同的網路當中，擁有較高的頻
+寬與較短的傳輸距離，因此即使是使用者未透過 proxy 服務來點播影片，在 LAN 中仍
+能享受極佳的傳輸狀態。而在流量控制機制中一開始系統預設 K 值為 10，即一次有 10
+條 session平行 caching檔案，而也因頻寛足夠使得K值一直下降至 1，即只有一條 session
+來 caching 檔案即足夠補足 suffix segment。 
+WAN 
+ Non-Proxy Prefix caching Suffix-window caching 
+initial delay 較長 較 Non-Proxy 短 較 Non-Proxy 短 
+播放流暢度 易產生 Delay 常有 Delay 發生 偶有 Delay 發生 
+K 值變化 － K 約為 9~15 K 約為 7~9 
+表 4 WAN 中之初步評估分析結果 
+  根據表 4 所示，由於 video server 與 proxy 位於不同的網路當中，中途需經過若干
+個 Router，頻寬大小不穩定且傳輸距離亦較長，因此使用者在未透過 proxy 服務時點播
+影片，除了會產生很長的起始延遲時間(initial delay)外，也因為 WAN 環境中頻寬不穩
+定的情況常有 delay 的情形發生，尤其當該 video server 位於國外時該情況更為嚴重及明
+顯。而透過 Proxy 來點播影片，在僅只啟動 Prefix caching 機制時，除第一次點播會有
+較長的 initial delay 外，再次點播相同影片時，則只會有很短的 initial delay，若使用
+Suffix-window caching 機制，則因有 caching 一個 window 大小的 suffix，因此對後來的
+使用者來說，suffix 也是直接從 Proxy 下載，發生 delay 的情況自然減少很多。而在流
+量控制機制中，K 值系統亦預設為 10，而也因 WAN 中之頻寛並不穩定，因此 K 值也
+會隨著頻寬大小有提升或下降，以儘量在 Proxy 將 segment 消耗殆盡之前補足後面的
+segment。 
+5. 結論 
+現今人們對於在 Internet 存取多媒體資料的需求日益擴增，而 Internet 上支援多媒
+體傳輸的環境已越來越成熟，許多相關技術亦相繼被提出，而也因為頻寬的提升，目前
+連續媒體的傳輸已不僅止於解決頻寬問題如此單純而已，而是牽涉到整體的網路架構以
+及因網路環境的不同進而造成傳輸速度不穩定的網路現象，然 SPS 系統便是要實作出
+一套適合在各種網路架構環境中都可使用的 streaming proxy server 平台，再輔以各項快
+取機制與流量控制機制的實現並將之實際應用於系統之內，透過實驗顯示的確能使傳輸
+速率保持在所訂定的目標，有效的從 web server 端將所需要的影片利用 segment-base 
+caching 方式穩定且有效率的下載至 proxy server 中，並透過 steaming 方式將影片資料傳
+輸至 client 端，也成功實現了 LAN-stream/WAN-segment 的構想，不過由於網路上環境
+非常複雜，在 web server 端也許並不提供多條 session 平行存取或有最高 session 數的限
+制等，這些問題都將會影響影片在傳輸上的穩定度及效率。 
+而我們在實驗測試中也發現，由於系統不斷的快取檔案、儲存檔案及刪除檔案，並
+ 13
+計劃成果自評 
+  本次計劃係為實現在視訊串流代理伺服器上的各項快取機制以及流量控制機制，並
+採用 LAN-stream/WAN-segment 混和傳輸模式，實作出一套合用於各種網路環境的系
+統。在本次專案中，我們實作出由本實驗室所提出之 Suffix-window caching 機制以及
+ATCP+流量控制機制，證明此二項機制為可以實際運用於檔案快取與網路流量控制，也
+實際的提升檔案快取之效率，使得影片傳輸更為流暢，起始延遲時間也有效降低，不但
+使整體效能達到最佳化，也使 Proxy 能夠完全利用。在第二年計劃裡，我們將把此系統
+結合Multicast，以群播方式傳送，可再節省網路頻寬與Proxy的負擔，並加以實踐 adaptive
+資源配置策略，其中包括 Adaptive prefix 與 Adaptive suffix-window 演算法。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 15
+可利用之產業 
+及 
+可開發之產品 
+可利用之產業：機關學校、網際網路服務供應商(ISP)、資訊業等
+可開發之產品：流量控制系統、分段式擷取系統、檔案儲存管理系
+統、快取策略服務系統等 
+技術特點 
+(1) Web 相容：後端 video server 以一般 web server 為平台，前端
+瀏覽器以目前廣為 client 端採用的 media player 為主，proxy 
+server、web server 與 client 之間的通訊協定遵照 Http1.1 標準
+開發，以便與現有 web 環境相容，在系統的開發上，以 JAVA
+語言為主，藉以提升系統之可攜性。 
+(2) 採用通用式(generic)元件模組設計：為了實踐各種已知的演算
+法，同時為未來新演算法提供的便利且快速的開發環境，我們
+依照各演算法特性的分類，將 proxy 規劃成不同階層的通用式
+物件模組，系統管理者可透過 GUI，將系統彈性組態成所需之
+proxy caching 演算法，並調整各項參數。 
+(3) 採用 LAN-stream/WAN-segment 混和傳輸模式：由於 WAN 與
+LAN 的網路特性不同，所造成的 delay/rate jitter 也迴異，因此
+在 flow control 上我們採用混合的方式，也就是 LAN 中採用
+streaming transmission；而 WAN 中採 segment transmission，藉
+此改善串流停頓現象，來提升影片播放的品質。 
+(4) 減少起始等候時間(initial waiting time)：在實際的經驗中，如
+果伺服器位於遠端，視訊通道連線的建立往往需要花費相當長
+的等候時間（數秒至十秒），特別對於需要及時回應的使用者
+來說（如 PDA 或手機等行動裝置的使用者），這樣的反應速度
+是無法接受的。反之，在區域(LAN)環境中，網路的回應速度
+遠較廣域(WAN)的環境來的穩定且快速，因此一種折衷的策略
+就是利用 Proxy 儲存影片的開頭（稱之為 Prefix）。當使用者發
+出影片需求時，便先可以從位於附近的 Proxy 中下載 Prefix，
+利用從 Proxy下載 Prefix的同時，再從遠端的伺服器下載 Prefix
+之後的影片（稱之為 Suffix）至 Proxy 中，接續傳給使用者，
+如此可有效地降低使用者的起始等待時間，提升系統的回應速
+度。 
+(5) 節省網路頻寬消耗：由於 WAN 頻寬有限且較不穩定，透過
+streaming proxy 暫存 segment，可促進點播時間點相近的使用
+者之間的資料分享，如此一來可望減少 WAN 的交通流量。再
+者如果區域網路提供了 multicast 功能，則我們可以將相近的使
+用者集結成為一個 Multicast Group，然後由 streaming proxy 以
+multicast 的方式同步傳送資料給 group 成員，如此可進一步節
+省 LAN 的頻寬消耗。 

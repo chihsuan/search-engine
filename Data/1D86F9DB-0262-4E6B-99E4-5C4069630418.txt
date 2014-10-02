@@ -1,0 +1,1382 @@
+  
+行政院國家科學委員會補助專題研究計畫 ■ 成 果 報 告   □期中進度報告 
+ 
+支援 256個暫存器微處理器的編譯器和硬體技術 
+ 
+計畫類別：■ 個別型計畫  □ 整合型計畫 
+計畫編號：NSC98-2221-E011-065-MY3 
+執行期間： 98 年 8 月 1 日至 101 年 7 月 31 日 
+ 
+計畫主持人： 黃元欣 
+共同主持人： 
+計畫參與人員：  
+ 
+ 
+成果報告類型(依經費核定清單規定繳交)：□精簡報告  ■完整報告 
+本成果報告包括以下應繳交之附件： 
+□赴國外出差或研習心得報告一份 
+□赴大陸地區出差或研習心得報告一份 
+■出席國際學術會議心得報告及發表之論文各一份 
+□國際合作研究計畫國外研究報告書一份 
+ 
+處理方式：除產學合作研究計畫、提升產業技術及人才培育研究計畫、列
+管計畫及下列情形者外，得立即公開查詢 
+          □涉及專利或其他智慧財產權，□一年□二年後可公開查詢 
+          
+執行單位：國立台灣科技大學資訊工程學系 
+ 
+中    華    民    國  1 0 1    年  1 0  月    2 9  日 
+  3
+兩個單精度的暫存器所組成，一個暫存器欄
+位則代表一組 Register Pair，而在我們所提
+出的 Paired-Register 的方式則有些不同，其
+概念為指令中的 Oprand 為 Pair ，而在後
+續文中將此關係稱為 Pair-Relation。 
+ 
+與傳統上最大的不同點在於，傳統的 
+Pair Register 無法增加指令中暫存器可使用
+的數目，但我們所提出的方法則可在同樣的
+編碼空間中編碼兩個 Operand ，以 Alpha 
+為例子，Alpha 共有 32 個 Register ，故暫
+存器欄位為 5 位元，在三個暫存器的指令格
+式下，共需花費 15 個位元來表示暫存器，
+而在我們所提出的方法下，僅需要 10 位元
+就可表示三個暫存器，而剩餘的 5 位元則可
+以平分給每個 Operand 使用，由此可以有
+效提升指令中暫存器可編碼的數量，最多可
+達 8 倍！也就是說在 Alpha 中套用我們所
+提出的編碼方式最多可編碼 256 個暫存器
+至指令當中。 
+ 
+而 Paired-Register 主要是將所有暫存
+器切成兩大部分分別為 Rh 以及 Rl ，r0 的 
+Pair 為 r128，r1 的 Pair 為 r129，以此類
+推，而下列表 1 則是列出預先定義的暫存器
+類別，其中 Rb 代表原本的 32 個暫存器，
+用來處理部份單一 Register Operand 的特
+殊指令。 
+ 
+Register Class Registers 
+Rb r0 ~ r31 
+Rl r0 ~ r127 
+Rh r128 ~ r255 
+Re r0~r255 
+ 
+表 1. 暫存器類別 
+ 
+ 
+3.2 New-Old Register Banks簡介 
+前面我們介紹完了Paired-Registers的方
+法，在這邊我們要開始來介紹我們所用的另
+一個方法 Code Generation for Register File 
+with New-Old Banks ，這個方式是基於
+2-Address Register Encoding 的方式，並透過
+New-Old Register Encoding 的編碼方式，來
+達到增加暫存器的目的。 
+ 
+在此方法中，由於核心概念為 2 
+Address，意思是指在一道指令中有兩個
+Operand 會用到同樣的暫存器，例如在原始
+的Alpha架構中一道 add指令為 add $r0, $r1, 
+$r2，但我們所用 2-Address Encoding 的概
+念，則是讓 Destination 和 Source Operand 1
+或 Operand 2 相同，所以例如一道 add 指令
+會變成 add $r0, $r1, $r0 或 add $r1, $r0, $r0，
+故我們所提出的方法可以在同樣的編碼空
+間中編碼兩個 Operand。 
+ 
+New-Old Registers 的方式是架構在
+2-Address Registers 之上，我們先簡單的看一
+個 2-Address 對應到 New-Old 的例子，如圖
+1。在這我們先定義幾個名詞，之後我們所
+提到 Source Instruction 及 Target Instruction
+代表下面的這兩種情況： 
+1. Source Instruction：圖 1 左邊 mov $0, 
+$6 的指令。 
+2. Target Instruction：圖 1 左邊最後一到
+add $6, $5, $5這道要被置換OP1的指
+令。 
+ 
+圖 1. 2-Address to New-Old Banks Encoding 
+ 
+ 
+  5
+在一個暫存器欄位的指令編碼方面我
+們採用直接編碼(Direct Register Encoding)的
+方式。 
+ 
+兩個暫存器欄位則採用所提出的 
+Paired-Register 方式，共使用 256 個暫存
+器，故最多僅使用到其中的八位元，而另外
+兩個位元則用來處理特殊的用途，例如 
+Stack Pointer 以及 Zero Register ，詳細編碼
+方式見表 3，而其編碼格式見圖 3-(a) 及 圖
+2-(b)。 
+ 
+Paired-Register Func bit RA RC 
+0 0 0 Rpl Rph 
+0 0 1 Rph Rpl 
+0 1 x Re RA 
+1 0 x r31 Re 
+1 1 x r31 R31 
+表 3. Paired-Register Function bit encoding 
+ 
+在 3 個 Register Operand 的指令格式
+中，則是將一個 Operand 設定為僅能使用
+前一半的暫存器，而另外兩個 Operand 則
+是採用 Paired-Register Encoding ，其詳細編
+碼方式見圖 3-(b)。 
+ 
+圖 4.  3 個 Register Operands 指令的 
+Register constraint 
+4.2 New-Old Register Banks指令編碼 
+如同前面介紹 Paired-Register 時所提
+到，Alpha 指令集中主要格式如圖 2 所示，
+主要分為 1 ~ 3 個暫存器欄位的指令格式，
+其中 2 個暫存器欄位的又分為運算以及記
+憶體存取或跳躍兩種編碼方式。 
+ 
+在一個暫存器欄位的指令編碼方面我
+們採用直接編碼(Direct Register Encoding)的
+方式。 
+ 
+在兩個暫存器欄位的指令編碼方面，採
+用 2-Address 的編碼方式，使兩個暫存器欄
+位的指令共可使用 128 個暫存器，故最多僅
+使用到其中的七位元，而另外三個位元則用
+來處理特殊的用途，例如 Stack Pointer 、
+Global Pointer 以及 Zero Register……等特
+殊情況 ，詳細編碼方式見表 4，而其編碼格
+式見圖 5-(a) 及 圖 5-(b)。 
+ 
+2-Address Func Bit RA RC 
+0 0 0 Re Re 
+0 0 1 Re R27 
+0 1 0 Re R95(tmp) 
+0 1 1 R29(gp) Re 
+1 0 0 Re R29(gp) 
+1 0 1 Re R30(sp) 
+1 1 0 Re R31(zero) 
+1 1 1 R31(zero) Re 
+表 4. New-Old Banks Function bit encoding 
+ 
+圖 5. New-Old Register Banks 編碼格式 
+  7
+及 Rh ，因此同一個變數不可以同時存在於
+G0 及 G1，此規則為 Pair-Group 的第一個 
+Constraint，若允許同時存在 G0 及 G1 則代表
+該變數需佔用兩個暫存器，會造成不必要的
+浪費以及多餘的移動指令。 
+ 
+Constraint 1 : ∀(G0, G1) ∈ PG  
+G0∩G1 = Ø 
+接著描述第二個 Constraint 則是關於
+同一個在 Gx 中的變數必不同時存活於某
+個程式時間點，其中 x = 0 或 1，其原因在
+於暫存器分配是以 Pair-Group 為單位，並 
+addl $v1, $v2, $v3
+Paired
+Pair-Group
+v2
+v3
+v4
+addl $v1, $v4, $v3
+addl $v1, $v4, $v2
+addl $v1, $v2, $v3
+Paired
+Pair-Group
+v2
+v3
+v4
+addl $v1, $v4, $v3
+mov  $v4, $v4'
+addl $v1, $v4', $v2
+v4'
+(a)
+(b)
+圖 8 . Constarint 1 示意圖： (a) 建立到第三
+到指令時發現需要將 v4 加入另一個 
+Group 違反 Constraint 1 (b) 將 v4 split 後
+即可解決此問題 
+ 
+且  Gx 中的變數所分配的暫存器為同一
+個，因此其中變數互不可 Interference ，而
+G0 及 G1 之間的變數其得到的暫存器分別為 
+Rl 及 Rh，因此允許 Interference 的發生，。 
+ 
+Constraint 2 : ∀(G0, G1) ∈ PG  
+(a, b) ∉ I | ∀ a, b ∈ G0 
+(a, b) ∉ I | ∀ a, b ∈ G1 
+I : Interference 
+ 
+在描述完 Pair-Group 的兩個 Constraint 
+後，接著介紹 Constraint Violation 時的處理
+方式。 
+ 
+對於 Conatraint 1 Violation 的處理方
+式採用於建立 Pair-Group 時處理，當建立
+到途中發生已經有變數 var 存在於 G0 ，又 
+Pair-Group
+v2
+v3
+v4
+v1 v3
+v2
+v3
+v4
+v1 v3
+s t
+(a)
+(b)
+ 
+圖 9 . Constarint 2 示意圖： (a) v2 與 v4 為
+同一 Group ，但發生 Interference  (b) 利
+用 Max-flow Problem 來找出 s-t cut ，並且
+將 cut edge 皆 split 
+ 
+發現需要將 var 加入 G1，則對於 var 進行 
+split 的動作，圖 79 為例子。 
+ 
+而對於 Constraint 2 的解決方式則較為
+複雜，在這邊我們將 Pair-Group 化為一個 
+Undirected Graph ，並且將同一 Pair-Group 
+的變數化為 Vertex ，若必須為 Pair 的則加
+  9
+在一開始我們為圖 12 的範例程式建立
+出其 live range ，見圖 13，而根據此資訊可
+以建立出 Interference Graph 見圖 14，接著
+進行傳統的 Graph-based Register Allocation 
+演算法來分配暫存器， 圖 15 為其 Simplify 
+的詳細過程，而在此我們主要目的在於展示
+與 Pair-Group Graph Register Allocation 的
+不同，故在此將跳過  Coalesce 的階段至 
+Select 也就是選擇存放暫存器的階段。 
+ 
+ A b  c d e f g 
+a = 10 
+       
+       
+b = 12 
+       
+       
+c = a + 3 
+       
+       
+d = a + b 
+       
+       
+if ( a > 15) 
+       
+  e = d +10 
+       
+       
+else  
+       
+  e = b + 10 
+       
+       
+f = e + c 
+       
+       
+g = a + f  
+       
+       
+圖 13. Live range for example program 
+ 
+圖 14. Interference graph for example program 
+ 
+ 
+      ( a )                  ( b ) 
+ 
+      
+      ( c )                  (d ) 
+   
+   
+a c
+Stack
+g
+f
+e
+d
+b
+ 
+     ( e )                ( f ) 
+ 
+              Stack
+g
+f
+e
+d
+b
+a
+c
+ 
+     ( g )                ( h ) 
+ 
+圖 15. Graph-coloring based Register 
+Allocation for example program in simply 
+phase 
+             
+( a )                ( b ) 
+ 
+     
+     ( c)                 ( d ) 
+ 
+  11
+program with Paired-Register Encoding 
+ 
+由 圖 19 中 我 們 可 以 發 現 
+Paired-Register Encoding 若直接採用傳統 
+Graph-coloring based Register allocation 效
+果會相當差，主要原因在上一節以探討過。 
+ 
+而接著我們對 Example Program 採用 
+Pair-Group Graph Register Allocation 演算法
+來進行暫存器分配，首先我們先根據圖 18
+的結果建立  Pair-Group ，共建立兩組 
+Pair-Group ，見圖 20，其中我們發現圖 20(b) 
+的這組 Pair-Group 的其中一個必定同時屬
+於 G0/G1 違反 Constraint 1 ，故需要修正，
+插入  Split 的程式碼將  d 切割為  d 與 
+d’ ，在圖 20(a) 的這組 Pair-Group 則違反 
+Constraint 2 ，其中同 Group 的 a 與 f 有 
+Interference ， 故 需 要 進 行  Maximum 
+Adjacency Search ，並找出 s-t cut set ，見，
+接 著 進 行  Split ， 在 解 決 以 上 兩 個 
+Constraint Violation 後，圖 222 為加入 Split 
+後的程式碼，而重新建立的 Pair-Group 見
+圖 23，到這邊我已經可以建立出 Pair-Group 
+Interference Graph 見圖 24，接著進入 Graph 
+Coloring 的 Simplify 階段，詳細過程見圖
+25，以及圖 26 為 Select 的詳細步驟，圖 27
+為最終的暫存器分配結果。 
+ 
+a
+c
+f
+g
+        
+d e
+b
+ 
+     ( a)                  ( b ) 
+圖 20. Pair-Group for example program 
+ 
+         
+圖 21. Result of maximum adjacency search 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+圖 22. Example program after split  
+ 
+a
+c
+            
+f
+g
+c'
+ 
+     ( a )                      ( b) 
+              
+d e
+b
+d'
+ 
+                   ( c ) 
+圖 23. Pair-Group after constraint fix-up 
+ 
+a = 10 
+b = 12 
+c = a + 3 
+d = a + b 
+if ( a > 15) 
+  d’ = d 
+  e = d’ +10 
+else  
+  e = b + 10 
+c’= c 
+f = e + c’ 
+g = a + f  
+  13
+ 
+( c ) 
+ 
+( d ) 
+圖 26. Pair-Group Graph Register Allocation 
+for example program in select phase 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+圖 27. Pair-Group Graph Register allocation 
+result for example program with 
+Paired-Register encoding 
+ 
+在 前 面 的 部 分 已 經 完 整 示 範 
+Pair-Group Graph Register Allocation 如何有
+效 產 生 符 合 Paired-Register Encoding 
+Constraint 的演算法詳細過程，在最後的部
+分我們將加入 Coaleace ，在這邊僅展示其
+建立的 Pair-Group 以及暫存器分配後的結
+果 ， 可 以 發 現 其 Coaleace 後 建 出 的 
+Pair-Group 無 任 何 的  Constraint 
+Violation ，也因此無額外的 Split code 的產
+生。 
+ 
+ 
+a
+c, f
+g
+         
+d b, e
+ 
+      ( a)                   ( b) 
+圖 28. Pair-Group for example program after 
+coalesce 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+圖 29. Pair-Group Graph Register allocation 
+result for example program with 
+Paired-Register encoding and coaleace mode 
+ 
+5.3 Code Generation for New-Old Register  
+   Banks 
+    在產生 New-Old Register Banks 的
+演算法方面，我們先利用 GCC 內的 Register 
+Allocation 來產生出我們所要的 2-Address 的
+r0 = 10 
+r1 = 12 
+r0’= r0 + 3 
+r1’= r0 + r1 
+if ( r0 > 15) 
+  r1 = r1’ 
+  r1’= r1 +10 
+else  
+  r1’ = r1 + 10 
+r2’= r0’ 
+r2 = r1’+ r2’ 
+r2’= r0 + r2 
+r0 = 10 
+r1 = 12 
+r0’= r0 + 3 
+r1’ = r0 + r1 
+if ( r0 > 15) 
+  r1 = r1’ +10 
+else  
+  r1 = r1 + 10 
+r0’= r1 + r0’ 
+r0 = r0 + r0’ 
+  15
+ 
+圖 31. Algorithm of check is safe replace 
+register 
+ 
+ 
+( a ) Decode for RA 
+ 
+Func
+0 1 2
+0 1 3 4 5 6
+0 1 3 4 5 6  
+( b ) Decode for RC 
+圖 33. Paired-Register Decoder for 2 Registers 
+Operand 
+圖 32. Algorithm of check is register redefine 
+ 
+ 
+function is_safe_replace (source, target) { 
+  if (! (source dom target) ) return false; 
+  check source no call after source insn  
+check target no call before target insn 
+  for each ( predecessor of target S) { 
+    if (!is_safe_replace_rec (source, S)) { 
+      return false; 
+    } 
+  } 
+  return true; 
+} 
+function is_safe_replace_rec (source, 
+target) { 
+  if (source == target) return true 
+  if (target is traversed) { 
+    return true 
+  } 
+  tag target is traversed 
+  if (target contain call) return false; 
+  for each ( predecessor of target S) { 
+    if (!is_safe_replace_rec (source, S)) { 
+      return false; 
+    } 
+  } 
+  return true; 
+} 
+function is_redefine_reg (source, target){ 
+  if (! (source dom target) ) return true; 
+  count source redefine registers 
+  count target redefine registers 
+  for each ( predecessor of target S) { 
+    is_redefine_reg_rec (source, S); 
+  if (redefine num > 1) 
+    return true; 
+  else 
+    return false; 
+} 
+Function is_redefine_reg_rec(source, 
+target){ 
+  if (source == target) return 
+  if (target is traversed) { 
+    return  
+  } 
+  tag target is traversed 
+  count redefine registers in target 
+  for each ( predecessor of target S) { 
+    is_redefine_reg_rec (source, S) 
+  } 
+  return; 
+} 
+  17
+圖 37. 2 operands Load Operate 暫存器表示 
+ 
+在 3 Register Operands 的操作上就較 2 
+Register Operands 來的簡單，因為 Rb = Rc，
+且 Rc 是 Define Register、Rb 是 Use Register，
+所以在執行時，硬體 Bit (Flag)會先做切換，
+所以 Rb = Regold、Rc = Regnew。Ra 的部分會
+因為在我們整個 Allocation 的機制中，Reghi
+是 Register 的舊值，Reglow 是 Register 的新
+值，所以判斷上只需去看 Register Number
+是 Low 或 High 就可以選擇現在要娶的內容
+為新值或舊值，圖 38 為其表示方式並對應
+至圖 5-(d)。 
+圖 38. 3 operands 暫存器表示 
+七、實驗環境設定 
+在實驗環境的部分，兩個方法的實驗平
+台皆為 SimpleScalar，模擬對象為 Alpha 處
+理器，其設定請見表 6 而在編譯器方面，
+Paired-Register 的方法我們採用 gcc 4.6.0，編
+譯器參數使用-O3；New-Old Register Banks
+的部份我們採用 gcc 4.7.2，編譯器參數使用
+-O2 –LTO。 
+ 
+表 6. 模擬器參數 
+ 
+八、結果與討論 
+0
+0.5
+1
+1.5
+2
+gzip vp
+r gcc mcf craf
+ty
+par
+ser
+per
+lbm
+k gap vor
+tex bzip
+2
+two
+lf
+ave
+rag
+e
+base
+256reg
+ 
+圖 39. Paired-Register 256 register - 
+Nomalized Runtime 
+ 
+由圖 39 中可以明顯看到現實驗數據並
+未因為得到八倍的暫存器而得到加速，其原
+因在於 Paired-Register 的編碼方式限制過
+參數 設定值 
+Out-of-order Yes 
+Pipeline 
+5 Stages: 
+Fetch/Dispatch/Ex
+ecute/WriteBack/
+Commit 
+Instruction Window 32 RUU, 16 LSQ 
+L1 Cache Access 
+Latency 
+3 Cycle 
+L2 Cache Access 
+Latency 
+15 Cycle 
+Memory Access 
+Latency 
+150 Cycle 
+If (Rinst[25:23] = 0) 
+    Rinst[22:16]old = Rinst[22:16]new 
+    Ra = Rinst[22:16]new 
+    Rb = Rinst[22:16]old 
+If (Rinst[25:23] != 0) 
+    Raold = Ranew 
+    Ra = Ranew 
+Rb = Rinst[22:16]new 
+Rinst[17:16][4:0]old = Rinst[17:16][4:0]new 
+If (Rinst[25] = 0) 
+    Ra = Rinst[25:18]new 
+If (Rinst[25] = 1) 
+    Ra = Rinst[25:18]old 
+Rb = Rinst[17:16][4:0]old 
+Rc = Rinst[17:16][4:0]new 
+  19
+所有執行時期指令比例 
+ 
+五、計畫成果自評 
+我 們 已 經 將  256 個 暫 存 器 的 
+Paired-Register 編 碼 方 式 以 及 New-Old 
+Register Banks 的實作至 SimpleScalar 模擬
+器，並且提出 Graph-Coloring based 的暫存
+器分配演算法及 New-Old Register Banks 的
+Code Generation 演算法，並將兩種演算法實
+作至 GCC 中，雖然整個計畫有照我們所規
+畫的進度達成，但在效能上因為 256 
+Registers 在格式上受到些限制，所以使得效
+能上並未達到期望的結果。  
+ 
+六、重要參考文獻 
+[1] Alpha. Alpha 21264 Processor Technical 
+Reference Manual. http://www.alpha.com. 
+[2] ARM. ARM Reference Manual. 
+http://www.arm.com. 
+[3] X. Zhuang, S. Pande, Differential register 
+allocation, In Proceedings of the 2005 ACM 
+SIGPLAN conference on Programming 
+language design and implementation, pages 
+57-70, 2005 
+[4] J.H. Lee, J. Park, S.M. Moon. Securing 
+More Registers with Reduced Instruction 
+Encoding Architectures. In Proceedings of the 
+13th IEEE International Conference on 
+Embedded and Real-Time Computing Systems 
+and Applications (RTCSA’07), pages 417-425, 
+2007 
+[5] V.N. Makarov. The integrated register 
+allocator for GCC. In Proceedings of the GCC 
+Developers' Summit 2007, pages 77-90, 2007 
+[6] G. J. Chaitin, et. al., Register allocation via 
+coloring, In Computer Languages, Vol. 6, 
+pages 47-57, Jan. 1981. 
+[7] P. Briggs, K. D. Cooper, and L. Torczon, 
+Improvements to graph coloring register 
+allocation, In ACM Transactions on 
+Programming Languages and Systems, Vol. 16, 
+No. 3, pages 428-455, May 1994. 
+[8] J. Park, S.M. Moon. Optimistic register 
+coalescing. In ACM Transactions on 
+Programming Languages and Systems, Vol. 26, 
+No. 4, 1990, pages 735-765 
+[9] F. Chow and J. Hennessy. The 
+Priority-based Coloring Approach to Register 
+Allocation, In ACM Transactions on 
+Programming Languages and Systems, Vol. 12, 
+No. 4, 1990, pages 501-536 
+[10] P. Briggs,  K.D. Cooper,  L. Torczon, 
+Coloring Register Pairs, In ACM Letters on 
+Programming Languages and Systems, Vol. 1 
+No.1, 1992 pagse. 3-13 
+[11] V. Sarkar, R.Barik, Extended linear scan: 
+an alternate foundation for global register 
+allocation, In Proc. of the 16th international 
+conference on Compiler construction, pages. 
+141-155 
+Doubling the Number of Registers on ARM Processors
+Hsu-Hung Chiang, Huang-Jia Cheng, and Yuan-Shin Hwang
+Department of Computer Science and Information Engineering
+National Taiwan University of Science and Technology
+Taipei 106
+Taiwan
+Abstract—It is critical that more architectural registers
+are available to the compiler and programmer, as a small
+number of architectural registers might hinder the compiler
+and programmer from producing efficient code. Although
+modern chip manufacturing processes could easily put many
+registers on an ARM processor, only 16 general registers are
+accessible by the compiler and programmer. Doubling the
+number of architectural registers requires adding another bit
+to each register field of instructions, and hence increases code
+size. One approach has been developed to use the underutilized
+condition bits to double the number of architectural registers
+from 16 to 32 but maintain the width of ARM instructions.
+Although performance gain can generally be achieved by
+most of benchmark programs on a 32-register ARM, this
+approach would still hurt performance for programs with high
+ratios of instructions that can be conditionalized. Therefore,
+a better approach would to keep the conditional execution
+feature even when the 4-bit condition field is used to encode
+the extra registers. This paper proposes to borrow the IT
+instruction from Thumb II ISA to represent the predicates
+of conditionalized instructions on the 32-register ARM. GCC
+and SimpleScalar/ARM have been modified to handle the
+new instruction format and the revised IT instruction, and
+experimental results have shown that performance can be
+improved by 10.4% on average for MediaBench II benchmarks
+on the 32-register ARM with conditional execution.
+Keywords-Conditional Execution, ISA, Instruction Encoding,
+Registers
+I. INTRODUCTION
+The number of architectural registers exposed to the
+compiler and the programmer is crucial to the code qual-
+ity, as a small number of architectural registers might
+restrict compilers from effectively performing compilation
+and optimization or prevent programmers from storing some
+frequently used data [17]. Therefore, it is critical that more
+architectural registers are available to the compiler and
+programmer without expanding the code size significantly.
+Although modern chip manufacturing processes could easily
+put hundreds of registers on a chip, only a small number of
+them are accessible by the compiler and programmer since
+the number of architectural registers is determined by the
+width of the register field in an instruction. For instance,
+each register field in ARM instructions has 4 bits and hence
+it limits the compiler and programmer to access only 16
+architectural registers although ARM has more physical
+registers [15].
+Doubling the number of architectural registers requires
+adding another bit to each register field of instructions. As an
+ARM instruction has at most four register operands, e.g. ADD
+R1, R3, R5, LSL R2, it would expand by up to four bits when
+the number of registers are doubled from 16 to 32. If every
+instruction is stretched from 32 bits to 36 bits in order to
+accommodate these extra bits, the code size would increase
+by 12.5% on the 32-register ARM. In addition, widened
+instructions would intensify the I-cache and memory traffic,
+and hence bump up the power consumption [16], [17].
+A better approach is to double the number of architec-
+tural registers but maintain the width of ARM instructions.
+Specifically, up to four unused bits need to be allocated from
+each ARM instruction. However, it is generally impossible to
+identify enough redundant bits to accommodate these extra
+bits for the expanded register fields. Therefore, identifying
+underutilized bits would be a feasible solution. One possible
+candidate is the 4-bit condition field in every ARM instruc-
+tion that specifies the predicate of conditional execution,
+as ratios of conditionalized instructions are generally very
+low [4].
+Conditional execution (or predicated execution) is an
+instruction set architecture (ISA) feature, which predicates
+individual instructions on processor status flags [5], [8],
+[14]. Every ARM instruction can be made to execute con-
+ditionally [15]. An instruction has only its normal effect if
+the status satisfies a condition specified in the instruction,
+and acts as a NOP if otherwise. As ARM has deployed
+a straightforward orthogonal instruction coding that all
+instructions can be coded conditionally on all situations,
+every instruction reserves a 4-bit field for the predicate.
+Besides, the instruction space for conditions is underutilized
+since only small percentages of instructions are actually
+conditionalized in modern embedded applications like inter-
+active multimedia communications, which generally demand
+massive computations [2]. Therefore, the condition field in
+every ARM instruction is a good candidate to house the extra
+bits for the expanded registers. In other words, this approach
+looks to trading conditional execution for more registers on
+ARM.
+Trading conditional execution for more registers is a
+good compromise since performance gain can generally be
+achieved by most of benchmark programs on a 32-register
+take one bit from the condition field and that is why the
+number of ISA registers can only be doubled from 16 to
+32. Figure 4(a) shows the instruction formats with four
+register fields. The top format is the original instruction
+encoding format that represents an ARM instruction with the
+form of op Rd,Rn,Rm,shiftRs. The bottom format in
+Figure 4(a) depicts that each bit of the 4-bit condition field is
+assigned to one of the four register fields in the instruction.
+As a result, each register field in the new instruction format
+has 5 bits and hence can address all the 32 registers in the
+extended register file.
+Figure 4(b) and Figure 4(c) illustrate that the instruction
+formats with three and two register fields can be easily modi-
+fied to accommodate the extra bits for the extended registers.
+However, special attention is needed when changing the last
+instruction format with only one register field displayed in
+Figure 4(d). The reason is that this instruction format is used
+to encode the load and store multiple instructions, which
+can load and store a subset, or possibly all, of the general-
+purpose registers from and to memory. Unfortunately, it is
+impossible to represent all the 32 registers in the extended
+register file in the 32-bit instruction format. Therefore, the
+extended register file will be divided into two halves: the
+lower half (r0-r15) and the upper half (r16-r31), and only
+half of the registers can be accessed by a load/store multiple
+instruction. Specifically, when the “E” bit is cleared, a
+load/store multiple instruction can only reference the lower
+half of registers. When the “E” bit is set, a load/store mul-
+tiple instruction can only access the upper half of registers.
+B. GCC Retargeting
+GCC 4.4.1 has been retargeted to generate ARM binary
+code with the new instruction encoding, which supports 32
+ISA registers. GCC must be informed that the number of
+registers has been expanded to 32, which requires several
+parameters in the files arm.h and aout.h to be updated. In
+addition, the sets of caller save registers and callee save
+registers have to be modified as well. Figure 5(a) shows that
+r4-r15 are callee save registers while r0-r3 are caller save
+registers in the original GCC setting. In order to keep things
+simple and avoid pushing too many register values onto the
+stack by procedure invocation, the set of callee save registers
+remains the same and all the extended registers r16-r31 are
+assigned as caller save registers.
+III. REACTIVATING CONDITIONAL EXECUTION
+Similar to the 32-register ISA described in the previous
+section, the Thumb 16-bit encoding space does not have
+sufficient space to retain this ability and therefore conditional
+execution is not available to the Thumb ISA. However,
+a way must be developed to represent the predicates of
+conditionalized instructions so that conditional execution
+feature can be restored. This paper borrows the IT (If-Then)
+instruction in Thumb-2 ISA which predicates the execution
+r15 r14 r13 r12 r11 r10 r9 r8 r7 r6 r5 r4 r3 r2 r1 r0
+Callee save Caller save
+(a) 16 Registers
+r31 r30 r29 r28 r27 r26 r25 r24 r23 r22 r21 r20 r19 r18 r17 r16
+r15 r14 r13 r12 r11 r10 r9 r8 r7 r6 r5 r4 r3 r2 r1 r0
+Callee save Caller save
+(b) 32 Registers
+Figure 5. Caller and Callee Save Registers
+!
+15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0
+MASKfirstcond1   1   1   11   0   1   1
+(a) IT Instruction
+!
+31 30 29 28 27 26 25 24 23 22 21 20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0
+cond 0   1   1  1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1 MASK1   1   1   1
+(b) 32-Bit IT Instruction
+Figure 6. IT Instructions Formats
+of up to four Thumb instructions [15]. The instructions
+affected by an IT instruction are said to be in an IT block.
+A. Thumb-2 IT Instruction
+The IT instruction takes the form:
+IT{hxi{hyi{hzi}}} hfirstcondi
+where x, y, and z are optional, and must be either T (for
+”then”) or E (for ”else”), while firstcond is the condition for
+the first instruction in the IT block. The encoding of 16-bit
+Thumb-2 IT instructions is shown in Figure 6(a).
+B. 32-Bit IT Instruction
+As the IT instruction is encoded by a 16-bit instruction
+format in Thumb-2 ISA, it needs to be extended into a 32-bit
+instruction format here. The most convenient way to encode
+a 32-Bit IT Instruction is to define it as an “architecturally
+undefined” instruction, and the instruction encoding for the
+new IT instruction is shown in Figure 6(b).
+C. GCC Implementation
+Modifying GCC to embed the 32-Bit IT Instruction in
+ARM code is quite straightforward, as GCC has already im-
+plemented if-conversion to generate predicated instructions.
+The only extra step that must be implemented in GCC is to
+convert conditionalized instructions into IT blocks preceded
+by IT instructions with the appropriate predicates. GCC just
+needs to look over every basic block and then transforms
+conditionalized instructions in the basic block into IT blocks.
+In addition, GNU assembler is updated to encode the 32-Bit
+IT Instruction into the new instruction format.
+75%$
+80%$
+85%$
+90%$
+95%$
+100%$
+105%$
+110%$
+115%$
+120%$
+125%$
+130%$
+135%$
+140%$
+145%$
+150%$
+155%$
+ep
+ic$
+g7
+21
+de
+c$
+g7
+21
+en
+c$
+gh
+os
+tsc
+rip
+t$
+gsm
+de
+c$
+gsm
+en
+c$
+pe
+gw
+itd
+ec
+$
+pe
+gw
+ite
+nc
+$
+pg
+pd
+ec
+$
+pg
+p$
+ras
+ta$
+raw
+ca
+ud
+io$
+raw
+da
+ud
+io$
+un
+ep
+ic$
+av
+era
+ge
+$
+base$ 16reg?noc$ 32reg?noc$ 16reg?it$ 32reg?it$
+(a) MediaBench I
+75%$
+80%$
+85%$
+90%$
+95%$
+100%$
+105%$
+110%$
+115%$
+120%$
+125%$
+130%$
+135%$
+140%$
+145%$
+150%$
+155%$
+cjp
+eg
+$
+djp
+eg
+$
+jpe
+g2
+00
+0d
+ec
+$
+jpe
+g2
+00
+0e
+nc
+$
+h2
+63
+de
+c$
+h2
+63
+en
+c$
+h2
+64
+de
+c$
+h2
+64
+en
+c$
+mp
+eg
+4d
+ec
+$
+mp
+eg
+4e
+nc
+$
+mp
+eg
+2d
+ec
+$
+mp
+eg
+2e
+nc
+$
+av
+era
+ge
+$
+base$ 16reg;noc$ 32reg;noc$ 16reg;it$ 32reg;it$
+(b) MediaBench II
+Figure 8. Normalized Execution Times
+tion slightly improves the performance degradation, but the
+average runtime of MediaBench on a 16-register ARM
+is still worse than that of the original ARM by 6.2%.
+The reason of the performance discrepancy between the
+base and reg16-it configurations is that instructions on base
+can be conditionalized while extra IT instructions must be
+executed on reg16-it in order to handle conditional execution.
+Fortunately, doubling the number of registers usually can
+reverse the performance degradation. Runtime reduction can
+be observed on reg32-it for the most of the MediaBench
+programs, and the average performance improvement is
+3.7%.
+Figure 8(b) shows that performance would be slightly
+worse than the original ARM when conditional execu-
+tion feature is turned off for the most of MediaBench II
+benchmarks, with the average slowdown of 3.6%. However,
+speedup can be observed for the most of MediaBench II
+benchmarks when the number of registers is doubled. The
+only three exceptions are h263enc, h264dec, and mpeg2enc,
+whose slowdown ratios are 2.6%, 8.0%, and 14.5%, re-
+spectively. The best speedup is achieved by cjpeg, which
+is 21.1%. The average performance improvement is 6.0%
+for MediaBench II benchmarks when the number of ISA
+registers is extended from 16 to 32. In other words, doubling
+the number of registers can achieve speedup for most of the
+MediaBench II benchmark programs even when the feature
+of conditional execution is disabled.
+A 32-register ARM with conditional execution predicated
+by the IT instruction is the best configuration. Speedup can
+be observed for all MediaBench II benchmark programs.
+The only exception is the jpeg2000dec program, which is
+insensitive to conditional execution and shows no signif-
+icant speedup or slowdown on all configurations. The best
+speedup reg32-it is achieved by cjpeg, which is 22.2% and the
+average performance improvement is 10.4% for MediaBench
+II benchmarks.
+Table I
+SPILLS IN OBJECT FILES
+Program 16 Registers 32 Registers Spill Reduction
+MultiBench
+epic 2410 214 91.1%
+g721dec 101 7 93.1%
+g721enc 103 7 93.2%
+ghostscript 9688 995 89.7%
+gsm 595 178 70.1%
+pegwit 739 8 98.9%
+pgp 1248 1183 5.2%
+rasta 3898 1114 71.4%
+adpcm 14 0 100.0%
+unepic 2399 214 91.1%
+MultiBench II
+cjpeg 3285 502 84.7%
+djpeg 3282 502 84.7%
+jpeg2000 4902 520 89.4%
+h263dec 9624 1492 84.5%
+h263enc 1406 1060 24.6%
+h264dec 104876 12757 87.8%
+h264enc 49136 19473 60.4%
+mpeg4 964 748 22.4%
+mpeg2dec 571 18 96.8%
+mpeg2enc 1753 144 91.8%
+D. Register Spills
+The performance improvement comes from the fact that
+register spills have been significantly reduced as more values
+have been stored in the extended register file. Table I tabu-
+lates the numbers of register spills that have been introduced
+by GCC into the target programs of the MediaBench and
+MediaBench II benchmarks. Note that the encoder and
+decoder of several benchmarks share the same object file.
+For instance, the JPEG 2000 encoder and decoder are stored
+in the same object program jpeg2000, and the MPEG 4
+encoder and decoder are combined in the same file mpeg4.
+As the number of registers is extended from 16 to 32, the
+numbers of register spills are reduced drastically. More than
+0%#
+10%#
+20%#
+30%#
+40%#
+50%#
+60%#
+70%#
+80%#
+90%#
+100%#
+ep
+ic#
+g7
+21
+de
+c#
+g7
+21
+en
+c#
+gh
+os
+tsc
+rip
+t#
+gsm
+de
+c#
+gsm
+en
+c#
+pe
+gw
+itd
+ec
+#
+pe
+gw
+ite
+nc
+#
+pg
+pd
+ec
+#
+pg
+p#
+ras
+ta#
+raw
+ca
+ud
+io#
+raw
+da
+ud
+io#
+un
+ep
+ic#
+av
+era
+ge
+#
+len?1# len?2# len?3# len?4#
+(a) MediaBench I
+0%#
+10%#
+20%#
+30%#
+40%#
+50%#
+60%#
+70%#
+80%#
+90%#
+100%#
+cjp
+eg
+#
+djp
+eg
+#
+jpe
+g2
+00
+0d
+ec
+#
+jpe
+g2
+00
+0e
+nc
+#
+h2
+63
+de
+c#
+h2
+63
+en
+c#
+h2
+64
+de
+c#
+h2
+64
+en
+c#
+mp
+eg
+4d
+ec
+#
+mp
+eg
+4e
+nc
+#
+mp
+eg
+2d
+ec
+#
+mp
+eg
+2e
+nc
+#
+av
+era
+ge
+#
+len:1# len:2# len:3# len:4#
+(b) MediaBench II
+Figure 11. Breakdown of it Instructions
+the numbers in Figure 7, the ratio of IT instructions is
+smaller than the ratios of conditionalized instructions for
+every MediaBench and MediaBench II benchmark, as each
+IT instruction represents the predicates of up to four instruc-
+tions.
+Figure 10 depicts the breakdown of the numbers of
+instructions that are conditionalized by IT instructions in
+MediaBench and MediaBench II benchmarks on a 32-
+register ARM. It reveals that the IT instructions that are
+generated by GCC are not efficiently, namely, the major of
+IT instructions control only one instruction each. If GCC can
+generate more efficient IT instructions, further performance
+gain should be observed.
+V. RELATED WORK
+Register Connection [10] proposes a scheme to make use
+of more physical registers by mapping architected registers
+to physical registers dynamically. Special instructions are
+added to designate the mapping and there is a mapping
+table managed by the hardware. Their scheme is more
+complicated, therefore may not be suitable for low-end
+machines. Compared with their work, this paper proposes
+lightweight approaches that can be widely applicable with
+good performance. By making small changes in the ISA and
+using the differential register addressing, we have shown that
+it is possible to overcome the addressing bottleneck in the
+ISA.
+Register Connection [5] has been proposed for super-
+scalars to make more registers accessible to the compiler.
+A level of indirection is used to connect logical registers to
+the physical registers. Special register connect instructions
+are provided that can make changes to this mapping. The
+ILP available on superscalars allows the performance cost of
+the register connect instructions to be small. The additional
+code size introduced by these instructions is significant.
+[8] proposes shrinking the destination register field of
+certain instructions and using this extra encoding space for
+other fields, partitioning the register file into mulliple sets
+based on instruction type [12] a new compressed inslruction
+set architecture, partitioned registcrs extension (PARE), by
+re-designing the The Thumb instruction format to compress
+more instructions. Thc main idea of the proposed approach
+is to reduce the size of destination register field and to
+use the saved bit(s) for other fields such as the immediate
+operand field or the address field. The reduction furthrr
+limits the accessibility of the destination register. However,
+this limitation can he resolved by partitioning registers
+into mulliple sets (i.e. non-homogeneous register partition)
+[3], each of which is acccsscd by a predefined group of
+instructions.
+Efficient Use of Invisible Registers in Thumb Code The
+ARM processor is a dual width ISA processor that provides
+a 16-bit Thumb instruction set in addition to the 32-bit
+ARM instruction set. The compromises made in de- signing
+the Thumb instruction set leads to significantly in- creased
+instruction counts. This increase is in part due to the
+fact that only half of the register file is visible to most
+instructions in Thumb code. In this paper we address this
+inefficiency by providing a new instruction, the SetMask
+instruction, using which the compiler can change the visi-
+ble subset of registers at any program point. Thus, through
+the use of this instruction the compiler can make use of all
+registers in all instructions. We present compiler techniques
+for allocating invisible registers and introducing SetMask
+instructions in a manner that the number of introduced in-
+structions is minimized so that the increase in code size is
+insignificant. [11]
+Hardware-managed Register Allocation for Embedded
+Processors talks about managing extended registers, i.e. reg-
+isters not addressable through ISA, with hardware support.
+Their approach not only complicates hardware design but is
+less precise, since register allocation information is conveyed
+國科會補助計畫衍生研發成果推廣資料表
+日期:2012/10/31
+國科會補助計畫
+計畫名稱: 支援256個暫存器微處理器的編譯器和硬體技術
+計畫主持人: 黃元欣
+計畫編號: 98-2221-E-011-065-MY3 學門領域: 程式語言與軟體工程
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+1. 共同指導學生陸家鈞同學、吳宗祐同學、許國輝同學、和王牧得同學參加
+2012 全國大學校院智慧電子系統設計競賽(題目:行動裝置個人化搖動解鎖)榮
+獲系統應用組優等 (6/2012) 
+2. 指導學生鍾怡傑同學和朱啟豪同學參加 2012 智慧電子創新應用與設計競賽
+榮獲佳作 (2/2012) 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

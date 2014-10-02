@@ -1,0 +1,391 @@
+ 1 
+ 
+ 3 
+its particular GPU. Another advantage of the advantage of this approach is that the GLSL 
+code can be dynamically modified before compilation – although this may not be desirable in 
+many situations. A disadvantage of this approach, however, is that the compiler runs while the 
+API is executing, and therefore must be fast. 
+Dynamic compilation is achieved by storing the GLSL code as strings. Example 1 provides an 
+illustration of this method. In this example, we see a string array which might be declared 
+anywhere within the API source code. Looking at the contents of the array, we see that it 
+looks like a program (it is a GLSL program, which has a C-like syntax). But the key point is 
+that, although it looks like a program, it will not be compiled when the API that includes this 
+code is compiled. When the API is compiled, the text in Example 1 will be seen as a string 
+array (because it is a string array), and so the strings will be bundled into the executable. This 
+is a standard compiler approach to handling data constants. 
+Figure 1 explains how dynamic compilation works. This figure shows a simplified diagram of 
+an embedded system containing an ARM processor, our GPU, and an external DRAM 
+memory. When the user selects to run the API, the ARM processor’s operating system will 
+create a process for the API, and begin fetching instructions from the place in DRAM where  
+ 
+01 // The following code segment comes loosely from [1].  A much fuller version is shown in the 
+02 // appendix.  See the appendix version also for copyright information. 
+03  
+04 const char brickFragShaderProg[17][80]={ 
+05    "uniform vec3  BrickColor, MortarColor;", 
+06    "uniform vec2  BrickSize;", 
+07    "uniform vec2  BrickPct;", 
+08    "varying vec2  MCposition;", 
+09    "varying float  LightIntensity;", 
+10    "", 
+11    "void main(void)", 
+12    "{   vec3  color;", 
+13    "    vec2  position, useBrick;", 
+14    "    position = MCposition / BrickSize;", 
+15    "    if (fract(position.y * 0.5) > 0.5)", 
+16    "        position.x += 0.5;", 
+17 "    position = fract(position);", 
+18    "    useBrick = step(position, BrickPct);", 
+19    "    color  = mix(MortarColor, BrickColor, useBrick.x * useBrick.y);", 
+20    "    color *= LightIntensity;", 
+21    "    gl_FragColor = vec4 (color, 1.0);", 
+22    "}"   
+23 };  
+EXAMPLE 1.  An example of a shader source stored within an API source. The program shown is part of an 
+implementation of a shader for bricks[1], but the purpose of the example is not to explain how bricks are 
+rendered.  The purpose of the example is to instead illustrate how a shader source can be placed in a string array, 
+so that it will not be compiled when the API is compiled. 
+ 5 
+for 3D graphics. Vector variables can be used to store vertex positions, ray vectors, pixel colors, 
+or texture coordinates. Matrices are also useful for computer graphics. Common matrix 
+transformations include translation, scaling, and rotation. Many computations that performed on 
+vectors can be applied to all vector elements in parallel by using SIMD operations. But there are 
+also cases that require the cross multiply or dot multiply operations: vector times matrix, matrix 
+times vector, and matrix times matrix. 
+Obviously, there exist no current compilers that target our GPU, because our GPU’s instruction 
+set has not been released. There are, however, other compilers that support vector compilation. 
+Many GPU compilers support this feature, but these compilers are not open source, so we 
+cannot retarget them. There are, however, some open source compilers for various CPUs. Some 
+of these CPUs contain a limited amount of SIMD support. We have chosen to retarget one of 
+these CPU-targeted compiler backends to now target our GPU. 
+THE LLVM COMPILER INFRASTRUCTURE is the development platform that we chose. There 
+are several reasons for choosing LLVM. First, LLVM is open source and well maintained. 
+Second, LLVM is designed in a modular fashion that is intended to make retargeting easier. 
+Third, LVVM already supports a vector data type (but not matrices). Fourth, a partially 
+functioning GLSL parser already had been developed, [5], which produces an output that is 
+similar to LLVM’s format. This parser adds new information into the LLVM program 
+representation (IR). This information includes vector data types and OpenGL functions. 
+Unfortunately, the code provided by [5] was incomplete and had bugs, which we have had to 
+fix. 
+Moreover, the augmenting if LLVM’s IR requires us to also modify LLVM to understand this 
+new information. Modifying the compiler to properly handle vectors has been a significant 
+challenge. 
+A NOVEL GPU FOR EMBEDDED SYSTEMS is being developed by this multi-professor research 
+project. This GPU is SIMD, supporting vectors of up to 4 elements. Each element is 32 bits 
+wide. Another special feature of our GPU is that its instructions have swizzling and masking 
+capabilities. Swizzling means that the elements of a source register can be reorder before the 
+assembly instruction is performed. Masking means that the vector result can be selectively 
+written to only specified elements of the result register’s vector. Because the vector register 
+accesses have this power to select individual elements, our GPU is entirely SIMD: there are no 
+SISD instructions; every register access is to a vector. Moreover, not only is the vector register 
+file unified with the scalar register, but also integer and float values are also unified into this one 
+register set. The proper interpretation of a register’s value is decided by the machine 
+instruction’s opcode. So an ADD instruction indicates integer values, but an ADDF indicates 
+that the register bits must be interpreted in IEEE floating point format. 
+Our GPU has a RISC instruction set. This is typical among GPUs, because shader program do 
+not tend to be as complex as general purpose programs are. The RISC instruction sets also 
+reduces the GPU’s size and power consumption, as befits our design for embedded systems. 
+Although our GPU only has 32 instructions, some of these are powerful instructions. Not only 
+are there swizzle and mask options, but there are also instructions to perform common graphics 
+computations, such as the matrix dot product and texture multiply. 
+OUR GPU USES SCRATCHPAD MEMORY (SPM). SPM is a small and high-speed internal 
+memory which is often present in real-time systems. SPM is a replacement for cache. Like a 
+cache, the SPM is intended to store frequently used data. But unlike a cache, SPM is 
+directly-mapped into the memory address space. If a program wishes to place a value in the 
+SPM, it simply writes to one of the addresses that maps to the SPM. When compared to a cache, 
+ 7 
+algorithms are hard to apply. One of the key technologies in [14] involves VLIW scheduling, 
+which is not useful for our GPU. There is, however some work in [14] on selecting vector 
+instructions using tree re-writing rules [15]. This work has some similarity to ours in principle. 
+Concerning the adding of vector support to the compiler, this worked is built upon LLVM’s 
+existim support for the Altivec instructions in PowerPC[16]. Some of the approaches used for 
+CPU vectors can also be used in our work. In works such as [17], vectorization techniques 
+attempt to extract parallelism from sequential code. [17] uses a source to source translator to 
+achieve scalar expansion, the redefining of scalar variables as arrays. One of the key challenges 
+is identifying parallel segments of code. The discovery of these sections is critical, because CPU 
+vector registers have high packing and unpacking overheads. The ultimate goal of such papers 
+is therefore to find inner loops that can be parallelized. 
+ Fundamentally, none of the register allocations methods for CPU registers are applicable to our 
+architecture, because the costs are too dissimilar. A key difference is that our architecture 
+maintains a single register set for integers, floats, and vectors. Therefore there are no packing 
+and unpacking costs. This therefore nullifies one of the core objectives of the CPU methods. A 
+second fundamental difference is that OpenGL code introduces vector and matrix primitive 
+types. This means that the vector discovery problem is much less severe (although potentially 
+still useful). 
+ 
+3. OUR PROGRESS OVER THE PAST YEAR 
+Another team within our collaborative research project has developed as set of GLSL test 
+benchmarks. The hardware team developing the GPU has implemented a detailed simulator 
+using the Qemu tool. Below we show the results for a simple benchmark, called redcube. First, 
+Figure 2 shows the IR code that is passed into LLVM, by our modified GLSL parser.  Figure 
+3 presents the final assembly output that we create for the vertex shader of the Rotate Red 
+Cube benchmark. This benchmark describes the rendering of a simple red cube. No fragment 
+processing is necessary, because the color is simply red. As the API makes operating system 
+calls, the rotation angle changes, causing the cube to spin. This result is observed in Qemu 
+and recreated here in Figure 4. Next, we have compiled the Rotating Cube with Texture 
+benchmark. Figure 5 shows the final assembly. This code looks correct, but cannot be tested 
+because of bugs in Qemu. The result of this code will likely be as shown in Figure 6. 
+ 
+ 
+ 
+FIGURE 2. IR code of red cube testbench 
+ 
+ 9 
+ 
+ 
+FIGURE  4. Rotated Red Cube’s output from Qemu. These are some pictures from the animation of red rotate 
+cube test bench. Between the two views, the perspective of the cube has been rotated. 
+ 
+ 
+main: 
+.Leh_func_begin1: 
+ ST r0, 4(1) 
+.Llabel1: 
+ ST r1, -64(1) 
+ ADDI r1, r1, -64 
+.Llabel2: 
+ ST r21, 20(1) 
+ ST r22, 24(1) 
+ ST r23, 28(1) 
+ ST r24, 32(1) 
+ ST r25, 36(1) 
+ ST r26, 40(1) 
+ ST r27, 44(1) 
+ ST r28, 48(1) 
+ ST r29, 52(1) 
+ ST r30, 56(1) 
+ mfspr 30, 256 
+ mtspr 256, 3 
+ BL OpenGLES.Start 
+ BL 
+OpenGLES.LoadAttribute2.texcoord.0 
+ BL OpenGLES.VaryingPut2.texcoord0.1 
+ BL 
+OpenGLES.LoadAttribute4.rm_Vertex.0 
+ OR r29.1111, r2, r2, <4> 
+ ADDI r3, r0, 
+u.ModelViewMatrix1.3.4@ha 
+ SHL r3, r3, 16 
+ ADDI r4, r0, u.ModelViewMatrix1.3.4@l 
+ ADDI r5, r0, 
+u.ModelViewMatrix1.2.4@ha 
+ SHL r5, r5, 16 
+ ADDI r6, r0, u.ModelViewMatrix1.2.4@l 
+ ADDI r7, r0, 
+u.ModelViewMatrix1.1.4@ha 
+ SHL r7, r7, 16 
+ ADDI r8, r0, u.ModelViewMatrix1.1.4@l 
+ ADDI r9, r0, 
+u.ModelViewMatrix1.0.4@ha 
+ SHL r9, r9, 16 
+ LD 27.0010, 2(27) 
+ LD 27.0100, 1(27) 
+ LD 27.1000, 0(27) 
+ ADD 26.1000, 7, 8 
+ LD 26.0001, 3(26) 
+ LD 26.0010, 2(26) 
+ LD 26.0100, 1(26) 
+ LD 26.1000, 0(26) 
+ ADD 25.1000, 9, 10 
+LD 25.0001, 3(25) 
+ LD 25.0010, 2(25) 
+LD 25.0100, 1(25) 
+     LD 25.1000, 0(25) 
+ ADDI r24, r0, 
+u.ModelViewMatrix.3.4@ha 
+ SHL r24, r24, 16 
+ BL OpenGLES.CallRegister 
+ OR r23.1111, r2, r2, <4> 
+ BL OpenGLES.CallRegister 
+OR r22.1111, r2, r2, <4> 
+BL OpenGLES.CallRegister 
+ OR r21.1111, r2, r2, <4> 
+ OR r2.1111, r28, r28, <4> 
+ OR r3.1111, r27, r27, <4> 
+ OR r4.1111, r26, r26, <4> 
+ OR r5.1111, r25, r25, <4> 
+ OR r6.1111, r21, r21, <4> 
+ OR r7.1111, r22, r22, <4> 
+ OR r8.1111, r23, r23, <4> 
+ BL OpenGLES.ChangeMatrix4.7 
+ OR r3.1111, r2, r2, <4> 
+ OR r2.1111, r29, r29, <4> 
+ OR r4.1111, r21, r21, <4> 
+ OR r5.1111, r22, r22, <4> 
+ OR r6.1111, r23, r23, <4> 
+ BL OpenGLES.VectorTimesMatrix4.5 
+ OR r29.1111, r2, r2, <4> 
+ ADDI r3, r0, u.ModelViewMatrix.3.4@l 
+ ADDI r4, r0, 
+u.ModelViewMatrix.2.4@ha 
+ SHL r4, r4, 16 
+ 11 
+ 
+FIGURE 6. The result of rotating texture-cube benchmark. This result is not obtained by the Qemu 
+simulator, but is expected to work. 
+ 
+SPM ALLOCATION 
+ 
+ 
+FIGURE 7. The Overhead of our optimizations.  
+ 13 
+[4]  LLVM Language Reference Manual. Website: http://llvm.org/docs/LangRef.html 
+[5] G. F. Tseng and M. C. Chiang, “OpenGL ES 2.0 Shading Language to LLVM Compiler” Internal document, 2008. 
+http://cooldavid.org/cooldavid.html 
+[6] K. C. Lu and S. Haga. “Compiler Development to Support OpenGL 2.0 ES on a Novel 3D Graphics Processor”, Master’s thesis, 
+National Sun Yat-Sen University, Kaohsiung, Taiwan, August 2010. 
+[7] Sheng-Chih Tseng and S. Haga. “Compiler/Hardware Codesign and Memory Management for a Novel 3D Graphics Processor”, 
+Master’s thesis, National Sun Yat-Sen University, Kaohsiung, Taiwan, August 2010. 
+[8] Kuo-An Huang and S. Haga. “Compiler Support for Vector Processing on OpenGL ES 2.0 Programs”, Master’s thesis, National Sun 
+Yat-Sen University, Kaohsiung, Taiwan, August 2010. 
+[9] Jai-Yu Bai and S. Haga. “A Memory-Realistic SPM Allocator with WCET/ACET Tunable Performance”, Master’s thesis, National 
+Sun Yat-Sen University, Kaohsiung, Taiwan, August 2010. 
+[10] J. Nickolls, I. Buck, M. Garland, and K. Skadron. “Scalable Parallel Programming with CUDA,” GPU Computing, Volume 6, Issue 
+2, March/April 2008, pp. 40-53. 
+[11] N. Rubin. “Issues and Challenges in Compiling for Graphics Processors,” Proc. of the 6th annual IEEE/ACM international 
+symposium on Code generation and optimization, Boston, MA, April 8, 2008. 
+[12] R. Cabido, D. Concha, J. Pantrigo, and A. Montemayor. “High Speed Articulated Object Tracking Using GPUs: A Particle Filter 
+Approach,” The 2009 International Workshop on GPU Technologies and Applications, Kaohsiung, Taiwan, December 2009. 
+[13] C. Lattner. “LLVM for OpenGL and other stuff.” LLVM Designers Conference, May 2007. 
+[14] W. Mark and K. Proudfoot. “Compiling to a VLIW Fragment Pipeline.” Proc. of SIGGRAPH/Eurographics Workshop on Graphics 
+Hardware, Los Angeles California. July 2001. 
+[15] A. Aho, M. Lam, R. Sethi and J. Ullman, “Compilers: Principles, Techniques and Tools(2nd Ed)”, Pearson Addison Wesley, Hong 
+Kong, 2006. 
+[16] K. Diefendorff, P. Dubey, R. Hochsprung, and H. Scales. “Altivec Extension to PowerPC Accelerates Media Processing,” IEEE 
+Micro. Vol. 20, No. 2, March-April 2000. 
+[17] N. Sreraman and R. Govindarajan.  “A Vectorizing Compiler for Multimedia Extensions,” The International Journal of Parallel 
+Programming. Vol. 28, No 4, 2000. 
+ this problem. 
+ 
+2. A lack of quality benchmarks, because our allocator does not support recursion. This 
+challenge is not usually a problem in GPUs, but it is in the more general use of our allocator 
+to other real-time systems. We discussed this problem and came up with a novel solution to 
+allow recursive stack frames to exist on the SPM – either in part or in full, even when the 
+stack frame contains escaping variables. This solution, now implemented has allowed us to 
+use many benchmarks that were excluded at first. 
+ 
+3. A lack of quality benchmarks, because our allocator needs many input test files for its 
+real-time allocation. The problem is that many benchmarks come with a single input test set. 
+We have been working to find programs for which a plausible set of many input test files can 
+be derived. But in the summer we also discussed other solutions. One of these involves 
+profiling from GPU runs, once our simulator is finished. A second solution involves 
+connecting our work into the static worst-case execution time analyzer that we have 
+developed under a previous project. A third solution involves considering our allocator’s 
+application to non-real-time systems, where the average execution time is most important. We 
+had some discussion of how this might be handled. 
+ 
+4. Poor allocation results, because too high of a percentage of variables belong to library 
+functions. To address this, we employ some of Professor Barua’s binary rewriting methods to 
+reason about these variables, so that they also can receive SPM allocations. 
+ 
+In the months since this past summer, these ideas have been implemented, and we are 
+preparing several of these ideas for publication: one paper on our SPM allocator, another of 
+real-time SPM allocation, and another on GPU register allocation. Future research will lead to 
+further papers. 
+ 
+赴國外研究心得報告 
+                                                             
+計畫編號 NSC 98-2220-E-110-008 
+計畫名稱 
+子計畫名稱：具有即時效能/功率監控系統的高效率可程式化三維電腦繪圖
+晶片系統：軟硬體開發及整合-子計畫三：針對三維電腦繪圖晶片系統在可
+使用 Scratchpad Memory 以及快取記憶體的軟/硬體編譯器共同設計(2/2) 
+出國人員姓名 
+服務機關及職稱 
+Steve W. Haga, Assistant Professor, Dept. Computer Science & Engineering, 
+National Sun Yat-Sen University 
+出國時間地點 Oct 25-27, 2010, Phoenix, Arizona 
+國外研究機構 
+International Conference on Compilers, Architecture, and Synthesis for 
+Embedded Systems (CASES 2010)  
+in conjunction with ESWEEK 
+ 
+工作記要： 
+Travel Report  
+ 
+The CASES conference is a premier research conference in my field. Of course, the 
+funding which provided for this research trip is for a compiler of an embedded system – an 
+embedded GPU. GPUs are not generally thought of as embedded systems, although ours is. It 
+was therefore surprising to see the amount of discussion at ESWEEK pertaining to GPUs (and 
+also pertaining to clouds, another area of my research.) 
+The most relevant papers to this presently funded research project were: “Balancing 
+Memory and Performance through Selective Flushing of Software Code Caches,” “Automatic 
+Memory Partitioning: Increasing Memory Parallelism via Data Structure Partitioning,” 
+“Improving Scratchpad Allocation with Demand-Driven Data Tiling,” “Fine-grain Dynamic 
+Instruction Placement for L0 Scratch-pad Memory,” “Improved Procedure Placement for Set 
+Associative Caches,” “Minimizing Inter-Task Interferences in Scratch-Pad Memory Usage for 
+Reducing the Energy Consumption of Multi-Task Systems,” and “A Performance Model and 
+Code Overlay Generator for Scratchpad Enhanced Embedded Processors.” From these talks I 
+learned what related topics are being handled at other universities. One of the poster sessions, 
+regarding process scheduling was also related to our WCET SPM allocation. 
+The conference was also a good opportunity to interact with other researchers. In 
+particular, I met again Dr. Vincent Mooney III from Nanyang Technology University and 
+Georgia Tech. I hope that a collaboration might develop at some point. 
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：希家史提夫 計畫編號：98-2220-E-110-008- 
+計畫名稱：具有即時效能/功率監控系統的高效率可程式化三維電腦繪圖晶片系統：軟硬體開發及整合
+--子計畫三：針對三維電腦繪圖晶片系統在可使用 Scratchpad Memory 以及快取記憶體的軟/硬體編
+譯器共同設計(2/2) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 4 80% 
+See the self 
+evaluation page 
+for a list of 
+papers under 
+development 
+研究報告/技術報告 0 0 0%  
+研討會論文 1 2 80% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 12 3 100% 
+Though there are 
+more students 
+than proposed, 
+there are two 
+reasons: 
+1. They were 
+funded at lower 
+levels that was 
+proposed 
+(because more 
+students joined 
+the lab than had 
+been expected) 
+2. Some students 
+graduated and 
+were replaced 
+with new 
+students, which 
+leads to a 
+double-counting 
+of numbers 
+博士生 0 1 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+博士後研究員 0 0 100% 
+人次 
+ 
+ 

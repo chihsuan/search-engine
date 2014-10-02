@@ -1,0 +1,255 @@
+一、中文摘要 
+ 
+由於網際網路是由各式各樣的 IP 路由器交互相連而成的互連網路，所有的
+路由器皆以封包的目的地位址為 IP 封包轉送的依據，因此 IP 封包如經過竄改來
+源 IP 位址而形成偽造的 IP 封包，依舊可以在網際網路上經由路由器自由的進
+出，與正常的 IP 封包轉送過程完全相同而無法分辨，同時也因為無法分辨而成
+為駭客的攻擊技術之一，嚴重影響到網際網路的安全性。本計畫將針對此問題提
+出一套網路的聯防機制，採用新設計的 IP 層的 label 交換通訊協定來提供路由
+器之間的來源 IP 位址反向追蹤的認證功能。再藉由反向追蹤的認證機制來偵測
+出具攻擊性的偽造 IP 封包，進而逐步圍堵，甚至將發送偽造 IP 封包的工作站之
+網卡封閉，使其無法干擾到其他工作站正常封包的傳送。同時本計畫也將針對發
+送偽造 IP 封包的路由器進行相同的聯防偵測機制，進而將此傳送偽造 IP 封包的
+路由器與網際網路隔離，以增加整體網際網路的可靠度及安全性，並且聯防機制
+的啟動與否，可視網路的狀況而定，並能與傳統的網路路由系統共存。 
+本計畫除設計 IP 層的 label 交換通訊協定外，並將此新的路由演算法實作
+於 Linux 作業系統的 IP 層核心程式原始碼，以實際的系統展示來驗證反向追蹤
+認證功能可行性，並同時証明其演算法的時間複雜度為 O(1)。 
+ 
+關鍵詞：IP 反向追蹤、label 交換通訊協定 
+ 
+I 
+偵測與隔離偽造IP封包的網路聯防策略(精簡報告)
+三、報告內容 
+ 
+I. INTRODUCTION 
+Since the stateless Internet routers forward packets only based on their 
+destination IP addresses, attackers can easily flood a victim with spoofing source IP 
+address such as DoS or DDos attacks which can exhaust resources of the victim 
+computer or cause the traffic jam near the victim’s network (Ferguson et al., 2000) 
+(Lau et al., 2000). The best way to prevent these malicious packets traveled over the 
+Internet is to promptly and reversely find out the path information of malicious 
+packets to isolate the attackers. In other words, how to identify the malicious packets 
+and start the traceback of these packets to their true source IP addresses has become 
+the key technique to defeat Denial of Service attacks (Snoeren et al., 2002) 
+(Waldvogel 2002) (Bala et al., 2002) (Aljifri 2003). 
+In this paper, we leave the identification of malicious packet problem to IDS or 
+firewall systems and focus the problem of tracing attacks back toward their true 
+sources. Unfortunately, most IP traceback approaches have suffered from lasting long 
+enough time for reconstructing a successful trace such as packet marking (Song et al., 
+2000) (Goodrich 2002) (Lee et al., 2001) (Adler 2002), generating more additional 
+network traffic to log the packet traveling information such as ICMP-based or 
+hash-based (Bellovin 2000) (Stone 2000) (Snoeren et al., 2001), deriving more 
+fragments while IP header size incremented to carry more trace information, or 
+requiring the cooperative among routers with the whole ISP network or in AS level 
+such as ingress filtering (Ferguson et al., 2000) (Stone 2000). Instead, we present a 
+new approach for the traceback problem that has two different scenarios of the current 
+Internet routing process. 
+The first scenario is using the tunnel mechanism to realize the traceback in a 
+prevention way. Since both ends of a tunnel are easily to trace each other in nature, 
+we propose a simple way to create a virtual tunnel in Layer 3 for each pair of hosts 
+across the Internet before they start communicating with each other. 
+The second scenario is using the ARP address resolution protocol as the network 
+ingress filter to realize the detection of source IP address spoofing at near the user site 
+instead of ISP site. We propose a greedy process such that a local spoofing free of a 
+small group of end-users can be used to achieve a global spoofing free Internet. In this 
+manner, all Internet end-users are grouping into a large amount of reasonable small 
+area networks and each small area network is assumed that it has one and only one 
+1 
+偵測與隔離偽造IP封包的網路聯防策略(精簡報告)
+• Keeper is considered as a well-protected and backdoor-free Internet router which 
+supports the functions of IP traceback. 
+B. Keeper-based Internet 
+As shown in Fig. 1, the topology of keeper-based Internet illustrates that all traffic 
+between any pair of hosts, such as the attacker host HA and the victim host HV in Fig. 1, 
+will travel exactly through two keepers, KA and KV. Since the concept of IP traceback 
+is not a well-defined network standard, we have defined the process of IP traceback 
+throughout this paper as the following four steps: 
+Step 1. The attack host HA generates attack packets to the victim host HV. 
+Step 2. The victim host HV detects that packets with the source IP address of HA are 
+attacking. 
+Step 3. On detecting attack packets, the victim host HV should notify its own keeper 
+KV to directly traceback to the keeper KA of the original attack host HA. 
+Step 4. The keeper KA can discard all subsequent attacking packets generated from 
+HA to HV or prohibit all HA’s traffic and redirect them to a special VLAN to 
+verify its system availability. 
+The information of Step 1 and Step 2 should be supported from IP filtering 
+devices such as IDS. The Step 3 is the critical section of traceback process between the 
+two keepers of KA and KV. The last step is to perform all possible mechanisms to isolate 
+the attack traffic from entering the Internet. 
+Internet
+Small Area Network Small Area Network Small Area Network
+End-Users
+Keeper
+(Router)
+…
+… … …
+Attacker Victim
+HA HV
+KA KV
+ 
+Figure 1. The topology of the keeper-based Internet. 
+ 
+3 
+偵測與隔離偽造IP封包的網路聯防策略(精簡報告)
+On arriving at the end of tunnel, the packet will be scanned by the keeper to 
+verify whether the reserved bit is set or not. All incoming packets with reserved bit 
+setting and destined to the keepers of the both ends of tunnel indicate that they must be 
+applied the label switching protocol again. The keeper should restore both the 
+destination and source IP addresses with the key field of the label record indexed as 
+the label index of the source IP address field, set the reserved bit off, and recalculate 
+the checksum fields before the packet is forwarding to their true destination. 
+In fact, the two LA and LV labels forms a virtual tunnel between KA and KV such 
+that all packets between the pair of hosts HA to HV will travel through the virtual tunnel 
+between KA and KV. In other words, it is easily and promptly for KV to notify KA that is 
+HV under attack by HA and KA can drop or stop all subsequent attack packets generated 
+from HA whenever KA received the attack notification from KV and vice-versus.  
+Ignoring the establishment of label switching tunnel procedure, the scheme has 
+many advantages as follows: 
+• The packet size is unchanged. No more additional packet should be generated 
+except the attack notification. 
+• The time complexity of hashed and direct index of the label switch table is 
+negligible. 
+• The most important property is that no needs of lasting enough long time attack 
+traffic to reconstruct the traceback path information. 
+Only one disadvantage is deduced that the source IP address is occupied by label 
+between the pair of keepers such that the Internet routers can not correctly generate 
+ICMP messages back to their original source IP address such as in the case of source 
+quench.  
+D. Establishing a Virtual Tunnel 
+There are two ways of setting up a virtual tunnel between a pair of keepers. One 
+is in piggyback mode and the other is in ICMP mode. Since the SYN, SYN-ACK, and 
+ACK packets of the three-way handshaking protocol to establish a TCP connection are 
+quite small size, we can add additional label switching information on the IP options 
+and will never generate the fragment problem during the handshaking stage. 
+In additional, establishing a virtual tunnel, all subsequent traffic including both 
+the connection-oriented and connectionless traffic can travel through the same one 
+tunnel without any effort. That is, only the first time of communicating between a pair 
+of hosts needs to perform the establishment process but not to construct tunnels per 
+connection. If the first packet between a pair of hosts is not the SYN packet of a TCP 
+5 
+偵測與隔離偽造IP封包的網路聯防策略(精簡報告)
+Proof: Assume that there exits a host A such that A can directly deliver a packet to R 
+without matching its source IP address of an ARP entry. By Lemma 1, if router R is 
+the first next hop of host A, the source IP address and the source MAC address of the 
+packet will match with an ARP entry in the router R. That is, it is impossible for a host 
+to directly deliver a packet to router R without matching its source IP address of an 
+ARP entry in R. Since all packets are forwarded from either a host or a router in the 
+Internet, only the router can store-and-forward packets to router R under the case of 
+without matching or a router forged by a host with spoofing source IP address. 
+Lemma 3. If all routers within a keeper’s small area network are trusted, then the 
+keeper’s small area network is spoofing free network. 
+Proof: Let all routers within a keeper’s small area network have performed the ARP 
+verification algorithm and mark the reserved bit of the flag of fragment field to 1 
+whenever the source IP address and source MAC address matches an ARP entry of a 
+trusted router. Under such conditions, if a router receives a packet with reserved bit 
+mark to 1, it means that the packet has already been verified at its first hop router by 
+Lemma 1. Therefore, it is spoofing free. Otherwise, if the packet matches an ARP 
+entry in the current router, it is also spoofing free by Lemma 1. 
+The rest condition is a packet without setting reserved bit and without matching 
+an ARP entry. It means that the router is the first hop but fails to match. That is, the 
+packet is absolute a spoofing packet by Lemma 2. 
+As shown in Fig. 3, it is possible that the attacker knows the ARP verification 
+algorithm and issues spoofing packets with the reserved bit marked. In such a situation, 
+the next router will assume that the packet has already been verified at its first hop 
+router. This is also implied that the packet should be passed from a router to this router. 
+bypass
+from
+router
+bypassspoof mark
+ARP
+match
+spoof
+marked
+unicast
+Yes No
+Yes
+Yes
+No
+No
+No
+Yes
+ 
+Figure 3. The flow chart of spoofing free verification mechanism for 
+all routers within the small area network. 
+7 
+偵測與隔離偽造IP封包的網路聯防策略(精簡報告)
+network interface is proportional to the size of a LAN directly attached to the interface. 
+In fact, the implementation of dynamic cache-based ARP table is usually smaller than 
+the real size of a LAN. Consequently, the time complexity of searching ARP table can 
+be considered as the average size of a LAN, that is, a constant time. 
+If a packet is verified as a spoofing free one, the marking of the reserved bit of 
+flag and the recalculating of checksum are also in a constant time. In fact, the time 
+complexity of the ingress filtering of checking spoofing free is only a minor problem. 
+How to deploy such a filtering scheme to all kinds of routers within the small area 
+network would become the major deployment problem even only a minor modification 
+of the routing algorithm. 
+The time and space complexities of establishing virtual tunnels among keepers 
+are significant. The larger end-users of a small area network will cause the larger size 
+of label switching table. The larger size of label switching table implies that the keeper 
+requires more time to search the label for all outgoing traffic (to the Internet). On the 
+contrary, the label switching time for incoming traffic (from the Internet) is negligible 
+because the value of label is the direct index of label switching table. That is, only the 
+search problem of the label switching table of an outgoing packet should be taken into 
+considerations. In addition, the total outgoing bandwidth of a keeper and the server or 
+client type of users are also the major factors of the size of label switching table. 
+Since the total outgoing traffic will be concentrated to the keeper and the 
+bandwidth of keeper is limited, the amount of users of a small area network can be 
+easily estimated as shown in Fig. 4. In this paper, we will focus on analyzing the case 
+of the following conditions. Assume that there are 1000 hosts with a small area 
+network. Each host with 0.1Mbps outgoing traffic will produce 100Mbps traffic to the 
+1
+0.775
+0.55
+0.275
+0.1 0.075 0.050
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+0 500 1000 1500 2000 2500
+Hosts
+M
+bp
+s 100Mbps
+10Mbps
+ 
+Figure 4. The relationship of the amount of hosts and the outgoing traffic of 
+a host in a fixed outgoing bandwidth of 100Mbps and 10Mbps. 
+9 
+偵測與隔離偽造IP封包的網路聯防策略(精簡報告)
+V. CONCLUSIONS 
+In our approach, the tunnel scheme has the advantage of the traceback property in 
+nature, but how to embed the label information into each packet in the current IPv4 
+becomes the big problem in our proposed approach. Due to the replacement of the 
+source IP address with a label, the router will cause a problem of sending ICMP packet 
+back to its true source. Only both keepers of a tunnel know the true IP addresses of 
+both end hosts. That is, if the router wants to issue an ICMP packet back to the source, 
+the ICMP packet should be forwarding to the keeper as the reserved bit marked. In 
+addition, we only consider the unicast traffic because the tunnel is an end-to-end 
+mechanism. Many attacks may use the broadcast or multicast IP address. 
+To compare with other approaches, our approach has solved many advantages. 
+First, it is no needs of attacking traffic which must be last long enough for a successful 
+trace. If an attacker is identified by IDS system, the pair of keepers can promptly 
+closed the virtual tunnel to drop all subsequent attaching packets. Second, it is no 
+needs to involve the cooperation among ISP or AS routers. The keeper is used as  a 
+firewall or gateway for an organization. If both ends have the keeper function, the 
+traceback function is supported. Otherwise, it is fully compatible with a traditional 
+Internet router. Third, the label binding process can be piggybacked with TCP 
+three-way handshaking process. The increasing of IP header will never cause the 
+problem of IP fragmentation. During tunnel mode, the size of IP header remains 
+unchanged such that no additional network traffic is generated. Finally, the major 
+advantage of our approach is that the whole Internet is spoofing free if all 
+organizations are under the protection of a keeper in tunnel mode. 
+11 
+偵測與隔離偽造IP封包的網路聯防策略(精簡報告)
+(Aljifri 2003) H. Aljifri, "IP Traceback: A New Denial-of-Service Deterrent?," IEEE 
+Security & Privacy, pp.24-31, 2003. 
+(Snoeren et al., 2001) A. C. Snoeren, C. Partridge, L. A. Sanchez, C. E. Joines, F. 
+Tchakountio, S. T. Kent, and W. 
+ 
+ 
+13 
+偵測與隔離偽造IP封包的網路聯防策略(精簡報告)

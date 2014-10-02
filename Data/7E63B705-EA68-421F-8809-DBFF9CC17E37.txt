@@ -1,0 +1,468 @@
+II 
+摘要 
+在網路多媒體服務中，現今的通訊網路與使用者裝置的異質性使得傳送視訊串流給接收端
+的過程存在需要克服的困難。為了配合傳輸通道的頻寬、顯示螢幕解析度、或甚至接收裝
+置的運算能力，視訊串流之傳送端可能需要依照情況降低視訊串流的位元率或畫面尺寸。
+視訊串流轉換編碼技術通常被用來達成此種目的。最直覺的轉換編碼器架構是串接一個解
+碼器及一個編碼器，但其消耗的計算量太高，即使編碼器利用解碼器獲得的運動向量資訊
+而不做運動估測的步驟。此轉換編碼器架構因此並不適用於需要在傳輸串流資料時同時完
+成轉換編碼的應用中。在轉換編碼相關的研究工作中，頻率域轉換編碼器由於去除 DCT 與
+IDCT 所消耗的計算而受到許多的注意，並且許多的降低頻率域運動補償(DCT-MC)的計算
+量的方法已被提出來。為了縮小畫面尺寸，串接式頻率域轉換編碼器架構 (cascaded 
+DCT-domain transcoder, CDDT)已被提出，其使用頻率域的雙線性濾波(DCT-domain bilinear 
+filtering)技術來實現 anti-aliasing filter。 
+DCT decimation 是一種在頻率域下的縮小畫面的方法，也被使用在轉換編碼中。此方
+法以形成正方形區域的四個 8×8 DCT block 為單位來處理。首先取出 4×4 低頻部分的 DCT
+係數而形成四個 4×4 sub-block，然後在頻率域下結合成一個 8×8 block，即為原來正方形區
+域縮小後的區域。DCT decimation 技術可以比像素域方法達到較好的畫面品質，然而它的
+低通率波效果相較於理想的低通濾波器有相當的差距，因此也會導致 aliasing artifacts。若
+使用較 8×8 DCT block 還大的 DCT block 來處理將可以達到較好的 anti-aliasing 表現，但其
+計算量也會隨著 DCT block 的增大而急速增加。 
+在此報告中，我們提出一種有效的方法與就架構用於實現頻率域下以任意倍率縮小畫
+面尺寸之轉碼器。藉由合併縮小畫面尺寸的運算到頻率域運動補償單元(DCT-MC)，對於
+B-frame 的縮小畫面尺寸計算量及頻率域運動補償單元計算量能夠大幅減少。此合併的架構
+稱為 simplified cascaded DCT-domain downscaling transcoder，其不會造成額外的畫面品質降
+低。為進一步減少計算量及記憶體的使用量，此報告中提出另一種可能產生漂移現象
+(drifting error)之轉碼器架構。實驗結果顯示此報告所提出的轉碼器架構能夠大幅減少計算
+量，而且能夠維持與 CDDT 架構相同的畫面品質或是些微畫面品質損失。 
+ 
+ 
+關鍵字—視訊轉碼、畫面縮小、視訊編碼、頻率域處理  
+ 
+1 
+I. INTRODUCTION 
+Networked multimedia services, such as video on demand, video streaming, and distance learning, 
+have been emerging in various network environments. These multimedia services usually use 
+pre-encoded videos for transmission. The heterogeneity of present communication networks and 
+user devices poses difficulties in delivering these bitstreams to client terminals. The sender may 
+need to convert one preencoded bitstream into a lower bit-rate or lower resolution version to fit 
+the available channel bandwidths, the screen display resolutions, or even the processing powers 
+of diverse clients [1,2]. Many practical applications such as video resolution conversions from 
+HDTV to digital TV [3], from DVD to VCD (i.e., MPEG-2 -> MPEG-1) and from MPEG-1/2 to 
+MPEG-4 involve such spatial-resolution, format, and bit-rate conversions. Such conversions may 
+involve resolution conversion with an integer or even a non-integer scaling factor (e.g., 
+HDTV->SDTV [3] and CIF-> sub QCIF [4]). Resolution downscaling is also an efficient means 
+of maintaining the perceptual quality of a video with a reduced resolution when transmitting the 
+video over low bit-rate channels. In these applications, resolution resizing with an arbitrary 
+scaling factor is desirable [4,5]. Although scalable coding schemes in current coding standards 
+can achieve dynamic bitrate or resolution conversions to support heterogeneous video 
+communications. They, however, usually just provide a very limited support of heterogeneity of 
+bitrates and resolutions (e.g., MPEG-2 and H.263+), or introduce significantly higher complexity 
+at the client decoder (e.g., MPEG-4 FGS). 
+Video transcoding [1-7] is a process of converting a previously compressed video bit-stream 
+into another bit-stream with a lower bitrate, a different display format (e.g., downscaling), or a 
+different coding method, etc. It is considered an efficient means of achieving fine and dynamic 
+adaptation of bitrates, resolutions, and formats. In realizing transcoders, the computational 
+complexity and picture quality are usually the two most important concerns. Fig. 1 depicts  a 
+straightforward realization of video transcoders, namely, cascaded pixel-domain downscaling 
+transcoder (CPDT),  which decodes a compressed video into pixel values then re-encode it with 
+another bitrate and/or format. This cascaded pixel-domain transcoder is flexible and can be used 
+for bitrate adaptation, spatial and temporal resolution-conversion without drift. It is, however, 
+computationally intensive for real-time applications, even though the motion-vectors and 
+coding-modes of the incoming bit-stream can be reused for fast processing. 
+Recently, DCT-domain transcoding schemes [6-11] have become very attractive because 
+they can avoid the DCT and IDCT computations as well as several efficient schemes were 
+developed for implementing the DCT-MC [6,10,12,13]. The simplified DCT-domain transcoder 
+proposed in [6], however, cannot be used for spatial/temporal downscaling because it has to use 
+at the encoding stage the same motion vectors received from the incoming video. A cascaded 
+DCT-domain downscaling transcoder (CDDT) architecture was first proposed in [7] as depicted 
+in Fig. 2. The CDDT integrates the DCT and IDCT computations and pixel-domain motion 
+compensation into a single DCT-domain motion compensation (DCT-MC) operation as depicted 
+in Fig. 3. The DCT-MC operation is to compute the coefficients of the target DCT block B from 
+the coefficients of its four neighboring DCT blocks, Bi, i = 1 to 4, where B = DCT(b) and Bi = 
+DCT(bi) are the 8×8 DCT blocks of the associated pixel blocks b and bi. The relation of B and Bi 
+can be expressed as [11] 
+ii wi
+i
+h HBHB ∑
+=
+=
+4
+1
+.                              (1) 
+In [8], a bilinear filtering scheme was used for downscaling the spatial resolution in the DCT 
+domain. A more efficient DCT-domain downscaling scheme, named DCT decimation, was 
+proposed in [8] for image downscaling and later adopted in video transcoding [9,13]. 
+In this paper, we propose efficient schemes to arbitrarily resizing video in the DCT domain. 
+We present a DCT-domain video downscaling transcoder architecture. We also propose methods 
+of integrating the downscaling process into the DCT-MC operation to significantly reduce the 
+3 
+sub-block ,ˆk lB  with a size of m’× n’, where m’ = g(m) and n’ = g(n), where ( ) 8 /g r r= ⎡ ⎤⎢ ⎥  is the 
+smallest integer not less than 8/r, and r is the scaling factor. Table 1 shows the suggested number 
+of preserved coefficients for each downscaling/upscaling ratio ranging from 2 to 8.  
+Table 1. Number of preserved coefficients in the downscaling/upscaling process 
+Downscaling Ratio: r  2 3 4 5 6 7 8 
+Preserved number of Coefficients: g(r) 4 3 2 2 2 2 1 
+r×g(r) 8 9 8 10 12 14 8 
+For example if the downscaling ratio is 3×5, from Table 1, the numbers of preserved 
+low-frequency coefficients at the horizontal and vertical dimensions are m’ = g(3) = 3 and n’ = 
+g(5) = 2, respectively. This will result in a sub-block with a size of 3×2. 
+(2) Transform each sub-block l ,k lB  to the spatial domain using  , ' ' , ' 'ˆtk l m n k l m nT B T× ×=b . 
+(3) Concatenate m×n subblocks to form an M×N block b , where M = m×m’ and N = n×n’.  
+
+ 
+ 
+l l
+l l
+1,1 ,11,1 ,1 ' ' ' '
+1, , 1, ,' ' ' '
+t t
+mm m n m n
+t t
+n m n n m nm n m n
+T B T T B T
+T B T T B T
+⎡ ⎤⎡ ⎤ ⎢ ⎥⎢ ⎥
+= = ⎢ ⎥⎢ ⎥ ⎢ ⎥⎢ ⎥⎣ ⎦ ⎣ ⎦
+b b
+b
+b b
+" "
+# % # # % #
+" "
+                 (3) 
+(4) Compute i  DCT ( ) tMxN M NB T T= =b b  
+(5) Extract the 8×8 low-frequency coefficients of B~  to form an 8×8 DCT block lB . 
+8ˆ[ , ] [ , ]     for 0,1, ...., 7B k l B k l k
+MN
+= =
+                      (4) 
+Note that the scaling factor 8
+MN
+ can be absorbed into the quantization step for computation 
+saving. 
+Note that, as shown in Eq. (5), steps (2)-(4) in the above procedure can be combined into a 
+single DCT-domain operation without the need of transforming the DCT blocks into pixel blocks. 
+i
+l l
+l l
+1,1 ,1' ' ' '
+1, ,' ' ' '
+t t
+mm n m n
+t
+M N
+t t
+n m nm n m n
+T B T T B T
+B T T
+T B T T B T
+⎡ ⎤⎢ ⎥
+= ⎢ ⎥⎢ ⎥⎣ ⎦
+"
+# % #
+"
+                       (5) 
+Without loss of generality, Fig. 5 shows an example of downscaling by 3×2 in the DCT-domain 
+with the proposed approach. In this case, m = 3 and n = 2, thus we obtain m’ = 4 and n’ = 3 from 
+Table 1. Consequently, the concatenated DCT block B~  can be computed as follows. 
+i l l l
+l l l
+1,1 2,1 3,14 3 4 3 ' '
+9 8 8 9
+1,2 2,2 3,24 3 4 3 4
+t t t
+m n t
+t t t
+T B T T B T T B T
+B T T
+T B T T B T T B T
+×
+⎡ ⎤
+= ⎢ ⎥⎢ ⎥⎣ ⎦
+                     (6) 
+The final downscaled DCT block lB  is obtained by truncating all the high-frequency coefficients 
+outside the 8×8 low-frequency region, then scaling the remaining low-frequency coefficients with 
+a factor of 4
+3 2
+.  
+ 
+B. DCT-Domain Spatial Resolution Upscaling 
+5 
+re-sampling the motion vectors based on the motion information of the incoming frame 
+[1,3,10,15]. In this work, we propose to use the activity-weighted median of the nine incoming 
+vectors: v1, v2,…, vm×n proposed in [3,10] as follows: 
+{ }
+{ }
+, ,1 ,2 ,
+, ,1 ,2 ,
+, ,, ,..., 1
+, ,
+, ,..., 1
+1 1arg min
+ACT
+1 1arg min
+ACT
+x i x x x m n
+y i y y y m n
+m n
+x x i x jv v v v ji
+j i
+m n
+y y i y j
+v v v v ji
+j i
+v v v
+m
+v v v
+n
+×
+×
+×
+∈
+=
+≠
+×
+∈
+=
+≠
+⎧
+= −⎪⎪⎪⎨⎪
+= −⎪⎪⎩
+∑
+∑
+                   (10) 
+The activity of the ith MB, ACTi, can be the squared or absolute sum of DCT coefficients, the 
+number of nonzero DCT coefficients, or simply the DC value. In our method, we adopted the 
+squared sum of DCT coefficients of MB as the activity measure. 
+The MB coding modes also need to be re-determined after the downscaling. In our method, 
+the rules for determining the coding modes are as follows: 
+(1) If all the m×n original MBs are intra-coded, then the mode for the downscaled MB is set 
+as intra-coded. 
+(2) If all the m×n original MBs are skipped, the resulting downscaled MB will also be 
+skipped. 
+(3) In all other cases, the mode for the downscaled MB is set as inter-coded. 
+Note that, the motion vectors of skipped MBs are set to zero. 
+ 
+ 
+III. COMPUTATION REDUCTION USING PARTIAL DECODING 
+We can observe from Fig. 2 that, the decoder-loop of CDDT is operated at the full picture 
+resolution, while the encoding is performed at a reduced resolution. As described in Sec. 2, 
+instead of using the whole DCT coefficients decoded from the decoder loop, the DCT decimation 
+scheme only exploits the g(m)×g(n) low-frequency DCT coefficients of each decoded block for 
+downscaling by m×n. Furthermore, as compared to the CDDT in Fig. 2, decoding a B-frame with 
+such a downsized resolution will not result in extra drifting error in the downscaling transcoder, 
+since B-frames are not used for the predictions of other frames. A feasible approach for reducing 
+the complexity of CDDT is to perform the full-resolution decoding for I- and P-frames, and 
+reduced-resolution decoding for B-frames by combining the DCT-domain downscaling operation 
+into the DCT-MC of the decoder-loop for B-frames as depicted in Fig. 7 (scheme A). In this way, 
+for B-frames, only the reduced-resolution DCT-MC is required in the decoder-loop, and the 
+DCT-domain downscaling process of B-frames can also be saved. Since B-frames usually occupy 
+a large portion of an I-B-P structured MPEG video, the computation saving can be very 
+significant. 
+For simplicity, in the following, we show the simplified DCT-MC for decoding B-frames 
+from only one reference frame. It can be easily extended to the case with bidirectional prediction. 
+By incorparating the DCT decimation into the DCT-MC of the decoder-loop for B-frames, we 
+can extract the g(m)×g(n) low-frequency coefficients by 
+4
+( ) ( )
+1
+4
+( ) ( )
+1
+ˆ
+i i
+i i
+t
+g m h i w g n
+i
+t
+g m h i w g n
+i
+B P H B H P
+P H B H P
+=
+=
+⎛ ⎞
+= ⎜ ⎟⎝ ⎠
+=
+∑
+∑
+                         (11) 
+where 8
+8 8 8
+k k k k
+k
+k k k k
+I
+P × − ×
+× − − × −
+⎡ ⎤
+= ⎢ ⎥⎣ ⎦
+0
+0 0
+, Ik×k is a k×k identity matrix, and 0’s are zero matrices. Then each 
+term in (11) becomes 
+7 
+Proposed CDDT 3.5 4.3 24.45 29.23 29.61 
+A 8.7 9.9 24.47 29.23 29.61 Comput. 
+Reduction B 13.2 14.7 24.26 29.51 29.90 
+(b) 
+Speed (fps) Average PSNR (dB) 
+Schemes  SharedMem. Y Cr Cb 
+Proposed CDDT 4.15 4.89 24.64 30.69 34.68 
+A 10.6 11.7 24.65 30.69 34.69 Comput. 
+Reduction B 14.3 15.7 24.44 30.82 34.83 
+(c) 
+Speed (fps) Average PSNR (dB) 
+Schemes  SharedMem. Y Cr Cb 
+Proposed CDDT 5.5 6.2. 30.44 33.18 37.33 
+A 13.4 14.5 30.45 33.19 37.33 Comput. 
+Reduction B 16.5 18.1 30.44 33.19 37.34 
+ 
+Table 2 compares the average PSNR performance and processing speed of various 
+transcoders.  The processing speed using the proposed methods plus the shared information 
+method in [12] is indicated as “Shared Mem.” The experimental results show that, as compared to 
+the proposed CDDT, the computation-reduction scheme A can increase the processing speed by 
+about 2.5 times without introducing any quality degradation for videos with the (15,3) GOP 
+structure. The proposed scheme B can further increase the speed (up to about 3~3.5 times), while 
+introducing about 0.2 dB quality degradation in the luminance component due to the extra 
+drifting error caused by the reduced-size decoding. The frame-memory size of scheme B is also 
+significantly less than that of scheme A due to the reduced-size decoding used in scheme B. The 
+speed-up gain of scheme A is dependent on the GOP structure and size used. The larger the 
+number of B-frames in a GOP, the higher the performance gain of proposed scheme A. The 
+speed-up gain of method B depends less on the GOP structure since it reduces the decoding 
+computational cost for all the I-, P-, and B-frames. Fig. 8 shows the frame-by-frame PSNR 
+comparison of proposed methods. The performance of scheme A is almost the same as the CDDT, 
+while scheme B results in a little bit quality degradation. Fig. 9 and Fig. 10 show some sample 
+reconstructed frames transcoded with the proposed methods for subjective quality comparison 
+with the ground truth images. 
+ 
+V. CONCLUSION 
+In this paper, we proposed efficient architectures for DCT-domain spatial-downscaling video 
+transcoders. We have proposed a DCT-domain arbitrary resizing schemes and the associated 
+DCT-transcoder architecture. We have also proposed three schemes to integrating the 
+DCT-domain decoding and downscaling operations in the downscaling CDDT into a 
+reduced-resolution DTC-MC so as to achieve significant computation reduction. The proposed 
+scheme A can speed up the decoding and downscaling of B-frames without sacrificing the visual 
+quality, while schemes B can speed up the decoding and downscaling of I-, P- and B-frames as 
+well as reduce the storage cost with acceptable quality degradation. The proposed d computation 
+reduction schemes can achieve up to 3~3.5 times speed-up with the (15,3) GOP structure when 
+compared to the original method. 
+ 
+REFERENCES 
+9 
+ 
+IQ1
+MC
+IDCT1 
+F
+Encoder Decoder 
+Q2
+MC
+DCT
+IQ2 
+IDCT2 
+F
+-
++ 
++ 
++
+MV1
+MV2
+Incoming 
+bitstream 
+ 
+Outgoing
+bitstream 
+Downscaling
+ 
+Fig. 1. Cascaded pixel-domain downscaling transcoder (CPDT). 
+ 
+ 
+VLD
++IQ1 Q2
+IQ2 
+MV2
+Incoming  
+Bitstream 
+DECODER 
+DCT-MC2
+DCT-MC1 
+MV1 
+DCT-domain 
+downscaling
+MV
+Resampling
++ -
+ENCODER
+Outgoing 
+Bitstream 
++
+ 
+Fig. 2. Cascaded DCT-domain downscaling transcoder (CDDT). 
+ 
+ 
+ 
+ 
+ 
+ 
+B1
+B3
+B2
+B4
+B
+w1
+h1 
+ 
+Fig. 3. DCT-domain motion compensation. 
+ 
+ 
+ 
+H(Z)
+ 
+M    
+ 
+L     
+Video In Video Out 
+ 
+Fig. 4. Video frame resizing. 
+ 
+11 
+v
+ 
+(b) 
+Fig. 7. Proposed architectures for computation reduction: (a) scheme A and (b) scheme B. 
+ 
+0 50 100 150
+22.5
+23
+23.5
+24
+24.5
+25
+25.5
+26
+26.5
+Frames
+P
+S
+N
+R
+ (d
+B
+)
+SEQUENCE: MOBIL (Y)
+CDDT
+A
+B
+ 
+(a) 
+13 
+(a) 
+ 
+(b) 
+(c) 
+ 
+(d) 
+Fig. 9. Frame #56 of “Mobil” sequence: (a) ground truth (without transcoding), and transcoded 
+with (b) proposed CDDT, (c) scheme A, and (d) scheme B. 
+ 
+(a) 
+ 
+(b) 
+(c) 
+ 
+(d) 
+Fig. 10. Frame #147 of “Flower Garden” sequence: (a) ground truth (without transcoding), and 
+transcoded with (b) proposed CDDT, (c) scheme A, and (d) scheme B. 

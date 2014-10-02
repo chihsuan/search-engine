@@ -1,0 +1,362 @@
+2 
+ 
+product should meet the accuracy of 99%.  However, this is for the classification.  
+That is, 99% of the points classified as terrain surface should be terrain points.  The 
+other 1% may be points on the surface.  Level 3 does not meet the common 
+requirement of DEM. The characteristic lines should be included in the interpolation 
+to make sure that the DEM fits the real terrain well.  This belongs to level four.  
+Traditionally, the ridge and valley lines are extracted manually from stereo-model.  
+In the lidar production, this can be implemented by generating Inferred Stereo Pair, 
+and then use photogrammetric workshop for the compilation. There are algorithms to 
+extract drainage network and watershed boundary from grid DEM.  But, there are 
+logic problem is using these schemes if the original data is in the scattered point 
+format.  This study investigates the possibility of extracting the ridge and valley 
+from scattered points.  The algorithms based on Triangulated Irregular Network are 
+applied.  From experiments, it is confirmed that the constrains from linear features 
+are useful and significant in generating DEM.  And, it is feasible to generate 
+drainage network from TIN data structure.  However, the existing algorithms needed 
+further improvement.  Because for a good TIN representation of terrain, the linear 
+constrain should be included already.  That is, constrained TIN, which is constrained 
+with the linear features, would be a better representation.  Therefore, the scheme of 
+re-constructing the triangles should be a part of the drainage network extraction 
+algorithm. 
+Keywords: drainage network, watershed, spatial interpolation 
+二、前言 
+2-1 研究動機及目的 
+空載光達點雲點數量大，以原始觀測點雲而言，其密度尚稱均勻。但是以地
+面點而言，其分佈受地面覆蓋種類影響，變化甚大。數值高程模型之格式，包含
+有規則網格、不規則三角網、及等高線三種方式。由空載光達獲得者為離散點格
+式，無論是產出規則網格、不規則三角網、或等高線格式之數值高程模型，均需
+進行空間內插。 
+空間內插，基本上是以已知點求取未知點。就內插方法分類，依取樣資料之
+方式可分為全區域內插（Global Interpolation）與區域內插（Local interpolation），
+前者由全區之已知點決定內插之函數面，後者則僅進行區域性之取樣；依同位置
+之推估值與已知值是否相同，可分為精確內插（Exact Interpolation）與非精確內
+插（Inexact Interpolation），前者已知點上內插後之值與已知值必須相同，而後者
+則否；依是否提供預估變方產生預估誤差，則可分為隨機性內插（Stochastic 
+Interpolation）與確定性內插（Deterministic Interpolation）（Chang, 2008）。 
+在應用於地形之空間內插方法中，以距離為權倒數之移動平均法、不規則三
+4 
+ 
+故以後兩類現有文獻，概要回顧如下。 
+房屋區塊萃取 
+    賴彥中（2004）將房屋區塊附近之光達點雲切割出後，組成不規則三角網。
+以每個三角形為單位，設定三判斷準則：（1）三角形頂點之最高與最低點差值小
+於某門檻值。（2）三角網頂點必須位於房屋區塊以及設定之房屋區塊緩衝區內。
+（3）三角形頂點必須高於地表所設定門檻之上。通過準則之三角形頂點，即為
+具有屋頂平面特性之光達點雲。 
+郭志奕（2005）使用空載光達點雲配合大比例尺向量圖，提出一套萃取建物
+點雲之方法。首先利用點於多邊內（point in polygon）之技術，判斷光達點是否
+位於建物輪廓線內。由於在建物輪廓線周圍可能有非建物點雲，故採內縮建物之
+輪廓線，以群聚法自動萃取建物屋頂面光達點雲，而位於建物輪廓線內之非建物
+屋頂面點雲亦能剔除。 
+羅詔元（2007）藉由整合空載光達點雲資料和二維路網，自動重建三維道路
+模型。以二維路網萃取光達點雲，再用道路中心線折點為圓心；路寬為半徑開圓
+形搜尋區，自動判別受非路面光達點雲干擾程度，決定使用面擬合或選取局部最
+低高程點求解中心線的高程值，並採用線擬合處理使路段內部平滑化，產生各路
+段初始道路模型。為使各路網連接處能夠符合連續條件，提出區域路網高程平
+差，使路網節點高程一致且坡度與坡度差均連續，進而產生精確三維道路模型。 
+    謝淳彥（2008）提出以自動方式萃取連結長方體主平面上之空載光達點雲。
+將空載光達點雲之最後回訊三維坐標內插成為網格化影像，採 GD(Geodesic 
+Dilation)法及區域成長法等影像處理技術，篩選出最合適之長方體建物，再利用
+投影方式萃取長方連結體主平面上之光達點雲。 
+ 
+水系擷取 
+數值高程模型常發生假的窪陷(pit)，無論是真實或假之窪陷，均有礙於流水
+方向之確定。傳統消除方法為將窪陷地區高程逐步填滿，和鄰近區域最低高程相
+同。這種方法產生許多平坦地區，容易擷取錯誤流向。Grimaldi (2007)使用一個
+關於地貌上連續性質量公式去除窪陷區域，利用簡單的地形參數模型消除窪陷。
+Grimaldi (2007)所提方法與傳統方法比較，可獲得更真實坡度及流向。 
+Colombo (2007)使用歐洲平面解析度 205m 之 DEM，驗證所擬之提取河川
+網絡和集水區邊界演算法。此演算法建立在數學形態學和地形參數。地形參數受
+到地表起伏影響，造成擷取河川密度不同。流向網格計算時，使用有效率的演算
+法消除假的窪陷。河川網絡設定最小集流區域門檻值，形成和維持河道。Colombo 
+(2007)所得成果和其他來源資料獲得水系網絡比較，證明研究成果具合理性。 
+    Jana (2007)使用 DEM 推論集水區可獲得陸地水流向、水流累積及任一點集
+流面積。DEM 的解析度和品質決定集水區參數達到何種程度正確性。不適當的
+高程資料藉由內插過程更加惡化 DEM 品質，造成窪陷或平坦地區產生，流向流
+入錯誤地區。為了解決問題，Jana (2007)提出一個 CBRGM 演算法萃取離散河川
+6 
+ 
+Tarboton(1997)認為在計算集流面積時，因盡量避免流域面積的發散現象，提出
+Dinf無限流向法，以整合單流向與多流向的優點。基本上，每種演算法都有其優
+點，各種方法希望達成的主要目標包括（Tarboton, 1997）：  
+（1）減少或避免河川網路交錯或發散  
+（2）減少流向誤判或數學演算之誤差  
+（3）增加流向預測之準確度 
+（4）增加運算效率，降低運算與儲存空間之負擔 
+（5）減少因網格解析度或地形區不同所產生之成果的差異 
+本研究使用D8流向法(O’Callaghan和Mark，1984)與Dinf流向法(Tarboton，
+1997)之網格式流向法。D8流向法是單流向演算法，該流向法由於計算簡單；效
+率較高及對凹地、平坦區域有較佳的處理能力而應用較為廣泛(Tarboton，1997)。
+其乃將3╳3的移動視窗中，周圍八個網格的具有最陡坡降視為中心網格水流的流
+向。再依據水流方向，計算每一網格上游累積流量，將累積流量設定門檻值擷取
+水系。D8流向法只能有E、NE、N、NW、W、SW、S和SW八種結果，如圖2所
+示。所以當坡面並不是剛好朝著這八個方向時，會導致錯誤的坡向判斷。結果以
+此法所推算的水系圖，經常呈現許多平行狀的不自然流線，並造成集流面積推算
+上的錯誤。D8流向法流程為： 
+1.決定出數值高程模型每一網格點流向，產生流向矩陣； 
+2.根據流向矩陣，求得每一網格點累積流量。計算時須加入距離權重，對角線網
+格*1/√2 之權重。迭代計算至研究區域內所有網格點完成計算，產生累積流
+量矩陣； 
+3.選定累積流量門檻值，畫出河流網絡。 
+ 
+Dinf 流向法主要是修正傳統多流向法在分流的觀念，綜合單流向法與多流向
+法。認為分配流向的標準時，僅需考慮最陡地形面，而將此地形面以角度的方式
+表示，在分配流向的準則上則以流向的角度與最近的兩格點作為流出的方向，如
+圖 3 所示。其流程如下： 
+1.在數值高程模型上以 3*3 移動視窗搜尋整個研究區，找尋出移動視窗九個網格
+的中心點高程 
+2.連接九個高程點，以中心網格高程點為中心，切割成八個三角形平面 
+3.八個三角形各自擁有一通過移動視窗中心點之最陡坡降方向線，各方向線擁有
+一方向向量，比較八個平面的最陡坡度，其方向向量即為 3*3 移動視窗之中
+心網格的水流流向。這樣運算的優點為每個網格紀錄一筆 0 至 2π間之流向，
+節省計算時間。 
+4.流向確定後，每個網格皆假設有一個單位高度的水量，根據圖 3 分流式，α1/α1+α2
+的機率該中心網格水流會流入網格 4；α2/α1+α2 的機率該中心網格水流會流入
+網格 3。可將其水流依據此比例分流至兩鄰近網格中。經過迭代計算可將整
+個研究區之累積流量計算出來。 
+8 
+ 
+3.計算流域、水流溢出點及起始的流域階層。 
+4.起始的流域階層內存在假的水系，它們是凹陷的地區，導致水流流經此處後，
+水流不再往其他點位流出。必須計算流域內各個流向是否屬於假的水系，是否具
+有代表性，真實符合地表水流方向。 
+5. 依續連接各個三角形流向，建立不規則三角網累積流量矩陣，矩陣即為研究
+區水系階層。簡化流域階層，獲得研究區域內主要水系網路。簡化過程須符合研
+究區地形起伏，不得任意刪除點位。 
+本研究依據 Liu and Snoeyink (2004)演算法流程，發展出一套不規則三角網
+水系擷取演算法，流程如圖 9 所示，分別對各步驟描述如下。 
+1.組 TIN 
+將 SRTM 數值高程模型 x,y 坐標讀入程式，組成 Delaunay 三角網。 
+2.建立位相關係 
+建立不規則三角網空間相位關係，將點位包含的三角形編號製成矩陣，如表
+1 及表 2 所示。 
+表 1 紀錄各三角形內三個頂點矩陣 
+三角形編號 點位Ⅰ 點位Ⅱ 點位Ⅲ 
+1 254 352 2 
+表 2 紀錄各三角形每邊鄰接三角形矩陣 
+三角形編號 鄰接三角形Ⅰ 鄰接三角形Ⅱ 鄰接三角形Ⅲ 
+1 254 3 45 
+ 
+3.判斷 pit 和 peak，及平坦三角形 
+將 SRTM 各點高程值輸入，分別將各點和周圍鄰近點比較，分辨此點位高
+程值是否為局部最大值或最小值，局部最大值高程點代表集水區邊界(peak)；局
+部最小值高程點代表水流集流的位置(pit)。三角形三個頂點高程值相同，視為平
+坦三角形。 
+凹陷地與窪地處理與修正方式 
+1.高程平滑化法（O’Callaghan and Mark, 1984）： 
+利用 3*3 的平滑加權矩陣，重覆平滑窪地高程直到窪地高程消失為止。 
+2.直接填高法(Jenson and Domingue，1998) 
+填高窪地與鄰近網格中高程最低之網格相同。 
+3.逐步填高法(Martz and Garbrecht，1999) 
+依平坦地區之週遭地形高低，以不同程度之逐步填高方式來模擬排水方向(莊
+永忠，2004)。 
+ 
+4.流向定義 
+以三角形邊界為流向作為約制條件，流向方向利用最陡坡降法求得，將每個
+三角形之流向定義出來。 
+10 
+ 
+ 
+6.ridge 和 channel 判別 
+    利用最陡坡降法所得之流向連接後，鄰接三角形流向相同可能為山脊或是水
+系，如圖 7 所示。經過 orientation 判別，將山脊線分辨出來剔除，獲得正確流向。
+避免水系不連接錯誤。 
+ 
+圖 7  ridge 及 channel 示意圖(Liu and Snoeyink，2004) 
+ 
+7.水系階層建立及簡化 
+    本研究獲得各三角形流向非常雜亂繁瑣，必須剔除細小支流獲得具有代表性
+水系網絡。本研究以研究區內 peak 點(局部高程最大值)作為起點，依續連接各個
+三角形流向，建立不規則三角網累積流量矩陣，矩陣即為研究區水系階層。流向
+連接正確後，設立三角形門檻值，門檻值設定使用試誤法決定，目視法確定流向
+正確連接即為最佳門檻值。門檻值設定可將研究區域內細小支流剔除，水系階層
+簡化，研究區水系網絡具有代表性。 
+ 
+8.輸出成果展示 
+    將所得流向成果輸出，本研究使用 AutoCAD 軟體展繪不規則三角網水系擷
+取圖。程式需要輸出流向起點(x,y)座標值、流向終點(x,y)座標值及線段起點終點
+設定值(Lcode)，將水系擷取成果經由 AutoCAD 軟體展繪。 
+ 
+表 3  AutoCAD 輸入格式 
+1.基本上格式 Pt Lcode  X Y Z 以逗號隔開 
+2. Lcode:0  單點 
+Lcode: 1  線起點 
+     Lcode: 2  線內點 
+    Lcode: 3  線終點 
+     Lcode: 4  線終點並與起點連接封閉 
+3.Pt 僅是註記使用,配合 Lcode (0,1)註記於圖面 
+12 
+ 
+ArcMap，使用 TauDEM 軟體獲取研究區域水系網絡。面積門檻定為 20，得到水
+系和集水區位置。此外使用 PowerCivil 軟體擷取水系網絡。將三維離散點讀入
+後，組成不規則三角網。利用地形分析功能獲得研究區集水區邊界和水系網絡。 
+ 
+圖 8  TauDEM 流程圖 
+DEM 
+窪陷填平 
+是否有未定義
+流向區域 
+給定面積門檻值 
+Dinf流向法 D8流向法 
+河川網絡 
+14 
+ 
+  
+圖 10  SRTM  TIN 成果 
+ 
+圖 11  SRTM 網格式水系擷取成果 
+16 
+ 
+ 
+圖 14 不規則三角網水系階層簡化成果 
+5-2 不同內插方法成果比較 
+    本研究利用農委會之數值高程資料，其原始平面解析度為四十公尺，以隔點選
+一方式疏化為八十公尺三維離散點。研究區域為陳有蘭溪流域一小部分，共
+110375 個點。圖 15 為三種內插方法在解析度 80m 之內插成果，由圖可知，移動
+視窗法所得數值高程模型較平滑。圖 16 為三種內插方法在解析度 80m 下，互相
+相減所得高程差值，移動視窗法和其他兩種內插方法所得內插成果差異較大，達
+200 公尺：而不規則三角網線性內插和克利金法高程差只有 60 公尺。圖 17 和圖
+18 是解析度 100m 內插成果和高程差圖，成果和 80m 的相符，證明解析度大小
+不影響內插成果差異程度。 
+    圖 19 和圖 20 是離散點經由內插所得數值高程模型，進行水系網絡擷取之成
+果。圖 21 和圖 22 是不同解析度下，兩種內插方法所得水系網絡進行套疊分析，
+可看出水系擷取差異之處。圖由左至右為移動視窗法套疊在不規則三角網之上、
+移動視窗法套疊在克利金法之上、克利金法套疊在不規則三角網之上。克利金法
+和不規則三角網較移動平均多出許多細小的支流。有些流向雖一致，但是卻流經
+不同區域，因此可知不同內插方法對水系擷成果的確有影響。圖 23 是三種內插
+方法所得水系網絡進行套疊分析，移動視窗在最上面，水系顏色為藍色；克利金
+法在中，水系顏色為綠色和不規則三角網在最下面，水系顏色為紅色。左右兩張
+分別為不同解析度套疊成果。圖 24 是相同內插方法下，不同解析度水系網絡擷
+取套疊分析比較，可得知解析度不同，造成水系網絡不一致。 
+18 
+ 
+ 
+                    
+圖 18 高程差(解析度 100m) 
+(左至右：克利金-不規則三角網、移動視窗-不規則三角網、移動視窗-克利金) 
+ 
+圖 19 解析度 80m 水系擷取成果(移動視窗法、不規則三角網、克利金) 
+ 
+圖 20 解析度 100m 水系擷取成果(移動視窗法、不規則三角網、克利金) 
+20 
+ 
+ 
+圖 24 解析度不同水系成果套疊圖(80m-100m) 
+(左至右：移動視窗法、克利金法、不規則三角網) 
+ 
+5-3 ALTM 測試空載光達成果 
+    本研究使用 ALTM 測試空載光達離散點共 864786 個點，組成 1729477 個不
+規則三角形。此區屬於河谷地區，河川地區點雲分布密度較低，網格解析度不能
+太小，導致缺漏網格過多，缺漏網格易造成水系網絡擷取困難，故解析度設為
+5m。圖 25 為 ALTM 測試空載光達數值高程模型；圖 26 為 ALTM 測試空載光達
+網格式水系擷取成果；圖 27 為 ALTM 測試空載光達點雲以 PowerCivil 軟體獲得
+集水區邊界，此軟體將每個三角形之流向計算出來，獲得集水區邊界，但是它沒
+有進行簡化過程。 
+ 
+圖 25  ALTM 測試空載光達數值高程模型  
+圖 28 和 29 為 ALTM 測試空載光達以 PowerCivil 軟體獲得集水區邊界放大圖，
+圖中白色是不規則三角網、藍色是集水區邊界和紅色是三角形坡度為零的區域
+(即為平坦三角形)。圖 30 為 ALTM 測試空載光達點雲以 PowerCivil 軟體獲得水
+22 
+ 
+ 
+圖 28  ALTM 測試空載光達以 PowerCivil 獲得集水區邊界放大圖-1 
+ 
+圖 29  ALTM 測試空載光達點雲以 PowerCivil 獲得集水區邊界放大圖-2 
+ 
+圖 30  ALTM 測試空載光達點雲以 PowerCivil 獲得水系網絡 
+24 
+ 
+    最後以 ALTM 測試空載光達點雲測試數據，進行水系擷取，萃取隱含於空
+載光達離散點雲線型特徵。使用網格式和 TIN 分別擷取水系網絡，由成果可知， 
+PowerCivil 軟體擷取集水區邊界和水系網絡後，由於沒有作水系階層簡化，故包
+含太多資訊，尚有待進一步釐清萃取。 
+參考文獻 
+吳俊毅、史天元，2006。不同圖源數值高程模型於陳有蘭溪流域集水區邊界分析
+探討，2006 年台灣地理資訊學會年會暨學術研討會論文集(CD 版，學生組
+S210)。 
+莊永忠，2004，台灣山地集水區河川網絡自動化萃取之特性分析與符合度探討，
+國立台灣大學森林學研究所碩士論文。 
+陳威誠，2004。由光達覆蓋模型萃取數值高程模型之研究，國立交通大學土木工
+程學系碩士論文。 
+陳良健、羅詔元，2007。整合光達資料與二維路網重建三維道路模型，航測及遙
+測學刊，12(2):179-195。 
+郭志奕，2005，結合光達資料與大比例尺向量圖重建三維建物模型，國立中央大
+學土木工程學系碩士論文。 
+賴進貴，1994，數值地形模型比較之研究，國立台灣大學理學院地理環境資源學
+系地理學報，17:1-14。 
+賴子銘，2004，SRTM/TopSAR 高程數據比對與多尺度分析，國立交通大學土木
+工程學系碩士論文。 
+賴彥中，2004，結合光達資料與數位空照影像重建三維建物模型，國立中央大學
+土木工程學系碩士論文。 
+魏世青，2005，以 SRTM 數據擷取水系網路及集水區邊界分析探討，國立交通
+大學土木工程學系碩士論文。 
+謝淳彥，2008，連結長方體法主平面點雲自動萃取法，2008 年第二十七屆測量
+及空間資訊研討會論文集(CD 版，A56)。 
+Briese, C., 2004, Breakline Modelling from Airborne Laser Scanner Data, Ph.D. 
+Dissertation, Institute of Photogrammetry and Remote Sensing, Vienna 
+University of Technology, Austria, 67p. 
+Colombo R., Vogt J. V., Soille P., Paracchini M. L. and Jager A., 2007. Deriving river 
+networks and catchments at the European scale from medium resolution digital 
+elevation data. Catena 70:296-305. 
+Grimaldi S., Nardi F., Benedetto F. D., Istanbulluoglu E. and Bras R. L., 2007. A 
+physically-based method for removing pits in digital elevation models. Advances 
+in Water Resources 30:2151-2158. 
+Habib, A., Mwafag, G., Michel, M., and Al-Ruzouq, R., 2005, Photogrammetric and 
+LiDAR Data Registration Using Linear Features, Photogrammetric Engineering 
+& Remote Sensing, 71(6):699-707. 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 95-2221-E-009-243-MY2 
+計畫名稱 
+數碼城市中空間資訊獲取，分析，整合及視覺化研究--子計畫四：由空載光
+達點雲數據擷取線形特徵研究 
+出國人員姓名 
+服務機關及職稱 
+史天元，交通大學土木工程系教授 
+會議時間地點 自 96年 6月 12日至 96年 6月 22 日美國舊金山市 
+會議名稱 美國 JALBTCX海岸製圖專題討論會 
+發表論文題目  
+ 
+一、參加會議經過 
+ 
+JABLTCX為 Joint Airborne Lidar Bathymetry Technical Center of Expertise之簡稱。該單位隸屬
+美國陸軍工程軍團(US Army Corps of Engineers)，以進行空載光達測深為主要任務。 本次
+JABLTCX 海岸製圖專題討論會於 2008 年六月十七日至十八日在 San Francisco 的 Sir   
+Francis Drake Hotel舉行。本次會議之論文發表內涵與順序如下。 
+Tuesday, 17 June 
+0830 – 0900 USACE Program Status Report, Jennifer Wozencraft 
+0900 – 0930 NAVOCEANO Program Status Report, Bill Elenbaas 
+0930 – 1000 NOAA Program Status Report, Mike Aslaksen 
+1000 – 1030 Break 
+1030 – 1100 HawkEye II demonstration results Anders Ekelund, Dushan Arumugam, Chris 
+Macon 
+1100 – 1130 Overview of the CZMIL System, Grady Tuell 
+1130 – 1200 The CZMIL Waveform Simulator, Vinod Ramnath 
+1330 – 1400 Registration of the hyperspectral data to aerial photography, Yuri Rzhanov 
+1400 – 1430 Automated Boresight Estimation from Digital Camera Imagery, Ray Seyfarth 
+1430 – 1500 A segment based image classification technique utilizing automatic rule generation 
+algorithms for the synergistic use of near-shore lidar and hyperspectral data, George Raber 
+1500 – 1530 Break 
+1530 – 1600 Building Capacity for the JALBTCX Workforce, John Kmiec 
+1600 – 1630 JALBTCX Technical Challenges, Jennifer Wozencraft, Bill Elenbaas, Mike 
+Aslaksen 
+ 
+二、與會心得 
+本次會議以空載測深光達為主題，所涵括之內容為此一領域最新之發展。就本人專業與興趣
+部分，綜合性之心得有： 
+1. 本次會議中 Anders Ekelund (Airborne Hydrography AB), Dushan Arumugam (BLOM), Chris 
+Macon報告 Hawkeye II系統之驗證計畫成果。正式肯定 Hawkeye II系統已達商業運作之
+成熟度。Airborne Hydrography AB為 Hawkeye II系統之發展商，BLOM為服務提供商，
+操作 Hawkeye II系統。目前已進入商業性運作之系統包含有 Optech發展之 Shoals系統、
+Tenix 發展之 LADS 系統。另外 USGS 發展之 EAARL 系統，以於較且水域之操作為目
+標。Optech除發展 Shoals系統外，亦承接美國陸軍工程軍團之委託計畫，提供空載測深
+光達之研發。除 CHARTS 外，下一代之空載測深光達計畫為 CZMIL，亦將為結合雷射
+掃描與高光譜成像儀。本次會議中所發表之論文有多篇為 CZMIL計畫委託研究之成果。 
+2. 軟體處理技術方面，重點在淺水域資訊之提取。Optech工作之Mr. Eric Yang (楊全先生)
+所報告之淺水數據處理技術乃使用綠光單一波段。除其成果顯然較以往處理技術之成功
+率為好之外，亦顯示由 Shoals 採取多波段(綠、紅外、紅)數據分析之原則將有轉變。因
+為單一綠光波段之系統價格理論上將大幅降低，較便宜之空載測深光達將有利於此一技
+術之普及與發展。 

@@ -1,0 +1,341 @@
+ 2
+摘要 
+現今軟體開發程序中，使用持續整合
+系統來降低整合錯誤的風險並提升軟體
+品質己成為一種標準的做法。雖然己經有
+許多開放原始碼工具可支援持續整合，但
+因為專案可能需要特殊平台，而增加安裝
+配置與系統管理的複雜度，或者執行整合
+時間過長，無法頻繁地執行整合，便失去
+「持續整合」的用意。這些種種因素降低
+了開發團隊使用持續整合系統的意願。因
+此，我們希望藉由 JavaSpaces[1]，實做一
+個分散式持續整合系統來解決專案與平
+台相依的問題並且有效地加快整合速度。 
+關鍵字：持續整合、分散式計算、
+JavaSpaces 
+Abstract 
+The present work extends a previously 
+developed continuous integration system to 
+support platform dependent builds and to 
+reduce turnaround time by incorporating 
+distributed computing capabilities. The two 
+objectives are achieved by adopting the 
+Replicated-Worker Pattern as the distributed 
+architecture and using JINI distributed 
+technology as the means of implementation. 
+Experimental results in support of the 
+claims are presented. 
+Keywords ： Continuous integration, 
+distributed computing, JavaSpaces 
+ 
+二、前言 
+持續整合(continuous integration)是一
+種自動化、定時的對軟體的各模組與元件
+進行整合，以保持系統穩定度與軟體品
+質。目前己有許多持續整合軟體工具陸續
+被開發。例如 ThoughWorks 公司提供的
+CruiseControl[2]、Apache 組織所開發的
+Gump[3]、Continuum[4]以及臺北科技大學
+資工系所開發的 JCIS[5]、JCIS2[6]等，這
+些工具皆提供自動編譯程式與執行單元測
+試等基本建構流程。由於整個整合建構流
+程的工作皆在同一台電腦中執行，因此可
+能會遇到以下幾個問題： 
+(1) 專案需要特定平台、特殊環境設定。 
+(2) 專案需要執行大量的工作項目(如大量
+的測試案例)或有非常耗時的工作項目
+(如等待 I/O 回應的測試案例)，則系統
+將無法頻繁地執行持續整合這些專案。 
+(3) 跨平台專案需在各種不同平台上測試。 
+ 
+去年的計畫－JCIS2，己經能夠支援
+Java 與 C/C++軟體專案之持續整合的功
+能，且同時間能有多個專案透過 JCIS2
+執行持續整合的各種工作。本計畫研究目
+的是使用 JavaSpaces 技術來提升持續整
+合的效能 與 自動分派與管理異質平台
+持續整合工作。我們希望透過本計畫來降
+低持續整合的複雜度(特殊環境設定或特
+定平台配置)與縮短持續整合的執行時
+間，讓專案得以更頻繁的執行整合。 
+ 
+三、研究目的 
+今年的計畫，我們將開發一個支援通
+訊軟體展之分散式持續整合系統(簡稱為
+JCIS3)，以提升持續整合之效能。此系統
+應符合下列主要的功能與非功能需求： 
+(1) 支援分配整合工作至不同的平台執行
+(並行執行)。 
+(2) 提供可規劃分散式整合流程，並依據
+該流程執行分散式整合工作。 
+(3) 自動分派與管理異質平台持續整合工
+作。 
+(4) 支援收集各台機器上的執行結果，並
+匯整成報表。 
+(5) 提供 RSS 通知建構結果。 
+ 
+四、研究方法 
+ 我們以 JCIS2 的持續整合流程做為研
+究基礎，提出一個分散式持續整合的流程
+[7]。圖 1 為 JCIS3 的分散式持續整合環境
+示意圖，虛線範圍即為我們的分散式持續
+整合系統。以下步驟為整個整合流程，其
+中步驟 5 至 8 為分散式架構新增的流程。 
+ 4
+好處在於，Integrator與 Integration Station
+並不知道 JavaSpaces的存在，依然透過
+JobPool去取得JobEntry與JobResult，在不
+影響系統運作下擴充JCIS，達到分散式運
+算的效果。 
+4.3 Integrator的設計 
+Integrator是持續整合系統的核心部
+分，它負責執行整合流程的工作。因此，
+我們將Integrator所負責的工作分派到以下
+的四個子模組，其架構如圖4所示： 
+(1) JobScheduler: 負責安排整合工作的流
+程。 
+(2) JobPlanner: 負責找出整合專案所需要
+的檔案資源與要執行的Builder，並依照
+專案設定的工作順序，將所有Builder
+包裝成JobEntry，放入JavaSpaces中讓
+Integration Station取得。 
+(3) JobAggregator: 當JobPlanner將所有工
+作分派出去，且Job Aggregator收到同
+樣數量的JobResult後，並匯整及建構此
+次整合的完整報表。 
+(4) ResourKeeper: 負責處理WorkSpace與
+Snapshot內專案資料的複製、移動、壓
+縮與解壓縮。它將所需的資源壓縮並提
+供 Integration Station 下載。當所有
+Builder被執行完畢後，會將各自的整合
+結果上傳。因此，ResourKeeper便將所
+有Builder的整合結果整合到Snapshot。 
+ 
+圖4 Integrator與其他子模組的架構圖 
+ 
+4.4 Integration Station的設計 
+ Integration Station 是處理整合工作的
+實際運作機器，它接收由 Integrator 所分派
+的整合工作，執行完畢後，再將整合結果
+回傳給 Integrator。Integration Station 的設 
+計架構如圖 5。Integration Station 分成以下
+四個模組： 
+(1) Platform Environment: 同一台電腦上
+可能有不同的環境設定，因此代表一種
+整合環境。 
+(2) Environment Description: 儲 存
+Integration Station 所在電腦的環境設
+定，作為挑選 JobEntry 的條件。 
+(3) Work Process: 在 JCIS 中 有 許 多
+Builder 負責不同的整合工作，以一個
+圖 3 JCIS3 系統架構圖 
+ 6
+ 
+圖 9 Integration Station 的設備 
+ 
+表 1 WiMAX 各計畫檔案資料 
+ 
+表 2 WiMAX 整合後所產生的檔案大小與
+數量 
+計畫名稱 GCCompile StatSVN LOC 分析 CppUnit
+channel 17/271KB/124KB 60/529KB/364KB 4/30KB/24KB  
+mac 51/5194KB/1692KB 75/745KB/485KB 4/31KB/21KB  
+phy1 16/1267KB/365KB 36/268KB/215KB 4/24KB/16KB  
+phy2 25/1331KB/499KB 70/662KB/420KB 4/43KB/37KB  
+sys 75/38526KB/11520KB 80/989KB/541KB 4/43KB/38KB
+2/32KB
+/5KB
+video 174/23864KB/7594KB 70/641KB/418KB 4/33KB/26KB  
+ 
+ 此實驗為對照組，在不使用分散式持
+續整合系統的情況下，實驗結果如圖 11。
+在 GCCompile Builder 方面，video 與 mac
+的執行時間較長，對照表 1 可得知總檔案
+個數比其他的子計畫多，所以花費時間較
+長。而 sys 的執行時間長的原因是程式碼
+在編譯時需要 link 其他的 library，並將所
+有專案的 Object 檔案編譯成執行檔，因此
+需要較長的時間。在 LOC Builder 方面，
+對照表 1 得知 video 與 sys 的 SVN 版本數
+比其他子計畫，且 sys 的總 LOC 變動量
+大，其總 LOC 曾經爬升至 20,000 行，所
+以花較多時間去分析。 
+ 
+表 4~表 8為使用分散式持續整合系統
+的情況下，Integration Station 數量由一台
+逐次增加到五台，並且執行 100 次實驗後
+所統計的各個 builder 平均執行時間。表 4
+的結果，我們發現只有一台 Integration St 
+ation 的整合時間比未使用分散式系統架
+構較長，增加了 1 分 19 秒，原因在於 JCIS
+在進行報表整合時，在壓縮、解壓縮整合
+結果上就增加了 45 秒，其他則是增加於各
+個 Builder 的執行時間。而表 5~表 8，隨
+著 Integration Station 的增加，整合平均時
+間逐漸縮短，如圖 10 折線圖所示，藍色為
+實驗結果、紅色為預期結果。在 Integration 
+Station 數量小於四台時，實驗與預期結果
+非常接近，但超過四台以後，由於不容易
+達到最佳的工作排程，所以與預期差距較
+大。 
+此實驗說明在足夠的 Integration Sta- 
+tion 數量下，分散式系統架構能達成縮短
+整合時間的效果，因此我們實現了本計畫
+的目的。 
+表 3 不使用分散式系統實驗中各專案
+Builder 的平均執行時間 
+計畫名稱 GCCompile StatSVN LOC 分析 CppUnit
+channel 00:05 00:18 01:01  
+mac 00:54 00:20 00:55  
+phy1 00:07 00:16 00:12  
+phy2 00:19 00:19 01:00  
+sys 00:55 00:21 01:52 01:00 
+video 01:57 00:20 02:36  
+整合平均時間 15:09 
+ 
+表 4 一台 Integration Station 實驗中各
+Builder 的平均執行時間 
+計畫名稱 GCCompile StatSVN LOC 分析 CppUnit
+channel 00:07 00:21 01:00  
+mac 00:57 00:23 00:55  
+phy1 00:09 00:19 00:13  
+phy2 00:21 00:22 01:00  
+sys 01:04 00:24 01:45 01:05 
+video 02:01 00:23 02:33  
+整合平均時
+間 16:28 
+ 
+表 5 二台 Integration Station 實驗中各
+Builder 的平均執行時間 
+計畫名稱 GCCompile StatSVN LOC 分析 CppUnit
+channel 00:07 00:21 00:56  
+mac 00:57 00:23 00:52  
+phy1 00:09 00:19 00:12  
+phy2 00:21 00:22 00:54  
+sys 01:03 00:24 01:31 01:05 
+video 02:00 00:22 02:31  
+平均整合時間 08:36 
+計畫名稱 總檔案個數 
+總檔案大小 
+/KB 
+總 LOC 
+數 
+SVN 版本
+數
+CHN 66 365 4622 46 
+MAC 210 1444 16472 93 
+PHY1 77 7188 3437 10 
+PHY2 89 319 4112 89 
+VIDEO 839 8386 15839 129 
+SYS 188 545 6568 119 
+全部檔案壓縮後
+大小 5318KB 
+ 8
+表 9：現存持續整合系統與 JCIS 3.0 之功能比較 
+功能/特色 Cruise 
+Control 
+Anthill
+Prof. 
+Gump Continuum Luntbuild 
+Prof. 
+JCIS2 JCIS3
+開放原始碼 是 否 是 是 否 是 是 
+費用        
+開發語言 Java Java Java Java Java Java Java 
+Build management        
+分配測試至不同平台
+執行      
+註
+1  
+專案相依性        
+程式庫相依性        
+同時建構 
+多個專案        
+管理專案的 
+Web 介面        
+分散式架構 
+並行執行        
+Tools integration        
+產生程式異動統計        
+產生模組相依性資料        
+檢查程式開發規範        
+支援 C/C++專案的程
+式碼分析        
+Build notification        
+Email 通知建構結果        
+RSS 通知建構結果        
+Support        
+專案參與人員分 配
+不同權限的角色        
+使用建構工具 
+Ant, 
+Maven, 
+NAnt 
+Ant Ant Ant, Maven Ant,Maven,NAnt 
+Ant與
+自行
+定義 
+Ant與
+自行
+定義 
+支援 C/C++專案 
+需透過
+Ant 或 
+NAnt 
+直接支
+援 
+需透過
+Ant 
+需透過 Ant 需透過
+Ant 
+直接
+支援
+多個
+版本
+的
+C++ 
+直接
+支援
+多個
+版本
+的
+C++ 
+註 1：目前 JCIS2 僅支援 Windows 與 Linux，且無法並行執行。 
+ 
+ 
+ 
+ 
+ 10
+計畫成果自評 
+ 在本計畫中，我們利用 JavaSpaces 技術擴充過去的研究成果－JCIS2，實做了一個
+分散式的持續整合系統－JCIS3，表 10 為 JCIS2 與 JCIS3 的功能比較表。我們將 JCIS2
+原有的功能擴充能分散式執行，增加可規劃分散式整合流程與 RSS 通知建構結果，並以
+本校軟體中心提出的通訊軟體整合型計畫「WiMAX 無線通訊系統軟體與工具開發」進
+行實驗。從實驗結果與分析中，我們發現在 Integration Station 數量足夠的情況下，分散
+式持續整合系統能有效地縮短專案整合時間，讓整合工作更頻繁地執行，讓 WiMAX 總
+計畫在 JCIS3 的持續整合支援下，保持系統的穩定度與軟體品質。 
+表 10 JCIS2 與 JCIS3 主要功能比較表 
+功能/特色 JCIS2 JCIS3 
+支援程式語言 Java、C/C++ Java、C/C++ 
+提供管理專案的 Web 介面 ▲ ■(第一年) 
+分配測試至不同的平台執行 ▲ ■(第一年) 
+專案相依性支援 ▲ ■(第一年) 
+程式庫相依性支援 ▲ ■(第一年) 
+可同時建構多個專案 ▲ ■(第一年) 
+編譯程式 ▲ ■(第一年) 
+執行測試 ▲ ■(第一年) 
+產生程式異動統計 ▲ ■(第一年) 
+產生模組相依性資料 ▲ ■(第一年) 
+檢查程式開發規範 ▲ ■(第一年) 
+使用電子郵件通知建構結果 ▲ ■(第一年) 
+專案參與人員分配不同權限的角色 ▲ ■(第一年) 
+支援通訊軟體應用程式所需要持續
+整合實體環境  ■(第二年) 
+可規劃分散式整合流程並依據該流
+程執行分散式整合工作 
+ ■(第二年) 
+分散式架構並行執行整合  ■(第二年) 
+RSS 通知建構結果  ■(第二年) 
+ 備註：▲ 表示僅支援在同一部電腦中執行。 
+■ 表示可採用分散式架構執行。 

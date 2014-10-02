@@ -1,0 +1,285 @@
+impact for data-intensive applications on GPUs. Fatahalian et al. [4] have found
+that even a simple matrix-matrix multiplication operation, that is supposed to
+perform well on GPU, falls short of expectation due to the memory management
+issues on GPUs. In particular, due to the better cache bandwidth, CPUs can
+outperform GPUs even though GPUs have higher arithmetic density.
+Judging by the ever-widening gap between computational power and memory
+bandwidth on GPUs, we believe it is crucial to gain a better understanding
+of the effect of memory/data management on the performance of GPU-based
+applications. In a similar vein as the study by Fatahalian et al. [4], we take
+a further step by analyzing the performance of ray tracing geometry-intensive
+scenes. We chose ray tracing as our study subject for the following reasons.
+First, ray tracing is one of the most fundamental and popular rendering
+algorithms, and optimizations on GPU for geometry-intensive applications can
+have significant practical contributions. For example, in a panel discussion of
+SIGGRAPH 2002, Tom Duff noted that ILM is changing their renderer from
+having geometry as the inner loop to the outer loop [1]. They must do this
+because the amount of geometry they need keeps expanding faster than the
+memory capacity of the hardware.
+Second, ray tracing is a classical system that has independent computations
+(ray) but shared data access (geometry). Since the rays are independent, they
+can be freely re-organized for improving data coherence and therefore perfor-
+mance [11]. We utilize this flexibility in studying the impact of different ray
+organizations on GPU memory system performance. In particular, by organiz-
+ing rays into different degree of coherence, we can estimate the impact of data
+coherence on performance and extrapolate the results to other applications.
+We study the impact of access patterns for data sets on the performance of
+graphics hardware for data sets larger than the texture/frame-buffer memory.
+We discuss implications of our study on the design of future graphics hardware
+and software; we envision our results and methodology can be leveraged by other
+GPU applications in addition to ray tracing, to achieve better performance. Our
+contributions are as follows.
+• We propose a two-level algorithm to explicitly manage memory for ray
+tracing complex scenes on GPUs. The resulting algorithm is two to five
+times faster than its CPU counterpart.
+• We compare various acceleration structures on GPU and analyze their
+performance from coherence’s point of view.
+• We suggest a couple of strategies to reorder data for potential improvement
+of coherence and performance.
+2 Design Decisions
+Here, we discuss the design decisions we have made for our system, and our
+justifications behind these decisions.
+2
+Figure 1: Two-Level Algorithm.
+grid in Pharr et al.’s system [11]. Only the part of texture maps corresponding
+to geometry that pass the first-level intersection test are forwarded to the finer
+second-level where the intersection tests are done in GPU. The traffics between
+graphics memory and texture units are managed implicitly by the GPU texture
+cache.
+Figure 1 summarizes our two-level algorithm and Table 1 presents its pseu-
+docode. A ray tracer in CPU performs an intersection test on the coarse, first-
+level acceleration structure. Within each leaf node in the first-level structure,
+we build a second-level acceleration structure, and dispatch the ray traversal of
+this structure to the GPU. One can optionally suspend first-level traversal and
+advance to the second-level directly if the amount of active textures exceeds
+graphics memory limit. Currently we assume static scenes so that we could
+build all the acceleration structures during preprocess.
+There exists a variety of potential options for the acceleration data struc-
+tures for both levels of the hierarchy, including uniform grid, kd-tree, and
+bounding volume hierarchy (BVH). In general, it is unlikely to single out the
+best choice of acceleration structure because GPU and CPU possess different
+performance characteristics, and because different acceleration structures fa-
+vor different scenes, as indicated by conflicting studies by Foley et al. [5] and
+Thrane et al. [13].
+4 Performance Experiments and Discussion
+This sections describes various experiments we have performed and discusses
+their results.
+Implementation and Datasets. We implemented three flavors of acceleration
+structure, namely uniform grid (UG), kd-tree (KDT), and bounding volume
+hierarchy (BVH). For a uniform grid containing N triangles, we choose the grid
+resolution to be 3
+√
+N along the longest axis as suggested by Pharr et al. [10].
+For the kd-tree, we build it in a top-down recursive fashion and split the space
+with axis-aligned surface until a maximum depth1 is reached or the number of
+contained triangles is less than a predefined limit. The strategy we use to choose
+1We chose the maximum depth of a kd-tree to be 8 + 1.6log(N) similar to the strategy
+suggested by Pharr et al. [10].
+4
+Model
+Bunny Dragon Buddha Mixed nDragons Powerplant
+Triangles 274,251 1,076,214 1,292,516 2,294,880 3,684,512 12,748,510
+KDT tex. size(MB) 16.0 60.5 71.0 130.3
+UG tex. size(MB) 39.7 126.0 154.0 193.0
+BVH tex. size(MB) 17.9 68.5 82.0 144.0 240.0
+2LV tex. size(MB) 231.0 802.0
+Table 2: Models and structures used in our experiments and their statistics.
+Acceleration CPU render GPU render Ray sorting Ray shuﬄing
+Model
+structure time (sec) time (sec) ratio ratio
+KDT 8.626 12.716 0.989 0.532
+Bunny UG 7.468 4.321 0.616 0.246
+BVH 9.120 1.835 1.306 0.403
+KDT 9.835 20.785 1.013 0.585
+Dragon UG 11.328 7.454 0.711 0.266
+BVH 13.175 2.810 1.306 0.280
+KDT 12.952 24.443 1.034 0.672
+Buddha UG 18.115 11.511 0.905 0.317
+BVH 17.189 3.113 1.591 0.317
+KDT 18.281 32.334 1.100 0.661
+Mixed UG 22.217 18.914 0.934 0.350
+BVH 21.797 4.070 1.648 0.382
+Table 3: CPU and GPU performances for different acceleration structures. All
+the scenes are rendered in a 512 by 512 resolution with secondary rays.
+completes when occlusion query returns no drawn pixel.
+Table 2 lists the models and their respective triangle counts and texture sizes
+used in our experiments. The first four models, Bunny, Dragon, Buddha and
+Mixed, are small enough to reside in GPU’s texture memory as a whole and
+are mainly used to evaluate performance for acceleration structures. The next
+two models, nDragons and Powerplant, are used to test our two-level algorithm.
+All scenes are rendered in a 512 by 512 resolution using Whitted’s shading
+model with secondary rays. All of the following experiments, unless specifically
+mentioned otherwise, were performed on a PC with Intel Pentium 4 3.0GHz
+CPU, 2.5GB memory and a single GeForce 7800GTX at 535.5MHz and 256MB
+texture memory with a 1.5GHz memory clock.
+Comparison of Acceleration Structures. Here we compare the performance
+6
+Figure 2: Visualization of the memory access patterns for the Bunny. Red dots
+are texels which are really accessed. Yellow dots represents texels loaded but
+not accessed. The other dots are not used and not loaded by the two-level
+algorithm.
+Reshuﬄed (sec)
+Model Original (sec)
+Baseline Random Aligned
+Bunny 1.835 2.025 2.128 2.020
+Dragon 2.810 3.312 3.432 3.297
+Buddha 3.113 3.767 3.887 3.736
+Table 4: Effects of data-driven texture cache optimization to the rendering
+performance.
+We can reduce the footprint effectively by splitting the whole model into
+multiple geometry textures using finer first-level structure, which translates to
+smaller second-level texture sizes. As a side effect, finer first-level implies more
+control overhead and may potentially decrease coherence for the texture cache.
+Figure 3 shows such trade-off and indicates that there exist an optimal second-
+level texture size between the coarsest and finest first-level structure. According
+to this figure, we choose 40MB as the size of textures for the second-level struc-
+tures.
+Data-Driven Optimization. For the third goal in Section ??, the perfor-
+mance of texture cache is architectural dependent and hard to optimize without
+specific knowledge of cache organization and access pattern. However, most
+modern graphics hardware optimize the cachelines for texture filtering purposes.
+Therefore, it is usually beneficial to pack accessed texels closely on the texture
+map. We can achieve this by reshuﬄing the texels using either a lookup table
+or an optimized hash function to improve cache efficiency if the texel access
+patterns are available.
+Table 4 shows results using the less-efficient lookup table approach. The
+lookup table maintains the original structure of the nodes in the original texture,
+but only stores indexes to the actual texture whose texels have been reshuﬄed.
+In this way, although the accesses to the smaller lookup table remain incoherent,
+8
+02
+4
+6
+8
+10
+12
+14
+16
+18
+20
+1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+Instances of Dragon Models
+R
+e
+n
+d
+e
+r 
+T
+im
+e
+ (
+s
+e
+c
+o
+n
+d
+s
+)
+CPU kd-tree
+GPU BVH
+2 Level
+Figure 5: Performance comparison of CPU, one-level and two-level implemen-
+tations.
+0
+5
+10
+15
+20
+25
+30
+35
+40
+1 12 23 34 45 56 67 78
+Frame Number
+R
+e
+n
+d
+e
+r 
+T
+im
+e
+ (
+s
+e
+c
+o
+n
+d
+s
+)
+CPU kd-tree
+2 Level
+Figure 6: The Performance comparisons of CPU and two-level implementations
+for Powerplant walkthrough.
+10
+References
+[1] Kurt Akeley, Brad Grantham, David Kirk, Tim Pur-
+cell, Larry Seiler, and Philipp Slusallek. SIGGRAPH
+panel: When will ray-tracing replace rasterization?, 2002.
+http://www.siggraph.org/conferences/reports/s2002/tech/panels1.html.
+[2] Jeff Bolz, Ian Farmer, Eitan Grinspun, and Peter Schro¨der. Sparse matrix
+solvers on the GPU: Conjugate gradients and multigrid. ACM Transactions
+on Graphics, 22(3):917–924, July 2003.
+[3] Nathan A. Carr, Jesse D. Hall, and John C. Hart. A ray engine. In
+Proceedings of SIGGRAPH/EUROGRAPHICS Graphics Hardware, 2002.
+[4] Kayvon Fatahalian, Jeremy Sugerman, and Pat Hanrahan. Understanding
+the efficiency of GPU algorithms for matrix-matrix multiplication. In Pro-
+ceedings of the SIGGRAPH/EUROGRAPHICS Graphics hardware, pages
+133–137, 2004.
+[5] Tim Foley and Jeremy Sugerman. KD-tree acceleration structures for a
+GPU raytracer. In Proceedings of SIGGRAPH/EUROGRAPHICS Graph-
+ics Hardware, pages 15–22, 2005.
+[6] Jeffrey Goldsmith and John Salmon. Automatic creation of object hierar-
+chies for ray tracing. IEEE Computer Graphics and Applications, 7:14–20,
+1987.
+[7] Eric Haines. BSP plane cost function revisited. Ray Tracing News, 17(1),
+2004.
+[8] Vlastimil Havran. Heuristic ray shooting algorithms. PhD thesis, Depart-
+ment of Computer Science and Engineering, Czech Technical University,
+2000.
+[9] NVIDIA Corporation. NVIDIA Cg Toolkit.
+http://developer.nvidia.com/page/cg main.html.
+[10] Matt Pharr and Greg Humphreys. Physically Based Rendering. Morgan
+Kauffman, 2004.
+[11] Matt Pharr, Craig Kolb, Reid Gershbein, and Pat Hanrahan. Rendering
+complex scenes with memory-coherent ray tracing. In Proceedings of SIG-
+GRAPH 1997, pages 101–108, 1997.
+[12] Timothy J. Purcell, Ian Buck, William R. Mark, and Pat Hanrahan. Ray
+tracing on programmable graphics hardware. ACM Transactions on Graph-
+ics, 21(3):703–712, July 2002.
+[13] Niels Thrane and Lars Ole Simonsen. A comparison of acceleration struc-
+tures for GPU assisted ray tracing. Master’s thesis, University of Aarhus,
+2005.
+12
+表 Y04 
+度分析(matting)方法，使得使用者不在需要在影像畫上筆觸(sketch)，系統就可自動計算出所
+欲選取的物件並計算出其透明度，此文亦獲得最佳論文獎的 runner up。香港中文大學的賈佳
+亞教授的論文”Single Image Motion Deblurring Using Transparency” 則提出一個方法能由單張
+影像中去除因 camera shaking 所產生的 blur，其效果較 SIGGRAPH 2006 由 Fergus, Singh, 
+Hertzman, Roweis 及 Freeman 等人提出的方法更為突出。 
+此外，會中亦頒發了此次會議的最佳論文獎，由 ETH Zurich 及 KU Leuven 的 Bastian 
+Leibe，Nico Cornelis，Kurt Cornelis 及 Luc Van Gool 的”Dynamic 3D Scene Analysis from a 
+Moving Vehicle” 獲得。另有兩篇論文獲得 runner ups，除 Levin 的”Spectral Matting” 外，另
+一獲獎論文為 Tuzel，Porikli 與 Meer 的”Human Detection via Classifications on Riemannian 
+Manifolds”。最佳學生論文獎則由北京清華大學的 Yuan Li, Haizhou Ai 及日本 Omron 
+Corporation 的研究團隊由其論文”Tracking in Low Frame Rate Video: A Cascade Particle Filter 
+with Discriminative Observers of Different Lifespans” 得獎。另外，比較特別的是近兩年來 CVPR
+都會頒贈 Longuet-Higgins Prize 來獎勵十年前所發表的 CVPR 論文中最具影響力的，今年有
+兩篇 CVPR 1997 的論文獲獎，Shi 及 Malik 的”Normalized Cuts and Image Segmentation” 與 
+Osuna, Freund 及 Girosi 的 ”Training Support Vector Machines: An Application to Face 
+Detection”，其在 Google scholar 中各有 1,340 及 965 個 citations，獲獎可謂實至名歸。 
+    除論文發表外，每天亦有系統展示(demo)，許多從事電腦視覺相關的廠商及研究單位於
+現場展示他們最新的軟硬體，讓我們得以了解產業界的最新動態及其所關注之問題。筆者亦
+參加了第一天的 short courses, Visual Search and Its Application on Web 及 Recognizing and 
+Learning Object Categorization，了解 content-based multimedia retrieval 的最新進展及其在網路
+上的最新應用。 
+       
+二、與會心得 
+此次出席 IEEE 國際電腦視覺會議，除了有機會觀摩其它國家相關領域的研究水準，也
+藉由此機會與其它研究人員見面，如 Honda Research 的楊明玄、Nokia Research 的陳維超，
+哥倫比亞大學的 Prof. Shih-Fu Chang 及 Li Zhang，Adobe Research 的 Aseem Agarwala 及
+University of Washington 的 Noah Snavely 等人，對於未來的研究合作與交流建立了一個好的

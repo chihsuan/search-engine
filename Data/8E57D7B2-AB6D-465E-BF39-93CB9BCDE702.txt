@@ -1,0 +1,507 @@
+ 2
+ 
+中文摘要 
+ 
+XQuery 是依據XML的特性發展出來的查詢語言，以方便對XML資料進行查詢與資料擷
+取的功能。本計畫旨在研究針對XML資料庫，特別是針對經過加密過後的XML文件資料
+庫，在進行資料Query時能夠有最佳化的資料查詢效率。本計畫預計將完成以下之工作項
+目：(1)研究及發展一個運作模式來對XQuery做轉換，使轉換出來的XQuery程式可以在對已
+加密的XML文件的查詢上更有效率；(2)實作完作XQuery程式之Translator；(3)實作XML資
+料庫，發展一有效率的方法，可以將原始或經加密過後的XML文件儲存於關聯式資料庫
+中，並利用XQuery程式進行查詢。研究成果已於 2007 年一月份Australasian Database 
+Conference中發表[1]。 
+ 
+關鍵詞： 可擴展標示語言，XML 查詢語言，文件安全語言，安全，資料庫。  
+ 
+ 
+1. 前言 
+XML文件已廣泛被應用到各個資訊系統領域，例如出版、文件規格、資料儲存、電子
+資料交換等等。由於XML常被用來做為異質系統間的資料交換或資料傳輸協定格式，確保
+安全(security)已經漸漸變成重要的議題，因此，W3C於 2002 年訂定出有關XML文件的加密
+與簽章的處理建議規範[2,3]。 
+此外，由於愈來愈多的資料以XML為標準格式，如何從將XML的資料轉變成有價值的
+資訊將是另一個發展的重點。要對資料作有效的管理需透過資料庫管理系統的應用，但由
+於XML的資料格式和傳統資料不同，不再適用傳統的資料庫及查詢語法，因此W3C依據
+XML的特性發展出XML的查詢語言—XQuery [4]，以方便對XML資料的管理及處理。
+XQuery類似於結構性查詢語言 (SQL；Structured Query Language) 的程式語言。 2003 年 5
+月中旬，在XML Query工作小組成員包括微軟、甲骨文（Oracle）、IBM等公司積極推動下，
+國際標準組織W3C已正式將XQuery列為共通標準。 XQuery是XPath的延伸，與XPath不同
+的是，XQuery提供一系列的資料類型和控制結構的編程環境。XQuery主要可從XML文件與
+內含XML的資料庫中，查詢或擷取資訊，其運作模式如Figure 1。 
+ 
+XQuery
+Result X
+Q
+X
+XQuery
+engine
+X1 X2 X3
+X4 X5 X6
+X7 Xn…..
+XML database
+ 
+Figure 1: XQuery 的操作流程 
+2. 研究目的 
+XML 文件在經過加密的處理後，要如何從這些已被加密的 XML 文件中擷取出資料來
+是值得探討的問題。一個很直覺簡單的方法就是先將整份加密過的 XML 文件解密後，再
+撰寫一 XQuery 程式來取得所需要的資料，見 Figure 2。但是這個方法有一個很大的缺點，
+因為整個文件中被加密的元素(encrypted elements)必須全部被解密。以 XQuery 的運作方式
+來說，它會指定文件中的一特定節點，然後將目標文件內的資料取出，並不需要將文件內
+被加密的元素全部解密，要解密的部份應該只是會被輸出的部份與在查詢過程中會被用來
+當作篩選條件的資料而已。也就是說，在執行 XQuery 程式時，只解密會被查詢到的被加
+密元素會比把整份文件全部都解密會來得有效率。 
+ 4
+ 6
+mGo2hLSO/3OtqTNukDooxPmA7sADaWiZOe6rbrNdFY5QgjBAZ8TlnQ3SSBiSM11rygoDei4LTJE
+ROcN6Lq5l 
+L/c= 
+<CipherValue> 
+        <CipherData> 
+</EncryptedData>  
+<price current="TWD">1350</price> 
+     <EncryptedData Type='http://www.w3.org/2001/04/xmlenc#Element' 
+      xmlns='http://www.w3.org/2001/04/xmlenc#'> 
+        <CipherData> 
+<CipherValue> 
+h3IkkoyhsUL0uuC7MtSyw/xMfWlcKb144rH5EAQQ8vrjrs3B1RwmIDF9lYBChHkfghk3eW4Jb6f
+Qrnemykms 
+7ZIAy7dHpxL2lC7sJ0rX1UlDjzNoRHKVZo80IZzQ9y/+mBlbr6C/mD5vE9aa2FEEAlFvdGxPeW6
+2fKCD3ZM1 
+5kotIRwyf5O+Ja1UJgLN2Juu5AQ3qkpScJBeocSeF207rveeCYPyd+Nh/GrDFzjCndBOB1YV7RX
+XyUvaDu2P 
+Z55OTwNufUQggpvxpDZUZ7fSOkjzHrDN88ZwULKIf6aLBt1M= 
+<CipherValue> 
+        <CipherData> 
+</EncryptedData>  
+  </transaction> 
+</transactions> 
+Figure 4: 經過加密後的 XML 文件 
+ 
+<transactions>  
+  {  
+   for $b in  
+doc("example.xml")/transactions/transaction/cardinfo 
+     where $b/cardno = "1234-5678-8765-4321"  
+     return  
+       $b/cardno 
+  }  
+</transactions> 
+Figure 5: 從 XML 文件取出 “cardinfo” 的 XQuery 程式 
+從上述的說明中，如果要在執行 XQuery 時讓效率可以更好，要避免去執行不必要的
+解密程序。以 Figure 3、Figure 4 與 Figure 5 為例，因為加密時會破壞原始文件的資料結構，
+要改善執行 XQuery 的效率需要有額外的資訊來輔助，同時也必須有一個自動化的機制來
+針對 XQuery 的程式碼做適當的轉換改寫。本研究之目的之一是針對上述問題提出解決的
+方案，其終極目標是建立一個有效率的 XQuery 執行，同時也確保資料安全性的需求。 
+ 
+3. 研究方法 
+(1)從以加密 XML 文件中查詢資料的處理模式 
+以 XQuery最佳化查詢加密過後的XML文件需要依靠知道加密安全的相關資訊。所謂
+的最佳化在這個研究中是指在執行query查詢時，進行對資料解密的次數要達到最少。XML
+之加密與數位簽章的格式標準，3WC已於 2002 年公佈其建議標準；不過其語言無法提供程
+式設計人員一個有效率的方法來描述要如何來對一個XML文件來進行加密與數位簽章。為
+了解決這個問題，我們在之前的研究已提出了一個XML文件安全描述語言（Document 
+Security Language，簡稱DSL）來協助程式設計人員來設定文件安全的細節[6-13]。DSL可
+以用來定義如何針對XML文件執行加密與解密程序，同時也提供數位簽章與驗證簽章的功
+能。它提供了element-wise encryption 與temporal-based element-wise digital signature(加密前
+或加密後進行數位簽章)的安全機制。此外，W3C所提出的標準無法解決文件內attribute的
+加密功能，DSL則可以支援整個元素的加密，元素內容的加密與元素attribute的加密。DSL
+如果在不提供attribute加密的條件下，可與W3C的標準完全相容。 
+Figure 6說明XML文件，DSL文件與DSL Securing tool 三者之間的關係係。Figure 6(A)顯示
+ 8
+XQuery的程式包括一個或多個query描述，
+本研
+Figure 8為對XQuery程式進行轉換的演算。一個
+究以功能最強大的FLWOR描述為基礎來發展轉換演算法，其語法定義如下： 
+FLWORExpr ::= (ForClause | LetClause)  
+WhereClause? OrderByClause? return ExprSingle 
+上述BNF語法 instance。ExprSingle是千變萬化的，它可以演化成許多的query 這個項目可以
+Algorithm: Transform a FLWOR expression for querying encrypted XML documents 
+被其它的描述所取代以達到複雜且強大的查詢功能。以下我們利用幾個例子說明這個演算
+法的轉換原理。 
+ 
+Input: 
+is a FLWOR expression of the form:   Let F 
+       FLWORExpr ::= (ForClause | LetClause)  
+ WhereClause?  OrderByClause?  return ExprSingle 
+ represents the set of the path templates in the DSL file 
+  Let D is a DSL file 
+ma   Let S is an XML Sche
+Output: 
+OR expression   N = A FLW
+Begin_of_Algorithm 
+{ 
+Step 1: ● 
+Let T_set
+Let IF_set represents the set of the paths in ForClause 
+Let IW_set represents the set of the paths in WhereClause? 
+   L  = (et I_set IF_set ∪ IW_set) 
+ r  aths referred in Let R_set epresents the set of p ExprSingle. Note that 
+if the ExprSingle is a FLWOR expression, we do not add the paths referred 
+in the FLWOR expression to R_set 
+ndVariable_set = The bound variables in    Bou ForClause 
+TargetXML_set = The file names of target XML documents in doc function 
+ForClause_String = The string of ForClause in F 
+   WhereClause_String = The string of WhereClause? in
+ng
+ F 
+   Return tri leClause_S  = The string of “return” + ExprSing  in F 
+ 
+ Step
+section(I_set,T_set)=∅1 and Intersection(R_set,T_set)=∅ 
+    }
+Intersection(I_set,T_set)≠∅ and Intersection(R_set,T_set)=∅  
+Dec , , );
+mbe bou bles i  BoundVariable_set) 
+ +  
+= “f
+ (the number of bound variables in BoundVariable_set) 
+doc(”+TargetXml_set(i)+“)”+P_set(i)+“\n”; 
+N = Null string 
+●
+    if 
+ 2: 
+Inter
+{ 
+F  N = 
+ 
+ 
+    if 
+{ 
+      P_set = XPath_Transformation (IF_set,T_Set,S); 
+      Scope_Array =  
+tion_ IF_Set,IW_set R_set T_set  ryp Scope (
+ 
+      For i = 1 to (the nu r of nd varia n
+      { 
+BoundVariable_set_1(i) =           
+BoundVariable_set(i) “_1”;
+      } 
+      N or ” 
+      For i = 1 to
+      { 
+N = BoundVariable_set_1(i) +“ in  
+                                                 
+1  The symbol ∅ indicates the empty set. 
+ 10
+ 
+    if Intersection(I_set,T_set)≠∅ and Intersection(R_set,T_set)≠∅ 
+pe_Array =  
+      
+      For i = 1 to (the number of bound variables in BoundVariable_set) 
+doc(”+TargetXml_set(i)+“)”+P_set(i)+“\n”; 
+      } 
+      For i undVariable_set) 
+N = N +“let ” + BoundVariable_set(i)+ 
+; 
+      } 
+ 
+ N + “return”+ “\n”; 
+    N = N + “if”  
+    of bound variables in BoundVariable_set) 
+BoundVariable_set(i) ≠ null 
+}
+      N N + “ and ”+WhereClause_string+“\n”+“then ”+ 
+turnCluase_string+“\n”+“else ()”+“\n”; 
+} 
+End_ lgorithm 
+sformation(IF_set,T_set,S) 
+put: 
+= The set of path templates in the DSL file 
+ths 
+= 1 to (the number of paths in IF_set) 
+ 
+      Pt0 = A string in IF_set(i) from right to left until character is 
+} 
+{ 
+P_set = XPath_Transformation(IF_set, T_set, S) 
+Sco
+Decryption_Scope(IF_set, IW_set, R_set, T_set); 
+ 
+N =“for ” 
+      { 
+N = BoundVariable_set_1(i) +“ in  
+= 1 to (the number of bound variables in Bo
+         
+“=decryption(”+ BoundVariable_set_1(i)+“,\“”+ 
+scope_Array(i)+”\“)”+“\n”
+  N =
+  
+  For i = 1 to (the number 
+      { 
+N = N +“ ”+“(count(”+BoundVariable_set(i)+“)>0)” 
+if 
+{ 
+   N = N + “ and” 
+} 
+ 
+ = 
+Re
+} 
+of_A
+ 
+Procedure XPath_Tran
+In
+  IF_set = A set of paths 
+  T_set 
+  S = An XML Schema 
+Output: 
+  P_set = A set of pa
+Begin 
+{ 
+  For i 
+  {
+if  (IF_set(i) ⊆  T_set) { 
+    
+“/” 
+Pt1  =  Delete Pt0 in IF_set(i) from right 
+index = 0; 
+         check-schema (IF_set(i), S) 
+     
+P = Pt1 + “EncryptedData”+ 
+dex.toString()+“]”} 
+           else
+P = 
+     } 
+If S is available { 
+index = 
+} 
+     if index >=1{ 
+“[” +in
+{ 
+Pt1 + “EncryptedData” 
+           } 
+ 12
+列出了一個FLWOR的描述，目的是要從example.xml(參考Figure 3)這個檔案中查詢 
+“cardinfo” 這個節點的資料，條件是  “/transactions/transaction/price” 的內含值為 
+“1350”。原始檔案被加密後的結果如Figure 4所示，用來加密此檔案DSL文件如所示。輸入
+的部份是一個FLWOR的描述，一個DSL文件與一個XML Schema。第一步先設定相關變數
+的初始值：“T_set＂ 表示在DSL檔案中 path templates 的集合； “I_set” 表示在
+“ForClause＂與 “WhereClause＂中path的集合；“R_set＂表示在會參考到ExprSingle的
+path集合。但要注意的是如果 ExprSingle 是一個FLWOR 的描述, 我們就不能把它所擁有
+的paths加到“R_set”。 我們將在第三個例子中來展示ExprSingle 是一個FLWOR 描述的狀
+況。 第二步，我們先計算“I_set”與“T_set”的交集與“R_set” 與“T_set”的交集。當根據
+“ForClause”與 “WhereClause”查詢的元素包含有已加密的元素時，“I_set”與 “T_set”的交
+集不是空集合。同樣地,當傳回的元素包含已加密的元素時，“I_set”與 “R_set”的交集也不
+是空集合。在這個例子中，在DSL(參考Figure 10)文件中有兩個path templates。因此T_set = 
+{“/transactions/transaction/payer,” 
+“/transactions/transaction/cardinfo”}, ForClause = “for $b in 
+doc "example.xml")/transactions/transact on”, ( i WhereClause? = “where 
+$b/price=1350”, I_set = {“/transactions/transaction,” 
+“/t sactions/transaction/cardi priceran nfo/ ”}, ExprSingle = “$b/cardinfo”, R_set = 
+{“/transactions/transaction/cardinfo”}。 “I_set” 與“T_set”的交集不是空集合，而R_set 
+與T_set 的交集為空集合。 根據Figure 8的演算法,轉換程式產生出一個新的FLWOR描述。 
+“ForClause＂ 與 “WhereClause?” 分 別 被 轉 換 成 “for $b_1 in 
+doc("example.xml")/transactions/t nsaction” 與“where $b_1/price=1350＂。一個 
+“
+ra
+LetClause” (“let $b = decryption($b_1,”child:EncryptedData[2]”)＂) 被增加到
+“ForClause”與“WhereClause?”。特別要注意的是 “LetClause” 啟動了解密的功能函數來
+解密$b_1 變數中所儲存的已被加密的元素，這些資料是原始XQuery程式要查詢的。最後，
+我們將ExprSingle轉換成“if (count($b) >0 then {$b/cardinfo} else ()”。 輸出的FLWOR 
+expression如 Figure 9B所示。 
+ 
+<transactions> 
+{ 
+for $b in doc("example.xml")/transactions/transaction
+where $b/price=1350
+return 
+$b/cardinfo
+} 
+</transactions> 
+(A) An input FLWOR expression
+<transactions> 
+{ 
+for $b_1 in doc("example.xml")/transactions/transaction
+where $b_1/price=1350
+let $b = decryption($b_1, “child:EncryptedData[2]”) 
+return 
+if (count($b) >0
+then
+{
+$b/cardinfo
+}
+else ()
+} 
+</transactions> 
+(B) An output FLWOR expression  
+Figure 9: An XQuery to extract “cardinfo” from an encrypted XML file 
+ 
+ 14
+內 處 理 。 我 們 先 處 理 外 層 的 FLWOR expression: 先 得 到
+T_set={“/transactions/transaction/payer,” “/transactions/transaction/cardinfo”} 
+與 I_set={“/transactions/transaction,” “/transactions/transaction/payer”}. 內層的
+FLWOR expression “for $a in $b/cardinfo return $a” 在外層FLWOR expression被處時
+時並不會同時被轉換：因此，我們得到 R_set={“/transactions/transaction/price”}。計
+算交集後，可以得出I_se”與T_set的交集不為空集合；反之，R_set與T_set 的交集為空集合。
+“ForClause” 敍 述 被 轉 換 為 “for $b_1 in 
+doc("example.xml")/tra ctions/transaction” 。  “nsa LetClause” 敍 述 (“let $b = 
+decryption($b_1, “child:EncryptedData[1]”)”)增加到“ForClause”後面用來啟動將變數
+$b_1 中所包含的內容之解密。最後，我們轉換ExprSingle 成下列的敍述： 
+“if (count($b) >0 and $b/payer = “tony yao” 
+then 
+{ 
+ <transaction> 
+b/price 
+$b/cardinfo return $a 
+nsaction> 
+e ()” 
+外層的FLWOR expression之後，我們可以根據Figure 8的演算法處理內層的
+FLW  
+SL 文件是必需的，因為轉換程式需要去查詢 DSL 文件來決定那
+些元
+ 3為原始XML
+文件
+    { 
+      $
+      for $a in 
+    } 
+ </tra
+} 
+els
+在轉換
+OR expression “for $a in $b/cardinfo return $a” to “for $a_1 in $b/EncryptedData[2]
+$a = decryption($b_1,"all") if count($a)>0 then return $a else()” 。轉換後的XQuery
+程式如Figure 12B所示。 
+在這個處理模式中，D
+素是被加密的。雖然這個模式中 XML Scheama 並不是必要的，但它可以用來降低查詢
+時減少不必要解密的時間。XML Schema 是用來取代 DTD 資料字典描述語言，它用來描述
+一個 XML 文件的資料架構。此外，XML Schema 提供 (1) XML 查詢的確認，把相對的路
+徑轉換為絶對路徑；(2) 定義元素間的父子關係來協助增加查詢時的效率。 
+接下來說明利用XML Schema完成最佳化查詢。Figure 13是另一個以Figure
+加密後的文件。這個加密文件的所有子節點都被整個加密起來。如果使用者要取得
+“cardinfo” 元素的值，在他的XQuery程式中就必定要把“ForClause” 敍述寫成“$b in 
+doc("example.xml")/transactions/transaction/EncryptedData”。 然而在整個加密的文
+件中有三個元素名稱均為“EncryptedData”。這些元素全部都要被解密後才能夠進一步來檢
+查那一個才是 “cardinfo” 元素。 我們可以利用XML Schema 來避免不必要的解密。Figure 
+14 為Figure 3中XML文件的XML Schema。轉換程式查詢Schema來確定“cardinfo” 元素為
+“transaction” 元 素 的 第 三 個 字 節 點 。  因 此 ， “ForClause” 敍 述 可 以 被 改 成
+“doc("example.xml")/transactions/transaction/EncryptedData[3]”,這裡的 “[3]” 表
+示只有第三個“EncryptedData” 元素才需要被解密。 
+ 
+ 16
+ 
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?> 
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">  
+<xs:element name="transaction"> 
+  <xs:complexType> 
+   <xs:sequence> 
+    <xs:element ref="payer"/> 
+    <xs:element ref="price"/> 
+    <xs:element ref="cardinfo"/> 
+   </xs:sequence> 
+  </xs:complexType> 
+ </xs:element> 
+ <xs:element name="transactions"> 
+  <xs:complexType> 
+   <xs:sequence> 
+      <xs:element ref="transaction"/> 
+   </xs:sequence> 
+  </xs:complexType> 
+ </xs:element> 
+</xs:schema> 
+Figure 14: An XML Schema 
+ 
+4. 結果與討論 
+(1)系統實作 
+目前已有許多的XQuery Engine被實作出來。Galax[14]是一個依據XQuery 1.0 並增加
+延伸功能的精小實作。Qexo[15]是一個部份實作XQuery 1.0 的套件，其主要特色是將
+XQuery程式編譯成Java byte codes且效能非常好。Saxon[16] 是一個完全實作XSLT 2.0, 
+XQuery 1.0 與XPath 2.0 的套件，我們在這個研究中，使用Saxon來做為執行XQury的engine。
+依據Figure 7所設計的處理模式，我們以Figure 8的演算法設計了一個轉換程式可以將用者
+所寫的XQuery程式做適當的轉轉換再從已加密的XML文件中查詢到所要的資料。此外，我
+們也實作了extension objects來執行解密的程序。 
+ 
+(2)實驗結果 
+在本計畫中，我們針對已被加密之XML文件之查詢做了效能測量，實驗平台為Intel(R) 
+Pentium(R) 4，CPU 2.4 GHz， 1024 MB RAM，作業系統Microsoft Windows 2000 
+Professional，以Java實作本計畫的所有套件。實驗的原始XML文件包含 101 個元素節點：
+一棵樹有一個根節點與 100 個子節點；而每個元素節點只有一個text節點，text節點的大小
+為 100 bytes或 500 bytes。Table 1 是對每次都必需把整個文件解密後再進行查詢所花費的時
+間，因此我們可以發現其花費時間會依其被加密的節點增加而明顯地大幅增加。而Table 2
+所列的時間為XQuery程式依據Figure 8所列之演算法實作的轉換程式所轉換後執行查詢的
+時間。這個演算法能夠確保只有使用者想要查詢卻被加密的資料在被查詢出來前才被解
+密，沒有被查詢的資料是不會被解密的；這樣可以大幅降低不必要的解密程序，增進查詢
+的效能。 
+ 
+(2)論文發表 
+研究成果已於 2007 年一月份Australasian Database Conference中發表[1]，目前正準備將
+更詳盡的成果發表於期刊論文。 
+ 18
+5 Xtradyne Technologies. “A Gateway to Web Service Security-Securing SOAP with 
+Proxies,” http://www.netobjectdays.org/pdf/03/papers/icws/28530101.pdf. 
+6 Gwan-Hwan Hwang and Tao-Ku Chang, “Document Security Language (DSL) and an 
+Efficient Automatic Securing Tool for XML Documents,” International Conference on 
+Internet Computing 2001, 24-28 June, Las Vegas, Nevada, USA, pp: 393-399. 
+7 Gwan-Hwan Hwang and Tao-Ku Chang, “sXQuery: A Secure XML Query Language for 
+XML Documents,” International Conference on Internet Computing 2002, 24-27 June, Las 
+Vegas, Nevada, USA, pp: 348-353. 
+8 Tao-Ku Chang and Gwan-Hwan Hwang, “Towards Attribute Encryption and a Generalized 
+Encryption Model for XML,” International Conference on Internet Computing 2003, 23-26 
+June, Las Vegas, Nevada, USA, pp: 455-461. 
+9 Tao-Ku Chang and Gwan-Hwan Hwang, “Using the Extension Function of XSLT and DSL 
+to Secure XML Documents,” the 18th IEEE International Conference on Advanced 
+Information Networking and Applications (AINA 2004), Fukuoka, Japan, pp: 556-561. 
+10 Gwan-Hwan Hwang and Tao-Ku Chang, “An Operational Model and Language Support for 
+Securing XML Documents,” Computers & Security, Volume 23, Issue 6, September 2004, pp: 
+498-529.  
+11 Tao-Ku Chang and Gwan-Hwan Hwang, “DSL API for Securing XML Documents,” The 
+2005 International Conference on Internet Computing (ICOMP'05), June 27-30, 2005, Las 
+Vegas, USA.  
+12 Tao-Ku Chang and Gwan-Hwan Hwang, “A Secure Query Language for XML Documents,” 
+Accepted for publication in the Journal of Information Science and Engineering. 
+13 Tao-Ku Chang and Gwan-Hwan Hwang, “To Secure XML Documents with the Extension 
+Function of XSLT,” Software - Practice and Experience, Volume 36, Issue 5, Pages 539-555, 
+April 2006. 
+14 Galax. Available from: http://www.galaxquery.org. 
+15 Qexo. The GNU Kawa implementation of XQuery. Available from: 
+http://www.gnu.org/software/qexo/. 
+16 Saxon. http://www.saxonica.com/. 
+ 
+6. 計畫成果自評 
+本計畫發展了一個對加密的XML文件使用XQuery語言來查詢資料的運作模式，加密的
+文件可以存放在檔案系統、XML資料庫與關聯式資料庫中。在這個計畫中，我們發展一個
+運作模式來對XQuery做轉換，使轉換出來的XQuery程式可以在對已加密的XML文件的查詢
+上更有效率，並依此運作模式實作完作XQuery程式之Translator。此外我們也實作XML資料
+庫，發展一有效率的方法，可以將原始或經加密過後的XML文件儲存於關聯式資料庫中，
+並利用XQuery程式進行查詢。此計畫的研究成果已於 2007 年一月份Australasian Database 
+ 20
+ 
+可供推廣之研發成果資料表 
+□ 可申請專利  □ 可技術移轉                                      日期： 年 月 日 
+國科會補助計畫 
+計畫名稱：使用 XQuery 程式進行最佳化查詢經加密後的 XML 文
+件之操作模式的發展及實作 
+計畫主持人：黃冠寰 
+計畫編號：NSC 95-2221-E-003-007 學門領域：資訊學門一 
+技術/創作名稱 XQuery Translator 
+發明人/創作人 黃冠寰 
+技術說明 
+中文： 
+本技術是一個利用自動轉換XQury來查詢已加密XML文件的處理
+模式。這個轉換機制可以不用將整份已加密的 XML 件全部解密再
+進行查詢，而是依據加密資訊對部份的已加密資料做必要的解密再
+將資料查詢出來，這對處理 XML 文件的效率上有很大的幫助。 
+英文： 
+This skill is a processing model for efficiently querying encrypted 
+XML documents using XQuery. We can use this model to optimally 
+query the encrypted XML documents, in terms of the computation 
+required for decryption during the query process. 
+可利用之產業 
+及 
+可開發之產品 
+本技術可以應用在以 XML 為資料儲存之資料庫或應用軟體。可以
+利用此一技術，開發出 XML 與關聯式資料庫之間的中介軟體，讓
+XML 文件也可以存放在關聯式資料庫當中，並有效率地存取。 
+技術特點 
+根據加密的資訊自動將 XQuery 程式做適當的轉換，不需人為的介
+入。使用者在撰寫 XQuery 程式時不用去知道存在資料庫中已被加
+密的 XML 文件的資料結構，只要知道原始文件的資料結構即可。
+推廣及運用的價值 
+XML 已廣泛應用在各種應用資訊系統，在資訊安全的考量下，XML
+文件都會經過加密之後再儲存起來，因此對於已加密 XML 文件的
+查詢需求也漸漸增加。本技術在針對已加密 XML 文件做查詢時可
+以達到最少解密的程序，對應用程式的效能上有極大的助益。 
+※ 1.每項研發成果請填寫一式二份，一份隨成果報告送繳本會，一份送 貴單位
+研發成果推廣單位（如技術移轉中心）。 
+※ 2.本項研發成果若尚未申請專利，請勿揭露可申請專利之主要內容。 
+※ 3.本表若不敷使用，請自行影印使用。 

@@ -1,0 +1,257 @@
+ 2
+高優先權資料的效能。Wong 和 Donaldson [5]改
+良原來 EDCF 的重送機制，動態調整 Backoff 的
+PF，在重送時藉由即時資料流在佇列中的等待時
+間，來對應到適合的 PF，再計算出新的 CW 大小。
+Gannoune 和 Robert [6]提出應該要依照網路上
+擁塞的情形來動態的調整對應的 CWmin，當媒介的
+使用率偏低時，就可以將 CWmin設定的更小以增加
+效率。Yan 和 Benxiong [7]提出 CW-EDCF 機制，
+這個機制會依照現在網路上的狀況，來調整高優
+先權的 CWmax 和 CWmin。Lamia 等人[8]提出的
+Adaptive EDCF (AEDCF)，係依照網路上成功傳
+送的封包的比率，來調整在成功傳送封包後，CW
+值降低的幅度。  
+三、本計畫的 DCC 機制 
+    
+本計畫所提出的DCC機制是一套以 EDCF為基
+礎，在多重跳躍 (Multi-hop)的隨意式網路
+(Ad-hoc)下的動態競爭控制機制，可以讓即時資
+料流在網路上有更少的延遲，使符合即時多媒體
+資料流端點對端點延遲要求的封包比例增加，這
+樣接收端每個單位時間內，便可以收到更多符合
+延遲要求的封包，即時資料流的品質也可以提
+升。在 DCC 機制中將測量資料流傳送時每個跳躍
+的時間，作為評估點對點延遲的依據，並且對照
+每個即時資料流所能容忍的最大端點對端點延
+遲，判斷是否應該提升優先權或者丟棄。此外，
+在重送時也依照封包傳送時所花費的時間、到達
+目的所剩餘跳躍數和重送次數，來改變在 EDCF
+中 Random Backoff Time 的機率分佈模式，讓某
+些 Backoff Time 被選到的機率較大，藉此得到
+較合適的 Backoff Time，我們的名詞定義如下。 
+ 
+1. Mrtt：MAC Layer Round Trip Time，即時
+資料流傳送時，每個跳躍所花費的時間。
+Sigma_t：路由路徑上的節點，到達目的節
+點所累計的 Mrtt 值，此值會隨著對應的
+Mrtt 更新而更新。 
+2. Remaining_time：即時資料流 IP 封包的剩
+餘時間，其初始值為該即時應用程式所能容
+忍的最大端點對端點延遲，我們利用 IP 
+Optional Header 紀錄這個值。 
+3. Pri_adjust_control_period：更新網路狀
+況的時間週期。 
+4. Drop_rate：路由路徑上的節點，在一個
+Pri_adjust_control_period 內，一即時資
+料流 IP 封包 Remaining_time 小於或等於
+Sigma_t 的百分比，此百分比將作為丟棄
+Remaining_time 小於 Sigma_t 封包的機率。 
+5. Puniform：當 IEEE 802.11e MAC 訊框在第 n 次
+重送時，每個 Backoff Time 被抽中的機率。 
+6. Pshift：在調整 EDCF Backoff Time 機率分佈
+時，機率值的最大增加量。 
+ 
+我們利用 IEEE 802.11 無線區域網路，收到
+直接訊框時會回應正面 ACK 的特性，來測量每個
+跳躍所花費的時間，和利用新增加的欄位來累加
+Sigma_t，但是在傳送的路徑斷裂，需要重新尋
+找部份或者全部路徑時，舊有的 Mrtt 便無法代
+表新路徑上跳躍所花費的時間，所以我們必須利
+用反應式路由通訊協定的特性重新測量，本計畫
+使用 AODV 路由協定，並且利用修改過的 RREP 封
+包來計算 Mrtt 和累加 Sigma_t。我們將 Mrtt 和
+Sigma_t 的值紀錄在路由表上，並且隨著路由來
+更新。Mrtt 與 Sigma_t 的計算方式分成兩種情況
+來討論：路徑完整時和路徑發生斷裂時。 
+如圖 3-1 所示，當一即時資料流在網路上傳
+送時，路徑上的每個節點在轉送該封包的同時啟
+動一計時器，並在 MAC 層收到路由路徑上的下個
+節點回應正面 ACK 時，停止該計時器，我們會得
+到一個間隔時間，這個間隔時間就是 Mrtt，將隨
+著資料流的傳送而更新，利用 EWMA 計算如下。 
+ Mrtt = (1 - α) × Mrttnew + α × Mrttold , 0≦α≦1             
+(3.1) 
+ 
+圖 3-1: Mrtt 在路徑完整時的計算方式 
+ 
+當發生斷線時，原來的 Mrtt 便不能代表現在
+網路上的狀況，我們利用無線隨意網路大多使用
+反應式路由協定的特性，使用尋找路徑時所發出
+的 RREQ 和 RREP 訊息來測量 Mrtt，但是又因為尋
+找路徑時所發出的 RREQ 訊息是廣播封包，並不
+會有 MAC 層的 ACK，所以不能使用路徑完整時的
+方法。我們必須改由每個發出 RREQ 的節點，在
+發出 RREQ 時啟動一計時器，並且在收到其他節
+點發出相同的 RREQ 或者回應 RREP 時停止計時，
+如此我們便會得到數個間隔時間，接著當新路徑
+MPDU
+MPDU
+ACK
+MPDU
+ACK
+Mrtt
+Mrtt
+Mrtt
+…
+…
+ACK
+時
+間
+… … …
+MPDU
+Mrtt
+ACK
+ 4
+到的百分比來丟棄封包的緣故，所以我們可以得
+到類似於變動性較小的網路拓樸的結果，但是這
+時候的 AEDCF 和 EDCF 的低優先權封包延遲已經
+非常嚴重，平均到達 0.3 秒甚至 0.5 秒，這也是
+因為變動性較大的緣故，造成斷線和碰撞的機率
+都變的很高。再來我們看到丟棄封包的百分比和
+背景資料流數量的關係，如圖 4-3 所示，我們可
+以發現 DCC 機制中的低優先權的丟棄比率相當
+高，這是因為 DCC 的低優先權機制對於斷線並沒
+有其他補救的機制，所以會常常退化成 EDCF，又
+因為 DCC 機制會丟棄可能遲到的封包，所以封包
+丟棄比率會比 EDCF 的低優先權更高。而高比率
+的封包丟棄比率，也造成平均 Goodput 下降，如
+圖 4-4 所示，這時 DCC 的低優先權已經因為高封
+包丟棄比率，變成最低的 Goodput，而當我們看
+到圖4-5發現 DCC的高優先權表現也不如在變動
+性小的網路中好，沒有很接近 EDCF 高優先權的
+Goodput，大約差了 25%，相對的 AEDCF 的高優先
+權還是很接近 EDCF，並且我們也發現 DCC 所有優
+先權符合延遲要求的 Goodput 已經低於 AEDCF，
+這是因為在變動性大的網路中，AEDCF 只收集一
+個跳躍範圍之內的資訊，而相對的 DCC 必須收集
+超過一個跳躍的延遲資訊，而累計的 Sigma_t 就
+會累加這些跳躍上所有的誤差，造成 DCC 機制沒
+有能力作出較精確的判斷，有些提升優先權會顯
+得不必要，但是相對的有些遲到的封包也沒有辦
+法被判斷出來，所以大致來說，因為端點對端點
+的資訊是會累加的，所以在所有節點均會移動的
+網路上，DCC 這類利用端點對端點資訊作動態調
+整的機制，會比只收集單一跳躍範圍內資訊的方
+法，如 AEDCF，誤差更大，表現也沒有這麼好。 
+ 
+五、結論 
+ 
+我們利用無線網路在MAC層會有正面回應的
+特性，針對端點對端點延遲，動態調整優先權和
+依照封包遲到比率來測量每個跳躍上的延遲，並
+且直接把封包端點對端點延遲的歷史資料，拿來
+當作調整優先權、Contention Window 範圍的依
+據，並且在重送封包時，我們也依照這些資訊給
+予較合適的 Backoff Time，使得 DCC 機制在經常
+發生斷線和節點持續移動的狀況下，比率仍然可
+以高達 90%以上，相對的這時的 EDCF 和 AEDCF
+分別只剩下 63%和 74%，並且所有封包的平均延
+遲只有 EDCF 和 AEDCF 的 40%和 60%。 
+ 
+ 
+ 
+ 
+ 
+圖 4-1: 符合延遲要求的封包百分比 
+ 
+圖 4-2: 平均封包延遲與背景資料流關係 
+ 
+圖 4-3: 封包丟棄比率與背景資料流關係 
+ 
+ 
+ 
+ 
+Percentage of Meeting End-to-End Delay Requirements
+0%
+10%
+20%
+30%
+40%
+50%
+60%
+70%
+80%
+90%
+100%
+0 2 4 6 8Number of Background Traffic Flows
+EDCF High Priority
+EDCF Low Priority
+AEDCF High Priority
+AEDCF Low Priority
+DCC High Priority
+DCC Low Priority
+Drop Ratio
+0%
+5%
+10%
+15%
+20%
+25%
+30%
+35%
+40%
+45%
+50%
+0 2 4 6 8
+Number of Background Traffic Flows
+EDCF High Priority
+EDCF Low Priority
+AEDCF High Priority
+AEDCF Low Priority
+DCC High Priority
+DCC Low Priority
+Average Delay
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0 2 4 6 8
+Number of Background Traffic Flows
+Second
+EDCF High Priority
+EDCF Low Priority
+EDCF Total
+AEDCF High Priority
+AEDCF Low Priority
+AEDCF Total
+DCC High Priority
+DCC Low Priority
+DCC Total
+表 Y04 
+行政院國家科學委員會補助國內專家學者出席國際學術會議報告 
+                                                          96  年 5 月 10 日 
+報告人姓名  許蒼嶺 
+ 
+服務機構
+及職稱 
+ 
+中山大學電機系 
+ 
+     時間 
+會議 
+     地點 
+05/2/2007-05/4/2007 
+法國巴黎 
+本會核定
+補助文號
+NSC95-2221-E-110-024 
+會議 
+名稱 
+ (中文) 2007 第一屆國際網路新技術與行動安全會議 
+ (英文) The first Int’l Conference on New Technologies, Mobility, 
+and Security (NTMS-2007) 
+發表 
+論文 
+題目 
+(中文) 在多點跳躍的行動式 Ad Hoc 網路上具有 MLCN 三色標記且跨層級的
+TCP 擁塞控制 
+(英文) Three-color Marking with MLCN for Cross-layer TCP Congestion 
+Control in Multihop Mobile Ad Hoc Networks 
+ 
+ 
+附件三
+ 

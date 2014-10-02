@@ -1,0 +1,638 @@
+ I 
+ 
+目錄 
+中文摘要 ............................................................................................................................... II 
+Abstract .................................................................................................................................. II 
+一、  前言 ........................................................................................................................... 1 
+二、  研究目的 ................................................................................................................... 1 
+三、  文獻回顧 ................................................................................................................... 1 
+四、  研究方法 ................................................................................................................... 3 
+五、  結果與討論 ............................................................................................................... 7 
+六、  計畫成果自評 ........................................................................................................... 9 
+七、  參考文獻 ................................................................................................................... 9 
+ 1 
+ 
+ 
+一、 前言 
+虛擬化（virtualization）是將計算系統的資源抽象化，使得系統效能獲得整合，以及資源使用上獲得
+更大的彈性[1]。虛擬機器（virtual machine, VM）與虛擬機器監視器（virtual machine monitor, VMM）是
+虛擬化中兩個最重要的部份，虛擬機器監視器管理虛擬機器之間的資源配置。基於客戶端作業系統的核
+心修改與否，虛擬化機制可分類為全虛擬化（full virtualization）以及半虛擬化（para-virtualization），之
+後 Intel與 AMD開發新的處理器擴充 x86架構，硬體輔助虛擬化（hardware assisted virtualization）得以
+實現[2]。 
+ 
+近年來，虛擬機器的概念吸引了許多人的注目，由於它的特性，使得它成為雲端運算的佈署架構。
+其中一個優勢是在雲端運算下，能很容易的平衡負載，得以實現資源利用的高效率性。為了實現這個目
+標，虛擬機器採用了遷移（migration）機制。它可讓運行在一部高負載主機上的虛擬機器，轉送至另一
+部合適的主機上繼續運行。此外，雲端運算平台使用虛擬機器作為服務提供者，它必須保證在進行虛擬
+機器遷移時，其提供的服務是不能中斷的，因此有了動態遷移（live migration）的機制，雲端運算架構
+應具備可擴充性、高容錯以及負載平衡之特性，而這些特性可透過動態遷移來達成。動態遷移是複製虛
+擬機器的記憶體分頁（memory pages），從運行虛擬機器的實體主機傳送到另一部實體主機，並且不用中
+斷，或是僅短暫中斷虛擬機器上正在運行的應用程式。 
+ 
+二、 研究目的 
+動態遷移是虛擬化技術中非常重要的轉移機制。從運算系統中虛擬出運算資源，透過縮小用戶系統
+的停機時間（downtime）來達到幾乎沒有中斷的服務。典型的虛擬機器遷移必須轉移虛擬機器的記憶體
+分頁，其中也包含核心內部與應用程式之狀態。目前有很多研究都在探討如何優化虛擬機器進行遷移
+時，所需傳送的記憶體分頁數量。 
+ 
+預先複製為實現動態遷移的主要技術之一。當虛擬機器進行遷移時，會根據規則而持續傳送被選擇
+的髒頁(dirty page)，以降低服務中斷時所需傳送的髒頁數量。然而，分頁透過網路不斷地被複製傳送，
+這會對運行在該實體主機上，需密集使用網路頻寬的應用程式在執行效能上造成影響。因此，我們希望
+能提出一個策略，降低虛擬機器動態遷移對其他應用程式的不利影響。 
+ 
+三、 文獻回顧 
+ 
+圖一、記憶體遷移階段 
+ 
+ 
+Push Phase  Pull Phase Stop‐and‐copy Phase 
+Total Migration Time 
+DownTime 
+Start  Finish
+ 3 
+ 
+標示那些更新頻繁的分頁，以改善預先複製策略。這些被標示為更新頻繁的分頁，只能在最後一次的迭
+代（iteration）中被複製傳送出去，以確保這些分頁在 Stage 2中僅傳送一次。該策略降低整體資料傳送
+量的 34％與平均總遷移時間的 32.5％；[7]提出一個階層式複製演算法，在動態遷移過程中，考量記憶
+體的特性並修改分頁的變髒率。為了克服傳統遷移演算法的缺點，工作集（working set）的測量時間被
+推移到 Stage 0或 Stage 1階段，即便在髒頁率高的情況下，該演算法也可以控制迭代遷移的時間。 
+ 
+在[8]裡，一個記憶體壓縮技術被發展出來，基於檢查點/恢復（checkpointing/recovery）與追蹤/重放
+（trace/replay）技術，以減少重複的副本資料量[9]。作者提出一個 zero-aware characteristic-based的壓縮
+演算法，在沒有耗盡資源下，使用適當的執行緒數量來加快壓縮任務；[10]則是提出一個在高工作負載
+的動態遷移，或是在較低的網路頻寬下所使用的 Delta 壓縮動態遷移演算法，它使用 XBRLE 演算法來
+增加遷移吞吐量，因此，Delta 壓縮演算法能使一個高負載的大型虛擬機器，在一個很短的時間內完成
+遷移。 
+ 
+在[11]中，作者探討影響遷移效能的重要因素，以預測虛擬機器遷移時的效能。該文章施加了分頁
+變髒率與可用的連接速度來對動態遷移影響進行分析，他們提供兩個模擬模型來預測遷移時間，其精準
+性達到 90％。然而，在廣域網路下進行遷移預測仍將是一大挑戰。 
+ 
+四、 研究方法 
+由於動態遷移的主要目標是服務不中斷，本文將探討基於預先複製機制的虛擬機器之動態遷移，其
+中我們將重點放在 Stage 2上，並開發一個高效率的傳送策略。 
+ 
+當虛擬機器在 Stage 2 的階段時，會有兩個動作同時進行：運算動作與複製動作，每一次的迭代複
+製中，來源端主機收集被選擇即將複製的髒頁。假設 pi為虛擬機器第 i個分頁，而 di,j則標記為第 i個分
+頁在第 j 次的迭代中被弄髒。如果分頁 pi在第 j 次迭代被弄髒，則 di,j＝1，否則 di,j＝0。像是 Xen 這種
+典型的一階式策略（one-phase, OP）[12]，如果（di,j-2 Λ d
+﹍﹍
+i,j-1）＝1成立，則來源端主機將會把分頁 pi在
+第 j次迭代時複製到目的端主機。我們定義第一次的迭代，其 di,-1與 di,0的數值分別為 1與 0，因此第一
+次迭代時，所有的分頁將被複製到目的端主機。 
+ 
+基於上述內容，Stage 2可以被模擬成圖三的狀態圖。狀態圖上線段的輸入/輸出之數值只有 0或 1。
+如果輸入為 1，表示該分頁在迭代期間被弄髒，否則輸入為 0；如果輸出為 1，則該分頁將會在下一次迭
+代時被複製傳送出去，否則輸出為 0，也就是該分頁不需要被複製。從狀態圖裡，分頁會以三種狀態來
+表示：S’、S0與 S1。S’為初始狀態，因為所有分頁在第一次迭代時都要進行複製傳送的動作，所以從 S’
+到 S1的輸入是不用理會，在後續的迭代中，其分頁的狀態不是 S0就是 S1。在每次迭代中，根據分頁是
+否變髒，來決定迭代結束時該分頁的狀態為何。因此，如果有分頁在迭代期間被弄髒，則該分頁狀態為
+S1，否則就是為 S0。以圖三中可以得知，當分頁狀態從 S1到 S0時，該分頁將會被複製傳送出去。 
+ 
+雖然 Stage 2的階段會持續傳送被選擇的髒頁複本，但並非是永無停止。Xen使用三個終止停件來避
+免這種狀況[11]，當滿足以下三個條件的其中之一時，將會停止 Stage 2並進入 Stage 3： 
+z 條件 C1：迭代中髒頁數量小於 50。 
+z 條件 C2：已完成 28次迭代。 
+z 條件 C3：複製的分頁數量超過虛擬機器的大小三倍。 
+若符合條件 C1，是保證在動態遷移時能獲得最短的停機時間，因為在進入 Stage 3時只有少量的分頁被
+複製過去。而條件 C2與條件 C3是為了終止永無止境的迭代複製，造成頻寬資源的浪費。 
+ 
+ 5 
+ 
+不同於預先複製策略，SC 策略是如果分頁被弄髒後，必須連續兩次迭代都不再被弄髒，才進行複
+製的動作，這種行為很明顯的在複製傳送上可使用較少的頻寬，因而讓虛擬機器遷移與網路相關的應用
+程式能更有效的共享網路頻寬。然而，SC策略可能會在 Stage 3累積了大量的分頁複本，這種情況將會
+造成停機時間明顯拉長，為了克服此項弱點，我們提出一個兩階式（tow-phase, TP）的策略來加以改善。 
+ 
+ 
+圖五、兩階式策略狀態圖 
+ 
+兩階式策略的特色，在於第一階段為降低頻寬需求，而第二階段為縮短停機時間。其分頁狀態的轉
+換規則，第一階段採用 SC 策略，而第二階段則使用 OP 策略。其兩個階段的切換，是透過審慎且嚴密
+的定義，以防止動態遷移永遠停留在第一階段。圖五為 TP 策略的狀態圖，第一階段的分頁狀態分別為
+S’、S000、S001，以及 S010，該階段之狀態的最左邊位元均為 0，而分頁在最近兩次迭代中的弄髒過程可由
+另外兩個位元判斷得知；第二階段的狀態分別為 S100與 S101，其階段之狀態的最左側兩位元必定為 10，
+其最右側之位元判斷該分頁是否被弄髒，與 OP的判斷策略相同。狀態圖線段上的輸入部份包含兩個位
+元，左側的 fl與右側的 fr：如果 fl＝1，則意謂著階段切換觸發，否則為 0；如果 fr＝1，則表示該次迭代
+時，該分頁被弄髒，否則為 0；輸出部份，如果輸出為 1，則表示該分頁將被複製傳送出去，否則輸出
+為 0。所有的分頁其初始狀態均為 S’，第二次迭代的狀態變更，無論分頁是否變髒，其狀態都會變為 S001。
+當分頁狀態進入第二階段後，就無須在意 fl之數值。 
+ 
+當階段切換事件被觸發時，由於輸入為 1時並不會觸發任何分頁複製的動作，因此只有狀態 S000、
+S001，以及 S010的輸入為 0時才要考慮其分頁複製之必要性，原因如下： 
+z 如果分頁 pi狀態為 S000，則沒有複製的必要，原因在於分頁 pi自從最後一次的複製動作後就從
+未被弄髒。 
+z 如果分頁 pi狀態為 S001，則分頁 pi 必須被複製傳送，因為根據 OP策略，如果（di,j-2 Λ d
+﹍﹍
+i,j-1）
+＝1 成立，則分頁就必須被複製傳送出去。要注意的是，若該狀態下並無觸發階段切換，則該
+分頁就沒有複製的必要性。 
+z 如果分頁 pi狀態為 S010，則分頁 pi必須被複製傳送，即使階段切換沒觸發也是一樣。 
+從圖四中可以很容易看出 TP策略的總複製分頁量不會超過 SC的複製量。 
+ 7 
+ 
+著動態遷移的迭代次數增加，降低率也隨之增加。然而 TP策略的第一階段若執行到第 29次迭代，結果
+將會導致停機時間變長，原因在於 SC 策略中，進行最後一次迭代時並沒有將髒頁複製傳送出去，所以
+我們選擇 28次迭代數作為第一階段的最大迭代數；第二個切換條件 C2’為髒頁最小數量的閥值，如果髒
+頁數小於 55，則可作為第一階段切換至第二階段的適當時機點，這也比較接近 OP策略的終止數量。值
+得一提的是，若髒頁數量小於 50，則它會直接進入最後迭代，而不執行第二階段的迭代動作，在於它符
+合 OP策略的終止條件；第三個切換條件 C3’是髒頁複製量大於虛擬機器的 2.5倍時進行切換，特別的是
+該分頁的計算方式採用 OP策略，以防止在第一階段時花費太多的時間在分頁複製上。所以，TP策略的
+階段切換條件分別為： 
+z 條件 C1’：迭代數量達到 28次。 
+z 條件 C2’：髒頁數量小於 55。 
+z 條件 C3’：髒頁複製量超過虛擬機器的 2.5倍 
+ 
+ 
+圖七、在各個迭代數下的分頁複製量 
+ 
+五、 結果與討論 
+ 
+表一、固定分佈的模擬結果 
+ 
+ 
+iteration
+Item Two-phase (in pages) One-phase (in pages) 
+Pre-copy 250 379 
+Downtime 62 62 
+Total 312 441 
+Switching 63 none 
+ 9 
+ 
+ 
+六、 計畫成果自評 
+我們提出一個 TP策略用來降低動態遷移時，在 Stage 2的分頁複製量，並且維持原有策略在 Stage 3
+較短的停機時間之優勢。未來，將會更進一步提出一個新的策略，用來降低總分頁複製量，並針對那些
+有停機時間相關限制的應用程式，以其運算特徵加以分類，並以此分類發展各類所需的即時動態轉移策
+略。在此計畫的資助下，有一篇碩士論文完成[13]，一篇論文發表於國際研討會[14]，一篇期刊論文審稿
+中。研究計畫執行內容與預期達成目標大致相符，惟實作驗證部份經常因下載網站之虛擬機軟體改版而
+產生與原版本作業系統相衝的問題，在解決此類問題上花費不少時間。服務可分即時性與非即時性，人
+類有許多的服務必須有時間的限制以滿足服務的品質，因此在雲端上實現即時性服務技術的發展是相當
+重要，因此我們所提出的技術有實用的價值，並期待在實際環境中加以驗證並修正後，實際融入虛擬機
+器的動態移轉模組。 
+ 
+七、 參考文獻 
+[1] P. Barham, B. Dragovic, K. Fraser et al, ”Xen and The Art of Virtualization,” In Proc. the 19th ACM 
+Symp. Operating Systems Principles,pp.164-177, 2003. 
+[2] The WMware team, “Understanding Full Virtualization, Paravirtualization, and Hardware Assist,” 
+2007, http://www.vmware.com/files/pdf/VMware_paravirtualization.pdf 
+[3] C. Clark, K. Fraser, S. Hand et al, ”Live Migration of Virtual Machines,” In Proc. the 2nd Conf. 
+Symp. Networked Systems Design and Implementation, vol.2, pp.273-286, 2005. 
+[4] M.R. Hines, U. Deshpande, and K. Gopalan, ”Post-copy Live Migration of Virtual Machines,” 
+IGOPS Operating Systemd Review, vol.43, pp.14-26, 2009. 
+[5] H. Jin, W. Gao, S. Wu et al, ”Optimizing The Live Migration of Virtual Machine by CPU 
+Scheduling,” J. Network and Computer Applications,vol.34, pp.1088-1096, 2011. 
+[6] F. Ma, F. Liu and Z. Liu, ”Live Virtual Machine Migration Based on Improved Pre-copy Approach,” 
+In Proc. Int’l Conf. Software Engineering and Service Sciences, pp.230-233, 2010. 
+[7] Z. Liu, W. Qu, T. Yan et al, ”Hierarchical  Copy Algorithm for Xen Live Migration,” In  Proc. Int’l 
+Conf. on Cyber-Enabled Distributed Computing and Knowledge Discovery, pp.361-364, 2010. 
+[8] H. Jin, L. Deng, S. Wu, et al, ”Live Virtual Machine Migration with Adaptive Memory 
+Compression,” In Proc. CLUSTER, pp.1-10, 2009. 
+[9] H. Liu, H. Jin, X. Liao et al, ”Live Migration of Virtual Machine Based on Full System Trace and 
+Replay,” In Proc. the 18th ACM int’l Symp. High Performance Distributed Computing, pp.101-110, 
+2009. 
+[10] P. Sv¨ard, B. Hudzia, J. Tordsson and E. Elmroth, ”Evaluation of Delta Compression Techniques for 
+Efficient Live Migration of Large Virtual Machines,” In Proc. the 7th ACM SIGPLAN/SIGOPS Int’l 
+Conf. Virtual Execution environments, pp.111-120, 2011. 
+[11] S. Akoush, R. Sohan, A. Rice et al, ”Predicting The Performance of Virtual Machine  Migration,” In 
+Proc. IEEE Modeling, Analysis Simulation of Computer and  Telecommunication Systems, pp.37-46, 
+2010. 
+[12] W. Cui and M. Song, ”Live Memory Migration with Matrix Bitmap Algorithm,” In Proc. IEEE 2nd 
+Symp. Web Society, pp. 277-281, 2010. 
+[13] Yu-Chi Huang, “An Efficient Live Migration Strategy for Virtual Machines,” Master Thesis, National  
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+                                    日期：101 年 05 月 02 日 
+                                 
+一、參加會議經過 
+在會議前一天下午台北時間下午一點二十五分搭中華航空的飛機前往韓國首爾參加學術研討會，
+因為是直飛且路途近，所以大約兩小時又三十分鐘就到達目的地首爾仁川國際機場，出海關提取行李
+後，得知從機場沒有捷運可以直接搭到研討會舉辦地點(也就是我未來幾天住宿的地點)希爾頓大酒
+店，必須先搭機場鐵路到首爾車站轉乘捷運再走一段，所以決定改搭機場巴士，在巴士上有螢幕告知
+即將到達的站名，但只有韓文顯示沒有中文，只好在預估快到時間請司機提醒我下車。巴士到了站才
+知道酒店在山坡上，幸好已有酒店小巴在山坡下等住宿的客人接泊上山，服務很不錯，這是高住宿費
+換來的(因不想住的離會場太遠，以免每天花不少時間在交通上)，這是一間沒有賭場的五星級大飯店，
+大概是怕我們沉迷於賭博而遺忘了上台報告，因此找了這家飯店，大概是觀光淡季，住宿的客人感覺
+不多，是非常適合舉辦研討會的地方。此研討會從四月 24 日到 26 日共舉行三天包含了 regular 
+sections 和 poster sections，同一時段有三到五個 parallel tracks，第三天大會也有安排參訪活
+動(參觀著名顯示科技的廠商)，但因時間的因素，第三天我就搭機回國沒有參加。我的報告被安排在
+會議第一天的下午第二場報告。該場的報告者共有講者五人來自台灣、中國、日本。每人報告 16 分鐘
+含 Q&A，session chair 為馬來西亞來的教授。在本論文中，我們提出在維持短凍結時間(short downtime)
+的前提下，盡量降低虛擬機器執行即時移轉(Live Migration)時所需的頻寬，這個研究的主題對我們
+發展執行互動模式的應用於虛擬機器上的即時移轉是非長重要的一個環結。我們針對的對象是 Xen 
+Virtual Machine，因位目前有相當多的研究是對 Xen Virtual Machine 所提出，且它是由英國劍橋大
+學所發展的開放原始碼軟體，因此在我們有疑問時可以查看它的原始碼。Xen Virtual Machine 在作
+即時移轉時凍結時間相當短，此短暫的凍結時間來自 Xen 隨時盡可能的將髒頁(dirty pages)傳送到接
+收虛擬機器的實體主機。在此規則下，Xen 低估了某些記憶體中髒頁(dirty pages)的內容會再次被更
+動的可能性，造成同一頁多次被傳送，在這樣的情況下大量頻寬的需求是無法避免的，結果會造成在
+同一實體主機的虛擬機器與其它網路有關的應用程式效能的下降。在本論文中，以兩階段複製策略用
+以減少頻寬需求，降低不利影響並且在與 Xen 比較下，保證不會增加停機時間。報告完後有兩人(其中
+一人為 Session Chair)舉手提問，第一個問題是有關如何從第一階段轉到第二階段的時機如何判斷，
+因剛好事前準備的投影片有畫出狀態圖針對這部分做較多的說明，所以就很簡短的以圖來說明。
+Session Chair 詢問有關測試資料的取得的問題，這是一個只要是有測試數據的論文一定會被提問的
+問題，我告知我們的實驗的資料是以亂數產生，未來將收集重要應用的髒頁形態來加以模擬，以讓結
+果趨驅近於實際應用的狀況。下午的 sessions 結束後就有連續兩場 keynote speeches。第一場是由
+計畫編號 NSC 100-2221-E-197-017 
+計畫名稱 發展雲端虛擬機器執行互動式服務所需之動態遷移技術 
+出國人員
+姓名 林作俊 
+服務機構
+及職稱 
+國立宜蘭大學電子系 
+教授 
+會議時間 2012年04月24日至 2012 年 04 月 26 日 會議地點 韓國首爾 
+會議名稱 
+(中文)第八屆計算計術與資訊管理國際研討會  
+(英文)The 8th International Conference on Computing Technology and 
+Information Management (NCM &ICNIT) 
+發表論文
+題目 
+(中文) 以兩階段反覆預複製略執行虛擬機器的即時移轉 
+(英文) A Two-phase Iterative Pre-copy Strategy for Live Migration of Virtual Machines 
+ACCEPTANCE LETTER
+Dear Prof. Cho-Chin Lin,  
+Congratulations! It is my great pleasure to announce you that your paper, A Two-phase Iterative Pre-copy Strategy 
+for Live Migration of Virtual Machines, is accepted by the NCM2012: 2012 8th International Conference on 
+Networked Computing and Advanced Information Management which will be held from NCM2012 in Seoul, Korea.
+This year, we have accepted a large number of various papers from more than 25 countries and it wasn't easy work for 
+us to select the most innovative and well-written papers among them. 
+With the assigned ID and PW, you can check or revise your personal and paper information from web system of the 
+NCM2012, http://www.aicit.org/ncm. 
+Mission and Aims
+NCM2012 will trigger off the scientific community to propose topics that should be tackled from research perspective and 
+let the community explain how to best use their tools for practical and theoretical problems of Interaction Sciences. Many 
+various contributions are foreseen from prospective authors. This includes use-cases of theoretical tools and methods to 
+solve practical problems. Such contributions should be as usable as possible by practitioners in the related field. We also 
+expect research results from practitioners that have identified a problem that could be solved by tools from network 
+sciences. One of the missions of NCM2012 is to make the scientific community aware of the importance of the issues in 
+Interaction Sciences and to suggest means by which the problem may be solved by the scientific community. The 
+contributions should stimulate interaction between theoreticians and practitioners and also have high potential impact in 
+either field. 
+We aims to bring together and share brilliant and ideas, accumulated knowledge and unique experiences for mutual 
+benefit of researchers and practitioners and explore possible directions for development of Multidisciplinary and 
+Hybrid/Convergent research in the areas of Interaction Sciences. 
+Once again, congratulations on your paper acceptance.
+I look forward to seeing you at the conference soon. 
+Franz I. S. Ko, Ph.D.
+General Chair, NCM2012
+Honory Director General, IBC, Cambridge, UK
+Vice-President, The World Congress of Arts, Sciences and Communications, Cambridge, UK 
+Professor, NMS Lab., Dept. of Computer and Multimedia, Dongguk University
+Co-President, AICIT (Advanced Institute of Convergence Information Technology) 
+    
+Address: 1104, Jinseok Tower, Samdeok-dong, 2ga, Jung-gu, Daegu, Korea(Rep. of) 
+Registration Number: 505-10-96301 
+TEL: +82-70-7730-2833 
+the network from the source host. The pre-copy approach and
+post-copy approach are the main mechanisms on which virtual
+machine live migration is based. In [9], a CPU scheduling
+algorithm was provided to optimize the pre-copy approach for
+reducing the dirty rate. This paper assumed that the users may
+prefer the shortest downtime with tolerant overhead in some
+circumstances.The CPU scheduling algorithm reduces the dirty
+rate by adjusting the VCPU working frequency when a virtual
+machine writes memory too fast. It also avoids the virtual
+machines running too slowly to keep the service responds
+by setting the minimal CPU time allocated to the virtual
+machines. In [11], the authors improved the pre-copy approach
+by adding a memory page table for marking those frequently
+updated pages. Those frequently updated pages can only be
+transmitted in the last round of the iteration process. This can
+ensure that those frequently updated pages are transmitted just
+once in the pre-copy stage. Their approach has reduced 34
+percents of total transferred data and 32.5 percents of total
+migration time on average. A hierarchical copy algorithm
+which considered the memory characteristics and modified
+ratio of dirtied pages during live migration was proposed in
+[10]. For overcoming the disadvantage of the typical migration
+algorithm, the measuring time of working set is shifted to the
+pre-migration or reservation stages. The algorithm can control
+the times of migration iterations even the dirty-page rate is
+high.
+In [6], a memory compression technique was developed
+to minimize the amount of duplicated data based on the
+checkpointing/recovery and trace/replay techniques [5]. They
+presented a zero-aware characteristic-based compression algo-
+rithm. An appropriate number of threads is used to speedup
+compression tasks without exhausting the resources. In [7],
+delta compression live migration algorithm is proposed for
+the case of live migration with high workloads or over the
+low network bandwidth. It uses XBRLE algorithm to increase
+migration throughput. Thus, the delta compression algorithm
+enables the large virtual machine with heavy load to complete
+its migration in a short time. In [8], the important factors
+which affect the migration performance have been studied for
+predicting the performance of virtual machine migration. In
+the paper, the impact on the live migration imposed by the
+page dirty rate and available link speed was analyzed . They
+provided two simulation models to predict migration times to
+within 90 percents accuracy for both synthetic and real world
+benchmarks. However, it will be a challenge to predict the
+migration time when working over the wide area networks.
+III. TYPICAL ONE-PHASE PRE-COPY
+The stages of live migration using pre-copy strategy are
+pre-migration, reservation, iterative pre-copy, stop-and-copy,
+commitment and activation [8]. The first and second stages
+are related to resource requisition. The stages gathers the
+necessary resources at another physical machine to which
+the virtual machine migrates. The third and fourth stages are
+related to sending a sequence of memory pages from a physical
+host to another. The time needed by these stages depends on
+ 
+
+
+
+
+
+
+Fig. 1. State diagram of a one-phase pre-copy strategy
+the sizes of the virtual machine and the dirty page patterns.
+The fifth and sixth stages are used to announce a successful
+migration and to activate the newly migrated virtual machine.
+The focus of this paper is to develop an efficient strategy for
+the iterative pre-copy stage.
+While a virtual machine is in an iteration of pre-copy stage,
+two activities proceeds concurrently: computation activity and
+duplication activity. In each iteration, computation activity of
+the source host generates dirty pages which are selected to
+be duplicated. Define notation pi as the ith page of a virtual
+machine and notation dij as indicating whether the ith page
+is dirtied in iteration j. That is, dij = 1 if page pi is dirtied in
+iteration j; otherwise, dij = 0. In the typical one-phase (OP)
+strategy such as Xen, the source host duplicates page p i to
+target host in the jth iteration if the condition (d i j−2∧d¯i j−1) =
+1 is true [3]. We define the first iteration as iteration one and
+the initial values of di −1 and di 0 are 1 and 0, respectively.
+Thus, all the pages are duplicated from the source to the target
+in the first iteration.
+Based on the above statements, the state of a page in the
+pre-copy stage can be modeled using the state diagram in
+Figure 1. The input/output to the state diagram is either one
+or zero. If the input equals one, the page is dirtied during
+the most recently completed iteration; otherwise, it is not. If
+output equals one, the page will be duplicated across hosts
+in the next iteration; otherwise, no duplication is needed. The
+state diagram shows that each page can be in one of the three
+states: S′, S0 and S1. The state S ′ is the initial state. Since
+all the pages are duplicated across hosts in the first iteration,
+S′ transits to S1 disregard the input. After the transition, a
+page is either in state S0 or in state S1 for the subsequent
+iterations. A new state of a page is determined at the end of
+an iteration according to wether the page is dirtied or not in
+the iteration. Thus, if a page is dirtied during the most recently
+completed iteration, the page is in S1; otherwise, it is in S0.
+From the state diagram, it is known that a page is duplicated
+across hosts if its state transmits from S1 to S0.
+Three terminated conditions are given by Xen to avoid
+an endless pre-copy process [8]. The iterative pre-copy stage
+terminates and the stop-and-copy stage starts if and only if
+one of the conditions is satisfied. Condition C1: the number
+10/1
+11/0
+10/1
+11/0
+11/0
+10/0
+S
+010
+S
+001
+S
+000
+00/0
+01/0
+00/0
+01/0
+01/0
+00/1
+S
+100
+S
+101
+x0/0
+x1/0
+x1/0
+x0/1
+Second Chance Protocol 
+Xen Protocol
+S’
+xx/1
+Fig. 3. State diagram of two-phase pre-copy strategy
+since last duplication activity. If page pi is in state S001 then
+page pi is duplicated across hosts as soon as its state transits
+to the first phase. The reason is that, according to the typical
+OP strategy, if (di j−1 ∧ d¯i j) = 1 then page duplication is
+necessary. Note that if page pi is in state S001 without phase-
+changing event, then no page duplication is necessary. If page
+pi is in state S010 then page pi is duplicated across hosts,
+even though the phase-changing event is not triggered. From
+the diagram, it is easy to see that the number of total duplicated
+pages based on TP strategy is no more than that based on SC
+strategy.
+A page always starts at the initial state and goes through
+a sequence of states in the SC strategy. As a phase-changing
+condition becomes true, the state of the page transits from a
+state in the first phase to another in the second phase. Then,
+it goes through several states before the terminated condition
+becomes true. The three phase-changing conditions C ′1, C
+′
+2 and
+C′3 are described as follows. To avoid the TP strategy running
+in its first phase forever, the maximum number of iterations
+of the first phase must be determined. Let B be a dirty matrix
+for describing the pages to be dirtied while a live migration
+is conducting. The size of a virtual machine is defined by the
+number of rows in B = [bij ]. The jth column of B identifies
+the pages to be dirtied in iteration j. If page p i is dirtied then
+bij = 1; otherwise,bij = 0. Denote nopj (B) and nscj (B) as
+the total numbers of pages to be duplicated for iteration j
+under the typical OP strategy and SC strategy, respectively.
+Let the optimal number of iterations be j opt. Since we want
+to reduce the number of duplicated page in the first phase,
+jopt can be derived by the equation:
+∑jopt
+j=1(n
+op
+j (B)−nscj (B))
+is maximal for 1 ≤ jopt ≤ 29. We assume the size of a virtual
+machine is 125 pages. Thus, the number of rows in matrix
+B is 125. Since we want to determine the phase-changing
+condition which only depends on the number of iterations, the
+entries of B are designed to exclude the other factors which
+may lead to phase-changing. Thus, each column of matrix
+B consists of ten 0’s and the 0’s are randomly distributed.
+The numbers of experimental iterations are in the range of
+ 
+Fig. 5. Numbers of duplicated pages under various iteration numbers
+23 and 28. Fifty randomly generated matrices are used to
+derive the optimal iteration number from the experiments.
+The experimental results are shown in Figures 4. Figure 5
+gives the difference of the total numbers of duplicated pages
+in various iteration numbers using typical OP protocol and
+SC protocol. In the figure, the topmost curve is the average
+number of duplicated pages under typical OP strategy, the
+middle curve is the average number of duplicated pages under
+SC strategy and the bottommost curve is the gap between
+the topmost and bottommost. The gap increases while the
+number of the iterations increases. Let δj be the gap value
+at iteration j. Define reduce ratio of iteration j as the ratio
+of δj to nopj (B). Thus, the more iterations the live migration
+executes, the higher the reduce ratio can have. However, if the
+first phase of the TP strategy performs 29 iterations, it will
+result in a large downtime. The reason is that the dirty pages
+which have not been duplicated under SC strategy must be
+duplicated in the final iteration. Thus, we select twenty-eight
+iterations as the maximum number of iterations that the first
+phase can perform. So, we have condition C ′1: twenty-eight
+iterations have been carried on. The second phase-changing
+condition is the threshold which indicates a small number of
+dirty pages during last iteration. If the number of dirty pages is
+less than fifty-five, then it is an appropriate moment to switch
+from the first phase to the second phase. The reason is that
+Item two-phase (in pages) one-phase (in pages)
+Pre-copy 250 379
+Downtime 62 62
+Total 312 441
+Switching 63 none
+Fig. 6. Results of fix patterns
+In the pattern, even pages are dirtied in the even iterations and
+are not in the odd iterations. On the contrary, odd pages are
+dirtied in the odd iterations and are not in the even iterations.
+Figure 6 shows that the simulation results. The phase-changing
+event causes sixty three pages to be duplicated across hosts.
+Note that the sixty three pages have been counted into the
+number of duplicated pages in the pre-copy stage. We can
+observe that TP strategy has significantly reduced the total
+number of pages to be duplicated during a live migration of
+virtual machine. A random pattern for each iteration is gener-
+ated by the random function srandom(time(NULL)). We first
+generate 100 matrices of random pattern using the function
+srandom(time(NULL)). Then, each bit value in a matrix is
+divided by two. There are only two kinds of remainders: zero
+or one. If the remainder is zero, it indicates this page is not
+dirtied in the iteration. If the remainder is one, it indicates this
+page is dirtied. Comparisons is made for the total numbers
+of pages duplicated in pre-copy stage, those in stop-and-copy
+stage and those in the whole live migration activity as given in
+Figure 7. In the figure, the average number of duplicated pages
+based on TP strategy is less than that based on the typical OP
+strategy during the pre-copy stage and the entire migration
+activity.
+VI. CONCLUDING REMARKS AND FUTURE DIRECTIONS
+In this paper, a TP strategy is proposed to reduce the total
+number of duplicated pages in the iterative pre-copy stage
+as well as to maintain a short downtime in the stop-and-
+copy stage. In the future, a novel strategy will be proposed
+to minimize the total number of duplicated pages to meet
+the constraint of a given downtime for a certain class of
+applications.
+ACKNOWLEDGMENT
+This research is supported by National Science Council
+under the grant 100-2221-E-197-017
+REFERENCES
+[1] P. Barham, B. Dragovic, K. Fraser et al, ”Xen and The Art of Virtual-
+ization,” In Proc. the 19th ACM Symp. Operating Systems Principles,
+pp.164-177, 2003.
+[2] C. Clark, K. Fraser, S. Hand et al, ”Live Migration of Virtual Machines,”
+In Proc. the 2nd Conf. Symp. Networked Systems Design and Imple-
+mentation, vol.2, pp.273-286, 2005.
+[3] W. Cui and M. Song, ”Live Memory Migration with Matrix Bitmap
+Algorithm,” In Proc. IEEE 2nd Symp. Web Society, pp. 277-281, 2010.
+[4] M.R. Hines, U. Deshpande, and K. Gopalan, ”Post-copy Live Migration
+of Virtual Machines,” ACM SIGOPS Operating Systems Review, vol.43,
+Issue 3, pp.14-26, 2009.
+ 
+(a) the total pages to duplicate during pre-copy stage
+ (b) the total pages to duplicate during downtime
+ 
+(c) the total pages to duplicate during migration
+Fig. 7. Results of random patterns
+[5] H. Liu, H. Jin, X. Liao et al, ”Live Migration of Virtual Machine Based
+on Full System Trace and Replay,” In Proc. the 18th ACM int’l Symp.
+High Performance Distributed Computing, pp.101-110, 2009.
+[6] H. Jin, L. Deng, S. Wu, et al, ”Live Virtual Machine Migration with
+Adaptive Memory Compression,” In Proc. IEEE Int’l Conf. CLUSTER,
+pp.1-10, 2009.
+[7] P. Sva¨rd, B. Hudzia, J. Tordsson and E. Elmroth, ”Evaluation of Delta
+Compression Techniques for Efficient Live Migration of Large Virtual
+Machines,” In Proc. the 7th ACM SIGPLAN/SIGOPS Int’l Conf. Virtual
+Execution environments, pp.111-120, 2011.
+[8] S. Akoush, R. Sohan, A. Rice et al, ”Predicting The Performance
+of Virtual Machine Migration,” In Proc. IEEE Int’l Symp. Modeling,
+Analysis and Simulation of Computer and Telecommunication Systems,
+pp.37-46, 2010.
+[9] H. Jin, W. Gao, S. Wu et al, ”Optimizing The Live Migration of Virtual
+Machine by CPU Scheduling,” J. Network and Computer Applications,
+vol.34, Issue 4, pp.1088-1096, 2011.
+[10] Z. Liu, W. Qu, T. Yan et al, ”Hierarchical Copy Algorithm for Xen Live
+Migration,” In Proc. Int’l Conf. Cyber-Enabled Distributed Computing
+and Knowledge Discovery, pp.361-364, 2010.
+[11] F. Ma, F. Liu and Z. Liu, ”Live Virtual Machine Migration Based
+on Improved Pre-copy Approach,” In Proc. IEEE Int’l Conf. Software
+Engineering and Service Sciences, pp.230-233, 2010.
+[12] The VMware Team, ”Understanding Full Virtualization,
+Paravirtualization, and Hardware Assist,” 2008, http:
+//www.vmware.com/files/pdf/VMware paravirtualization.
+100 年度專題研究計畫研究成果彙整表 
+計畫主持人：林作俊 計畫編號：100-2221-E-197-017- 
+計畫名稱：發展雲端虛擬機器執行互動式服務所需之動態遷移技術 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 1 1 100%  學生碩士論文 
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 1 65% 
+國 際 期 刊 審 稿
+中，請參閱結案報
+告參考文獻 
+研究報告/技術報告 0 0 100%  
+研討會論文 1 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 2 2 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

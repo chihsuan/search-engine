@@ -1,0 +1,264 @@
+設計。新的硬體不斷推出、指令集的增加與
+修改，軟體的重寫與散佈成了最沈重的負擔
+[11]。有鑑於此，IBM於 1960 年開始發展虛
+擬機器(Virtual Machine，簡稱VM)的概念，
+希望透過虛擬機器的抽象化，模擬出實際平
+台介面，提供上層軟體層級容易移植與開
+發。 
+虛擬機監控程式(VMM)與虛擬機器間
+有著密不可分的關係。VMM 是介於系統硬
+體以及作業系統間的軟體中介層，亦可將其
+視為系統硬體的延伸。主要用來抽象化
+(Virtualizes)底層硬體架構，並提供上層 VM
+存取、使用。由於 VMM 抽象化硬體環境，
+且利用軟體具有重製的特性，使系統能夠在
+單一硬體平台上模擬多個相同之存取介
+面，讓單一硬體環境上能夠運行多個虛擬機
+器(Virtual Machine，簡稱 VM)，且每個 VM
+間相互獨立。既使單一 VM 中發生嚴重的系
+統問題也不影響其他 VM 的正常執行。 
+在每個 VM 當中，都會運行一獨立的作
+業系統，提供上層應用程式運行之平台。為
+了區分傳統作業系統架構，一般來說，常稱
+運行於VM中的作業系統為Guest Operating 
+system (簡稱為 Guest OS)。VMM 與 VM 間
+的關係如圖 1 所示。 
+ 
+圖 1 VMM 與 VM 間之關係 
+這些優點也使得VMM上層運行的作
+業系統或應用程式破除了僅能在特定硬體
+架構上才能執行的限制。截至目前為止，
+VMM 已廣泛地被應用於各個領域。在資訊
+安全方面，由於 VMM 與上層的作業系統分
+屬於不同的保護區域(protection do-
+main)，且作業系統與 VMM 之間的溝通須經
+由較嚴格的控管，因此以 VMM 來實作安全
+方面之保護機制的相關研究也熱烈地討論
+著。此外，也有學者提出利用 VMM 達成驅
+動程式重複使用(reuse)的概念。 
+2、 研究目的 
+由近來的許多研究指出，VMM在未
+來的發展上的確有不可忽視的潛力。然
+而，正由於VMM所提供的彈性與安全保護
+機制等特性，使其在整體執行的效能表現
+並不如一般未安裝VMM的系統佳。導致此
+種現象的主要原因即在於：為了提供各VM
+之間的獨立運作而不互相影響，因而將
+VMM與作業系統劃分為不同的保護區域
+(protection domain)，一些原先經由作業系
+統便能直接執行的特權指令(privilege in-
+struction)，必須再經由底層VMM檢查其要
+求動作的合法性，然後代為執行各項特權
+指令。以Xen為例，上層作業系統的fork、
+exec與sh等動作所需執行的時間均較一般
+Linux系統長[4]，而原因便在於頻繁發生的
+context switch與修改page table等特權指令
+動作。 
+有鑑於此，如何有效地提昇 VMM 之
+效能，使其在提供更有彈性、更為安全之
+作業環境的前提下，於效能表現方面又不
+失的一般水準，為當前刻不容緩的研究議
+題。而本計劃研究的目的即在於有效地改
+善目前 VMM 執行效能低落的瓶頸，使其
+能更符合各使用者的需求。 
+3、 文獻探討 
+最早被發展的虛擬機器監控程式是
+1967 年由IBM所提出的CP-67[14]。CP-67
+是運行於IBM System 360 上的虛擬機器監
+控程式。CP-67 於設計之初是用來模擬IBM 
+360 系統上的虛擬記憶體實作，提供上層
+IBM其他作業系統一個抽象化介面，方便
+IBM其他作業系統如CMS能夠簡單地移植
+至IBM 360 機器上執行。然而，CP-67 在效
+能表現上並無法符合實際的需求，因此在
+ 2
+當上層的 Guest OS 發生 Page Fault 時，勢必
+須要透過 Xen 讀出引發錯誤的位址，進而才
+能採取必要的處理動作。之後，若是 Guest 
+OS 需要修改其分頁表(Page Table)的內容，
+則必須再呼叫 Hypercall 至底層的 Xen，由
+Xen 代為執行更新分頁表的動作。 
+目前，Xen 為了減少 Guest OS 因頻繁
+地修改分頁表而不停地引發 Hypercall，其解
+決方式是先將各修改的動作存放於佇列
+(queue) 之中，於適當的時機之下再由
+GuestOS 對 Xen 送出 Hypercall，一次完成所
+有修改動作，減少 Guest OS 因反覆地呼叫
+Hypercall 而導致系統效能低落。然而，在此
+種作法之下，並不能完全解決 Page Fault 所
+帶來的 overhead。因此本研究計畫即將針對
+Xen 對於 Page Fault 的處理部分加以精簡、
+改善，以更有效地提昇 Xen 整體執行的效
+能。 
+我們分析 Linux Guest OS 對於 Page 
+Fault 的處理流程，其圖示如圖 3 所示。 
+ 
+圖 3 處理 Page Fault 之流程圖 
+函式 do_page_fault()，為處理分頁錯誤
+的主要函式，其功能在於判斷目前引發分頁
+錯誤的原因為何。引發分頁錯誤的情況有兩
+種：一為存取分頁的權限不足，另一則為欲
+存取的分頁不在記憶體當中。在第一種情況
+下，系統會直接回傳錯誤訊息；而在第二種
+狀況發生時，作業系統必須判斷引發該分頁
+錯誤的記憶體位址為何，該位址是屬於核心
+位址空間(Kernel Address Space)亦或是程序
+的位址空間(Process Address Space)，進而決
+定下一步該採取 Demand Paging 或 Copy On 
+Write 的方式處理。 
+函式 do_no_page()即負責處理 Demand 
+Paging，其會呼叫 alloc_page()配置需求的實
+體記憶體空間，並更新對應的分頁表內容，
+而若是該需求分頁僅是暫時被置換至磁碟
+空間(disk)上時，函式 do_swap _page()則負
+責將該需求分頁 swap 至記憶體中。另外，
+當分頁錯誤的情況是由 Copy On Write 所引
+起時，函式 do_wp_page()則會要求系統配置
+實體記憶體空間，拷貝欲存取分頁的內容，
+使該程序(process)擁有執行寫入的權限。 
+分析 Linux Guest OS 對於分頁錯誤處
+理，可發現影響整體執行效能的關鍵因素即
+在於： 
+z 處理分頁錯誤時，Guest OS 需要多次
+更新與修改分頁表的內容。由於僅有
+Xen 才擁有修改分頁表的權限，因此
+與一般系統比較，發生分頁錯誤時的
+處理便多了一道程序。 
+z 當分頁錯誤的處理涉及 I/O 動作時，
+Xen VMM 與 Guest OS 之間反覆的溝
+通將造成系統額外的負擔(overhead)。 
+由上述分析可知，在處理分頁錯誤時，
+若能將整個處理程序劃分為 Guest OS De-
+pendent 與 Guest OS Independent 兩區塊，由
+Xen 全權負責處理 Guest OS Independent 的
+部分，意即將主要的處理動作由上層的作業
+系統卸載(offload)至 Xen 中，則便能減少
+VMM 與 Guest OS 之間來回溝通的次數，而
+大幅度地改善其效能之表現。基於以上的分
+析，本計畫的執行步驟分述如下:，以圖八
+流程圖示之。 
+alloc_page
+do_page_fault
+expand_stack handle_mm_fault force_sig_info
+pmd_alloc pte_alloc
+do_swap_page
+handle_pte_fault
+search_exception_table
+search_one_table
+do_no_page do_wp_page
+lru_cache_add
+establish_pte
+do_anonymous_page
+find_vma
+mark_page_accessed
+步驟一 
+Trace Xen 之原始碼，分析 Linux Guest 
+OS 分頁錯誤的處理流程，嘗試將整個處理
+程序區分為Guest OS Dependent與Guest OS 
+Independent 兩部分，以便將 Guest OS In-
+dependent 部分的處理動作交由 Xen 全權負
+責，意即加強(enhance)Xen 現有之功能，使
+其有能力獨立解決上層作業系統之分頁錯
+ 4
+上較 Native Xen 節省約 29%的時間，而此實
+驗成果也驗證了我們的方法的確能有效改
+善系統之執行效能。 
+130
+250 252
+451
+723
+514
+0
+100
+200
+300
+400
+500
+600
+700
+800
+m
+ic
+ro
+se
+co
+nd
+s
+Fork Proc Exec Proc
+Standard Linux
+Native Xen
+Enhanced Xen
+ 
+圖 4 Process Creation Latency 之測試結果 
+6、 計畫成果自評 
+本計畫的目在針對 VMM 效能改善進
+行研究，希望針對 VMM 效能低落的原因
+加以分析並提出改良的方法 
+我們研究 Xen 目前的設計架構，在分析
+Xen 其執行效能不彰之可能因素後，我們著
+眼於系統中頻繁發生的分頁錯誤，卸載
+Guest OS之分頁錯誤處理中與無涉及 I/O的
+部分至 Xen，實作出 Enhanced Xen，使虛擬
+機器監控程式有能力協助上層作業系統處
+理分頁錯誤，減少上下層因頻繁的分頁修改
+動作而重複引發的 Hypercall， 進而達成改
+善虛擬化系統其執行效能的目的。 
+依據初步的實驗結果顯示，效能確實可
+以得到相當明顯的改善，也驗證本計劃的成
+果。 
+ 
+參考文獻 
+[1] A. Awadallah, M. Rosenblum, "The 
+vMatrix: A Network of Virtual Machine 
+Monitors for Dynamic Content Distri-
+bution", 7th International Workshop on 
+Web Content Caching and Distribution 
+(WCW 2002), Boulder, Colorado, Au-
+gust 2002. 
+[2] D. A Rusling, “The Linux Kernel”, 
+http://www.linuxdoc.org/LDP/tlk/ 
+[3] K. Buchacker, H.J. Hoxer, V. Sieh, "Im-
+plementing a User Mode Linux with 
+Minimal Changes from Original Kernel", 
+9th International Linux System Tech-
+nology Conference, September 4-6, 
+2002. 
+[4] P. Barham, B. Dragovic, K. Fraser, S. 
+Hand, T. Harris, A. Ho, R. Neugebauer, 
+I. Pratt, A. Warfield, " Xen and the Art 
+of Virtualization ", Symposium on Op-
+erating Systems Principles, 2003. 
+[5] A. Chou, J. Yang, B. Chelf, S. Hallem, 
+and D. Engler, “An empirical study of 
+operating system errors”, In Proc. of the 
+18th ACM Symposium on Operating 
+System Principles, Banff, Canada, ,Oct. 
+2001.J. Smith and R. Nair, “An Over-
+view of Virtual Machine Architectures”, 
+Morgan Kaufmann Publisher, 2004. 
+[6] T. Garfinkel, et al, “Terra: A Virtual 
+Machine-based Platform for Trusted 
+Computing”, The 9th Workshop on Hot 
+Topics in Operating System, 2003. 
+[7] P. H. Gum,“System/370 Extended Ar-
+chitecture: Facilities for Virtual Ma-
+chines,” IBM Journal of Research and 
+Development, vol. 27, no. 6, p. 530, 
+1983. 
+[8] N. Lawson, “Designing and Attacking 
+Virtual Machine”, Cryptography Re-
+search, Inc., 2004. 
+[9] Joshua LeVasseur, Volkmar Uhlig, Jan 
+Stoess, Stefan Gotz, “Unmodified De-
+vice Driver Reuse and Improved System 
+Dependability via Virtual Machines”, 6th 
+Symposium on Operating System De-
+sign and Implementation, OSDI 2004. 
+[10] P. M. Chen, B. D. Noble, "When virtual 
+is better than real", Proceedings of the 
+2001 Workshop on Hot Topics in Oper-
+ating Systems (HotOS), May 2001. 
+[11] R. Rose, “Survey of System Virtualiza-
+tion Techniques”, Technical report, 
+2004. 
+ 6

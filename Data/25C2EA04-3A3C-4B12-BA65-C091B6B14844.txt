@@ -1,0 +1,315 @@
+ 
+ 
+多人線上遊戲伺服器之動態負載平衡機制的設計與製作 
+ 
+關鍵詞: 分散式系統, 負載平衡, 多人線上遊戲伺服器, 計算幾何, 平行計算 
+Keywords: Distributed system, Load balancing, Massive multi-player game server, 
+Computational geometry, Parallel computing 
+ 
+ 
+摘要 
+根據 DFC Intelligence 的報告指出，全球線上遊戲的產值於 2006 年為 52 億美元，預估
+到 2009 年將達到 98 億美元，而線上遊戲中又以線上多人角色扮演遊戲(MMORPG)最為玩
+家喜愛，隨著玩家人數的暴增，伺服器的負載也大增，傳統單一伺服器的遊戲引擎已不敷
+使用，取而代之的是由多台主機所構成的的多伺服器(Multi-server)遊戲引擎。 
+在 Multi-server 的遊戲引擎中，負載在各伺服器上的分配成為整個系統是否有效率的重
+要關鍵，而在各種負載分配的方法中又以動態地圖分割法最能有效率的維持負載的平衡。
+採用動態地圖分割法時，地圖的切割是首要工作，在目前的線上遊戲引擎上或是相關的研
+究中，大多採用正方形、正三角形、甚至正六邊形的切割方式，然而這些切割都有一共同
+缺點，就是它們都與遊戲地圖的內容不相關，因此容易造成同區域內因為沒有任何 NPC 
+(Non Player Character) 而沒有玩家停留，或是因 NPC 過多而造成玩家過於充斥，因此會造
+成負載分配過程中效能的減損。 
+在本計畫中，我們首次嘗採用與遊戲地圖內容相關的切割方式，我們以各個 NPC 為中
+心，將整個遊戲地圖切割成和其他各個 NPC 相等距離的多邊形，也就是計算幾何中所稱的
+Voronoi polygon，這種切法有其明顯的優越性，並且切割方法並不複雜，若以 n 個 NPC 計，
+僅需 O(n log n)個步驟便可完成切割。 
+另外，在本計畫中我們詳細討論我們所提出的切割方式的優點，並且透過模擬的方式，
+對於我們所提出的切割方法和文獻中的四方形切割方法做多種指標的績效比較。最後我們
+嘗試透過修改開放程式碼的 Arianne 遊戲引擎來實作我們提出的負載平衡方法。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+1. 前言 
+由於 internet 的普及，網路線上遊戲成為現今青少年最盛行的娛樂，根據 DFC Intelligence
+的估測，全球線上遊戲的產值於 2006 年前將達到 52 億美元，而到了 2009 年，其產值更可
+達到 98 億美元。台灣線上遊戲的市場發展也和世界上其他先進國家相類似，根據資策會
+MIC 的資料，台灣線上遊戲的產值是在 2002 年是新台幣 40 億元，到了 2003 年已達到新台
+幣 60 億元。 
+一般說來，目前網路遊戲的型態可以分三類，分別是：線上多人角色扮演遊戲（Massively 
+Multiplayer Online Role-Playing Game，MMORPG）、對戰式（Match）以及小型網路遊戲。 
+上述三類遊戲中，以MMORPG最受玩家所喜愛，MMORPG講求的是角色扮演，玩家(Avatar)
+必須投入時間來提升技巧屬性，因此常需要和其它玩家合作，著重的是人際互動與培養角
+色過程中所帶來的樂趣。當一款 MMORPG 類型的線上遊戲玩家愈來愈多，相對的伺服器
+所要負擔的負載（Load）也隨之增加，另一方面由於網路技術上的瓶頸，因此如果使用傳
+統單一主機的 Client/Server 的架構，就算再強的主機性能，若要應付同時數千人上線似乎
+已是個上限，解決之道是必須期待更先進的硬體設備或是採用多主機的分散式平行運算。 
+當今遊戲強調的是即時性，Server 的負載過重會造成 Server 與 Client 之間不同步而導致
+延遲（Delay）的現象，因 Server 較晚回應給 Client，玩家的動作會會因此變慢，這類情再
+目前的線上遊戲上屢見不鮮，因而造成玩家的不悅。在本計畫中，我們將探討造成 Server
+負載過重的原因，以及其解決之道。 
+在第二段我們將討論相關研究背景以及傳統線上遊戲架構，第三段是介紹目前
+MMORPG 對於負載分配的一些機制，第四段是將提出我們的負載分配方法來降低 Server
+的負載以及 Server 和 Client 之間的回應時間。第五段描述我們的實驗環境以及實驗方式，
+最後一段是結論。 
+ 
+2. 傳統線上遊戲系統架構 
+目前網路遊戲主要有四種架構，分別為：Client/Server、Peer to Peer、Hybrid Client/Server
+及 Multi-server，系統架構對於多人線上遊戲互動的整體表現有直接的影響，不同的遊戲方
+式與需求就會有不同的架構設計，以下針對這四類架構做介紹。 
+2.1 線上遊戲架構 
+2.1.1 Client/Server 架構 
+多個 Client 連接至單一 Server，Client 只負責將玩家輸入的訊息送至 Server，Server 再
+傳回結果，所有遊戲運算皆是在 Server 端進行，如圖 1。 
+ 
+圖 1. Client/Server 架構 
+ 
+Client/Server 架構下，資料庫僅存放在 Server 上，而在 Hybrid Client/Server 架構中，
+Client 可分到部分資料庫內容，並可依照資料庫對玩家的輸入與其他玩家在遊戲中的狀態進
+行推測，並即時反應給玩家。因此如果 Client 尚未收到 Server 的訊息，則 Client 端依舊可
+進行遊戲，雖然 Client 可自行計算目前的狀態，但 Server 仍然擁有最後決定權，如 Client
+所推測的狀態與 Server 計算的結果不相符，則 Server 便會去修正 Client 的狀態。但是此架
+構最大的問題在於網路延遲所帶來的影響，若 Client 和 Server 之間的傳輸延遲過大，則將
+會導致 Client 端所推測的資料庫內容與 Server 端資料庫內容差異過大。這類架構代表性的
+遊戲為戰慄時空（Half Life）[8]。 
+ 
+2.1.4 Multi-server 架構 
+早期的 MMORPG 都是由單一 Server 來負責整個遊戲的內容，由於是單一 Server，因
+此遊戲中所能夠容納的線上人數及玩家間的互動會受到限制。而在 Multi-server 的架構中，
+通常由每一個 Server 負責一個部份遊戲的內容，但是在不同 Server 上的玩家常處於不同的
+遊戲世界裡，因此無法互動，為了要提高系統整體效能善用系統的運算及頻寬的資源，一
+般以空間切割的方式分配 Server 的權限範圍及適當畫分 Server 負責的工作，使不同 Server
+負責不同區域間的玩家，因此能支援更多的線上玩家，Multi-server 架構如圖 4。 
+ 
+圖 4.Multi-erver 架構 
+ 
+2.2 Multi-server 用於 MMORPG 方法 
+目前MMORPG逐漸採用Multi-server的方式來減少Server的負載及減輕網路的頻寬限
+制。目前使用multi-server分工的技術，大多採用空間切割的方式將虛擬世界（Virtual world）
+的地圖切成跟Server同等數量的片段，再將地圖片段分配給每一台Server。當有玩家靠近地
+圖片段的邊界時，玩家所在的Server會通知鄰近地圖片段的Server，那麼在最佳的情況下網
+路流量在這兩個Server之間為零流量，並沒有玩家欲通過這兩個Server，而最差的情況為
+O(mn)，n為玩家的數量，m為Server的數量。 
+若適當的安排地圖片段，可將最差的情況減到最底。若將玩家的數量當成主要的負載
+參數，則最少的負載為零負載，換言之也就是並沒有玩家在任何 Server 上，而最大負載的
+情況為 n，即所有的玩家皆在同一 Server 上，而最佳的情況是每一 Server 的負載為 n/m，
+相同數量的玩家平均分佈在所有的 Server 上。 
+ 
+其中，網路創世紀（Ultima Online）[9]線上遊戲即採上述地圖切成跟 Server 同等數量
+會造成另一次的可能轉換 Server 成本。 
+2. 地圖片段中有多個 NPC，因此該方塊極可能有大量玩家停留，此種方塊屬於潛在高負載
+方塊，在作負載分配時必須估計其可能負載或者必須隨時監控其負載，會造成負載平衡
+分配的複雜度。 
+3. 若地圖片段中的 NPC 距離區域邊界太近，因此可能造成玩家時常離開該區域邊界而來回
+進出本身與隔壁區域間，如此便會造成可能的 Server 轉換成本。 
+在下一段中我們將提出我們的解決方法，並且討論我們所採用的實作環境和實驗方式。 
+ 
+4. MMORPG 動態負載機制實現 
+在上一段中我們討論到目前 MMORPG 所採用的負載平衡機制的架構，這裡我們將提出
+我們的負載平衡方法，並且討論如何以動態負載機制來調整線上遊戲 Server 負載不平均的
+現象。 
+4.1 實現動態負載機制 
+4.1 負載的定義 
+多人線上遊戲中 Server 端必須完成以下三個工作： 
+1. 接受 Client 端玩家的狀態、移動及交談的訊息。 
+2. 處理玩家和 NPC(Non Player Character，也就是由 Server 控制的角色，例如怪獸、
+魔王等)間的互動。 
+3. 更新虛擬世界狀態。 
+4. 將虛擬世界更新後的資訊傳送至 Client 端。 
+ 
+以上工作當玩家愈來愈多時將花費更多的時間來處理，因此當 Server 上玩家爆增時，
+可能無法將資料即時的傳送給玩家，在本計畫中我們把這四個工作所需要的時間定義為一
+個 Server 的負載；很明顯的，在一個 Multi-server 的 MMORPG 系統中，每個 Server 的負載
+和它所負責的玩家(或 Client)個數成正比，因此，在下面討論中我們將每個 Server 所負責的
+玩家的個數當成其負載的重要指標。 
+ 
+4.2 負載平衡機制 
+在虛擬世界中，非常多位玩家的情況下，若使用單一Server必定會導致負載過重
+(overload)的現象，因此Multi-server的架構無疑的是必將採用的解決方式。在第三段中我們
+已經討論了在Multi-server下各種負載平衡機制的優缺點，其中較有效率的應為動態的分配
+地圖至伺服器，以下我們就來討論如何實現這種機制。 
+首先我們必須決定如何切割遊戲地圖？以及該切成多少等份？因為這將會影響到此機
+制實現時整個系統的效率。我們考慮的原則是： 
+1. 儘量分散玩家(也就是 Client)到各個 Server 上。 
+2. 儘量減少玩家間作跨 Server 的傳遞訊息。 
+3. 盡量避免玩家因為在地圖上的移動位置而必須更換 Server。 
+ 
+    其中第一點是為了平均分攤 Server 的負擔，第二點是為了減少 Client 間通訊的時間成
+ 
+ 
+圖 6: Voronoi diagram of NPCs 
+  
+Voronoi diagram 的建立並不如想像中的複雜費時，利用[13]中所提供的演算法可建構出
+Voronoi digaram，利用該演算法我們可以在給定 N 個節點的圖形中以 O(N logN)的時間複雜
+度求得包含該節點的 Voronoi diagram。 在下一段中我們將模擬我們的負載分配方法，並且
+規劃如何與其他傳統的方法作效能的比較分析，最後將其實作在 open source 的 Arriane 
+server game server 上。 
+ 
+5. 模擬環境和比較分析 
+5.1 實驗條件 
+在本節實驗中我們將與[15]中的 micro-cell 切割方式做比較，所謂 micro-cell 是將遊戲地
+圖切割成小方格，之後再將這些小方格動態分配到各個 server 上。實驗條件如下: 
+1. 地圖座標解析度: 1000*1000 
+2. 模式:  Voronoi 切割,  micro-cell 切割(10*10, 20*20 格, 配合 NPC 個數)     
+3. threshold = 
+4
+5  * (number of players / number of servers)  
+4. 玩家移動模式:  NPC-oriented(朝最近 NPC 移動, 停留 500 steps 後離開) 
+5. total number of steps: 50000 
+6. number of servers:  2, 4, 8, 16 
+7. number of players:  1000, 5000, 10000, 15000, 20000 
+8. number of  NPCs:  100, 400 
+計算超過臨界值(threshold)需要做負載分配(reallocation)的總次數 (note: 每移動一次即檢查
+是否需要做 reallocation, 負載分配下限為 player 平均數) 
+ 
+5.2 實驗結果分析 
+我們分別比較當 NPC 個數為 100 和 400 時，Voronoi 切割法和 micro-cell 切割法在 player
+移動 50000 次中，所發生的負載重新分配的次數。從表一和表二所得的結果，很明顯的可
+以看出來，我們所提出的 Voronoi 分割方法遠優於 micro-cell 的方法。我們另外將其中四個
+圖表化成圖形以供比較，分別列於圖 7 中。 
+中所選定的負載上限值，該值是依玩家人數的不同而不同，我們採用的負載上限值是
+4
+5  * 
+(number of players / number of servers)，因為我們認為若伺服器可以提供更多人上線時，其
+單機的功能應該要更強，否則不應該容許太多人同時上線，因此而調高其負載的上限，換
+句話說，我們模擬中不同玩家人數所使用的伺服器的能力是不相同的，人數越多，伺服器
+的能力應越強，否則可能無法負擔過多的玩家上線。 
+ 
+0
+200
+400
+600
+800
+1000
+1000 5000 10000 15000 20000
+number of players
+nu
+mb
+er 
+of
+ re
+all
+oc
+ati
+voronoi
+micro-cell
+ 
+0
+500
+1000
+1500
+2000
+2500
+3000
+3500
+4000
+1000 5000 10000 15000 20000
+number of players
+nu
+mb
+er 
+of
+ re
+all
+oc
+ati
+voronoi
+micro-cell
+ 
+    (a). NPC=100, 8 servers      (b). NPC=100, 16 servers 
+0
+50
+100
+150
+200
+250
+1000 5000 10000 15000 20000
+number of players
+nu
+mb
+er 
+of
+ re
+all
+oc
+ati
+voronoi
+micro-cell
+ 
+0
+500
+1000
+1500
+2000
+1000 5000 10000 15000 20000
+number of players
+nu
+mb
+er 
+of
+ re
+all
+oc
+ati
+voronoi
+micro-cell
+ 
+圖 7:  (c) NPC=400, 8 servers      (d). NPC=400, 16 servers 
+ 
+6. 實作與分析 
+6.1 硬體架構 
+  硬體設備方面，我們將嘗試以 6 台 PentiumⅣ PC 搭配 256Mb RAM，作業系統採
+Windows XP，當成 Server；每台 Server 間以 10/100 Mbps 乙太網路相連接，Client 端硬體
+不受限制，所有 Client 藉由網路連接到 Dispatcher Server，再由 Dispatcher Server 諮詢 World 
+Database server 後，將該 Client 上的玩家依其所在地圖分配到負責該地圖區域的 Server 上。
+圖 8 為實驗中的 Multi-server 架構圖。 
+   
+                  
+5.3 實驗方法 
+在本計畫中我們在 Arianne 上實作我們所提出的負載分配方法，實驗中除了我們所提
+的以 Voronoi diagram 方式切割地圖作動態分配外，另外加入兩種傳統方式以作比較，分別
+是以正方形切割法，切成四等分後，作靜態分配給四台 Server 主機；另一種是將遊戲地圖
+切成四的倍數個小正方形方格，然後以動態方式分配給各主機。 
+在作動態分配多邊形(第一種實驗的Voronoi polygon)或小正方形(第三種實驗)單位地圖
+時，我們以該主機上所停留的玩家總數為負載標準，若某 Server 上玩家個數超過某一臨界
+值時，即依其他 Server 負載大小順序，詢問其是否接受目前超過負載的主機上的單位多邊
+形或小方格。 
+實驗績效分析將以各個玩家對於 Server 回應時間之總合來衡量，我們將再後續的計畫
+中分析在不同的負載量下，這三種實驗的績效差異性，我們預計當時間增長和負載量增大
+時，動態分配方式將優於靜態分配，而同時我們將觀察 Voronoi diagram 的分割方式在何種
+情況下將會顯現出它的優點。 
+ 
+6. 結論 
+大部分線上遊戲採單機 Client/Server 架構，在這樣的架構下會有一些優勢及某些限制，
+當有新地圖、新資訊欲增加至遊戲中時，只需在一台 Server 上做修改即可，也因為是由一
+台 Server 所控管，玩家的資料及遊戲的公平性維持較為容易。但另一方面當線上玩家人數
+日漸增多時，Server 端所需要運算能力小於需求，便會有人數上的限制，若 Server 超過負
+荷則將會導致延遲，甚至當機的現象。由於所有資料需先送至 Server 做完處理後再送出，
+Server 對外的頻寬在不足的情況且多人連線時便會有延遲的現象。若以空間分割的方式分
+配 Server 的權限範圍與適當分配每個 Server 所負責的工作，那麼便能減少 Server 的負擔並
+可支援更多的線上人數。 
+目前有許多機制被用來支援多人線上角色扮演遊戲。在本計畫中我們詳細討論我們所
+提出的 Voronoi 切割方式的優點，並且透過模擬的方式，對於我們所提出的切割方法和文獻
+中的四方形切割方法做多種指標的績效比較，並以實驗證明我們所提出的方法的確優於傳
+統的方法。最後我們嘗試透過修改開放程式碼的 Arianne 遊戲引擎來實作我們提出的負載
+平衡方法。 
+ 
+參考文獻 
+[1]  Christophe Diot, SPRINT ATL, Laurent Gautier, INRIA, “A Distributed Architecture for 
+Multiplayer Interactive Applications on the Internet”, 1999. 
+[2]  Eric Cronin, Burton Filstrup, Anthony R. Kurc, Sugih Jamin, “An Efficient Synchronization 
+Mechanism for Mirrored Game Architectures, 2002 
+[3]  E. Cronin, B. Filstrup, and A.R. Kurc, “A distributed multiplayer game server system”, UM 
+EECS589 Course Project Report. 
+[4]  Wentong Cai; Xavier, P.; Turner, S.J.; Bu-Sung Lee “A Scalable Architecture for Supporting 
+Interactive Games on the Internet”. Parallel and Distributed Simulation, 2002. pp. 54-61. 
+[5]  L. Gautier and C. Diot. “Distributed Synchronization for Multiplayer Interactive 
+Applications on the Internet”. Submitted for publication, October 1998. 

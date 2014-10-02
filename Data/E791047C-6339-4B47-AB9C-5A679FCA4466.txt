@@ -1,0 +1,192 @@
+ 2 
+以上的無硬碟磁碟對映方式皆利用網路磁
+碟掛載的方式所產生的檔案系統，屬於前個世
+代的無硬碟架構。新世代的無硬碟系統都已進
+入到磁區式的對映方式來提供用戶端ㄧ個虛擬
+的實體硬碟；商業上的無硬碟系統包含
+WinPXE、BXP、eHD等。ＷinPXE採用 iSCSI
+技術來提供遠端磁碟的對映，並且支援 DOS、
+Windows98、Windows XP、Windows 2003 及
+Linux 等，屬於技術最為領先的無硬碟產品。
+BXP磁碟對應方式為 3COM的 virtual disk的協
+定，也能支援多種作業系統。eHD 為採用自行
+開發的 eDC協定，並不相容於標準協定。 
+ 
+3. 系統架構 
+ 
+為了使無硬碟電腦能夠透過PXE的協定取
+得相關開機所需的資料，我們必須架設DHCPD
+與 TFTPD服務。DHCPD服務可以在無硬碟電
+腦發出 DHCP廣播訊息時，配發相關的網路設
+定外，更可透過告知無硬碟電腦向哪台 TFTPD
+服務器取的開機的檔案。TFTPD負責傳送Linux
+開機相關的開機程式。整體的架構流程如下圖
+所示: 
+ 
+Computer with BIOS 
+PXE support
+DHCPD
+TFTPD
+iSCSI
+Target
+1. dhcp requst
+2. dhcp reply with IP 
+configuration
+3. request boot image
+4. download iSCSI 
+initiator
+5. connect to remote 
+iSCSI  target
+6. map remote storage
+ 
+圖一、 無硬碟系統開機流程圖 
+ 
+用戶端電腦透過 BIOS 內建的 PXE 進行
+DHCP 要求的封包廣播，由 DHCPD 服務來配
+發相關的網路設定並透過 DHCP的 option來告
+知用戶端電腦 TFTPD 主機的 IP 位址，用戶端
+接收後會向 TFTPD 服務下載一個開機的程
+式；我們將 iSCSI initiator的程式包含在此開機
+系統中，就可將遠端 iSCSI target上的磁碟檔案
+對映到本機電腦，後面的段落將會有詳盡的說
+明。 
+ 
+在 Linux 環境下，有很多方式可以將伺服
+器端的磁碟或是檔案對映到用戶端，常用的協
+定有NFS、CIFS、iSCSI等。 NFS為Network File 
+System的縮寫，為 Sun Micro. 所開發的一個網
+路檔案系統的標準協定，常為 UNIX 下檔案與
+網路硬碟分享的標準。CIFS 為  Common 
+Internet File Sharing的縮寫，是Windows環境
+下檔案與網路硬碟分享的一個協定，早期架構
+在 NetBEUI 協定下，目前已可在 TCP/IP 網路
+下運作；UNIX環境下有相對應的 Samba project
+來提供 UNIX環境下存取 CIFS的服務。以上兩
+種方式，都是將伺服器端某個可分享的目錄以
+NFS 或是 CIFS 的協定分享給其他用戶來使
+用；允許多用戶同時掛載，利用 file lock 的機
+制防止同時的存取。這類的協定所掛載的硬碟
+通稱「網路硬碟」，僅能提供用戶端的存取；對
+作業系統來說，只是一個資料夾或目錄的概念。 
+ 
+iSCSI 為 Internet SCSI (Small Computer 
+System Interface)的縮寫，為 IBM所開發的一種
+磁碟對映技術，顧名思義就是將 SCSI命令透過
+TCP/IP 協定來傳送。換言之，與 NFS 及 CIFS
+比較起來最大的差異在於 iSCSI 所對映的磁碟
+從作業系統角度來看，是一個實體硬碟，或是
+我們可以稱為磁區式（block level）的對映；可
+以將伺服器端的一個檔案、實體的硬碟或分割
+對映到用戶端，用戶端作業系統可以針對所對
+映的磁碟做任何硬碟的標準操作，如格式化、
+分割、重組或壓縮。iSCSI伺服器端提供檔案或
+磁碟的存取對映服務，稱之為 iSCSI Target；一
+個磁區或是檔案同ㄧ時間僅允許一個連線對
+映，否則會有資料不一致的狀況產生；而用戶
+端將遠端磁碟對映過至本機的初始化程式稱之
+為 iSCSI Initiator；透過 Initiator將遠端磁碟對
+映至本機成為一實體硬碟的效果；Initiator可以
+是以硬體或是軟體的方式呈現，如果透過 HBA
+的方式本機的作業系統必須支援相對映的
+Initiator。 
+ 
+在多人同時連線狀況下，以目前 iSCSI 的
+設計，必須提供每個連線ㄧ個獨立的磁碟檔案
+或是實體磁碟；這樣的設計並無法滿足我們這
+個計畫目的的需求，我們必須設計ㄧ個所謂的
+「虛擬 iSCSI target」，這個虛擬 iSCSI target提
+供每個連線ㄧ個模擬的環境，這個模擬的環境
+都是基於同ㄧ個磁碟檔案或是實體磁碟。每個
+連線都可任意的對這個磁碟進行讀寫存取，並
+不會影響其他連線的運作；每當用戶系統關機
+後重新開機時，虛擬 iSCSI target就會重新模擬
+一個完全新的磁碟環境，換言之，任何的使用
+者蓄意破壞或是不正常的設定，都不會影響用
+戶系統的運行。我們將在下個章節說明虛擬
+iSCSI target的設計方法，如何提供用戶端系統
+磁碟開機即還原的功能。 
+ 
+系統磁碟通常包含系統本身及相關的應用
+程式，系統磁碟的保護有助於減低管理者維護
+的成本；然而一個正常運作的系統，還需讓用
+戶有個別獨立存取的使用空間，在我們
+Mobinux 系統中我們也將提供每個連線的用戶
+ 4 
+的快照回復，可將回復點之後的快照完全清
+除，可以有效減低磁碟空間的使用。 
+ 
+5. 成果說明 
+ 
+在這次計畫中我們建構並驗證利用PXE來
+進行遠端開啟 Linux 技術的可行性，並利用
+iSCSI的方式提供一個實體對應硬碟的設計，來
+提供無硬碟電腦一個實體的運作空間，並進行
+開機。本計劃已可順利將標準的 Fedora Core 5
+所安裝的硬碟，在不修改任何檔案下，直接透
+過 Mobinux 轉換成無硬碟系統；實際電腦教室
+利用 Mobinux來佈署 Fedora Core 5，根據我
+們實際測試結果，管理者可在半小時內完成 40
+台電腦的設定，並可讓所有的電腦利用 BIOS
+內建的 PXE進行無硬碟開機；讓近年來教育部
+及相關自由軟體推廣協會在推廣 Linux 教育所
+碰到的安裝與如何與 Windows 系統共存的問
+題，提供ㄧ個有效的解決方案。 
+ 
+我們在本次計畫中，完成了「虛擬 iSCSI 
+target」的設計與實作與「用戶磁碟多快照」功
+能的設計與實作。這兩項技術的完成，可以將
+iSCSI的利用又提供ㄧ新的應用方向。 
+ 
+6. 未來方向 
+ 
+在這次計畫的基礎上，我們希望將
+Mobinux 持續精進，希望能結合廣大 Linux 社
+群的力量，將 Mobinux 開發成一個無硬碟的
+distribution，能夠在不修改或是少量修改市面上
+已有的套件，如 Redhat、CentOS、 Suse、
+Mandrake、Slakeware、Fedora Core 等套件，
+轉換成無硬碟的方式進行佈署。對於 Linux 的
+資訊教育將有正面的助益，在我國推廣開放原
+始碼專案上將有令國際注目的一個特色貢獻。 
+ 
+Mobinux 目前為電腦導向之無硬碟系統，
+換言之，磁碟對映的機制是根據電腦的 IP位址
+或是 MAC 位址，來配發相關的磁碟。在考慮
+企業用途上，我們希望在將來對映的機制是利
+用使用者在開機過程中的身分認證來決定。透
+過這樣的設計，使用者在任何一台電腦利用無
+硬碟系統開機，可以依據所輸入的帳號與密
+碼，將自己的桌面與資料磁碟對映過來，達成
+所謂行動（mobility）的需求；透過這樣的概念，
+整個企業的系統佈署，資料的備份，應用程式
+的安裝將趨向安全，保密與簡單；對整個企業
+導入轉換成Linux的工作環境將有正面的助益。 
+ 
+ 
+參考文獻 
+ 
+[1]. J. Satran, K. Meth, C. Sapuntzakis, M. 
+Chadalapaka, and E. Zeidner, “Internet Small 
+Computer Systems Interface (iSCSI),” April 
+2004, RFC 3720. 
+[2]. InterOperability Laboratory: the iSCSI 
+consortium, 
+http://www.iol.unh.edu/consortiums/iscsi/. 
+[3]. Ardis Technologies iSCSI target implementation, 
+http://www.ardistech.com/iscsi/. 
+[4]. P. Radkov, L. Yin, , P. Goyal, and P. Sarkar, “A 
+Performance Comparison of NFS and iSCSI for 
+IP-Networked Storage,” in the USENIX 
+Conference on File and Storage Technologies, 
+San Francisco, CA, March 2004, pp. 101–114. 
+[5]. A. Palekar, N. Ganapathy, A. Chadda, and R. D. 
+Russell, “Design and implementation of a Linux 
+SCSI target for storage area networks,” in 5th 
+Annual Linux Showcase & Conference. Atlanta, 
+GA: USENIX, November 2001. 
+[6]. John L., “iSCSI The Universal Storage 
+Connection”, Addison Wesley. 
+[7]. ISC DHCP, http://www.isc.org/ 
+[8]. Syslinux, http://syslinux.zytor.com/ 
+ 
+ 

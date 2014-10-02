@@ -1,0 +1,363 @@
+Rule-based Adaptive Test Plan Generation for Embedded Systems ∗
+Abstract
+In previous work, test plans were either constructed
+manually or generated with tools adapted to specific appli-
+cation domains. In either way, it is labor-intensive, error-
+prone, and difficult to incorporate the knowledge of appli-
+cation domains. We propose a rule-based open framework
+to solve this problem. Test experts only need to material-
+ize their knowledge in an application domain as a set of
+test-control rules. Each time a rule is executed, our test-
+controller will check the available testcases and the test log,
+select the next testcase accordingly, execute the selected
+testcase, and update the test log. The design of our rule and
+log allows for the implementation of a wide variety of test
+strategies. We have implemented our ideas in the framework
+of TTCN-3, an international standard for testing language.
+We experimented our tool with requirement coverage test-
+ing and fault-based testing. We found that our tool could be
+flexibly reused for the two test strategies and significantly
+reduce the cost in constructing test plans.
+Keywords: test plan, rule, open, TTCN-3, MSC, test au-
+tomation, test-control
+1 Introduction
+The complexity of modern embedded systems has in-
+creased significantly. Consequently, the necessity for au-
+tomated and systematic testing also has been growing sig-
+nificantly. At this moment, most industrial projects still rely
+on people to manually construct testcases and test plans. A
+major reason is that the engineers often found it difficult to
+use their domain knowledge to efficiently and mechanically
+create testcases and test plans. As a result, the testcases
+and test plans automatically generated with programs are
+usually bulky and inefficient in either achieving coverage
+or detecting faults. Our goal is to develop an open frame-
+work so that engineers can efficiently translate their domain
+knowledge to high-quality test plans.
+In the framework, engineers can materialize their test-
+∗The work is partly supported by grants NSC 94-2213-E-002-085 and
+NSC 94-2213-E-002-092.
+ing knowledge in an application domain as a set of test-
+control rules. Each rule queries the available testcases and
+the test log for the selection of the next testcase to be exe-
+cuted. After a testcase has been executed, the test-controller
+updates the test log and continues to select the next rule.
+Many components in this framework can be reused for var-
+ious SUT (software under testing) and various testing tasks.
+This reusability could lead to significant reduction in the
+cost and time to construct quality test plans.
+We have carefully designed our rules and log to support
+a variety of testing activities. We have implemented our
+ideas in the framework of TTCN-3 (Testing and Test-Control
+Notation, version 3), an international standard language for
+test specification for a wide range of telecommunication and
+embedded systems. We have carried out two experiments
+and applied our tool to a real-world benchmark, a proto-
+col program for DNS (Domain Name Servers). In the first
+experiment, we put down rules for requirement coverage-
+based testing. In the second, we did for fault-based test-
+ing. The experiments showed the versatility, flexibility, and
+reusability of our tool for the efficient construction of high-
+quality test plans.
+Following is our presentation plan. Section 2 discusses
+the related work. Section 3 explains our framework for au-
+tomated testing. Section 4 presents the definition of test-
+cases with branching structures. Section 5 defines our log
+records. Section 6 defines our test-control rules. Section 7
+presents our test-control procedure. Section 8 briefly in-
+troduces TTCN-3 and explains the various implementation
+issues. Section 9 reports our experiments. Section 10 is the
+conclusion.
+2 Related work
+Xu and et al used Fuzzy Expert System to select the
+testcases to be executed by identifying the critical testcases
+[19]. But the knowledge base is not modifiable by and ac-
+cessible to the users.
+There are also study in testing metrics in the hope that a
+good metric could lead to efficient test plans. For example,
+Elbaum et al proposed a metric called APFD for measuring
+the rate of fault detection. Based on the metric, they im-
+prove APFD with prioritized testcases [2–4]. However, the
+1
+We require that only the root node of a testcase L-tree is la-
+beled with tc (for testcase). Due to page-limit, we have left
+the explanation of the labels in a report in our lab webpage
+at http://cc.ee.ntu.edu.tw/˜val.
+Example 1 : We have an A-tree drawn in figure 2. Inside
+Figure 2. A testcase L-tree with an alt-
+statement
+each node, we put its name. The root is r = tc. Thus V
+is the set of all names inside the ovals. The order of the
+children of a node is from left to right. Following are the
+labels for the types of some internal nodes.
+λ(tc1) = tc, λ(alt) = alt, λ(blk1) = λ(blk2) = block,
+λ(sta1) = λ(sta2) = λ(sta3) = λ(sta4) = statement,
+λ(rece1) = λ(rece2) = receive,
+λ(oper1) = λ(oper2) = operand,
+λ(port1) = λ(port2) = port,
+λ(msg1) = λ(msg2) = message,
+λ(id) = λ(name1) = λ(name2) = λ(name3)
+= λ(name4) = λ(name5) = name,
+λ(fail) = fail, λ(pass) = pass, λ(rep) = repeat
+These types are labeled on internal nodes. Those labels on
+the leaves sometimes specify the values of their parents. For
+example, the name of the testcase is λ(tc1), the label of the
+leaf of node ‘tc1.’ The name of the message at node msg1
+is λ(msgA). Some children of the nodes are as follows.
+δ(tc1, 0) = sta1, δ(tc1, 1) = sta2, δ(sta1, 0) = alt,
+δ(sta2, 0) = rep, δ(alt, 0) = blk1, δ(alt, 1) = blk2,
+δ(blk1, 0) = oper1, δ(blk1, 1) = sta3,
+δ(oper1, 0) = port1, δ(oper1, 1) = rece1,
+δ(rece1, 0) = msg1, δ(sta3, 0) = setv1,
+δ(setv1, 0) = pass, δ(blk2, 0) = oper2,
+δ(blk2, 1) = sta4, δ(oper2, 0) = port2,
+δ(oper2, 1) = rece2, δ(rece2, 0) = msg2,
+δ(sta4, 0) = setv2, δ(setv2, 0) = fail
+· · · · · · · · ·
+The testcase says that if message ‘msgA’ is received from
+port portA, verdict ‘pass’ is issued; if message ‘msgB’ is
+received from portB, verdict ‘fail’ is issued. The rightmost
+leaf is labeled with type repeat which means the whole test-
+case is to be repeated. A TTCN-3 testcase that corresponds
+to this A-tree is presented in subsection 8.1. ¥
+Example 2 : Figure 3 is a testcase with a while-loop. A
+Figure 3. A testcase L-tree with a while-loop
+message is repeatedly sent until the loop condition becomes
+false. We may have λ(tc) = tc, λ(sta1) = statement,
+λ(while) = while, λ(sta2) = statement, and λ(rece1) =
+receive. A TTCN-3 testcase that corresponds to this A-tree
+is presented in subsection 8.1. ¥
+5 Test log
+A log works as a database that stores the information of
+past execution of testcases. To select the next testcase to ex-
+ecute, the test-controller need to query a log. Conceptually,
+a log is a sequence Γ = Φ1Φ2 . . .Φn of records of testcase
+executions. In other words, if a log contains the information
+of n execution of testcases, then there should be n log L-
+trees. A log record used in our test-controller is represented
+as a three-level L-tree. The label of the root of a log record
+3
+An instantiated path reference pi from node v in τ and ∆,
+denoted Refs∆τ (v/pi), is inductively defined as follows.
+• Refs∆τ (v/ ) = {λ(δ(v, 0))} if and only if δ(v, 0) is
+defined.
+• Refs∆τ (v/α/pi) = Refs∆τ (δ(v, k)/pi) if and only if
+there is a k such that δ(v, k) is defined and λ(v′) = α.
+• Refs∆τ (v/α[i]/pi) = Refs∆τ (v′/pi) if and only if there
+is a k such that δ(v, k) is defined such that δ(v, k) is
+the i’th child of v with λ(δ(v, k)) = α.
+We say τ satisfies a rule ρ in ∆ and Γ, in symbols τ |=∆Γ ρ,
+if the following inductive constraints are satisfied.
+• τ |=∆Γ ρ1 ∨ ρ2 if and only if τ |=∆Γ ρ1 or τ |=∆Γ ρ2.
+• τ |=∆Γ ¬ρ1 if and only if it is not true that τ |=∆Γ ρ1.
+• τ |=∆Γ ψ1 if and only if there is a d ∈ Refs∆τ (ψ1).
+• τ |=∆Γ ψ1 ∼ c if and only if there is a d ∈ Refs∆τ (ψ1)
+with d ∼ c.
+• ∆, τ |=∆Γ ψ1 ∼ ψ2 if and only if there are a d1 ∈
+Refs∆τ (ψ1) and a d2 ∈ Refs∆τ (ψ2) with d1 ∼ d2.
+• Given an L-tree τ ′ = 〈V, r, LV , λ, δ〉, Refs∆τ (〈ρ〉 : pi)
+is equal to
+{d | τ ′ ∈ ∆ ∪ Γ, τ ′ |=∆Γ ρ, d ∈ Refs∆τ ′(r/pi)}.
+We may use a test-control rule to specify a set of testcases
+eligible for the next execution. Formally, given a set ∆ of
+testcases, a set Γ of log records, and a rule ρ, we denote the
+set as B∆Γ (ρ)
+def= {τ | τ ∈ ∆ ∧ (τ |=∆Γ ρ)}.
+7 Test-control engine
+With the materials presented in sections 4, 5, and 6, we
+now present the algorithm for our rule-based test-plan gen-
+eration in the following.
+GenerateTestPlan(∆, Λ) /* testcase set ∆; rule set Λ; */ {
+Γ := ∅;
+repeat forever {
+select a rule ρ from Λ.
+if (B∆Γ (ρ) 6= ∅) {
+select a testcase τ ∈ B∆Γ (ρ).
+execute τ and create a execution record γ.
+Γ := Γ ∪ {γ}.
+} }
+}
+The procedure iteratively selects a rule ρ from Λ to select a
+set B∆Γ (ρ) of testcases. Then it selects a testcase in B
+∆
+Γ (ρ)
+to execute and updates the log. It continues until the users
+stop it. At the time of being stopped, set Γ stores the test
+plan generated with our rule-based test-controller.
+8 Implementation with TTCN-3
+Since we have applied our ideas to TTCN-3 [5–11] in
+the experiments, for the readers’ benefit, we briefly explain
+TTCN-3 in subsection 8.1. Then we discuss various imple-
+mentation issues related to TTCN-3 in subsection 8.2.
+8.1 TTCN-3
+TTCN-3 is a standard language for the concise and pre-
+cise test specifications for a wide range of computer and
+telecommunication systems. Testcases and plans written in
+TTCN-3 assure tool vendor independence. The testcase in
+example 1 can be reprsented in TTCN-3 as follows.
+testcase tc1 () runs on COMP1 { (1)
+alt { (2)
+[ ] portA.receive(msgA) { (3)
+setverdict(pass);
+}
+[ ] portB.receive(msgB) { (6)
+setverdict(fail);
+} }
+repeat
+}
+This testcase contains an alt-statement and a repeat-
+statement. Line (1) starts the declaration of a testcase
+named COMP1. Line (2) starts an alt-statement with two
+blocks. The alt-statement is executed by selecting exactly
+one of the two blocks for execution. Line (3) starts the first
+block which contains a message-receiving statement and a
+setverdict statement. The message is named ‘msgA’ from
+port ‘portA.’ Line (6) starts the second block of the alt-
+statement. Figure 6 is the testcase in TTCN-3 graphical
+representation and is like a sequence diagram. The circle
+Figure 6. A testcase in graphial representa-
+tion
+with a horizontal line across in the left-lower corner repre-
+sents the repeat-statement.
+5
+Table 1. Data for the requirement coverage
+testing
+9.2 Fault-based testing
+In fault-based testing, we assume the ways faults can
+happen in a system and design test plans to uncover such
+faults [2]. In this experiment, we used ten types of faults
+as our test objects. For example, one fault that we want to
+detect is deletion of an IP address twice without registering
+it in between. We also constructed 25 test-control rules for
+this experiment. We describe two of the test-control rules in
+the following.
+• Rule 1: If the last testcase in the log was to regis-
+ter “192.168.0.1” and “test.edu.tw” to the
+DNS server, then the next testcase should remove
+”192.168.0.1”.
+• Rule 2: if the last testcase in the log has removed
+“192.168.0.1”, then the next testcase should remove
+“192.168.0.1” again.
+In the experiment, we compare the performance of our test-
+controller with the random strategy and the sequential strat-
+egy. The data is reported in table 2. In the leftmost column,
+Table 2. Fault detection testing
+we list the numbers of faults detected. For each entry, we
+list the number of iterations needed to detect the number
+of faults in the leftmost entry of the same row. As can be
+seen, our test-controller outperformed the other two strate-
+gies. This experiment shows that our framework could be
+flexible enough to support efficient fault-based testing.
+10 Conclusion
+We discuss how to generate test plan automatically and
+efficiently with a user-friendly interface. In our open
+framework, test experts can easily materialize their do-
+main knowledge of test plan construction for various test-
+ing tasks. In the future, we plan to extend our test-control
+rules so that users can make more expressive and powerful
+queries. We also plan to implement a user-friendly interface
+for the easy construction of test-control rules.
+References
+[1] K. K. Aggrawal, Y. Singh, A. Kaur. Code coverage
+based technique for prioritizing test cases for regression
+testing. ACM SIGSOFT Software Engineering Notes,
+September 2004.
+[2] S. Elbaum, A. Malishevsky, G. Rothermel. Prioritizing
+test cases for regression testing. International Sympo-
+sium on Software Testing and Analysis. Proceedings of
+the ACM SIGSOFT international symposium on Soft-
+ware testing and analysis, 2000.
+[3] S. Elbaum, A. Malishevsky, G. Rothermel. Incorpo-
+rating Varying Test Costs and Fault Severities into
+Test Case Prioritization. Proceedings of the 23rd In-
+ternational Conference on Software Engineering, May,
+2001, pp.12-19.
+[4] S. Elbaum, A.G. Malishevsky, G. Rothermel. Test case
+prioritization: a family of empirical studies. IEEE
+Transactions on Software Engineering, 2002.
+[5] ETSI: Methods for Testing and Specification (MTS)
+The Testing and Test Control Notation version 3, Part
+1: TTCN-3 Core Language. ETSI ES 201873-1 v3.1.1
+2005-06.
+[6] ETSI: Methods for Testing and Specification (MTS)
+The Testing and Test Control Notation version 3, Part
+2: TTCN-3 Tabular presentation Format (TFT). ETSI
+ES 201873-2 v3.1.1 2005-06.
+[7] ETSI: Methods for Testing and Specification (MTS)
+The Testing and Test Control Notation version 3, Part 3:
+TTCN-3 Graphical Presentation Format (GFT). ETSI
+ES 201873-3 v3.1.1 2005-06.
+[8] ETSI: Methods for Testing and Specification (MTS)
+The Testing and Test Control Notation version 3, Part
+4: TTCN-3 Operational Semantics. ETSI ES 201873-4
+v3.1.1 2005-06.
+7
+1 
+ 
+參加 2007 FORMATS 國際會議 
+歸國報告 
+ 
+王凡 教授 
+ 
+國立台灣大學 電機工程學系 暨 電子工程研究所 
+ 
+ 
+一、 前言 
+FORMATS 是
+International 
+Conference on 
+Formal Modelling 
+and Analysis of 
+Timed Systems 的
+簡寫。主要是以時
+間系統的模型語言、
+驗證問替複雜度、
+驗證演算法、還有
+相關系統的驗證技
+術實驗為主的國際研討會。到了 2007 年，一共舉辦了五屆。 前四屆，分別是
+2003 年在法國馬賽（Marseille）、2004 年在法國 Grenoble、2005 年在瑞典
+Uppsala、以及 2006 年在法國巴黎舉辦。每年都吸引相關的國際研究人員投稿，
+並參與討論。2007 年是在奧地利薩爾斯堡（Salzburg）舉辦，主辦單位是比利
+時魯汶大學（ULB），時間為十月三日到五日。 
+2007 年比較特殊的，是 FORMATS 被邀請參加 Embedded System Week
+（ESWeek’07），整個 ESWeek’07 期間，由九月三十日，到十月五日。Embedded 
+System Week 每年主要有三個國際會議，為 CODES+ISSS（International 
+Conference on Hardware - Software Codesign and System Synthesis） , 
+CASES（International Conference on Embedded Sofware）, or EMSOFT
+（ International Conference on Compilers, Architecture, and Synthesis for 
+Embedded Systems）。此外，2007 年，Embedded System Week 也邀請了 GPCE
+3 
+ 
+下，有一個古老的街區，古意盎然，幽雅靜謐。 
+    2007 年的 FORMATS，總共收錄了 22 篇論文。今年，亞洲只有我們一篇
+論文發表。另外，我們也在會場欲到一位日本教授，他以前也曾數次參加我們在
+亞洲舉辦的 ATVA 國際會議（Automated Technology of Verification and 
+Analysis）。這次參加 FORMATS 2007 人員，大多數都是歐洲研究人員。他們對
+我們舉辦的 ATVA 現況，也很有興趣瞭解。事實上，其中幾位，像是法國的 Raskin
+教授，才剛從我們
+十月在東京舉辦
+的 ATVA 會議回來，
+與我們在 ATVA 有
+過淺談。 
+另外每天早
+上第一場，各安排
+一場特邀演講，由
+Franck Cassez 
+博士
+(CNRS-France)、
+Joost-Pieter 
+Katoen 教授
+(RWTH Aachen-Germany)、及 Bruce Krogh 教授 (CMU-USA) 分別擔綱。其
+中 Bruce Krogh 教授的講題是 From Analysis to Design；Joost-Pieter Katoen
+教授的演講題目是 Abstraction of Probabilistic Systems；Cassez 博士的講
+題是 Efficient On-the-Fly Algorithms for Partially Observable Timed 
+Games。然後每天中午，安排午餐，並有一場晚宴。我們的論文發表，引起了
+許多參加人員的興趣。我們也與許多參加人員，進行技術交流討論。
+FranckCassez 博士也對我們的工具 RED 的效能，也有很高的興趣。我們也與
+UPPSALA 大學的王義教授，過去即認識，這次也進行了許多次的交談，並且共
+進晚餐。 
+參加完 FORMATS 後，我於十月五日晚間回到維也納，並於六日搭機回國。 
+ 
+四、結論與建議 
+ 
+在歐洲有許多類似 FORMATS 這樣的國際會議。這樣的國際會議，也許規

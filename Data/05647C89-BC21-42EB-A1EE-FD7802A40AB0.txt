@@ -1,0 +1,698 @@
+II 
+ 
+Abstract 
+ 
+ Network security system has to promote processing power because of the 
+increasing network traffic. Usually, the intrusion detection system can be classified 
+into two major types: abnormal-behavior detection and signature matching. There is a 
+bottleneck since implementation of string matching using only software may not keep 
+up with the growth of bandwidth. Recent researches prefers to hand over the string 
+match process to hardware solution to get speed breakthrough. Thus we need to 
+design a string match hardware system. 
+ This report will implement a string match system researched by NCTU NTL 
+Laboratory, and implement the verification module on FPGA. Finally we propose a 
+new data storage format based on Banded-Row format. 
+ 
+Keywords: network security, string matching, intrusion detection, FPGA 
+(Field-Programmable Gate Arrays) 
+ 
+1 
+ 
+一、 簡介 
+在網路內容安全應用領域中深度封包檢測（Deep packet inspection）廣為人
+知，例如入侵偵測系統（intrusion detection system）與防毒系統（anti-virus system）。
+由於深度封包檢測的工作效率是整個系統效能的關鍵，將封包內容檢測的工作交
+由經過特別設計的硬體引擎來執行是最近幾年比較流行的解決方案。將硬體引擎
+針對系統吞吐量來設計可以將吞吐量推向multi-giga bit per second的級別。 
+在封包檢測工作中必須採用字串比對演算法，有名的演算法如
+Boyer-Moore(BM) [1]、KMP [2]，這兩個演算法在 single pattern的情況下是有效
+率的演算法，但卻不適合用在 multiple patterns的情況。Aho-Corasick (AC) [3]是
+一個可以用於multiple pattern情況下的演算法，並且由於 AC演算法在 worst case
+仍然有輸出保證的特性，我們的研究決定以 AC演算法為基底來發展。 
+以 AC演算法所建構出來的有限狀態機隨著輸入的關鍵字（keywords）的長
+度與數量的增加而變得相當的龐大。若是要將字串比對系統以嵌入式平台來實現
+勢必會在嵌入式平台可裝載的字串數量方面遇到瓶頸，因此，我們的研究除了要
+追求整體系統的吞吐量，還要在記憶體使用上追求突破。 
+3 
+ 
+ 
+圖2-2 goto graph 2 
+ 
+由於state 0並沒有對輸入字元”s”有可以transiton的state，所以輸入”s”、”h”、”e”
+三個字元時都增加了新的state：state 3、state 4、state 5，即g(0,s)=3、g(3,h)=4與
+g(4,e)=5，紀錄output(5)=”she”，回到state 0。再來是第三個關鍵字his： 
+ 
+圖2-3 goto graph 3 
+ 
+因為state 0對輸入字元”h”有transition：g(0,h)=1，所以輸入”h”後current state變成
+state 1，但是state 1對接下來的輸入字元”i”沒有transition，所以增加新state 6，即
+g(1,i)=6，同理增加state 7，g(6,s)=7，output(7)=”his”，回到state 0，接著輸入第
+四個關鍵字hers： 
+5 
+ 
+2.2 Banded-Row Format簡介 
+當我們需要儲存一個 vector，而這個 vector的前後有數個 0的串列，這個時
+候我們可以使用 Banded-Row format[4]來儲存這個 vector，Banded-Row format從
+這個 vector 中第一個非零的值開始儲存到最後一個非零的值，第一個非零值的
+index 被記為 Start index，而這個被儲存的序列長度稱為 bandwidth，如果這個
+vector之中非零的元素位置相當集中並且數量不多，這種情況下使用Banded-Row 
+format 儲存這個 vector 將可以得到優異的儲存空間壓縮效果。存取壓縮過的
+vector 內的元素，首先判斷元素的原始 index 是否落在 Start index 和 Start 
+index+bandwidth-1這個範圍內（有包含邊界），若不在範圍內，表示我們要存取
+的元素的值為零；若在範圍內，我們要存取的元素的新 index將會是： 
+在原始 vector中的 index - Start index + 2 
+Banded-Row format用在 Branch State的例子如下： 
+ 
+圖 2-7 Banded-Row format used in Branch State 
+State 0是一個 Branch State，ASCII碼 0的字元使得狀態機停留在 State 0，
+ASCII碼 1的字元使得狀態機轉換到 State 1，ASCII碼 2的字元使得狀態機轉換
+到 State 2，ASCII碼 3的字元使得狀態機轉換到 State 8，ASCII碼 4的字元使得
+狀態機轉換到 State 6，ASCII碼 5的字元使得狀態機停留在 State 0，… …，ASCII
+碼 255 的字元使得狀態機停留在 State 0，總共需要 256 個單位的記憶體來儲存
+State 0。若是使用 Banded-Row format來儲存這個 state則只需 6個單位的記憶體
+來儲存：1個單位存 Bandwidth、1個單位存 Start index、4個單位存從第一個非
+零元素到最後一個非零元素。 
+ 
+7 
+ 
+由 AC演算法的 goto function可以產生一個樹狀結構，在這個樹狀結構裡面
+的 state依照所擁有的 next state的數量不同可以分為三種，有兩個以上（包含兩
+個）next state的 state我們稱之為 Branch State，只有一個 next state的 state我們
+稱之為 Single-Child State，沒有 next state的 state我們稱之為 Leaf State。透過觀
+察我們發現並不是所有 State都有儲存的必要。我們定義了幾個新名詞： 
+Branch State： 
+擁有兩個或兩個以上 next states（children）的 state。 
+Single-Child State： 
+只有 1個 next state的 state。 
+First Single-Child State： 
+當一個 Single-Child State的 parent state是 Branch State時我們稱它為 First 
+Single-Child State。 
+Leaf State： 
+沒有 next state的 state。 
+Explicit State： 
+當一個 state屬於 root state、branch state、first single-child state或 final state
+我們稱它為 Explicit State。 
+Nearest Descendent Explicit State(NDES)： 
+一個 state S 的所有後代（descendent）之中與 S 的距離最短，但是不為 S
+的 Explicit State，我們稱它為 state S的 NDES。 
+9 
+ 
+雖然 Branch State 的數量只有全部所必須儲存的 state 數量的五分之一左右
+（見下表），但是單一 Branch State所必須儲存的資訊卻遠高於 Single-Child State
+與 Leaf State。若是要將 state transition table儲存在實驗平台的內部記憶體中，
+Branch State 的記憶體消費問題是很明顯的。另一個困難在於不同 Branch State
+之間的差異相當大（這個差異的主要原因是 children number的不同），使得單純
+使用一種資料結構來儲存 Branch State難以同時達到快速存取與節省記憶體空間
+這兩個目的。Banded-Row format雖然可以達到快速存取，但是在記憶體空間花
+費這方面的表現卻不夠理想： 
+設 b是 Banded-Row format中的 Bandwidth，  kf 是 Branch State有 k children
+的機率則 
+2
+2
+256
+2
+2256
+2
+256
+2 2
+(256 1)
+(256 1)[ ]
+bb
+k
+b k
+k k
+bb
+k
+k
+b k k
+b Cp f
+C
+b CE b b f
+C
+−
+−
+=
+−
+−
+= =
+− +
+=
+− +
+=
+∑
+∑ ∑  
+2256
+2
+256
+2 2
+[ ] (256 1)  
+bb
+k
+k
+b k k
+CE b b b f
+C
+−
+−
+= =
+= − +∑∑
+ 
+以下是實際量測 branch state的 children數目分佈情況： 
+任 意 4000 
+patterns 
+1 2 3 4 5 Average 分佈 
+全部 state 數
+目 
+206217 208807 207487 209778 209763 208410.4  
+有儲存的 state
+數目 
+5454 5485 5480 5503 5510 5486.4  
+全部 Branch 
+State數目 
+1222 1237 1249 1252 1271 1246.2 100.00% 
+Children #=2 687 721 731 748 756 728.6 58.47% 
+Children #=3 210 200 188 166 199 192.6 15.45% 
+Children #=4 85 73 94 102 76 86 6.90% 
+Children #=5 60 49 53 59 48 53.8 4.32% 
+記憶體花費
+(byte) 
+75468 74000 74828 74312 74524 74626.4  
+表 1 state distribution table 
+ 
+11 
+ 
+四、 實做細節 
+4.1 驗證模組方塊圖 
+ 
+圖 4-1 verification module block diagram 
+ 
+各子模組功能說明如下： 
+State Information：存放所有 State的資料結構。 
+Pattern List：存放所有 Pattern的資料。 
+13 
+ 
+( (i_dataftr>=i_datafsira[15:8])&&(i_dataftr<=(i_datafsira[15:8]+i_datafsira[7:0])) 
+)?1'b1:1'b0; 
+若這個 Branch State transition是由 a port讀取出來，o_ain將判斷 input character
+是否落在 bandwidth之內。 
+ 
+o_bin <= 
+( (i_dataftr>=i_datafsirb[15:8])&&(i_dataftr<=(i_datafsirb[15:8]+i_datafsirb[7:0]))
+ )?1'b1:1'b0; 
+若這個 Branch State transition是由 b port讀取出來，o_bin將判斷 input character
+是否落在 bandwidth之內。 
+ 
+o_eqa <= (i_dataftr == i_datafsira[15:8])?1'b1:1'b0; 
+o_eqa判斷 input character是否與 band a 的 start index相等。 
+ 
+o_eqb <= (i_dataftr == i_datafsirb[15:8])?1'b1:1'b0; 
+o_eqb判斷 input character是否與 band b 的 start index相等。 
+ 
+o_eqlast <= (i_addrttr == 13'b1111111111111)?1'b1:1'b0; 
+o_eqlast判斷 text的指標是否達到 text的尾端。 
+ 
+o_next_ch_ad計算下個 input character的位址。 
+cal2： 
+o_cur_addr1=i_cur_addr+1; 
+計算出 current address+1 
+ 
+o_cur_addr2=i_cur_addr+2; 
+計算出 current address+2 
+ 
+o_cur_addr3=i_cur_addr+3; 
+計算出 current address+3 
+ 
+o_datafsira_H1=i_datafsira[31:16]+1; 
+由 State Information模組 a port所輸出的高位元部份的 transition address+1 
+ 
+o_datafsira_L1=i_datafsira[15:0]+1; 
+由 State Information模組 a port所輸出的低位元部份的 transition address+1 
+ 
+15 
+ 
+4.2 驗證模組工作流程 
+ 
+圖 4-2 verification flow chart 
+ 
+17 
+ 
+            { 
+                Output the match information; 
+                Clear the suspicious in JailRam; 
+                break; 
+            } 
+        } 
+        S←Next State; 
+    } 
+} 
+ 
+4.3 各種資料結構與 Next State transition機制說明 
+ 
+在所有被儲存的 state中，如果該 state是 final state則該 state的資料結構會
+附加 output data在原本的資料結構前方如下圖：
+ 
+圖 4-3 final state output data 
+ 
+經由 parity bits判斷這個 state是 final state的情況下 verification module就將
+output data寫入到MatchRam裡面，然後 verification module依照 parity bits決定
+緊接在後的 state information的解碼方式，說明如下。 
+ 
+2-child Branch State： 
+ 
+圖 4-4 data structure of 2-child Branch State 
+ 
+Double Banded-Row format中第一個欄位是 Bandwidth(占 8 bits)，由於原始
+vector只有 2 children，所以在分成兩個 band之後，兩個 Bandwidth欄位應該都
+是 1，但是經由 parity bits即可判斷這個 state是 2-child Branch State，所以這欄位
+在這種情況下沒有實際功能，保存目的是為了使所有 Branch State的解碼元件可
+以盡量共用。 
+在比較從 TextRam取得的 character與紀錄在 input char. (占 8 bits)欄位的的
+資料候可以得知 current state對此 input character有沒有 transition，若有，則 current 
+state指向後面的 transition destination欄位(占 16 bits)所紀錄的 next state address。 
+19 
+ 
+有 transition；如果是第二種情況，其中一個 band的第 1個元素將被紀錄在第 1
+個 row，第 2個 row紀錄另一個 band的第一個元素，剩下的兩個元素分別放在
+下面的兩個 row，Next State transition機制與 3-child Branch State同樣。 
+ 
+Over 4-child Branch State：
+ 
+圖 4-7 data structure of over 4-child Branch State 
+ 
+在原始的 vector被分成兩個 band之後，兩個 band各自的第一個元素將被存
+放在第一與第二個 row，如上圖，從第三個 row開始存放的是 band a剩下來的元
+素，緊接在後的事 band b剩下來的元素。與前三種資料結構不同的是第二個 row
+的 transition destination欄位放的位址並不是 start index這個元素的 transition 
+destination，而是 band b的 start address，這是因為 band a的 Bandwidth並不是一
+個定值的緣故。在確定從 TextRam取得的 character在哪個 band內之後，一個暫
+時的指標指向 cal1模組所產生的 o_ad_of_trsa(或 o_ad_of_trsb)的值，並由 o_aHL
+或 o_bHL確定 transition destination是在高位元部份還是低位元部份讀取 next 
+state位址。 
+在此可以透過上面的實驗數據表中的平均記憶體花費來計算 Double 
+Banded-Row format Bandwidth的近似值，因為 transition destination欄占 16 bits，
+所以必須將以 byte為單位的平均記憶體花費除以 2，再來扣除每個 Branch State
+皆有兩單位的 overhead與 Over 4-child Branch State資料結構可能有的空白欄位
+（假設兩個 band之後有空白的機率各 50%）： 
+21 
+ 
+五、 數據與效能 
+5.1 實驗環境介紹 
+我們的病毒碼來源是 ClamAV [5]。系統運行平台為 Xilinx Vertex-II Pro 
+ML310 Platform如下圖，我們的硬體設計在此平台的 on-board Xilinx Virtex II Pro 
+(XCVP30) FPGA 之 內 。
+ 圖 5-1 Xilinx Vertex-II Pro ML310 Platform 
+圖 5-2 XCVP30 
+23 
+ 
+5.2 效能 
+以下是單純測驗證模組（verification module）throughput的實驗結果，實際
+上驗證模組是不能在沒有預先過濾器模組的情況下單獨運作，量測方式說明如下：
+首先任意選擇幾個 pattern 將它們串聯起來填滿被掃瞄的 text 所存放的區域，開
+始掃描之前就將每個 pattern的起始位置記錄在 JailRam之中，然後整個系統開始
+運作，量測開始與結束的時間差。變換不同 pattern 與其數量測量數次，取平均
+值。這樣一來包括狀態機的 traverse時間、pattern address讀取時間都ㄧ並量測到
+了，也排除預先過濾器模組的效果。而整個系統構造跟有預先過濾器模組一起參
+與工作的情況基本上是一樣的。 
+以下的系統工作頻率皆為 135.14MHz 
+4000 pattern set avg. length = 29 Byte 
+開 始
+時 間
+(ns) 
+結束時間
+(ns) 
+執行時間(ns) Pattern 數
+量 
+平均長度
+(B) 
+Throughput(Mb/s) 
+216 164725.2 164509.2 284 28.7394 396.91 
+216 166086.0 165870.0 290 28.1793 394.14 
+216 163234.8 163018.8 276 29.5833 400.69 
+216 164264.4 164048.4 284 28.7359 397.98 
+216 163702.8 163486.8 277 29.4657 399.4 
+216 165934.8 165718.8 287 28.4913 394.74 
+216 162831.6 162615.6 276 29.5978 401.88 
+216 162406.8 162190.8 274 29.8066 402.83 
+216 162817.2 162601.2 283 28.8163 401.23 
+216 161874.0 161658.0 274 29.8212 404.36 
+  Avg.=163571.76   Avg.=399.42 
+表 2 throughput without pre-filter work 
+ 
+以下是加入預先過濾器模組的功能掃描一個乾淨的文件的 throughput： 
+開始時
+間(ns) 
+結束時間
+(ns) 
+執行時間(ns) Pattern 數
+量 
+平均長度
+(B) 
+Throughput(Mb/s) 
+216 36845.7 36629.7 0 0 1789.15 
+表 3 throughput with pre-filter scan clean text 
+25 
+ 
+全系統（包含預先過濾器模組）的資源使用： 
+Synthesis tool: XST(VHDL/Verilog) 
+Logic Utilization Used Available Utilization 
+Number of Slices 1825 13696 13% 
+Number of Slice Flip Flops 460 27392 1% 
+Number of 4 input LUTs 3532 27392 12% 
+Number of bonded IOBs 46 556 8% 
+Number of BRAMs 119 136 87% 
+Number of GCLKs 1 16 6% 
+表 6 whole system resource usage 
+ 
+總共儲存了 4000個 pattern，平均 pattern長度= 29 Byte。 
+1 Bram 可以儲存 2^14 bits = 2048 bytes. 
+ 
+27 
+ 
+參考文獻 
+ 
+[1] R. S. Boyer and J. S. Moore. “A Fast String Searching Algorithm,”Comm. Of the 
+ACM, vol. 20, issue 10, pp.762-772, Oct. 1977. 
+ 
+[2] D. Knuth, J. Morris and V. Pratt, “Fast pattern matching in strings,” 
+TRCS-74-440, Stanford University, Stanford California, 1974. 
+ 
+[3]  A. Aho and M. Corasick, “Efficient string matching: An aid to bibliographic 
+search,”Comm. Of the ACM, vol. 18, issue 6, pp.333-343, Jun. 1975. 
+ 
+[4] M. Norton, “Optimizing Pattern Matching for Intrusion Detection,” 
+Available: http://www.snort.org/docs/ 
+ 
+[5] Clam antivirus signature database, http://www.clamav.net 
+ 
+表 Y04 
+二、與會心得 
+ 
+除了將自己在無線網路領域的研究成果發表並聽取與會者建議之外，同時參加Panel 
+Session以及幾個熱門領域的論文發表，藉此了解新興領域的動向與研究主題，做為將來
+研究進行的參考。另外，也和從事相關領域研究人員交換心得，建立交流溝通的管道，
+相信對後續研究有很大的幫助。 
+    無線網路一直都是重要的研究議題，如何有效地利用頻譜資源、節能、提供服務品
+質保證，以發揮資源的最大效能，是非常值得深入探討的課題。個人發表的論文，算是
+提供一個起點，相信未來會有後續研究成果發表。 
+    最後，因第 71屆的 VTC2010-Spring即將於台北舉辦，在本次會議的最佳論文頒獎
+後，台大的吳靜雄教授代表 VTC2010-Spring 的籌畫委員會播放了一段介紹台北、台灣
+的短片，作為宣傳。在此預祝明年的 VTC 能夠圓滿成功，提升台灣於通訊領域的影響
+力。 
+ 
+三、攜回資料名稱及內容 
+1. 會議光碟一片。 
+四、 
+ 
+ 
+knowledge of interference cancellation and the PSM-
+MIMO/OFDM architecture. Then we formulate the throughput 
+optimization problem and three heuristic algorithms are proposed 
+in Section III. In Section IV, the proposed algorithms are 
+evaluated through computer simulations. Finally, we draw our 
+conclusion in Section V.    
+II. RELATED WORKS 
+A. Interference Cancellation via Beamforming Technique 
+Consider that there is an AP equipped with two antennas and 
+K STAs, each of which has single antenna. This is a practical 
+scenario since it is not hard for the AP to equip with more 
+antennas to provide more complex functionality and user devices 
+do not require additional hardware. Because this wireless system 
+can provide up to min(2,K) of spatial degrees of freedom, the AP 
+can simultaneously communicate with two STAs either in one-to-
+two downlink and two-to-one uplink. Therefore, it is necessary to 
+cancel the interference from another concurrent transmission at 
+the receiver side. Assume that the AP has full knowledge of 
+channel state information (CSI). For downlink scenario, [3] 
+provides a transmit beamforming technique that the transmitted 
+signal for one STA is disappeared in the other STA. It borrows 
+the idea of the decorrelating filtering from the receiver side to the 
+transmitter. In [4], the authors further promoted this idea to the 
+channels of parallel sub-carriers for OFDM system.  
+The adopted transmit beamforming technique for OFDM 
+system is described as follows. We assume that the two STAs are 
+STA 1 and STA 2, without loss of generality. For the downlink, 
+the outgoing two independent data streams are firstly constructed 
+and modulated into two separate parallel symbol sequences, xi,1, 
+xi,2, ..., xi,M (i =1, 2) to be transmitted over M sub-carriers. Then 
+symbol sequence xi,m should be multiplied with a two-
+dimensional beamforming vector ui,m = 1 2, ,,
+T
+i m i mu u⎡ ⎤⎣ ⎦ (i = 1, 2 and 
+m = 1,..., M), where the superscript represents the index of 
+transmitting antenna. Therefore, the baseband equivalent 
+transmitted signal on the sub-carrier m can be expressed as:  
+1 1
+1, 1, 2, 2,
+1, 1, 2, 2, 2 2
+1, 1, 2, 2,
+m m m mdl
+m m m m m
+m m m m
+u x u x
+x x
+u x u x
++
+= + =
++
+⎡ ⎤⎢ ⎥⎣ ⎦
+x u u .           (1) 
+The components of dlmx  represents the transmitted signal from 
+the two antennas of the AP. Since the OFDM transforms the 
+MIMO channel into flat fading on each sub-channel, each sub-
+channel can be represented by a single-tap filter. Let hi,m = 
+1 2
+, ,,
+T
+i m i mh h⎡ ⎤⎣ ⎦ denote the complex channel coefficient between the 
+two antennas of the AP and the STA i on sub-carrier m. The 
+baseband received signal  ,i mx  including the additive noise in 
+STA i can thus be represented as: 
+( ) ( ), , , 1, 1, , 2, 2, ,    1, 2dl dl dli m i m m m i m m m i m m m mx n x x n i∗ ∗ ∗= + = + + =h x h u h u . (2)      
+Therefore, the beamforming vector uk,m, ,  , {1,2}k i i k≠ ∈ , 
+can be properly selected such that , , 0i m k m∗ =h u  to null the 
+interference appearing in STA i. In other words, uk,m belongs to 
+the vector space Vk which is orthogonal to ,i m∗h . Furthermore, to 
+maximize received SINR, it can be selected to lie in the direction 
+which is the projection of ,k m∗h  onto Vk. STA i can recover the 
+original data on sub-carrier m by diving i ,i mx  by , ,i m i m∗h u .  
+The received SINR for STA i on sub-carrier m is then given 
+by 
+2 2
+, ,
+, 2 00
+,
+, , , ,
+, ,
+:
+i m i mdl
+i m
+mm k mk i
+i m i m i m i m
+k m i m
+P P
+SINR
+NN P
+≠
+∗ ∗
+∗
+= =
++∑
+u h u h
+u h
+,       (3)  
+where Pi,m is the allocated power. Given the total transmit power 
+constraint Pt, the set of criteria for two STAs to be compatible 
+peers to transmit simultaneously is shown below. 
+,
+2
+,1 1
+2
+, , ,
+2
+, , ,
+, 0
+'
+                                                               
+,  for 1, 2 and 1, 2,... .          
+,  for 1, 2 and 1, 2,...
+i m
+M
+i m ti m
+i m i m i m th
+i m i m i m
+i m th
+m
+P P
+P P P i m M
+P
+SINR SINR i m
+N
+= =
+∗
+∗
+≤
+= ⋅ ≥ = =
+= ≥ = =
+∑ ∑
+u h
+u h
+.M
+⎧⎪⎪⎪⎨⎪⎪⎪⎩
+,  (4)  
+where ',i mP is received power on sub-carrier m and Pth is threshold 
+of successful decoding. There exits an optimization problem of 
+maximizing the achievable capacity via power allocation under 
+the given channel status and the discussion can be found in [3]. 
+The transmit power is assumed to be equally distributed among 
+the sub-carriers thus we have , 1 2i m tP M P= ⋅ .  
+For the reverse direction, the uplink channel is naturally dual 
+to the downlink channel due to the time division duplex (TDD) 
+access fashion of WLANs. The beamforming vectors ui,m 
+becomes the receive filter for the data of STA i on sub-carrier m. 
+The separated received data at the AP is expressed as: 
+( )2, , , , ,1 ,   for 1, 2ul dl dli m i m m m i m j m j m mjx n x n i∗ ∗ == ⋅ + = ⋅ + =⎡ ⎤⎡ ⎤⎣ ⎦ ⎣ ⎦∑u x u h .  (5) 
+The received SINR for STA i on sub-carrier m is given by 
+2 2
+, , , , , ,
+, 2 00
+, , ,
+:
+i m i m i m i m i m i mul
+i m
+mm k m i m k mk i
+Q Q
+SINR
+NN Q
+∗ ∗
+∗
+≠
+= =
++∑
+u h u h
+u h
+,          (6) 
+where Qi,m is the allocated power. To obtain the same SINR for 
+both uplink and downlink, the total transmit power constraint 
+must be the same which is shown in [3].  
+In addition to confirming compatibility, the SINR can also be 
+used to determine the achievable capacity according to 
+Shannon’s theorem and to select an eligible PHY transmission 
+rate [5]. To find a unified modulation scheme applied to all the 
+sub-carriers, the PHY transmission rate will be dominated by the 
+one with the lowest SINR performance. 
+B. PSM-MIMO/OFDM Protocol 
+With the above PHY transceiver strategy, two STAs can 
+simultaneously communicate with the AP. To utilize this 
+function, an MAC protocol to coordinate and to facilitate the 
+selection of suitable STA pairs to make concurrent transmissions 
+is necessary. Therefore, the authors in [4] proposed an 
+architecture which adopted similar timing structure of IEEE 
+802.11 PSM as follows. In prior to data transmission, there is a 
+combinations of pairs to find the best solution. Therefore, the 
+complexity is O(KK/2). The number of combinations will be quite 
+large and the searching will be time-consuming when there is a 
+large number of STAs. Therefore, in this paper, we propose three 
+sub-optimal algorithms which aim at approaching the 
+performance of the exhaustive paring and searching while keeps 
+the complexity being reasonable. 
+B. Proposed Pairing Algorithms 
+To facilitate the algorithms, the AP should firstly prepare the 
+following information.  
+♦ Calculate the beamforming vectors and SINR for each 
+possible pairs. Examine the compatibility for each pair of 
+STAs. 
+♦ Select data rate according to the SINR performance for the 
+pairing of compatible STAs.  
+♦ Calculate the required time for a single STA in a given 
+pairing. The required time for a pair of compatible STAs is 
+then obtained by finding the maximal transmission time 
+between the two STAs.  
+With above information as references, we propose three 
+heuristic algorithms to approach the goal of maximizing 
+throughput.  The algorithms have the complexity of sorting over 
+2 4 4 2
+2 2 2 2 2( ... )K K KC C C C C− −+ + + + +  pairs after the necessary 
+information are ready. The complexity is O(K2) which is much 
+lower than that of the brute force algorithm.  
+Algorithm 1. Pairing based on maximum sum rate 
+Step 1. Sort the possible combinations in order according to the sum of 
+PHY rate among a pair of compatible STAs. 
+Step 2. Select the pair with the maximum sum of PHY rate. Cross out 
+the possible combinations relating to these two STAs. 
+Step 3. Repeat Step 2 to find the pair with the maximum sum of PHY 
+rate from the rest of possible combinations. 
+ 
+Since the suspending of transceiver would cause waste on degree 
+of freedom, we also develop an algorithm to mitigate the usage 
+time differences. 
+Algorithm 2. Pairing based on minimum time differences 
+Step 1. Sort the possible combinations in order according to the 
+separately required time differences between a pair of compatible STAs. 
+Step 2. Select the pair with the minimum separately required time 
+differences. Cross out the possible combinations relating to these two 
+STAs.  
+Step 3. Repeat Step 2 to find the pair with the minimum separately 
+required time differences from the rest of possible combinations. 
+ 
+Algorithm 3. Pairing based on maximum average throughput 
+Define the average throughput as the ratio of total amount of buffered 
+traffic to the required time of a pair of compatible STAs. 
+Step 1. Sort the possible combinations in order according to the average 
+throughput among a pair of compatible STAs. 
+Step 2. Select the pair with the maximum average throughput. Cross out 
+the possible combinations relating to these two STAs.  
+Step 3. Repeat Step 2 to find the pair with the maximum average 
+throughput from the rest of possible combinations. 
+1 4 5 62 3 7 8
+1
+4
+5
+6
+2
+3
+7
+8
+ 
+Fig. 3.  The structure of pairing. 
+Since the selection process of the proposed algorithms will 
+gradually cross out the combinations relating to the already 
+selected STAs, the complexity can be reduced significantly. For 
+example, as shown in Fig.3, when there are 8 STAs to be paired, 
+there are 105 (= 8 6 4 22 2 2 2C C C C× × × /4!) possible combinations to be 
+examined for the brute force solution. Say that STAs 2 and 3 
+constitute the first selected pair according to the adopted 
+algorithm from the sorted list of 82C  pairs. The next selection then 
+comes from the sorted list of the 62C  pairs from remaining STAs. 
+To sum up, only 50 (= 8 6 4 22 2 2 2C C C C+ + + ) pairs need to be 
+examined during the process.  
+IV. PERFORMANCE EVALUATIONS 
+A. Simulation Scenario 
+Assume that there are K compatible STAs each with 
+downlink frames ready for transmission during each service 
+interval. For each STA, the channel condition changes every two 
+beacon interval according to the Rayleigh fading model while 
+the amount of buffered traffic varies for every beacon interval. 
+The proposed algorithms are compared with the pairing 
+algorithm provided in [4], referred to as PSM-MIMO/OFDM 
+here, where the number of candidate STAs to be queried is set to 
+3 for each GATIM frame.  The adopted parameters in our 
+simulation are listed in Table I. 
+B. Simulation Results 
+1) Performance of throughput 
+As shown in Fig. 4, the performance of throughput is 
+improved for the proposed algorithms when the number of STAs 
+increases. This is because that all the proposed algorithms select 
+suitable pairs from a sorted list of all possible pairs. Therefore, 
+when there are more combinations to be considered, the 
+algorithms have higher probability in selecting better pairs from 
+them. The proposed algorithms tend to select equivalent pairs 
+based on their selection criterions in the selection processes.  
+Among the proposed algorithms, Algorithm 3 performs the 
+best since it considers the pairs with maximum ratio of delivered 
+data to the required time which may bring the highest throughput 
+performance. The best pair of STAs should form in the 
+conditions that Ri = Rj = Rmax, which is the maximum possible 
+PHY rate, and Bi = Bj for STA i and j. Algorithm 2 tends to select 
+the pair with equivalent time usages. Therefore, it generally 
+selects pairs with Bi/Ri ≅  Bj/Rj. However, since Ri and Rj  may not 
+necessary equal Rmax, the throughput performance cannot be 

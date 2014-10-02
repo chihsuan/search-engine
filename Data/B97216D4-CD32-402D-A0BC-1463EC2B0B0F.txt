@@ -1,0 +1,197 @@
+ 1 
+針對數位訊號處理器架構探討低功率消耗及降低程式儲存容量之指
+令排程法 
+A Study of Instruction Scheduling Methods for Low Power Consumption 
+and Code Size Reduction on DSP Architecture 
+計畫編號：95-2213-E-009-067 
+ 
+一、中英文摘要 
+ 
+數位訊號處理器是一種為特殊目的設計的微處理器，通常包含多個獨立的資料記憶體
+模組並採用 heterogeneous register sets方式；而要有效利用這些架構特性，顯然需要充分的
+編譯技術支援。同時由於攜帶型電子裝置的逐漸普及，功率消耗也成為另一個重要的設計
+議題；若是能從高階合成的觀點來考慮功率消耗，通常能以較低的代價，來有效降低功率
+消耗。去年計畫我們已提出二個以縮短執行時間及降低程式儲存容量為目標的指令排程
+法，並制定一套虛擬架構；在本計畫中我們將其延伸，提出二個低功率消耗指令排程法，
+及相關數學模組評估其初步效能。根據我們的分析，新提出的方法不僅承襲原來方法的優
+點，還能達到低功率消耗的目的，更加適用於數位訊號處理器架構。 
+關鍵詞：數位訊號處理器、指令排程、低功率消耗 
+ 
+Abstract 
+ 
+A digital signal processor (DSP) is a special-purpose microprocessor designed to achieve 
+high performance in digital signal processing applications, and commonly employs architecture 
+with irregular data paths, multiple data memory banks, and heterogeneous register sets. Sufficient 
+compiler support is apparently important to harvest benefits of this architecture. As the portable 
+system market grows rapidly, power becomes another critical constraint in the design 
+specification. If we consider low power design at high-level synthesis, we can obtain much more 
+effective power reduction with less cost and effort. Last year we have proposed two instruction 
+scheduling methods. A hypothetical machine model and related analytic models are also defined 
+to evaluate their preliminary performance. In this project, we extend them to consider the register 
+assignment phase, and propose two low-power instruction scheduling methods. Based on our 
+analyses, two new algorithms not only retain advantages of previous methods, but also achieve 
+the goal of low-power consumption. 
+Keywords: Digital Signal Processor (DSP), Instruction Scheduling, Low Power Consumption 
+ 
+二、前言 
+ 
+隨著多媒體通訊日益劇增的需求，陸續發展出許多新的方法來對影像、音訊及圖形等
+做壓縮及傳輸的動作。這些訊號處理的過程通常包含大量且規則的運算，為了能即時 
+ 3 
+ 
+在介紹相關文獻之前，我們先大致描述 DSP應用程式的表現方式。DSP應用程式以迴
+圈為主，而迴圈又是消耗執行時間最多的部分，所以大部分的 DSP編譯技術都致力於開發
+迴圈指令的平行度來縮短執行時間。一個迴圈元素  (iteration) 通常用資料流程圖 
+(multi-dimensional data flow graph, MDFG) 表示，其中節點代表指令，有向邊代表資料相依
+性，邊上的數字則代表迴圈元素間的相依距離 (inter-iteration dependence) [9-10]。合理的排
+程結果必須在不違反資料相依性及系統資源限制下，執行所有資料流程圖中的節點各一
+次；另外為了進一步提升效能，常用 retiming 技巧重組迴圈元素，以開發迴圈元素間的平
+行度 [11]。使用 retiming技巧之後程式會分成 prologue、repetitive pattern及 epilogue三部
+分，其中 prologue 和 epilogue 是額外產生且必須獨立執行，嚴格來說是 overhead，但只要
+repetitive pattern重複次數夠多，prologue和 epilogue的執行時間將可忽略不計。 
+關於 DSP編譯技術的相關研究成果很多，由於本計畫重點為低功率消耗，因此僅針對
+這個方面做文獻探討。在 DSP架構中利用編譯技術降低功率消耗共有包含減少記憶體存取
+次數、減少 spill code個數、降低匯流排 switching activity、考慮相鄰指令消耗功率、使用
+packed指令以及重複使用運算元 (operand reutilization) 等六種方式，其中前二項比較屬於
+排程的概念，後面四項則有對應的指令排程法提出。Su et al. [12] 依據序列排程法 (list 
+scheduling) 概念提出 cold scheduling，在不影響整體執行時間的前提下，更動指令執行順
+序來降低匯流排的 switching activity。Panda and Dutt [13] 則是更動陣列元素 (array element) 
+在記憶體中的儲存方式讓它們可以被依位址順序存取，也與 cold scheduling 具有類似的功
+能。除了匯流排之外，另一個大量消耗電能的系統元件是函式運算單元 (function unit)。
+Musoll and Cortadella [14] 曾經針對不同 bit-width的乘法器和加法器做過分析，發現乘法器
+消耗的功率是加法器的數十倍，同時若是令相鄰二次運算其中一個 source operand維持不變 
+(稱為 operand sharing或 operand reutilization)，可以節省大約 35%的功率消耗。Musoll and 
+Cortadella [15] 同時也將此概念結合傳統的序列排程法，提出 list-scheduling algorithm for 
+low power (LPLS)。雖然 operand reutilization機制簡單有效，可惜在 DSP應用程式中這種二
+個以上指令共用 source operand 的情形並不多見，也限制了 operand reutilization 使用的範
+圍。由於 DSP應用程式存取的變數大部分是陣列，為了提高 operand sharing的實用性，Kim 
+and Choi [16] 便提出透過 retiming技術重組迴圈元素的方式，讓分散於相鄰迴圈元素但可
+能共用 source operand的指令盡量集中。使用 retiming技術確實可以開發出原先隱藏在相鄰
+迴圈元素間的 operand reutilization機會，可惜 Kim and Choi [16] 提出的方法只能偵測單維
+迴圈及單維陣列，而且更動資料流程圖的步驟也較複雜，使得整個排程法顯得有些美中不
+足。以上的方法都適用 DSP架構，但有一個共通的問題，沒有考慮將獨立的 unpacked指令
+依照平行條件組成 packed指令的步驟。但是 code compaction其實 DSP編譯過程中不可或
+缺的一環，因此我們在設計排程法時將補足這個部分。 
+ 
+五、研究方法 
+ 
+之前提到雖然可以針對 DSP架構的五個編譯步驟設計獨立的演算法，但因為它各步驟
+彼此之間有嚴格的資料相依性，若是能同時考慮多個步驟來設計編譯技術，將有助於整體
+效能的提升。有鑑於此，去年我們已提出二個涵蓋所有步驟的指令排程法，在本計畫中將
+ 5 
+顯示的結果都針對單一迴圈元素，另外我們也設計對應的數學模組及計算公式，繪出各個
+應用程式在不同迴圈大小時使用不同排程法所得到的整體執行時間及電能消耗，評估結果
+大致與這些表格相似。因資料量龐大在此省略，詳細內容可見論文 [18]。 
+ 
+七、計畫結果自評 
+ 
+在本計畫中我們針對多重資料記憶體模組及 heterogeneous register sets的 DSP架構，提
+出二個包含完整編譯步驟的低功率消耗指令排程法，並制定對應的數學模組，選擇數個 DSP
+應用程式做初步的效能評估。總體而言，本計畫大致達成以下幾點目標： 
+1. 提出 RSOR指令排程法，延伸 RSSA排程法特性並加入 operand reutilization機制，能降
+低函式運算單元消耗的電能，並維持最短排程長度及最少指令個數。 
+2. 提出 RSER 指令排程法，使用 retiming 技術開發原先隱藏在相鄰迴圈元素間的 operand 
+reutilization機會，再配合 RSOR做指令排程，進一步降低消耗的電能。 
+3. 制定以上二種指令排程法對應的數學模組，並選擇數個表示 DSP 應用程式的資料流程
+圖，對提出的方法做初步效能評估。 
+4. 使用之前計畫定義的虛擬架構產生多個資源個數不同的 DSP，配合有延伸性的 RSOR及
+RSER，討論不同系統資源對整體執行效能的影響。 
+由以上幾點可知，本計畫確實能將 DSP架構上的指令排程議題做詳細深入的探討，改
+善之前提出方法的潛在問題，嘗試提出新的機制，並制定數學模組評估其初步效能。整體
+看來，我們提出的方法確實都能達到預期的結果，同時滿足三個 DSP架構主要的排程目標。
+這些研究成果已發表於 [18] 並整理成期刋論文，後續發展及其他相關排程議題我們也將持
+續研究。 
+ 
+參考文獻 
+[1] J. Eyre and J. Bier, “The Evolution of DSP Processors”, IEEE Signal Processing Magazine, 
+Vol. 17, Issue 2, pp. 43-51, March 2000. 
+[2] S.A. Mujbata, “Trends in Digital Signal Processors”, Proc. of International Symposium on 
+VLSI Technology, Systems, and Applications, pp. 108-111, 1999. 
+[3] V.K. Madisetti, VLSI Digital Signal Processors: An Introduction to Rapid Prototyping 
+and Design Synthesis, Butterworth-Heinemnn, 1995. 
+[4] P. Lapsley, J. Bier, A. Shoham, and E.A. Lee, DSP Processor Fundamentals: Architectures 
+and Features, Berkeley Design Technology, Inc. 1994-1996. 
+[5] H. de Man, “System-on-Chip Design: Impact on Education and Research”, IEEE Design & 
+Test of Computers, Vol. 16, Issue 3, pp. 11-19, July-sep. 1999. 
+[6] G. Silcott, J. Wilson, N. Peterson, W. Peisel, and K.L. Kroeker, “SOCs Drive New Product 
+Development”, IEEE Computer, Vol. 32, Issue 6, pp. 61-66, June 1999. 
+[7] J. Noguera and R.M. Badia, “A HW/SW Partitioning Algorithm for Dynamically 
+Reconfigurable Architectures”, Proc. of Conference and Exhibition on Design, Automation, 
+and Test in Europe, pp. 729-734, 2001. 
+ 7 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+表格 2. The comparison between RSOR and RSSA (under Motorola DSP56000 
+architecture). 
+RSSA RSOR 
+ 
+length ins. count current length ins. count current 
+Wave Digital Filter 5 13 750 5 13 770 
+Filter 5 10.5 655 5 10.5 655 
+IIR 2D 16 37 2435 16 37 2435 
+Forward-substitution 5 10.5 711 5 10.5 717 
+THCS 4 9.5 611 4 9.5 587 
+Discrete Fourier Transform 12.5 30 1870 12.5 32 1756 
+Floyd-Steinberg 17.5 39 2440 17.5 39 2440 
+Transmission Line 12 28 1770 12 28 1770 
+IIR 1D 8 17.5 1201 8 19 1111 
+Differential Equation Solver 11.5 25.5 1580 12 24.5 1651 
+All-pole Lattice Filter 16 34.5 2280 17 34.5 2300 
+Elliptic Filter 34 72 5020 35 75 4827 
+1010.53710.59.530329 
+1 FU, 2 acc, 4 reg, 2 mem 2 FU, 4 acc, 4 reg, 2 mem 
+ 
+RSSA RSOR RSSA RSOR 
+Wave Digital Filter 0.5 0.5 0 0.5 
+Filter 0 0 0 0 
+IIR 2D 0 0 0 0 
+Forward-substitution 1.5 1.5 0.5 2 
+THCS 1 1 0 2 
+Discrete Fourier Transform 1 4 0 4 
+Floyd-Steinberg 9 9 6 9 
+Transmission Line 4 4 0 5 
+IIR 1D 0.5 3 0.5 3 
+Differential Equation Solver 4 5 3 6 
+All-pole Lattice Filter 1.5 3 1.5 6 
+Elliptic Filter 4 9 2 11 
+ 
+表格 1. The comparison between RSOR and RSSA (the number of OPRs). 

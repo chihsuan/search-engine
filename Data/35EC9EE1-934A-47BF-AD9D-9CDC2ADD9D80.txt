@@ -1,0 +1,240 @@
+中文摘要 
+ 高畫質影像於可攜式嵌入式平台上實現的需求日益增加，H.264 編解碼協定為當前高畫質平面
+視訊傳輸的重要協定，然而要於嵌入式系統上達到即時多媒體運算有其工作時脈上的限制，雖然許
+多加速多媒體運算的指令集被開發，多數仍難以在嵌入式系統低時脈的環境下實現即時運算。本計
+劃希望藉由多資料流並行處理的 SIMD 架構「多媒體運算暫存器」實現 H.264 協定之演算法，以提
+升即時多媒體運算在嵌入式系統中的執行效率。多媒體運算暫存器是以位元切割運算的概念設計整
+合了暫存器細胞單元和多媒體運算機制，可藉由操作模式的切換改變資料處理的並行程度，並依據
+影像處理特性設計出與 MMX 指令集相容之多媒體指令集的處理單元。由於將運算單元及暫存單元
+整合，解決了原本資料分別以多媒體運算指令及一般指令處理時需經過額外的搬移動作這項缺點，
+並利用影像處理其資料於記憶體中位址有固定間距之特性，設計出跳躍式位址抓取定址模式並與多
+資料流並行運算合併使用。原本在處理 H.264 上耗費大量時間於眾多區塊中重複執行相同的指令，
+藉由多媒體運算暫存器多資料流並行處理能力可將眾多區塊一併處理，大量縮短執行時間，並利用
+操作模式的切換，有彈性的分配暫存器給各組位於多媒體運算暫存器中的運算器使用。原本在處理
+上較為費時的矩陣轉置、資料重新排序、SAD 計算等動作，則藉由新增的行列互換指令、暫存器
+內區塊單獨搬移指令及針對市面既有的 SAD 計算指令的缺點加以改進所新增的指令，另輔以跨暫
+存器旋轉資料的方式令同一資料做最大限度的重複使用，使效能得到突破性的提升。於最後分析中
+本報告在處理 H.264 上效能為 MMX 的 4 倍以上，於 SAD 計算上甚至可達 MMX 的 10 倍，其效能
+更於現在最新的 SSE4 之上。  
+ 
+關鍵詞: MMX 指令集， H.264 編解碼協定，多媒體指令集，SAD 計算，多資料流 SIMD 運算 
+一、前言 
+隨著科技的日新月異，人們對休閒育樂品質的要求也越來越高，各種影像壓縮技術也
+不斷的推陳出新，從 mpeg、mpeg2 一直到現在的 H.264。隨著技術的提升，在視訊品質不
+斷向上提升的時候，對人們帶來的是不斷提升的育樂品質，但對處理器來說帶來的卻是龐
+大的運算量及冗長的運算時間。而到如今，人們更希望讓高畫質的影像不止是在桌上型電
+腦上欣賞，更希望能夠將其於各種可攜式平台上實現，如行動電話、個人數位助理（PDA）、
+隨身型遊戲機、甚至是行動電視等等。 
+所以如何提高嵌入式系統對即時影像處理的速度成為一個非常重要的課題，H.264 編
+解碼協定為當前高畫質平面視訊傳輸的重要協定，然而要於嵌入式系統上達到即時多媒體
+運算有其工作時脈上的限制，雖然許多加速多媒體運算的指令集被開發，多數仍難以在嵌
+入式系統低時脈的環境下實現即時運算。故本計劃希望藉由多資料流並行運算的方式加速
+提高多媒體運算的速度，提升嵌入式系統對如 H.264 這種高運算量但其動作也擁有高重複
+性的演算法的執行效率。 
+ 
+二、研究目的 
+本計畫的目標為設計一個具備低成本、低功耗、高效能的處理器，讓這顆處理器能夠
+滿足一般嵌入式平台的應用，尤其在可攜式產品上，提供一個以低功耗為前提下的高效能
+處理器。為滿足上述的目標，本計畫的研究方向分為三個部分： 
+1. 為提升多媒體運算效能，主要針對 H.264 影音編解碼的部分而設計。 
+2. 減少面積，利用 Reconfigurable 的概念來設計，達到降低面積成本的目標。 
+3. 低功率設計，為了符合嵌入式平台的使用，所以低功率設計一定要是本計畫的一部分。 
+目前的設計當中，本計畫選用了一顆自行設計的 32 位元處理器，此處理器的特色為架構簡
+單的 one cycle RISC microprocessor，具備一般算術運算、邏輯運算及程式控制指令，內部
+含有 8 個 32-bit 暫存器。以此顆處理器為基礎，再加入多媒體運算指令，未來將讓此處理
+器能執行具 MMX 指令功能的指令，在處理器內加入 MMX unit，並利用 Reconfigurable 的
+概念將 MMX unit 和 Register File 做進一步的整合設計，利用程式化控制硬體架構，使得各
+功能的模組可以在錯開的時間使用相同的硬體，使得硬體面積大幅縮小。在 MMX unit 中
+包含了 MMX multiplier、MMX adder，MMX shifter，MMX saturation unit、Register File 等
+硬體架構，在 MMX unit 外部還有 ALU，為了達到省電的目的，我們在其中加入了 Power 
+on/Power off 機制，讓沒有用到的 function block 能夠被區隔出來並 Power off，有要被應用
+的 function block 再 Power on。 
+ 
+ 
+圖(1)多媒體運算處理器架構 
+    本計劃研究藉由實現之圖(1)多媒體運算處理器之支援 MMX 指令集且具有多資料流並
+行運算能力的 SIMD 架構中，實現 H.264 視訊壓縮編碼技術。利用視訊處理中大多數是在進
+行重複的動作這個特性，以多資料流並行處理的方式將其完成，以提高嵌入式處理器對多
+媒體處理的效能，進而驗證高畫質視訊壓縮技術在可攜式平台上實現的可行性 。 
+記憶體存取動作，用來備分及更新暫存器內容，所以造成部分時間的浪費。 
+為了能夠更符合快速多媒體運算，MMX 除了基本的 SIMD 的邏輯運算和算術運算外，
+還提供飽和功能的選用，讓 MMX 指令在運算時能選擇要進行飽和或不飽和的運算。飽和
+運算是為了在多媒體運算時，不會因運算時的 overflow 產生大量的失真。 
+四、架構實現設計 
+多媒體運算暫存器 
+ 圖(5)為具多媒體運算暫存器之處理器架構，藍綠色的部分是一般的處理器的架構，指
+令經 instruction fetcher 從 instruction memory 抓取，經過指令解碼後，一般運算程式可經由
+一般指令處理單元運算，多媒體指令經由綠色的多媒體運算暫存器計算。多媒體運算暫存
+器是一個整合多媒體運算單元及暫存器空間的設計，當執行一般程式時，多媒體運算暫存
+器是一般指令處理單元的暫存器空間，執行多媒體指令時，多媒體運算暫存器就可以執行
+運算。此修改是因為 BMMOC 為 SIMD 的硬體架構，所以在執行的運算應該要一致，所以
+為了節省面積，所以只使用一個 Decoder，但是為了能夠執行 3 種模式 global mode、couple 
+mode 及 isolation mode，所以在資料寫回的 enable 線就必須要分別依照所選用的模式執行，
+即是說，當執行 global mode 時，全部只看成一個 MMX，當資料要寫回暫存器就只需要讓
+一個 MMX 寫回，如圖(6)。 
+ 
+ 
+圖(5) 多媒體運算暫存器之處理器架構 
+ 
+ 
+圖(6) GPADDW 指令運作路徑 
+GPADDW mm0 mm7 是指 mm0 與 mm7 做加法運算如圖(6)，而 mm7 的資料放置在 MMX3
+內的暫存器中，如上圖的黃色 Op Cell array，透過藍色的資料路徑傳送到 MMX0 中做運算，
+之所以會將資料送到 MMX0 中做運算，這是因為 mm0 的資料在 MMX0 中，而且計算完的
+結果也要儲存在 mm0 中，所以將資料送到 MMX0 中做運算就可以將計算完的結果直接儲
+存到暫存器中(如上圖的紫色 Op Cell array)。 
+    而在執行 couple mode 時，就是分成兩組的 MMX 執行，即一個指令就可同時運算兩筆
+不同的資料，並將其結果儲存起來，如圖(7) 
+2. LDSBW / LDUBW 
+LDSBW/LDUBW 是一個 load 指令，它的功用是將資料從記憶體中取出，將資料從 Byte
+型態做有號/無號展開號以 Word 型態存入多媒體暫存器。圖(10)為 LDSBW 的運作範例。 
+ 
+圖(10) LDSBW 運作範例 
+ 圖(11)內可知 SAR 為 0x00012500，指令為 LDSBW mr0, [0x120]，代表將記憶體位址
+0x120+0x00012500 = 0x00012620 取出 32 位元，再以 byte 為單位做有號數擴展成 word 存入
+mr0，所以資料從 0xB82E 有號數擴展成 0xFB0802FE。 
+ 
+3. PADDRB、PADDRW、PADDRD 
+一般 SIMD 架構可以對不同的暫存器內容做切割平行的運算，但並不支援單一暫存器
+內部的資料運算。PADDRB、PADDRW 和 PADDRD 就是針對單一多媒體暫存器內的運算，
+三個指令的差別為多媒體暫存器內的資料型能分別是 byte、word 及 double-word。 
+ 
+圖(11) PADDRB、PADDRW、PADDRD 的運作範例 
+圖(11)中的（A）為 PADDRB 的例子，指令為 PADDRB mr0，功能是將 mr0 以 byte 為
+資料型態兩兩相加，相加的結果以 word 為資料型態存回 mr0。（B）是 PADDRW mr2，是
+將 mr2 以 word 為資料型態兩兩相加後以 double-word 為資料型態存回 mr2。（C）是 PADDRD 
+mr6，是將 mr6 內 2 個 double-word 相加存回 mr6。 
+PADDRB、PADDRW 及 PADDRD 在解決多媒體暫存器內部資料的加法時很有用，尤
+其在累加運算時，當累加的結果以 byte 為單位存在同一多媒體暫存器內，接著只需先執行
+PADDRB，再執行 PADDRW，最後再執行 PADDRD 後，就可將所有的資料累加成一個值
+了。 
+4. ABSUBB、ABSUBW、ABSUBD、ABSUBQ 
+ ABSUBB、ABSUBW、ABSUBD 及 ABSUBQ 的差異在於多媒體暫存器內的資料型態
+不同而已，依序分別為 byte、word、double-word 及 quad-word。這四條指令是進行減法運
+算後取絕對值的指令，因為在 Intel MMX 中並沒有絕對值的功能，所以無法計算某些公式，
+如比對差異量的 SAD 或 MAD 等。 在某些用到減法取絕對值的運算中，我們可以利用
+ABSUBB、ABSUBW、ABSUBD 及 ABSUBQ 來計算出我們要的結果，這 4 條指令可以解
+決 Intel MMX 指令集對於絕對值運算的不足。 
+5. BFE(B/W/D) 
+ BEF 指令是用於單獨搬動一多媒體暫存器一 byte、word 或 double-word 的資料到另一
+多媒體暫存器中。透過兩組 3bits 的立即值，我們可以選取由來源多媒體暫存器任一個位置
+的資料到目的多媒體暫存器中的任一位置。而 BFE 同樣支援 isolation mode，所以可以同時
+對四組多媒體暫存器作搬移的動作。而像 Zigzag Scan 這種動作即可透過這道指令快速完
+成 。 
+圖(12)為 BFEW mm0 mm1 0x1 0x2 指令，mm1(r)會將其 0x2 位址也就是由低位數來第
+三個word的值，單獨搬移到mm0(r) 0x1位址也就是由低位數來第二個word中，至於mm0(r)
+中其他 word 則保持原樣。 
+ 
+圖(12) BFEW 運作範例 
+fast DCT 而是改用同時進行四道向量乘法的方式來完成，可是跟 fast DCT 比起來多出了太
+多多餘的動作導致效能的不佳。因此最後決定以 couple mode 來執行 DCT 的動作，一次可
+完成兩個 block 的 DCT。雖然其效能只能提升至約為以 MMX 指令集來執行的 2.7 倍，但
+是其因為每組運算器和 MMX 一樣都可使用 8 組暫存器，可以將所需要使用的資料都存放
+在暫存器內一直到整個計算流程執行完畢，故不像使用 isolation mode 時效能會被 memory 
+access time 給拖垮。 
+ 在處理上將 X 矩陣的各行先存入暫存器中，另外將這四行都左移 1 bit 以達到乘以二的
+效果，之後將其結果存放於另外四個暫存器，只要再透過四組不同的暫存器互相加減及可
+得到 Fast DCT 的結果，其中僅需要運用簡單的 pshift、por、pmov、padd 和 psub 指令集可
+達成。而下圖(16)為在計算 1D DCT 第二行結果的範例。 
+ 
+圖(16)Fast DCT 實作範例 
+ 
+ 由於 2D 的 DCT 兩次分別是對行和列作 1D 的 DCT，所以在做第二次 DCT 前需先經過
+矩陣轉置的動作。在這裡我們使用 BMMOC 中新增的只令 IXSTR4，這道指令可以僅花 1
+個 cycle 就可以完成矩陣轉置指令，比起原本 MMX 需要花上 12 道指令完成可以大幅提升
+處理速度。 
+ 經由矩陣轉置後，只要再使用如前前面所述的 1D DCT 的動作即可算出 2D DCT 的結
+果。然而由下式第二次 DCT 的計算可以看出，由於我們在這次 DCT 執行之前已經經過一
+次 DCT 轉換了，所以我們這次計算的結果也會和正確結果呈現一個轉置關係，因此需要再
+經過一次矩陣轉置方能得到正確得結果。 
+Quantization 於多媒體暫存器上的實現 
+ 下式為 Quantization 在 H.264 中所使用的公式，其中 PF 為 DCT 時獨立取出矩陣裡各
+pixel 所要乘的參數: 
+)6/(15
+)
+2
+()()/(
+Qpfloorqbit
+MFWround
+Q
+PFWroundQYroundZ qbitij
+step
+ijstepijij
++=
+×=×==  
+然而當圖像中一 block 內的資料經過 DCT 後，其值可能會超過 8bits 所能表示，考慮
+DCT 時資料矩陣以最差的狀況分佈:  
+ 
+ 
+可以看到其最大值會產生在 Y11 處，其值原本由 8bits 表示，擴充到需要 13bits 表示。
+故MF最大頂多可為19bits才不至於因data type的限制而產生錯誤，故我在實現Quantization
+時 qbit 一率採用 20。這是因為 PF 除以 Qstep 後其值會在 1/2 以下，也就是說 MF 的值最大
+也不會超過 2qbits-1，故若 qbit 一率為 20 則可確保 MF 可以以 19bits 表示。對於原本 qbit 小
+於 20 的 MF，可以將其乘以 220-qbit 則不會和原本有任何誤差，但若對於原本 qbit 大於 19
+的 MF 則須將其除已 2qbit-20，這不會使影響產生失真嗎? 事實上是不會的。在進行
+Quantization 時由於最後要根據 qbit 來進行右移的動作，然而這右移的動作也使得 MF 在低
+bits 處的數值對最會結果會完全沒有影響。下圖(17)為 Qp 大於或等於 48 時的計算範例，可
+發現若我們將 qbit 設為定值所導致 MF 需要先削去的部分，在原本的計算中經過位移後必
+定為零。 
+ 
+圖(20) 藉由 CRRL 指令取得下個 block 的資訊 
+ 
+ 之後如圖(21)可以直接透過使用新增的 IPSADBW4指令即可在 one cycle內直接計算出
+兩組 block 各行的 SAD，並以 word 的方式存放於四組 MOSU 的暫存器中。 
+  
+圖(21) 使用新增 IPSADBW4 指令計算 SAD 
+ 
+當 IPSADBW4 執行完後 block 四行的 SAD 已經分別存放於四組 MOSU 的暫存器中，
+因此只要如圖(22)使用 MMX 指令中的 PADDW 指令，並搭配我們 BMMOC 中的兩種格式
+couple mode、global mode，即可將此四組 MOSU 中各行的 SAD 加總起來，完成此 4×4block 
+SAD 計算的工作。 
+ 
+圖(22) 以 couple 及 global mode 使用 PADD 指令計算 SAD 
+5. 驗證與模擬 
+驗證平台實現 
+ 
+圖(23)UMVP-2500 平台的架構圖 
+ 
+    此圖(23)為 UMVP-2500 的架構簡圖，UMVP-2500 為創意電子公司所開發的一套
+實現在可攜式嵌入平台上。 
+參考文獻 
+[1] Zexin Pan, W. David Pan, and Aleksandar Milenkovic, “Complexity-Distortion Tradeoffs in 
+Variable Complexity 2-D DCT”, Electrical and Computer Engineering Department 
+University of Alabama in Huntsville 
+[2] Parthasarathy, V. ; Bharathi, A.V. ; Rhymend Uthariaraj, V.：” Performance analysis of 
+embedded media applications in newer ARM architectures” , Parallel Processing, 2005. ICPP 
+2005 Workshops. International Conference Workshops , 14-17 June 2005 Page(s):210 - 214 
+Digital Object Identifier 10.1109/ICPPW.2005.69  
+[3] Ze-Nian Li , Mark S. Drew：”Fundamentals of Multimedia”,Pearson Education International, 
+2004 
+[4] Iain E G Richardson：”H.264 / MPEG-4 Part 10 White Paper”, www.vcodex.com 
+[5] Thomas Wiegand, Gary J. Sullivan, Gisle Bjontegaard, and Ajay Luthra, “Overview of the 
+H.264 / AVC Video Coding Standard”, IEEE transactions of circuits and systems for video 
+technology, July 2003 
+[6] 林宗輝 , “嵌入式方案－嵌入式系統的省電設計”, DigiTime.com, September 25 2006 
+[7] “Intel Architecture Optimization Manual” Order Number 242816-003  ,1997 
+[8] Alex Peleg, Sam Wilkie, and Uri Weiser “Intel MMX for Multimedia PCs”, January 1997. 
+[9] “Intel MMX™ Technology Overview” Order Number: 243081-002, March 1996 . 
+[10] Millind Mittal, Alex Peleg, Uri Weiser,” MMX™ Technology Architecture Overview” ,Intel 
+Technology Journal Q3 ’97. 
+[11] http://courses.ece.uiuc.edu/ece390/books/labmanual/inst-ref-simd.html 
+[12] http://www.tommesani.com/MMXPrimer.html 
+[13] http://dev.gameres.com/Program/Other/MMXData.htm 
+[14] http://dev.gameres.com/Program/Other/MMX_1.htm 
+[15] 陳昭佑,”An automatic optimization mechanism of circuit block partition for Fine-grain 
+Multi-context Reconfigurable Process Unit” ,July 2006 
+[16]NEIL H.E. WESTE ,DAVID HARRIS ,”CMOS VLSI DESIGN A Circuits and Systems 
+Perspective” Third Edition ,2005 
+[17]steve furber ,”ARM system-on-chip architecture” second edition, Act 1998 
+[18]BARRY B. BREY ,”THE INTEL MICROPROCESSORS 
+ARCHITECTURE-PROGRAMMING,AND INTERFACING” SIXTH EDITION,2003 
+[19] Youngsik Kim, Tack-Don Han, Shin-Dug Kim, and Sung-Bong Yang ,”An Effective 
+Memory-Processor Integrated Architecture for Computer Vision” , 1997 IEEE 
+[20]http://www.cc.ntut.edu.tw/~s8410010/hw4.htm 
+[21]http://rnvs.informatik.tu-chemnitz.de/~jan/MPEG/HTML/IDCT.html 
+[22] WEN-HSIUNG CHEN, C. HARRISON SMITH, AND S. C. FRALICK “A Fast 
+Computational Algorithm for the Discrete Cosine Transform” , IEEE TRANSACTIONS ON 
+COMMUNICATIONS, VOL. COM-25, NO. 9, SEPTEMBER 1977 
+[23]Athanassios N. Skodras,”Fast Discrete Cosine Transform Pruning”,IEEE TRANSACTIONS 
+ON SIGNAL PROCESSING, VOL. 42, NO. I , JULY 1994 
+ 

@@ -1,0 +1,961 @@
+  2
+摘     要 
+由於網路協議(IP)本身的缺陷，讓現今的網際網路上存有不同的攻擊。其中又以
+DDoS 攻擊方式具有操作簡單、隱蔽性強及攻擊傷害大等多種特點成為最常用的攻擊技
+術之一。迄今，針對這種攻擊已有的應對策略是從被動式追蹤(即是對攻擊源追蹤)及
+主動式防禦(也就是攻擊檢測防禦)等兩個角度提出解決方案。而本計劃所提的方法是
+採用結合混合封包標記及封包記錄的方式，來改善每個封包經過路由器都必須做記錄
+的缺點，同時藉由額外封包記錄所經過的路由器資訊，將建構攻擊路徑所產生的錯誤
+節點數目大量的降低。經過實驗模擬結果，發現本計畫所提的方法是一個有效率降低
+儲存空間及可靠單一封包的IP 追蹤方法。 
+此外，本計劃也利用tfn2k模擬軟體來撰寫針對TCP SYN Flood、 UDP Flood、ICMP 
+Flood和Smurf等攻擊之實驗場景並在Testbed進行模擬演練及記錄實驗結果。另外也延
+伸此架構與本校所屬的網路攻防實驗室做結合，完成實體地連線進行實際操作並記錄
+實驗數據進行分析。最後提出一種在IPv6協議下，能對惡意攻擊者做有效的IP追蹤演
+算法。 
+ 
+關鍵詞：DDoS 攻擊、IP 追蹤、封包標記、封包記錄。 
+  4
+1. 前言 
+ 
+近年來網際網路的快速發展，越來越多的產業以及服務都與網路有著高度的相關
+性。尤其是在寬頻普及化之後，使得更多家庭用戶進入網際網路的環境，因此勢必更
+加關注於網際網路的安全議題。 
+ 
+    目前網路安全的主要威脅來自於駭客入侵、拒絕服務攻擊、病毒、蠕蟲、垃圾郵
+件、惡意軟體和網路竊聽等等。尤其是利用IPv4的固有缺陷，使得攻擊者可對送出的
+攻擊封包來竄改其真實的來源位址，也就是將原本會存放自己IP 位址的欄位內容改成
+另一個IP 位址。通常是採用隨機指定IP 位址的方式，使得受害者找出攻擊者的來源
+位址的困難度更加提高。同時，有經驗的攻擊者往往不直接對目標發起攻擊，而是先
+建立Botnet，再利用多個Bot同時向目標發起攻擊，這大大提升了攻擊的危害程度，使
+得對攻擊者的追蹤變的更加困難。 
+ 
+    在各種網路攻擊模式中，以DoS(Denial of Service）/DDoS (Distributed Denial 
+of Service)攻擊是一種極具破壞力的攻擊手段，且此類攻擊技術門檻較低，僅需足夠
+的硬體及網路上隨手可得的攻擊程式，因此相關的攻擊事件層出不窮。 
+ 
+回顧DDoS的攻擊原理大都是利用TCP/IP網路協定本身的漏洞與特性，使受攻擊之目
+標主機或網路因無法處理由駭客所發出或偽造的大量垃圾封包，而導致系統停滯或當
+機。目前常見的DDoS攻擊，大致上可以分為： 
+ 
+1. TCP SYN Flood Attack：發生於TCP/IP確保資料傳送時，一個正常的TCP連線建立之
+前，目的端與請求端必須完成三向交握（Three-Way Handshake），即目的端接收到
+請求端所送出的SYN封包，並回送SYN ACK給請求端。在連線建立之前，目的端必須
+收到自請求端IP位址發出的ACK，如圖1(a)所示。基於三向式交握的機制缺陷，攻擊
+者可針對某部主機送出連續的連線請求，也就是內含由亂數產生，不存在或不正確
+的請求端IP位址的SYN 封包。因此，目的端對該位址送出SYN ACK之後，根本就不可
+能收到請求端的ACK，於是大量無法建立連線的封包便填滿了目的端的等待佇列。雖
+然目的端對entry的存在時間有限制，不過破壞者可以利用程式產生亂數再快速地送
+出要求，而造成相同的結果。最後主機內其他的連線服務則被拒絕。這種接連不斷
+的SYN封包稱為TCP SYN Flood，如圖1(b)所示。 
+ 
+ 
+ 
+ 
+ 
+ 
+  6
+3. ICMP Flood Attack：ICMP(Internet Control Message Protocol)主要是用來偵測
+與回報網路的狀態，攻擊者假造來源IP並發送大量ICMP封包給目的端，目的端回應
+等量的ICMP封包給假造的來源IP網路，將造成目的端與被假造來源IP的網路流量大
+增，如圖3所示。而最主要的攻擊方式是利用Ping of Death，Ping指令是利用發出
+ICMP的Echo Request給目的端，當目的端收到這個封包之後再回覆Echo Reply。Ping 
+of Death則是利用ping程式，送出超過IP（65536 Bytes）限制的封包到某台主機，
+如果目的端主機系統並未對其所接收的資料做好長度限制，將使得在處理資料時把
+過多的資料覆蓋到系統其它部份的資料，因而導致緩衝區溢出，那麼就有可能造成
+主機當機或是重新開機。 
+ 
+ 
+ 
+圖3 (a)正常ping封包 (b)假冒來源ping封包 
+ 
+    若能找出攻擊者的來源位址，就能對攻擊者進行法律或道德的嚇阻。目前有數種
+方法藉由路由器(router)的幫助達到此效果，如今我們將藉由某些資訊作為尋找出攻
+擊者來源位址的技術定義為IP 追蹤(IP Traceback)。而目前的IP 追蹤技術可以分為
+兩大類，一類是以封包標記技術靠著大量的被標記過的封包來還原攻擊路徑
+[1,9,10,12]；另ㄧ類則是只需要單一封包即可追蹤攻擊的來源[2,3,5,6,7]。 
+ 
+2. 回顧研究文獻 
+   到目前為止，已有許多學者專家針對IP 追蹤技術提出不同的方法，我們可將其概
+略分為封包標記[1,8,9,11,12]、封包記錄法[6,7]以及混合式封包追蹤[2,3,5]。 
+ 
+2.1 封包標記 
+ 
+    封包標記 (Packet Marking) 的作法是利用IP標頭一些很少用到的欄位填入一些
+資訊以供追蹤攻擊者使用。此類方法分為兩類，一類的決定性封包標記(Deterministic 
+  8
+2.1.2 機率性封包標記 
+ 
+假設路由器 R 對每一個通過的封包都會根據固定的機率來決定要不要對這個封
+包做標記。如果決定對封包做標記時，路由器R就會記下路由器R的資訊，且會覆蓋掉
+之前所標記的資訊。因此PPM主要是以機率選擇方式，把部份路徑資訊記錄在封包上，
+使得受害者可以利用多個封包，還原攻擊路徑，就算攻擊者偽造封包來源位址，也可
+以查出攻擊路徑。 
+2.2 封包記錄法[6,7] 
+是將封包紀錄(Log)至所有經過的路由器上，而這些紀錄可能包括來源位址、目的
+位址及封包數量等資訊。當網路遭受攻擊發生之後，可使用這些資料及探勘技術來重
+建封包的傳送路徑，換言之，可從受害者的共有特徵來找出這些攻擊封包，再與這些
+保存在各路由器中的資料進行比較，進而一級一級的找出攻擊路徑。此方法的缺點是
+需要大量的儲存空間及不同路由器間的紀錄資料整合問題。 
+ 
+2.3 混合式封包追蹤法 
+Snoeren [2,3]以雜湊函數為基礎的封包稽核和SPIE（Source Path Isolation 
+Engine）等，利用BloomFilter[4]記錄封包的雜湊值和時間區間，而非直接記錄封包
+本身，大大降低Logging的儲存空間，約只需要網路總流量的0.5%即可。 
+Gong [5]修改 SPIE 記錄的方法，每經過兩個路由器才做封包記錄，與 Snoeren 等
+人方法相比可以減少一半儲存空間。在標記封面使用封包標頭的識別欄位作為標記資
+料的儲存空間如圖6，識別欄位在標記時會分為兩個部份，最左邊的位元作為判斷用的
+旗標(flag)，旗標值為 1，代表前一個路由器有記錄此封包，旗標值為 0，代表前一
+個路由器沒有記錄此封包，剩餘的 15 位元存放 路由器ID號碼。  
+ 
+ 
+圖 6 Gong所使用欄位[5] 
+重建攻擊路徑的方式與 SPIE 相類似，同樣將攻擊封包與攻擊時間送給封包最後
+經過的路由器，不過由於是跳躍記錄的方式，因此追蹤時會發生兩種情況：第一種情
+況是封包最後經過的路由器有記錄封包，此時只需要以封包最後經過的路由器作為起
+  10
+表一 IP 追蹤技術能力比較表 
+ 封包標記 封包紀錄 混合式 封包追蹤 
+網路負載 低 低 低 
+路由器負載 低 高 中 
+封包追蹤能力 中 優 優 
+單一封包追蹤 否 是 是 
+所需攻擊封包數量 多 少 少 
+事件後處理能力 優 優 優 
+ 
+3. 提出新型混合式封包追蹤法 
+    本論文引用IP位址加權概念，也就是將IP位置乘上適當的權重並加入路由器的私
+密值S藏入封包當中，使其在網路上傳遞時，可達到封包標記及路由器之間相互驗證機
+制。 
+ 
+3.1 IP 位址加權法 
+ 
+    如今假設有一加權函數如式一所示： 
+ 
+           ( ) ( )( ) .2mod12,,, 1
+1
+21
++
+=
+⎥⎦
+⎤⎢⎣
+⎡ −⋅== ∑ nn
+i
+i
+inb ggggfF L   (1) 
+ 
+  其中 n21 g, , , Kgg 分別代表鄰近數值。當我們將n個鄰近數值代入式一時，可得一個
+0—2n+1值。然後再與路由器的ID資料S作差值比較後，來適當地調整這n個鄰近數值，已
+達到資料隱匿的目的。 
+ 
+3.2 植基於 IP 位址加權之追蹤技術 
+ 
+在本論文中，我們首先修改Gong 所提出Logging 與Marking 混合的方法再加上IP
+位址加權技術，並利用IPv4的封包內容(如圖5所示)中的辨識及TTL欄位資料來達到IP
+位址追蹤的方式。如今假設所有路由器均是具備Logging 與Marking之功能。 
+ 
+  12
+ 
+圖 10 路由器含有路由器機密值 
+ 
+   提出封包標記與紀錄機制，其步驟說明如下： 
+ 
+Step 1. 將IP位址資料當做四個相鄰數值如g1, g2, g3, g4；然後再將此四個數值代入
+式一。 
+Step 2. 計算出 D值標記 
+ 
+           ( )SFD −=  (2) 
+ 
+其中 S為路由器隨機機密值，且得到 D值是介於 0到 2n+1-1 的數。 
+Step 3. 依據判別機制如式二所示，將 D值藏入辨識欄位，依序為 D1、D2、D3，且將辨
+識欄位中的判別旗標改為 0送出至下一目的，完成封包標記。 
+Step 4. 若判別機制該路由器為記錄路由器，紀錄經過路由器的封包，且在辨識欄位
+中的判別旗標改為 1送出至下一目的，完成封包紀錄。 
+Step 5. 重複步驟二，直到封包送至目的端為止。 
+ 
+例一：假設今有一路由器(IP為140.130.35.116)收到一封包且其TTL值=128，依據本論
+文機制：該封包必須要由路由器做記錄動作。其做法如下說明： 
+    因為TTL＇= 128 mod 4 = 0，因此被判別必須要由路由器做記錄動作做標記動作，
+也就是將封包辨識欄位資訊記錄下來，並且將判別旗標改為1送出至下一目的。 
+ 
+ 
+  14
+4. 實驗分析 
+ 
+在此小節中，實驗過程的使用機器為Pentium Ⅳ 3.0 (GHz)、512MB RAM；實驗攻
+擊軟體為tfn2k；實驗平台為Windows XP Professional及Fedora10；網路架構如圖12： 
+ 
+ 
+圖 12 本計畫實驗架構 
+ 
+ 
+4.1 攻擊分析 
+ 
+在本模擬實驗中，我們使用四台電腦對受害者發起攻擊，同時使用網路封包擷取
+軟體，查看封包數量，為擷取方便，且不讓受害者電腦產生毀損風險，每次攻擊時間
+以不超過25秒，以利達到攻擊分析之目的。 
+ 
+Tribe Flood Network 2000 (TFN2K)，由德國著名黑客Mixter編寫的同類攻擊工
+具TFN的後續版本。 
+ 
+由圖13可知，tfn2k之所以可以在2000年聲名大噪，其具備非常完善的攻擊能力，
+操作簡易，且所有的控制通訊都是單向的，這使得實時監測tfn2k額外困難。因為其隨
+機性地使用TCP、UDP和ICMP數據包，同時進行了加密，數據包過濾和其它被動式防禦
+策略都顯得不切實際和效率低下的。偽造的封包更會增加追蹤DDoS攻擊者的難度。 
+ 
+基本上，DDoS攻擊都會造成一定的CPU高度使用率及網路封包壅塞，如圖14所示，
+不論哪一種攻擊皆會造成類似情況。 
+  16
+4.1.1 UDP Flood ： 
+ 
+ 
+圖 15 確認實施UDP Flood攻擊 
+ 
+    攻擊者確認攻擊目標，輸入金鑰之後，即可遙控其他代理電腦發起攻擊，如圖15
+所示。 
+ 
+    我們從受害者電腦擷取封包，在1分22秒內所收到攻擊封包總數已達到1,109,652
+個，平均每秒有13,499.41個，如圖16所示，查看封包比例後發現遭受攻擊時，UDP封
+包高達99.9%，如圖17所示，此實驗攻擊時間大約為20秒而在攻擊瞬間湧入的大量封
+包，使受害者電腦流量迅速拉高，如圖18所示。 
+ 
+ 
+圖 16 UDP Flood攻擊之封包總數 
+  18
+4.1.2 TCP/SYN Flood ： 
+ 
+ 
+圖 19 確認實施TCP/SYN Flood攻擊 
+ 
+    攻擊者確認攻擊目標，輸入金鑰之後，即可遙控其他代理電腦發起攻擊，如圖19
+所示。 
+ 
+    我們從受害者電腦擷取封包，在6分4秒內所收到攻擊封包總數已達到1,106,377
+個，平均每秒有3,032.97個，如圖20所示，查看封包比例後發現遭受攻擊時，TCP封包
+高達99.9%，如圖21所示，此實驗攻擊時間大約為20秒而在攻擊瞬間湧入的大量封包，
+使受害者電腦流量迅速拉高，如圖22所示。 
+ 
+圖 20 TCP/SYN Flood 攻擊之封包總數 
+ 
+  20
+4.1.3 ICMP Flood： 
+ 
+ 
+圖 23 確認實施ICMP Flood攻擊 
+ 
+    攻擊者確認攻擊目標，輸入金鑰之後，即可遙控其他代理電腦發起攻擊，如圖23
+所示。 
+ 
+    我們從受害者電腦擷取封包，在1分38秒內所收到攻擊封包總數已達到1,157,964
+個，平均每秒有11,787.284個，如圖24所示，查看封包比例後發現遭受攻擊時，ICMP
+封包高達99.9%，如圖25所示，此實驗攻擊時間大約為20秒而在攻擊瞬間湧入的大量封
+包，使受害者電腦流量迅速拉高，如圖26所示。 
+ 
+ 
+圖 24 ICMP Flood攻擊之封包總數 
+  22
+平均數會比資料所呈現的更高，此攻擊分析實驗只使用少數Bot電腦達到DDoS攻擊，可
+在短時間達到單機電腦無法正常使用之功效。 
+ 
+4.1.4 Testbed 模擬情形 
+ 
+圖 27 Testbed架構 
+ 
+    圖27為我們所架設實驗的網路拓樸，共使用了15個node，其中攻擊者與受害者各
+一、四個跳電腦組織DDoS攻擊以及9個網路路由來模擬實驗，圖28表示實驗資訊。 
+ 
+ 
+圖 28 實驗資訊 
+  24
+4.2 追蹤分析 
+ 
+本計畫使用 Gong[5]所提出的數學模型來分析錯誤節點上限，從 Snoeren 的 IP 追
+蹤情況，假設 n 為路徑長度、d 為鄰近路由器數目、p 為正向誤判率： 
+由此可得表三： 
+ 
+表 3 錯誤節點數目 
+方法 Snoeren[2] Gong[5] 本計畫方法 
+錯誤節點數目 
+)1( dp
+dpn −×  )21(
+2
+2 dp
+dpn
+−×  )41(
+4
+4 dp
+dpn
+−×  
+ 
+表 4 假設 p = 1%、n = 25、d=5時的錯誤節點數目上限 
+方法 Snoeren Gong 本計畫方法 
+錯誤節點數目 1.315 1.388 1.5625 
+     
+    雖然與之前的方法相比產生較多錯誤節點數目，但本方法建立標記欄位架構相
+同，因此所需的儲存空間，會從原本網路流量的0.5%，改進成 Gong 提出混合式追蹤
+法將所需空間減少至(0.5% * 1/2) = 0.25%，再至本計畫方法將三個路由器資訊標記
+在封包上，再記錄於一個路由器內，則封包記錄時所需空間大幅減少為(0.5% * 1/4) = 
+0.125%。 
+ 
+4.3 IPv4 及 IPv6 分析 
+ 
+    現行的 IP 定址方式 (IPv4)於 1975 年訂定。當時的電腦網路尚屬萌芽階段，個
+人電腦也尚未誕生，其 32 位元的位址長度產生的位址數量(232，或四十億個)本以為綽
+綽有餘，不料 Internet 的蓬勃發展使得 IP 位址可能面臨短缺的問題在九十年代中期
+浮現，專家學者於是提出以下兩種因應對策設法解決這個問題。 
+ 
+1 DHCP(Dynamic Host Configuration Protocol)是在使用者連上網路後，ISP 才發給
+用戶 IP 位址，斷線後該 IP 位址由伺服器收回供下一個使用者使用。如此 ISP 所
+需的 IP 位址數量只需其用戶數量的 50%-80%。 
+2 NAT(Network Address Translation)通常用於中小規模的私人網路。該網路的成員
+使用單位自訂的私人 IP 位址(不需申請，通常為 10.x.x. x ，172.16-31.x.x 或 
+192.168.x.x)，而利用一或數個合法(經申請而註冊核發)的 IP 位址作為對外的窗
+口。當網路中的成員需要與外部溝通而送出封包時，NAT 以合法的 IP 位址代換封
+包中的私人位址，然後才送到 Internet，達成節省 IP 位址的目的。 
+ 
+ 
+  26
+6 旗標 (Don't Fragment、More Fragment)：DF 表示不要產生區段，因為接收端可能
+無法還原；MF 表示更多區段，通常除了最後一個區段外，其餘區段都會設定這個位
+元，用來檢查訊息所有區段有沒有完全到達。  
+7 區段位移(Fragment Offset)(13)：用來說明該區段是在訊息中的哪個位置，除了最
+後一個區段外，其餘區段都必須是 8bytes 的倍數。因為此欄位有 13bits，因此每
+個訊息最多可分割為 8192 個區段，因此最大訊息長度為 65536bytes。  
+8 存活期(Time to Live)(8)：就是限制封包存活期的計數器，以秒為單位，因此不得
+超過 255 秒，通常每次跳躍就將之減 1，減到 0就丟棄，以防止封包不停在外遊蕩。  
+9 協定(Protocol)(8)：說明採取何種運輸協定處理此一訊息，可以是 TCP、UDP 等。  
+10 標頭檢查碼(Header Checksum)(16)：只檢查標頭，每次跳躍後都要重新計算。  
+11 傳送端位址與接收端位址(Source Address & Destination Address)：用來表示網
+路(net-id)與主機號碼(host-id)，總計長度 32bits。  
+12 選項(Option)：變動長度，允許後續版本的協定可以增加新資訊。 
+ 
+   IPv6 標準係由 IETF (Internet Engineering Task Force)於 1995 年制訂，具有
+十六個位元組長度的位址，提供位址數量之龐大若以未來全世界人口 100 億計，每人
+最多可分配到 3.4×1027 個位址。IPv6 除可解決 IP 數量不足的問題外，在技術上改良 
+IPv4 標頭的設計並提供許多先進的功能如 QoS (Quality of Service)，網路安全的
+支援等。因此為徹底解決位址不足，IPv6 封包中的來源位址欄（Source Address）及
+目的位址欄（Destination Address）由原 32 位元擴增為 128 位元，欄位大小增加四
+倍，位址數量卻增加了 296 倍。IPv4 以點陣十進位格式表示位址，IPv6 則以十六進位
+表示，將 128 位元位址以十六位元為界，利用冒號隔開，例如 2001:0C58:0000:0000: 
+0000:FF11: 3A6B:0001。而有關 IPv6 封包欄位如圖 32 所示。 
+ 
+圖 32 IPv6 封包欄位 
+ 
+  28
+盼望更多具有實力及遠見的 ISP 投入 IPv6 的領域，即早做好準備。 
+ 
+4.3.3 IPv6 之 DDoS 攻擊位址追蹤技術 
+雖然 IPv6 是將 IPv4 封包欄位為根據修改，並參照許多過往攻擊事件加以修正，但
+不可能完全杜絕日後在 IPv6 上出現的網路安全事件。當然也有可能出現新型的網路
+攻擊行為，值得我們去探討的。 
+當出現類似 DDoS 攻擊，基於以下三項敘述，本計劃所提出的方法是可以相對地應
+用在該協定上。 
+(1). IPv6 欄位 Hop Limit 同 IPv4 的 TTL，同樣可作為我們的判別機制； 
+(2). 由於 IPv6 將 IP 位址分為八組，每組四個 16 進制數字，而我們可先將前二個
+16進制數字化成十進位乘上256後再加上後二個16進制數字化成十進位的
+值當作每一個相鄰的數值 gi代入 IP 位址加權函數。而此時 IP 位址加權函
+數 6IPvF 修正如式(三)所示： 
+            ( ) ( )( ) .2mod12,,, 98
+1
+82166 ⎥⎦
+⎤⎢⎣
+⎡ −⋅== ∑
+=i
+i
+iIPvIPv ggggfF L  (3) 
+      其中 8,21 ,, ggg L 分別為 IPv6 位址轉成的數值。 
+例如：當 IPv6 位址為 2001:0C58: 0000:0000:0000:FF11:3A6B:0001 時，先將它轉
+換成：g1=(2001)16 = 8449, g2=(0C58)16 =2904, g3=(0000)16=0= g4=g5,g6=(FF11)16 
+= 65297, g7=(3A6B)16 =14698, g8=(0001)16 =1.再這 8個數值代入式三並求得
+出權重值 FIPv6。 
+(3).雖然在 IPv4 所使用的辨識欄位，在 IPv6 中完全的被捨棄掉，只要我們把相關
+訊息隱匿在 next header 或者能夠標記且存取欄位即可。 
+ 
+    提出改進式封包標記與紀錄機制來適用於IPv6協定，其步驟說明如下： 
+Step 1. 將IP位址資料當做八個相鄰數值如g1, g2, g3, g4, g5, g6, g7, g8：然後再將
+此八個數值代入式三。 
+Step 2. 計算出 D值標記  
+                             ( )SFD −=   (4) 
+其中 S為路由器隨機機密值，且得到 D值是介於 0到 29-1 的數。 
+Step 3. 依據判別機制，將 D值藏入適當欄位中，完成封包標記。 
+Step 4. 重複步驟二，直到封包送至目的端為止。 
+ 
+    萬一在 IPv6 協定遭受到類似 DDoS 攻擊時，只要將針對上述機制做逆運算及可達
+到攻擊位址追蹤目的，如此一來還是可以將攻擊者繩之於法。 
+ 
+  30
+Proceedings of the 2nd DARPA Information Survivability Conference and 
+Exposition, June 2001. 
+8. Stefan Savage, David Wetherall, Anna Karlin and Tom Anderson, “Practical 
+Network Support for IP Traceback,＂ in IEEE/ACM Transactions on Networking, 
+vol. 9, pp. 226-237, June 2001. 
+9. Terence K.T.Law, John C.S. Lui, “You Can Run, But You Can＇t Hide: An 
+Effective Statistical Methodology to Trace Back DDoS Attackers,＂ in IEEE 
+Transactions On Parallel And Distributed Systems, vol. 16, no. 9, pp.799-813, 
+Sept. 2005. 
+10. Wen-Chung Kuo, Jiin-Chiou Cheng and Chun-Cheng Wang, “Data Hiding Method 
+With High Embedding Capacity Character,＂ International Journal of Image 
+Processing (IJIP), Vol.3, No.6, pp.310-317, 2010. ISSN 1985-2304. 
+11. Y. Tseng, H. Chen and W. Hsieh, “Probabilistic Packet Marking with 
+Non-Preemptive Compensation,＂ in IEEE Communication Letter, vol. 8, no. 6, 
+pp.359-361, June 2004. 
+12. Zhiqiang Gao and Nirwan Ansari, “ Traceing Cyber Attacks from the 
+PracticalPerspective,＂ in IEEE Communications Magazine, May 2005, pp. 
+123-131. 
+13. IPv6 工作小組: http://www.ipv6.org.tw. 
+ 2
+ 
+The 4th International Conference on 
+Information Security and Assurance: ISA2010 
+2010 國際資訊安全與保障會議 
+ 
+ 
+報告人: 郭文中 
+ 
+國立虎尾科技大學資訊工程系 
+雲林縣虎尾鎮文化路 64 號 
+電話:(05) 6315572 
+傳真:(05) 6330456 
+Email: simonkuo@nfu.edu.tw 
+ 
+本次參加由韓國韓南大學所舉行的第四屆國際資訊安全與保障會議於九
+十九年六月二十三到二十五日在日本宮崎盛大舉行，本次會議整合各資訊安全與
+保障會議相關技術如資料隱藏技術、浮水印加密技術、密碼技術及其應用、
+RFID 安全性、生物認證安全機制、無所不在的多媒體計算與安全服務、無線
+網路安全及 IPv6 網際網路協定技術。本次會議除了專題演講之外，尚有一些
+相關論文發表及一些實際網路學習的展示。 
+有關專題演講之內容有：邀請軟體工程大師 Professor Tadashi Dohi 演講 
+“Software Reliability Modeling in Past, Present and Future”、生物資訊大師 
+Professor Tatsuya Akutsu 演講 “Mathematical Models and Computational 
+Methods for Analysis of Structures of Biological Networks” 、網路專家
+Professor Ruay-Shiung Chang 演講  “The Internet : Past, Present and 
+Future ”及機器人研究學者 Dr. Adrian Stoica 演講 “Security in the time of 
+Robots and Cyborgs”等相關資訊安全與保障的演講。 
+ 
+而有關資訊保障與安全之論文的發表及一些海報論文有關資訊保障與安
+全的展示，相關主題包括： 
+ 
+High Flexible Sanitizing Signature Scheme Based on 
+Bilinear Maps 
+ 
+Wen-Chung Kuo 
+Department of Computer 
+Science and Information 
+Engineering, 
+National Formosa 
+University, 
+Yunlin 632, Taiwan, R.O.C 
+simonkuo@nfu.edu.tw 
+Jiin-Chiou Cheng & 
+Yen-Hung Lin 
+Department of Computer 
+Science and Information 
+Engineering, 
+Southern Taiwan University, 
+Tainan 710, Taiwan, R.O.C 
+chiou@mail.stut.edu.tw 
+Lih-Chyau Wuu 
+Department of Computer 
+Science and Information 
+Engineering, 
+National YunLin University  
+of Science and Technology, 
+Yunlin 640, Taiwan, R.O.C
+ 
+ 
+Abstract 
+A sanitizable signature scheme allows the 
+sanitizer to alter the signed document using a 
+disclosed policy that does not break the signing 
+protocol. However, existing sanitizable signature 
+schemes do not restrict the sanitizer, which leads to 
+dishonest sanitizer and additional sanitizing 
+problems. In this paper, a high flexible sanitizing 
+signature scheme based on the bilinear mapping 
+method that uses an arbiter to resolve the security 
+problem is proposed. A security analysis shows that 
+the proposed scheme retains the security 
+requirement of sanitizable signatures and mitigates 
+the disadvantages of related schemes. 
+Keywords: Sanitizable Signature, Aggregate 
+Signature, Bilinear Maps. 
+1. Introduction 
+Almost any information can be obtained over the 
+internet. Although current digital signature schemes, 
+such as DSA [8], RSA [9], and ElGamal [11], can 
+ensure the source of information and its integrity, 
+they cannot be applied to personal privacy. When a 
+signed document is changed, it can no longer be 
+verified; this is known as the digital document 
+sanitizing problem (see Figure 1.). For example, 
+when someone requests a patient’s medical data, the 
+hospital staff must filter sensitive information. Since 
+the signed document was changed, the person who 
+requested the data cannot verify that the sanitized 
+document is the same as the original. 
+Ateniese et al. [4] proposed a sanitizable 
+signature scheme for specific entities (called 
+sanitizers) that allows partial information to be 
+hidden in the document after it has been signed. A 
+verifier can confirm the integrity of the disclosed 
+parts of the sanitized document using the signature. 
+Many other sanitizable signature schemes have been 
+proposed [3, 4, 5, 10, 12, 15, 16]. All the schemes 
+modify the signed document without breaking the 
+signature agreement between the signer and verifier. 
+The properties of the signature can be divided into 
+disclosure condition control and non-disclosure 
+condition control, as shown in Table 1. 
+ 
+Figure 1.  Digital document sanitizing problem 
+Table 1.  Characteristics of signatures 
+Property 
+Modification 
+Disclosure 
+Condition Control 
+Non-Disclosure 
+Condition Control 
+Remove/Mask 
+MIMSYTI-scheme 
+[6] 
+IKOTY-scheme 
+[14] 
+Content Replace MTS-scheme [13] ACMT-scheme [4] 
+Staff 
+ 
+ 
+1. Sign 
+Modifier 
+2. Filter 
+Verifier Verify fail 
+sig 
+data 
+ 
+data 
+ 
+sig 
+Archive 
+ 
+data 
+ 
+sig 
+Verifier 
+Public 
+Hospital 
+ Sanitizing phase: 
+Step 1) Modify the signed subdocuments based 
+on the disclosure policy and identity of 
+the verifier. If M[i] is the sanitized 
+subdocument, the condition is modified 
+as follows: 
+ SANI: Sanitizer update σ=σ/σi and 
+removes ][
+~
+iM , σi and Ci from 
+signature set. 
+ DASP: Sanitizer removes σi and set 
+Ci=DASP. 
+Step 2) Output the signature set { ][
+~
+iM , σ, σj, Cj} 
+(0≦i≦n’, 1≦j≦n’ and n’≦n). 
+ Verification phase: 
+Step 1) Compute hi (0≦i≦n) and check whether 
+it is identical to Eq.(1). If not, the output 
+is invalid and the procedure terminates. 
+  
+n
+i i
+,yheσ,ge
+02
+)()(  (1) 
+Step 2) If a subdocument has Ci=DASA, it is 
+verified using Eq.(2). 
+ )()( 2 ,yhe,gσe ii   (2) 
+If there is a dishonest sanitizer in the MHI 
+scheme, additional sanitizing attacks will succeed. 
+2.2. MTS-scheme 
+A digital document flexible sanitizing scheme 
+was introduced by Masubuchi et al. (MTS scheme) 
+[13]. Their approach mitigates the shortcomings of 
+SUMI-4 [5] and CES (Content Extraction Signatures) 
+[10]. A signed document which has been sanitized 
+can be modified by a trusted third party (TTP). When 
+the verifier disputes the sanitized document, the 
+MTS agreement shown in Figure 2. is used. 
+2.2.1. Notation 
+ Flag[i]: the condition set, where i satisfies 
+(1≦i≦n). 
+ )(Sig : the underlying digital signature scheme. 
+ )(Verify : procedure of underlying signature 
+verification. 
+The MTS scheme also uses three disclosure 
+conditions: 
+ Mandatory: the blocks of the signed document 
+must be sanitized (as in SANI). 
+ Prohibited: the blocks of the signed document 
+cannot be sanitized (as in DASP). 
+ Arbitrary: the blocks of the signed document 
+can be set to Mandatory or Prohibited (as in 
+DASA). 
+ 
+Figure 2.  MTS-scheme [13] 
+2.2.2. Procedure 
+There are four roles (signer, sanitizer, requester, 
+and TTP(Trusted Third Party))  in the MTS scheme. 
+The algorithm of the MTS scheme is as follows: 
+ Signing phase: 
+Step 1) Divide the original document into n 
+subdocuments mi (1≦i≦n). 
+Step 2) Assign one of three conditions 
+(Mandatory, Prohibited, or Arbitrary) to 
+flag[i] (1≦i≦n). Then, combine all 
+flag[i] into hf. 
+Step 3) Compute hi=h(mi||ri) (1≦i≦n) and 
+combine all hash values hi into hm. 
+Step 4) Calculate σ = Sigx (Sigx(hm), hf). 
+Step 5) The signature set is {mi, flag[i], σ} (1≦i
+≦n). 
+ Sanitizing phase: 
+Step 1) Modify the signed document according 
+to condition in flag[i] (1≦i≦n). The 
+modification as follows: 
+ Mandatory: the block mi is replaced 
+by hi. 
+ Prohibited: do nothing. 
+ Arbitrary: chosen by sanitizer. 
+Step 2) Send the signature set {mi’, flag[i], σ} (1
+≦i≦n) to the verifier. 
+ Verification phase: 
+Step 1) Verify the signature set. If the signature 
+6. Interrogation 
+7. Verdict 
+8. Response 
+5. Dispute the content 
+4. Document disclosure 
+2. Request for disclosure Sanitizer 
+3. Sanitize document 
+Doc. 
+1. Sign 
+Requester 
+Signer 
+Doc. 
+Archive 
+Sig 
+Sig 
+Administration TTP 
+Step 2) Encrypt seed using EnPKV(seed). 
+Step 3) Output sanitized document {m1,…,mk}, 
+individual signatures σi (1 ≦ i ≦ k), 
+aggregate signature σ , EnPKV(seed) and 
+condition sets Ci (1≦i≦k). 
+ Verification phase: 
+Step 1) Decrypt EnPKV(seed) by SKV and obtain 
+r1 ,…, rk using seed. 
+Step 2) Compute hi = h(mi||ri) (1≦i≦k). 
+Step 3) Check whether the result is identical to 
+Eq.(3). If yes, then accept the signature; 
+otherwise, reject it. 
+  
+k
+i Si
+PKhe,gσe(
+12
+),()  (3) 
+Step 4) Check whether e(σi, g2) is equal to e(hi, 
+PKS) when the condition Ci is equal to A. 
+If Eq.(4) holds, then accept the signature; 
+otherwise, reject it. 
+ e(σi, g2) = e(hi, PKS) (4) 
+Step 5) When the verifier disputes the signed 
+document, the signed document {mi, Ci, 
+σ } (1≦i≦k) is sent to the arbiter. 
+ Arbitration phase: 
+Step 1) If the arbiter finds that the request is 
+rational, it requests the related data {mi, 
+σi} from the sanitizer. 
+Step 2) Re-sanitize/recover the dispute block, if 
+the condition of mi is as follows: 
+ S: disclosure block needs to be 
+masked, arbiter updates σ’= σ/σi and 
+removes mi, σi, and Ci. 
+ P: masked block needs to disclose, 
+arbiter computes )||( iii rmhh  , 
+where ir   is a random number. The 
+arbiter computes T
+SK
+ii h )(  . 
+Step 3) Encrypt ri’ by using EnPKV(ri’). 
+Step 4) Arbiter computes the signature S:{mi’, Ci, 
+σ} (1≦i≦k) or P:{mi, Ci, σ, En(ri’), σi’} 
+(i is the disputed block) for the verifier. 
+Step 5) Finally, verifier verifies signature S using 
+Eq.(3) or signature P by using Eq.(4). 
+The flexibility of the proposed scheme is higher 
+than that of the MTS scheme [13] because the 
+condition is set by the sanitizer. In addition, the 
+verifier does not need to contact the sanitizer. 
+4. Security Analysis 
+The security of the proposed scheme was 
+analyzed in terms of privacy, integrity, and 
+unforgeability. 
+a) Privacy: 
+It is difficult for the verifier to recover or obtain 
+the original document using the sanitized version. 
+In the sanitized signature {mi’, σ, σi, Ci, 
+En(seed)}, the related information mi、σi and Ci of 
+condition S block is removed. Therefore, only the 
+signer and sanitizer can obtain the original 
+document. In addition, when the arbiter wants 
+recover the original document, it needs to contact 
+the sanitizer. Thus, privacy is preserved in the 
+proposed scheme. 
+b) Integrity: 
+The signature generated by the signer should be 
+accepted by the verifier and additional sanitizing 
+attacks should be avoided. 
+The verifier can compute hi=h(mi||ri) and 
+verify the signature using Eq.(3), for i=1, …, n, 
+as long as the content of each block mi (1≦i≦n) 
+has not been modified. In other words, if an 
+attacker forges or tampers the content *im , then 
+it will generate hi≠h(
+*
+im ||ri). The integrity will be 
+maintained when the sanitizer modifies the 
+signed document because it updates σ=σ/σi and 
+removes related information using the bilinear 
+maps’ property.  
+c) Unforgeability: 
+Only the private key holder can generate a valid 
+signature. The following two kinds of attack are 
+considered: 
+1) Additional Sanitizing Attack: 
+An attacker wants to modify document 
+from condition A or P to S, i.e., the attacker 
+needs to forge σi corresponding to mi and 
+update σ = σ / σi. Since the signature σi is 
+calculated by using hi
+SKs
+, the attacker must 
+solve the discrete logarithm problem to get 
+the private key SKS. Therefore, the additional 
+sanitizing attack is ineffective against the 
+proposed scheme. 
+2) Forge Disclosure Document Attack: 
+An attacker wants to forge or tamper an 
+available subdocument mi. The attacker must 
+generate a corresponding signature σi and 
+update σ=σ×σi. The attacker will encounter 
+the problem mentioned above. Hence, the 
+High Flexible Sanitizing 
+Signature Scheme Based 
+on Bilinear Maps
+Speaker: Wen-Chung Kuo
+Department of Computer Science and Information Engineering,
+National Formosa University
+R. O. C.
+Introduction(1/5)-Background
+Current digital signature schemes ensure the 
+document’s integrity.
+Digital document sanitizing problem
+Staff
+Modifier
+3. Filter
+Verifier
+Verify Fail
+Hospital
+Public
+1. Sign
+2. Request
+4. Response
+Sig
+Data
+Sig
+Data
+Sig
+Data
+3
+Introduction(3/5)-Background
+Digitally Signed Document Sanitizing 
+Scheme Based on Bilinear Maps –
+Miyazaki et al. proposed in 2005
+ Using disclosure condition control can avoid 
+additional sanitizing attack.
+ Cannot prevent a dishonest sanitizer.
+5
+Introduction(5/5)-Objective
+The major contributions of proposed 
+scheme
+ Resolve the dispute between the sanitizer and 
+verifier
+ Re-sanitize/recover the sanitized document 
+by arbiter
+ Solve the potential dishonest sanitizer 
+problem
+7
+Related Work(2/4)-MHI Scheme
+Signer Sanitizer Verifier
+M[1] M[2] M[3]
+σ1 σ2 σ3 σ
+M[1] →h1x →σ1
+M[2] →h2x →σ2
+M[3] →h3x →σ3
+∏ == 3 1i iσσ
+SANI :
+• update σ← σ/ σ2
+• remove M[2] and σ2
+DASP :
+• remove σ3
+DASA :
+• do nothing
+σ1 σ
+∏== ni i vhege 12 ),(),(σ
+e(h1, v) ×e(h3, v) =
+e(h1, g2x) ×e(h3, g2x) =
+e(h1x, g2) ×e(h3x, g2) =
+e(σ1, g2) ×e(σ3, g2) =
+e(σ1 × σ3 , g2) =
+e(σ , g2)
+9
+Related Work(4/4)-MTS Scheme
+Signer:
+1.Sign & Archive
+2. Request for disclosure
+DataData
+Sig3. Sanitize
+4. Document disclosure
+TTP
+5. Dispute the content
+6. Interrogation
+7. Verdict
+Administration
+Signer
+DataData
+Sig
+Sanitizer
+Verifier
+8. Response
+Flag[1] Flag[2] … Flag[n]
+Arbitrary 
+(DASA)
+Mandatory
+(SANI)
+… Prohibited
+(DASP)
+11
+Since the disclosure condition is set by the 
+signer, the flexibility is impractical
+Dishonest Sanitizer prob em
+Proposed Scheme(2/5)
+Architecture
+13
+2. Request for disclosureDataData
+Sig
+3. Sanitize
+4. Document disclosure
+Arbiter
+5. Dispute the 
+content
+6. Interrogation
+7. Response related data
+8. Response
+Administration
+Signer
+DataData
+Sig
+Sanitizer
+Verifier
+1.Sign & Archive
+Proposed Scheme(4/5)
+15
+m1 m2 m3 … mnSign: seed ||r1 ||r2 ||r3 ||rnh(          ) h(           ) h(          ) h(            )
+SKs SKs SKs SKs
+σ1 σ2 σ3 … σn× × × = σ
+Signature{ mi , σ , σi , En(seed) } , 1 ≦i ≦n
+Sanitize: m1 m2 m3 … mn
+σ1 σ2 σ3 … σn
+S : σ = σ/ σ2 , remove m2 and σ2
+P : remove σ3
+S
+P σ
+Verify:
+Signature{ mi’, σ , σi , En(seed) } , 1 ≦i ≦n
+∏== ni Si PKhege 12 ),(),(σ
+Security Analysis(1/2)
+Privacy:
+ It is difficult for the attacker to recover or obtain the 
+original document using the sanitized version
+ The related information is removed
+Integrity:
+ The signature generated by the signer should be 
+accepted by the verifier and additional sanitizing 
+attacks should be avoided.
+17
+Conclusions
+19
+MTS - Scheme Our Scheme
+Number of Keys 3 4
+Set disclosure condition Signer Sanitizer
+Combinable Signature 
+scheme Arbitrary
+Bilinear maps 
+(Aggregate)
+Dispute Administrative 
+office
+Arbiter
+Resanitize Sanitizer Arbiter
+Response resanitize Administrative office Arbiter
+Multi-sanitizer Yes Yes
+Signature modifiable (σ) No Yes
+ 圖一:歡迎指示牌 
+ 
+ 
+ 
+ 
+圖二:會議報到處 
+無衍生研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+撰寫資通訊安全實習教材 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+■達成目標 
+□未達成目標（請說明，以 100字為限） 
+□實驗失敗 
+□因故實驗中斷 
+□其他原因 
+說明： 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：□已發表 ■未發表之文稿 □撰寫中 □無 
+專利：□已獲得 □申請中 ■無 
+技轉：□已技轉 □洽談中 ■無 
+其他：（以 100字為限） 
+近期內會將此研究成果撰寫成研討會論文或者期刊論文投稿並發表之。 

@@ -1,0 +1,186 @@
+ 1 
+針對多重資料記憶體模組 DSP架構探討指令排程法 
+A Study of Instruction Scheduling Algorithms for DSP Architecture with 
+Multiple Data-memory Modules 
+計畫編號：94-2213-E-009-117 
+ 
+一、中英文摘要 
+ 
+在數位訊號處理器的架構設計中，為了達到高效能及低功耗，時常採用 Non-orthogonal
+架構 (同時具有多重資料記憶體模組及異質性暫存器集合特性)；而要能夠確實得到此架構
+提供的優勢，則必須配合有效的編譯技術。去年計畫我們已提出三個包含變數分割機制的
+指令排程法，在本計畫中我們將其延伸，加入暫存器配置的考量，提出二個用於 Non- 
+orthogonal架構的指令排程法，並制定一套虛擬架構及相關數學模組評估其初步效能。根據
+我們的分析，新提出的方法不僅能有效改進之前方法的效能，而且具有延伸性適用於多種
+性質類似的架構，可用來評估不同資源對整體效能造成的影響。 
+關鍵詞：數位訊號處理器、多重資料記憶體模組、異質性暫存器集合、指令排程 
+ 
+Abstract 
+ 
+In order to meet demands for higher performance and lower power consumption, many 
+high-end digital signal processors (DSPs) commonly employ non-orthogonal architecture 
+characterized by multiple memory banks and heterogeneous register sets. To harvest the benefits 
+provided by this architecture, effective compiler techniques are required. Last year we have 
+proposed three variable partitioning and instruction scheduling methods. In this project, we 
+extend them to consider the register assignment phase, and propose two instruction scheduling 
+algorithms used for non-orthogonal DSP architecture. A hypothetical machine model and related 
+analytic models are also defined to evaluate their preliminary performance. Based on our analyses, 
+two new algorithms obviously outperform previous proposed methods. Moreover, the proposed 
+algorithm is suitable for various architectures with similar features, which can be used to study 
+the influence of differing number of resources on the scheduling result. 
+Keywords: Digital Signal Processor (DSP), Multiple Data-memory Banks, Heterogeneous 
+Register Sets, Non-orthogonal Architecture, Instruction Scheduling 
+ 
+二、前言 
+ 
+隨著多媒體通訊日益劇增的需求，陸續發展出許多新的方法來對影像、音訊及圖形等
+做壓縮及傳輸的動作。這些訊號處理的過程通常包含大量且規則的運算，為了能即時 
+(real-rime) 完成運算並顧及價格/效能比 (cost/performance)，便產生了許多針對不同應用程
+式所設計的數位訊號處理器 [1-4]。近年來由於硬體製程技術的進步，各種嵌入式系統晶片 
+ 3 
+(multi-dimensional data flow graph, MDFG) 表示，其中節點代表指令，有向邊代表資料相依
+性，邊上的數字則代表迴圈元素間的相依距離 (inter-iteration dependence) [8, 12-20]。合理
+的排程結果必須在不違反資料相依性及系統資源限制下，執行所有資料流程圖中的節點各
+一次；另外為了進一步提升效能，常用 retiming 技巧重組迴圈元素，以開發迴圈元素間的
+平行度 [21]。使用 retiming技巧之後程式會分成 prologue、repetitive pattern及 epilogue三
+部分，其中 prologue 和 epilogue 是額外產生且必須獨立執行，嚴格來說是 overhead，但只
+要 repetitive pattern重複次數夠多，prologue和 epilogue的執行時間將可忽略不計。 
+在 non-orthogonal DSP 架構完整的編譯過程有以下五個步驟：uncompacted code 
+generation、code compaction、instruction scheduling、memory bank assignment (or variable 
+partition) 及 accumulator/register assignment [12]，以下我們根據各方法所涵蓋的步驟大致分
+類相關文獻。[9-11] 針對 memory bank assignment提出不同的變數分割機制，目標是將可
+能會被平行存取的陣列變數分散儲存，以便執行時同時存取。[22-24] 針對 accumulator/ 
+register assignment 步驟，設計適合的演算法配合 heterogeneous register sets 的不規則性。
+[13-16] 提出的方法包含前四個編譯步驟，同時解決變數分割及指令排程的問題，但假設暫
+存器個數無限，並未考慮 accumulator/register 的配置。[8, 12, 20] 同時選擇 Motorola 
+DSP56000為目標架構，提出涵蓋完整五個步驟的指令排程法。[8] 提出的方法主要是先用
+序列排程法 (list scheduling) 做指令排程，並將 variable partition 及 accumulator/register 
+assignment對應成 graph coloring問題，再設計簡單的 heuristic來解 graph coloring，達到變
+數分割及暫存器配置的目的。[12] 設計的方法較為複雜，先以序列排程法得到指令排程結
+果後，使用類似 graph labeling的方式，以耗時的 simulated annealing同時解決變數分割及
+暫存器配置的問題。我們認為 [8, 12] 提出的方法雖然效能不錯，但它們都沒有描述如何偵
+測 accumulator/register spill以及產生對應 spill codes的動作；既然 DSP架構暫存器個數有
+限，accumulator/register spill想必時常發生，缺乏相關解決動作將使方法顯得不夠完善。另
+外 [8, 12] 也只針對Motorola DSP56000架構設計，當系統資源增加時沒有延伸性，在實用
+性方面亦較為受限。 
+ 
+五、研究方法 
+ 
+之前提到雖然可以針對 non-orthogonal DSP 架構的五個編譯步驟設計獨立的演算法，
+但因為它各步驟彼此之間有嚴格的資料相依性，若是能同時考慮多個步驟來設計編譯技
+術，將有助於整體效能的提升。有鑑於此，在本計畫中我們延伸去年的研究成果，提出二
+個涵蓋所有步驟的指令排程法和一套虛擬架構，以下分別介紹。 
+首先我們描述 [8, 12, 20] 提出的方法考慮 accumulator/register assignment的方式。這三
+個方法在排程指令時，都先假設暫存器個數無限，並使用 symbolic accumulator/register來存
+取變數；得到初步排程結果後，再考慮 accumulator/register 個數的限制，加入需要的 spill 
+codes。這種作法承襲自 general purpose CPU的編譯技術，但是在 heterogeneous register sets
+架構下，由於暫存器個數相對較少，容易產生較多的 spill codes，而且這些 spill codes必須
+獨立執行，也會使整體執行時間延長。為了解決這個問題，我們提出一個名為 rotation 
+scheduling with spill codes predicting (RSSP) 的方法，針對Motorola DSP56000架構設計，
+以縮短執行時間為排程目標。RSSP共有六個執行步驟，主要特色是在排程指令之前，先假
+ 5 
+scheduling得到初始排程後透過 retiming技巧開發迴圈元素間的平行度，能有效縮短執行時
+間。表格 3列出的是各個 TDAG的相關資訊，詳細比較表格 1~3的內容，即可發現 RSSP
+和 RSSA 得到的排程長度幾乎等於 TDAG 中 ALU 指令的個數，既然 Motorola DSP56000
+只有一個 data ALU，表示 RSSP和 RSSA已趨近最佳解，因為所有 ALU指令都必須由唯一
+的 data ALU執行。而在指令個數方面，RSSP和 RSSA得到的結果也和 TDAG節點數相去
+不遠，表示我們提出的方法不會增加太多 spill code，符合預期的排程目標。我們另外也套
+用由數學模組求出的公式，繪出各個應用程式在不同迴圈大小時使用不同排程法所得到的
+整體執行時間，評估結果大致與表格 1~2 類似，因資料量龐大在此省略，詳細內容可見已
+發表論文 [17, 19]。 
+接著我們使用虛擬架構產生多個資源個數不同的 non-orthogonal DSP，配合 RSSA針對
+前述二個評估項目，討論不同系統資源對整體效能造成的影響。表格 4~8 分別列出增加
+accumulator、register、data ALU及 memory bank個數之後，RSSA得到的單一迴圈元素排
+程長度及指令個數。其中陰影代表已達最佳解 (排程長度方面指已達對應 TDAG的 critical 
+path長度或 ALU指令個數，指令個數方面指未增加任何 spill code)，粗體代表增加該項系
+統資源有助於提升效能。由這些結果看來，增加 accumulator個數最能避免產生 spill code，
+若欲縮短排程長度，則必須同時增加 data ALU及 accumulator數目。若僅以選取的這些 DSP
+應用程式而言，只要系統包含 2個 data ALUs、4個 accumulators、6個 registers和 2個memory 
+bank，在二個評估項目幾乎都可以得到最佳解。最後值得一提的是，雖然表格 8 看起來在
+二個評估項目都有不錯效能，但由於增加 memory bank同時也必須增加獨立匯流排，硬體
+成本很大，在價格/效能比例上較不值得，因此我們並不推薦使用增加 memory bank的方式
+來提升效能。 
+ 
+七、計畫結果自評 
+ 
+在本計畫中我們針對 non-orthogonal DSP 架構，提出二個包含完整編譯步驟的指令排
+程法以及一套虛擬架構，並制定對應的數學模組，選擇數個 DSP應用程式做初步的效能評
+估。總體而言，本計畫大致達成以下幾點目標： 
+1. 提出 RSSP指令排程法，針對Motorola DSP56000架構設計，使用預測 accumulator spill
+的方式預先產生對應的 spill code，令它們能與其他指令平行執行，並改進去年計畫提出
+方法的潛在問題，有效縮短排程長度。 
+2. 提出 RSSA指令排程法，為 RSSP的延伸，適用於系統資源數量不同但性質類似的架構，
+使用避免產生 spill code的機制，盡量縮短執行時間並減少指令個數。 
+3. 根據Motorola DSP56000架構特性，增加系統資源數量及平行條件，定義一套虛擬架構
+模擬 scalable non-orthogonal DSP。 
+4. 制定以上二種指令排程法對應的數學模組，並選擇數個表示 DSP 應用程式的資料流程
+圖，對提出的方法做初步效能評估。 
+5. 用定義的虛擬架構產生多個資源個數不同的 non-orthogonal DSP，配合有延伸性的
+RSSA，討論不同系統資源對整體執行效能的影響。 
+由以上幾點可知，本計畫確實能將 non-orthogonal DSP 架構上的指令排程議題做詳細
+深入的探討，改善之前提出方法的潛在問題，嘗試提出新的機制，並制定數學模組評估其
+ 7 
+Language and Operating Systems, pp. 234-243, 1996. 
+[15] Y.H. Lee and C. Chen, “Efficient Variable Partitioning and Scheduling Methods of Multiple 
+Memory Modules for DSP”, Proc. of 10th Workshop on Compiler Techniques for 
+High-Performance Computing, pp. 80-89, March 2004. 
+[16] Y.H. Lee and C. Chen, “An Effective Variable Partitioning and Scheduling Algorithm for 
+DSP with Multiple Memory Modules”, Proc. of International Computer Symposium, Dec. 
+2004. 
+[17] Y.H. Lee and C. Chen, “An Efficient Code Generation Algorithm for Non- orthogonal DSP 
+Architecture”, Proc. of the 11th Workshop on Compiler Techniques for High-Performance 
+Computing, pp. 49-58, March 2005. 
+[18] Y.H. Lee and C. Chen, “An Efficient Code Generation Algorithm for Non- orthogonal DSP 
+Architecture”, submitted to Journal of VLSI Signal Processing. 
+[19] Y.H. Lee and C. Chen, “An Effective and Efficient Code Generation Algorithm for Uniform 
+Loops on Non-orthogonal DSP Architecture”, accept and to appear to Journal of Systems 
+and Software. 
+[20] W.T. Shiue, “Energy-efficient Backend Compiler Design for Embedded Systems”, Proc. of 
+10th International Conference on Electrical and Electronic Technology, Vol. 1, pp. 103-109, 
+Aug. 2001. 
+[21] C.E. Leiserson and J.B. Saxe, “Retiming Synchronous Circuitry”, Algorithmica, Vol. 6, No. 
+1, pp. 5-35, June 1991. 
+[22] J.M. Daveau, T. Thery, T. Lepley, and M. Santana, “A Retargetable Register Allocation 
+Framework for Embedded Processors”, Proc. of ACM SIGPLAN/ SIGBED, pp. 202-210, 
+June 2004. 
+[23] B. Scholz and E. Eckstein, “Register Allocation for Irregular Architectures”, Proc. of ACM 
+Joint Conference LCTES-SCOPES, pp. 139-148, June 2002. 
+[24] X. Zhuang, T. Zhang, and S. Pande, “Hardware-managed Register Allocation for Embedded 
+Processors”, Proc. of ACM SIGPLAN/SIGBED, pp. 192-201, June 2004. 
+ 9 
+Number of nodes in each TDAG 
+Benchmarks 
+Number of ALU 
+nodes in Gt 
+Critical 
+path of Gt original unfold 2 tiled 2´1 unfold 3 tiled 3´1 
+Wave Digital Filter 4 6 14 13 13.5 12.6 13.3 
+Filter 4 7 11 10.5 10.5 10.3 10.3 
+IIR Filter 2D 16 7 34 34 34 34 34 
+Forward-substitution 5 6 11 10.5 10.5 10.3 10.3 
+THCS 4 4 10 9.5 10 9.3 10 
+DFT 12 7 32 28 30 26.6 29.3 
+Floyd-Steinberg 17 12 38 37.5 37.5 37.3 37.3 
+Transmission Line 12 10 26 26 26 26 26 
+IIR Filter 1D 8 6 17 17 -- 16.6 -- 
+Differential Equation Solver 11 11 25 22.5 -- 21.6 -- 
+All-pole Lattice Filter 15 18 33 29 -- 27.6 -- 
+Elliptic Filter 34 19 65 58 -- 55.6 -- 
+ 
+表格 3. TDAG相關資訊. 
+1 ALU, 2 acc, 4 reg, 2 mem 1 ALU, 3 acc, 4 reg, 2 mem 
+RSVR RSF RST RSVR RSF RST  
+len # len # len # len # len # len # 
+Wave Digital Filter 6 14 5 13 5.5 13 6 14 5 13 5.5 13 
+Filter 6 11 5.5 10.5 5 10.5 6 11 5.5 10.5 4.5 10.5 
+IIR 2D 16 37 16 37 16 37 16 34 16 34 16 34 
+Forward-substitution 5 11 5.5 10.5 5 10.5 5 11 5.5 10.5 5 10.5 
+THCS 4 10 4 9.5 4 10 4 10 4 9.5 4 10 
+DFT 13 32 12.5 30 13 31.5 12 32 12 28.5 12 31 
+Floyd-Steinberg 18 39 17.5 39.5 17 39.5 18 38 17.5 38.5 17 38.5 
+Transmission Line 12 29 12 29 12 29 12 27 12 27 12 27 
+IIR 1D 8 18 8 18 -- -- 8 17 8 17 -- -- 
+Equation Solver 13 26 11.5 25.5 -- -- 13 26 11.5 25 -- -- 
+All-pole Lattice Filter 17 35 16 34.5 -- -- 17 33 16 31.5 -- -- 
+Elliptic Filter 36 75 34 72 -- -- 35 70 30.5 66.5 -- -- 
+表格 4. 實驗結果 (增加 accumulator個數). 

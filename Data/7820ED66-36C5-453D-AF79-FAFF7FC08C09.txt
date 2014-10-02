@@ -1,0 +1,595 @@
+行政院國家科學委員會專題研究計畫成果報告 
+多功能個人/群體通訊系統設計 
+Multi-Function Personal/Group Communication System Design 
+計畫編號：96-2221-E-009-074- 
+執行期限：2007.08.01 至 2008.07.31 
+主持人：張明峰  交通大學資工系 
+計畫參與人員： 李忠育、范坤揚、蔡玄亞、游伯瑞 交通大學資工系 
+ 
+中文摘要 
+現今的通訊系統，包含電信系統、即時通訊、電子郵件、和網路電話等，都利
+用明確的使用者識別碼來指定使用者。如不知道接收端的識別碼即不能通訊。本計
+畫開發一多功能通訊平台（MFPGC）能利用指定接收端的各項屬性，例如姓名、年紀，
+學校等。一個使用者屬性的集合可視為使用者的辨識碼，具有好記、有意義的優點。
+我們的系統同時支援明確辨識碼和多屬性之通訊功能。透過屬性發佈和搜尋的機
+制，媒合發話端和受話端。MFPGC 架構在 Chord 之上，使用布隆過濾器(Bloom filter)
+來儲存多屬性的資料，包含字串，數值和混合型態的屬性。系統可以讓發話端和受
+話端可以設定必須要符合的屬性以過濾不想接收的訊息。媒合發話端和受話端是透
+過比對代表受話端屬性的布隆過濾器與代表發話要求的布隆過濾器。第三者無法從
+布隆過濾器得知發話端的訊息或受話端的屬性，因此保護了使用者隱私。我們也支
+援離線使用者處理機制 ─ 使用者在各個狀態中離線，而通話要求會被保留到下次
+使用者上線後繼續進行。和傳統的通訊系統比起來，MFPGC 提供使用者新穎的，更
+彈性的通話方式。 
+關鍵字：網路通訊，多屬性查詢，布隆過濾器 
+  
+ABSTRACT 
+Communication services today, such as telephony, instant message, email, and VoIP, 
+use a specific user or device ID to specify the called party. If the callee’s ID is unknown, 
+communication becomes impossible. Another way to indicate the callee(s) is to specify 
+ i
+Tables of Contents 
+Chapter 1 Introduction ........................................................................................................ 1 
+1.1 Motivation ............................................................................................................. 1 
+1.2 Objectives ............................................................................................................. 3 
+Chapter 2 Related Work ...................................................................................................... 4 
+2.1 Chord and DHT routing ........................................................................................ 4 
+2.1.1 Structure peer-to-peer architecture ............................................................. 4 
+2.1.2 Chord.......................................................................................................... 5 
+2.2 Multiple attributes ................................................................................................. 7 
+2.3 Range query ........................................................................................................ 10 
+2.4 Bloom filter ......................................................................................................... 12 
+Chapter 3 System Design .................................................................................................. 15 
+3.1 System overview ................................................................................................. 15 
+3.2 Publish with Bloom filter .................................................................................... 17 
+3.3 Query with Bloom filter ...................................................................................... 18 
+3.4 Numeric Attributes .............................................................................................. 20 
+3.5 Necessary attributes ............................................................................................ 21 
+3.6 Call Handling for Off-line Users ........................................................................ 25 
+3.6.1 Delayed query .......................................................................................... 25 
+3.6.2 Delayed CallYou ...................................................................................... 26 
+3.6.3 Delayed CallBack .................................................................................... 27 
+Chapter 4 System Implementation .................................................................................... 29 
+4.1 System components ............................................................................................ 29 
+4.2 Bloom filter implementation ............................................................................... 32 
+4.3 Message encryption ............................................................................................ 32 
+Chapter 5 Performance Evaluation ................................................................................... 34 
+Chapter 6 Conclusions ...................................................................................................... 38 
+Reference .......................................................................................................................... 39 
+ iii
+ v
+List of Tables 
+Table 4.1:  The difference between the three components ..................................... 30 
+Table 5.1:  The comparison between the five systems ........................................... 36 
+Table 5.2:  The comparison between the five system ............................................ 37 
+ 
+the age, and the school he or she studies, etc. A user can be associated with sets of user 
+attributes. In other words, a set of user attributes can be used to specify the callee of a call. 
+Such specifications are meaningful and easy to remember for the caller, and they do not 
+change over time. However, a set of user attributes may not uniquely identify a specific 
+callee in the caller’s mind. It is the caller’s responsibility to give the specifications with 
+enough information about the callee.  
+To set up a communication with the callee’s attributes specified by the caller, the 
+callee needs to publish his or her user profile on the Internet first. The user profile may 
+consist of attribute value pairs (AVPs). A call request is also made up of AVPs. To serve a 
+call request, we need to do multi-attribute data matching between the call request and the 
+callee’s user profile. This can be done by a client-server architecture where the server 
+stores all user profiles and matches call requests with the user profiles. Since a 
+client-server architecture does not scale up well and has the disadvantage of single point 
+of failure, we used peer-to-peer (P2P) technologies for multiple attributes matching. 
+Although P2P technologies has be used by many researchers for multiple attribute 
+query, the routing overhead of most current P2P solutions increases linearly with the 
+number of attributes. This can be a great drawback for our applications because the 
+number of user attributes of a call request is usually large. An efficient publishing/query 
+of user attribute profile on peer-to-peer overlay network is needed. 
+Another major issue to be addressed in a communication platform using user 
+attributes to set up connections is user privacy. No one, except the matched callers, 
+should obtain the user information of a user from the user’s published user profile. A user 
+profile should be encrypted first, and then published. However, the P2P overlay network 
+should be able to match call requests and user profiles without the knowledge of it real 
+ 2
+Chapter 2 Related Work  
+We used Chord [1], a DHT, as the under-layer routing platform, and other P2P 
+technologies to support multiple-attribute query including range query. In this chapter, we 
+briefly describe related research, and their limitations that cannot satisfy the requirements 
+of our communication platform. In addition, we will describe the design of Bloom filter 
+[2], which is a space-efficient, randomized data structure representing a data set. Bloom 
+filter was used for user attribute publishing and call request matching in our system. 
+2.1 Chord and DHT routing 
+In the early stage of P2P development, there were two ways to locate resources on 
+an overlay P2P network. In one way, resource indexing and searching were performed by 
+centralized servers, and resource sharing was directly operated between peers. However 
+single point of failure may imperil this approach. The most well-known system of this 
+approach was Nasper [3]. In another way, resource searching was done by flooding the 
+resource requests to peers. Each node randomly records a number of nodes as its 
+neighbors and maintains direct connection with the neighbors. Gnutella is a typical 
+example of this approach [4]. However, flooding would cause massive redundant 
+messages, and result in inefficient usage of network bandwidth. It is clear that the 
+aforementioned two approaches of P2P architecture do not scale up well, as the number 
+of the nodes dramatically increases. 
+2.1.1 Structure peer-to-peer architecture 
+The applications of peer-to-peer technologies were not very popular until the 
+invention of distributed hash tables (DHT). DHTs take advantage of consistent hash to 
+locate resources in an overlay network. By using consistent hash, nodes and resources 
+ 4
+to additional nodes, the routing can be done in  time, where n is the number of 
+nodes. The finger table is a structure to save links to additional nodes whose node ID are 
+, where k is the node ID where the finger table is saved and i is in the range 
+from 0 to m-1. When a node generates a query, it first looks up its finger table to find an 
+ID smaller than the target ID of the query, and then forwards the query. This greedy 
+algorithm would pass the query to the closest node with ID smaller than the target ID. 
+The node that receives the query repeats the same forwarding process until the 
+corresponding node of the target ID. Figure 2.1 depicts a routing process from node 
+001000 to node 011101. In node 001000, the level 3 link of the finger table is the closest 
+ID to the destination. node 001000 thus forwards the message to node 010001, and nodes 
+in Chord will repeat the process until the message reaches the corresponding node of key 
+011101.  
+)(log nO
+mi k 2)%2( +
+12 −m
+001000 -> 011101
+0 0001 -> 0111011
+011 00 -> 0111011
+010001
+001000
+011100
+011101
+0000101010005
+100011
+010001
+001111
+001111
+001111
+nodeID
+0110004
+0100003
+0011002
+0010101
+0010010
+targetlevel
+Finger table of 
+001000
+Figure 2.1  A routing example and a finger table example 
+Each node of a Chord ring maintains  links to other nodes and a message 
+can be routed to the corresponding node of a particular ID in  hops. Because a 
+successful query requires every node in the routing path to forward the message, the 
+correctness of the finger tables must be kept, especially the link to the successor. Chord 
+)(log nO
+)(log nO
+ 6
+155
+264
+377419
+642 Matched :A,C,F
+A,F
+Matched and 
+intersected:
+SourceHash
+114
+65
+N,R
+D
+SourceHash
+212 A,B,F
+SourceHash
+341 A,C,F
+SourceHash
+390 R,S
+SourceHash
+609
+544
+D,F
+A
+H_IDStrValAttrName
+Nation
+Name
+tw
+Peter
+212
+341
+step1
+step2
+step3
+ 
+Figure 2.2  Iterative search for multi-attribute query. 
+Figure 2.2 depicts an iterative multiple attribute query. First, the querying node, 
+node 155, sends the query to node 377, the responding node of attribute “Nation:tw”. 
+Then, node 377 forwards the matched results {A,C,F} to node 264, the responding node 
+of attribute “Name:Peter”. After intersecting the matched results, node 264 returns the 
+results {A, F} to node 155. 
+Since the results matching an attribute may be a very large set in an iterative query, 
+Reynolds [8] proposed that transmitting the Bloom filter of the matched set to reduce the 
+transmission bandwidth. Bloom filter is a efficient data compression method; a data set 
+can be compressed to an array with a small possibility of false positives. We will describe 
+Bloom filter in more details later. Figure 2.3 shows a query example. The querying node 
+searches attributes A and B. The left-hand side of Figure 2.3 depicts an iterative query; 
+the right-hand side an iterative query using Bloom filter. The querying node first forwards 
+the query to the responding node of A, that is, SA. SA hashed the matched items to a 
+Bloom filter F(A), then forward F(A) to SB, the corresponding node of B, SB finds the 
+matched items of B, and only keep the matched items that are also in F(A). If there 
+ 8
+updates it by the responding nodes of keywords flooding adding-keyword message to 
+every node. Furthermore, this keywords fusion mechanism can merge two hot keywords 
+as one less hot keyword to enhance the query process, and a merged keyword can be 
+added to the fusion dictionary to return hot. Figure 2.4 show the effects of query process 
+with the fusion dictionary, the example on the top queries hot keywords first, while the 
+example below queries the specific keywords first. We can clearyly observe the 
+difference of transmission data. However, this algorithm would pay additional overhead 
+to maintain and synchronize the fussion dictionary in each node. 
+2.3 Range query 
+A range query searches for items with an attribute value in a range. For example, 
+find a file of size 100K-200K bytes. Consistent hash functions used in most DHTs break 
+the locality of attributes for load balancing, i.e., two similar keywords with their attribute 
+values close may be hashed to two corresponding nodes far distributed. However, a range 
+query needs to find keywords with similar attributes, and may not be efficiently 
+performed by a DHT. There have been some researches toward efficient range query. 
+Most of them used location preserving hash function and provided another way for load 
+balancing. 
+MAAN [10] supported both multiple-attribute and range queries based on Chord. It 
+useed uniform location preserving hash for range query and single attribute dominated 
+query for multiple attributes query. Location preserving hash used in MAAN simply 
+linearly maps a numeric attribute domain to the namespace of Chord ID. The minimum of 
+the numeric attribute maps to 0 and the maximum to 12 −m  in Chord. Although the hash 
+has load balancing problems, the authors claimed that MAAN does suffer load unbalance 
+by consider the real distribution of the numeric attribute in mapping instead of a linear 
+ 10
+every node balanced. 
+Another approach of multiple attributes and range queries is using space filling 
+curves (SFC). SQUID [12] and SCARP [13] transforms multiple attributes range query 
+into multidimensional query. Each dimension represents a numeric attribute; strings are 
+treated as ASCII numbers. SQUID also uses SFC to map multi-dimension data into one 
+dimension line and location preserving hash to map the line into Chord. Therefore 
+multiple-attribute query can be handled in a node to reduce the transmission overhead. 
+Figure 2.6 shows a 2-dimensional example using SFC to map a 2-dimensional plane to a 
+1-dimensional line, and on the right is the mapping of the range X:0-1 and Y:1-3 in a line. 
+ Figure 2.6  A space filling curve example  
+However, range search in SFC can still generate fragmentation because a contiguous 
+range in a high dimension does not always map to a continuous segment in the line, 
+especially in a higher dimension. As a result, range query using SFC only suits to a fixed 
+and lower dimension, such as, longitude and latitude information. 
+2.4 Bloom filter 
+Bloom filter is a space-efficient data structure representing a data set. It supports 
+elements insertion but not deletion. It check whether a certain element is in the set with a 
+ 12
+desired false positive probability, which isusually below than 1%, and provide additional 
+examination methods to handle false positives. In spite of false positive, Bloom filter has 
+very good performance in terms of storage space and computation, and thus has been 
+widely used in network applications. Our communication system also adopted Bloom 
+filter to store data, and we will describe in the next chapter. 
+ 14
+Caller
+Callee
+Responding node
+1. Publish
+2. Query
+3. CallYou
+4. Callback5. Answer
+ 
+Figure 3.2  The call flow of MFPGC system  
+Since a communication using a specific ID is a conventional SIP call, it is not 
+presented in this report; we only present communication using unspecific user attributes 
+in MFPGC system. The communication works as follow:  
+0. A MFPGC user joins the communication system though a well-known node in the 
+MFPGC system. 
+1. The user publishes his or her attributes to the DHT network, so that the responding 
+nodes of each of the attributes maintain a copy of the user information. (Note that it is 
+represented by a Bloom filter and will be described latter in this report). 
+2. A caller initiates a call request by querying users with certain attributes, and the query 
+will be forwarded to the corresponding node of one of the attributes in the query.  
+3. The corresponding node compares the attributes of its data and the query, and then 
+sends the call requests to all the matched users. 
+ 16
+depicts the publishing process of Peter’s attributes 
+4096PeterName
+HashStrValAttrName
+Depart.
+School
+CSIE
+NCTU
+1981
+328 10000100
+Hash to bloom filter
+00100100
+00100001
+10100101
+Bloom filter of the 
+three attributes
+Peter’s attributes
+ 
+Figure 3.3  An example that maps three attributes of a profile into a Bloom filter 
+ 
+328
+1981
+4096
+8721
+4096PeterName
+HashStrValAttrName
+Depart.
+School
+CSIE
+NCTU
+1981
+328
+10100101
+Bloom filter (Bf)
+Bf851
+851
+Bf6023
+6023
+Bf8721Data
+8721Source
+NodeID = 328
+Bf1098
+1098
+Bf8721
+8721
+Bf488Data
+488Source
+NodeID = 1981
+Bf4851
+4851
+Bf623
+623
+Bf8721Data
+8721Source
+NodeID = 4096
+ 
+Figure 3.4  The publish process of the profile in Figure 3.3  
+3.3 Query with Bloom filter 
+A call request is a query to search users whose profiles match with the attributes 
+specified in the call request. Similar to publishing, a query first maps the attributes of the 
+call request to a Bloom filter, and then sends a query message including the Bloom filter 
+to any one of the corresponding node of the attributes. The most significant difference 
+between publishing and query is that publishing needs to be sent to all of the attributes 
+but query only needs to be sent to one. Since the Bloom filter representing user 
+ 18
+user decide not to call back, the caller is unknown of the existence of the matched user. 
+Another problem in using Bloom filter is false positive. Our solution is double check 
+the call request at the callee’s node where both user profile and the “CallYou” message 
+are available. The “CallYou” message is encrypted so that only the matched nodes can 
+decrypted; the corresponding nodes of the query cannot decrypt the message. 
+3.4 Numeric attributes 
+We have described that MFPGC system provides not only string type attributes but 
+also numeric and hybrid attributes. Many user attributes, such as age, income, location, 
+etc., contain numeric values, and the query may be searching for a range of the values, 
+such as, age from 20 to 29. It is inefficient if we query each age at a time using the simple 
+publish/query mechanism described. Therefore, a new query method for numeric 
+attributes is needed. This problem is known as range query that we have presented in 
+Chapter 2. 
+The method we used in MFPGC system for range query is dividing the domain of a 
+numeric attribute into levels. Values in each level are treated as the same value. For 
+example, attribute AGE can be partitioned into levels of every five years. Therefore, 1-5 
+is the first level, 6-10 is the second, and so on. However, this dividing results in more 
+false positives in using Bloom filter. For example, we query a range “AGE 3-13”, and the 
+query include three age levels, “AGE 1-5”, “AGE 6-10”, and “AGE 11-15”. It is clear 
+that some values in the three levels do not match our query, such as, “AGE 14-15” and 
+“AGE 1-3”. These false positives in Bloom filter can also detected by the callee node. In 
+other words, we check whether the range in a query covers the number of callee when a 
+“callyou” message is received by the callee. 
+ 20
+3.5.1 Receiver-specified necessary attribute set  
+To screen out unwanted call requests, a user can specify certain attributes that must 
+be matched by call requests. These attributes will be referred to as the receiver-specified 
+necessary attribute set and represented by a Bloom filter in publishing to the responding 
+nodes. We modify the publishing message to include two Bloom filters, one representing 
+all receiver-specified attributes set (RAS), and the other representing receiver-specified 
+necessary attributes set (RNAS). 
+When a node receiving a query, in addition to checking whether the query is a subset 
+of RAS, the node also checks whether the query contains RNAS, i.e., matches all 
+receiver-specified attributes. If both conditions are satisfied, the query matches the user 
+profile. If only the former condition satisfies but the latter one does not, it means the 
+caller intends to call the callee but the callee would not like to receive this request. This 
+mechanism costs overheads in maintaining and comparing two Bloom filters for each 
+user profile on the responding node, but it can filter unwanted calls before the call 
+requests are sent to callee. Figure 3.6 depicts an example of publishing Peter’s attributes 
+including RNAS and RAS to three responding nodes. 
+4096PeterName
+HashStrValAttrName
+Depart.
+School
+CSIE
+NCTU
+1981
+328 10100100
+Bloom filter of RNAS
+Peter’s attributes
+10100101
+Bloom filter of RAS
+ 
+Figure 3.6.a  Peter’s user attributes; the first and second attributes are RNAS 
+ 22
+“School:NCTU” is not included in query A. Figure 3.7b shows a 4-attribute query where 
+RNAS is satisfied but SNAS is not. Although Peter’s RNAS are subset of SAS, a 
+sender-specified necessary attribute, “Name:John”, is not contained in Peter’s attributes, 
+and thus the query is not forwarded to Peter. In Figure 3.7.c, although attribute “Name:John” 
+does not match “Name:Peter”, the two attributes are in neither RNAS nor SNAS, and both 
+RNAS and SNAS are satisfied. The call request is forwarded to Peter. 
+N
+N
+Y
+Nec
+3100BridgeClub
+H_valStrValAttrName
+Name
+Depart.
+Peter
+CSIE
+4096
+1981
+Query A
+328
+1981
+4096
+8721
+     true
+false     
+RASSNAS
+SASRNAS
+⊆
+⊆
+ 
+Figure 3.7.a  SNAS is satisfied but RNAS is not 
+1981CSIEYDepart.
+N
+N
+Y
+Nec
+3100BridgeClub
+H_valStrValAttrName
+Name
+School
+John
+NCTU
+882
+328
+Query B
+328
+1981
+4096
+8721
+false     
+     true
+RASSNAS
+SASRNAS
+⊆
+⊆
+ 
+Figure 3.7.b  RNAS is satisfied but SNAS is not 
+ 24
+ Figure 3.8  A delayed query flow 
+In order to identify each user, we use a profile ID for each publishing message. A 
+profile ID is an integer number generated by hashing all attributes of that user. We 
+assume each user would input enough specific attributes and could be identified by those 
+attributes, so a profile ID could roughly identify a user profile in MFPGC system. After a 
+node received a query message and compared the user profile in its local database, it 
+saves the query and a list of the matched profile IDs until the query is expires.  If a 
+publishing profile is received during this time interval, the profile is compared with the 
+non-expired queries and their list of matched profile IDs. A newly publishing user would 
+receive a CallYou message from the corresponding node as depicted in Figure 3.8. 
+3.6.2 Delayed CallYou 
+A delay CallYou means a CallYou message for an off-line user is stored and 
+forwarded to the user when he or she is on line later. We mark a user profile on-line or 
+off-line in the corresponding node and require a “CallYouReply” message from a callee 
+to acknowledge the “CallYou” message the callee receives. If the corresponding node 
+ 26
+until the caller and caller are on line at the same time. 
+ 
+Figure 3.10  A delayed CallBack flow 
+ 
+ 28
+.  
+Figure 4.2  The three types of components in MFPGC system 
+ 
+Table 4.1  The differences between the three components 
+components 
+DHT routing 
+Store user 
+profiles 
+Publish and 
+query 
+GPS Location 
+information 
+P2P node Y Y Y N 
+Non-P2P node N N Y N 
+PDA node N N Y Y 
+ 
+4.1.1 P2P node 
+P2P nodes are the back-bone of our system and provide all of the peer-to-peer 
+functionality including routing, storing user profiles, and communication functions - 
+publishing, query, and communications. Based on the design of Chord, a P2P node should 
+maintain a finger table and a backup successor list for routing purpose. Each P2P node 
+maintains a thread that periodically sends keep-alive messages to each node in its finger 
+table, so that the node can rebuild its finer table when any node ungracefully left the 
+Chord ring. 
+ 30
+4.2 Bloom filter implementation 
+As we have described in Chapter 3, MFPGC system uses Bloom filter to represent 
+user attributes. The Bloom filter we used is a 512-bit array, and MD5 hash function is 
+used to hash a user attribute to 8 array positions. In order to generate 8 indices, we used 
+the same hash function but with 8 different input texts for a given user attribute. The 8 
+different input texts are obtained by concatenating the original text and a number of 0’s. 
+For example, consider a system-defined attribute “Club:Bridge”. We hash “Club:Bridge”, 
+“Club:Bridge0”, “Club:Bridge00”, …, and “Club:Bridge0000000” to 8 indices and set 
+those positions of the bit array to 1. 
+4.3 Message encryption 
+ 
+Figure 4.3  The encrypt process in query 
+In MFPGC system, a caller can add a short message in the query of a call request to 
+invite the callee to call back. The Callee can read the message and decide whether to call 
+back or not. Since a query message is first sent to the corresponding node of an attribute 
+in SNAS, to provide confidential communications, the query message can be encrypted 
+ 32
+Chapter 5 Performance Evaluation 
+The core functionalities of MFPGC system are multiple-attribute query and range 
+query using DHT. In addition, MPFGC system used Bloom filter and encrypted message 
+to protect user privacy and confidential communications. Many existing DHT-based 
+systems support multiple-attribute and/or range queries, but very few of them, if any, 
+consider data confidentiality. In this Chapter, we compare MFPGC with DHT-based 
+systems in their efficiency supporting multiple-attribute query and/or range query. First, 
+we introduce performance metrics used for evaluation. 
+Hops: The number of nodes traversed in routing a message is the most general metric to 
+evaluate the routing overhead of P2P overlay networks. It measures the distance and time 
+from the source to the destination. The fewer number of hops in a route results in lower 
+communication overhead and quicker response time. If there are multiple destinations, 
+the maximum number of hops to all destinations is used for comparison. Since a message 
+transmitted between two nodes means an increment of hop count, the number of 
+transmitted messages is proportional to the number of hops. 
+The number of nodes serving a query: To serve a multiple-attribute query, the query may 
+be relayed to several nodes, each of which searches a certain attributes. The number of 
+nodes serving a multiple-attribute query indicates the response time of the query. The 
+more number of serving nodes for a query, the longer the response. Furthermore, the 
+extra routing overhead on a P2P overlay network, this long response problem can be 
+more severe. 
+Number of nodes serving a publishing: A resource described by multiple attributes may 
+need to be published to a number of nodes. The number of nodes storing the publishing 
+ 34
+user-defined attributes. This flexibility is very important for the communication scenarios 
+targeted by MFPGC. 
+ 
+Table 5.1  The comparison between five systems supporting multiple attribute query 
+class Multiple attribute query 
+Metrics Number of nodes for a query Hops 
+Number of nodes 
+for a publish 
+Storage in a node 
+for a publish 
+MFPGC 1 )log(n  attrn  .miscM +  
+SCARP 1 )log(n  1 .miscnattr +  
+MURK 1 )(log2 n  1 .miscnattr +  
+MAAN 1 )log(n  attrn  .miscnattr +  
+ 
+Table 5.2 displays the comparison for range query. We only compare MFPGC and 
+MAAN because MKey does not support range query. The performance of SCARP and 
+MARK on range query varies by a large degree with different sizes of the range, and it is 
+difficult to obtain the performance metrics in a closed form. Let s denotes the selectivity 
+of a range attribute, and  the minimum selectivity of the ranges in a query. and 
+denote the lower bound and the upper bound of the domain of the numeric attribute. 
+level denotes the size to dividing the range in MFPGC system. The rightmost column lists 
+the computation complexity when the responding node compares a query with its 
+maintained data, where  denotes the number of records that have the same resource 
+ID as the query. The results in Table 5.2 clearly indicate MFPGC provide better or 
+comparable performance measures in all metrics. 
+mins
+tn
+maxR
+minR
+ 36
+Chapter 6 Conclusions 
+Traditional communications, such as telephony, email and VoIP, use a specific ID to 
+specify the callee. In this thesis we design a novel communication system using user 
+attributes to specify the callee(s). Communication is possible even if the callee’s ID is 
+unknown. Chord and Bloom filter have been used to publish and match user attributes. 
+By using Bloom filter to represent user attributes and encrypting the communication 
+messages, user privacy has been protected; only a matched callee can receive and decrypt 
+the caller’s message. To support necessary attributes specified by the caller and the callee, 
+two Bloom filters, one for necessary attributes and the other for all attributes, were used 
+in publishing a user profile, and in querying matched callees. MFPGC system also 
+provides off-line user handling mechanisms to store communication messages of off-line 
+users, and to forward the messages the user when he or she is on line. 
+For the corresponding nodes of hot keywords, the loading in networking, storage, 
+and computation may dramatically increase as the number of users increase. An efficient 
+load balancing mechanism for our system is critical to deploy MFPGC system in a large 
+scale. The mechanism should consider hot keyword attributes and improve the level 
+dividing method for range query. Another limitation of MFPGS is a sender-specified 
+necessary range attribute was not supported and this could result in complex query 
+process. An efficient solution is needed for this problem. 
+ 38

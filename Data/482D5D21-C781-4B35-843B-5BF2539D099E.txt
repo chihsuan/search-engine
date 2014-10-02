@@ -1,0 +1,552 @@
+ 2 
+中文摘要 
+為了減少儲存資訊量和網路傳輸的負載，影像壓縮技術已經被廣泛的應用在多媒體通訊上。然而
+在壓縮的過程中，重建影像容易在邊緣附近生震盪式的雜訊，也就是俗稱的環效應。許多去除環效應
+所提出的演算法都沒有考慮到更小的區域性去環效應問題段把影像大量使用掃描線都儲存起來作為後
+處理使用，而且在去除環效應時都沒有保留影像的細節跟紋理。針對這個現象，我們提出一個改善的
+演算法，在儲存影像較少量掃描線的情形下進行環效應的偵測以保留影像細節及紋理，更進一步在邊
+緣區域使用濾波器以及邊緣資訊保留紋理區域。實驗結果不管在主觀的視覺品質或是客觀的 PSNR 數
+據上都有非常好的表現。 
+CCSDS 標準是目前處理衛星影像壓縮最普遍的方法，然而其演算法僅僅提供以壓縮倍率為選項的
+功能，與目前就普及的壓縮方法相較，其功能性過為薄弱。於此我們在不更動 CCSDS 標準的演算法核
+心架構的前提下，提供了以帶狀為基底(Strip-based)或是全幅為基底(Frame-based)的 ROI 功能性，可以
+在不更動現有的 CCSDS 硬體規格前提下，直接以硬體實作附加於 CCSDS 系統之上；此外，以帶狀為
+基底(Strip-based)的ROI更是可以大量減少硬體的Buffer花費，使得整個硬體系統的成本可以大為降低。
+而由最後的實驗結果我們可以發現，在壓縮品質的表現上也是有不錯的效能。 
+關鍵詞：去環效應、影像回復、影像後處理、濾波器、感興趣區域、可延展性、衛星影像壓縮 
+ 4 
+Content 
+There are two parts of results in this project. One is an efficient method for the detection of ringing 
+artifacts and de-ringing in jpeg image; the other is the realization of multiple region-of-interests in CCSDS. 
+The former has been published in the 28th Picture Coding Symposium, and the full paper is shown in the 
+appendix. Most concepts and simulation results of the latter is presented here and will be published in some 
+international journal in the future. 
+Introduction  
+Satellite images have been widely used in many fields such as military affairs, atmospheric sciences, 
+topography recognition, environmental studies, ocean-temperature detection, and so on. An obvious 
+characteristic of satellite images is their large data size. However, users are usually more interested in some 
+regions rather than the full frame of a satellite image. To satisfy this request, region-of-interests coding 
+adopted in image compression is the most popular method. In fact, besides the researches focused on high 
+compression qualities [1], [2], [3], [4], there had been more and more issues concerning about the ROI 
+capability [5], [6], [7].  
+JPEG2000 standard is one of the popular image compression methods that provides the ROI capability 
+and is very powerful. In the part I of JPEG2000 standard [8], the ROI encoding is implemented with a scaling 
+coefficient method called MAXSHIFT. A binary mask with a hierarchical structure is generated for focusing 
+original discrete wavelet transform (DWT), and then these specified ROI coefficients are shifted upwards over 
+the most significant bit (MSB) of bit planes of other background coefficients. After shifting ROI wavelet 
+coefficients, Embedded Block Coding with Optimal Truncation (EBCOT) is applied to encode the bit planes 
+of all coefficients from MSB to LSB, and thus the specified ROI coefficients will be encoded first to ensure 
+their better quality of the reconstructed image. Note that MAXSHIFT needs extra memory space to store the 
+binary mask and moreover, EBCOT is a complex process. 
+The Consultative Committee for Space Data Systems (CCSDS) is an organization that meets periodically 
+to address data system problems that are common to all participants, including image data compression 
+system [9], [10], [11] and others. Because of the limitation of the hardware used aboard spacecraft, the 
+compression technique described in the recommended standard proposed by CCSDS, that will be denoted as 
+the CCSDS standard hereafter, differs from the JPEG2000 standard in several respects: 
+a) it specially targets use aboard spacecraft; 
+b) a careful trade-off has been performed between compression performance and complexity; 
+c) being less complex, it can be fully implemented in either hardware or software; 
+d) it has limited set of options, supporting its successful application without in-depth algorithm 
+knowledge. 
+Because of these characteristics, the CCSDS standard is the most popularly adapted to be implemented in 
+ 6 
+coefficients is also generated in this step as shown in Fig. 2. Then we will scale the wavelet coefficients by 
+shifting upwards the bit planes of the ROI coefficients to ensure that the quality of ROIs in the reconstructed 
+image is the best.  
+ 
+Figure 1. Example of a PROI mask generation from an ROI mask. (a) Relation of a PROI mask to an ROI mask. (b) Example of 
+ROI and PROI masks. 
+In the general scaling-based method of JPEG2000, the wavelet coefficients will multiply a suitable 
+scaling factor k. That is, as shown in Fig. 3(b), the bit planes of the wavelet coefficients of ROIs will be 
+shifted upwards by ⌈log2k⌉ bits, where ⌈log2k⌉ means the smallest integer that is bigger than ⌈log2k⌉. Next 
+the MQ-encoder is adopted to perform entropy coding for the scaled wavelet coefficients. However, some 
+wavelet coefficients of ROIs and those of the background are coded in the same bit plane. In order to 
+distinguish them, the encoder has to transmit extra information such as the shape or the mask of ROIs. Thus 
+an extra bit stream containing the information of ROIs is needed and moreover, this will cause more 
+computational complexity while recovering the scaled wavelet coefficients in the decoder. 
+ 
+Figure 2. Generation of an ROI mask by MAXSHIFT. 
+ 8 
+ReGrouping, is performed where the transformed coefficients are rearranged in 8 ×  8 blocks. A group of S 
+consecutive blocks are defined as a segment. S can be assigned to any positive integer in the range 16 ≤
+ S ≤  220, depending on the available buffer to store the segment. Finally, each segment is independently 
+encoded by the BPE. Every 16 consecutive blocks within a segment are grouped to form a gaggle, as shown in 
+Figure 5, which is the least unit for entropy coding in the BPE. 
+As aforementioned, transformed coefficients of the original image would be reorganized in several 8 × 8 
+blocks before being processed by the BPE. A block, as shown in Fig. 5, consisting of 64 coefficients 
+represents an 8 × 8 region of an original image, and contains coefficients from all the subbands generated by 
+DWT. The top-left coefficient, DC, is a single coefficient taken from the most top-left subband (LL). The rest 
+of the coefficients, AC components, are taken from other subbands with the hierarchical structure given by the 
+DWT. Due to the different characteristics of DC and AC components, they will be encoded with different 
+techniques.  
+The BPE is designed to process 8 × 8 blocks. Every 16 consecutive blocks constitute a gaggle and all 
+the blocks in a gaggle are entropy encoded together. Once all the blocks in a segment are processed, the 
+streams obtained for each block in the segment are interleaved in order to produce an encoded segment. 
+Within a segment, the BPE processes each coefficient with a bit plane structure. The following is a brief 
+process of the BPE. 
+1. DC coefficients are quantized, and a Differential Pulse Code Modulation (DPCM) considering all 
+blocks in the segment is applied, followed by Golomb-Rice Coding considering all blocks in a gaggle. 
+2. The remaining DC bit planes not quantized that are greater than the bit-depth of AC, if any are refined. 
+3. The bit depth of AC coefficients from each block is encoded using the same technique as for the 
+quantized DC coefficients. 
+4. From the AC bit depth to the lowest bit plane, DC remaining bit planes are refined, and AC significance 
+and refinement are encoded. 
+5. Stream from each block in the segment are interleaved to construct a quality progressive file. 
+ 
+Figure 6. LL3 subband is included in the ROI mask. 
+ 10 
+Step 3. Indicate whether the wavelet coefficients are larger than k or not. If they are, divide them by k. 
+Step 4. Perform the 3-level inverse DWT and output the reconstructed image. 
+Note that MAXSHIFT for ROI could just be realized in the frame-based mode. For example, if the 
+current strip does not contain any ROI information, the shifting scheme will not be performed while 
+processing this strip. In this way the quality of this strip is better than that of non-ROI of other strips 
+containing ROI information and even might be as good as that of the ROI of other strips. Thus in the final 
+reconstructed image, the quality of the ROI could not be ensured to be the best. This contradicts the purpose 
+of the ROI scalability. 
+   
+Figure 8. ROI modification 
+ 
+Figure 9. Segment-based partition. 
+B. Multiple ROI coding in the CCSDS standard 
+Here a compression algorithm for realizing the multiple ROI coding in the strip-based CCSDS standard 
+is presented. In the regrouping process in the CCSDS standard, we find that the texture of the rearranged 
+wavelet coefficients is similar to that of the original image. As shown in Fig. 7, in either image, the texture in 
+A is more complicated while that in B is smoother. By this observation, for the range of each ROI where the 
+left-top point (𝑥𝑙𝑡, 𝑦𝑙𝑡) and the right-bottom point (𝑥𝑟𝑏, 𝑦𝑟𝑏) are assigned by users, we re-calculate the 
+relative positions (𝑥′𝑙𝑡 , 𝑦
+′
+𝑙𝑡
+) and (𝑥′𝑟𝑏, 𝑦
+′
+𝑟𝑏
+) in the regrouped coefficients by the following equations. Fig. 
+8 is an example of the modification of the range of an ROI. 
+ 12 
+impossible. In this case we need to preserve the bits, Bnon− ROI , that are necessary while decoding the 
+non-ROIs, and then the rest bits, Btotal − Bnon− ROI , are all distributed to the ROIs. On the contrary, if the 
+former is greater than the latter, we allocate bits to the ROIs prior to the non-ROIs. The details of bit 
+allocation are shown in the Algorithm 1. 
+Simulation results 
+ 
+Figure 10. Test images captured with different frequencies in set I. 
+ 
+Figure 11. Test images captured with different frequencies in set II. 
+There are two test image sets obtained from Nation Space Organization (NSPO) in this experiment. 
+There are four 8-bit satellite images captured with rays at different spectra in each image set. The dimension 
+of these satellite images in set I, as shown in Fig. 10, is 3000×10440, and that of the images in set II, as shown 
+in Fig. 11, is 3000×7800. Note that the last images in both sets are more complicated than others. For example, 
+as we can see in Fig. 10, there are more textures in B4 than in other three images. It means that the 
+information contained in B4 is more useful and more important. Besides, for satellite image compression, a 
+good trade-off between the compression quality and the compression rate is very important, too. In general 
+cases, the assigned compression rate is usually in the range from 7.5 to 15. Therefore in our experiment, the 
+PSNR performance in the range of compression rate from 6.67 to 20 is presented. 
+ 14 
+method and JPEG2000. Note that since the ROI is usually the most important region, in our experiment, only 
+the PSNR of the ROI is concerned. The following equation is adopted to calculate the PSNR of n ROIs in an 
+test image, where Q is the maximum possible value of the samples (here Q is set as 255 since the bitdepth of 
+the test images is 8), 𝑢(𝑖, 𝑗) is the distortion between the original pixel value and the reconstructed pixel value, 
+and 𝑊𝑘 and 𝐻𝑘 represent the width and the height of the kth ROI in an test image. 
+PSNR = ∑ 10𝑙𝑜𝑔10 (
+𝑄2
+(
+1
+𝑊𝑘𝐻𝑘
+∑ ∑ 𝑢2(𝑖, 𝑗)
+𝐻𝑘−1
+𝑗=0
+𝑊𝑘−1
+𝑖=0 )
+)
+𝑛
+𝑘=1
+                      (4) 
+ 
+It is obvious that the PSNR of MAXSHIFT in the CCSDS standard is the worst of these results. In this 
+case taking the whole LL subband as a part of the ROI increases the cost of entropy coding and thus greatly 
+ 16 
+in Fig 13. This phenomenon is caused by the increasing of the segments. When the strip-based ROI coding is 
+performed restricted to the buffer size, an image has to been partitioned into several non-overlapped strips. In 
+this case, more headers are needed and thus the compression performance is affected. However, once the 
+strip-based ROI coding could be performed, the design of the buffer size becomes more flexible and the cost 
+of the hardware could be greatly decreased. 
+ 
+Figure 13. Average PSNR comparison of strip-based ROI containing different scan lines and JPEG2000 in set I. 
+Conclusion 
+Image compression with the ROI scalability is becoming popular. For satellite image compression that 
+deals with the huge amount of data captured by sensors, the image compression standard proposed by CCSDS 
+provides an excellent tradeoff between performance and complexity for medium and high target bit rates. 
+However, the compression rate is the only one factor concerned in the original CCSDS standard. JPEG2000 is 
+a popular and powerful image compression method, and it also provides an excellent ROI scalability. It’s a 
+pity that ROI coding in JPEG2000 just performs well in the frame-based mode rather than in the strip-based 
+mode, and thus the buffer and the hardware cost is a heavy burden.  
+To overcome these limitations, a strip-based image compression algorithm based on the CCSDS standard 
+providing the ROI scalability is proposed in this study. From the simulation results, it is obvious that the 
+performance of the proposed algorithm is competitive to JPEG2000, and moreover, the performance of the 
+proposed algorithm is still good in the strip-based mode. The proposed algorithm not only keeps the 
+advantages of low complexity and high compression performance of the CCSDS standard, but also provides 
+the strip-based ROI scalability that could not be realized in JPEG2000. The compatibility with existing 
+CCSDS hardware systems and the supply of the strip-based ROI scalability make it easier to be implemented 
+in hardware design, and furthermore, the cost of the image processing hardware system could be effectively 
+decreased. 
+  
+ 18 
+ 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。 
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+■達成目標 
+□未達成目標（請說明，以 100 字為限） 
+□實驗失敗 
+□因故實驗中斷 
+□其他原因 
+說明： 
+ 
+ 
+ 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：■已發表 □未發表之文稿 □撰寫中 □無 
+專利：□已獲得 □申請中 ■無 
+技轉：□已技轉 □洽談中 ■無 
+其他：（以 100 字為限） 
+本研究成果分為兩個部分，分別是於 JPEG 影像之環狀效應(Ringing 
+artifacts)偵測並去除環效應以及針對太空影像的 ROI 壓縮。第一部分成果已
+發表於第 28 屆圖像編碼國際研討會(28th Picture Coding Symposium)，而 ROI
+壓縮部分的成果也會整理並預期發表於國際期刊。 
+ 20 
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+                                     日期： 99 年 12 月 31 日 
+                                 
+一、參加會議經過 
+99.12.8(三)從桃園機場飛抵小松機場，然後搭車抵達名古屋。 
+99.12.9(四)參加 PCS2010 早上參加 Yukiyasu Kamitani 主講的 keynote speech 
+“Decoding Visual Perception from Human Brain Activity”以及 Seishi Takamura 的
+tutorial“Evolutive Video Coding- From Generic Algorithm towards Content-Specific 
+Algorithm”並且於會中與國際專家學者進行與研究計畫相關之學術交流，了解國外產
+學界對於未來研究發展之趨勢與技術的觀點。下午參加了 O3 session (Oral Session 3: 
+New Techniques for Video Coding)。 
+99.12.10(五)繼續參加 PCS2010。早上參加 Thomas Wiegand 主講的 keynote speech 
+“Advances in Video Compression”以及 Chaker Larabi 的 tutorial “Quality Assessment 
+計畫編號 NSC 99 － 2221 － E － 006 － 012 － 
+計畫名稱 多擴展性的高視覺品質影像壓縮系統 
+出國人員
+姓名 
+戴顯權 
+服務機構
+及職稱 
+國立成功大學電機系 
+會議時間 
+2010 年 12 月 7 日
+至 
+2010年 12月 10日 
+會議地點 
+日本  ¸ 名古屋, 愛知縣 
+會議名稱 
+(中文) 第 28 屆圖像編碼國際研討會 
+(英文) 28th Picture Coding Symposium 
+發表論文
+題目 
+(中文) 用於 JPEG 影像之環狀效應偵測並去除環效應之高效能方法 
+(英文) AN EFFICIENT METHOD FOR THE DETECTION OF 
+RINGING ARTIFACTS AND DE-RINGING IN JPEG IMAGE 
+AN EFFICIENT METHOD FOR THE DETECTION OF RINGING ARTIFACTS AND
+DE-RINGING IN JPEG IMAGE
+Shen-Chuan Tai, Bo-Jhih Chen, and Mankit Choi
+Institute of Computer and Communication Engineering,
+Department of Electrical Engineering, National Cheng Kung University,
+Room 92533, Tainan 701, Taiwan, R.O.C.
+Email: sctai@mail.ncku.edu.tw, cbj@lily.ee.ncku.edu.tw, mr.vh.mankit@gmail.com
+ABSTRACT
+JPEG standard is commonly used for the still image com-
+pression. However, the DCT-based coding of JPEG is one
+of the lossy compression tools and introduces most artifacts
+in the decompressed image such as blocking and ringing ar-
+tifacts. In this paper, our proposed method focuses on how
+to efﬁciently detect the blocks which cause ringing artifacts.
+Moreover, these ringing blocks will be further ﬁltered and the
+texture region will be able to preserve as well as the smooth
+region. Simulation results show that our proposed method
+can outperform the related algorithms in subjectively and ob-
+jectively. By comparing JPEG compressed image, the de-
+compressed image using our algorithm can achieve the bet-
+ter PSNR as well as the visual performance, especially at the
+lower quality coding (the higher compression rate).
+Index Terms— JPEG, ringing artifact, image compres-
+sion
+1. INTRODUCTION
+Joint Photographic Experts Group (JPEG) is the most com-
+mon compression standard for the still image. It also referred
+to as the DCT-based coding because discrete cosine transform
+(DCT) is applied for the removal of the spatial redundancy.
+After transform and quantization, a lack of some coefﬁcients
+in higher frequency leads to the inevitable artifacts such as
+blocking, ringing, blur, etc. [1]. Hence, the compressed im-
+age may contain the different effects of the particular regions
+depending on the image characteristics and the compression
+rate. In addition, ringing artifacts is much more difﬁcult to
+reduce than other kinds of artifacts in the block-based image
+coding [2]. Our proposed method devoted on the deringing
+algorithm. Take Fig. 1 as an example, it presents the percep-
+tible effects, namely the ringing artifacts. Ringings usually
+occur in the nearby object edge. Therefore, the mainly so-
+lution of ringing detection rely on the capability of the edge
+detection.
+This work was supported by the National Science Council, Taiwan, R.
+O. C. under the Grant No. NSC 98-2221-E-006-113-
+(a) (b)
+Fig. 1. An example of the ring artifacts (a) Uncompressed
+image (b) DCT-based compressed image
+Many the post processing strategies have been proposed
+for detecting the ringing of JPEG image. And, the low-pass
+ﬁlters have been used for reducing the ringing artifacts caused
+by the DCT-based coding. In [3], Kartalov et al. proposed an
+algorithm for artifacts removal based on the theory of pro-
+jections onto convex sets (POCS) and by comparing the in-
+formation about the directions of image gradients. Zhai et
+al. [4] proposed a deringing algorithm using the quadtree de-
+composition (QT) to ﬁnd the potential location which occurs
+ringings and using the block-shift ﬁltering (BSF) to remove
+the spurious oscillation of the JPEG image. However, it re-
+quires much computation for QT decomposition. In addition,
+The fast algorithm for eliminating compression artifacts has
+been proposed [5]. They developed an adaptive fuzzy ﬁlter to
+suppress blocking and ringing artifacts depending on the both
+edge and texture directional. In [6], detecting ringing artifacts
+based on the analysis of DCT coefﬁcient with applying the
+k-mean clustering was proposed, and implementing the Bilat-
+eral ﬁlter to correct the ringing regions. It can be efﬁciently
+implemented without storing the entire image in memory.
+In this paper, we have proposed an improved method that
+providing the efﬁcient strategy for detecting ringings without
+a lot of computational complexity and utilizing the range ﬁl-
+ter to eliminate the ringing region with preserving the edge
+region simultaneously. The proposed algorithm applies the
+local available information to achieve much computational
+28th Picture Coding Symposium, PCS2010, December 8-10, 2010, Nagoya, Japan
+978-1-4244-7135-5/10/$26.00 ©2010 IEEE - 578 -
+block which contains edge pixels should be found in each
+non-overlapped 8× 8 block. First, each pixel Pel(x, y) of an
+decompressed image will be divided into two categories, the
+possible edge pixel (PE) and the non-edge pixel (NE).
+Pel(x, y) ∈
+{
+PE , if Gpel > Te
+NE , otherwise. (4)
+where Gpel is the gradient of Pel(x, y) and the threshold Te
+is adjusted according to the max gradient of an image Gmax,
+Te =
+{
+300 , if Gmax > 950
+100 , otherwise. (5)
+Based on the result of the pixel classiﬁcation, an 8 × 8
+block will be further determined as the possible edge block
+or the non-edge block. As shown in Fig. 5, there are only 28
+boundary pixels of a block for testifying. If one of boundary
+pixels belongs to the PE, this 8 × 8 block will be a possi-
+ble edge block Bp; the non-edge block Bne will be directly
+output or otherwise.
+Fig. 5. 28 boundary pixels of an 8× 8 block
+3.2. Check the Neighboring Regions of the Possible Edge
+Block
+Since ringing artifacts are usually perceptible around the
+edges and there exist non-edge regions such as smooth/detail,
+we need further check the possible block to avoid determining
+a non-edge block (textures) as an edge block. Therefore, we
+consider four 4× 4 subblocks from the left and right sides of
+the possible edge block to check the possible edge block as
+shown in Fig. 6.
+After checking, the possible edge block will be deter-
+mined as the true edge block Be if at least one of four neigh-
+bors belongs to the non-edge (i.e., all gradient value of 4× 4
+are less than Te), and it will be ﬁltered by the range ﬁlter to
+obtain Be RF .
+3.3. Content-Aware Determination
+Finally, some blocks still be uncertain blocks B′p followed
+the above procedure. We employ the difference of variance
+between the edge block and ﬁltered edge block to verify these
+uncertain blocks. As shown in Fig. 3, the range ﬁlter can
+preserve the edge. The variance of the edge block and ﬁlter
+Fig. 6. The possible edge block and four nearby 4 × 4 sub-
+blocks.
+edge block may be similarity. The possible edge block B′p
+can be determined as the true edge block if it satisﬁes the
+following condition.
+B′p ∈
+{
+Edge Block , if Diff. > Td
+Non-Edge Block , otherwise (6)
+where the difference of the variance Diff. between B′p and
+Bp′ RF is given as follows.
+Diff. =
+∣∣V ar(B′p)− V ar(Bp′ RF )∣∣ (7)
+and Td is given empirically as
+Td ∈
+{
+300, if Gmax > 950
+50, otherwise (8)
+4. SIMULATION RESULTS
+In our simulation, we have performed the JPEG images with
+the different characters and the quality factor QF to evaluate
+our proposed method. In (3), the parameter σr of range ﬁlter
+used in our simulations is 30 if Gmax > 950; σr = 10 or
+otherwise.
+Table 1 and 2 describe that the PSNR gain of each algo-
+rithm compared to JPEG image with different QF . We have
+the better PSNR gain outperforms the comparative method in
+lower QF . In addition, Fig.7 and 8 show that the visual qual-
+ity of our method also surpass that of other algorithms.
+Table 1. The performance of the PSNR gain, Barbara
+QF JPEG [5] [6] Ours
+15 28.22 -0.02 0.11 0.11
+20 29.41 -0.11 0.08 0.10
+25 30.38 -0.27 0.04 0.07
+30 31.18 -0.43 0 0.05
+In Table 2, our method have the lower PSNR gain in
+QF = 30, but the visual quality of ours is still better as
+shown in Fig. 9.
+- 580 -
+ 5
+ 
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+                                     日期： 99 年 12 月 31 日 
+一、參加會議經過 
+99.12.8(三)從桃園機場飛抵小松機場，然後搭車抵達名古屋。 
+99.12.9(四)參加 PCS2010 早上參加 Yukiyasu Kamitani 主講的 keynote speech 
+“Decoding Visual Perception from Human Brain Activity＂以及 Seishi Takamura 的
+tutorial“Evolutive Video Coding- From Generic Algorithm towards Content-Specific 
+Algorithm＂並且於會中與國際專家學者進行與研究計畫相關之學術交流，了解國外
+產學界對於未來研究發展之趨勢與技術的觀點。下午參加了 O3 session (Oral Session 
+3: New Techniques for Video Coding)。 
+99.12.10(五)繼續參加 PCS2010。早上參加 Thomas Wiegand 主講的 keynote speech 
+計畫編號 NSC 99 － 2221 － E － 006 － 012 － 
+計畫名稱 多擴展性的高視覺品質影像壓縮系統 
+出國人員
+姓名 戴顯權 
+服務機構
+及職稱 國立成功大學電機系 
+會議時間 
+2010 年 12 月 7 日
+至 
+2010 年 12 月 10 日 
+會議地點 日本¸ 名古屋, 愛知縣 
+會議名稱 
+(中文) 第 28 屆圖像編碼國際研討會 
+(英文) 28th Picture Coding Symposium 
+發表論文
+題目 
+(中文) 用於 JPEG 影像之環狀效應偵測並去除環效應之高效能方法 
+(英文) AN EFFICIENT METHOD FOR THE DETECTION OF 
+RINGING ARTIFACTS AND DE-RINGING IN JPEG IMAGE 
+附件四 
+  
+28th Picture Coding Symposium 
+December 7-10, 2010, Nagoya, Aichi, Japan
+ 
+ 
+6 October 2010 
+ 
+To: Shen-Chuan Tai 
+Institute of Computer and Communication Engineering, 
+Dept. Electrical Engineering, National Cheng Kung University 
+Room 92533, No.1, University Road, Tainan City 701,  
+Taiwan (R.O.C.) 
+Subject: Letter of Invitation  
+ 
+Dear Prof. Shen-Chuan Tai, 
+ 
+I have the pleasure to inform you that the 28th Picture Coding Symposium 
+will be held in Nagoya, Aichi, Japan, on December 7-10, 2010.  I cordially 
+invite you to this important symposium to present a paper. 
+The 28th PCS especially focuses on 
+ 3DTV 
+ FTV (Freeviewpoint Television) 
+ Beyond H.264/MPEG-4 AVC 
+ 
+I am looking forward to your active participation in this meeting. 
+ 
+ 
+Yours sincerely, 
+ 
+ 
+ 
+Dr. Masayuki Tanimoto 
+Professor of Nagoya University 
+PCS2010 General Chair 
+AN EFFICIENT METHOD FOR THE DETECTION OF RINGING 
+ARTIFACTS AND DE-RINGING IN JPEG IMAGE 
+ 
+Abstract 
+JPEG standard is commonly used for the still image compression. However, the 
+DCT-based coding of JPEG is one of the lossy compression tools and introduces most 
+artifacts in the decompressed image such as blocking and ringing artifacts. In this 
+paper, our proposed method focuses on how to efficiently detect the blocks which 
+cause ringing artifacts. Moreover, these ringing blocks will be further filtered and the 
+texture region will be able to preserve as well as the smooth region. Simulation results 
+show that our proposed method can outperform the related algorithms in subjectively 
+and objectively. By comparing JPEG compressed image, the decompressed image 
+using our algorithm can achieve the better PSNR as well as the visual performance, 
+especially at the lower quality coding (the higher compression rate).  
+ 
+ 
+Index Terms— JPEG, ringing artifact, image compression 
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：戴顯權 計畫編號：99-2221-E-006-012- 
+計畫名稱：多擴展性的高視覺品質影像壓縮系統 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 2 2 100%  
+博士生 1 1 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

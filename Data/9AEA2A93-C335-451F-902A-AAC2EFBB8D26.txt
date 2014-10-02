@@ -1,0 +1,566 @@
+在 Linux 作業系統設計與實作一個以 SOCKET 傳遞為基
+礎的普及計算環境
+計畫編號：NSC 97-2221-E-005-051-
+執行期限：97年8月1日至98年7月31日
+主持人：張軒彬 國立中興大學資訊科學與工程學系
+Abstract
+In this report, we propose an end-to-end based
+framework called VHF that develops the ideas,
+architecture, and prototype implementation to provide
+mobility support of multi-homed mobile hosts. Firstly,
+VHF proposes a flexible and efficient handoff
+detection scheme. Secondly, with the widespread use
+of NAT technology, VHF enables mobility across the
+NAT box while guaranteeing end-to-end discipline.
+Finally, VHF incorporates a handoff-aware TCP
+scheme, called CWND-restore, to adapt an ongoing
+TCP connection to different communication systems.
+To demonstrate the feasibility of VHF, we
+implemented a prototype system in the Linux kernel
+2.6. The experimental results show that VHF can work
+under a variety of mobility scenarios. Furthermore,
+our proposed CWND-restore scheme offers higher
+TCP throughput than previous approach during report
+handoffs. For example, the TCP throughput by the
+proposed CWND-restore is at most 2.3 times the TCP
+New Reno. Accordingly, VHF is flexible, efficient,
+and hence a promising mobility management
+framework for multi-homed mobile hosts.
+Keywords: mobility management, handoﬀ,
+heterogeneous networks, multi-homed mobile host,
+overlay network, pervasive computing.
+1. Introduction
+With the rapid development and deployment of
+Internet access technologies, a mobile host today can
+be potentially equipped with multiple network
+interfaces to access different data communication
+systems. Consequently, a report handoﬀoccurs when
+such a multi-homed mobile device roams from one
+communication system to another one.
+In this report, we propose a mobility
+management framework called VHF (Vertical Handoﬀ
+Framework) for continuous connectivity among
+heterogeneous communication systems. Previous
+approaches proposed to handle Internet host mobility
+can be classified into two board categories: one is the
+infrastructure-based scheme and the other is the
+end-to-end approach. For example, Mobile IP is the
+well-known infrastructure-based mobility
+management solution. Nevertheless,
+infrastructure-based schemes require the modification
+of network infrastructure. Given the increasing
+heterogeneity of communication technologies, it is not
+easy to always keep the existing infrastructure up to
+date to provide seamless mobility. In contrast, for
+end-to-end schemes, no changes to the underlying IP
+substrate are required, whereas only the
+communicating end points require modification.
+Consequently, an end-to-end approach allows for an
+easier deployment path. In addition, end-to-end
+approaches also guarantee the basic design tenet of the
+Internet that is guided by the end-to-end arguments [1].
+Moreover, with the upcoming of IPSEC (Internet
+Protocol Security) which encrypts IP payloads for
+security concerns [12], true end-to-end techniques
+would be required. Consequently, our VHF follows
+the end-to-end principle, i.e., keep the network as it is
+and enhance the end system instead.
+The first problem encountered in VHF is how to
+detect an ongoing vertical handoff. Owing to the
+technological diversities of different communication
+systems, the mechanism to detect the link availability
+of one access network would be different from another
+one. In addition, each mobile host may have a
+different number and different kinds of network
+interfaces. Thus, VHF defines an interface between
+layer 2 and layer 3 and uses a user configurationﬁle to
+facilitate handoff detection and handoff selection
+process. Furthermore, when to invoke the handoﬀ
+detection procedure is another challenge. Too short of
+time would result in an excess of overhead while too
+long of time would cause an undesirably long
+response time. Therefore, we also propose a
+two-threshold scheme to properly and flexibly
+determine when to invoke the handoﬀ detection
+procedure.
+Moreover, during a vertical handoff, previous
+approaches do not properly address the problem when
+hosts are behind a Network Address Translation (NAT)
+box. NAT technology has been widely deployed to
+establish a virtual private network or to overcome the
+deficiency of IPv4 address space. In [5], to work under
+NAT, they introduce the subscription/notification
+service (S/N service) that must add a new network
+entity called subscription/notification server (S/N
+server). In other words, they require a modification of
+network infrastructure. Such an approach not only
+containing its new IP address to the corresponding
+host. Once the corresponding host receives the
+notification message, it also updates its LCT table and
+sends back an ACK message. At this moment in time,
+the handoff procedure is completed. After that, when
+sending a packet, the LCT table is queried to update
+the connection information of the packet, and then
+delivers it to the lower layer. Upon receiving a packet,
+the current connection information of the packet is
+also substituted to its original information by LCT
+table, and then the packet is delivered to the upper
+layer. As a result, the occurrence of a vertical handoff
+is transparent to upper layer protocols and
+applications.
+Furthermore, to handle NAT issue and
+simultaneous movements, they introduce the
+subscription/notification (S/N) service, which requires
+the insertion of S/N servers in the network
+infrastructure. A node can subscribe to an S/N server
+showing that it would like to know the address change
+information of some interesting hosts. When a mobile
+host changes its IP address, it sends a notification
+message to the S/N server, which in turn pushes this
+information to the nodes that have subscribed their
+interests to know such an event. After that, all broken
+connections owing to the vertical handoff can be
+resumed. However, their approach has some
+drawbacks. Firstly, the S/N service requires S/N
+servers, which violates the end-to-end principle.
+Secondly, the S/N service causes longer handoff
+latency since the notification message is sent indirectly,
+i.e., from a mobile node to the S/N server then to the
+corresponding host. Thirdly, upon detecting an
+ongoing vertical handoff, it is not easy to determine
+whether the notification message should be sent to the
+corresponding host or to the S/N server. At the worst
+case, the mobile host may need to simultaneously send
+the notification message both to the corresponding
+host and to the S/N server. However, this would result
+in a waste of power usage, which is a problem to
+mobile handheld devices that relying on batteries as
+their power source. Finally, in some cases, it is
+difficult to predict which hosts are interested hosts
+since some connections are created on demand.
+2.2 TCP Enhancement in Vertical Handoffs
+There have been many approaches proposed to
+optimize TCP performance in a mobile wireless
+environment. For example, in [9], the authors
+proposed the TCP Westwood (or TCPW for short)
+scheme to improve TCP performance in wired as well
+as wireless networks. In TCPW, the source of a
+connection should continuously monitor the rate of
+returning ACKs to estimate the current network
+bandwidth. The estimated bandwidth is then used to
+compute the congestion window (cwnd) size after
+congestion collapse. Other similar schemes include
+TCP-Jersey[13], TCP Prairie [10], and TCP New
+Jersey [14]. However, they all fail to apply in vertical
+handoffs. The cwnd value in all these TCP variants are
+computed by monitoring the returning ACKs. At the
+time when a mobile host enters a new heterogeneous
+network, there is no ACKs exists in the new network.
+It is also impossible to take the rate of returning ACKs
+in the previous heterogeneous network to estimate the
+bandwidth in the new network. In contrast,
+CWND-restore scheme is applied during a vertical
+handoff. When the mobile host has been roamed into
+and stays in a new network for a while, the above TCP
+variants can then be used afterward. Thus, our
+CWND-restore scheme can be seen as an
+enhancement and extension of previous TCP variants
+in the context of vertical handoffs.
+To address the TCP issue during a vertical
+handoff, Kim and Copeland proposed a TCP
+enhancement scheme, which is called force to
+slow-start TCP in this report [8]. In the presence of an
+impending handoff, the receiver sends a
+zero-window-size advertisement to the sender. Upon
+seeing an advertised window size of zero, the sending
+TCP stops transmitting segments and freezes all active
+timers until the receiving TCP sends an ACK segment
+announcing a non-zero window size indicating that the
+handoff has been completed. Then, force to slow-start
+TCP resumes data transmission in the slow start state
+to re-estimate the data rate in the new network.
+However, their approach is a hard handoff scheme that
+does not leverage the advantages of overlay networks.
+Soft handoffs are possible at the link layer in overlay
+networks. Therefore, it is not necessary to halt the data
+transmission during a vertical handoff. Furthermore,
+resuming data transmission from slow start state is too
+conservative, especially when roaming to a higher
+bandwidth network.
+3. System Architecture
+3.1 Handoff Detection and Network Selection
+To realize the seamless vertical handoff, we must
+have the ability to detect an ongoing vertical handoff.
+In a horizontal handoff, handoff detection scheme is
+much simpler. For example, a handoff would be
+detected only by the received RSSI (received signal
+strength indicator) value. In contrast, how to detect an
+on-going vertical handoff is much more complicated.
+In heterogeneous access networks, different
+communication technologies usually have different
+methods to detect link availability. For example, the
+availability of a WLAN would be detected through the
+RSSI value read from the Wireless LAN network
+interface. In contrast, to obtain the availability of an
+Ethernet link, we must periodically poll the register of
+an Ethernet adapter to detect whether an Ethernet link
+is available or not. In other words, the mechanism to
+detect network availability is different from one access
+network to another access network.
+To solve this problem, VHF hides these
+heterogeneities from the upper layers by defining an
+(public) address with the appropriate private address.
+In contrast, NAPT, the more general variety,
+maps the local private source address and source port
+number to a public source address and a public-side
+port number for outgoing packets and vice versa for
+incoming packets. Figure 2 shows an example of the
+translation table in a NAPT. A detailed explanation of
+Figure 2 will be shown in Sect. 3.3.2. Consequently,
+NAPTs enable the hosts on a private network to share
+a single public network since concurrent outgoing
+sessions can be distinguished by the combination of
+the mapped address and mapped port number. In
+contrast, basic NAT requires an external IP address for
+each simultaneous connection. For the remainder of
+this report, we look at NATs and NAPTs together and
+refer to them colectively as “NATs”.
+Thus, when an incoming packet arrives from the
+public network and there is no current mapping entry
+for the destination address, the packet is dropped.
+Note that, the mapping is created when a session is
+initiated from within the private network. In other
+words, NAT blocks all communications initiated by
+the outside public network.
+3.3.2 Support NAT during Vertical Handoffs
+From the discussion showed above, the LCT
+table scheme mentioned in Section 2.1 would fail if
+the corresponding host is behind an NAT box, i.e.,
+within a private network. For example, as shown in
+Figure 2, a mobile host is originally at location A and
+initiates a connection to its corresponding host at
+location C, which is within a private network. The
+translation table kept in the NAT is also shown in the
+figure. The IPNAT and PortNAT denote the public IP
+address and public side port number assigned by NAT.
+Furthermore, the NAT Filter column means that an
+incoming packet is accepted only when its destination
+IP address and destination port number match the
+specified IP discarded†.
+Assume that the mobile hosts moves from
+location A to B that triggers a vertical handoff from a
+WLAN to an Ethernet network. As mentioned in LCT
+table scheme, it must send a notification message to
+notify the corresponding host (at location C). As
+shown in the path (1) in Figure 2, this notification
+message is sent using the new IP address, i.e., IPB, as
+the source address. However, the NAT gateway cannot
+pass this message since it violates the rules specified
+in the column of NAT filter. As a result, this
+notification message is dropped by the NAT.
+To solve this problem, LCT table scheme
+† NATs can organize the translation table and manage
+address mapping in numerous ways. Furthermore, the
+policies specified in NAT Filter column cover the full
+spectrum of possibilities. Here, we assume the symmetric
+binding, which is the most restrictive form of NAT behavior.
+A detailed discussion of various NAT behaviors can be seen
+in [7].
+introduce the S/N service. Nevertheless, as described
+in Section 2.1, it suffers from many drawbacks. As a
+result, in VHF, we solve the mobility problem under
+NAT while guaranteeing a true end-to-end principle.
+The proposed steps are as follows.
+ During the initial setup of a connection,
+both nodes should send their original
+address and port number in the payload to
+each other. By comparing the original IP
+address and port number in the payload
+with the ones in the IP header in the
+received packet, both nodes can infer
+whether its corresponding host is behind an
+NAT or not. If they are different, the host
+must be behind a NAT box.
+ When a mobile node detects an ongoing
+vertical handoff, it must send a notification
+message to notify the corresponding host of
+its new IP address. In [5], to place the new
+IP address, for TCP connections, new TCP
+options are introduced; for UDP datagrams,
+the new address is placed between UDP
+header and IP header of the packet.
+However, such an approach would cause the
+UDP datagrams not to properly pass the
+NAT gateways. This is because NAT
+gateways, i.e., NAPTs, must read the
+incoming packets’ port numbers to decide
+their destinations. Consequently, we put the
+IP address between UDP header and its
+payload. Note that, after receiving this
+notification message, the corresponding
+host can also infer whether the mobile host
+is roaming into a private network or not
+from the new IP address contained in TCP
+options or UDP payload by the method
+described above.
+ After placing the new IP address in the
+notification message, the mobile node sends
+it to notify its corresponding host.
+Nevertheless, as discussed above and
+shown in Figure 2, this message would not
+pass the NAT gateway if the corresponding
+host is behind a NAT box. To solve this
+problem, firstly, as stated above, a node can
+infer whether its corresponding host is
+behind a NAT box or not from its previous
+received notification message or from the
+connection setup message. If its
+corresponding host is behind a NAT box, as
+shown in the path (2) in Figure 2, instead of
+using the new IP address as the source
+address in the notification message, the
+mobile node should send the notification
+message with the source IP address set to its
+previous IP address, i.e., the IP address
+before the vertical handoff, from the new
+interface. Such a notification message is
+called a masked message. Note that, the port
+number is not changed during this vertical
+have implemented a prototype system in the Linux
+2.6.11 kernel. Figure 3 shows our system architecture.
+The parts shown in green color are modified by VHF
+and the parts shown in pink are the newly inserted
+modules. TCP protocol is expanded with the
+CWND-restore scheme to improve TCP performance
+during vertical handoffs. Connection manager mainly
+follows the LCT table scheme mentioned in Section
+2.1. However, some modifications are made to support
+mobility under NAT on a true end-to-end basis. The
+handoff detection layer provides the common interface
+to upper layers about the status of each heterogeneous
+access network. The mechanism to senses the status of
+a network is hidden in the layer 2, i.e., the device
+drivers. Furthermore, the parameters specified in user
+configuration file are read in when startup and kept in
+the activation table. The network selection module
+determines the active network when two or more
+access networks are available by querying the
+activation table and handoff detection layer interface.
+In our current implementation, we support three
+different networks: Ethernet, IEEE 802.11, and
+third-generation (3G) network.
+Figure 3: Overview of the system architecture.
+Table 1: The experimental platform of server and
+client.
+Mobile Host Fixed Host
+CPU Intel Pentium M 1.4GHz AMD XP 2600+
+RAM 256 MB 512 MB
+NIC1 Fast Ethernet Fast Ethernet
+NIC2 IEEE 802.11b N/A
+NIC3 WCDMA (3G) N/A
+4.2 Experimental Results
+Table 1 shows our experimental platforms. The
+fixed host acts as the server and is always connected
+to the Fast Ethernet network. The mobile host is an
+IBM Thinkpad T-20 laptop, which acts as a client. It
+has three different network interfaces: a
+USB-interfaced UMTS/WCDMA (3G) card, a build-in
+100 Mbps Fast Ethernet and an IEEE 802.11b WLAN
+interface. Our access point has the built-in NAT
+capability and supports symmetric binding, which is
+the most restrictive form of NAT behavior [7]. Both
+the server and the client run the Linux operating
+system with our modified/inserted modules. In all
+following experiments, we assume that both the
+WLAN and 3G networks are always available.
+Furthermore, the last hop wireless link is the only
+bottleneck.
+Table 2: The number of detections invoked.
+sh1 (ms) 10 15 20 25 30 35
+number 11448 11447 11453 11445 573 515
+Table 3: Handoff delay under different values of sh2.
+sh2 (ms) 35 40 45 50 55 60 70 80
+delay (ms) 47 45 51 81 86 88 87 83
+4.2.1 Determine the Values of the Two
+Thresholds
+In this section, we determine the proper values
+of sh1 and sh2 for the two-threshold scheme. Firstly,
+we conducted an audio streaming from the server to
+the client via an Ethernet network. The audio
+streaming application is selected to represent a high
+traffic network application. To determine a proper
+value for sh1, we measure the number of handoff
+detection procedures that are invoked during 275 sec
+under different values of sh1. The result is shown in
+Table 2. Note that, the value of sh2 is set to a larger
+value that is equal to 80 ms. From Table 2, the number
+of detections invoked is dropped sharply when sh1 is
+set to 30 ms. In order words, most of the intervals
+between each packet are within 30 ms. As a result, if
+the value of sh1 is smaller than 30 ms, it would cause a
+significant overhead. Thus, in the following
+experiments, the value of sh1 is set to 30 ms.
+Then, we determine the proper value of sh2 that
+have a significant impact on the handoff latency.
+Instead of running an audio streaming application, the
+connection is kept silent during the experiment. Then,
+the mobile node roams from an Ethernet network to an
+IEEE 802.11b Wireless LAN to measure the handoff
+delay. Note that, the handoff delay is defined from the
+time a handoff occurs to the time when the handoff is
+completed. The experimental result is shown in Table
+3. From Table 3, the handoff latency is increased with
+the value of sh2. Furthermore, when the value of sh2 is
+set to 50 ms, the handoff latency is increased sharply.
+Thus, in the following experiments, the value of sh2 is
+set to 45 ms.
+Finally, we show the impact on throughput when
+the value of sh1 is set to 30 ms and the value of sh2 is
+set to 45 ms in the handoff detection procedure. We
+utilize the UDP protocol to transfer a file from the
+server to client via an Ethernet network and measure
+the throughputs with and without handoff detection
+procedure. Notably, there is no handoff occurred
+during the experiment. From the experimental result,
+the throughput is 10.931 MB/s when the handoff
+detection procedure is activated. In contrast, if handoff
+detection is disabled during the file transfer, the
+throughput is 11.034 MB/s, which is similar to that
+with detection procedure. Thus, the throughput
+degraded due to handoff detection is neglected if sh1 is
+In contrast to the first three cases, since the fixed host
+is at the private network, we let the server runs in the
+mobile node while the fixed host acts as a client. The
+mobile node roams from a public WLAN to a public
+Ethernet LAN. Note that, in contrast to Figure 5(a)
+that is a hard handoff from an Ethernet LAN to a
+WLAN, Figure 6 shows that the TCP connection is
+seamless roaming from WLAN to Ethernet LAN. This
+is because, after the detection of reconnecting the
+physical wire, WLAN is still available and the data in
+the pipe of WLAN can still be delivered to the mobile
+host. As shown in Figure 6, after sending the
+notification message (shown as the straight black line)
+to the fixed host, the data in the pipe of WLAN
+(shown as the green line) is not lost and can still be
+delivered to the mobile client. In other words, this
+vertical handoff is soft.
+Figure 6: TCP sequence number trace when the fixed
+host is in a private network.
+From all of the above experiments, our scheme
+can successfully work under various kinds of network
+environments, even when NAT is involved. With the
+widespread use of NAT technology, more and more
+mobile devices would access the Internet via private
+addresses. The drawbacks of S/N service would cause
+considerable inconvenience to the mobile users. Our
+scheme overcomes the limitations of S/N service
+while following the end-to-end principle.
+Table 4: TCP performance comparison under different
+kinds of vertical handoffs (KB/s).
+TCP New
+Reno
+Force to
+Slow
+Start TCP
+CWND-
+restore
+WLAN to LAN 5968.1 6154.8 7690.84
+WCDMA to LAN 2699.71 2886.36 5059.62
+LAN to WLAN 171.74 177.58 244.87
+WCDMA to WLAN 103.66 138.34 237.77
+LAN to WCDMA 3.58 3.64 3.98
+WLAN to WCDMA 3.6 3.47 4.12
+4.2.3 狀態轉移所必須花費的時間
+To evaluate the performance of our proposed
+CWND- restore scheme, in this subsection, we
+measure the TCP throughput under various types of
+vertical handoffs. The experiments are also conducted
+with TCP bulk transfer from the fixed host to the
+mobile host. The experimental environment is setup
+similar to the Figure 4. Only the 3G network is private,
+whereas both the Ethernet and WLAN networks are
+public.
+Table 4 shows the comparison of TCP
+performance between our CWND-restore scheme,
+force to slow-start TCP, and the TCP New Reno under
+six kinds of vertical handoffs. The throughput
+calculation starts from the occurrence of a handoff and
+persists for a period of time. Due to the drastic
+differences of throughput in various networks, the
+period is persisted for 200 ms if roaming into an
+Ethernet LAN. In contrast, if roaming into a WLAN or
+a 3G network, the periods are set to 1 s and 5 s
+respectively. From Table 4, the TCP throughput by the
+proposed CWND-restore scheme is at most 2.3 times
+the TCP New Reno and at most 1.8 times the force to
+slow-start scheme. However, when roaming to the 3G
+network, the improvement is insignificant. This is
+because the data throughput in the 3G network under
+our Linux operating system is extremely unstable and
+has extremely low throughput.
+To get further inside of our proposed
+CWND-restore scheme compared to previous
+approaches, Figures 7(a) to 7(f) shows the congestion
+windows trace of the TCP sender during the
+corresponding six kinds of vertical handoffs. In all of
+these figures, at t = 10 sec, the fixed host receives the
+notification message sent from the mobile host. From
+all of these figures, after the vertical handoff, the
+congestion window sizes of TCP New Reno, i.e., the
+original TCP shown in Figures, and force to slow-start
+TCP are increased slowly. As a result, the TCP sender
+increases its sending rate slowly. In contrast, the size
+of the congestion window is soon updated to an
+appropriate value, i.e., the previously saved value, by
+our CWND-restore scheme. Consequently, our
+proposed CWND-restore scheme can promptly adapt
+the congestion window size to the new network
+characteristics and thus obtain a higher data
+throughput.
+5. Conclusion
+In this report, we design and implement a
+mobility management framework called VHF that
+agilely supports vertical handoffs in the overlay
+networks. Firstly, it defines a common interface
+between layer 2 and layer 3 to hide the heterogeneity
+of different access technologies from upper layers.
+Furthermore, it uses a configuration file that allows
+users to flexibly specify the network selection
+parameters. In addition, a two-threshold scheme is
+proposed to determine when to invoke the handoff
+detection procedure. Secondly, VHF solves the NAT
+issues while guaranteeing the end-to-end policy.
+Finally, we propose the CWND-restore scheme to
+improve TCP performance during vertical handoffs.
+The experiment results show that VHF can
+support various kinds of vertical handoffs. Besides,
+[8] S. E. Kim and J. A. Copeland, TCP for Seamless
+Vertical Handoff in Hybrid Mobile Data Networks,
+Proc. of IEEE Globecom, 2004, pp. 661-665.
+[9] S. Mascolo, C. Casetti, M. Gerla, M. Y. Sanadidi,
+and R.Wang, TCP Westwood: Bandwidth
+Estimation for Enhanced Transport over Wireless
+Links, Proceedings of ACM Miblecom, 2001, pp.
+287-297.
+[10] N. Parvez and E. Hossain, Improving TCP
+Performance in Wired-Wireless Networks by
+Using a Novel Adaptive Bandwidth Estimation
+Mechanism, Proceedings of IEEE Globecom, 2004,
+pp. 2760-64.
+[11] A.C. Snoeren and H. Balakrishnan, An
+End-to-End Approach to Host Mobility,
+Proceedings of the Sixth Annual International
+Conference on Mobile Computing and Networking,
+2000, pp. 155-166.
+[12] R. Thayer, N. Doraswamy, and R. Glenn, IP
+Security Document Roadmap, RFC 2411, Nov.
+1998.
+[13] K. Xu, Y. Tian, and N. Ansari, TCP-Jersey for
+Wireless IP Communications, IEEE Journal on
+Selected Areas in Communications, Vol.22, No.4,
+2004, pp.747-756.
+[14] K. Xu, Y. Tian, and N. Ansari, Improving TCP
+Performance in Integrated Wireless
+Communication Networks, Computer Networks,
+Vol.47, No.2, 2005, 9-237.

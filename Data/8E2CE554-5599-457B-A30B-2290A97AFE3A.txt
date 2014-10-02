@@ -1,0 +1,316 @@
+ii 
+ 
+目    錄 
+摘要............................................................1 
+1. 研究動機.....................................................2 
+2. 相關研究.....................................................2 
+2.1 入侵偵測系統................................................2 
+2.2 匯集網路之異常偵測..........................................2 
+2.3 異常訊務偵測與通告系統......................................3 
+3. Flooding 異常訊務特徵 ........................................3 
+3.1 portscan 傳訊特徵...........................................3 
+3.2 spam 傳訊特徵...............................................5 
+3.3 packet flood 傳訊特徵 ..................................... 5 
+4. 系統架構.................................................... 5 
+4.1 轉送資料擷取子系統(TDC) .....................................6 
+4.2 異常偵測子系統(FDS) .........................................7 
+4.3 尋徑紀錄萃取子系統(RTES) ....................................9 
+4.4 異常通告子系統(ANS) .........................................11 
+4.5 異常訊務監看子系統(ATM) .....................................12 
+5. 計劃結果自評 ................................................13 
+參考文獻........................................................14 
+附錄: 可供推廣之研發成果資料表..................................16
+ grasp the anomalous traffic numeric.  
+ 
+關鍵字: PortScan, spam, packet flooding, Flooding detection, Automatic 
+notification, ipRoute SNMP MIB. 
+ 
+1. 研究動機 
+Internet 傳輸/應用協定的開放特性雖促使其成為網路應用主流.卻也招引駭客
+運用弱點發展網路蠕蟲程式:全面掃瞄全球連網 PC 弱點 ports、散播網蟲,植入
+後門程式,並利用來掩護其發動組織性 DDoS 攻擊、轉寄大量 spam 廣告/色情信、
+甚至 詐騙銀行帳號(phishing). 
+如同 myNetWatchman 所持觀點: Internet 最主要的安全問題不在於駭客的騙術,
+真正該優先解決的是充斥於網路上的一大票不安全主機 [1],因為,它們非常容
+易被駭客利用作為 寄發廣告信, 或發動 DDoS 攻擊的打手.若能減少易遭感染的
+不安全主機數量, 必能全面改善 Internet 安全. 
+由於所有連網封包均需透過 router 轉送, flooding 傳輸特性也相當明顯,本計
+劃乃擷取閘門 router 的 NetFlow 轉送紀錄 [2],實做異常訊務偵測與通告系統
+(Flooding Detection and Notification System,FDN)); 以協助網路管理人員
+掌握異常事件發送源及具體訊務數據值.並結合 IP 管理資訊的查詢,自動將量測
+的異常訊務數據 email 通知網路管理人員與用戶,使遭感染的系統能被儘速修
+補,主動阻截 DDoS 攻擊,及爛送廣告信的行為. 
+2. 相關研究 
+2.1  入侵偵測系統 
+IDS 藉由完整網路封包內容的 parsing, 將之與入侵與攻擊特徵資料庫比對
+(signatures match),判別出異常事件及具攻擊行為的主機,甚至提供異常事件
+的相關資訊(例如: 源端 IP, 目的端 IP, 連接次數,可能的異常原因).  
+ 
+因應網蟲蔓延,spam 與 DDoS 攻擊的不斷成長,入侵偵測系統[3] (Intrusion 
+detection system, IDS) 常被安置於校園/企業網路,或 server farm 等主幹節
+點,協助管理人員發現/處理入侵事件.  
+ 
+由於 IDS 無法發現未被完整定義的未知攻擊行為或入侵事件,系統得頻繁地更
+新特徵,以保持最新的入侵與攻擊特徵資料庫.而 content based IDS 特徵字串
+庫比對繁複程序需耗龐大的計算資源,也使 IDS 容易成為駭客攻擊的目標:藉由
+超大量複雜封包癱瘓入侵偵測的正常運作.  
+2.2 匯集網路訊務之量測 
+Router 位於網路匯集點,所有下游連網單位與 public Internet 封包皆透過
+router轉送. 藉由router NetFlow功能的啟動, 該功能模組會依據所轉送封包
+2 
+ 
+ 網路蠕蟲程式利用port scan 程序,可以全面且快速地掃瞄/感染 全世界連網主機,
+找出具安全弱點的IP主機群,進而集結大量的無辜主機作為掩護,發動 DDoS 分散
+式攻擊,寄發廣告信,或詐騙銀行帳號密碼.  
+ 
+ 
+ 
+圖 3.1 典型的 port scan 通訊模式 
+ 
+圖 3.1 顯示典型 port scan 的通訊模式. 首先, port scan 程式透過簡單的 TCP 
+three-way handshaking 機制,快速送出 SYN 或 FIN TCP 封包往選定 IP 位址的網
+路主機群的多個弱點 ports;而後, 再檢視各個回傳封包的 RST Flag, 判定 
+target 主機是否具安全弱點 [7]. 
+ 
+由於遭蠕蟲感染的主機會同時開啟(forked)多個 port scan processes,與多個目
+的主機的弱點 port 建立連接.因此,port scan 傳訊與一般網路應用訊務的最大不
+同在於: (i) 該源端主機要求建立明顯超量的 PortScan flows, (ii)各 flows 之 
+destination port 集中在特殊的弱點 ports. 反觀 port scan 目的主機回應給源
+端主機的 port number 則分散於大範圍的 1024 ~ 65535.  
+ 
+為突顯收斂於弱點 ports 之 port scan flows 及其傳訊數據 ,本研究選擇結合 
+source IP 與 destination port 兩紀錄變量為 index key (virtual flow),據以
+累計/排序傳輸小封包的virtual_flow及其傳訊量,包括: 連接總數(flow), 封包
+數(packet),及 傳輸量(octet 或 byte)總量.最後,經由 multi-thresholds 偵
+測程序,突顯出異常訊務. 
+4 
+ 
+   
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+ 圖 4.1 FDNS 系統架構圖 
+  
+4.1 網路轉送訊務紀錄擷取子系統(TDC)  
+FDNS 異常訊務偵測依據的最基本資料為: router 的 NetFlow 轉送紀錄. 為提
+供擷取 router 轉送資料,提供訊務量測, 網路管理者需執行下列程序.  
+(1) 設定 Router Netflow 功能,使 router 將轉送記錄 export 給接收 IP 主機. 
+(2) 於蒐集系統執行 flow-capture 應用程式,使系統與 router 建立 UDP 連接,並
+接收 NetFlow 紀錄.  
+(3) 最後, 於蒐集系統執行 flow-print 應用程式,將接收的原始 NetFlow 紀錄,
+解壓縮為 ASCII 文字形式存檔  
+4.1.1 設定/啟動 router NetFlow  
+首先,網路管理員 telnet 連接到 router，設定 router configuration,啟動
+NetFlow 功能, 以下述命令使 router 依指定的 9995 socket port, 與所指定
+6 
+ 
+ 為能快速辨識 Flooding sources 及其傳訊量, FDNS 依據分析的 flooding 傳輸
+特徵(第 3 節),選擇結合多個傳訊變量作為 virtual_flow,做  TopN 的訊務累
+計. 
+Crontab 驅動 Feature-based 訊務累計程式定期讀入 router NetFlow data,分別
+加總各 virtual flow 相關訊務量.包含: 所建立的連接量(flowh[vr_ flowi] ), 
+傳送的封包量(pkth[vr_flowi] ),與 octet 訊務量(byteh [vr_flowi]). 再依建
+立的總連接量主鍵排序各 virtual flow 的訊務量.  
+以 96 年 12 月 12 日 1:00 至 1:10 AM 時段之 TopN PortScan 訊務監測為例(表 
+4.2.1). 每筆數據紀錄著:各 source IP 送往各 destination port 的: flow 連
+接量,封包量(packets), 訊務量(bytes), mean packet size 等變量.具體的訊
+務數據能協助網管掌握: 該什時段那一個源端主機曾針對那一弱點 port 建立頻
+繁的連接(flow connections),或做為異常訊務臨界值設定的參考.  
+ 
+表 4.2.1 TopN flooding 訊務紀錄(範例) 
+  
+ 12-12 :: 01 
+          SRC_IP>serv_port              Flows  pk_size(KB) Pkts Total(MB) 
+  ========================================================================= 
+        203.68.248.116>#.#.#.#.(139)     12093    0.048    13318     0.639 
+         203.72.84.250>#.#.#.#.(135)      944    0.048     945     0.045 
+         210.0.137.102>#.#.#.#.(139)      784    0.048     880     0.042 
+           163.30.44.21>#.#.#.#.(80)      583    0.048    1133     0.054 
+       203.70.88.233>#.#.#.#.(12248)      551    0.048    3752     0.178 
+            163.30.4.21>#.#.#.#.(25)      484    0.049    2893     0.143 
+         163.30.44.21>#.#.#.#.(8081)      444    0.048    1050     0.051 
+          203.68.92.147>#.#.#.#.(80)      441    0.048    1055     0.051 
+        140.115.214.215>#.#.#.#.(80)      431    0.048     862     0.041 
+            163.30.4.22>#.#.#.#.(25)      430    0.050    3199     0.160 
+         200.40.55.230>#.#.#.#.(445)      422    0.048     605     0.029 
+         140.115.207.26>#.#.#.#.(80)      406    0.048     729     0.035 
+          210.59.70.210>#.#.#.#.(80)      373    0.048     888     0.043 
+      204.11.103.146>#.#.#.#.(20734)      356    0.054    1263     0.068 
+ 
+  1212-0110 
+          SRC_IP>serv_port              Flows  pk_size(KB) Pkts Total(MB) 
+  ========================================================================= 
+        203.68.248.116>#.#.#.#.(139)     8021    0.048    8562     0.411 
+         140.115.17.134>#.#.#.#.(23)      712    0.050    1857     0.092 
+         203.72.84.250>#.#.#.#.(135)      604    0.048     604     0.029 
+ 
+4.2.2 多元臨界異常偵測  
+Crontab 驅動偵測程式定期讀入先前各時段累計的 TopN PortScan 訊務數據 (表
+4.2.1),並以 source IP 作為 index,累計該時段各 source 主機建立的 flow 總數
+(flow[sourcei]),送出的封包總量(packet[sourcei]),訊務總量(byte[sourcei]),
+與平均封包大小(pkt_size[sourcei]) 等,並藉由各source IP發送超量TCP封包
+8 
+ 
+ 1.3.6.1.4.21.2.1.7) 紀錄 (表 4.3.1),分別儲存於 NetMask 佇列與 NextHop 
+佇列 (以 IP 網段位址為 index). 經 related 整合 NetMask, NextHop 佇列資訊
+後,獲取 ip_routing 紀錄存檔. 
+ 
+表 4.3.1 IP 尋徑資訊 
+ 
+ipRouteMask  
+ipRouteMask.140.115.0.0 = IpAddress: 255.255.0.0 
+ipRouteMask.140.135.0.0 = IpAddress: 255.255.0.0 
+… 
+ 
+ipRouteNextHop  
+ipRouteNextHop.140.115.0.0 = IpAddress: 203.72.244.237 
+ipRouteNextHop.140.135.0.0 = IpAddress: 203.71.2.61 
+… 
+ 
+route table 
+(summarized) 
+ (route 界面)      (IP 網段)      (NetMask)   C 網段總數 
+203.72.244.237,   140.115.0.0,   255.255.0.0,   256 
+203.71.2.61,      140.135.0.0,   255.255.0.0,   256 
+… 
+ 
+4.3.2  Rwhoisd IP 管理資料之建立 
+本計劃選定的 Rwhois network schema 包括: IP-Network, Admin-Contact, 
+Address, Tel, Updated-By, Updated 特徵項,並據以建置 Rwhoisd IP 管理查詢
+服務.  
+為能將萃取的大量 ip_routing 紀錄與網路管理員連絡記錄結合,產出所選定的
+Rwhoisd network, 子系統需重複讀取各筆 ip_routing 紀錄(表 4.3.1),與連線
+單位聯絡紀錄檔 (表 4.3.2),依據 NextHop 比對/構建符合所選定的 Rwhois 
+network 關聯紀錄檔(text file),作為自動通告機制的基礎.  
+ 
+表 4.3.2 Rwhoisd IP 管理資訊 
+ 
+網管連絡紀錄 
+(Contact_Data) 
+203.72.244.237; 中央大學; 戴元任;  center24@cc.ncu.edu.tw; 
+4227151~57504; 4252561; 中壢市中大路 300 號; 
+203.71.2.61; 中原大學;葉平; yeh@cycu.edu.tw, 
+tjl@cycu.edu.tw; 4563171~2910; 2652999; 中原大學; 
+… 
+ 
+產出紀錄 
+ 
+Rwhoisd 
+database 
+(.txt ) 
+Network-Name:  中央大學 
+IP-Network:    140.115.0.0/16 
+Admin-Contact: 戴元任 
+Address: 中央大學 
+Tel:  4227151~57504 
+Updated-By:   center24@cc.ncu.edu.tw 
+Created:200804081302 
+… 
+ 
+4.3.3 Rwhoisd 之安裝與啟動 
+Rwhois (Referral Whois)是一種 Directory Services 協定，為 whois 系統的延
+伸應用，Rwhoisd 包含一個資料庫，記錄: 主機或網域的連絡相關訊息(管理人， 
+10 
+ 
+ 表 4.4.2 自動通告異常訊務程序 
+ 
+ 
+查詢
+IP 
+連絡
+紀錄 
+ 
+require 5.003; 
+use Net::Rwhois; 
+$client = new Net::Rwhois( Host => "susan.tyc.edu.tw", Port => 4321 ); 
+$client->open(); 
+$result_set = $client->execute_query(Query_String => $ip_addr, Limit => 
+60 ); 
+@results = $result_set->get_objects(); 
+$buf = $client->results_to_string(@results); 
+… 
+ 
+ 
+ 
+寄出
+異常
+訊務
+數據 
+use strict; 
+use Mail::Sendmail; 
+%mail =( smtp => 'localhost', 
+        To => "center7\@ayang.tyc.edu.tw, $email_mgr", 
+        From => 'center7@ayang.tyc.edu.tw', 
+        subject => "Suspicious PortScan from $ip_addr " , 
+                'Content-Type' => " text/plain; charset=\"Big5\"", 
+                 ); 
+$body.=$ip_addr;  
+$mail{body} = $body; 
+sendmail(%mail) || print "Error sending mail: $Mail::Sendmail::error\n"; 
+… 
+ 
+4.5 異常訊務監看子系統 (ATM) 
+子系統提供動態網頁介面, 接受使用者鍵入查詢之月/日或 年/月資料,查詢異
+常訊務的歷史紀錄,顯示於監看網頁.主要程序包括: 提供選定日期參數的動態
+網頁、讀取對應的異常訊務數據檔、顯示具體數據. 
+ 
+4.5.1單日異常訊務之監看 
+系統提供 PHP動態網頁, 協助網路管理人員on demand查看所選擇的單日異常訊
+務.動態網頁程式於接受使用者鍵入欲查詢之 月/日數字,據以讀取該日期之各
+筆異常訊務數據(依日期編碼命名),顯示於監看網頁. 
+以 96年12月12日 FDNS 系統偵測之PortScan訊務數據為例 (圖4.5.1), 網管人
+員可以發現: anomaly IP主機 ,其突然出現超量訊務(弱點port/ scan 連接總
+量), flow rate ,持續時數,及所屬學校/單位名稱.例如: 單一 163.25.154.253 
+IP 主機對 445/TCP port 的scan 次數高達: 每小時21219次,持續時數,協助判
+定遭感染的網路主機. 
+12 
+ 
+  
+圖 4.5.2 單月 PortScan 異常訊務之監看 
+5. 計畫結果自評 
+由於 flow-based 的 FDNS 系統所需的計算資源不多,加上,所有連網封包均透過
+router 轉送,FDNS 稱得上是最有效率且可行的廣範圍異常偵測與通告機置,適
+合推廣至 ISP 業者,校園/企業網路骨幹,提供上游網路多一層的異常偵測/防
+護. 
+5.1 品質指標 
+FDNS 系統與網路計費系統之主要差異在於: 計費系統以單一的 source IP 或 
+destination IP 為 index key,累計 IP 對應的 輸出或輸入傳輸量.而 FDNS 系
+統則選定/結合多個 socket flow 變量,做為基本辨識單元,實做異常訊務的累
+計/排序,並經由多元臨界異常偵測程序.使系統能更精確地突顯 flooding 異常
+訊務. 
+ 
+FDNS 與 IDS 系統之主要差異在於: FDNS 適合涵蓋廣範圍網路之未知攻擊行為或
+入侵事件之偵測: 協助網路管理人員鎖定異常發送源,及依據具體的傳輸訊務量,
+與用戶溝通, 控管 flooding 事件.但無法提供確切的異常傳訊封包內容. 
+14 
+ 
+ Security & Privacy Magazine, IEEE, Volume: 1, Issue: 4, July-Aug. 2003, 
+Pages: 58 – 59. 
+(9) Request for Comments: 1213, Management Information Base for Network 
+Management of TCP/IP-based internets: MIB-II, 1991. 
+(10) Request for Comments 2167; Referral Whois (RWhois) Protocol V1.5. S. 
+Williamson, M. Kosters, D. Blacka, J. Singh, K. Zeilstra. June 1997. 
+(11) Wang H.; Zhang D.; Shin K. G.; Detecting SYN flooding attacks, 
+twenty-First Annual Joint Conference of the IEEE Computer and 
+Communications Societies (INFOCOM 2002), Volume: 3, Jun 2002, Pages: 
+1530 – 1539. 
+(12) 楊素秋,曾黎明，“網路匯集點的Flooding訊務監測與自動通告系統“, in 
+Proceedings of TANet 2007 Conference, Taiwan, Oct 2007。 
+ 
+ 
+16 
+ 

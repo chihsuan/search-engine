@@ -1,0 +1,468 @@
+使用頻繁情節法則與有限狀態機設計之即時入侵防禦系統 
+ 
+蘇民揚*  林俊淵  張凱棊 
+ 
+銘傳大學資訊工程學系 
+*E-mail: minysu@mail.mcu.edu.tw 
+ 
+摘要 
+本文使用頻繁情節法則(frequent episode rules)結合
+有限狀態機(finite state machine)設計一個即時的網
+路型入侵防禦系統 (network-based real-time intrusion 
+prevention system)，由於頻繁情節法則在探勘(mining)的
+過程中加強以時間為主軸的相關性，也因此在偵測精緻
+化的入侵攻擊上有顯著的成效。單就 Probe/Exploit(駭客
+入侵)這類型攻擊而言，其著重於每個動作之間的相關性
+以及動作發生的先後順序。我們將誘捕系統(honeypot)
+日誌檔探勘後的頻繁情節法則製成有限狀態機，於線上
+運作時結合防火牆並可動態修改其規則以即時切斷可疑
+連線之進行。我們成功的挖掘出 NetBIOS/NetBEUI 通訊
+協定當中最重要的"伺服器訊息塊通訊協定"(Server 
+Message Block Protocol, SMB )所發生的入侵攻擊情節，
+並以實驗證實利用有限狀態機追蹤連線進行之效率。 
+ 
+關鍵字：網路入侵防禦系統、頻繁情節法則、誘捕系統、
+有限狀態機  
+   
+1. 簡介 
+有關網路入侵偵測/防禦的文獻相當多[1,2]，因偵測
+方法不同，偵測標的也各自不同。近年模糊關聯法則
+(fuzzy association rule)與頻繁情節法則(frequent episode 
+rule)被應用於網路入侵偵測之設計也陸續出現於文獻
+上。在模糊關聯規則方面，[3, 4]提出模糊關聯規則之模
+糊函數設計的方法並強調其重要性，[5, 6]強調模糊關聯
+規則的合併、精簡與轉換，[7, 8]強調模糊關聯規則應用
+於偵測 DoS/DDoS 攻擊，同時具有部分即時處理的能
+力，[9]則採用線上動態探勘的方式來大幅改進即時偵測
+之效果。頻繁情節法則(frequent episode rule)探勘於 1997
+年首先被 Mannila 等人[10]提出後，文獻上相繼有若干研
+究工作致力將之應用於入侵偵測系統之設計[11-15]。Lee 
+et al. [11] 主張，於探勘之資料集中先將特徵分為核心特
+徵(axis attribute)與參考特徵(reference attribute)，並且主
+張在探勘頻繁情節法則的同時，動態地調整最小頻繁門
+檻值(mini_frequent threshold)，藉由這種方式可探勘出重
+要 (至少包含一個核心特徵 )但數目不致過多的型樣
+(pattern)。Luo et al. [12]提出在關聯法則與頻繁情節法則
+上結合模糊理論，藉由這種方式便可以探勘出有彈性的
+型樣(flexible patterns)，此舉有助於提升入侵偵測系統的
+偵測效果。Luo et al. [13]延續[12]的方法並強調可運用於
+線上偵測，可惜沒有明確告知系統實際反應的時間，同
+時在實驗方面只有使用單一探測工具。Hwang et al. [14, 
+15]採用頻繁情節法則來設計入侵偵測系統，首先將正常
+的網路流量訓練成頻繁情節法則，再進而比對線上實際
+挖掘之頻繁情節規則的相似度，倘若差異過大將其視為
+異常警報。在探勘的過程中，倘若降低最小頻繁門檻值
+會探勘出過多不必要的情節，反之將其調高便不能探勘
+出有意義的情節。於是 Hwang et al. [14, 15]改良[11]的
+演算法，並且提出 base-support 的概念，藉由 base-support
+可以大幅減低頻繁情節法則產生的數目。此外[16]作者
+認為應該要將誤用偵測與異常行為偵測進行結合，於是
+提出 HIDS(Hybrid Intrusion Detection System)。此兩篇論
+文[14, 15]雖然也是採用頻繁情節法則做為設計的理論
+依據，但其方法只能批次分析，無法及時處理。 
+以上所提及文獻之各種方式，皆屬異常行為偵測
+(anomaly-based detection)之類型，設計之目的也期待可
+以偵測未知攻擊。而一般市面強調可以及時處理的入侵
+偵測/防禦系統都屬於誤用偵測(misuse detection)，僅能
+藉著更新定義檔，偵測/防禦已知攻擊。異常行為偵測大
+都有一個共同弱點 − 無法即時偵測，也就是只能收集
+長期的封包資訊後才能做出判斷。少數強調即時處理能
+力 [8, 9] ， 但 只 能 針 對 某 種 特 定 的 攻 擊 ， 例 如 
+DoS/DDoS，原因在於[8, 9]使用的關聯法則無法判別事
+件發生的先後順序，只能判斷異常流量，此一特性恰好
+符合 DoS/DDoS 攻擊的特色。 
+本文採用頻繁情節法則(frequent episode rules)，探
+勘(mining)誘捕系統中的日誌檔(log)，並根據產生的法
+則製作有限狀態機(finite state machine)用以線上監視連
+線進行的所有事件，必要時可以動態更改防火牆之設定
+以切斷可疑連線。本文後面章節內容陳述如下，第二節
+介紹頻繁情節法則演算法與 SMB(Server Message Block 
+Protocol)，第三節提出我們的系統架構，詳細介紹每個
+模組的細節，第四節為實驗結果與數據分析，最後則為
+結論。 
+ 
+II. 背景知識 
+II.1 頻繁情節法則 
+由於大多的駭客入侵攻擊都有一定的步驟和程序，
+相對的在時間上也會有其先後順序。情節法則(episode 
+rule)本身就具有時間先後順序的觀念，藉由導入事件
+(event)的觀念，使得駭客在對受害電腦進行致命攻擊之
+前的前置作業，例如資訊蒐集、上傳檔案，就可以被追
+蹤。情節(episode)是由一連串的事件所組成，找出攻擊
+情節目的就是要發現事件與事件之間的關係，這些關係
+能有效地運用在行為的分析，解釋行為發生的原因和預
+知事件的發生。為了制定有效率的情節法則，必須找出
+並且計算(fr(α,s,win)/ fr(β,s,win) ≥ min_conf (最小信賴
+度)是否成立，如果為真便將規則β→α輸出，反之將其
+丟棄。 
+ 
+ 
+圖四 頻繁情節探勘演算法流程圖 
+基本上，誘捕系統所記錄的日誌都屬攻擊事件，差
+別僅在於攻擊程度或步驟進行多寡而已。所以在本研究
+中，門檻值(threshold)可以設低一些以便挖掘出較完整的
+攻擊，所造成的 rule 過多也沒關係，因在本研究採用有
+限狀態機的實作，我們藉由狀態機可以清楚地知道每一
+個攻擊的步驟進行到哪一個狀態，也因如此我們藉由這
+種方式針對不同的動作發出警告與防治。  
+ 
+II.2 NBSS(NetBIOS session service)之 SMB 通訊服務 
+一開始假設我們不知網路芳鄰服務可能會面對怎
+樣的攻擊，故需部署誘捕系統(honeypot or honeynet)一段
+時間以收集所有可能對網路芳鄰服務的攻擊行為，在從
+誘捕系統之日誌檔挖掘出”有意義”的攻擊情節。最後將
+攻擊情節以有限狀態機的觀念實作出一個即時防禦系
+統，用以避免遭受相同的攻擊情節。 
+大 多 數 的 MS Windows 系 統 均 能 夠 使 用
+NetBIOS/NetBEUI 介面或是利用 NetBIOS Frame 通訊協
+定 ,但當中最重要的可能是"伺服器訊息塊通訊協定
+(Server Message Block Protocol , SMB )。SMB 是一種內
+含網路命令與資料的結構名稱，它提供了一套標準、完
+備的語法供網路的伺服、或客戶端節點進行通訊，在
+SMB 規格中，有一組命令專為網路 I/O 所設計，節點
+(node) 透過這些命令可進行諸如登入、列印、遠端檔案
+及目錄的操作等動作。由於 SMB 主宰了 MSN 檔案、印
+表等網路功能，因此，SMB 也被視為 MSN 的心臟，提
+供服務的一端稱作 SMB 伺服器，即 NT 的伺服器(Server)
+服務，取得服務的一端稱作 SMB 客戶端，即 NT 的工
+作站(Workstation )服務。SMB 標頭(header)中有一個
+command 欄位是一個 16 進位的代碼，不同的代碼代表不
+同的事件，主要的代碼及其對應事件，詳列於附表一。
+本研究所設計的即時防禦系統也是根據這個欄位來判別
+被監視連線的所有活動，並不需檢查 TCP payload 其它
+位元組，如此方能達到即時處理的效果。 
+ 
+III. 系統架構 
+本系統設計上，主要分為訓練階段與線上階段兩個
+模組，如圖五。在訓練階段，我們先安裝誘捕系統收集
+可能的攻擊方式，接著從誘捕系統的稽核檔(log file)中
+利用通訊埠篩選出針對某個服務的所有記錄，再去挖掘
+出有意義的頻繁情節法則(frequent episode)。由於攻擊過
+程所發生的事件有其先後順序關係，所以我們只挖掘有
+意義的頻繁序列情節(frequent serial episode)。接著將這
+些情節以有限狀態機(finite state machine, FSM)的方式來
+呈現，並將此有限狀態機作為線上偵測引擎之用。一種
+服務對應一種有限狀態機，若需同時保護多個服務，則
+須製作多個對應的有限狀態機。 
+線上偵測階段，主要採用有限狀態機作為偵測的依
+據。針對此服務的個別連線，用一個對應的狀態機即時
+追蹤其事件發生的情形，利用狀態的轉移判斷目前這個
+被監視連線的攻擊進度。當一連續事件發生使有限狀態
+機進入警戒狀態(一個管理者預設可能對系統造成危害
+的狀態)，線上模組便動態更新防火牆過濾策略，截斷攻
+擊連線之進行。 
+ 
+圖五 系統架構圖 
+ 
+III.1 訓練階段 − 誘捕系統  
+   本研究使用的誘捕系統為一商用軟體 KFSensor 
+[19]，其能模擬出所有重要跨平台的網路服務，如 FTP, 
+SMTP, DNS, …等。KFSensor 初始畫面如圖六所示，畫
+面左邊陳列出目前可模擬的服務，可視需要增加或減
+少。KFSensor 同時能夠支援匯入 Snort – IDS 常使用的
+特徵，也由於 KFSensor 功能完善並且能夠詳細記錄通訊
+中的所有資訊，也因如此在整理稽核檔(log file)便需藉
+由資料庫查詢語法輔助，過濾出我們所關心之服務的所
+危 險 性 也 不 大 ， 例 如 長 度 為 15 的 頻 繁 情
+節”ABCABCABCABCABC”(0.572332)，表示這個連線
+持續在做連線協商建立的動作。為能挖掘出精緻(事件類
+別多)而少量(不常出現)的攻擊情節，最小頻繁度應該設
+定小一點。若最小頻繁度設為接近 0，代表即便僅出現
+過一次的攻擊情節都會被挖掘出來。基本上，會進入誘
+捕系統的活動，都可將其視為攻擊。在頻繁情節法則的
+探勘上，我們儘可能將頻繁門檻值 mini_fr 設小以探勘出
+完整的攻擊情節，因為大部分的攻擊情節都是探測、嘗
+試登入等簡單的攻擊行為，只有少部分的攻擊情節可以
+完成精緻完整的攻擊。雖然 mini_fr 設小，會產生過多的
+情節及衍生的情節法則，不過並不會對我們的系統造成
+困惱，因為本系統是採用有限狀態機設計，可以在狀態
+轉移上涵蓋所有可能的情節。 
+表二中，特別值得注意的是長度 11 中的頻繁情
+節 ”ADEFGHIGEFG “(0.120949) ，此情節即為著名
+Opaserv (或稱 Opasoft.worm) [23, 24]這一系列蠕蟲攻擊
+所造成的。且其頻繁值為 0.120949，代表約 12%的視窗
+數存在如此的攻擊情節。若日誌檔中尚有其他針對 port 
+139 攻擊方式，理應也可以被挖掘出來。頻繁情節探勘
+的目的，也就是要找出針對特定服務，所有可能發生過
+的攻擊手法。 
+ 
+ 
+表二 頻繁情節及其頻繁值 
+Episode 
+length 
+Frequent episodes and their frequencies 
+1 A(0.998419), B(0.983399), C(0.982609), D(0.379447), 
+E(0.316996), F(0.33834), G(0.388142), H(0.237154), 
+I(0.237154), I(0.102767), K (0.112253), L(0.117787) 
+2 AB (0.980237), AD (0.252174) 
+3 ABC (0.975494), ADE (0.240316) 
+4 ABCA (0.941502), ABCD (0.105929), ADEF 
+(0.228458) 
+5 ABCAB(0.910672), ABCAD(0.166008), ADEFG 
+(0.192885) 
+6 ABCABC(0.895652), ABCADE(0.154941), 
+ADEFGH(0.181818), 
+7 ABCABCA(0.862451), ABCADEF(0.143874), 
+ADEFGHI(0.170751) 
+8 ABCABCAB(0.806324), ABCABCAD(0.132806), 
+ABCADEFG(0.113834), ADEFGHIG(0.159684) 
+9 ABCABCABC(0.788933), ABCABCADE(0.121739), 
+ABCADEFGH(0.104348), ADEFGHIGE(0.147826) 
+10 ABCABCABCA(0.762846), 
+ABCABCADEF(0.110672), 
+ADEFGHIGEF(0.134387) 
+11 ABCABCABCAB(0.694862), 
+ADEFGHIGEFG(0.120949) 
+12 ABCABCABCABC(0.673518), 
+ADEFGHIGEFGA(0.10751) 
+13 ABCABCABCABCA(0.647431) 
+14 ABCABCABCABCAB(0.592885) 
+15 ABCABCABCABCABC(0.572332) 
+16 ABCABCABCABCABCA(0.547036) 
+17 ABCABCABCABCABCAB(0.498024) 
+18 ABCABCABCABCABCABC(0.328854) 
+19 ABCABCABCABCABCABCA(0.161265) 
+ 
+ 
+ 頻繁情節探勘的第二階段是根據最小信心度
+(min_conf)，從頻繁情節(frequent episodes)中挖掘出
+符合最小信心度的頻繁情節法則(frequent episode 
+rules)。若我們將 min_conf 設為 0.5，以表二中長度為
+11 的頻繁情節 ADEFGHIGEFG 為例，可以產生圖八中
+有暗影的九條法則。注意情節法則β→α中，β必須是α
+的 子 情 節 。 此 九 條 法 則 中 的 第 一 條  ADE -> 
+ADEFGHIGEFG (conf: 0.503291)表示只要連續出現 A、
+D、E，就表示此連線正在進行 Opaserv 蠕蟲攻擊的機率
+為 0.503291。 
+ 
+ 
+ 
+圖八 可信度為 0.5 以上的法則 
+ 
+利用 3.2 節所介紹的 SMC(State Machine Compiler) 
+[20]，可以從總共 242 條繁情節法則製作出對應的有限
+狀態機圖並產生對應的C++程式碼，如圖九。以法則 ADE 
+-> ADEFGHIGEFG (conf: 0.503291)為例，表示只要連續
+出現事件 A (轉移至狀態 1)、事件 D (狀態轉移至 3)、
+事件 E (轉移至狀態 5)，就表示此連線正在進行 Opaserv
+蠕蟲攻擊的機率為 0.503291；機率過半且由於事件 E是
+一建立檔案的事件，本身具危險性，所以我們可以將狀
+態 5設為警戒狀態。任何可疑連線進入狀態五，我們的
+系統立即阻斷連線的進行。狀態七為 Opaserv 攻擊完成
+的最終狀態，不過在本系統保護下，Opaserv 進行到狀
+態五就會被終止連線進行，不會有機會完成一次完整的
+攻擊。 
+雖然連續發生事件 A、D、E 蘊含(imply) Opaserv 蠕
+蟲攻擊的機率為 0.503291，但在保護 port139 的服務
+上，我們將警戒狀態設在狀態五，系統不會產生假警報
+(誤刪正常連線)。因為我們所挖掘出來的情節是來自於
+KFsensor 誘捕系統，所有從 KFsensor 日誌檔挖掘出來的
+情節，都非善意，差別只在攻擊過程粗造亦或精緻，也
+就是對受害電腦危險程度不同而已。事實上，檢視
+NBSS(NetBios Session Service)服務，任何正常行為的寫
+檔動作不會由狀態三進入狀態五。本系統在 CPU 
+Pentium 4 - 3.20GHz、記憶體 2GB、作業系統為 Windows 
+XP SP2 的平台上，可以同時監控 50 個連線。 
+ 
+ 
+圖十三  軟體防火牆 (阻擋可疑連線) 
+ 
+ 
+V. 結論 
+就我們目前所知，文獻上共有 5 篇論文採用情節法
+則設計網路入侵偵測系統[11-15]，本文與上述文獻最大
+差別在於輸入資料，頻繁情節法則的運用與所達成之即
+時防禦效果不同。在資料輸入方面，我們假設一個好的
+誘捕系統可以補捉到尚未被揭露的攻擊情節。然而誘捕
+系統僅能收集事件的發生，無法說明事件與事件之間的
+關係，更無法說明怎樣的一連串事件，也就是情節
+(episode)，代表一種駭客入侵的攻擊。透過頻繁情節探
+勘方法對日誌檔做分析，我們可以挖掘出這些尚未被揭
+露的攻擊情節。如果將頻繁門檻值設為接近 0，即便是
+僅發生一次的攻擊情節也會被挖掘出來。在頻繁情節法
+則的運用上，[11]利用法則推論，[12-15]則比較目前挖
+掘之法則與訓練階段正常情形挖掘之法則的相似度，用
+以判斷是否目前為攻擊。由於我們所挖掘的情節法則來
+自誘捕系統的日誌檔，基本上所有情節皆可視為攻擊情
+節，差別只在攻擊過程是粗造亦或精緻；而一般正常的
+情節，不會出現在誘捕系統的日誌檔，因此不會造成混
+肴。我們將所有攻擊情節法則用有限狀態機的方式實
+作，對於精緻的攻擊，可以選擇在可能造成危害的事件
+轉移上給予對連線的警戒，亦或直接阻斷連線之進行。
+本系統在實作上也動態連結 Iptables 防火牆，實驗證實
+其阻絕惡意連線的速度可以達到很好的效果。 
+ 
+ 
+誌謝:感謝行政院國科會專題研究計畫之補助(NSC 
+96-2221-E-130-009, 97-2221-E-130-014)，使本論文得
+以順利完成。 
+ 
+ 
+參考文獻 
+[1] P.-de Boer and M. Pels ,“Host-based Intrusion 
+Detection Systems”, Technique Report, University of 
+Amsterdam, pp. 1-25, 2005 . 
+[2] M. Laureano, C. Maziero, and E. Jamhour, “Intrusion 
+Detection in Virtual Machine Environments”, 
+EUROMICRO’04, pp. 520-525, 2004. 
+[3] G. Florez, S. M. Bridges , and R. B. Vaughn , “An 
+Improved Algorithm for Fuzzy Data Mining for Intrusion 
+Detection”, Proceedings of the Fuzzy Information 
+Processing Society, pp. 457-462, 2002. 
+[4] S. M. Bridges and R. B. Vaughn , “Intrusion 
+Detection Via Fuzzy Data Mining”, Proc. of the twelfth 
+Annual Canadian Inf. Tech. Security Symp., 2000. 
+[5] J. E. Dickerson and J. A. Dickerson, “Fuzzy Network 
+Profiling for Intrusion Detection,” IEEE Network, pp. 
+301-306, 2000. 
+[6] S. M. Bridges and R. B. Vaughn, “Fuzzy Data Mining 
+and Genetic Algorithms Applied to Intrusion Detection,” 
+NISSC2000. 
+[7] M.-Y. Su, K.-C. Chang, H.-F. Wei and C.-Y. Lin，" A 
+Real-time Network Intrusion Detection System Based on 
+Incremental Mining Approach "，IEEE ISI 2008 Taipei, 
+Taiwan, June 17, 2008  
+[8] 蘇民揚, 葉生正, 林呈俞, 張瑞德, “植基於模糊
+關聯規則的網路入侵偵測系統,＂ Journal of Internet 
+Technology, Vol. 8, No. 2, pp. 221-228, 2007. 
+[9] M.Y. Su, S.-C. Yeh, and K.-C. Chang, “Using 
+Incremental Mining to Generate Fuzzy Rules for 
+Real-time Network Intrusion Detection Systems,” IEEE 
+AINA, Okinawa, Japan, 2008. 
+[10] H. Mannila, H. Toivonen, and A. Inkeri 
+Verkamo, ”Discovery of Frequent Episodes in Event 
+Sequences,” Data Mining and Knowledge Discovery, Vol. 
+1, pp. 259–289, 1997. 
+[11] W. Lee, S.J. Stolfo, and K. Mok, “Adaptive Intrusion 
+Detection: A Data Mining Approach,” Artificial 
+Intelligence Review, pp. 533-567, 2000. 
+[12] J. Luo and S. M. Bridges, “Mining Fuzzy Association 
+Rules AND Fuzzy Frequency Episodes for Intrusion 
+Detection,” International Journal of Intelligent Systems, 
+Vol. 15, No. 1, pp. 687-703, 2001. 
+[13] J. Luo, S. M. Bridges, and R. B.Vaughn, “Fuzzy 
+Frequent Episodes for Real-Time Intrusion Detection,” 
+IEEE Intl Conf. on Fuzzy Systems, pp. 368-371, 2001. 
+[14] M. Qin and K. Hwang, “Frequent Episode Rules for 
+Internet Anomaly Detection”, IEEE Intl Symp. on 
+Network Computing and Applications, 2004 
+[15]  K. Hwang, M. Cai, Y. Chen and M. Qin, “Hybrid 
+Intrusion Detection with Weighted Signature Generation 
+over Anomalous Internet Episodes”, IEEE Transactions on 
+Dependable and Secure Computing, Vol. 4, No. 1, pp. 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 NSC 97－2221－E－130－014－ 
+計畫名稱 頻繁情節法則結合有限狀態機於網路入侵偵測系統之研究(二) 
+出國人員姓名 
+服務機關及職稱 
+蘇民揚  
+銘傳大學資訊工程學系副教授 
+會議時間地點 2009-7-25 ~ 2009-7-27, 韓國首爾(Seoul,Korea) 
+會議名稱 The 3rd International Conf. on Information Security and Assurance (ISA2009) 
+發表論文題目 Attack Patterns Discovery by Frequent Episodes Mining from Honeypot Systems 
+ 
+一、參加會議經過 
+本次會議除了發表論文一篇之外，也有幸獲邀擔任 Session Chair (session of Security 
+Protocol and Its Application)，對個人的體驗，受益良多. 
+二、參加會議經過 
+7.21 晚上抵達首爾市區。 
+7.22~24 拜訪友人與市區遊覽 
+7.25 上午前往會議現場報到，完成註冊程序後，聆聽六場報告，題目分別是: 
+  • A New Strongly Secure Authenticated Key Exchange Protocol 
+  • A New Double-Block-Length Hash Function Using Feistel Structure 
+  • Improved Implementations of Cryptosystems Based on Tate Pairing 
+  • Fine-Grain Access Control Using Shibboleth for the Storage Resource Broker 
+  • Grouping the Provenance Information to Improve Efficiency of Access Control 
+  • Tagging the Turtle: Local Attestation for Kiosk Computing 
+7.26 上午前往會議現場，聆聽 Keynote Speaking，題目分別是: 
+  • Cloud Computing Security, by Prof. Jong Sou Park 
+  • Virtual Clusters for Grid, Cloud, and High-performance Computing, by Professor 
+Kai Hwang 
+下午前往會議現場，先擔任 Session 7: Security Protocol and Its Applications 的
+chair (1:30Pm ~ 4:30pm) ，接著於 Session 11 發表自己的論文 
+7.27 上午前往會議現場聆聽四場報告，題目分別是: 
+  • A Study on Mosaic Based CCTV System Using Localization 
+  • Safety High Accuracy Context-Aware Matrix (CAM) Making Based on X.509 Proxy 
+Certificate 
+  • A Study of International Trend Analysis on Web Service Vulnerabilities in OWASP 
+and WASC 
+known or unknown attack episodes for any network services. In this paper, we focus on discovering attack 
+episodes for SMB (Server Message Block) protocol, which is the most important one for Microsoft’s Windows 
+Network. In the experiment, we successfully mined out a sophisticated intrusion episode. The proposed method 
+can easily be modified to protect other network services.  
+ 
+Keywords: Frequent Episodes Mining, Honeypot systems, Network Security 
+1   Introduction 
+Almost commercial intrusion detection systems are based on misuse detection and thus they all rely on definitions or 
+rules update from vendors. How to discover a new attack episode as soon as possible is an important issue in the 
+network security field. In the paper, we apply a modified frequent episode mining algorithm to discover attack 
+episodes, especially for unknown or novel attack episodes, from log files of the KFsensor [1] which is a 
+commercially famous honeypot system.  
+After the mining of frequent episodes was first proposed by Mannila et al. [2] in 1997, there were several studies 
+devoted to applying episodes in the designs of NIDSs [3, 4, 5, 6, 7]. They all belong to anomaly-based detections, 
+which are expected to detect unknown attacks with a risk of high false positive rate. In the paper, we mine attack 
+episodes from log files of the KFsensor [1] which is a commercially famous honeypot system, to discover unknown 
+or novel attack episodes for network services. Since network services are varied, focused on Microsoft’s Windows 
+Network, in this study we address the SMB (Server Message Block) protocol which is the most important protocol 
+among NetBIOS/NetBEUI protocols. We aim at the kinds of Probe/Exploit attacks which are difficult to be 
+effectively resolved by firewalls and anti-virus software [8]. The remainder of the paper is organized as follows. 
+Section 2 is the introduction of the frequent episode rules mining algorithm. Section 3 gives a brief introduction of 
+SMP protocol over NetBIOS session services because it is addressed in the paper. Section 4 shows the system 
+framework and some experimental results. Finally, the conclusion is Section 5.  
+2   Frequent episodes mining 
+Episode is composed of a series of events. To find attack episodes is to find the relationship between the events. 
+These relations can be effectively applied to analyze behaviors, interpret the reason of behaviors and forecast the 
+coming events. Take the event sequence in Figure 1 as an example, <E, A, B> symbolizes a frequent episode, 
+namely after E event, the A event occurs, and at last B event happens, and the probability of this episode is greater 
+than a threshold. When the events and their occurring times are all taken into consideration, circumstances meet such 
+condition can have many possibilities below:  
+ 
+<(E, 1), (A, 2), (B, 4)>, <(E, 1), (A, 2), (B, 5)>, <(E, 10), (A, 11), (B, 12)>, <(E, 10), (A, 11), (B, 13)>, <(E, 16), (A, 
+17), (B, 18)>, <(E, 16), (A, 17), (B, 19)>, < (E, 26), (A, 27), (B, 29)>, and < (E, 26), (A, 28), (B, 29)>  
+ 
+ 
+ 
+Figure 1 Event sequence 
+ 
+ 
+This also means that when event A and event E occurred in succession, the probability of occurrence of event B is 
+ 
+The numerator represents the number of windows in which episode α occurs and the denominator represents the 
+total window amount, which is equal to Te – Ts + win -1, i.e.,  
+ 
+1 ),( −+−= winTTwinsW se . 
+ 
+ 
+For example as shown in Figure 3, the length of event sequence is from 0 to 30 seconds, while the window width is 
+five seconds, so s = (s, 0, 30), win = 5, the window total amount is 30 – 0 + 5 – 1 = 34. Window w = (w, 2, 6) marked 
+in red dashed line in the diagram, contains the event sequence <(A,2), (C,3), (B,4), (B,5)>. Window is defined as 
+semi-closed interval, so (E, 6) is not included in this window. A hacking attack is composed of series events which 
+must be completed within a certain period of time. If the window width is too small, it may not be able to cover a full 
+attack. On the other hand, if the window width is too large, it may generate excessive unnecessary frequent episodes.  
+ 
+ 
+ 
+Figure 3 Window total amount and window event sequence 
+ 
+Basically, to find the frequent episodes is mainly used to generate candidate episodes sets, and pick up those 
+episodes with frequencies greater or equal to the threshold min_fr into the frequent episodes sets.  
+In this paper the “meaningful” episodes are mined from log files of the honeypot, instead of normal event 
+sequence. In other words, we mine rules from abnormal event sequence because basically, the logs recorded by 
+honeypot all belonged to attack events, the difference only lied in attacking intensity or the amount of the attacking 
+steps. For Probe/Exploit attacks, a meaningful episode is a complete attack, namely an episode with longer length. So 
+in this study, the threshold could be set as low as possible to mine more complete and complex, but rarely occurred, 
+attacks. Usually the amount of data in logs of honeypot deployed in the Internet will accumulate very quickly. The 
+goal of mining from such tremendous logs of honeypot is to find out meaningful attack episodes, i.e., discovering 
+known or unknown attack episodes.  
+3   SMB protocol over NBSS (NetBIOS session service) 
+Since network services are numerous and varied, in this study we focus on SMB protocol (Server Message Block 
+Protocol) on port 139 which is the most important protocol in MS Windows’ NetBIOS/NetBEUI services. The 
+framework proposed in this paper can be easily transferred to protect other services with little modification.  
+Most MS Windows systems are able to use NetBIOS/NetBEUI interfaces, and the most important up layer 
+protocol is the SMB (Server Message Block Protocol). SMB provides a set of standard, comprehensive commands 
+for communications between servers and clients. The command field in SMB header is a 16-bit code, different codes 
+symbolize different events.  
+ 
+4   System Framework and Performance Evaluations 
+First, honeypots have to install in the Internet for a long period of time to collect all possible attacks. Then we use 

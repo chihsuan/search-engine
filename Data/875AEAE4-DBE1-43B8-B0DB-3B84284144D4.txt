@@ -1,0 +1,828 @@
+  i
+CONTENTS 
+A. 中文摘要......................................................................................................................................1 
+B. Abstract (英文摘要)......................................................................................................................2 
+C. H.264/AVC 編碼之平行化演算法與於 NVIDIA CUDA 之實現...............................................4 
+C.1 研究目的 .............................................................................................................................4 
+C.2 文獻探討 .............................................................................................................................4 
+C.3 研究方法 .............................................................................................................................4 
+C.4 結果與討論 .........................................................................................................................6 
+D. H.264/AVC 可調式編碼版本之快速演算法...............................................................................9 
+D.1 研究背景與動機.................................................................................................................9 
+D.2 編碼器架構介紹...............................................................................................................10 
+D.3 相關文獻探討................................................................................................................... 11 
+D.4 研究分析........................................................................................................................... 11 
+D.5 快速演算法設計...............................................................................................................13 
+D.6 實驗結果與討論...............................................................................................................16 
+E. 適用於可調式影像/視訊之小波轉換參數訊源模型研究 .......................................................18 
+E.1 研究目的 ...........................................................................................................................18 
+E.2 文獻探討 ...........................................................................................................................18 
+E.3 研究方法 ...........................................................................................................................19 
+E.3.1 影像與視訊中的小波分析方法................................................................................ 19 
+E.3.2 所提出之機率模型 ..................................................................................................... 19 
+E.3.2.1 ρ-GGD source model ..................................................................................19 
+E.3.2.2 Piecewise linear estimation for the shape parameter ..................................21 
+E.3.2.3 Modeling accuracy evaluation ....................................................................22 
+E.4 結果與討論 .......................................................................................................................22 
+F. 參考文獻.....................................................................................................................................25 
+G. 計畫成果自評 ............................................................................................................................28 
+H. Publications: (含前兩年同一系列計畫產出，於過去一年中發表者)....................................29 
+ 
+  2
+視訊中小波轉換後的參數機率分佈進行模擬分析，提出新型態機率模型。此機率模型較傳統
+Laplacian 模型有較高之準確度並且同時具低複雜度。藉由此模型，期望對小波編碼之 R-D
+關係有更進一步了解，並將之應用於畫面間小波轉換可調式視訊編碼研究中。 
+ 
+關鍵詞：MPEG、H.264、可調式視訊編解碼、多核心架構、平行化運算、快速演算法、畫
+面間小波轉換視訊 
+ 
+ 
+ 
+ 
+B. Abstract (英文摘要) 
+Multimedia service is believed to be the driving force for developing wide-band wireless 
+communication systems. However, there are a number of challenges in delivering real-time mul-
+timedia over wideband wireless networks such as packet loss and heterogeneous mobile receivers. 
+Thus, a new technology for video representation, the so-called Scalable Video Coding (SVC) stan-
+dard has been developed in recent years. The goal of this project is to study, design, simulate and 
+implement various streaming audio/video algorithms based on the concept of the scalable video 
+coding. The entire duration of this project is 3 years. We will outline the final results of the third 
+year on this report. There are three major items: “Parallel processing of H.264/AVC and the im-
+plementation on NVIDIA CUDA platform”, “Fast algorithms for H.264/AVC scalable extension”, 
+and “Source modeling of wavelet coefficients for scalable wavelet image/video coding". 
+Because of the recent development of very powerful general-purpose graphics processor 
+(GPGPU), it is now also used for non-graphics applications that require a large amount of compu-
+tations. NVIDA proposed a flexible GPGPU architecture called CUDA. In this project, we suggest 
+an efficient block-level parallel algorithm for the variable block size motion estimation (ME) in 
+H.264/AVC with fractional pixel refinement on the CUDA platform. We decompose the H.264 
+ME algorithm into 5 steps so that we can achieve highly parallel computation with low external 
+memory transfer rate. Experimental results show that, with the assistance of GPU, the processing 
+time is 12 times faster than that of using CPU only.  
+The conventional video coding standards adopt the single-layer coding scheme because they 
+are designed for specific applications. However, different clients have different computing capa-
+bilities and transmission bandwidth. Thus, the single-layer scheme does not provide satisfactory 
+solution for the heterogeneous network environment. Therefore, H.264/AVC scalable extension is 
+constructed and standardized to solve these problems. The H.264/AVC scalable extension adopts a 
+  4
+C. H.264/AVC 編碼之平行化演算法與於 NVIDIA CUDA 之實現 
+C.1 研究目的 
+傳統的電腦中央處理器（CPU）或是數位訊號處理器（DSP）大多為單核架構，對應於
+視訊的編碼時也都以序列處理（sequential processing），因此過往的視訊編碼演算法也都是
+以序列處理的方式來做編碼。然而 NVIDIA 統一運算單元架構（CUDA）則完全的改變了這
+樣的運算方式與結構。統一運算單元架構是圖形運算處理器（GPU）的一種延伸架構，因此
+也承襲了圖形運算處理器的多核心架構，可同時處理複數筆資料，也就是以平行處理（parallel 
+processing）的方式來提升運算效率。 
+    H.264/AVC 視訊編碼是以宏塊（macroblock）為基本單位，並且使用動作預測（motion 
+estimation）與補償（motion compensation）或是幀內預測（intra-prediction）的方式來降低宏
+塊的資訊量，以達到壓縮的效果。其天性非常適合以平行化的方式來做運算，讓不同的宏塊
+可以同時的做運算，以提升編碼的速度。因此在本計畫中，我們設計出一套適合於統一運算
+單元架構的平行預算編碼演算法，並且實現於 NVIDIA 所推出之統一運算單元架構處理器
+上。 
+ 
+C.2 文獻探討 
+傳統用圖形運算處理器處理非圖形運算的技術，統稱為 GPGPU（General-purpose 
+computation on GPUs）[1]。過去也有提出將使用 GPGPU 的技術來加速視訊編碼，如
+[2][3][4]。其原理也是將不同宏塊的動作預測利用圖形運算處理器的多重核心來平行處理。
+然而過去的圖形運算處理器，其晶片內部缺乏了分享記憶體（shared memory）的機制，因
+此運算過程中的暫時資料必須存放於顯示卡上的外部記憶體中（DRAM）。由於視訊壓縮的
+資料量非常大，因此資料的傳遞成為一個速度提升的瓶頸。 
+除此之外，也有相關的論文[5]探討幀內預測的平行演算法，其平行化的方式為將宏塊
+中不同的幀內預測模式（四種或九種）同時運算，以提升編碼速度。然而此種方法會沿生
+出兩個問題：（1）由於每一個宏塊的預測模式只有四種或九種，但是圖形處理器的核心數
+最高可以達到上百個，因此平行化的幅度不夠大，因而導致大部分的處理核心仍然是處於
+閒置狀態（idle）。（2）由[6]可得知，不同的幀內預測模式其計算量差異很大，因此不同的
+模式同時計算的時候，會導致總預測時間會被計算量最大的幀內預測模式給限制，而導致
+效能的提升也受到限制。 
+由於統一運算單元架構是全新的處理器架構，其應用方式與特性也和過去的圖形運算處理器
+有大幅的改變，因此過去所提出之平行演算法亦無法直接應用於統一運算單元架構之上。多
+數的演算法必須做大幅度的修正，才能符合統一運算單元架構的應用要求。 
+ 
+C.3 研究方法 
+在本計畫中，我們首先將 H.264/AVC 中計算量最大的兩個部分：動作預測與幀內預測
+兩個部分於統一運算單元架構上實現，分別如以下所述： 
+  6
+ 
+Fig. C-2 五個步驟的動作預測流程圖 
+ 
+C.4 結果與討論 
+使用原始影像作幀內預測，雖然可以達成宏塊的平行化，然而卻會因為預測資料與實際
+資料的不相同，會導致編碼效能下降，如Fig. C-3。由於在一般的應用之下，使用幀內預測
+與使用動作預測的比例差距很大，大部分的宏塊都會使用動作預測來做編碼，因此使用原始
+影像作幀內預測的效能下降有限，甚至在大部分的測試影像中，其編碼效能可以逼近使用重
+建影像作幀內預測的演算法。 
+而使用平行化的動作預測時，由於每個預測方塊之動作向量預測子（motion vector 
+predictor）需要設置為零，才能消除每個預測方塊之宏塊間依賴性，因此編碼效能也會有些
+許的下降，如Fig. C-3。 
+   我們所使用的測試平台如Table C-1所示，統一運算單元架構處理器本質上也是一個顯示
+晶片，因此是建立在個人電腦上，而在需要使用顯示晶片運算的時候，資料會從個人電腦的
+記憶體中傳送至顯示卡上的記憶體。而運算完畢之後，也是將資料從顯示卡上的記憶體傳送
+回個人電腦之記憶體中。使用統一運算單元架構來處理幀內預測與動作預測的如Table C-2
+與Fig. C-4所示，在這兩個部分之中分別都可以達到近 12 倍的加速。另外在幀內預測中若只
+使用單一個核心來做編碼，其處理時間會比只使用個人電腦來做運算慢了 500 倍，因此只若
+使用統一運算單元架構卻沒有搭配對應的平行編碼演算法，不但無法有效的做加速，反而會
+拖慢整體的運算時間。 
+  8
+Table C-1 統一運算單元架構測試平台 
+CPU AMD Athlon 64X2 2.1GHz 
+memory 2,048MB 
+OS Microsoft Windows XP sp2 PC 
+Compiler Microsoft Visual Studio 2005 
+NVIDIA GeForce 8800GTX 
+Core Clock 575MHz 
+Processor numbers 128 
+Memory Clock 900MHz 
+Memory 768MB 
+GPU 
+Memory Bandwidth 86.4(GB/sec) 
+CUDA Toolkit and SDK 1.1 
+CUDA 
+NVIDIA Driver for Microsoft Windows XP with CUDA Support (169.09). 
+ 
+Table C-2 幀內預測於統一運算單元架構之加速效果 
+ PC (msec) CUDA (msec) Speed up CUDA using one thread(msec)
+Intra_16x16 4.06 0.63 6.4x 265 
+Intra_4x4 15.94 0.92 17.3x 753 
+Intra_chroma 2.19 0.31 7.1x 93 
+Total 22.19 1.86 11.9x 1112 
+ 
+ 
+  10
+ 
+ 
+Fig. D-2 JSVM Encoder 架構示意圖 
+ 
+D.2 編碼器架構介紹 
+Fig. D-2為一 JSVM 編碼架構之示意圖[13]-[15]，圖中的每一層均可視為一 H.264/AVC
+編碼器。為了要增進編碼效率，每一層之間都會利用 Inter-layer Prediction 之機制來使
+編碼效能改善，詳細說明如下，而 
+ 
+ 
+Table D-2說明Fig. D-2中每一個 SW 之功能： 
+z Inter-layer Intra Texture Prediction：加強層中的宏塊，若其相對應之基本層宏塊是使用
+內部空間上的預測作編碼時，則可使用 IntraBL 模式作編碼。 
+z Inter-layer Motion Prediction：加強層之宏塊的切割模式(Partition Mode)、參考畫面索引
+(Reference Frame Index)與動作向量(Motion Vector)可以利用其相對應之基本層宏塊所
+擁有的資訊推算得知。 
+z Inter-layer Residual Prediction：基本層所重建回來之 DCT 數值可以用來減少加強層中編
+碼所需之位元數。 
+ 
+  12
+需之運算複雜度。統整我們之前的演算法設計[29][29]，以下作了一些數據分析，觀察層狀
+架構之間所具有之運算相關性。 
+20 25 30 35 40
+0
+20
+40
+60
+80
+100
+QpE with QpB = 40
+P
+ro
+b.
+ o
+f I
+nt
+ra
+ M
+od
+e 
+(%
+)
+10 15 20 25 30
+0
+20
+40
+60
+80
+100
+QpE with QpB = 30
+ 
+ 
+Intra16x16
+Intra8x8
+Intra4x4
+IntraBL
+ 
+Fig. D-3 Distribution of the Intra Prediction Modes at the Enhancement Layer with CGS Setup 
+20 25 30 35 40
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+(a) QpE with QpB=40
+P
+ro
+ba
+bi
+lit
+y
+10 15 20 25 30
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+(b) QpE with QpB=30
+ 
+ 
+Similarity of 4x4 blocks
+Similarity of 8x8 blocks
+ 
+Fig. D-4 Probability Profiles of Similarity for CGS (a) Poor-quality Base Layer (b) High-quality 
+Base Layer 
+¾ Intra prediction 相關性： 
+如Fig. D-3所示，加強層中之宏塊所使用之預測模式絕大部分均落在 Intra4x4 與 IntraBL
+兩種模式之中。而隨著基本層之畫質變好，使得加強層使用 Intra16x16 或 Intra8x8 之機
+率大為降低。因此，加強層可以只保留 Intra4x4 與 IntraBL 兩種預測模式，並且維持原
+有之編碼效能。再者，根據Fig. D-4所示，編碼層與編碼層中相對應的局部區塊所使用
+的內部預測方向，其相似度在 70%以上，這項特性可讓加強層中的運算量減少。 
+¾ Macroblock partition 相關性，經由分析我們歸納了以下幾點： 
+z 編碼層與編碼層中相對應的局部區塊，不論基本層與加強層的量化參數差異多大，
+超過 50%的比例使用相同的切割模式或是採用 BLSkip 模式。對於 Inter8x8 而言，
+則是超過了 80%的比例。 
+z 除了相同的切割模式與 BLSkip 模式，接著最有可能的兩種切割模式是 Skip 與
+Inter16x16，這個觀察與[27][28]兩篇文獻所提的觀點有所不同。 
+z 如果基本層是用 Skip 模式編碼，則在加強層中所相對應的宏塊只需要測試 Skip 與
+Inter16x16。 
+z 在加強層中，對於最高的兩個 Temporal level 而言，BLSkip 的比例超過 50%。 
+z 在加強層中，Inter4x4 的比例小於 5%。 
+  14
+根據[30]的研究數據分析，我們提出了一套在多層層狀結構之粗略可調特性與時間可調
+特性的需求設定下，針對 Hierarchical B 畫面之低複雜度宏塊決定模式快速演算法，有效地
+大量減少內部預測(Intra Prediction)與畫面間預測(Inter Prediction)的龐大運算量，其各編碼層
+之關聯性，可參考Fig. D-7。我們所提出之演算法流程如Fig. D-8，其中Fig. D-9表示在加強
+層中模式選擇之流程、Table D-3~Table D-6告知加強層中所需要測試之切割模式、Fig. D-10
+告知加強層中每一個切割模式所要參照之參考畫面。 
+Base Layer
+CGS Layer 1
+CGS Layer 2
+CGS Layer 3
+Base Layer
+CGS Layer 1
+(b)(a)
+Layer Dependency
+for Encoding
+Layer Dependency
+for Mode Selection, Qp
+Layer Dependency
+for Motion Vector
+W x H
+W x H
+W x H
+W x H
+W x H
+W x H
+Layer Dependency
+for Ref. Index
+ 
+Fig. D-7 Inter-Layer Dependency Settings of SVC Encoder for CGS (a) 2-Layer Case, (b) 4-Layer 
+Case 
+ 
+Fig. D-8 Flowchart of Proposed Algorithm 
+  16
+Table D-6. Candidate Modes of Sub-macroblock of Inter Prediction for all Qp Values 
+ 
+ 
+Fig. D-10 Layer-Adaptive Selection of Reference Frame Index 
+ 
+ 
+D.6 實驗結果與討論 
+根據[30]所提出之在多層層狀結構之粗略可調特性與時間可調特性的需求設定下，針對
+Hierarchical B畫面之低複雜度宏塊決定模式快速演算法，我們將之實現在JSVM 9.11版之參
+考軟體上，並且測試了八組測影像，其中四組為CIF格式，另外四組是4CIF格式，其詳細之
+編碼參數列表於Table D-7中。 
+在Table D-8中，採用△PSNR、△Bitrate、TS 與 TSE四項數據來展現出所提出之演算法
+的運算複雜度改善與編碼效率差異。實驗數據顯示出所提出之演算法有效地大量減少在多層
+層狀結構下所需之編碼時間，其減少幅度可以到 84%；另外，在編碼加強層之運算複雜度，
+平均而言，所提之演算法可以減少 93.4%運算複雜度，相當於加速編碼加強層之 15 倍速度，
+並且維持原有之編碼效率。 
+Table D-7. Testing Conditions 
+ 
+  18
+E. 適用於可調式影像/視訊之小波轉換參數訊源模型研究 
+E.1 研究目的 
+    從對訊源的機率模型，可推導出 Rate-Distortion 之良好關係函式，而藉由此關係函式則
+可進行相關之 Rate-Distortion 分析。因此針對各種壓縮訊源進行準確的機率模型假設是非常
+重要的。對小波訊號來說，由於經過編碼之小波訊號，具有良好之零值為平均值與左右對稱
+性，在傳統上以 Laplacian 為機率模型以進行小波訊號之分析，雖然計簡單，但誤差幅度頗
+大。Laplacian 為廣義高斯分佈之子集合，使用廣義高斯分布可得到較準確之機率模型。然
+而廣義高斯分布模型的建立時必須以第二階動量(moment)與第四階動量進行參數估計，其複
+雜度過高；因此在本研究中發展一套以廣義高斯分布為基礎之ρ-GGD 模型，可以低複雜度
+準確估測小波訊源之機率分布。 
+ 
+E.2 文獻探討 
+    在可調式視訊編碼領域中，目前主要有兩大分支：以 DCT 為基礎之 H.264 可調式視訊
+編碼版本與以小波為基礎之畫面間小波(interframe wavelet)可調式視訊編碼。由於小波訊好
+本身具有兼具時域與頻域可調解析度的特性，此項特性可充份運用在影像與視訊編碼之中，
+如可在可調式編碼中調整畫面率與畫面解析度。經過小波轉換後的影像，頻帶(suband)呈現
+類似階層分布，不同階層展現不同的影像細節；藉由此自然的特性，影像的細節可經過越多
+層次頻帶訊號的獲取而得到漸近式的改良[31]。 
+    近年來由 Sharpiro [32]， Said 與 Pearlman [33]，以及 Taubman [34] 等人的研究已展現
+了小波編碼在影像壓縮上的良好表現。而在相關視訊壓縮的進展方面，由於 Ohm [35]，Hsiang
+與 Woods [36]，Secker 與 Taubman [37]，以及 Xu et al. [38]等人提出了動態補償時間濾波
+(motion compensated temporal filtering) (MCTF)技術使得小波視訊編碼也得到極大的進展。此
+外，為了得到適用於內嵌式(embedded)小波影像/視訊編碼架構下最佳的編碼效能，許多 rate 
+-distortion(R-D)分析技巧也被提出[34][39][40]。根據 Shannon 的訊源編碼理論，rate-distortion
+函式可經由訊源的機率分布模型推導得到；在過去的文獻中，Laplacian 模型是最被廣泛使
+用的[41]，而廣義高斯分布模型(Generalized Gaussian distribution )(GGD) [44]也是常被推薦的
+一種。由於 GGD 有很高的精確度，但要成功建立一個 GGD 模型則有非常複雜的步驟。 
+    在這項研究中，我們引入了一個十分容易測量的參數 ρ至 GGD 模型中，ρ指的是小波
+參數中的零值機率；此參數為在另一個知名的 R-D 模型中被[42]所提出。借由 ρ值的幫助，
+我們提出了一個適用於小波參數機率分佈的低複雜度 ρ-GGD 訊源模型。為了測量此模型的
+精確度，我們利用對稱式的(symmetric)Kullback-Leibler divergence [43]來做為測量的標準，
+並且比較 Laplacian 與 ρ-GGD 之間精確度的差異。在之後的小節中，我們會先針對小波分
+析的傳統作法討論，並且描述所提出的 ρ-GGD 模型以及對應的低複雜度模型參數求法，最
+後並展示實驗成果。 
+ 
+  20
+( )vGGD xv
+v
+vvvxP |]|),([exp
+12
+),(),;( σησησ −
+⎟⎟
+⎟⎟
+⎠
+⎞
+⎜⎜
+⎜⎜
+⎝
+⎛
+⎟⎠
+⎞⎜⎝
+⎛Γ
+=                           (2) 
+其中 
+1
+2
+1 3 1( , )v
+v v
+η σ σ − ⎡ ⎤⎛ ⎞ ⎛ ⎞= Γ Γ⎜ ⎟ ⎜ ⎟⎢ ⎥⎝ ⎠ ⎝ ⎠⎣ ⎦                              (3) 
+且 σ 為小波參數的標準差，v 為 GGD 模型中的形態參數(shape parameter)，Γ(x)則為標準的
+Gamma 函數。若令 ρ 為小波參數分佈中的零值機率數值。根據(2)，ρ可用以下數學式表示： 
+ 
+⎟⎠
+⎞⎜⎝
+⎛Γ
+===
+v
+vvxPGGD 12
+),()0( σηρ                                 (4) 
+因此，數學式(2)可以重新寫成以下的 ρ-GGD 表示方法: 
+⎟⎟⎠
+⎞⎜⎜⎝
+⎛ ⎟⎠
+⎞⎜⎝
+⎛Γ−=− vGGD xvvvxP |]|
+112[exp),;( ρρρρ                       (5) 
+在建立 ρ-GGD 訊源模型的過程中，形態參數 v 必須要先被求出來。而從數學式(3)與(4)可得
+知， ρ與 σ兩數值的乘積可以下列式子表示： 
+1
+3 23 1 ( )
+2
+v v
+v v
+ρσ ⎡ ⎤⎛ ⎞ ⎛ ⎞= Γ Γ = Φ⎢ ⎥⎜ ⎟ ⎜ ⎟⎝ ⎠ ⎝ ⎠⎢ ⎥⎣ ⎦                           (6) 
+數學式(6)顯示了在 ρ-GGD 模型中，ρσ 兩數值的乘積與型態參數 v 間存在著一個函數的關
+係，即 ρσ = Φ(v)。由於 ρ與 σ兩個參數非常容易就可以從資料中得到，因此使用此兩數的
+乘積用來估測 Φ(v)是非常方便的。 
+從實驗數據中可得知，在影像與視訊的小波轉換參數的分佈中，型態參數 v 大約介於[0.5, 
+2.5]這個區間。在Fig. E-2中，實線為在型態參數 v∈[0.5, 2.5]之間時 Φ(v)的數值，可以發現 Φ(v)
+與 v 在此區間呈現一個逐漸變小且為一對一的關係。因此，在此區間中 Φ(v)的反函數是存在
+並且也呈現一對一的關係。可利用以上的關係，利用 Φ-1(ρσ)來估測型態參數 v。 
+0.5 1 1.5 2 2.5
+0
+0.5
+1
+1.5
+2
+2.5
+3
+ 
+ 
+v
+Φ(v)
+Φest(v)
+ 
+  22
+步驟 1: 從小波轉換參數中計算 ρ與 σ 數值。 
+步驟 2: 利用 ρ與 σ的乘積值對Table E-1查表以得到在式子(10)中對應的 Si 與對應到的線性
+估測用參數。 
+步驟 3: 利用在步驟 2 所得到的估測參數代入式子(9)以得到 vest 。 
+步驟 4: 利用式子(5) 以建立起 ρ-GGD 訊源模組。 
+ 
+E.3.2.3 Modeling accuracy evaluation 
+為了估計兩個不同的機率分布之間的差異，我們引用了 Kullback-Leibler (K-L)差異度
+(diversity)的方法，亦稱為差別熵(differential entropy)，其數學式如下: 
+∑ ⎟⎟⎠
+⎞
+⎜⎜⎝
+⎛=
+x xq
+xpxpqp
+)(
+)(log)()||(KL 2 ,                         (11) 
+其中 p 為真實的資料機率分佈，而 q 則為所建構的機率模型，在此我們利用對稱性的 K-L
+差異度[43]進行測量(如(12)所示)。對於此測量而言，K-L 差異度越小代表的是所建構的機率
+模型越準確。 
+ 
+)||(KL)||(KL pqqp +        (12) 
+ 
+E.4 結果與討論 
+    利用所提出的 ρ-GGD 訊源模型，我們可以針對影像/視訊的小波轉換參數進行機率分佈
+的模擬。在我們的實驗設計中，我們將 ρ-GGD 與 Laplacian 兩種訊源模型在不同測試中進行
+比較。在影像 2-D DWT 轉換時，Daubechies 9/7 互正交(biorthogonal)小波運算子[44]是最常
+被使用的，也因此在我們的實驗中利用此運算子進行小波轉換。Fig. E-3顯示了在"Pepper"
+這張測式影像的各空間頻帶的小波轉換參數的機率分佈與其模擬。非常清楚的可以發現，
+ρ-GGD 模型在各頻帶的模擬表現都較 Laplacian 為好。Table E-2則是另一測試影像"Lena"中，
+利用 K-L 差異度來進行 ρ-GGD 與 Laplacian 兩種模型的準確度比較。整體來說，ρ-GGD 模
+型在各頻帶中的表現除了在 LH 頻帶外，都較 Laplacian 有非常顯著的改進。 
+Table E-2. K-L divergences of two source models for the 2-D DWT coefficients for image “Lena”. 
+Band 
+Index 
+Model 
+HL LH HH LL-
+HL
+LL-
+LH
+LL-
+HH
+Laplacian 0.22 0.07 0.03 0.68 0.52 0.42
+ρ-GGD 0.16 0.08 0.03 0.22 0.21 0.20
+ 
+  24
+像/視訊小波轉換參數進行機率分佈的模擬，較傳統 Laplcian 作法準確且可在影像與視訊兩
+種情況都可得到良好的實驗結果。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  26
+[14] H. Schwarz, D. Marpe, and T. Wiegand, “Inter-layer Prediction of Motion and Residual Da-
+ta,” ISO/IEC JTC 1/SC 29/WG11/M11043, 2004. 
+[15] H. Schwarz, D. Marpe, and T. Wiegand, “Hierarchical B Pictures,” ISO/IEC 
+JTC1/SC29/WG11 and ITU-T SG16 Q.6, JVT-P014, 2005. 
+[16] Y.-D. Zhang, F. Dai, and S.-X. Lin, “Fast 4x4 Intra-prediction Mode Selection for H.264,” 
+IEEE International Conference, vol. 2, 27-30 June 2004, pp. 1151-1154. 
+[17] F. Pan, X. Lin, R. Susanto, K. P. Lim, Z. G. Li, G. N. Feng, D. J. Wu, and S. Wu, “Fast Mode 
+Decision Algorithm for Intra Prediction in JVT,” ISO/IEC JTC1/SC29/WG11 and ITU-T 
+SG16 Q.6, JVT-G013, 2003. 
+[18] C.-L. Yang, L.-M. Po, and W.-H. Lam, “A Fast H.264 Intra Prediction Algorithm Using Ma-
+croblock Properties,” International Conference, vol. 1, 24-27 Oct. 2004, pp. 461-464. 
+[19] Z. Zhou and M.-T. Sun, “Fast Macroblock Inter Mode Decision and Motion Estimation for 
+H.264/MPEG-4 AVC,” International Conference, vol. 2, 24-27 Oct. 2004, pp. 789-792. 
+[20] P. Yin, H.-Y.C. Tourapis, A.M. Tourapis, and J. Boyce, “Fast Mode Decision and Motion 
+Estimation for JVT/H.264,” Proceedings of International Conference on Image Processing, 
+2003, pp. 853-856. 
+[21] K.-H. Han and Y.-L. Lee, “Fast Macroblock Mode Decision in H.264,” IEEE Conference, vol. 
+A, 21-24 Nov. 2004, pp. 347-350. 
+[22] C. Grecos and M.-Y. Yang, “Fast Inter Mode Prediction for P Slices in the H.264 Video Cod-
+ing Standard,” IEEE Transactions, vol. 51, Issue 2, June 2005, pp. 256-263. 
+[23] J. Lee and B. Jeon, “Fast Mode Decision for H.264,” ICME 2004, vol.2, June 2004, pp. 
+1131-1134. 
+[24] F. Zhang and X. Zhang, “Fast Macroblock Mode Decision in H.264”, ICSP 2004 7th Interna-
+tional Conference, vol. 2, 31 Aug.-4 Sept. 2004, pp. 1179-1182. 
+[25] L. Xiong, “Reducing Enhancement Layer Directional Intra Prediction Modes,” ISO/IEC 
+JTC1/SC29/WG11 and ITU-T SG16 Q.6, JVT-P041, 2005. 
+[26] L. Yang, Y. Chen, J. Zhai, and F. Zhang, “Low Complexity Intra Prediction for Enhancement 
+Layer,” ISO/IEC JTC1/SC29/WG11 and ITU-T SG16 Q.6, JVT-Q084, 2005. 
+[27] H. Li, Z.-G. Li, and C.Wen, “Fast Mode Decision for Coarse Grain SNR Scalable Video 
+Coding,” IEEE Int’l Conf. on Acoustics, Speech and Signal Processing, 2006. 
+[28] H. Li, Z.-G. Li, and C. Wen, “Fast Mode Decision Algorithm for Inter-Frame Coding in Fully 
+Scalable Video Coding,” IEEE Trans. Circuits Syst. Video Technol., vol. 16, no. 7, pp. 
+889-895, 2006. 
+[29] H.-C. Lin, W.-H. Peng, and H.-M. Hang, “A Fast Mode Decision Algorithm with Macrob-
+lock-Adaptive Rate-Distortion Estimation for Intra-Only Scalable Video Coding,” IEEE Int’l 
+Conf. on Multimedia and Expo, 2008 
+  28
+G. 計畫成果自評 
+多媒體服務是寬頻無線網路的最重要應用之一。本計畫重點在先進音、視訊標準編碼
+的演算法加速與實作，也開發設計適合在無線網路上傳送串流多媒體的視訊編碼法設計。本
+專題研究將承繼我們過去的經驗與前人的成果，進一步設計發展解決問題方式。所發展出的
+技術、經驗及成品極具實用價值，可促進國內工業研發技術開發。 
+參與工作人員(研究生)在學理上習得音訊與視訊編碼技術與國際標準。針對寬頻無線網
+路，設計開發可調式編碼等演算法，成員得到此課題研究與開發產品的經驗與知識。畢業後
+進入產業，直接有助於產業界開發新產品，提昇我國工業技術能力，達到人才培育之目的。 
+綜合評估：研究內容與原計畫進度與內容大致相符，已達成學術研究創新與人才培育之
+預目標。整體成效良好。研究成果頗具學術與應用價值，承繼之前的同一系列研究項目，已
+發表五篇學術會議論文，及碩士學位論文二冊如下表。 
+ 
+ 
+ 
+ 
+表 Y04 1
+行政院國家科學委員會補助國內專家學者出席國際學術會議報告 
+                                                              97 年 10 月 22 日 
+報告人姓名 杭學鳴 
+林鴻志 
+蔡家揚 
+服務機構
+及職稱 
+國立交通大學電子工程學系教授 
+國立交通大學電子工程學系博士班
+研究生 
+     時間 
+會議 
+     地點 
+97年 6月 23日 至          
+97年 6月 26日 
+德國 漢諾威 
+本會核定
+補助文號
+96-2221-E-009-063 
+會議 
+名稱 
+ (中文)國際電子電機學會多媒體與展示會議 
+ (英文) IEEE International Conference on Multimedia and Expo 
+發表 
+論文 
+題目 
+Wei-Nien Chen and Hsueh-Ming Hang, “H.264/AVC Motion Estimation 
+Implementation on Compute Unified Device Architecture (CUDA)” 
+Hung-Chih Lin, Wen-Hsiao Peng, and Hsueh-Ming Hang, “A Fast Mode Decision 
+Algorithm with Macroblock-Adaptive Rate-Distortion Estimation for Intra-Only 
+Scalable Video Coding” 
+Chia-Yang Tsai and Hsueh-Ming Hang, “rho-GGD source modeling for wavelet 
+coefficients in image/video coding” 
+ 
+一、參加會議經過 
+    今年度的國際電子電機學會多媒體與展示會議(IEEE International Conference on 
+Multimedia and Expo, ICME)於德國漢諾威舉辦，會議時程共計四天，自 6月 23日開始至
+6月 26日結束。會議的地點位於漢諾威會議中心（Hannover Congress Centrum），位於中
+心火車站約 15分鐘的車程。本次參與會議我們共有三篇論文發表。 
+    ICME 為多媒體領域中為每年重要之會議之一。其涵蓋的技術領域相當廣泛，舉凡多
+媒體方面的各項相關議題，包含影像、視訊、音訊、等編碼演算法及其硬體設計，多媒體
+資料儲存、處理與分析、多媒體傳輸與網路架構等技術，甚至還包含了醫學影像與辨識等
+相關議題，今年另外還有六場 Special Session針對單一技術作深入探討。此次 ICME會議
+共有 803篇論文投稿，經大會審核後有 26篇的 Special Session論文與 392篇 Regular論文
+被接受，接受率約為 50%。 
+    我們此次參加 ICME 會議主要為報告所投稿之論文，共有三篇。第一篇論文為：
+「H.264/AVC Motion Estimation Implementation on Compute Unified Device Architecture 
+(CUDA)」。所發表的論文型式為海報展覽形式（Poster）。內容為如何有效地運用 NVIDIA
+所提出的統一運算單元架構（Compute Unified Device Architecture, CUDA）硬體架構來將
+H.264/AVC 視訊編碼標準的動作偵測（Motion Estimation）做平行化的計算，以加速編碼
+過程。由於顯示處理器的快速發展，近年來漸漸發展出將顯示處理器應用於非圖形的運
+算，以輔助中央處理器，此技術通稱為 GPGPU。美國 NVIDIA公司在 2007年提出一個全
+表 Y04 3
+二階動量(moment)與第四階動量進行參數估計，其複雜度過高。因此在本篇論文中，我們
+基於以下兩點進行廣義高斯模型的改良，提出新形態模型與複雜度低之參數估計演算法。
+1. 引入零值機率做為機率模型參數: 零值機率(zero-value probability)可簡單的在統計小波
+訊號時得到，我們定義此零值機率之值為 rho，並由此引導出新的機率模型「rho-廣義
+高斯分佈模型」。 
+2. 進行分段式線性參數估計: 分析在影像/視訊中之參數值分布情況，在此參數值分佈區
+內分段進行線性估計，以獲得 rho-廣義高斯模型之參數，由於是線性估計，可利用查
+表方式再降低參數估計之複雜度。 
+經由以上兩點之方法，可有效率求得準確之機率模型參數，並且在模型準確度上較傳統
+Laplacian高出許多。 
+報告時間被大會排定為 6/25早上第一個 session, 報告時間約為 17分鐘, 含提問時間
+共 20分鐘. 報告過程順利，僅被提問一個問題。被提問之問題為傳統廣義高斯模型建立方
+式，於報告之投影片中內容有提及。除了進行投稿論文之報告外，並參加相關領域 session
+聽取有興趣的幾篇論文，包含 H.264相關演算法、分散式視訊編碼(distributed video coding)
+等等。 
+ 
+ 
+二、與會心得 
+此次參加 ICME會議, 除了展示自己投稿之論文以外，也聽取了多篇與視訊壓縮領域
+的相關報告。由於大會有提供每一天會議的時程表，可以很容易找到自己感興趣的論文的
+場次時間，在實際參與會議過程中，發現會議中論文在視訊壓縮部份的研究方向主要有幾
+個：硬體架構實現與影像顯示卡應用、系統應用、可調式視訊編碼(SVC)、多視角視訊編
+碼(Multi-view Video Coding, MVC)、分散式編碼(Distributed Video Coding)與平行運算處理
+技術(Multimedia Signal Processing in Graphics Processors with Hundreds of Cores)幾個部
+份。然而，本次會議中針對編碼理論(Source Coding)探討的論文數量偏低，期可能之原因
+在於編碼理論之基礎大部分已於上世紀成熟發展。現在多媒體的領域已經朝向各種應用層
+面做發展，而單純的編碼理論探討反而偏少。目前主要幾個較熱門的研究方向有：編碼的
+硬體架構實現與平行化運算、系統應用、可調式視訊編碼、多視角視訊編碼、分散式編碼，
+甚至醫學影像處理(Medical Image Processing)等跨領域的技術也討論也非常豐富。 
+    在硬體實現部份，由於我們的研究領域屬於視訊編碼，因此對於視訊編碼相關的論文
+會比較感興趣，也比較容易切入到論文的重點。雖然在視訊編碼領域中，移動向量估測為
+一重要之編碼工具，已被研究探討長達十多年之久，但是仍可在本次會議中看到不少針對
+視訊編碼演算法的加速與實現，尤其以 H.264/AVC視訊編碼標準居多，更集中在移動向量
+估測(Motion Estimation)的改進。另外，亦見識到 H.264/AVC 編碼標準快速演算法設計的
+一些其他想法，期待這些經驗可以對學生的博士論文研究有所幫助。 
+    在會場的一樓大廳內，有展示了許多現場Demo，其中比較有印象的展示有兩個。第
+表 Y04 5
+五、其他 
+    感謝國科會、教育部、交大研發處的贊助，補助教師與學生出國參加國際會議的經
+費。                                                                          
+ 
+表 Y04 2
+多核心間的指令集分配(Scheduling)便成為平行化運算的關鍵。若我們以更廣義的方式來觀
+查這個問題，當我們的硬體架構內有許多的硬體模組，每個模組擁有自己獨特的運算能力，
+如 FPGA、CPU 核心、ASIC 等。當硬體進行運算時，指令集於各模組間的分配就更為重
+要了。因此，編譯器(Compiler)必須具有強大的分析程式語言能力，並且可以針對軟硬體特
+性來進行指令集的編碼與分配。在研究此主題的過程中，必須針對許多不同運算特性的高
+階程式進行分析，以符合泛用的需求；視訊編碼程式便成為非常好的研究樣本。 
+H.264/AVC 的高壓縮率來自於各種編碼工具(Coding tool)的複雜演算法，如 DCT、動
+態估測 (Motion estimation)、內部預測 (Intra prediction)、內容適應性二位元算術編碼
+(Context-adaptive binary arithmetic coding)等等；也因此造就編碼之高複雜度。在 H.264 中
+的各種工具間彼此可以是獨立的運算模組，其演算法皆截然不同，但又因演算法最佳化的
+關係造成運算模組間的關聯性，如：宏塊模式決定(Mode decision)。這種在運算上既獨立
+又具關聯的架構，便成為用來驗證平行運算非常好的題材。效率高的平行運算方法，預期
+將可以使得視訊編碼程式的工具與硬體模組進行某種程度的聯結，並且可以利用程式的分
+析，將程式模組間的關聯性所造成的硬體運算效率損失降低。也由於複雜度可以分散至各
+硬體模組，理論上將可以使 H.264/AVC 的即時編解碼實現。 
+顯示卡晶片的大廠 NVIDIA 為了讓使用者可以直接對 GPU 作處理，發展了一套泛用
+功能的 GPU 處理工具，其新一代平行化運算之硬體架構稱作 CUDA (Compute Unified 
+Device Architecture)，使用者不需要額外接觸新的程式語言，可以直接延用使用 C 語言的
+程式在 GPU 上執行。 
+ 
+ 
+圖一 CPU 和 GPU 的不同 
+ 
+一般影像處理是對不同的像素(pixel)作一樣的運算，所以通常可以用平行化的多核心
+架構來作處理，也就是一個指令對不同的像素作一樣的運算，而由不同的處理器對不同的
+像素作一樣的運算來達成。用來處理這類型的運算稱作 GPU(Graphics Processor Units)，和
+一般 CPU 不同的地方在於，如圖一所示，它是由比較簡單的資料流控制單位(Control unit)
+和快取記憶體(Cache)，以及許多個較簡單的算術邏輯單位(ALU)組成的，目前的顯示卡大
+多採用此架構。GPU 可以當作是一個資料平行處理(Data-parallel processing)的運算裝置，
+也就是同樣的程式同時對不同的資料作平行處理，也因此 GPU 的資料流控制單位比 CPU
+簡單，但是處理的資料量大，故算術邏輯單位較多。而資料平行處理機制是把不同的資料
+表 Y04 4
+Host
+Kernel 
+1
+Kernel 
+2
+Device
+Grid 1
+Block
+(0, 0)
+Block
+(1, 0)
+Block
+(2, 0)
+Block
+(0, 1)
+Block
+(1, 1)
+Block
+(2, 1)
+Grid 2
+Block (1, 1)
+Thread
+(0, 1)
+Thread
+(1, 1)
+Thread
+(2, 1)
+Thread
+(3, 1)
+Thread
+(4, 1)
+Thread
+(0, 2)
+Thread
+(1, 2)
+Thread
+(2, 2)
+Thread
+(3, 2)
+Thread
+(4, 2)
+Thread
+(0, 0)
+Thread
+(1, 0)
+Thread
+(2, 0)
+Thread
+(3, 0)
+Thread
+(4, 0)
+           
+Host
+Device
+Multiprocessor N
+Multiprocessor 2
+Multiprocessor 1
+Device memory
+Shared Memory
+Instruction
+Unit
+Processor 1
+Registers
+…Processor 2
+Registers
+Processor M
+Registers
+Constant
+Cache
+Texture
+Cache
+Global, constant, texture memories
+ 
+圖二 Grid、Block 與 thread 之層狀關係                    圖三 GPU 之記憶體架構 
+ 
+如圖三所示，GPU 是由數個多核心處理器所構成(Multi-processor)，每個多核心處理器
+的基本架構都是單一指令，數筆資料(Single instruction multiple data，SIMD)，在每個時脈
+迴圈(Clock cycle)裡，每個多核心處理器內部的單一處理器是對不同的資料作一樣的運算。
+如圖三所示，每個多核心處理器有四種在同一晶片上(On-chip)的記憶體：(1)多核心處理器
+內部的每個處理器各有一個 32 位元暫存器(Register)，(2)多核心處理器內的每個處理器共
+享一個共享記憶體 (Shared memory)， (3)共用的且唯讀 (Read-only)的常數快取記憶體
+(Constant memory)，(4)共用的且唯讀(Read-only)的組織快取記憶體(Texture memory)。而裝
+置和本端的溝通就是藉由裝置上的裝置記憶體(Device memory)。 
+ 
+(Device) Grid
+Constant
+Memory
+Texture
+Memory
+Global
+Memory
+Block (0, 0)
+Shared Memory
+Local
+Memory
+Thread (0, 0)
+Registers
+Local
+Memory
+Thread (1, 0)
+Registers
+Block (1, 0)
+Shared Memory
+Local
+Memory
+Thread (0, 0)
+Registers
+Local
+Memory
+Thread (1, 0)
+Registers
+Host
+ 
+圖四 記憶體存取 
+ 
+如圖四所示，在裝置上的每個執行緒可以對暫存器、在地記憶體(Local memory)、共
+享記憶體、全域記憶體(Global memory)做讀寫的動作，但只能對常數記憶體(Constant 
+memory)和組織記憶體(Texture memory)做讀取的動作，而本端可以讀寫總體記憶體、常數
+表 Y04 6
+(3) 每個執行緒用來計算不同的畫面間預測的模式的 sum of absolute difference(SAD)。
+(4) 在彩度(chrominance)的部份，u 和 v 兩個成份由同一個執行核心下的不同的執行緒
+處理。 
+ 
+而使用 CPU 和 CUDA(GPU)的比較結果如表一所示。 
+ 
+圖七 不同的時間軸上的取樣頻率及採用重建區塊及原始區塊的結果 
+ 
+ PC (msec) CUDA (msec) Speed up (%) CUDA using one thread(msec) 
+Intra_16x16 4.06 0.63 644% 265 
+Intra_4x4 15.94 0.92 1732% 753 
+Intra_chroma 2.19 0.31 706% 93 
+Total 22.19 1.86 1193% 1112 
+表一 CPU 和 GPU 的結果比較 
+ 
+     接下來是動態估測(motion estimation)的平行化處理，可分為五個步驟來實現： 
+(1) 4×4 區塊的 SAD 計算，每個執行核心的區塊(block)各有 256 個執行緒，每個執行
+緒處理一個 4×4 區塊的 SAD。 
+(2) 不同的區塊大小的 SAD 的計算，一個執行緒抓取 16 個 SAD，一個區塊有 256 個
+執行緒，每個執行緒一次可以處理最大到一個 16×16 區塊的 SAD。 
+(3) SAD 的比較，一次抓取 1024 個 SAD，然後第一次比較用 256 個執行緒，每個執行
+緒一次處理 4 個 SAD，故第一次是一次比較 4 個 SAD，之後 256 個執行緒結果的
+256 個 SAD 再一次比較 2 個直到最後的結果。 
+(4) 內插(interpolation)，第一個執行核心先產生 half-pixel，第二個執行核心產生
+表 Y04 8
+(C) 方向拆解(directional decomposition)研究 
+跟同在伊利諾大學香檳分校的 Minh N. Do 作過一些討論，目前本實驗室除了在研究有
+關方向拆解的編碼方法外，因為二維方向濾波器在長度(length)和銳利度(sharp)的權衡
+(trade-off)，所以一直不是有很好的表現，不過倒是可以想辦法用在高頻的訊息作處理，尤
+其是 MCTF 的方面，因為高頻的方向性的訊號較多的緣故，說不定會有不錯的表現。而目
+前 Minh N. Do 教授的實驗室除了 multi-view 之外，也在嘗試用三維(2 個空間軸和 1 個時間
+軸)的方向性訊號來移除視訊中的雜訊，目前有不錯的成果，也可以給本實驗室另一個新的
+研究方向 
+ 
+(D) 心理聲學研究與音訊編碼 
+藉由這次訪問，我們拜訪了 Jont Allen 教授。Allen 教授之前曾經做過音訊編碼 (Audio 
+Coding)，目前研究方向為語音(Speech)方面心理聲學的研究。 
+Allen 教授展示了一個有趣的研究結果，這個展示是關於人耳對於 Ka, Ta, Ma 這三個相
+近發音的判斷。首先是 On set 對主導整個判斷，當蓋掉或加入 noise 在聲音時間軸上前端
+一小部分時，可以聽到聲音改為另一個聲音。之後為 Masking 的影響，將聲音的一部份頻
+帶蓋掉後，我們仍能清楚的辨識這個發音。這個實驗可以幫助在壓縮語音時，哪些部分是
+可以去除以減少資料量，哪些部分則必須特別注重，甚至用更多的位元去編碼。 
+在詢問問題方面，首先我們問他關於音訊壓縮之國際會議。他提到 AES 為主導音訊壓
+縮標準之主要會議。其次在問到聽覺訓練方面，他覺得每個人的差異極大，還是得找到聽
+的出 defects 的人。他以前的經驗，他往往無法聽出來他同事認為品質很差的音樂。另外，
+他有提到 AES 有一片 CD，裡面有各種不同的 defects，可以做為參考。 
+最後問到的問題是 Hearing Threshold (聽力閾值)的計算。當音樂在播放時，每個人使
+用的 play level (播放音量)是不同的。由於 Hearing Threshold 與 play level 有關，在不知道
+play level 時，該如何計算 Hearing Threshold。教授提到，這部分確實是個複雜的問題，尤
+其在聽覺辨識上更是重點。他認為 Hearing Threshold 可以定義為第一個 intensity JND (Just 
+Noticeable difference)，而 intensity JDN 可用為 Weber’s Law 計算。他認為 Weber’s Law 不
+是很好逼近公式，因而提了他們之前的研究成果。 
+ 
+三、 心得 
+(1) 杭學鳴老師 
+這項國際合作計畫就我方而言，有兩個目的: 一是專業上的合作。兩邊的專長是互
+補的。胡文美教授團隊長於平行架構與實踐，我們則對多媒體標準和演算法較熟悉，因
+此雙方合作，希望產出各別團隊不易達成的項目。 
+其次是學生的國際經驗歷練。資訊產業是全球競爭的產業，大家都熟知。我們亦希
+望國內栽培的學生有國際視野與經驗。最自然方式是經由國際合作計畫，到外國實驗室
+實地工作一段時間。一個月時間不太長，但大致達到上述兩個目的。 
+ 

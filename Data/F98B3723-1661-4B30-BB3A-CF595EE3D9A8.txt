@@ -1,0 +1,255 @@
+this memory management policy doesn’t consider the 
+difference of user behaviors. It always uses the same 
+policy. So the OS may kill the processes which the 
+user want to keep, and cause frequent memory access. 
+To solve the issue, we propose an adaptive memory 
+management mechanism on Android. We collect and 
+analyze system logs of user behavior. According to 
+the analysis result, our system can switch the 
+current memory management algorithm to the most 
+appropriate algorithm for the user adaptively. Our 
+goal is to reduce the integrated application response 
+time. And the testing result show that our mechanism 
+can reduce the process miss rate for most 39%, and 
+the response time can be reduced for 14%, improve 
+user experience effectively. 
+英文關鍵詞： Android, user behavior, adaptive, memory management, 
+response time 
+ 
+I 
+ 
+摘要 
+Google所開發的 Android作業系統在近幾年成為成長最快速的作業系統平
+台，而 Android的記憶體管理策略跟以往的作業系統也有著很大的差異。一般常
+見的作業系統如 windows在執行應用程式時，會分配記憶體位置給該應用程式，
+程式結束後便釋放記憶體空間以維持系統有足夠的記憶體。而 Android平台中的
+應用程式在關閉後並沒有把它從記憶體裡清除，而是留在記憶體裡，主要原因是
+為了快取。手機等行動裝置的即時性需求是非常的高的，如此便能有效地減少再
+次載入記憶體的時間，當剩餘記憶體不足時才會開始清理記憶體空間供所需的程
+式使用。但是其內建的記憶體清除機制並未考慮的每個使用者的相異的使用情形，
+而是採取同一套記憶體管理機制，可能會清除那些我們不希望從記憶體裡被清除
+的程式，造成頻繁的記憶體存取，進而使整體系統效能受到影響。為了改善此問
+題，本計畫提出了一套在 Android上的動態切換記憶體管理演算法策略。我們蒐
+集使用者行為模式之記錄檔，並對這些紀錄進行分析，根據分析結果對記憶體管
+理方法做動態的切換，找到適合該使用者的記憶體管理機制，以達到降低整體的
+應用程式反應時間之目的。而最後測試的數據也顯示出：使用本系統後應用程式
+載入記憶體的 miss rate最多可以降低 39%，整體的反應時間則可以降低到 14%，
+有效地改善了使用者經驗。 
+ 
+關鍵詞：Android、使用者行為、動態、記憶體管理、反應時間 
+  
+1 
+ 
+1. 前言 
+1.1. 概要 
+現在智慧型手機等手持行動裝置的普及率越來越高，使用的族群也越來越廣，
+無論是學生、商務人士、上班族等族群幾乎是人手一機。這些裝置的作業系統也
+是百家爭鳴，近年來以 Android系統的使用者成長速度最為可觀的。Android 是
+Google為手持式行動裝置所開發的作業系統，建立在 Linux kernel上，並採用
+開放原始碼的概念。Android 使用特製的、針對較小的記憶體所設計的虛擬機器
+(virtual machine)來進行對整個系統的管理。Android的系統架構大致可分為
+四層，從上到下分別是 Application層、Framework層、Library層以及 Kernel
+層，如下圖（一)所示。上兩層是使用 Java語言所設計，而下兩層則是使用 C
+語言，此種分層架構能讓整體系統的開發更加的簡單及穩定。 
+ 
+圖（一) 
+1.2. 研究動機 
+ 在手持式智慧型行動裝置上，實體記憶體大小的限制是一個非常重要的議題。
+因為行動裝置尺寸大小的限制，使其無法像一般桌上型電腦一樣擁有較大的記憶
+體供系統使用。而行動裝置的即時性需求又是非常高的，使用者通常希望能在短
+時間內完成他們的工作，比如說收發電子郵件、查看行事曆、搜尋地圖等等。如
+果作業系統花太多的時間在將應用程式載入記憶體中再執行，那整體的應用程式
+反應時間將會大大的增加，影響使用者使用的流暢度。所以說如何最有效地利用
+3 
+ 
+2. 研究背景 
+2.1. Android application components 
+ Application components 為 Android應用程式的基本元件。一個 Android
+的應用程式可由一個或多個 application components所構成，每個 component
+都有不同的功能，一共有四種型態的 component供程式開發者使用，如下所示： 
+ Activity：為一個視窗化的使用者介面，供使用者與該應用程式進行互動。
+舉例來說，當使用者要收電子郵件時，就必須要有一個郵件列表的 activity，
+點進去其中一封信件之後就會開啟該信件的內容，也就是另一個新的
+activity。 
+ Service：此元件並沒有使用者介面，而是在背景執行需要長時間進行的工
+作，像是音樂撥放程式。 
+ Content Provider：一個提供資料共享的元件，讓各個應用程式都能夠對其
+存取資料。 
+ Broadcast Receiver：用來接受系統或自訂的廣播訊息的元件，大部分的訊
+息是來自系統的，像是開關螢幕等訊息。 
+2.2. Android記憶體管理機制 
+ 每個在 Android上執行的應用程式都是一個 process，當應用程式要執行時，
+Android會把它載入記憶體中執行，但是在使用者結束使用時並沒有把它從記憶
+體中刪除，而是留在記憶體中做為快取之用，以省去下次要再載入記憶體所花的
+時間。等到系統剩餘記憶體不足時才開始依 process的優先順序刪除 process
+以釋放記憶體空間。Android 採用階層式的方法來區分 process的重要程度，可
+分為五個階層，重要程度如下面列表，由高到低排列： 
+ Foreground process：正在與使用者進行互動的 process，通常同時只有少
+數的 process屬於這個類別。 
+ Visible process：雖然沒有在與使用者進行互動，但是使用者還是看的到
+他的一部分，仍然會影響使用者的視覺。 
+ Service process：含有 service的 process，會在背景執行工作。 
+ Background process：process的所有 component都為不可視的情形，且不
+包含 service，此種 process占了大多數的比例，也就是說，有很多這種
+process同時在記憶體中。而 Android使用 LRU演算法來管理這些 process，
+越久沒用到的重要程度就會越來越低。本計畫對於記憶體的管理就是針對這
+個部分來進行改善。 
+5 
+ 
+體裡面了。所以如果想要提升其平均反應時間，必須想辦法降低使用該程式的
+miss rate。整體應用程式的反應時間其實就是各應用程式平均反應時間的加權
+值，所以要提升整體應用程式的反應時間，就必須盡可能地降低整體程式的 miss 
+rate。 
+Android使用固定的 LRU演算法進行記憶體管理，而在這裡我們提出了一個
+動態切換記憶體管理演算法的機制。我們藉由蒐集系統的紀錄檔，觀察並分析使
+用者的對於各種應用程式的使用情形，之後模擬套用五種不同的演算法後的結果，
+選擇模擬結果中 miss rate 最低的演算法作為我們記憶體管理的演算法，再用此
+演算法進行記憶體的管理，以達到降低整體 miss rate和整體反應時間的目的。 
+而我們所提供的五種演算法都是這個領域常被用到的演算法，如下： 
+ LRU (Least Recently Used)：最久沒被用到的 process最優先被刪除，依
+此類推。 
+ MRU (Most Recently Used)：跟 LRU相反，最近被用到的優先刪除，依此類
+推。 
+ Frequency：根據使用的頻率做判斷，使用頻率較低的優先刪除 
+ Memory Size：根據 process所占用的記憶體空間做判斷，占用越多的越優
+先刪除。 
+ Second Chance：基於 LRU演算法，增加一個參考位元(referenced bit)來
+避免突發干擾狀況的發生。比如說有些應用程式平常幾乎不會被用到，久久
+才被用到一次，在此演算法下就會優先被刪除。 
+3.2. 系統架構 
+ 我們的系統包含了三個主要的部分，Log Collector、Emulator、和 Memory 
+Manager。本系統只會在使用者關掉裝置的螢幕後被觸發，以避免影響使用者目
+前要從事的工作。系統架構圖如下圖（二)所示： 
+ 
+圖（二) 
+Log Collector主要的目的在於蒐集以及分析系統的紀錄檔。Logcat 是
+7 
+ 
+應時間，再重新編譯 Android 的系統到模擬器上執行。我們的模擬器在三種不同
+硬體的主機平台上進行測試，如下表（一)所示：  
+ 
+表（一) 
+4.2. 實驗數據 
+ 下表（二) 和表（三)分別是我們測得之 miss rate以及反應時間，我們一
+共測試了 8組使用者應用程式序列。表（二)中我們提出的 adaptive方法比
+Android的 default方法改善了最多 39.1%，平均也有 18.6%。而這個結果代到
+在三種不同平台上我們測得的各個應用程式的反應時間後可以得到表（三)的結
+果，反應時間的改善的從 11.90%到 14.32%，跟我們預期的結果相差不遠。 
+  
+              表（二)                            表（三) 
+而下面表（四)到表（六)分別是各組資料在上述不同平台上測得之反應時間。
+default是 android預設的記憶體管理演算法，adaptive則是我們提出的動態切
+換方法，可以看出反應時間都比 Android原本的方法減少 5%到 25%左右。 
+ 
+ 
+表（四) 
+反應時間(秒)                  platform 1                
+9 
+ 
+參考文獻 
+[1] Android developers, http://developer.android.com/index.html 
+[2] Hossein Falaki, Ratul Mahajan, Srikanth Kandula, Dimitrios Lymberopoulos, 
+Ramesh Govindan, Deborah Estrin. Diversity in Smartphone Usage. MobiSys (2010). 
+ 
+出席國際會議報告書 
+謝錫堃  電機系 
+中文摘要： 
+ICPADS2011 (2011 IEEE International Conference of Parallel and Distributed 
+Systems)將由本校主辦，本人擔任 General Co-Chair，受邀於上海舉辦的 ICPADS2010閉
+幕典禮上向所有與會者報告籌備情形。ICPADS2010舉辦時間為 Dec. 8-10, 2010，本人
+12月 7日搭機到達上海，全程參與會議，以便了解大會的辦理情形，並將 ICPADS 2011
+的 Call-for-Paper 提供給與會者，同時也認識參與此會議的國際學者，最後在閉幕典禮
+上介紹下年度會議主辦單位、大會籌備委員、會議地點、住宿旅館及台灣經濟發展，吸
+引很多與會者的注意與興趣。這次的與會，相信對本校成功辦理 ICPADS2011絕對有
+很大的幫助。 
+  
+英文摘要： 
+ICPADS (2011 International Conference of Parallel and Distributed Systems) will be hosted by NCKU 
+in 2011. I serve as the General Co-Chair of this conference and was invited to present the current status 
+of the conference in preparation on the closing ceremony of ICPADS 2010. ICPADS 2010 were held in 
+Shanghai, China in December, 8-10, 2010, right after the World Expo in Shanghai. I arrived at 
+Shanghai on Dec. 7 and join the conference every day. On the closing ceremony, I introduced NCKU: 
+the host, organizing committee, venue and accommodation of the ICPADS 2011 for all of the audience. 
+I believe this presentation have attracted the attention of the audience of the ICPADS 2010.  
+ 
+一、出席目的 
+ICPADS2011 (2011 IEEE International Conference of Parallel and Distributed 
+Systems)將由本校主辦，本人擔任 General Co-Chair，受邀於上海舉辦的 ICPADS2010閉
+幕典禮上向所有與會者報告籌備情形；包含:主辦單位、大會籌備委員、會議地點、住
+宿旅館及台灣經濟發展，以便吸引很多與會者的注意與興趣。 
+ 
+ 
+二、出席過程 
+2010年 12月 7日早上 7:20搭乘華航 CI-0581(回程 CI-0582)班次於高雄機場
+起飛，約 2個小時的飛行時間抵達上海浦東機場，出關後搭乘 Bus抵達會議地點。
+大會地點是在上海市中心衡山賓館，對於國外與會者非常方便。 
+ 大會第一天安排整天的 workshop論文發表，總共有 5個並行場次，每個場
+次參與的人並不多，有些是個位數，最多的場次人數大約有 20多人。 
+交通大學校區內)及台灣的重要國際會議都安排在台北的主要原因。唯這樣的安
+排往往失掉讓國外與會者了解主辦學校學風與進步的情況。國內高鐵已經將台灣
+變成一日生活圈，南北往返非常快速便捷，台南是台灣古都，有豐富的古蹟，又
+有五星級飯店，本校歷史悠久，學豐純樸，各領域都發展的很完整及先進，很值
+得讓外人來參訪，建議本校未來主辦的國際會議儘可能在校內主辦，讓國外與會
+者多一些機會了解成大進步的情形。這也是 ICPADS2011將主辦地點安排在本校
+舉行的一個重要的原因，希望未來其他會議也儘可能安排在本校舉辦。 
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：謝錫 計畫編號：99-2220-E-006-012- 
+計畫名稱：基於 Android 平台之多核心系統效能分析器與平行程式除錯器(嵌入式系統軟體技術開發分
+項) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 2 2 100%  
+博士生 2 2 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

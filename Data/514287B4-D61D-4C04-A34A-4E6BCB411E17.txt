@@ -1,0 +1,720 @@
+II 
+ 
+摘要 
+ 
+ 近年來，字樣比對技術已被應用於處理網路資訊安全議題，諸如入侵偵測、
+病毒掃描及反垃圾郵件等。知名的 Aho-Corasick(AC)演算法能同時比對多個字
+樣，並具有最差情況下的效能保證，因此被廣泛採用。然而，隨著傳輸技術的發
+展，在高速網路環境中，採用 AC演算法已跟不上資料傳輸的速度，再者，在字
+樣總長度大的情況下，AC 演算法將需要極大的記憶體空間以存放比對所需的二
+維狀態轉換表。在本成果報告中，我們首先提出一項新的設計，可有效壓縮 AC
+演算法的資料結構。施以多種先前提出的壓縮技術，狀態轉換表所占空間皆仍與
+字樣總長度成正比關係，相反地，我們提出的設計則能將狀態轉換表壓縮成僅與
+字樣個數成正比（不被字樣總長度影響）。除此之外，我們進而提出一包含狀態
+性預先過濾器及以 AC 演算法為基礎的驗證模組的架構。其中我們引入了狀態性
+預先過濾的概念，所謂狀態性係參考過去的過濾結果(而非只參考當下的狀態)
+來決定當下的過濾結果，並以簡單的位元串實現之。此實現方法等效於參考所有
+過去的過濾結果，故為最佳的實現方法。相較於多項先前技術，我們提出的架構
+在比對效能及記憶體使用量這兩方面都有顯著的進步。 
+ 
+關鍵詞：Aho-Corasick演算法、布隆過濾器、深度封包檢測、字樣比對 
+ 
+1 
+ 
+1. INTRODUCTION 
+Pattern matching has been an important technique in information retrieval and text editing for many years.  
+Because of its accuracy, it has recently been adopted in network security appliances for signature matching 
+to detect malicious attacks.  In the wide sense, pattern matching is a problem of searching for occurrences 
+of plain strings and/or regular expressions in an input text string.  In this paper, we only consider matching 
+of plain strings. 
+There are some well-known pattern matching algorithms such as Knuth-Morris-Pratt (KMP) [1], 
+Boyer-Moore (BM) [2], and Aho-Corasick (AC) [3].  The KMP and BM algorithms are efficient for 
+single pattern matching but are not suitable for multiple patterns.  The AC algorithm pre-processes the 
+patterns and builds a finite automaton which can match multiple patterns simultaneously.  Another 
+advantage of the AC algorithm is that it guarantees linear-time deterministic performance under all 
+circumstances.  As a consequence, the AC algorithm is widely adopted in various systems.  However, 
+even with the linear-time worst-case performance guarantee, the throughput of the AC algorithm cannot 
+keep up with wire speed in a high-speed network because of the rapid advances in transmission and 
+switching technologies.  To achieve high throughput performance, some hardware accelerators of the AC 
+algorithm were proposed previously [4]−[6]. These designs take advantage of hardware capability for 
+massive parallel processing.  As an example, the bit-split design proposed in [5] adopts multiple 
+processing engines, each handles a few bits of a symbol, to execute the AC algorithm.  A consequence of 
+using multiple processing engines is that the number of transitions and hence memory requirement is 
+reduced.  High throughput performance can be achieved if multiple processing engines work concurrently.  
+These processing engines can of course be serialized for software implementation.  However, serialization 
+impacts throughput performance significantly.  It is possible to take advantage of multi-thread, multi-core 
+features of processors for parallel processing.  How to efficiently implement pattern matching algorithms 
+on such a processor, which is not the focus of this paper, is left as a further research topic. 
+Another problem of the AC algorithm is its potential huge memory space requirement.  A 
+straightforward implementation of the AC algorithm is to construct a two-dimensional state transition table 
+for the finite automaton.  Obviously, such an implementation requires prohibitively huge amount of 
+memory space when the total length of patterns is large.  Several schemes had been proposed to reduce the 
+memory requirement.  Some of them are adopted by Snort [7], [8], an open source for intrusion 
+detection/prevention, and ClamAV [9], another open source for anti-virus/worm applications.  The bitmap 
+architecture [10] and the History-based Encoding, eXecution and Addressing (HEXA) [12] compress the 
+data structure significantly.  These compression schemes are related to our work and will be reviewed in 
+Section 3. 
+The purpose of this paper is to present an architecture for pattern matching with high throughput 
+performance and low memory requirement.  We first present a novel compression scheme that 
+significantly reduces the memory requirement of the AC algorithm.  Then we propose an architecture that 
+can largely improve throughput performance and further reduce memory requirement.  In comparison 
+with the bitmap architecture, HEXA, and the schemes adopted by ClamAV and Snort, our proposed 
+architecture results in improvement in throughput performance and requires either less or slightly more 
+memory space.  For example, for 5,000 randomly selected ClamAV signature patterns, our proposed 
+architecture achieves, respectively, 88.4% and 94.0% reduction in memory requirement as compared with 
+the bitmap architecture and a reduced HEXA implementation (see Section 6).  In average, the 
+improvement of processing time for scanning various types of files is 53.5%, 45.7%, 34.4% and 66.5% as 
+compared with the bitmap architecture, reduced HEXA, and the schemes used in Snort and ClamAV, 
+respectively. 
+Similar to the Wu-Manber (WM) algorithm [13] and the Hash-AV+ClamAV scheme [30], our proposed 
+3 
+ 
+2. THE AHO-CORASICK ALGORITHM 
+In this section, we briefly review the AC algorithm of constructing a finite state pattern matching 
+machine for a given set of patterns Y = { 1 2,   ,...,  yP P P }.  Basically, the AC pattern matching machine is 
+dictated by three functions: a goto function g, a failure function f, and an output function output.  Fig. 1 
+shows the AC pattern matching machine for Y = {he, she, his, hers} [3], an example we shall use in this 
+section. 
+One state, numbered 0, is designated as the start state.  The goto function g maps a pair (state, input 
+symbol) into a state or the message fail.  For the considered example, we have g(0, h) = 1 and g(1,σ ) = 
+fail if σ ≠ e or i.  State 0 is a special state which never results in the fail message, i.e., g(0,σ ) ≠  fail for 
+all σ ∈Σ , the alphabet.  With this property, one input symbol is processed by the pattern matching 
+machine in every operation cycle.  The failure function f maps a state into a state and is consulted when 
+the outcome of the goto function is the fail message.  String u is said to represent state S if the shortest 
+path on the goto graph from state 0 to state S spells out u.  Let u and v be the strings that represent states S 
+and Q, respectively.  We have f(S) = Q if and only if (iff) v is the longest proper suffix of u that is also a 
+prefix of some pattern.  It is not difficult to verify that f(5) = 2 for our example.  The output function 
+maps a state into a set (could be empty) of patterns.  The set output(S) contains pattern P iff P is a suffix 
+of the string representing state S.  As an example, we have output(5) = {he, she}. 
+The operation of the AC pattern matching machine is as follows.  Let S be the current state and a the 
+current input symbol.  Also, let T denote the input text string.  An operation cycle is defined as follows. 
+1) If g(S, a) = Q, the machine makes a state transition such that state Q becomes the current state and the 
+next symbol of T becomes the current input symbol.  If output(Q) ≠ ∅  (empty set), the machine 
+emits the set output(Q).  The operation cycle is complete. 
+2) If g(S, a) = fail, the machine makes a failure transition by consulting the failure function f.  Assume 
+that f(S) = R.  The pattern matching machine repeats the cycle with R as the current state and a as the 
+current input symbol. 
+Initially, the start state is assigned as the current state and the first symbol of T is the current input symbol. 
+It was proved that the pattern matching machine makes at most 2n−1 state transitions in processing an input 
+text string of length n.  Note that failure transitions can be eliminated if the goto function is replaced with 
+the next move function so that the pattern matching machine becomes a deterministic finite automaton.  
+The next move function δ  is defined as δ (S, a) = g(S, a) if g(S, a) ≠  fail or δ (S, a) = δ (f(S), a) 
+otherwise.  In this case, the number of state transitions is exactly n when an input text string of length n is 
+scanned. 
+ 
+(a) The goto function. 
+S 1 2 3 4 5 6 7 8 9 
+f(S) 0 0 0 1 2 0 3 0 3 
+(b) The failure function. 
+ 
+S output(S) 
+2 {he} 
+5 {she, he} 
+7 {his} 
+9 {hers} 
+(c) The output function. 
+ 
+Fig. 1. The AC pattern matching machine for Y = {he, she, his, hers} [3]. 
+5 
+ 
+banded-row format AC. 
+It is likely that some band values are the fail message.  To reduce processing time, one can replace all 
+band values with the results of the next move function so that no failure transition is necessary if the input 
+symbol falls in the band.  We name such a modification enhanced banded-row format AC. 
+3.3. AC-bnfa 
+AC-bnfa is another alternative adopted by Snort for pattern matching.  As shown in Fig. 2(b),  
+AC-bnfa stores for each state a transition list, which contains at least two words.  The first word (in 
+current implementation, only the least significant 24 bits) stores the state number.  The second word, 
+called control word, stores a control byte and the failure state which takes 24 bits.  The control byte 
+contains one bit to indicate whether or not some patterns are matched in the state and another bit to show if 
+the number of its child states, denoted by C, is greater than or equal to 64.  If C<64, then the succeeding C 
+words are used to store the input symbols (1 byte) and the corresponding next states (3 bytes).  In case 
+C≥64, a full array of 256 words is used to store all the possible input symbols and the corresponding next 
+states.  The (input symbol, corresponding next state) pairs are searched sequentially if C≤5 or with binary 
+search if 5<C<64.  A simple table lookup is sufficient if C≥64. 
+3.4. HEXA 
+HEXA is a compact data structure for representation of a directed graph with edges labeled by symbols in 
+a finite alphabet [12].  In HEXA, a state is uniquely identified by the string of labeling symbols on the 
+path leading to it, from the root state.  Consider a d-state directed graph.  A minimal perfect hash 
+function η  is required to generate a unique number in [0, 1d − ] for each identifier.  Let id  be the 
+identifier of state i .  The data structure for state i , stored in memory location ( )idη , consists of two bits 
+to indicate whether or not there are left and right child states and perhaps some auxiliary information, 
+depending on applications.  Finding a minimal perfect hash function is complicated for large values of d .  
+The remedy suggested in [12] is to use perfect hash function which generates a unique number in [0, 1d − ] 
+for each identifier for some d d≥ .  Additional bits, called discriminators, can be added as part of the 
+identifiers to facilitate finding a perfect hash function. 
+The directed graphs for pattern matching applications normally are cyclic, which implies the HEXA 
+identifiers may become unbounded.  Fortunately, the AC automaton possesses the property that, for every 
+state S , all paths of length j  leading to S  are labeled by the same string of symbols if j  is smaller 
+than or equal to the length of the string representing state S .  This property enables the AC automaton to 
+be represented with a variant of HEXA, called bounded HEXA (bHEXA).  Let u be the string that 
+represents state S .  Any suffix of u can be used as the identifier of S .  As an example, consider the AC 
+automaton in Fig. 1.  The possible identifiers for state 9 are  - (empty string), s, rs, ers, and hers. 
+Different from HEXA, not all history input symbols are used to identify a bHEXA state.  The number of 
+history input symbols needed is state-dependent.  Therefore, bHEXA has to indicate the state identifier 
+lengths.  This increases memory space requirement.  However, the fact that a state has multiple choices 
+for its identifier increases the probability of finding a perfect hash function using short discriminators or 
+even without discriminators. 
+Similar to the straightforward implementation of the AC algorithm, bHEXA stores the AC automaton, 
+with the failure transitions eliminated, in a full two-dimensional table.  The major differences are 1) the 
+size of the table is d by |Σ |, rather than d  by |Σ |, and 2) each element stored in the table is a state 
+identifier length (and the additional discriminator, if used), rather than a state pointer of 2log d    bits. 
+According to the experimental results provided in [12], the memory space requirement of bHEXA is about 
+20-30% of that required by the straightforward implementation for several real world and randomly 
+generated pattern sets. 
+7 
+ 
+The PAT_POINT list is a list of pointers that point to patterns.  Let aP  and bP  be, respectively, the 
+patterns pointed by PAT_POINT[i] and PAT_POINT[i+1].  Further, let 1 2... ma a ap p p  and 
+1 2... mb b bp p p  be the 
+first m symbols of aP  and bP , respectively.  It holds that 
+1( ... )m k ma ahash p p
+− +  ≤  1( ... )m k mb bhash p p
+− + .  If 
+SHIFT[h] = 0, then the thh  entry of the HASH table, HASH[h], contains a pointer which points to the first 
+element of PAT_POINT list, say, PAT_POINT[j], such that the pattern P , with m-symbol prefix 
+1 2... mp p p , that is pointed by PAT_POINT[j] satisfies 1( ... )m k mhash p p h− + = .  In case SHIFT[h]≠0, then 
+HASH[h] = HASH[h+1].  Finally, the thj  entry of the PREFIX table, PREFIX[j], contains the hash value 
+of the B-symbol prefix of the pattern pointed by PAT_POINT[j]. 
+A search window of length m is used during scanning.  Initially, the search window is aligned with the 
+input text string, i.e., the sub-string within the search window is 1 2... mt t t .  The last k symbols of the text 
+string within the search window are hashed.  Let h be the hash value.  If SHIFT[h]≠0, then the search 
+window is advanced by SHIFT[h] positions.  In case SHIFT[h]=0, the patterns pointed by PAT_POINT[j], 
+HASH[h]≤  j < HASH[h+1], are candidate patterns and are verified sequentially.  The verification starts 
+with hashing the first B symbols of the text string within the search window.  Let prefix  denote the hash 
+value.  The pattern pointed by PAT_POINT[j], HASH[h] ≤  j < HASH[h+1], is checked against the text 
+string directly if PREFIX[j] = prefix .  After verification, the search window is advanced by one position. 
+ 
+ 
+(a) Bitmapped AC data structure. 
+ 
+ 
+(b) AC-bnfa data structure. 
+ 
+(c) The ClamAV trie structure. 
+ 
+Fig. 2. Data structure of previous compression designs. 
+ 
+9 
+ 
+ 
+S 1 2 3 5 6 7 8 9 11 12 13 15 
+S.symbol a b f e g h i j c b e g 
+ 
+S 16 17 18 19 20 22 23 24 
+S.symbol c c a b f a b c 
+(b) Data structure for single-child states. 
+ 
+S 1 2 3 4 5 6 7 8 9 10 11 12 13 
+f(S) 0 0 0 0 22 0 0 0 0 0 16 17 0 
+ 
+S 14 15 16 17 18 19 20 21 22 23 24 25 
+f(S) 0 0 0 1 1 2 3 4 0 0 0 1 
+(c) The failure function. 
+ 
+S output(S) 
+4 {0} 
+10 {1} 
+12 {3} 
+14 {2} 
+17 {3} 
+21 {0, 4} 
+25 {5} 
+others ∅  
+ (d) The output function. 
+ 
+Fig. 4. Data structures of the proposed compression scheme for Σ = {a, b, c, d, e, f, g, h, i, j} and Y = {cabf, 
+cabfdeghij, cabfgcbe, fgc, fgccabf, dabc}. 
+ 
+The pattern matching machine for our proposed compression scheme is described below. 
+ 
+Algorithm 1. Pattern matching machine for the proposed compression scheme. 
+begin 
+S←0;  i←1;   
+while i≤n do 
+begin 
+if S is a branch state then 
+begin 
+if BST[S][1]≤ it ≤ BST[S][1]+BST[S][0]−1 then 
+begin 
+S←BST[S][2+ it −BST[S][1]]; 
+if output(S)≠ ∅  then emit output(S); 
+i← i+1; 
+end 
+else S← f(S); 
+end 
+else if S is a single-child state then 
+begin 
+11 
+ 
+5. THE PROPOSED ARCHITECTURE 
+In this section, we present an architecture to largely improve the throughput performance for situations 
+where the majority of data do not contain any pattern.  This design philosophy should be acceptable 
+because, in normal conditions, signature is a small fraction of malicious program, which in turn is a small 
+fraction of total traffic.  An alternative design philosophy is to achieve high throughput performance in the 
+worst case.  Such a design philosophy, however, could be costly. 
+Our proposed pattern matching architecture consists of a pre-filter and a verification engine.  The 
+pre-filter is designed based on Bloom filters and the verification engine is modified from the AC algorithm. 
+5.1. Pre-filter Design 
+As in the WM algorithm, only the first m symbols of each pattern are considered in the pre-filter.  Given 
+block size k, there are m–k+1 membership query modules in our pre-filter design.  Every membership 
+query module uses its own memory space.  Recall that 1 2... mi i ip p p  are the first m symbols of pattern iP .  
+The sub-string 1 1...j j j ki i ip p p+ + − , 1 1j m k≤ ≤ − + , is a member stored in the 
+thj membership query module.  
+For convenience, these membership query modules are denoted by 
+1MQ , 2MQ , …, and 1m kMQ − + .  Different 
+from the WM algorithm, our pre-filter design uses an array of bitmaps, rather than the SHIFT table.  
+Similar to the WM algorithm, we use a hash function to construct our membership query modules.  The 
+thh  bit of jMQ  is set to 1 iff there exists pattern iP  such that h = 1 1( ... )j j j ki i ihash p p p+ + − . 
+Again, a search window W of length m is used during scanning.  Initially, W is aligned with T so that the 
+first symbol of T, i.e., 1t , is at the first position of W.  The last k symbols in W, i.e., 1 2...m k m k mt t t− + − +  at this 
+moment, are used to query 1MQ , 2MQ , …, and 1m kMQ − + .  Let iqb  be the report of iMQ  and QB = 
+1 2qb qb ... 1m kqb − +  denote the bitmap of current query result.  We observe that not only current query result 
+but also previous ones are useful for filtering.  Therefore, we introduce the stateful concept in pre-filter 
+design.  In our implementation, we use a master bitmap of size m−k+1 bits to accumulate results obtained 
+from previous queries.  Let MB = 1 2mb mb … 1m kmb − +  represent the master bitmap.  Initially, we have 
+imb  = 1 for all i, 1≤ i≤m−k+1.  After a query result is fetched, we perform MB = MB⊕QB, where ⊕  is 
+the bitwise AND operation.  A suspicious sub-string is found and the verification engine is consulted if 
+1m kmb − +  = 1.  The advancement of W is m−k+1 positions if imb = 0 for all i, 1≤ i≤m−k, or m−k+1−r 
+positions if rmb  = 1 and imb  = 0 for all i, r<i≤m−k.  If W is decided to be advanced by g positions, MB 
+is right-shifted by g bits and filled with 1’s for the holes left by the shift.  Fig. 5 shows the pre-filter 
+architecture for m = 6 and k = 3.  A virtual membership query module 0MQ , which always reports a 1, is 
+added to make the rightmost 1 detector function correctly. 
+Note that the pre-filter can work correctly without the master bitmap (stateless).    In this case, only 
+current query result is used to determine window advancement.  It is not hard to see that, with the master 
+bitmap, W can be advanced by more positions.  It is worth to be pointed out that using the master bitmap 
+is optimal in the sense that it is equivalent to utilizing all previous query results.  Proof of this important 
+property, which can be found in [33], is omitted owing to space limitation. 
+In general, performing multiple queries in each round can help to increase window advancement and 
+reduce false positive probability.  However, it requires more processing time than performing only one 
+query.  Assume that in each round L queries are performed with L different hash functions and L 
+independent sets of membership query modules.  Similar to the single-query case, the last k symbols 
+within W are used for multiple queries during scanning.  Let iQB , 1 i L≤ ≤ , represent the bitmap 
+reported from the thi  query and 1 2 ... LQB QB QB QB= ⊕ ⊕ ⊕ .  The master bitmap is updated as 
+13 
+ 
+difference is that the banded-row format, instead of the enhanced version, is used here.  This is because 
+the fail messages should be kept so that the verification procedure ends at the right moment when a fail 
+message is encountered. 
+Assume that state S is a single-child state and is represented by string u.  State R is said to be a 
+descendent state of state S if it is represented by uv (concatenation of u and v), where v is a non-empty 
+string.  Furthermore, state R is said to be a descendent explicit state of state S if, in addition to being a 
+descendent state of state S,  R is an explicit state.  State R is said to be the nearest descendent explicit 
+state (NDES) of state S if state R is a descendent explicit state of state S and there is no other explicit state 
+on the path from state S to state R. 
+Suppose that state S is a first single-child state and state R is its NDES.  Let  lP  = uvr be the first 
+pattern in pattern set which contains uv  as a prefix.  The data structure for state S includes S.position and 
+S.distance, where S.position and S.distance represent, respectively, the position of the (| | 1)thu +  byte of lP  
+in the Compacted_Patterns file and |v|, where |x| denotes the length of string x . If the start state or a final 
+state is a single-child state, its data structure is the same as that for state S. 
+Finally, for each leaf state, we store nothing but an identifier to indicate that all input symbols result in the 
+fail message.  Of course, every explicit state needs a flag to indicate whether or not it is a final state and, if 
+it is, the identification of the matched pattern is stored.  Note that the resulting goto graph after 
+compression contains only explicit states.  As a result, the memory requirement is further reduced in 
+comparison with the compression scheme presented in Section 4. 
+Consider the same example studied in Section 4.  Fig. 6 shows our compressed goto graph. Compared 
+with the figure shown in Fig. 3, one can see that the number of states is reduced from 26 to 12.  Note that 
+the states on the compressed goto graph are renumbered such that S.NDES for explicit single-child state S 
+is numbered S+1.  As an example, let S be state 7, a first single-child state.  Since state 8, represented by 
+fgc, is the NDES of S with distance 2 and fgc is the first pattern which contains fgc as a prefix , we store 
+S.position = 24 and S.distance = 2.  As another example, if S is state 8, we store S.position = 29 and 
+S.distance = 4. 
+States 0 and 2 are branch states while states 4, 6, 9, and 11 are leaf states.  The remaining states are 
+either first single-child states or single-child final states.  Fig. 7 shows the data structures of our 
+verification engine for this example. 
+5.3. Pattern Matching Machine 
+Let xc  be the 
+thx  symbol in the Compacted_Patterns file.  The pattern matching machine for our 
+proposed stateful architecture is described below.  In the description, ab  represents a binary string with 
+bit b repeating a times, and 1g | (MB>>g) means the master bitmap is right-shifted by g bits and filled with 
+1’s for the holes left by the shift.  Moreover, 1 2
+z zqb qb ... 1
+z
+m kqb − +  are the bitmap of the query result reported 
+from the thz  set of membership query modules when 1 1...i i i kt t t+ + −  is used as the input for query. 
+ 
+Fig. 6. The compressed goto graph for Σ = {a, b, c, d, e, f, g, h, i, j} and Y = {cabf, cabfdeghij, cabfgcbe, 
+fgc, fgccabf, dabc}. 
+15 
+ 
+procedure Verification_Engine(S, j)  
+begin 
+while j≤n do 
+begin 
+    if output(S)≠ ∅  then emit output(S); 
+if S is a branch state then 
+begin 
+if BST[S][1] ≤ jt ≤ BST[S][1]+ BST[S][0]−1 then 
+begin 
+if BST[S][2+ jt −BST[S][1]]≠ fail then 
+begin 
+S←BST[S][2+ jt −BST[S][1]]; 
+j← j+1;  
+end 
+else // BST[S][2+ jt −BST[S][1]] = fail 
+break; 
+end 
+else // jt < BST[S][1] or jt > BST[S][1]+ BST[S][0]−1 
+break;  
+end 
+else if S is an explicit single-child state then 
+begin 
+x←S.position;  w←S.distance; 
+if 1 1...j j j wt t t+ + − = 1 1...x x x wc c c+ + −
+begin 
+ then 
+S←S+1; // S+1 is S.NDES 
+ j← j+w; 
+end 
+else // 1 1...j j j wt t t+ + − ≠ 1 1...x x x wc c c+ + −
+break; 
+ 
+end 
+else // S is a leaf state  
+break; 
+end 
+end 
+ 
+The number of memory accesses required by each type of state is analyzed below.  Assume that four 
+bytes are fetched in a memory access.  For a branch state, to process one byte, we need one memory 
+access to obtain bandwidth (two bytes), the index of the first vector element stored (one byte), state type 
+(two bits), and the final state indication (one bit).   Another memory access is required if the input symbol 
+is within the band.  Of course, we need one more memory access for the identification of the matched 
+pattern (two bytes) if the state is a final state.  Therefore, a branch state requires one to three memory 
+accesses.  For an explicit single-child state S, S.distance bytes are processed with at most 
+.distance/4 3S +    memory accesses, where     is the ceiling function.  More specifically, we need one 
+to obtain state type, S.distance (two bytes), and the final state indication (one bit), another one to get 
+17 
+ 
+6. COMPARISON WITH RELATED WORKS 
+In this section, we compare the performances of the investigated pattern matching algorithms. All 
+algorithms are implemented in C++ and the experiments are conducted on a PC with an Intel Pentium 4 
+CPU operated at 2.80GHz with 512MB of RAM.  Patterns are selected from ClamAV database.  The AC 
+algorithm without compression cannot handle the full set of ClamAV signatures because of the explosion 
+of its memory space requirement.  Therefore, we conduct the first simulation with 5,000 randomly 
+selected signatures.  The minimum, maximum, and average lengths of the selected signatures are 10, 163, 
+and 34.26 bytes, respectively.  The total number of states d  generated by the AC algorithm is 158,743.  
+Since the shortest pattern is 10 bytes, we set search window length m = 10.  Selection of block size  k 
+impacts false positive rate and average window advancement.  The false positive rate tends to be large for 
+a small value of k  and the average window advancement is small for a large value of k .  Our 
+experimental results show that 4k =  is a good choice.  The size (in bits) of a membership query module 
+N, or equivalently, the number of entries in the SHIFT table, is 162  which results in a false positive 
+probability of approximately 0.0734.  For a fair comparison, we set the pre-filter size of the 
+Hash-AV+ClamAV scheme to be 192  bits since it uses only one membership query module.  For β =9, 
+the Hash-AV+ClamAV scheme requires a “two-scan” approach.  That is, Hash-AV+ClamAV is first 
+performed for signatures longer than or equal to β +3 bytes and then ClamAV is run for the rest of the 
+signatures.  To avoid the “two-scan” mode, we remove signatures shorter than β +3 bytes for the 
+Hash-AV+ClamAV scheme.  We compare the basic version of our proposed architecture, i.e., one query 
+per round, with various related pattern matching algorithms.  A simple hash function is adopted for our 
+proposed pre-filter.  Let 1 2 3i i i it t t t+ + +  be the data block to be hashed.  The hash function generates 3i it t +  
+as the hash result.  The effect of multiple queries per round will be studied in the next section. 
+We implemented a reduced version of bHEXA to avoid using a complicated perfect hash function to 
+speed up the matching procedure. The order to generate the identifiers of states is described below.  The 
+identifier of state S is generated before that of state R if the representing string of S is shorter than that of 
+state R.  If the lengths of the representing strings of states S and R are identical, then the identifier of state 
+S is generated before that of state R if S is created earlier than R, according to the AC algorithm.  Let u be 
+the representing string of state S.  We choose v as the state identifier of S iff v is the shortest suffix of u 
+that is different from the identifiers already generated.  Note that the identifier of the start state is the 
+empty string.  As for memory requirement, we let d d= = 158,743.  The number of bits required to 
+represent state identifier lengths increases as the maximum length of state identifiers increases.  In our 
+implementation, patterns which generate states with identifier lengths greater than 7 are deleted so that 3 
+bits are sufficient to represent the identifier lengths.  The number of patterns deleted is 1,431.  No 
+discriminators are used.  To speed up the matching procedure, we use simple bitwise operations as the 
+hash function η , rather than a perfect hash function, which often requires complicated computations.  To 
+avoid memory collision, we only store the data structures of the states generated by 20 representative 
+patterns out of the remaining 3,569 patterns.  Note that the memory requirement is kept at d d=  entires.  
+Obviously, the memory requirement and the processing time of such a reduced implementation should be 
+less than those of the original bHEXA scheme. 
+The performance of the AC algorithm using goto and failure functions is close to that of the one using the 
+next move function.  Therefore, we only show the performance of the AC algorithm using the next move 
+function.  Similarly, we omit the performance of the banded-row format AC and the bitmapped-CRT 
+because the enhanced banded-row format AC performs slightly better than the former and the latter does 
+not provide significant improvement over the bitmapped AC.    Using path compression technique tends 
+to increase processing time of bitmapped AC and thus its performance is also omitted.  We name our 
+proposed compression scheme presented in Section 4 the compressed AC and the stateful architecture in 
+ 19 
+ 
+19 
+comparison.  The figure shows that the processing time of the Pre-filter+AC scheme increases as the 
+number of signatures in the scanned file increases.  However, it is still faster than the AC algorithm. 
+ 
+ 
+Fig. 8. Processing time for scanning files with different numbers of signatures. 
+ 
+Memory requirements of the investigated schemes are provided in the last row of Table I.  All schemes 
+with compressed data structures require acceptable memory space. Our proposed Pre-filter+AC scheme 
+requires less than 1M bytes, including 64K bytes for pre-filter, 172K bytes for patterns, and 674K bytes for 
+data structures of the modified AC automaton.  Since the proposed Pre-filter+AC scheme and the WM 
+algorithm yield the best throughput performance with acceptable memory requirement, in the next 
+experiment, we compare these two schemes with full rule set. 
+As of June 2010, there are 29,179 string signatures contained in ClamAV database.  The minimum, 
+maximum, and average lengths of the signatures are 10, 210, and 66.43 bytes, respectively.  Since the 
+shortest pattern is still 10 bytes, we use m = 10 again. For the full rule set, the time required to construct the 
+data structure of the proposed Pre-filter+AC scheme is 1812 ms.  The construction is needed only in the 
+beginning or when the rule set is changed. 
+Table II shows the memory requirement comparison of the Pre-filter+AC scheme and the WM algorithm 
+for different values of N.   As one can see, when N is small, the WM algorithm requires less memory 
+space than the Pre-filter+AC scheme.  However, the memory requirement of the WM algorithm grows 
+rapidly as N increases.  By contrast, the growth for the Pre-filter+AC scheme is relatively slow.  When N 
+= 222 , the memory requirement for the Pre-filter+AC scheme is 59.5% of that for the WM algorithm.  
+The percentage decreases as N increases.  This is because the memory requirement for the verification 
+engine in the Pre-filter+AC scheme is not influenced by the value of N, while that in the WM algorithm is. 
+ 
+TABLE II 
+MEMORY REQUIREMENT COMPARISON FOR DIFFERENT VALUES OF N 
+Memory requirement N 
+(M bytes) 162  182  202  222  
+Schemes Pre-filter + AC 4.58 4.78 5.56 8.71 
+WM 2.25 2.84 5.20 14.64 
+ 
+Both schemes need to store the pattern set.  The Pre-filter+AC scheme uses Compacted_Patterns file, 
+which requires 1.94M bytes.  The WM algorithm needs slightly larger memory space because an ending 
+symbol is required for each pattern.  The pre-filters of both schemes take 0.06M, 0.26M, 1.04M, and 
+ 21 
+ 
+21 
+7. ANALYTICAL COMPARISON WITH WU-MANBER ALGORITHM 
+In this section, we analyze and compare the performances of the WM algorithm, the proposed stateful 
+architecture, and the stateless version.  The average window advancement per unit time, which determines 
+achievable throughput, is selected as performance metric.  For simplicity of analysis, we assume that 
+symbols in patterns and input text string are independent, uniformly distributed over alphabet.  Recall that 
+the query result QB = 1 2 ... LQB QB QB⊕ ⊕ ⊕ = 1 2qb qb ... 1m kqb − + .  Let ρ  represent the probability of 
+1iqb =  for any i , 1 1i m k≤ ≤ − + .  We have [1 (1 1/ ) ]
+y LNρ = − − .  Let LG  denote the random 
+variable of window advancement for a round of L queries.  The average window advancement, denoted by 
+LG , can be evaluated by 
+ 
+1
+1
+( )
+m k
+L L
+g
+G gP G g
+− +
+=
+= =∑  (1) 
+where ( )LP G g=  is different for different algorithms. 
+ 
+ 
+Fig. 9. Processing time comparison for different values of N. 
+ 
+7.1. Pre-filter Performance 
+We use hT  to represent the average time consumed in one query.  As a consequence, the average time 
+spent in a round of L queries is hLT  and /( )hLG LT  determines pre-filter throughput.  It is reasonable to 
+assume that hT  is the same for algorithms that use the same set of L hash functions.  Assuming that all 
+investigated algorithms use the same set of hash functions, we can conclude that pre-filter throughput is 
+proportional to /LG L .  The optimal value of L which maximizes throughput satisfies 
+L= arg max{ / }H
+H
+G H . (2) 
+We derive LG  for the WM algorithm, the proposed stateful architecture, and the stateless version below. 
+ 
+7.1.1. The Wu-Manber Algorithm 
+Conceptually, the window advancement decided by the SHIFT table in the WM algorithm is equivalent 
+ 23 
+ 
+23 
+Let states 0, 1, …, and 63 correspond to 1 2 6...mb mb mb  = 000000, 000001, …, and 111111, respectively.  
+We demonstrate the calculation of ,i jp  for i = 1 and 0 ≤ j ≤ 63 here.  State 1 corresponds to 
+1 2 6...mb mb mb  = 000001.  As a result, the window will be advanced by 1 position and the content of MB  
+becomes 1000001.  After bitwise ANDing with QB = 1 2 7...qb qb qb , MB  becomes 1 700000qb qb  and the 
+updated 1 2 6...mb mb mb  is 100000qb .  The next state j is state 0 if 1qb = 0 or state 32 otherwise.  
+Therefore, we have 
+1,
+1 ,    if  = 0
+,        if  = 32
+0,         if  = 1, 2, ..., 31, 33, ..., or 63
+j
+j
+p j
+j
+ρ
+ρ
+−
+= 
+
+
+. (6) 
+7.2. Overall System Performance 
+Let LC  be the average time spend on L queries and verification, if needed.  /L LG C  determines 
+achievable system throughput and the optimal value of L which maximizes throughput is given by 
+L= arg max{ / }H H
+H
+G C . (7) 
+Let vT  represent the average time consumed in verification.  In the WM algorithm, verification is 
+required when the window advancement decided by the SHIFT table is 0.  In the proposed stateless 
+architecture, verification is required when 1 1m kqb − + = .  Note that the two conditions are equivalent.  For 
+the proposed stateful architecture, verification is required if 1m kmb − + =1 after bitwise ANDing with QB.  
+Since 1m kmb − +  is always 1 before bitwise ANDing with QB, the probability of 1m kmb − + =1 after bitwise 
+ANDing with QB is equal to P( 1m kqb − + =1).  Therefore, we have 
+1( 1)h v h vL m kC LT P qb T LT Tρ− += + = = +  (8) 
+for the WM algorithm and the proposed stateless and stateful architectures.  Note that the value of vT  
+depends on number of patterns and the verification algorithm.  We shall study numerically the optimal 
+value of L in the next sub-section. 
+7.3. Numerical Results 
+The throughput performance depends on the values of m, k, N, y, and L.  To find the optimal value of L 
+that maximizes throughput, we fix the other parameters.  For m = 10, k = 4, N = 213
+/LG L
+, and y = 10,000, L = 1 
+satisfies (2) that maximizes pre-filter throughput for the WM algorithm and the stateless/stateful 
+architectures.  Therefore, we choose L = 1 to compare pre-filter throughput, which, as mentioned before, 
+is proportional to .  Fig. 10 shows the results for various pattern numbers. 
+As one can see in Fig. 10, the proposed pre-filter with master bitmap (stateful) outperforms both the 
+proposed pre-filter without master bitmap and the pre-filter of the WM algorithm (stateless).  This is 
+because previous query results, in addition to the current one, are used to determine window advancement 
+in the stateful design.  Besides, the proposed pre-filter without MB outperforms the pre-filter of the WM 
+algorithm.  The reason has been mentioned in Section 7.1.2. 
+The experiment shows that hT  = 4.90 × 10-5 vT ms and  =  2.55 × 10-4 ms for our proposed 
+algorithms with the same values of m, k, N, and y above.  From (7), the optimal L that maximizes system 
+performance of the stateful architecture is 4.  To demonstrate the effect of multiple queries in each round, 
+we conduct experiments to compare the processing times for the stateful architecture with L = 1 and L = 4.  
+Fig. 11 shows the results for various file sizes.  One can note that the implementation with L = 1 requires 
+about 1.7 times the processing time of that with L = 4.  The processing time of the WM algorithm is also 
+ 25 
+ 
+25 
+8. CONCLUSION 
+In this paper, we first present a novel implementation of the Aho-Corasick pattern matching algorithm 
+that significantly compresses the required data structure.  In the implementation, we reduce the 
+two-dimensional state transition table so that its memory requirement is proportional to the number of 
+patterns instead of the total length of patterns.  Then, we propose an architecture that further reduces the 
+memory requirement and achieves high throughput performance.  In the architecture, we introduce the 
+stateful pre-filter concept and present an AC-based verification engine which can check all candidate 
+patterns simultaneously.  Master bitmap with simple shift and bitwise AND operations is used to 
+efficiently implement the stateful pre-filter concept.  Such a simple implementation is optimal because it 
+is equivalent to utilizing all previous query results. 
+The performances of different pre-filter designs are evaluated both mathematically and numerically.  
+The effect of multiple queries in each round is also studied.  Results show that the proposed pre-filter with 
+master bitmap (stateful) outperforms both the proposed pre-filter without master bitmap and the pre-filter 
+of the widely used Wu-Manber algorithm (stateless).  In addition to the Wu-Manber algorithm, various 
+related worksare compared with our proposed schemes.  The stateful architecture performs the best in 
+terms of both memory requirement and processing time among the schemes that yield satisfactory 
+performance for both metrics.  Therefore, for applications that require high throughput performance with 
+memory space constraint, e.g., an embedded security appliance in a high-speed network environment, our 
+proposed stateful architecture is the preferable choice. 
+Clearly, a larger value of search window length gives a better throughput performance.  However, the 
+length of search window is upper bounded by the length of the shortest pattern.  Consequently, a virus 
+expert, if possible, should avoid short patterns in deriving signatures to improve performance and reduce 
+false alarms.  An interesting further research topic is to implement and compare the performances of 
+various pattern matching algorithms on multi-thread, multi-core processors. 
+ 27 
+ 
+27 
+[25] N. S. Artan, R. Ghosh, G. Yanchuan, and H. J. Chao, “A 10-Gbps high-speed single-chip network 
+intrusion detection and prevention System,” IEEE GLOBECOM, pp. 343–348, Nov. 2007. 
+[26] N. S. Artan, M. Bando, and H. J. Chao, “Boundary hash for memory-efficient deep packet inspection,” 
+IEEE ICC, pp. 1732–1737, May 2008. 
+[27] M. Bando, N. S. Artan, and H. J. Chao, “Highly memory-efficient loglog hash for deep packet 
+inspection,” IEEE GLOBECOM, Nov./Dec. 2008. 
+[28] N. S. Artan, Y. Haowei, and H. J. Chao, “A dynamic load-balanced hashing scheme for networking 
+applications,” IEEE GLOBECOM, Nov./Dec. 2008. 
+[29] T. F. Sheu, N. F. Huang, and H. P. Lee, “A time- and memory- efficient string matching algorithm for 
+intrusion detection systems,” IEEE GLOBECOM, 2006. 
+[30] O. Erdogan and P. Cao, “Hash-AV: fast virus signature scanning by cache-resident filters,” 
+International Journal of Security and Networks, vol. 2, pp. 50-59, Mar. 2007. 
+[31] GNU. hashlib.c – functions to manage and access hash tables for bash. In 
+http://www.opensource.apple.com/darwinsource/10.3/bash-29/bash/hashlib.c, 1991. 
+[32] O. Yigit. sdbm - substitute dbm. In 
+http://search.cpan.org/src/NWCLARK/perl-5.8.4/ext/SDBM_File/sdbm, 1990. 
+[33] T. H. Lee and N. L. Huang, “Design and evaluation of an efficient pattern matching architecture,” 
+TR-EE010-NCTU-2010. 
+ 
+98 年度專題研究計畫研究成果彙整表 
+計畫主持人：李程輝 計畫編號：98-2221-E-009-063-MY2 
+計畫名稱：網路鑑識系統研究與實作 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 1 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 5 0 100%  
+博士生 2 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+■達成目標 
+□未達成目標（請說明，以 100 字為限） 
+□實驗失敗 
+□因故實驗中斷 
+□其他原因 
+說明： 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：□已發表 ■未發表之文稿 □撰寫中 □無 
+專利：□已獲得 □申請中 ■無 
+技轉：□已技轉 □洽談中 ■無 
+其他：（以 100 字為限） 
+說明：論文已投稿至 IEEE Transaction on Networking (under review, reviewers 
+requested minor revision) 
+ 
+ 
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以
+500 字為限） 
+學術成就： 
+我們撰寫了一篇期刊論文投稿至 IEEE Transaction on Networking (under review, 
+reviewers requested minor revision)，另有二篇國際會議論文分別被 IEEE ICCCN 2008
+及 IEEE ICITIS 2011 接受、有一篇論文在<<工程科技通訊>>刊登。 
+  
+技術創新： 
+ 
+我們提出一項新的設計，可有效壓縮字樣比對演算法－Aho-Corasick(AC)的資料結構。施
+以多種前人提出的壓縮技術，AC 演算法所需的狀態轉換表所占空間皆仍與字樣總長度成正
+比關係，相反地，我們提出的設計則能將其壓縮成僅與字樣個數成正比（不被字樣總長度
+影響）。 
+ 
+除此之外，我們提出一包含狀態性預先過濾器及以 AC 演算法為基礎的驗證模組的架構。
+其中我們引入了狀態性預先過濾的概念，所謂狀態性係參考過去的過濾結果(而非只參考
+當下的狀態)來決定當下的過濾結果，並以簡單的位元串實現之，此實現方法等效於參考

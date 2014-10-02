@@ -1,0 +1,342 @@
+2 
+ 
+0 前言 
+我們建置一個系統,進行三維人物運動、布料模擬、頭髮模擬以及光線追蹤,它
+們的應用都十分廣泛，可以被應用在不同領域,例如電動和數位電影。多核心平台
+和繪圖處理器的計算能力不斷提高,我們發展平行運算方法，對頭髮模擬以及光線
+追蹤都可以達到即時效果。 
+ 
+1 研究目的 
+我們的研究是關於發展一個平台，進行三維人物運動、布料模擬、頭髮模擬以
+及光線追蹤。這系統是建立在多核心平台以及具有串流處理器的繪圖處理器上。 
+我們完成三個子系統，它們包括下列三個部分:應用視角速進行光線追蹤,頭髮運動
+模擬，人物動作和衣服互動系統。 
+I.我們應用視角方法把物體的基本元素三角形分堆，然後把每一分堆建立
+Bounding Volume Hierarchy，對這些 Bounding Volume Hierarhies 進行光線追
+蹤，整個過程完全在圖形處理器(GPU)上進行。 
+II.在多核心平台上模擬頭髮運動方面，我們將計算頭髮運動的模擬，利用圖
+形處理器(GPU)來進行，在 NVIDIA 所開發的 CUDA(Compute Unified Device 
+Architecture)的架構上實現演算法的加速。我們利用 OpenGL 4.0 繪圖流程管線
+(pipeline)所新增的鑲嵌階段(tessellation stage)，撰寫自定的著色程式
+(shader)，在 GPU 上動態的產生頭髮的幾何模型，省去 CPU 和 GPU 間要透過 PCI-E 
+bus 互相傳遞的花費，以達成即時的頭髮渲染。 
+III.在人物動作和衣服互動系統，人物的運動以骨架方式進行，使用碰撞偵測
+並且予以適當的碰撞反應，應用適應性方法對人物模型和衣服的互動重複調校，處
+理衣服的自身穿透或衣服穿透角色的情形。 
+ 
+2 文獻探討 
+我就三方面的研究進行文獻探討，包括光線追蹤、頭髮模擬和人物動作和衣服
+模擬。 
+2.1. 光線追蹤 
+Ernst et al.[1] 提出一個遞歸演算法，在圖形處理器上進行光線追蹤，他們
+把場景以kd-tree作空間分割,加快運算速度，可是由於當時圖形處理器的功能有限,
+他們方法的表現難以達到互動效果。Foley et al.[2]基於kd-tree提出一個
+stackless的方法，改進速度。Horn et al.[3]利用short stack結構，大大減少遍
+歷的花費，這個方法能夠達到互動的效能。Popov et al.[4]也提出一個stackless
+的方法，應用uniform grids和kd-trees為主的加速結構上，自此應用圖形處理器
+進行光線追蹤，受到更多的重視。Gunther et al.[5] 基於共享stack，提出一個
+BVH-based 的平行封包處理方法，可以對動態場景進行互動的光線追蹤。Zhou et 
+al.[6] 提出一個即時的方法，在圖形處理器上建置kd-trees。Lauterbach et 
+al.[7]提出一個混合型的方法建置SAH-based hierarchies。加速結構對光線追蹤
+十分重要，大多數的研究都在探討建置這些結構。 
+ 
+ 
+4 
+ 
+熱門的動作捕捉系統(motion capture)為基礎[12][13]，將由 motion capture 所
+得到的資料做為輸入，再依照所想要達成的目的加以做處理，做不同角色動作的合
+成，或是對角色的動作做修改使其符合所給予的限制條件。由於近年來的角色動作
+模擬以追求更高的真實性為目標，因此使用的方法常會結合上述提到的幾個類型。 
+ 
+ 
+圖一：各質點與彈簧的連接方式示意
+圖。 
+ 
+ 
+ 
+ 
+ 
+ 
+在衣服模擬的部分，我們參考了 Provot[14]的做法，每個模型都是由 M 乘 N
+個質點所組成，我們可以將其建構成二維矩陣，彼此間的連接方式總共有三種，不
+同彈簧的連接方式如圖一。第一種為質點[i,j]至質點[i+1,j]和質點[i,j]至質點
+[i,j+1]，也就是以水平方向和垂直方向連接相鄰的兩個質點，該連接方式的彈簧
+稱之為 structural springs，負責擴展與壓縮的處理；第二種為質點[i,j]至質點
+[i+1,j+1]和質點[i+1,j]至質點[i,j+1]，與對角相鄰，稱為 shear springs，有
+助於維持對角形狀；最後一種則為質點[i,j]至質點[i+2,j]和質點[i,j]至質點
+[i,j+2]，以水平和垂直方向連接相隔一質點的兩質點，稱為 flexion springs，
+其作用在於能夠讓布塊彎曲。當沒有 flexion springs 時，布會很容易摺疊，彎曲
+變形差，不圓滑，很容易有角的出現。如果同時沒有 shear springs 和 flexion 
+springs 彈簧的話，布很容易失去它原來的形狀，所以只有同時具備這三種彈簧，
+布才能將它的彈性以及形狀確實呈現出來。 
+ 
+3 研究方法 
+3.1 光線追蹤 
+ 
+圖二：三角形相對觀察點的方向性，以內積計算。如果 R · N > 0，方向性為正。 
+ 
+我們依照物體的三角形相對觀察點的方向性進行分堆，接著對每一分堆重建
+Bounding Volume Hierarchies，這個過程是在圖形處理器上進行，我們的BV是
+AABBs (axis-aligned bounding volumes)。觀察點包括光源和攝影機。下圖顯示
+一個模型面向攝影機的三角形分堆。 
+6 
+ 
+ 
+這是系統的資料流程圖:輸入的
+是頭髮資料，線段和控制點。我們
+把控制點的位置設定為模擬運動的
+粒子，在模擬的階段會計算下個時
+間點的位置與速度。在渲染的階段
+會用輸入資訊產生最後的畫面。 
+ 
+ 
+ 
+ 
+ 
+ 
+                                
+                                      圖五:資料流程圖。                                              
+這是渲染階段的流程圖: 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+                     圖六: 渲染階段的流程圖。 
+ 
+第一個步驟是將原本粗糙的線段，按照樣條函數(Spline function)做鑲嵌
+(Tessellation)，填入更多的線段來使得原本粗糙的曲線更加平滑。 
+第二個步驟是將第一個步驟的輸出當做輸入，以鑲嵌過後的曲線做內插
+(Interpolation)產生更多的頭髮線段。前兩個步驟，都是在 OpenGL 鑲嵌階段的著
+色程式(shader)中實作，並且我們可以根據觀看模型的距離來決定相關的參數，以
+控制產生的線段多寡。當觀看距離近的時候，我們會採用比較精密的模型，產生更
+多的線段。而當觀看距離較遠的時候，我們不需要那麼精密的模型，我們便產生較
+少的線段，使用較粗糙的模型。根據需求而改變使用的模型可以動態的節省繪圖的
+花費而提高系統的效能，這就是我們在採用的 Level-of-details 方法。第三個步
+驟是準備計算頭髮陰影(Self-shadow)所需要的資訊。我們所採用的方法是 Deep 
+8 
+ 
+圖八進行 FLIP 步驟的流程圖。先轉換粒子上的速度到網格點上，在網格點上
+做使速度向量場的散度(Divergence)歸零的計算(在流體的模擬中，這麼做的意義
+相當於是使流體的體積維持不變)。這一個步驟中，會需要解一組線性系統方程式
+Ax = b, A 是一個對稱(Symmetric)且稀疏(sparse)的矩陣, x, b 都是向量，我們
+是採用 Preconditioned Conjugate Gradient 這個數值方法來在 GPU 上實作。最後
+再透過散度為零的速度向量場來更新粒子上的速度。 
+ 
+3.3 人物動作和衣服互動系統 
+我們的角色模型和衣服都是由許多三角形所構成，首先我們會先計算角色的動
+作，然後在計算衣服的移動，但是衣服的移動會受限於角色的動作，因此需要將衣
+服所能移動的最大範圍考慮進去。當在計算時，如果在之前的 time step 有一些衣
+服的三角形落在角色模型上，則該三角形就會跟著角色模型的表面一起移動，但因
+為構成衣服的三角形間是彼此相互牽制的，所以需要在計算整體衣服的移動時，去
+修正貼在角色模型上的衣服的三角形，讓其產生滑動的效果。最後則是利用碰撞偵
+測與反應去處理衣服穿透衣服和衣服穿透角色的情形。 
+人物角色的動作模擬實作上，首先會由檔案設定人物角色的骨架基本資料，這
+個骨架的結構是一個樹狀結構，由一個 Root 和許多的子節點所組成，而 Root 和這
+些子節點代表的就是人物角色的各個關節，這份資料設定的內容包含了 Root 的位
+置、Root 的旋轉軸、Root 的子節點數量、每一個子節點的位置、子節點的旋轉
+軸、這一個子節點在運動時會影響的範圍、子節點的角速度和最大的可變動角度。
+另外在實際運動模擬也會設定各個關節在運動時的角速度與最大變動角度。在設定
+這些基本資料後，會先繪製出人物角色整體骨架的結構，然後在開始動作模擬的時
+候，再依照檔案內設定的運動方式改變每一個關節的運動，模擬出人物角色的動
+作，其中當變動到達最大可變動角度時，控制變動的關節就會將角速度的方向改變
+為相反方向，使運動可以往反方向繼續下去。 
+我們的實驗角色的模型建立是一個 Root 有四
+個子節點，分別代表角色的四肢，其每個子節點的
+分支分別包含五個節點，骨架模型如圖九。由於我
+們的系統模型著重在角色的動作與衣服的相對影響
+形變上，因此沒有很精確的處理角色運動時皮膚表
+面所產生的變化，故此在真實度上會有些不足。 
+                                                   圖九: 骨架模型 
+ 
+4. 結果與討論 
+4.1 光線追蹤 
+我們的實驗都在 Intel(R) Core2 Quad CPU Q9400 @ 2.66GHz 2.67GHz 4 GB 
+main memory上進行。繪圖處理器是GTX 480 graphics card （2.0 compute 
+capability）。 
+我們應用視角方法把物體的基本元素三角形分堆，然後把每一分堆建立
+Bounding Volume Hierarchy。最後對這些Bounding Volume Hierarhies進行光線
+10 
+ 
+我們改變網格的大小來做為控制變數。由表中的數據我們可以看出當網格越大
+的時候，GPU/CPU 的效能比值就越高。而圖中，我們的 x座標是採用對數刻度。 
+在 GPU 需要比較平行化。 
+渲 染 結 果 : 這 是 我 們 做 LOD(Level-of-details) 後 ， FPS （ frame per 
+seconds）與觀看距離的數據。 
+ 
+           
+          圖表:LOD                         表三：FPS 
+ 
+由於渲染所花費的時間，與所要處理的像素(Pixel)數目有很大的關係，所以
+我們在四種不同的畫面解析度下做量測。我們可以觀察到確實在同樣的觀測距離之
+下，解析度越高的畫面，所對應的 FPS 是比較低的。而當觀看距離大於某個值之
+後，FPS 不再提昇的原因，是因為處理每個畫面的流程是包括渲染與模擬，而這兩
+個部分是在兩個執行緒中一起執行，即使渲染的部份先跑完，我們也必須等到模擬
+的部分跑完才會換到下一個畫面。因為當渲染的效能提高到某個程度，整體系統效
+能的瓶頸變成模擬的部分時，渲染部分的效能提昇就沒有辦法反應在 FPS 上了。也
+就是圖表中 FPS 維持不變的、線段水平的部份。下面就是一段人物甩頭動作的截
+圖。 
+ 
+ 
+ 
+ 
+ 
+ 
+圖十一：甩頭動作的截圖。 
+ 
+4.3 人物動作和衣服互動系統 
+4.3.1 實驗結果 
+首先，我們執行載入角色模型與衣服模型的系統，在這之中可以設定兩者在模
+擬時的初始位置，修改衣服的大小，並且為此一衣服模型加入彈簧，使其可以在模
+擬時產生形變。這個系統可以直接模擬可形變物體與不可形變之剛體的互動，藉由
+給予不同的外力讓物體形變，所以我們可以利用此系統預覽衣服受環境力後所產生
+的變化。 
+ 
+12 
+ 
+5 參考文獻 
+5.1 光線追蹤 
+[1] M. Ernst, C. Vogelgsang, and G. Greiner. Stack implementation on programmable 
+graphics hardware. In Vision, modeling, and visualization 2004: proceedings, November 
+16-18, 2004, Standford, USA,page 255, 2004. 
+[2] T. Foley and J. Sugerman. KD-tree acceleration structures for a GPU raytracer. In 
+Proceedings of the ACM SIGGRAPH/EUROGRAPHICS conference on Graphics 
+hardware, page 22. ACM, 2005. 
+[3] D. Horn, J. Sugerman, M. Houston, and P. Hanrahan.Interactive kd tree GPU 
+raytracing. In Proceedings ofthe 2007 symposium on Interactive 3D graphics and games, 
+page 174. ACM, 2007. 
+[4] S. Popov, J. G¨unther, H. Seidel, and P. Slusallek. Stackless kd-tree traversal for high 
+performance GPU ray tracing. In Computer Graphics Forum, volume 26, pages 415–424, 
+2007. 
+[5] S. Guntury and P. J. Narayanan. Ray tracing dynamic scenes with shadows on the gpu. 
+In Eurographics Symposium on Parallel Graphics and Visualization 2010, pages 27–34, 
+2010. 
+[6] K. Zhou, Q. Hou, R. Wang, and B. Guo. Real-time kd-tree construction on graphics 
+hardware. In ACM SIGGRAPH Asia 2008 papers, page 126. ACM, 2008. 
+[7] C. Lauterbach, M. Garland, S. Sengupta, D. Luebke, and D. Manocha. Fast BVH 
+construction on GPUs. In Computer Graphics Forum, volume 28, pages 375–384,2009. 
+ 
+5.2 頭髮模擬 
+[1] R. E. Rosenblum, W. E. Carlson, and E. Tripp, “Simulating the structure and 
+dynamics of human hair: modelling, rendering and animation,” The Journal of 
+Visualization and Computer Animation, vol. 2, no. 4, pp. 141–148, 1991. 
+[2] K. Anjyo, Y. Usami, and T. Kurihara, “A simple method for extracting the natural 
+beauty of hair,” in Proceedings of the 19th annual conference on Computer graphics and 
+interactive techniques, 1992, pp. 111–120. 
+[3] F. Bertails, B. Audoly, M.-P. Cani, B. Querleux, F. Leroy, and J.-L. L´evˆeque, 
+“Super-helices for predicting the dynamics of natural hair,” in ACM SIGGRAPH 2006 
+Papers, 2006, pp. 1180–1187.  
+[4] S. Hadap and N. Magnenat-Thalmann, “Modeling dynamic hair as a continuum,” 
+Computer Graphics Forum, vol. 20, no. 3, pp. 329–338, 2001. 
+[5] Y. Bando, B.-Y. Chen, and T. Nishita, “Animating hair with loosely connected 
+particles,” Computer Graphics Forum, vol. 22, no. 3, pp. 411–418, 2003. 
+[6] L. Petrovic, M. Henne, and J. Anderson, “Volumetric Methods for Simulation and 
+Rendering of Hair,” Pixar Animation Studios, Tech. Rep., 2005. 
+[7] F. Bertails, T.-Y. Kim, M.-P. Cani, and U. Neumann, “Adaptive wisp tree: a 
+multiresolution control structure for simulating dynamic clustering in hair motion,” in 
+Proceedings of the 2003 ACM SIGGRAPH/Eurographics symposium on Computer 
+animation, 2003, pp. 207–213. 
+[8] S. Tariq and L. Bavoil, “Real time hair simulation and rendering on the gpu,” in ACM 
+SIGGRAPH 2008 talks, 2008, pp. 37:1–37:1. 
+[9] A. McAdams, A. Selle, K. Ward, E. Sifakis, and J. Teran, “Detail preserving 
+continuum simulation of straight hair,” in ACM SIGGRAPH, 2009, pp. 62:1–62:6. 
+14 
+ 
+6 計畫成果自評  
+ 
+主持人和他的指導碩士學生總共發表了八篇論文, 其中一篇論文是最佳論文。
+論文列表如下: 
+1.  Yu-Chun Cheng and Sai-Keung Wong, GPU Ray Tracing with Dynamic Scenes Using Reduced View-based 
+BVHs, Computer Graphics Workshop, Taiwan, 2011. 
+2.  Yu-Chun Cheng, Sai-Keung Wong, and Chun-Hung Hung, Hybrid View-based Approach for Continuous 
+Self-Collision Detection Using CPUs and GPUs, Computer Graphics Workshop, Taiwan, 2011. (Best Paper 
+Award) 
+3.  Shih-Ping Lu, Tzung-Min Wang, and Sai-Keung Wong, Dressed Character Animation, Computer Graphics 
+Workshop, Taiwan, 2011.  
+4.  黃世強, 劉家銘, 何單期, 楊筱筑, 莊榮宏, 對稱感知的形體對應, Computer Graphics Workshop, 
+Taiwan, 2011. 
+5.  Cheng-Min Liu, Sai-Keung Wong, and Shing-Yeu Lii, Simulation of Inextensible Cloth Embedded with 
+Rigid Objects, Computer Graphics Workshop, Taiwan, 2011. (poster) 
+6.  Yi-Chen Chen, Chiao-Chih Yeh, Shih-Wei Fang, Kuan-Chen Lin, and Sai-Keung Wong, Modelling Fish 
+Behaviours with Interaction in A Large Environment, in Proceedings of  the 24
+th
+ IPPR Conference on 
+Computer Vision, Graphics, and Image Processing, 2011. 
+7.   Yi-Chen Chen and Sai-Keung Wong, Animating Complex Trees with Collision Handling, in Proceedings 
+of 24
+th
+ IPPR Conference on Computer Vision, Graphics, and Image Processing, 2011. 
+8.   Wei-En Chen, Sai-Keung Wong and Shih-Ping Lu, Real Time Simulation and Rendering of Hair on 
+Graphics Hardware, National Computer Symposium (全國計算機會議 NCS), Workshop on Image 
+Processing, Computer Graphics, and Multimedia Technologies, 2011, accepted. 
+ 
+學生論文： 
+1. 鄭游駿，View-based Continuous Self-Collision Detection with Graphics 
+Hardware，碩士論文，國立交通大學。 
+2. 劉政旻，Simulation of Inextensible Cloth Embedded with Rigid Bodies，
+碩士論文，國立交通大學。 
+3. 陳蔚恩，基於圖形處理器的即時頭髮渲染與模擬，碩士論文，國立交通大學。 
+ 
+人物運動、衣服模擬、頭髮模擬以及光線追蹤都有廣泛的應用，在多核心平台
+上進行平行運算，可以加快模擬和渲染程序的速度，能夠在比較短的時間內完成模
+擬和渲染程序，縮短製作時間，不論在電影、遊戲及衣服設計都有十分重要意義。 
+ 2
+一、參加會議經過 
+ 
+這個會議維持三日．第一日在上午有 Keynote speech,接下來是兩場的 Full paper presentation, 
+然後是 poster-presentation．第二日在上午有 Keynote speech, 接下來是兩場的 Full paper 
+presentation,然後是 poster-presentation。最後是晚宴. 第三日在上午有兩場的 Full paper 
+presentation.最後散會。 
+二、與會心得 
+在會議期間，能夠和一些國際的知名學者討論研究上的問題, 獲益良多。一些演講者在演講的時
+候十分生動.都是十分值得我們學習．同時也可以請教主辦單位，如何籌備國際會議，在可見的未
+來, 當自己要籌備同樣的國際會議時，有一定的幫助。 
+三、考察參觀活動(無是項活動者略) 
+無。 
+四、建議 
+沒有。 
+五、攜回資料名稱及內容 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/07/20
+國科會補助計畫
+計畫名稱: 研究混合型的平行運算系統及其應用在三維人物運動、布料模擬、頭髮模擬
+以及光線追蹤
+計畫主持人: 黃世強
+計畫編號: 99-2221-E-009-143- 學門領域: 計算機圖學
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無。 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

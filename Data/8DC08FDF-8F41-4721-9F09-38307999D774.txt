@@ -1,0 +1,173 @@
+ 2
+為系統可用性不高而認為該系統不穩定並
+降低使用意願，甚至遭到撤換。同時系統
+維護或開發人員因為必須不斷地放下手邊
+的工作前往處理問題而無法專注於現有專
+案的工作，使得新專案為了能準時上線而
+又忽略了例外處理程式。於是，前一個系
+統的問題尚未解決，新系統又有相同的問
+題。當系統維護或開發人員所負責的系統
+不斷增加時，最後只能疲於奔命處理各系
+統的問題。 
+ 
+上述情節在現實環境中經常發生，本研究
+提出應用軟體重構技術逐步提升軟體系統
+強健度的方法，以期解決此問題。 
+ 
+二、研究方法 
+ 
+2.1 強健度等級 
+ 
+軟體系統的強健度依系統業務不同的需求
+而有不同等級之區分。因此，我們必需定
+義出不同的系統強健度目標之間所代表的
+涵義及其間的差異，才能讓系統開發或維
+護人員在進行強健度提升時有一致性的認
+知。在[1]中，我們提出演進式例外處理模
+型的三個例外處理目標。在本研究中，我
+們分析達到每一個強健度目標所會遭遇的
+例外處理問題（以例外處理壞味道表示
+之），並提出移除這些問題的重構方法。首
+先我們簡介這三個例外處理目標： 
+ 
+z Goal 1, Error-Reporting (G1)：此層
+級表是系統發生例外時，捕捉到例外
+的程式或模組將該錯誤回報至前一個
+呼叫者，依此類推將該例外狀況回報
+至第一個呼叫程式或模組，同時該程
+式將例外訊息顯示於使用者介面告知
+該例外或紀錄於日誌檔案中。 
+z Goal 2, State-Recovery (G2)：當系統
+發生例外時可以將該時點的狀態回復
+到例外發生前的狀態，使得系統可以
+繼續處理下一個交易。同時，系統也
+必須將例外情形予以紀錄以便相關人
+員進行後續追蹤。 
+z Goal 3, Behavior-Recovery (G3)：系
+統例外的處理除了可以回報或將狀態
+回復外，我們還可以進一步的嘗試重
+新執行前一次失敗的行為。重試可以
+是以相同的條件再執行(如網路連線
+可以用相同的 port 重試)或是以新的
+條件再執行(如網路連線可以用另一
+個替代的 port 重試)。對於重試的次數
+則必須視系統的條件以及使用者需求
+來決定。行為回復最主要的目的在減
+少因為系統資源短暫不可得或不穩定
+的情況下，需要使用者手動重新執行
+交易的情形。 
+ 
+三、例外處理壞味道 
+ 
+程式碼中的壞味道（bad smells）將會降低
+程式的品質，使其變的不容易閱讀、擴充、
+修改等等。因此，重構的目的便是藉由一
+連串對於程式碼的修改步驟，移除這些壞
+味道，以增進軟體品質。在本計畫中，我
+們首先整理出常見的例外處理壞味道
+（ exception handling bad smells ， EH 
+smells），並提出改善的方法。以下為我們
+整理出的六個 EH smells。 
+ 
+3.1 Return code 
+ 
+許多程式語言，例如最具代表性的 C 語
+言，使用 return code（返回碼）來表示函
+式執行的錯誤狀態。然而，使用此方法將
+造成正常程式與錯誤處理程式混合穿插在
+一起的問題。假如程式中的每一個函式呼
+叫之後都依據其 return code 執行所有可能
+的錯誤檢查，則程式碼將難以了解且不易
+維護。 
+ 
+3.2 Ignored checked exception  
+ 
+忽略 checked exceptions 會減低程式的強
+健度並使得除錯更加困難。 Checked 
+exceptions 表示可預期或是可修復的錯誤
+狀態。如果在程式中捕捉了 checked 
+exceptions 但是並未做後續的處理，則該
+ 4
+式狀態。該類別具有狀態保存、狀態回
+復、以及清除檢查點資料的能力。 
+ 
+4.5 Introduce resourceful try clause 
+  
+情境：一個 catch clause 扮演著其相對應
+try clause 備胎的角色。這個 catch clause
+的執行會丟出 checked exceptions。 
+解法：將 catch clause 中，扮演著備胎角
+色的程式碼移到 try clause 裡面。當 try 
+clause 發生例外時，重新執行一次該 try 
+clause。宣告變數來控制重新執行的次數
+並且設計選擇機制用以在重試過程中選
+擇主要或是替代方案。 
+ 
+4.6 Replace Nested Try Block with Method 
+  
+情境：程式碼中有一個 nested try block。 
+解法：將該 nested try block 抽離成方法。 
+程式範例： 
+原始程式如下: 
+ 
+public void makeTransfer (long to AcctNo, 
+Float amount) { 
+  try {   
+      // (1) configure database connection 
+              … 
+     String localHost = “”; 
+    try { localHost = 
+InterAddress.getLocalHost().toString(); } 
+   catch (UnknowHostException ex)  
+{    
+localHost =                                
+“localhost/127.0.0.1”; } 
+    … 
+    // (2) update database  
+       ... 
+  catch (SQLException e) { } 
+} 
+修改後的程式如下: 
+ 
+public void makeTransfer (long to AcctNo, 
+Float amount) { 
+  try {   
+     // (1) configure database connection 
+       String localHost =   
+       getLocalHost(); 
+      // (2) update database  
+     catch (SQLException e) { } 
+    } 
+ 
+private String getLocalHost () { 
+  String localHost = “”; 
+  try {  localHost =  
+        InterAddress.getLocalHost(). 
+        toString(); } 
+  catch (UnknowHostException ex)  
+  {   localHost = “localhost/127.0.0.1”; } 
+  return localHost; 
+  } 
+ 
+步驟說明： 
+1. Apply Extract Method refactoring to 
+each nested try block. 
+2. Invoke the extracted method in the 
+original method. 
+表 1: 例外處理壞味道、重構與目標 
+ 
+例外處理壞味道 重構 目標 
+Return code Replace error code with exception G1 
+Ignored checked exception Replace ignored checked exception with 
+unchecked exception 
+G1 
+Unprotected main program Avoid unexpected termination with big outer try 
+block 
+G1 
+Dummy handler Replace dummy handler with rethrow G1 
+Nested try block Replace nested try block with method G2 
+Ignored checked exception,  
+Dummy handler 
+Introduce checkpoint class G2 
+Spare handler Introduce resourceful try clause G3 
+ 

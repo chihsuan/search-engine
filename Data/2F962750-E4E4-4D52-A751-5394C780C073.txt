@@ -1,0 +1,433 @@
+size and low power issues. However, each memory 
+element has been improved from SLC (single level 
+cell), which could store 1 bit data, to MLC (multiple 
+level cell), which could store 2~3 bits data. It 
+means that we have to face the problems of decreasing 
+yield and stability. In this project, we will use the 
+MLC characteristic to develop the asymmetric channel 
+model, which will be combined with RS、BCH or LDPC 
+codes to provide better error correction mechanism 
+for the next generation flash memories. 
+英文關鍵詞： Lossless Compression、Discrete Cosine Transform、
+Discrete Wavelet Transform、Flash Memory、Error 
+Correction Codes、Reed-Solomon Codes、BCH Codes、LDPC 
+Codes 
+ 
+ 2
+中文摘要 
+本子計畫的成果報告主要可分為三個部分。第一部分是採用軟性位元訊源解碼的方式，大幅減少訊
+號對於量化誤差及通道雜訊的影響，可以低失真地壓縮心電訊號（ECG）並且達到 7.33 的壓縮率；
+第二部分我們發展出低輸入輸出延遲的渦輪編/解碼器壓縮演算法，並且推導出通道編碼器的壓縮
+極限，將之應用在心電訊號壓縮，不但可省去一般無失真壓縮所需要的碼對照表（codebook），還
+能夠降低不必要的編/解碼疊帶次數，達到約 1.47 的無失真壓縮結果。最後一部份針對可應用在各
+式儲存媒介的 LDPC code 開發 FPGA 驗證平台，用來找出可能出現的錯誤地板（error floor）現象
+並加以消除；以 BER=10-12 等級的模擬結果來說，在一般個人電腦上使用軟體必須秏上好幾年的時
+間，而以本計畫所開發的 FPGA 驗證平台可把模擬時間壓縮在數個小時完成。 
+關鍵詞：心電訊號、壓縮率、通道編碼、向量量化、軟性位元訊源解碼、碼對照表、渦輪編碼、 
+錯誤地板、低密度奇偶校驗碼 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 4
+1. 前言 
+本子計畫在今年的成果分成三個部分，第一部份是研究量化所造成的誤差以及通道效應對
+ECG 壓縮訊號的影響；第二部分是使用迴旋編碼及穿孔器，探討渦輪碼在無失真壓縮演算法的效
+能；最後一部份則是簡介應用在尋找 LDPC codes 錯誤地板的 FPGA 驗證平台。 
+1-1  ECG 訊號壓縮簡介 
+ 
+上圖是一般人體的心電圖，其波型有 P、QRS、T 的特徵，這些特徵訊號也常反映了人體心
+臟活動的狀況，其中 P 波代表正常的心室在除極的過程中，QRS 波群反映了左右心室快速的去
+極化過程，而 T 波代表心是快速復極化過程。這些都是反映人體狀況的重要訊號，因此是否能
+夠在經過壓縮後再被近乎無失真的重建回來是相當重要的。 
+ECG 訊號壓縮技術的目標是能夠減少儲存的信號，並且利用這些壓縮後的訊號在能夠保留
+一些心電訊號的特質的情況下重建回來。這些特質包含了 ECG 的 P、QRS、T 波段。現有的 ECG
+訊號壓縮方法可以區分為直接壓縮法[1]、轉換壓縮法[2]。直接壓縮法主要是以訊號在時間上的
+統計或相關性之特性來做壓縮，其包含三大項，分別是失真壓縮（loss compression）、Differential 
+pulse code modulation 及 Entropy coding；近年來在失真壓縮有許多方法，例如: Amplitude 
+Zone-Time Epoch Coding（AZTEC）[3]、Turning Point（TP）、Coordinate Reduction Time Encoding 
+System（CORTES）以及 Fan and scan-along polygonal approximation（SAPA）[4]。而在轉換壓縮
+法上，主要是將時域之訊號轉換成頻域之訊號來處理，較常被用到的轉換有 Fourier Transform、
+Discrete Cosine Transform [5]、Karhunen-Loeve Transform（KLT）及 Wavelet Transform（WT）。 
+ 6
+2. 聯合信源通道解碼於 ECG 之壓縮 
+在傳統的系統設計問題，信源解碼器(source decoder)和通道解碼器(channel decoder)的設計分開
+和獨立。這種做法的理由是夏農(Shannon)的分離定理(separation theorem)，保證了最佳性能的整體
+通信系統。但是，分離定理不考慮信號長度大小和延遲的限制。缺點包含獨立設計的信源和通道解
+碼器是基於對方為最佳解。也沒有利用另一個解碼器的額外資訊(extrinsic information)。由於實際
+的限制，一個信源編碼器的輸出不是獨立也不是均勻分佈，表現出某種形式的非均勻分佈及相關
+性，這被稱為信源殘留冗餘。在實際的數位通訊系統，訊源編碼器的設計受限於複雜度與延遲需求，
+其編碼輸出參數仍有殘餘冗息存在。為了加強系統的強健性，我們在合併信源通道解碼下，引入渦
+輪原則(turbo principle)並據以設計。核心元件包括軟性輸出通道解碼器、軟性位元信源解碼器以及
+索引交錯器(index interleaver)三個工作單元。聯合信源通道解碼是利用信源和通道解碼器的殘留冗
+餘，以提高抗雜訊能力以及信號質量。圖 2.1 為系統方塊圖，與傳統系統一樣，信源編碼與通道編
+碼在編碼端分開設計，經由通道，在此假設通道為可加白色高斯雜訊(Additive white Gaussian noise)
+通道，在編碼端會提供事前機率(a priori knowledge)，以便解碼端使用，解碼端利用通道資訊以及
+編碼端提供的事前機率，算出額外資訊(Extrinsic Information)，其關鍵在於利用信源殘餘冗息和通
+道編碼提供的保護位元，在不同解碼器之間逐次交換額外資訊以累積更多可靠的判定內容。 
+在本次實作中，模擬檔案來源為 MIT-BIH 的檔案庫，廣為大眾使用之學術資料庫，以及 AR
+模型(autoregressive model)，。利用聯合信源通道解碼之設計，可以使得心電壓縮訊號在傳輸過程
+仍保有抗錯誤之能力，而達到近無失真之壓縮，壓縮率可以高達 7.33，PRD 在 5.46%。 
+ 
+圖 2.1 系統方塊圖 
+2-1 信源 
+以 AR(1)，變異數(variance)為 1，相關係數為 0.95 之模型，來簡單模擬心電訊號之行為模式。
+可以用下列數學式子表示之 
+ 
+其中 Z 是一個平均值為 0、變異數為 1-0.95*0.95 的隨機過程， V 是信號源，t 為時間索引。 
+ 8
+b) 向量量化器: 
+多個資料點先集合成一個向量，向量以量化階來表示，故位元率可為分數。具有高壓
+縮率(compression ratio)以及鄰近資料可以去相關的優點。以 LBG 演算法(Linde–Buzo–Gray 
+algorithm) [8]來進行資料的分類，並且以分裂法[8]來初始化量化階，在不知原始資料的
+pdf，經過此演算法達到局部最佳解。 
+ 
+圖 2-1.2 二維向量量化示意圖 
+ 
+ 
+圖 2-1.3 向量量化模擬 
+由上圖可看到每個 sample 點原始為 11 位元的情況，經過 4 維向量，每個向量點用 6
+個位元表示，其壓縮率可以達到 11*4/6=7.333，值得一提的是，這僅僅只做了量化的步驟，
+PRD=5.46%，原訊號與壓縮過後的訊號破壞程度並不大。 
+ 10
+Nature Binary code 帶有校驗位的位元組 
+奇 偶 
+0  000  0001 0000 
+1  001  0010 0011 
+2  010  0101 0100 
+3  011  0110 0111 
+4  100  1001 1000 
+5  101  1010 1011 
+6  110  1101 1100 
+7  111  1110 1111 
+表 2-2.1 帶有奇偶校驗位之位元組 
+ 
+B. 遞迴系統化捲積碼(recursive systematic convolutional code):  
+在一個二進位分組碼(n,k)當中，包含 k 個資訊位，碼組長度為 n，為了達到一定的更正
+錯誤能力和編碼效率(=k/n)，分組碼的碼組長度 n 通常都比較大。編解碼時必須把整個資訊碼
+組儲存起來，由此產生的延時隨著 n 的增加而線性增加。為了減少這個延遲，人們提出了各
+種解決方案，其中卷積碼就是一種較好的通道編碼方式。這種編碼方式同樣是把 k 個資訊位
+元編成 n 個位元，但 k 和 n 通常很小，特別適宜用於連續傳輸資訊，減小了編碼延時。與分
+組碼(block code)不同，卷積碼中編碼後的 n 個碼元不僅與當前段的 k 個資訊有關，而且也與
+前面的資訊有關。卷積碼的更正錯誤能力隨著 n 的增加而增大，在編碼器複雜程度相同的情
+況下，卷積碼的性能優於分組碼。遞迴系統化捲積碼，系統化編碼表示在編碼後碼字含有原
+始編碼前的碼字。下圖為一個遞迴系統化捲積編碼器的一個例子。 
+ 
+圖 2-2.1 遞迴系統化捲積編碼端 
+ 12
+b) 交錯器與反交錯器(Φ,Φ-1): 
+使資料經過信源編碼器後的結果可以再達到去相關的效果，打斷鄰近資料間的相關
+性，提高壓縮的品質。 
+c) 軟性信源解碼器(Utilization of Source Statistics): 
+利用事前機率(A Priori Knowledge)，通道資訊，以及額外資訊做軟性信源解碼，主要
+的演算法為貝式定理算出後驗機率。在事前機率分為四種模式，HD(Hard Decision)，
+NAK(No A Priori Knowledge)，AK0 (Zeroth-Order A Priori Knowledge)，AK1 (First-Order A 
+Priori Knowledge)。 
+d) 參數預估器(Parameter Estimation): 
+以後驗機率來做參數的預估，參數預估的方式有很多種，常見的兩種為 MAP 跟
+MMSE，MAP 的主要精神是把後驗機率最大的參數當成是原始傳送參數，MMSE 則是把
+所有參數以其後驗機率為權重做平均，得到參數預估值。 
+2-5  模擬結果與討論 
+A. 模擬環境-I 
+可以 AR1 的模型來近似心跳之特性，取相關程度ρ等於 0.95，以 3 個位元的純量量化器
+做量化，位元映射做 NBC，不做通道編碼，只做信源解碼，以 MMSE 做參數預測。 
+ 
+圖 2-4.1 Parameter SNR performance1 
+ 
+此圖可以明顯看出 AK1 優於 AK0 優於 NAK 優於 HD，用 3 位元的量化器來說，AK1 所
+擁有的資訊為 2 的 3 次方的平方也就是 64 個事前機率值，而 AK0 只擁有 2 的 3 次方，8 個
+事前機率值，NAK 及 HD 都沒有事前機率值，因為 NAK 是軟決策，所以通道給他的資訊會
+比硬性決策來的多，以接收端所收到的資料量來看，曲線呈現合理排列，在信號強度比雜訊
+ 14
+遞迴可以達到很好的效能，之後就漸漸飽和了，在延遲有限的情況下，可以選擇遞回一次直
+接輸出，便可提高許多效能。 
+D. 模擬環境-IV 
+以 AR1 的模型來近似心跳之特性，取相關程度ρ等於 0.95，位元映射做 natural binary 
+code，通道編碼為遞迴系統化捲積碼(2,1)，BCJR 解碼，遞迴 0-2 次，以 MMSE 做參數預測，
+使用 AK1。 
+ 
+圖 2-4.4 Parameter SNR performance4 
+ 
+此圖可與圖 2-4.4 做一個比較，在相同資料，選定不同的通道編碼技術下，可以看到用奇
+偶校驗位得到的結果不如遞迴系統化捲積碼，原因在於奇偶校驗位並不是具有更正能力的
+碼，他只能提供檢驗的功能，相反的，遞迴系統化捲積碼，本身即具有錯誤更正的能力，加
+上能提供軟性資訊，在聯合信源通道編碼上，為一個好的通道編碼方式。 
+ 
+E. 模擬環境-V 
+以 MIT-BIH[14]之心電檔案做模擬，以 4 維 6 個位元的向量量化器做量化，位元映射做
+NBC，不做通道編碼，只做信源解碼，以 MMSE 做參數預測。此圖是以向量量化的方式做量
+化，可以看到 AK1 比較高，這是因為 4 位元的關係，還有在下方三條線的部分，是因為向量
+量化的位元配置以 NBC 的方式來安排並不是最佳的做法，在高 SNR 時，輸入的可靠性越高，
+而 SD 取 MMSE 後受到其他資料平均的影響，位元配置又不是最佳，導致曲線往下掉。壓縮
+率為 7.33。 
+ 
+ 16
+3. 低輸入輸出延遲之渦輪訊源編碼(Turbo Source Coding)於 ECG 訊號壓縮 
+3.1 渦輪碼介紹 
+渦輪編碼[15]可視為通道編碼的一種，已被證實擁有極佳的錯誤更正能力並且可以接近
+shannon 的編碼理論。渦輪編碼器主要是由兩個迴旋捲積編碼器(Recursive Convolutional encoder)及
+一個固定長度的交錯器(interleaver)[16]所組成，如圖 3.1.1 所示: 
+ 
+圖 3.1.1 渦輪編碼器 
+其中 dk 代表所要傳送的資訊，而(Xk, Y1k, Y2k)代表 dk 所對應的碼(codeword)，兩個子編碼器之
+間由一個交錯器隔開。目前最常用來解渦輪碼的是最大事後機率演算法[17](MAP Maximum a 
+posteriori probability)，而一般常見的渦輪解碼器架構如圖 3.1.2: 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+圖 3.1.2 渦輪解碼器 
+渦輪解碼器包含兩個子解碼器(MAP decoder)並利用MAP演算法來解碼。當收到 codeword(rx, r1, 
+r2)後，MAP decoder 1 會進行解碼並輸出 extrinsic value 1(Lex1)，通過交錯器後會成為輸入下一個子
+解碼器的 intrinsic value(Lin2)，而 MAP decoder 2 會再利用收到的碼再解出一個 extrinsic value 
+2(Lex2)，經過反交錯器後送給 MAP decoder 1 當作 intrinsic 的輸入，如此的反覆疊代解碼來達到極
+佳的錯誤更正效果。 
+ 18
+圖 3.2.3 的 CR 是 1.5，使用的 interleaver length 是 5120，在模擬中實際的位元 0 出現機率是
+0.925，若我們的起始 P(X=0)從 0.775 到 0.99，可以發現在起始機率接近 0.925 訊號的失真度越來越
+低(在解碼疊代次為 2 次的情況)，值得注意的是，當起始機率設定在 0.875、0.925 及 0.955 時，不
+管有無做預測的動作，在第三次疊代解碼後可以完全沒有錯誤的解出原本的資料。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+圖 3.2.3 
+接著，我們想探討對於一個通道編碼器，於固定的通道編碼率下所能提供無失真壓縮之最大壓
+縮率?在此報告中，我們的通道編碼為使用渦輪編碼演算法，利用圖 3.2.4 的方塊圖來說明無失真壓
+縮的最大壓縮率。 
+       
+圖 3.2.4  
+圖 3.2.4 中的 Channel Encoder 之編碼率為 K/K+R，其中 K 代表訊源的位元數而 R 代表加入的
+檢查位元數，二位元訊源(binary source)經過編碼後會捨棄部份的檢查位元(Puncture Parity)及全部的
+二位元訊源而達到壓縮目地，最後我們只需儲存剩下的檢查位元數(r)當作還原資料的依據。如此整
+個系統的 CR 就是(K/r)。若以 Hb 表示此訊源的 entropy 而 p 為位元”0”在此訊源的機率，根據的
+shannon 之壓縮理論可得: 
+ 
+ 
+ 
+ 
+ ,  log( ) (1 ) log(1 )---(3.2.1)
+1  
+1( )   ---(3.2.2)
+1
+b b
+b
+b
+r H H p p p p
+K
+K r H
+K
+Code Rate
+H
+> = − − − −
++ > +
+< +通道編碼率
+ 20
+給與適當的初始編碼率。Turbo encoder 搭配編碼率編碼，編完後再由 Turbo decoder 解碼，若
+成功完全解出就送出或儲存，若沒解出則再調低編碼率，直到完全解出為止。而解碼器為 hard 
+input 的渦輪解碼器。 
+E. Binary To Decimal and Re-bias: 
+主要是將解碼的二元訊號變成十進位的訊號，在加上之前在 Bias 所減去的數字。 
+F. Block integration: 
+將每一個重建完成的 ECG 訊號接成原本的連續 ECG 訊號。 
+根據此架構，我們可以大幅減少渦輪碼在達成無失真壓縮之疊代次數，如表 3.3.1 所示，其中
+Bit-index 代表每一個 ECG Symbol 的位元位置，每個 symbol 為 11 位元，index 由小到大代表由 LSB
+到 MSB，Prob(1)代表 K 個 ECG symbol 之特定 bit-index 裡 1 所出現的機率，表中的第三列為使用
+本方法達到無失真壓縮所需的編碼疊代次數，第四列是不考慮通道編碼的極限下所需的編碼疊代次
+數，因此本方法的初始編碼率就是理論值，其實不需經過太多疊帶次數及可達到無失真壓縮，其他
+方式的初始編碼率設定則是由 1/2，若可達無失真壓縮則再減少檢察位元，直到找到最佳的編碼率
+為止，所以所需疊帶次數會比較多，因此本演算法比較適合用於即時性的生理訊號壓縮處理器上，
+而無失真的壓縮率可達 1.47，因此可以減少約 32%儲存裝置的成本。    
+Bit-index 1 2 3 4 5 6 7 8 9 10 11 
+Prob(1) 0.50 0.51 0.48 0.50 0.46 0.75 0.07 0.98 0.97 0.97 0.03 
+Proposed 1 1 1 1 1 2 6 5 5 5 5 
+Other 
+work 
+2 2 2 2 2 2 21 24 24 24 24 
+表 3.3.1 編/解碼疊代比較表 
+ 
+圖 3.3.1 使用渦輪碼壓縮 ECG 訊號流程圖 
+ 
+ 22
+4. FPGA 驗證平台 
+近來為因應儲存資料在大容量、小體積、低功耗等相關需求，越來越多的消費性電子系統採用
+快閃記憶體作為儲存媒介，目前最常使用 BCH codes 來解決快閃記憶體在運作中所發生的錯誤。
+隨著製程演進、增加容量的同時也造成良率與使用壽命的下降，因此我們提出適用於快閃記憶體控
+制晶片之 LDPC 解碼演算法及其硬體架構，結合快閃記憶體的特性配合軟解碼（soft decoding）方
+式，達到位元錯誤率（BER）小於 10-12 等級。而為驗證 LDPC code 可能出現的錯誤地板現象，模
+擬的數據必須超過 1014 位元量，而在一般個人電腦進行這麼大量的模擬至少要秏上好幾年時間。 
+據此，研究團隊使用 Xilinx Virtex 5 系列開發 FPGA 驗證平台，經由實驗室自己開發的 GUI
+介面設定模擬相關的參數（如訊雜比 SNR），GUI 程式透過 USB 把參數送給 FPGA。我們在 FPGA
+上建立了完整的模擬平台，平台包含了 Random data generator、LDPC Encoder、AWGN channel、
+和 LDPC Decoder。模擬結束後，FGPA 會把模擬結果透過 USB 回傳給 PC。整個模擬會在 FPGA
+上高速完成，減少了電腦與 FPGA 溝通的機會，大幅減少模擬所需要的時間。目前 FGPA 的模擬
+吞吐量可達到 100Mb/s，未來除了增加硬體平行套數來提升吞吐量，還會加入收集 error floor pattern
+的機制，以作進一步的分析並開發解決 error floor 的演算法。 
+  
+圖 4-1：Xilinx Virtex5 FPGA 驗證版(如左)與研究團隊所開發之 GUI 介面(如右) 
+ 
+圖 4-2：與 Intel Xeon CPU 之模擬速度比較及其解碼效能圖 
+ 24
+6. Reference: 
+[1] SATEH M. S. JALALEDDINE, CHRISWELL G. HUTCHENS, ROBERT D. STRATTAN, and 
+WIKKIAM A. COBERLY, “ECG Data Compression Techniques-A Unified Approach,” IEEE 
+Trans.Biomed. Eng., vol. 37, pp. 329–343, Apr. 1990. 
+[2] SATEH M. S. JALALEDDINE, CHRISWELL G. HUTCHENS, ROBERT D. STRATTAN, and 
+WIKKIAM A. COBERLY, “ECG Data Compression Techniques-A Unified Approach,” IEEE 
+Trans.Biomed. Eng., vol. 37, pp. 329–343, Apr. 1990. 
+[3] J.R.Cox, F.M.Nolle, H.A.Fozzard, and G.C.Oliver, ”AZTEC, a preprocpreprocessing programfor 
+real-time ECG rhythm analysis,” IEEE Trans. Biomed. Eng., vol.BME-15,pp.128-129, Apr.1968. 
+[4] R.C.Barr, S. M. Blanchard, and D. A. Dipersio, ”SAPA-2 is the Fan,” IEEE Trans.Biomed. Eng., 
+vol.BME-32, p.337, May 1985. 
+[5] Wu, J, L, “A novel two-stage algorithm for DCT and IDCT,” IEEE Transactions on Signal 
+Processing, vol. 40, pp. 1610–1612, June 1992. 
+[6] J. Max, “Quantizing for minimum distortion,” IEEE Trans. Inf. Theory, vol. 6, no. 1, pp. 7–12, Mar. 
+1960. 
+[7] M. P. Paez and T.H. Glisson, “Minimum mean-square-error quantization in speech PCM and DPCM 
+systems” IEEE Trans. Commun., pp 225-230, Apr. 1972 
+[8] Y. Linde, A. Buzo, and R. M. Gray, “An algorithm for vector quantizer design,” IEEE Trans. 
+Commun., vol. COM-28, pp. 84–95, Jan. 1980. 
+[9] Kliewer and R. Thobaben, "Iterative joint source-channel decoding of variable-length codes using 
+residual source redundancy," IEEE Trans. Wireless Commun.,vol.4, no.3, pp. 919-929, May 2005. 
+[10] Bahl, J.Cocke, F.Jelinek, and J.Raviv, "Optimal Decoding of Linear Codes for minimizing symbol 
+error rate", IEEE Trans. Inf. Theory, vol. IT-20(2), pp.284-287, March 1974. 
+[11] Y.C. Pan, W.W. Chuang, "Index-Based Iterative Source-Channel Decoding", NCTU master thesis, 
+June, 2008. 
+[12] T. Fingscheidt and P. Vary, “Softbit Speech Decoding: A New Approach to Error Concealment,” 
+IEEE Trans. Speech Audio Processing, vol. 9, no. 3, pp. 240–251, Mar. 2001. 
+[13] S. Heinen and P. Vary," Joint source-channel MMSE-decoding of speech parameters " , Inst. of 
+Commun. Syst. & Data Process., vol. 3, pp.1507-1510, 2000. 
+[14] MIT-BIH Database Distribution-Arrhythmia Database, Harvard-MIT Division of Health Sciences 
+and Technology 
+[15] Berrou, A. Glavieux, and P. Thitimajshima, “Near Shannon limit error-correcting coding and 
+decoding: turbo-codes,” in Proc. IEEE Int. Conf. Commun., May 1993, pp. 1064–1070. 
+[16] J. Sun and O. Y. Takeshita, “Interleavers for turbo codes using permutation polynomials over integer 
+rings,” IEEE Trans. Inform. Theory, vol. 51, no. 1, pp. 101–119,Jan. 2005. 
+[17] L. R. Bahl, J. Cocke, F. Jelinek, and J. Raviv, “Optimal decoding of linear codes for minimizing 
+symbol,” IEEE Trans. Inform. Theory, vol. IT-20, pp. 284–287, Mar.1974. 
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+日期：100 年 10 月 30 日 
+ 
+一、 參加經過  
+超大型積體電路技術及元件技術研討會（Symposia on VLSI Technology and Circuits）是國際
+知名的研討會，奇數年份在日本京都舉行，偶數年份在美國夏威夷舉行，研討會內容分成電
+路技術（VLSI Circuits）與元件技術（VLSI Technology），是 IC 設計領域相當頂尖的研討會。
+今年輪到在日本的京都舉行，會議期間是 6 月 14 日至 6 月 17 日共計四天：第一天安排 Short 
+Course、Workshop，第二到四天則是論文發表，其中第二天晚上的 Joint Cocktail/Dinner Party
+與及第三天晚上的 Rump Session，分別以餐會跟類似座談會的形式，讓與會的人員跟演講的
+專家能夠充分的交流，輕鬆之餘又能拓展大家的視野，相當不錯。 
+由於學校課程的關係，本次會議我只能搭乘 6 月 15 日 12:10 由桃園機場出發的日本航
+空，並於傍晚抵達會場參加 cocktail/dinner party，跟多位相關領域的專家學者閒話家常。第
+二天開始就是參與會議討論，不論是在 plenary session 所提的 Circuit Challenges for Future 
+Computing Systems、Smart Devices and Services in Healthcare and Wellness，或者 Rump 
+Session 所參加的 NVM Technology and New Application1，都有許多收穫。我們這次文章在 6
+                                                 
+1另一場是 Will Circuit Design be a Key Issue in Biomedical Applications? (or Boring Circuits?) 
+計畫編號 NSC 99-2220-E-009 -033 - 
+計畫名稱 具生物反餽機制之智慧型長時睡眠監測系統－子計畫三： 應用於長時生理訊號儲存系統之無失真錯誤更正機制(2/2) 
+出國人員姓名 張錫嘉 服務機構 及職稱 
+國立交通大學 
+電子工程學系教授 
+會議時間 100 年 06 月 14 日至 
+100 年 06 月 17 日 會議地點 京都/日本 
+會議名稱 (中文)超大型積體電路技術及元件技術研討會 
+(英文) 2011 Symposia on VLSI Technology and Circuits 
+發表論文題目 
+(中文) 具多碼率的高速低功率低密度同位元迴旋碼解碼器 
+(英文) A 2.37Gb/s 284.8mW Rate-Compatible (491,3,6) LDPC-CC 
+Decoder 
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+日期：100 年 10 月 30 日 
+ 
+一、 參加經過  
+亞洲區固態電路研討會（Asian Solid-State Circuits Conference）近幾年越來越受到重視。還
+記得 2005 年 IEEE Solid-State Society 決定停辦 AP-ASIC，重新更名為 A-SSCC 以來，剛開
+始還都是亞洲區的文章居多，然而近幾年可以很明顯地感受到來自歐美的投稿量逐次上昇，
+這樣的正向循環也間接帶動亞洲區論文水準的提昇。今年是我第一次參與 TPC（Technical 
+Program Committee），所參與的 SoC & Signal Processing Track 總共有 25 篇文章；整個 TPC 
+meeting 的重頭戲在 7 月 15 日，從早上 8:00 開始一直到下午 5:00，除了選出 6 篇 regular paper
+以及 4 篇 short paper，還必須要完成所選出 paper 的簡介以及 highlight 重點。讓人印象深刻
+的是來自日本的學者，不論是 Dr. Arimoto 或 Prof. Wada，幾乎都把 25 篇文章裝訂得整整齊
+齊，上面也是密密麻麻的註記，嚴謹地跟大家討論許多文真的細節，很值得我們學習。 
+本次會議搭乘 7 月 14 日下午出發的長榮班機，幾乎所有參與的台灣教授（包括一位聯
+發科的朋友）都是搭乘同班飛機，相當熱鬧；跟我住在同間飯店的還有郭建男教授、黃柏均
+教授、張順志教授，也利用這次難得的同行機會更熟悉彼此的研究領域。7 月 15 日審稿會
+議結束後，主辦學校的 Prof. Hoi-Jun Yoo 邀請大家去吃韓國烤肉，雖然感到有些不好意思，
+大家還是很盡興地共同前往，褪去一整天的疲憊。由於隔天長榮航空要到晚上才有班機，藉
+此空檔也跟多位教授到處逛逛，只可惜中途遇到大雨滂陀，稍嫌美中不足。 
+計畫編號 NSC 99-2220-E-009 -033 - 
+計畫名稱 具生物反餽機制之智慧型長時睡眠監測系統－子計畫三： 應用於長時生理訊號儲存系統之無失真錯誤更正機制(2/2) 
+出國人員姓名 張錫嘉 服務機構 及職稱 
+國立交通大學 
+電子工程學系教授 
+會議時間 100 年 07 月 14 日至 
+100 年 07 月 15 日 會議地點 
+Samsung Electronics 
+Seocho Complex(SESC), 
+Seoul, Korea 
+會議名稱 (中文)亞洲區固態電路 2001 年研討會選稿會議 
+(英文) A-SSCC 2011 Paper Review Meeting 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/11/14
+國科會補助計畫
+計畫名稱: 子計畫三：應用於長時生理訊號儲存系統之無失真錯誤更正機制(2/2)
+計畫主持人: 張錫嘉
+計畫編號: 99-2220-E-009-033- 學門領域: 晶片科技計畫--整合型學術研究
+計畫
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

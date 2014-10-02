@@ -1,0 +1,909 @@
+network. 
+In this project, we carry out an in-depth study of 
+the proposed algorithm performed on GPUs including 
+thread divergence, memory organization, caching and 
+locality, and memory bandwidth. Due to specific 
+architecture of GPUs, to explore higher performance, 
+it is imperative to study the implementation issues 
+on GPUs. Considering the GPU architecture, we attempt 
+to introduce several throughput-oriented techniques 
+including reducing global memory transaction of input 
+buffer, reducing latency of transition table lookup, 
+avoiding bank-conflict of shared memory, and 
+coalescing write to global memory in GPUs.  
+Finally, we intend to deal with the memory limitation 
+of GPUs by two ways. One is to utilize the memory of 
+GPUs by optimizing the state transition table of our 
+proposed algorithm. The other is to use multi-GPUs to 
+increase throughput by distributing workload to 
+multiple GPUs. In this part, we will detail the 
+mechanism for binding GPU thread to CPU Pthreads, 
+creating a task pool, and handling errors and 
+exception conditions of joint CPU/GPU architecture. 
+To demonstrate our algorithm, we will use attack 
+patterns from Snort V2.8 and test the PFAC kernel 
+using DEFCON packets which contains large amounts of 
+attack patterns. Experimental results will be 
+compared to the AC algorithm performed on multicore 
+CPUs with OpenMP and Pthread as well as state-of-the-
+art GPU-based approaches. 
+The research results have been presented at 2011 IEEE 
+GLOBECOM, the 22nd VLSI Design/CAD Symposium, and 
+2012 GPU Technology Conference (GTC). 
+ 
+英文關鍵詞： string matching, graphics processing unit 
+ 
+ 2 
+一、 中文摘要 
+網路入侵偵測系統（Network Intrusion Detection System, NIDS）已經被廣泛運用於保護電
+腦系統免於網路攻擊。其中，比對封包內容與病毒樣式的樣式比對(pattern matching)核心決定
+了一個網路入侵偵測系統的效能。由於網路攻擊的大量增加與網路的複雜度，傳統循序的樣
+式比對演算法已經不適用於目前的高速網路。 
+在這個計畫中，我們首先針對所提出的演算法配合GPU的特性做深入的探討，包括thread 
+divergence, memory organization, caching and locality, and memory bandwidth等方面。由於GPU
+的特殊架構，要得到更高的效能，必須深入探討GPU實現上的細節。考慮GPU硬體上的特性，
+我們企圖提出多項吞吐量導向(throughput-oriented)的最佳化技術，例如降低輸入buffer的全域
+記憶體(global memory)讀取次數、降低transition table讀取的延遲、避免shared memory的bank 
+conflict、還有全域記憶體的coalescing寫入技術。計畫最後，我們也將針對GPU記憶體的限制
+提出兩個解決方案。其中之一是提出一個最佳化的方法來降低transition table記憶體的使用
+量。另一個方法則是藉由將運算工作分配給多個GPUs，提升整體的吞吐量。針對多重
+GPU(multi-GPUs) 架構，我們則將提出使用多重GPU的機制，包括如何將GPU的thread嵌入於
+CPU的pthread、如何產生task pool、與如何處理CPU/GPU架構的錯誤與例外。 
+在本計畫中，我們將使用Snort 2.8版本的攻擊樣式，並採用包含大量的攻擊樣式的
+DEFCON封包以測試我們所開發的PFAC核心。實驗結果除了跟傳統AC的OpenMP與Pthread
+版本比較以外，並與目前最新的GPU研究成果比較。 
+研究成果已發表於2011 IEEE GLOBECOM國際會議和第22超大型積體電路設計暨計算機
+輔助設計研討會、2012 GPU Technology Conference。 
+ 
+關鍵字：字串比對、多核心圖形處理單元 
+ 
+ 4 
+三、 計畫緣由與目的 
+Network Intrusion Detection Systems (NIDS) have been widely used to protect computer 
+systems from network attacks such as denial of service attacks, port scans, or malware. The pattern 
+matching engine dominates the performance of an NIDS to identify network attacks by inspecting 
+packet content against thousands of predefined patterns. Due to the ever-increasing number of 
+attacks and network complexity, traditional sequential pattern matching algorithms have become 
+inadequate for the high-speed network. 
+In the past few years, many algorithms and hardware designs are proposed to accelerate pattern 
+matching. The proposed approaches can be classified into software and hardware approaches. The 
+hardware approaches can be further divided into logic [1][2][3][4] and memory [5][6][7][8][9][10] 
+architectures. Logic architectures convert attack patterns into logic circuits and implement on 
+field-programmable gate array (FPGA) to match multiple patterns in parallel while memory 
+architectures compile attack patterns into state machines and use commodity memories to store state 
+transition tables for pattern matching.  
+On the other hand, software approaches do not attract attention until NVIDIA® [11] proposes 
+CUDATM (Compute Unified Device Architecture) [12], a general-purpose parallel programming 
+model, in 2007. Because graphics processing units (GPUs) provide dramatic power of massive data 
+parallel computing with hundreds of cores, GPUs have been adopted to accelerate many 
+non-graphical applications, such as pattern matching. In the past year, we have exploited the 
+parallelism of the traditional Aho-Corasick (AC) [13] algorithm and proposed a novel parallel 
+algorithm performed on multi-core GPUs [14]. We adopt CUDATM programming model for GPU 
+implementation. To illustrate the superiors of our proposed algorithm, we first describe a simple 
+task-parallel AC (TP-AC) approach which divides an input stream into multiple segments and 
+allocates each segment a thread to process pattern matching. For example in Figure 1, all threads 
+process pattern matching on their own segments by traversing the same AC state machine 
+simultaneously. However, the direct parallel implementation of dividing an input stream cannot 
+detect a pattern occurring in the boundary of adjacent segments. We call the new problem as the 
+“boundary detection” problem. For example, in Figure 1, the pattern “AB” occurs in the boundary 
+of segments 3 and 4 and cannot be identified both by threads 3 and 4. To resolve the boundary 
+detection problem, each thread must scan across the boundary to recognize the pattern that occurs in 
+the boundary. In other words, in order to resolve the boundary detection problem and identify all 
+possible patterns, each thread must scan an additional length across the boundary which is almost 
+equal to the longest pattern length of an AC state machine. The overhead caused by scanning the 
+additional length across the boundary is called overlapped computation. Despite the fact that the 
+boundary detection problem can be resolved by having threads to process overlapped computation 
+on the boundaries, the overhead of overlapped computation seriously degrades performance. 
+ 6 
+ 
+We now use an example to illustrate the PFAC algorithm. Consider an input stream which 
+contains a substring “ABEDE”. As shown in Figure 4, the thread tn is allocated to input “A” to 
+traverse the Failureless-AC state machine. After taking the input “AB”, thread tn reaches state 2, 
+which indicates pattern “AB” is matched. Because there is no valid transition for “E” in state 2, 
+thread tn terminates at state 2. Similarly, thread tn+1 is allocated to input “B”. After taking input 
+“BEDE”, thread tn+1 reaches state 7 which indicates pattern “BEDE” is matched. Instead of using 
+one thread to find the two patterns in TP-AC, PFAC uses two threads to find the two patterns in 
+parallel.  
+ 
+There are four main reasons that the PFAC algorithm is superior to the simple parallel TP-AC 
+discussed in Section II.  First, the duration time of each thread of TP-AC is constant and 
+proportional to the minimum scanning length. In contrast, although PFAC assigns huge amounts of 
+threads, the threads of PFAC have high probability to terminate very early because each thread of 
+PFAC is only responsible for matching the pattern beginning at its starting position. On average, the 
+duration time of most threads in PFAC is much shorter than the duration time of the threads in 
+TP-AC. As shown in Figure 5, threads tn to tn+3 terminate early at state 0 because there are no 
+valid transitions for “X” in state 0. The threads tn+6 and tn+8 terminate early at state 8 because 
+there are no valid transitions for “D” and “X” in state 8. In the best case that input stream does not 
+contain any attack pattern, each thread of PFAC has the duration time of accessing only one 
+character while the thread of TP-AC still has the duration time of accessing a minimum length of 
+scanning length. 
+ .  .  . X X X X A B E D E X X X X X .  .  .  
+…… n n+1 …… 
+Thread n Thread n+1 
+B G 
+0 
+ 
+A 2 1 3 
+4 5 7 6 
+9 8 
+B E D E 
+E F 
+B G 
+0 
+ 
+A 2 1 3 
+4 5 7 6 
+9 8 
+B E D E 
+E F 
+Figure 4. Example of PFAC 
+0 
+ 
+A 2 1 3 
+4 5 7 6 
+9 8 
+B G 
+B E D E 
+E F 
+Figure 3. Failureless-AC state machine of the patterns “AB”, 
+“ABG”, “BEDE”, and “EF” 
+ 8 
+ 
+Although the PFAC algorithm is theoretically well-suited to be implemented on multicore 
+GPUs, we still faces a potentially overwhelming task of modifying algorithm to overcome major 
+challenges in parallelism, scalability, efficiency, accuracy, and memory bandwidth. We will 
+accomplish this project in four steps. In the first step, we will carry out an in-depth study of the 
+PFAC implementation on GPUs including thread divergence, memory organization, caching and 
+locality, and memory bandwidth.  
+In the second step, we will detail the implementation issues on GPUs and propose several 
+throughput-oriented optimization techniques such as reducing memory transaction of input stream, 
+reducing latency of transition table lookup, avoiding bank-conflict of shared memory, and 
+coalescing write to global memory.  
+Finally, we will deal with the memory limitation of GPUs by two ways. One is to utilize the 
+memory of GPUs by optimizing the state transition table of our proposed algorithm. The other is to 
+use multi-GPUs to increase throughput by distributing workload to multiple GPUs. In this part, we 
+will detail the mechanism for binding GPU threads to CPU Pthreads [15], creating a task pool, and 
+handling errors and exception conditions of joint CPU/GPU architecture. 
+四、 研究方法 
+In this project, we first analyze the PFAC implementation on NVIDIA GPUs and then propose 
+several throughput-oriented optimization techniques considering the particular hardware 
+architecture of NVIDIA GPUs. Before discussing how to optimize the PFAC algorithm for 
+NVIDIA GPU architectures, we first analyze the cost of each operation in the PFAC algorithm. 
+Figure 7 shows a single thread version of the PFAC algorithm which takes four steps. First, the 
+PFAC algorithm reads a character, ch indexed by pos from input_buffer at line 5. In the second step, 
+the current state, state and the input character, ch are used as indices to retrieve next state 
+information, nextState, from the PFAC_table as shown at line 6. The PFAC_table is arranged as a 
+two-dimensional array where each row represents a state and each column represents an input 
+character. In PFAC, a thread terminates if its next state is a trap state which indicates there is no 
+ . X X X X X X X X X B E D E X X X X X X X X X X X .  
+. . . . . . . . . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . .  
+B G 
+ 
+ 
+A    
+    
+  
+B E D E 
+E F 
+B G 
+ 
+ 
+A    
+    
+  
+B E D E 
+E F 
+ 
+ 
+A    
+    
+  
+B E D E 
+E F 
+1    2    3      
+8    9      
+0       4    5    6    7 
+B G 
+1    2    3      1    2    3      
+0       4    5    6    7 0       4    5    6    7 
+8    9      8    9      
+Figure 6. The PFAC has no boundary detection problem as 
+does the TP-AC approach 
+ 10 
+memory to the shared memory and fetches input streams from the shared memory. 
+In the two-step approach, an input stream is first divided into multiple segments. Because the 
+maximum pattern length in Snort rules is less than 512 bytes (128 integers), each segment consists 
+of 384 integers (1,536 bytes) where 128 integers (512 bytes) are overlapped. Then, each thread 
+block loads 384 integers (1,536 bytes) from the global memory to the shared memory. In other 
+words, given an input stream of length n characters, the total number of characters read from the 
+global memory is 1.5n.  
+In terms of the total number of memory accesses, the frequency increases from  to 
+ where 1.5n represents the total times data is read from the global memory and  
+represents the total times data is read from the shared memory. But, the total memory access time is 
+reduced because the latency of accessing the shared memory is easily hidden by arithmetic 
+operations.  
+ 
+4.1.2 Eliminating output table by reordering state number 
+As we have mentioned in Section 4, each final state of the PFAC machine represents a unique 
+pattern without handling multiple outputs. Therefore, we eliminate output table accesses by 
+reordering the number of final states to represent match vectors. Suppose a PFAC state machine has 
+n final states (patterns), then the match vectors of final states are numbered from 1 to n, and all 
+other internal states including the initial state are numbered from n+1. Therefore, the number of a 
+final state represents a matched pattern. When a PFAC machine reaches a final state whose number 
+is smaller than the initial state, the PFAC machine directly outputs the number of the final state 
+without looking up the output table. For example, consider the reordering of the match vectors of 
+the four patterns, “AB”, “ABG”, “BEDE”, and “ED”. As shown in Figure 8, the output vectors of 
+patterns, “AB”, “ABG”, “BEDE”, and “ED”, are numbered as 1, 2, 3, and 4, respectively. And then, 
+all other internal states including the initial state are numbered from 5. 
+ 
+ 
+4.1.3 Reducing latency of transition table lookup 
+After reading an input character from the shared memory, the PFAC algorithm has to access the 
+global memory to retrieve the next state information from the PFAC_table. Because the PFAC 
+algorithm removes most transitions, the corresponding state transition table is very sparse. In our 
+preliminary version [23], we adopted CSR format to store a state transition table, and then put the 
+whole state transition table into the shared memory to accelerate transition table lookup. However, 
+5 
+G 
+B 
+E 
+6 1 2 
+7 8 9 3 
+E D E 
+B 
+10 4 
+D 
+Figure 8: Reordering the output vectors of the PFAC 
+state machine  
+ 12 
+ 
+ 
+4.2 Experimental Results 
+In this project, we evaluate the performance of the AC algorithm and equivalent 
+implementations on the Intel CoreTM i7-950 and the PFAC algorithm on the NVIDIA GTX580. In 
+addition, we compare the experimental results with related GPU-based algorithms. Furthermore, we 
+measure the effects of all the optimization techniques. Finally, we evaluate the load imbalance by 
+four kinds of artificial benchmarks. 
+4.2.1 Experimental setup 
+The experimental setup has two machines: the host machine and the device machine. The host 
+machine is equipped with an Intel CoreTM i7-950 running the Linux X86_64 operating system 
+with 12GB DDR3 memory on an ASUS P6T-SE motherboard while the device machine is 
+equipped with an NVIDIA GeForce GTX580 GPU in the same CoreTM i7 system with NVIDIA 
+driver version 260.19.29 and the CUDA 3.2 version.  
+The test patterns are extracted from Snort V2.8 which contains 1,998 exact string patterns with 
+a total of 41,997 characters. The length of the Snort patterns varies between one to 243 characters. 
+The total number of states is 27,754. The input streams are extracted from DEFCON packets which 
+contain large amounts of real attack patterns and are widely used to test commercial NIDS. The size 
+of DEFCON packets varies from 32 MB to 256 MB.  
+In order to compare the performance of the proposed algorithm with the traditional AC 
+algorithm, we implement three CPU versions and one GPU version as follows:  
+(1) ACCPU : implementation of the AC algorithm on the CoreTM i7 using a single thread and 
+optimized by GCC 4.4.3 [31] using the compiler flags  “-O2 –msse4”. 
+1 
+2 
+3 
+4 
+5 
+6 
+7 
+8 
+9 
+10 
+11 
+12 
+13 
+14 
+15 
+16 
+17 
+18 
+19 
+20 
+21 
+22 
+23 
+24 
+25 
+26 
+__global__ void TraceTable_kernel(char *d_input_string, int 
+*d_match_result, int input_size, int initial_state){ 
+int start = blockIdx.x * blockDim.x + threadIdx.x; 
+  int pos;     
+  int state; 
+  int inputChar; 
+  int match; 
+    
+for ( ; start < input_size; start = start + gridDim.x * 
+blockDim.x){ 
+    state = initial_state; 
+    pos = start; 
+    match = 0; 
+    while ( pos < input_size ){ 
+      inputChar = d_input_string[pos]; 
+      state = tex2D(tex_PFAC_table, inputChar, state); 
+      if (state == trap_state ){ break ; } 
+      if(state < initial_state){ 
+        match = state; 
+      } 
+      pos = pos + 1; 
+      if ( pos >= input_size ) { break ; } 
+     } 
+   d_match_result[start] = match; 
+} 
+} 
+Figure 10: Pseudo code of PFAC kernel function 
+ 14 
+ 
+ 
+(3) System throughput 
+Considering the bandwidth of PCIe, the system throughput is defined as follows: 
+   System throughput = 8n / Ttotal                        (4) 
+where 8n denotes the total bits of an input stream and Ttotal denotes the total elapsed time including 
+Tgpu, Thost/device, and Tdevice/host. 
+ 
+4.2.3 Performance evaluation on DEFCON packets 
+Tables 1 shows the performance of the proposed GPU approach compared with three CPU 
+approaches tested by DEFCON packets. The first and second column shows the input size and the 
+number of matched patterns. The third, fourth, fifth, and sixth column shows the maximum raw 
+data throughput of the four approaches, ACCPU, DPACOMP, PFACOMP, and PFACGPU, respectively. 
+In Table 1, for processing the DEFCON packet of size 256MB, PFACGPU achieves 143.16 Gbps of 
+raw data throughput while the ACCPU, DPACOMP, and PFACOMP achieves 1.91, 9.71, and 12.61 
+Gbps, respectively. In addition, we also test the top performance of PFACGPU using pure packets 
+and achieve up to 218 Gbps throughput on processing a pure packet of size 256MB. Moreover, the 
+seventh column shows the effective bandwidth of host-to-device (H2D) and device-to-host (D2H) 
+memory transactions while the eighth column shows the system throughput. Because the PCIe 
+interface only provides the effective bandwidth of 48.08~51.28 Gbps, the system throughput would 
+be much smaller than the raw data throughput. For processing the DEFCON packet of size 256MB, 
+the PFACGPU achieves 15 Gbps of system throughput, 7.85, 1.55 and 1.19 times faster than the 
+1 
+2 
+3 
+4 
+5 
+6 
+7 
+8 
+9 
+10 
+11 
+12 
+13 
+14 
+// Get start time event 
+    struct timespec t_start, t_end; 
+    double elapsedTime; 
+    clock_gettime( CLOCK_REALTIME, &t_start); 
+  
+// Invoke memory transaction of PCIE 
+ 
+// Get stop time event     
+clock_gettime( CLOCK_REALTIME, &t_end); 
+ 
+ // Compute CPU execution time in millisec 
+elapsedTime = (t_end.tv_sec - t_start.tv_sec) * 1000.0; 
+elapsedTime += (t_end.tv_nsec - t_start.tv_nsec) / 1000000.0; 
+printf("%lf ms\n", elapsedTime); 
+Figure 12: C library API for measuring CPU execution time 
+1 
+2 
+3 
+4 
+5 
+6 
+7 
+8 
+9 
+10 
+11 
+12 
+13 
+14 
+15 
+16 
+17 
+18 
+// Get start time event 
+    cudaEvent_t start, stop; 
+    cudaEventCreate(&start); 
+    cudaEventCreate(&stop); 
+    cudaEventRecord(start, 0); 
+       
+// Invoke GPU kernel function here 
+ 
+// Get stop time event     
+    cudaEventRecord(stop, 0); 
+    cudaEventSynchronize(stop);  
+ 
+ // Compute GPU execution time in millisec 
+   float elapsedTime; 
+    cudaEventElapsedTime(&elapsedTime, start, stop); 
+    printf("GPU time: %13f msec\n", elapsedTime); 
+    cudaEventDestroy(start); 
+    cudaEventDestroy(stop); 
+Figure 11: CUDA API for measuring GPU execution time 
+ 16 
+4.2.4 Measurement of optimization techniques 
+In order to demonstrate the effects of the optimization techniques, we evaluate four GPU 
+implementations of PFAC described as follows. 
+(1) PFACV1: binding the state transition table to texture memory.  
+(2) PFACV2: applying the techniques of output reordering and using texture memory.  
+(3) PFACV3: using shared memory to improve the latency of global memory accesses for 
+input streams and the state transition table without using texture memory. 
+(4) PFACV4: applying all techniques.  
+The performance of the four implementations is evaluated by a DEFCON packet of size 
+256MB. As shown in Table 4, PFACV2 achieves 9.3% performance improvement over PFACV1 after 
+applying the output reordering technique. Furthermore, PFACV4 achieves 15.9% improvement over 
+PFACV2 after applying shared memory to improve the latency of global memory accesses. Finally, 
+PFACV4 achieves 12.4% improvement over PFACV3 by using texture memory to store the state 
+transition table. 
+TABLE 4 
+MEASUREMENT OF OPTIMIZATION TECHNIQUES ON PFAC 
+Name Throughput (Gbps) Shared memory Texture memory Output reordering 
+PFACV1 113.05 off on off 
+PFACV2 123.53 off on on 
+PFACV3 127.34 on off on 
+PFACV4 143.16 on on on 
+ 
+4.2.5 Evaluation of load Imbalance  
+In CUDA, every 32 threads are grouped as a basic execution unit called a warp. As we have 
+discussed above, the load imbalance of threads inside a warp affects the performance of PFAC. To 
+evaluate the impact of load imbalance on the PFAC performance, we design four kinds of artificial 
+benchmarks as follows.  
+(1) The pattern ab{m} contains a character 'a' followed by m instances of ‘b’, and an input stream 
+of size 256MB contains 8M instances of “ab{31}” (the combination of a character 'a' followed 
+by 31 instances of ‘b’). Under such a scenario, only the first thread in a warp matches the 
+pattern ab{m} and has the longest duration time. 
+(2) The pattern “abbb”{m} contains m instances of “abbb”, and an input stream of size 256MB 
+contains 64M instances of “abbb”. Under such a scenario, only a quarter of threads in a warp 
+match the artificial patterns and have the same duration time. 
+(3) The pattern “ab”{m} contains m instances of “ab”, and an input stream of size 256MB contains 
+128M instances of “ab”. Under such a scenario, half threads in a warp match the artificial 
+patterns and have the same duration time. 
+(4) The pattern a{m} contains m instances of ‘a’, and an input stream of size 256MB contains 
+256M characters of 'a'. Under such a scenario, all threads in a warp match the artificial patterns 
+and have the same duration time. 
+ 18 
+[3] Cheng-Hung Lin, Chen-Hsiung Liu, Lung-Sheng Chien, Shih-Chieh Chang, and Wing-Kai 
+Hon, "PFAC Library: GPU-based string matching algorithm", accepted by GPU Technology 
+Conference (GTC 2012), San Jose, California, May 14-17, 2012. 
+ 
+六、 結論 
+In this project, we have proposed a novel parallel algorithm to accelerate exact string matching 
+on GPUs. We also have discussed several optimization techniques for the proposed algorithm 
+performed on NVIDIA GPUs. The experimental results show that the proposed algorithm achieves 
+significant speedup not only on GPUs but also on multicore CPUs compared to the traditional AC 
+algorithm. Finally, we would like to mention that the PFAC library [33] has been released on 
+Google Code as an open source library which provides C-style API functions and allows users to 
+accelerate exact string matching on NVIDIA GPUs without any background on GPU computing or 
+parallel computing. 
+  
+七、 參考文獻 
+[1] R. Sidhu and V. K. Prasanna, “Fast regular expression matching using FPGAs,” Proc. 9th Ann. 
+IEEE Symp. Field-Program. Custom Comput. Mach. (FCCM ’01), pp. 227-238, 2001. 
+[2] B.L. Hutchings, R. Franklin, and D. Carver, “Assisting Network Intrusion Detection with 
+Reconfigurable Hardware,” Proc.10th Ann. IEEE Symp. Field-Program. Custom Comput. 
+Mach. (FCCM ’02), pp. 111-120, 2002. 
+[3] J. Moscola, J. Lockwood, R. P. Loui, and M. Pachos, “Implementation of a Content-Scanning 
+Module for an Internet Firewall,” Proc. 11th Ann. IEEE Symp. Field-Program. Custom Comput. 
+Mach. (FCCM ’03), pp. 31–38, 2003. 
+[4] C. R. Clark and D. E. Schimmel, “Scalable Pattern Matching for High Speed Networks,” Proc. 
+12th Ann. IEEE Symp. Field-Program. Custom Comput. Mach. (FCCM ’04), pp. 249-257, 
+2004. 
+[5] M. Aldwairi*, T. Conte, and P. Franzon, “Configurable String Matching Hardware for 
+Speeding up Intrusion Detection,” ACM SIGARCH Computer Architecture News, pp. 99–107, 
+2005. 
+[6] L. Tan and T. Sherwood, “A high throughput string matching architecture for intrusion 
+detection and prevention,” Proc. 32nd Ann. Int. Symp. on Comp. Architecture, (ISCA ’05), pp. 
+112-122, 2005 
+[7] H. J. Jung, Z. K. Baker, and V. K. Prasanna, “Performance of FPGA Implementation of 
+Bit-split Architecture for Intrusion Detection Systems,” Proc. 20th Int. Parallel and 
+Distributed Processing Symp. (IPDPS ’06), 2006 
+[8] S. Dharmapurikar and J. Lockwood, “Fast and Scalable Pattern Matching for Content 
+Filtering,” Proc. of Symp. Architectures Netw. Commun. Syst. (ANCS ’05), pp. 183-192, 2005. 
+ 20 
+[25] J. Yu and J. Li, “A Parallel NIDS Pattern Matching Engine and Its Implementation on Network 
+Processor,” Proc. the 2005 International Conference on Security and Management (SAM), 
+2005. 
+[26] V. Kopek, E. W. Fulp, and P. S. Wheeler, “Distributed Data Parallel Techniques for 
+Content-matching Intrusion Detection Systems,” Proc. IEEE Military Communications 
+Conference (MILCOM), pp.1-7, 2007. 
+[27] G. Vasiliadis and S. Ioannidis, “GrAVity: A Massively Parallel Antivirus Engine,” Proc. 13th 
+international conference on Recent advances in intrusion detection (RAID'10), 2010. 
+[28] Villa, D. Chavarria, and K. Maschhoff, “Input-independent, scalable and fast string matching 
+on the Cray XMT,” Proc. 23nd IEEE Intl. Parallel & Distributed Processing Symp. 
+(IPDPS’09), 2009. 
+[29] P. Scarpazza and G. F. Russell, “High-performance regular expression scanning on the Cell/B.E. 
+processor,” Proc. 23rd international conference on Supercomputing (ICS’ 09), 2009. 
+[30] FERMI, the next generation CUDA architecture, 
+http://www.nvidia.com/object/fermi_architecture.html 
+[31] GCC, http://gcc.gnu.org/ 
+[32] OpenMP, http://openmp.org/wp/ 
+[33] PFAC library, http://code.google.com/p/pfac/ 
+ 
+  
+Accelerating Regular Expression Matching Using 
+Hierarchical Parallel Machines on GPU 
+ 
+Cheng-Hung Lin*, Chen-Hsiung Liu**, and Shih-Chieh Chang** 
+* National Taiwan Normal University, Taipei, Taiwan 
+** National Tsing Hua University, Hsinchu, Taiwan 
+ 
+Abstract—Due to the conciseness and flexibility, regular 
+expressions have been widely adopted in Network Intrusion 
+Detection Systems to represent network attack patterns. 
+However, the expressive power of regular expressions 
+accompanies the intensive computation and memory 
+consumption which leads to severe performance 
+degradation. Recently, graphics processing units have been 
+adopted to accelerate exact string pattern due to their 
+cost-effective and enormous power for massive data parallel 
+computing. Nevertheless, so far as the authors are aware, 
+no previous work can deal with several complex regular 
+expressions which have been commonly used in current 
+NIDSs and been proven to have the problem of state 
+explosion.  
+In order to accelerate regular expression matching and 
+resolve the problem of state explosion, we propose a 
+GPU-based approach which applies hierarchical parallel 
+machines to fast recognize suspicious packets which have 
+regular expression patterns. The experimental results show 
+that the proposed machine achieves up to 117 Gbps and 81 
+Gbps in processing simple and complex regular expressions, 
+respectively. The experimental results demonstrate that the 
+proposed parallel approach not only resolves the problem 
+of state explosion, but also achieves much more acceleration 
+on both simple and complex regular expressions than other 
+GPU approaches.  
+ 
+Keywords-regular expression, pattern matching, graphics 
+processing units 
+I. INTRODUCTION 
+Network Intrusion Detection Systems (NIDS) have 
+been widely employed to protect computer systems from 
+network attacks by matching input streams against 
+thousands of predefined attack patterns. Regular 
+expression has been adopted in many NIDS systems, 
+such as Snort [1], Bro [2], and Linux L7-filter [3], to 
+represent certain attack patterns because regular 
+expression can provide more concise and flexible 
+expressions than exact string expressions 
+To accelerate regular expression matching, many 
+hardware approaches are being proposed that can be 
+classified into logic-based [4][5][6][7] and 
+memory-based approaches [8][9][10][11][12]. The 
+logic-based approaches which are mainly implemented 
+on the Field-Programmable Gate Array (FPGA), map 
+each regular expression into circuit modules in FPGA. 
+Logic-based approaches are known to be efficient in 
+processing regular expression patterns [4][5] because 
+multiple logic modules can perform their operations 
+simultaneously. 
+On the other hand, memory-based approaches 
+compile attack patterns into finite state machines and 
+employ commodity memories to store the corresponding 
+state transition tables. Since state transition tables can be 
+easily updated on commodity memories, memory-based 
+approaches are flexible to accommodate new attack 
+patterns. Memory-based approaches have been known to 
+suffer the memory explosion problem for certain types of 
+complex regular expressions. To resolve the memory 
+problem, the rewriting technique [13] converts a regular 
+expression to a new regular expression with smaller DFA. 
+Another research D2FA [20] proposes to reduce the 
+number of state transitions for a regular expression by 
+introducing a new transition called a “default transition.”  
+Recently, several works [21][22][23][24] have 
+attempted to use Graphic Processor Units (GPU) to 
+accelerate exact and regular expression pattern matching 
+because GPUs provides tremendous computational 
+ability and very high memory bandwidth to process 
+massive input streams and attack patterns. A modified 
+Wu-Manber algorithm [21] and a modified suffix tree 
+algorithm [22] are implemented on GPU to accelerate 
+exact string matching while a traditional DFA approach 
+[23] and a new state machine XFA [24] are proposed to 
+accelerate regular expression matching on GPU. 
+However, all of these approaches do not consider the 
+complex regular expressions which can incur state 
+explosion.  
+In this paper, we first explore the parallelism of 
+regular expression matching and discuss the problem of 
+memory explosion. And then, we propose a GPU-based 
+approach which applies hierarchical parallel machines to 
+accelerate regular expression matching and resolve the 
+problem of state explosion. The experimental results 
+show that the proposed parallel algorithm achieves up to 
+100 Gbps and 81 Gbps in processing simple and complex 
+regular expressions, respectively. The results show that 
+the proposed algorithm has significant improvement on 
+performance than other GPU approaches. 
+II. COMPLEX REGULAR EXPRESSION PATTERNS 
+As mentioned above, in this paper, we attempt to 
+reduce all types of complex regular expression into two 
+specific types of complex regular expressions. In this 
+section, we first review these two types of complex 
+regular expressions and explore the reasons that merging 
+such complex regular expressions may lead to large 
+DFAs.  
+The first type of complex regular expressions is an 
+expression having multiple string sub-patterns divided by 
+the star closure, “.*”. For example, the pattern in Linux 
+L7-filter, “.*membername.*session.*player”, has three 
+string sub-patterns, “membername”, “session”, and 
+“player”. We illustrate the reason of the memory 
+explosion using the following example. Consider to 
+compile two regular expressions, “.*RETA.*PASS” and 
+“.*CWD.*ROOT”. Figure 1 illustrates the composite 
+DFA which attempts to match these two regular 
+expression patterns where partial edges have been 
+IEEE GLOBECOM 2011 - Communication & System Security1706
+  
+In the second step, the PFAC algorithm assigns an 
+individual thread for each byte of an input stream to 
+inspect any pattern starting at the thread’s starting 
+position by traversing the same PFAC state machine. As 
+shown in Figure 5, the first thread inspects the input 
+stream from the first character ‘A’ while the second 
+thread starts from the second character ‘R’ and the third 
+thread starts from the third character ‘E’. A pictorial 
+demonstration for all other threads is shown in Figure 5. 
+ 
+ 
+During the traversal of a PFAC state machine, if a 
+thread finds a match, the thread reports which pattern is 
+matched, and the starting location corresponding to the 
+thread. When a thread encounters an invalid transition in 
+a PFAC state machine, the thread terminates its 
+computation. For example in Figure 5, traversing the 
+PFAC machine in Figure 4, only the second thread finds 
+a match and reports two information including the match 
+of “RETA” and the starting location of the thread, the 
+second byte. All other threads terminate when they are 
+led to trap states. For example, the first input character 
+taken by the first thread is “A” which has no valid 
+transition for the initial state. Therefore, the first thread 
+terminates immediately after reading the first character. 
+The idea of applying multiple threads to traverse the 
+same PFAC state machine has important implications for 
+efficiency. First, each thread of the PFAC algorithm is 
+only responsible for matching any pattern located at the 
+thread’s starting location. Second, although the PFAC 
+algorithm applies huge number of threads to perform 
+pattern matching in parallel, most of threads have a high 
+probability of terminating early. Therefore, the PFAC 
+algorithm can achieve significant improvements on 
+performance than the traditional AC algorithm. 
+By extending the PFAC algorithm, we can easily 
+compile the regular expressions containing character 
+classes with repetitions into a PFAC state machine. 
+Because each thread of the PFAC algorithm is only 
+responsible for identifying the pattern located at the 
+thread starting position, the additional states caused by 
+the overlapped matching are totally removed. For 
+example, Figure 6 shows the state machine for matching 
+the three regular expression patterns, “.*STAT 
+[^\n]{10}”, “.*USER [^\n]{10}”, and “.*PASS 
+[^\n]{10}”. Compared to the traditional DFA state 
+machine as shown in Figure 2, the number of states is 
+significantly reduced from exponential to linear size with 
+respect to the length of constraint repetitions.  
+ 
+3.2 Slave Machine 
+Since the master machine can resolve the second 
+type of regular expressions, we now describe how to 
+design the slave machine to consider the first type of 
+regular expressions. Note that the outputs of the master 
+machines include starting locations of master threads and 
+their corresponding matched exact patterns which are 
+translated to encoded symbols. Therefore, the inputs to 
+the slave machine are a set of encoded symbols and their 
+corresponding starting locations. The purpose of the 
+slave machine is to determine the order relationship 
+between encoded symbols using their starting locations.  
+We demonstrate the construction of the slave 
+machine using the same example of matching two 
+regular expressions “.*RETA.*PASS” and 
+“.*CWD.*ROOT”. As shown in Figure 4, the master 
+machine is used to match the four sub-patterns, “RETA”, 
+“PASS”, “CWD”, and “ROOT” whose encoded symbols 
+are labeled as α, γ, δ, and β, respectively.   
+The regular expressions “.*RETA.*PASS” and 
+“.*CWD.*ROOT” denote that “RETA” must appear 
+before “PASS” and “CWD” must appear before “ROOT”. 
+In other words, a slave machine checks whether α 
+appears before γ and δ appears before β. The 
+construction of a slave machine consists of three steps. In 
+the first step, we build the initial machine for each order 
+relation of encoded symbols. The second step is to add a 
+self-loop transition to each internal node. Figure 7 shows 
+the slave machine of “αγ” and “δβ”. We add self-loop 
+transitions labeled as “^γ” and “^β” to state 1 and 3, 
+respectively. These transitions mean that if the next input 
+is not γ and β, the machine stays in state 1 and state 3, 
+respectively. In other words, the self-loop transition 
+represents the meta-character “.*” in the original regular 
+expressions. 
+ 
+Figure 6. A PFAC state machine for the three complex 
+regular expressions, “.*STAT [^\n]{10}”, “.*USER 
+[^\n]{10}”, and “.*PASS [^\n]{10}”. 
+S    T     A    T    ^\n                ^\n 
+U    S     E    r    ^\n                ^\n 
+P    A     S    S    ^\n                ^\n 
+Figure 4. PFAC state machine 
+ 
+R    E    T    A      
+C    W    D    
+O    O    T    
+P     A    S    S 
+0 1 2 3 4 
+9 10   11   
+5 6 7   8   
+12   13   14   
+Figure 5. Allocate each byte of the input stream a thread 
+to traverse the PFAC state machine. 
+A R E T A G A B B E E E E E B B B C C C 
+.  .  .  .  .  .  .  .  .  .  .  .  
+. . . . . . . . . . . .  
+Figure 7. Slave machine of “αγ” and “δβ”. 
+^γ 
+α 
+β 
+γ  
+δ 
+^β 
+0 1 2
+3 41708
+  
+memory limitation of GTX480, the maximum size of the 
+input stream can be processed at a time is 32Mbytes 
+while the master machine alone can support up to 
+192Mbtyes. We would like to mention that multiple 
+GPUs would be a good solution to improve throughput in 
+the future works. 
+ 
+ 
+ 
+V. CONCLUSIONS 
+In this paper, we have explored the parallelism of 
+complex regular expression matching and proposed a 
+new architecture which consists of hierarchical parallel 
+machines performed on GPU to accelerate regular 
+expression matching and resolve the problem of memory 
+explosion. The experimental results show that the 
+proposed approach achieves a significant speedup both 
+on processing simple and complex regular expressions. 
+REFERENCES 
+[1] M. Roesch. Snort- lightweight Intrusion Detection for networks. 
+In Proceedings of LISA99, the 15th Systems Administration 
+Conference, 1999. 
+[2] Bro, http://www.bro-ids.org/ 
+[3] Linux L7-filter, http://l7-filter.sourceforge.net/ 
+[4] R. Sidhu and V. K. Prasanna, “Fast regular expression matching 
+using FPGAs,” in Proc. 9th Ann. IEEE Symp. Field-Program. 
+Custom Comput. Mach. (FCCM), 2001, pp. 227-238. 
+[5] B.L. Hutchings, R. Franklin, and D. Carver, “Assisting Network 
+Intrusion Detection with Reconfigurable Hardware,” in 
+Proc.10th Ann. IEEE Symp. Field-Program. Custom Comput. 
+Mach. (FCCM), 2002, pp. 111-120. 
+[6] C. R. Clark and D. E. Schimmel, “Scalable Pattern Matching 
+for High Speed Networks,” in Proc. 12th Ann. IEEE Symp. 
+Field-Program. Custom Comput. Mach. (FCCM), 2004, pp. 
+249-257 
+[7] J. Moscola, J. Lockwood, R. P. Loui, and M. Pachos, 
+“Implementation of a Content-Scanning Module for an Internet 
+Firewall,” in Proc. 11th Ann. IEEE Symp. Field-Program. 
+Custom Comput. Mach. (FCCM), 2003, pp. 31–38. 
+[8] M. Aldwairi*, T. Conte, and P. Franzon, “Configurable String 
+Matching Hardware for Speeding up Intrusion Detection,” in 
+ACM SIGARCH Computer Architecture News, 2005, pp. 
+99–107 
+[9] S. Dharmapurikar and J. Lockwood, “Fast and Scalable Pattern 
+Matching for Content Filtering,” in Proc. of Symp. Architectures 
+Netw. Commun. Syst. (ANCS), 2005, pp. 183-192 
+[10] Y. H. Cho and W. H. Mangione-Smith, “A Pattern Matching 
+Co-processor for Network Security,” in Proc. 42nd Des. Autom. 
+Conf. (DAC), 2005, pp. 234-239 
+[11] L. Tan and T. Sherwood, “A high throughput string matching 
+architecture for intrusion detection and prevention,” in proc. 
+32nd Ann. Int. Symp. on Comp. Architecture, (ISCA), 2005, pp. 
+112-122 
+[12] H. J. Jung, Z. K. Baker, and V. K. Prasanna, “Performance of 
+FPGA Implementation of Bit-split Architecture for Intrusion 
+Detection Systems,” in 20th Int. Parallel and Distributed 
+Processing Symp. (IPDPS), 2006. 
+[13] F. Yu, Z. Chen, Y.Diao, T.V. Lakshman, and R.H. Katz, “Fast 
+and Memory-Efficient Regular Expression Matching for Deep 
+packet Inspection,” in Proc. ACM/IEEE Symp. Architectures 
+Netw. Commun. Syst. (ANCS), 2006, pp. 93-102 
+[14] A. V. Aho and M. J. Corasick. Efficient String Matching: An 
+Aid to Bibliographic Search. In Communications of the ACM, 
+18(6):333–340, 1975. 
+[15] Flex, http://flex.sourceforge.net/ 
+[16] PCRE, http://www.pcre.org/ 
+[17] M. Aldwairi, T. Conte, and P. Franzon, “Configurable String 
+Matching Hardware for Speeding up Intrusion Detection,” in 
+Proc. ACM SIGARCH Computer Architecture News, 
+33(1):99–107, 2005.  
+[18] F. Yu, R. H. Katz, and T. V. Lakshman, “Gigabit Rate Packet 
+Pattern-Matching Using TCAM,” in Proc. the 12th IEEE 
+International Conference on Network Protocols (ICNP’04), 
+2004. 
+[19] N. Tuck, T. Sherwood, B. Calder, and G. Varghese. 
+“Deterministic Memory-Efficient String Matching Algorithms 
+for Intrusion Detection,” in Proc. 23nd Conference of IEEE 
+Communication Society (INFOCOMM), Mar, 2004. 
+[20] S. Kumar, S.Dharmapurikar, F.Yu, P. Crowley, and J. Turner, 
+“Algorithms to Accelerate Multiple Regular Expressions 
+Matching for Deep Packet Inspection,” in ACM SIGCOMM 
+Computer Communication Review, ACM Press, vol.36, Issue. 4, 
+Oct. 2006, pp. 339-350. 
+[21] N. F. Huang, H. W. Hung, S. H. Lai, Y. M. Chu, and W. Y. Tsai, 
+“A gpu-based multiple-pattern matching algorithm for network 
+intrusion detection systems,” in Proc. 22nd International 
+Conference on Advanced Information Networking and 
+Applications (AINA), 2008, pp. 62–67. 
+[22] M. C. Schatz and C. Trapnell, “Fast Exact String Matching on 
+the GPU,” Technical report. 
+[23] G. Vasiliadis , M. Polychronakis, S. Antonatos , 
+E. P. Markatos and S. Ioannidis, “Regular Expression Matching 
+on Graphics Hardware for Intrusion Detection,” In Proc. 12th 
+International Symposium on Recent Advances in Intrusion 
+Detection, 2009. 
+[24] R. Smith, N. Goyal, J. Ormont, K. Sankaralingam, C. Estan, 
+“Evaluating GPUs for network packet signature matching,” in 
+Proc. of the International Symposium on Performance Analysis 
+of Systems and Software, ISPASS (2009). 
+[25] CUDA, http://www.nvidia.com.tw/object/cuda_home_tw.html 
+[26] Cheng-Hung Lin, Sheng-Yu Tsai, Chen-Hsiung Liu, 
+Shih-Chieh Chang, and Jyuo-Min Shyu, "Accelerating String 
+Matching Using Multi-threaded Algorithm on GPU,"  in Proc. 
+IEEE GLOBAL COMMUNICATIONS CONFERENCE 
+(GLOBECOM), 2010. 
+[27] PFAC library, http://code.google.com/p/pfac/ 
+[28] DEFCON, http://cctf.shmoo.com 
+[29] OpenMP, http://openmp.org/wp/ 
+ 
+ 
+Figure 11: The raw data throughput of the master and 
+hierarchical machines over DEFCON packets 
+ 
+Figure 10: The raw data and system throughput of 
+ACCPU, ACOMP, MASTEROMP, and MASTERGPU over a 
+DEFCON packet of 192MB 1710
+國科會補助計畫衍生研發成果推廣資料表
+日期:2012/08/24
+國科會補助計畫
+計畫名稱: 實現於多核心圖形處理器之平行樣式比對演算法的效能導向最佳化技術研究
+計畫主持人: 林政宏
+計畫編號: 100-2221-E-003-014- 學門領域: 積體電路及系統設計
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+develop an open source library and release at Google Code Project 
+(http://code.google.com/p/pfac/). 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

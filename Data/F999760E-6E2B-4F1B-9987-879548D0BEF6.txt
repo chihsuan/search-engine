@@ -1,0 +1,353 @@
+1 
+ 
+1. 摘要 
+1. 1中文摘要 
+本研究成果報告敘述本計畫第三年之研究進度與目前所獲得之成果。具體成果包
+括：(1)整合與驗證 DSM 中介軟體與 IDE 開發平台。（2）H.264 平行編碼器之研究
+與實作。 
+ 
+關鍵詞：多核心處理器、分散式共享記憶體、H.264 平行編碼器 
+ 
+1.2 Abstract 
+In this report, we describe the project status and present the results that we have 
+achieved for the third year. Specifically, we have come up the following results: (1) 
+Integrating and verifying the DSM middleware and IDE developing platform, (2) the 
+study and implementation of H.264 parallel encoder. 
+ 
+Keywords: Multicore, Distributed shared memory, H.264 parallel encoder 
+ 
+2. 緣由及目的 
+為了更完整的驗證 DSM 與 IDE 兩個系統間整合的正確性，單一應用程式是
+不夠的，本子計畫將透過設計一個複雜的 H.264 平行編碼器來檢視系統間的整合
+的完整性與正確性。 
+ 
+由於 H.264/AVC 的各種壓縮模組處理的速度不同，對平行計算而言，壓縮速
+度較慢的模組加速的效能會較明顯。所以我們在設計上將著重於計算量大的部分
+與減少 barrier 這兩點來分析及建立 H264/AVC 平行壓縮的架構。H.264/AVC 的壓
+縮方式為一個個 MB 循序式(sequential)的壓縮為主，因為其中有許多資訊都需要
+等待前面 MB 做完才能計算出必要的參數及結果，例如 intra prediction 需要前面
+的還原影像才能預測；MB的MV搜尋的中心點MVP也需要前面MB的MV結果，
+且編碼紀錄 MV 的方式是 MVD(MV-MVP)的值；de-blocking filter 需要隔壁 MB 的
+還原影像；編碼時所使用的 CAVLC 也需要前面 MB 的資訊，這些對於平行來說，
+是一大問題，因為在 DSM 系統中，平行的效能會受到同步點數量的影響，同步
+點的產生在於每個節點需要使用其他節點的結果去做計算，如果以 MB 為單位進
+行平行，勢必造成每一個 MB 至少有一次的同步點，以整張影像來看同步點的數
+量就會等於 MB 數量，雖然這樣平行壓縮計算所得到的 bit-stream 將與原本
+H.264/AVC 相同，但是每個 MB 都做 barrier 的情況下，將會浪費大量的時間在資
+料比對及資料傳輸上，為了減少同步點的數量，所以 H.264/AVC 平行的架構將以
+3 
+ 
+像資訊，就可以繼續下一張影像的壓縮流程。 
+ 
+其中圖 1 中虛線的部分是節點都會執行的，而其他讀檔、寫檔、及 Mode 
+Decision 後的計算都是由第一台電腦負責，其中 Mode Decision 部分，因為需要
+的參考資料為 entropy coding 的 total number of non-zero coefficients 及 intra 
+prediction、de-blocking filter 的還原影像，這些參考資料的錯誤將會造成錯誤的
+bit-stream，這個錯誤的 bit-stream 將會使得解壓縮器(decoder)解出的還原影像與
+壓縮器的不同，再加上這些部分的計算量不大，可以只利用ㄧ個節點計算，因此
+我們只交給第一個節點負責。我們主要的目的是利用平行得到一些需要大量計算
+的資訊，讓每一節點都完整的計算出最後的結果，因此整體而言如果只有一台電
+腦執行，那麼計算時間將會拉長。 
+ 
+ 
+圖 1：H.264 平行編碼器架構 
+ 
+如果以各別電腦分開來看大家所分配到的工作，就如同圖 2 所示，電腦編號
+1~n 負責做 I Frame，n+1~m 則負責 P Frame，先做完的就必頇在 barrier 等，等到
+大家都做完了之後，將資料更新，再由電腦編號 1 繼續下一個部分：Mode Decision，
+在做 Mode Decision 時其他的電腦則不做事情，必頇在 barrier 等到電腦編號 1 做
+完 Mode Decision 後，再進行資料更新，讓每一台電腦都有最新的結果後，再繼
+續下一個循環。 
+Motion Data 
+Inter prediction 
+(ME,MC,RDO) 
+Intra prediction 
+(RDO) 
+Deblocking 
+filter 
+Memory 
+Mode 
+decision 
+ 
+Get first frame 
+image data 
+ B 
+ B 
+T, Q, -1Q , -1T  
+ B 
+Entropy 
+coding 
+Get next frame 
+image data 
+Current image Data 
+Motion Data 
+Bitstream 
+5 
+ 
+ 
+圖 3:原本 H.264/AVC 的整體壓縮順序 
+ 
+ 
+圖 4:平行 H.264/AVC 的整體壓縮順序 
+ 
+ 
+圖 5:GOP 示意圖 
+ 
+而這部分，我們是以網路來進行溝通的，因為每個GOP之間不需要交換資料，
+因此不用 DSM系統而使用 Server vs. Client的方式進行。如圖 6所示，由 Server
+將每個 GOP 所需要的原始影像分別送給 Client，Client 再將自己壓縮完的資訊
+送回給 Server，由 Server來統整這些資料形成 bit-stream。 
+ 
+7 
+ 
+3.3 Parallelism of Intra prediction 
+這個部分最大的平行問題在於每個 MB執行 prediction 需要鄰居 MB的還原
+影像當作預測的參考資料，所以以下將會針對這個問題提出解決的方法。 
+3.3.1 Slice mode in intra prediction 
+為了使得每個 process 的時間能平均，以及容易瞭解相鄰 MB 的是否為相同
+process 計算，我們將影像切割為圖 9 所示的水平 slice，圖中每一個小格代表
+一個 MB，每一排的 MB 為一個 slice 的最小單位，再由最小單位去組成 slice。
+從第二個 slice開始第一排的 MB將沒有上面一排 MB的還原影像，由於還原影像
+的值和原始影像的差異值不大，所以在第一排的部分我們就使用沒壓縮的原始影
+像來計算 intra prediction 的結果，利用這個結果計算出 RD cost，雖然這個
+值將與原本 H.264/AVC 的值有所差異，但是為了能平行計算，我們必頇犧牲一些
+品質來達到平行的目的。 
+ 
+  
+圖 9：Intra Prediction水平 Slice示意圖 
+ 
+除了 slice的第一排 MB必頇利用原始影像當作參考之外，其他 MB 計算的流
+程與原本的 H.264/AVC 相同，所以這種方式每個 MB都能各自計算出 intra 最佳
+的 RD cost，因此需要傳輸的資料為：最佳 MB 的 RD cost、mode，讓下一步的
+mode decision部分可以直接拿所得到的 RD cost 來進行比較。 
+ 
+3.4 Parallelism of Inter prediction 
+對於 Inter prediction 而言，主要的目的是利用平行計算得到 MV、
+reference frame等需要大量計算的資訊，然後在把資訊全部丟給一台電腦做統
+整。最簡單的平行切割方式就是與 Intra prediction 一樣的水平 slice 方式。
+另外 Inter prediction 往前搜尋 frame 的數量也可以當作 process 的數量，由
+一個 process 負責一張 reference frame 的計算方式。最後 inter prediction
+區分相當多種的 block mode，經由計算每種 mode的 RD cost來決定最佳的 mode，
+所以也可以針對 Block Mode 作平行。下面將詳細介紹這三種平行計算的方式以
+及列出 barrier後所需要傳輸的資料。 
+使用原始影像當作參考 
+9 
+ 
+做計算，如圖 12 所示，每個 process 計算出參考各自單一個 reference frame
+所產生的 RD cost，依據 RD cost決定 block mode 及 MV，然後下一個 MB在依據
+相鄰 MB 的結果決定搜尋中心，其計算過程也與 H.264/AVC 相同，但是可以參考
+的 frame 就只有 process 分配到的那張，這樣會造成整張 frame 所得到的
+reference frame都是同一張，因此 barrier 之後的 mode decision 將決定使用
+哪張 frame 以及 block mode。 
+ 
+ 
+圖 11：原本 Inter Prediction 的 Reference Frame 壓縮順序 
+ 
+ 
+ 圖 12：使用 frame 平行之後的 Inter Prediction 壓縮順序 
+ 
+3.4.3 Block mode in inter prediction 
+在 H.264/AVC 中決定 block mode 方式，如圖 13 所示，每個 Mode 都必頇按
+照順序先利用 SAD+MV cost 獲得 MB 的 Reference frame，再由 RD cost 獲得 MB
+的 block mode，而因為在計算 RD cost之前 block mode之間並沒有直接的資料
+相關性，所以我們將流程改成圖 14所示，以 block mode的方式來做平行。 
+ 
+ 
+圖 13：原本 Inter Prediction 的 Mode 壓縮順序 
+ 
+11 
+ 
+and Emerging H.263 Standard,” IEEE Trans. on Circuits and System for Video 
+Technology, vol. 6, no. 2, pp. 182-190, Apr. 1996. 
+[4] “Message Passing Interface Forum. MPI: A message-passing interface standard,” 
+International Journal of Supercomputer Applications, 8(3/4):165–414, 1994. 
+[5] “Message Passing Interface Forum. MPI2: A message passing interface standard,” 
+International Journal of High Performance Computing Applications, 
+12(1–2):1–299, 1998. 
+[6] J. Protic, M. Tomasevic and V. Milutinovic , “A survey of distributed shared 
+memory systems,” IEEE System Sciences, 1995. Proceedings of the 
+Twenty-Eighth Hawaii International Conference on, vol. 1, pp. 74-84, Jan. 3-6, 
+1995. 
+[7] B.Meng, and O. C. Au, “Fast Intra-Prediction Mode Selection for 4x4 Blocks in 
+H.264,” in Proc. ICASSP 2003, Hong-Kong, April 2003 
+[8] B.Meng, and O. C. Au, C. W. Wong, and H. K. Lam, “Efficient Intra-Prediction 
+Mode Selection for 4x4 Blocks in H.264,” in Proc. IEEE ICME 2003,Baltimore, 
+Maryland , July 2003. 
+[9] B.Meng, and O. C. Au, C. W. Wong, and H. K. Lam, “Efficient Intra-Prediction 
+Algorithm in H.264,” in Proc. IEEE ICIP 2003,Barcelona, Spain, September 
+2003. 
+[10] C. Y. Chang, C. H. Pan, and H. Chen, “Fast Mode Decision for P-Frames in 
+H.264,” Picture Coding Symposium, San Francisco, December 2004. 
+[11] C. S. Kim, H. H. Shih, and C. C. J. Kuo, “Feature-Based Intra-Prediction Mode 
+Decision for H.264,” IEEE Proceedings of International Conference Image 
+Processing 2004, Singapore, October 2004. 
+[12] D. Wu, S. Wu, K. P. Lim, F. Pan, Z. G. Li, and X. Lin, “Block Inter Mode 
+Decision for Fast Encoding of H.264,” in Proc. IEEE ICASSP 2004, Montreal, 
+Quebec, Canada. 
+[13] C. S. Kim, Q. Li, and C. C. J. Kuo, “Fast Intra/Inter Mode Decision for H.264 
+Encoding Using A Risk-Minimization Criterion,” Special Session on Video 
+Coding, SPIE 49
+th
+ Annual Meeting 2004, Denver, Colorado, Aug. 2-6, 2004. 
+[14] I. Ahmad, S. M. Akramullah, M. L. Liou, and M. Ka.l, “A scalable off-line 
+MPEG-2 video encoding scheme using a multiprocessor system,” Parallel 
+Computing, 27(6):823–846, 2001. 
+[15] T. Olivares, P. Cuenca, F.J. Quiles, and A. Garrido, “ Parallelization of the mpeg 
+coding algorithm over a multicomputer. a proposal to evaluate its interconnection 
+network,” In IEEE PACRIM, vol. 1, pp. 113–116, New York, USA, Sep. 1997. 
+[16] K. Shen, L. A. Rowe, E. J. Delp, “ Parallel implementation of an MPEG-1 
+encoder: faster than real time,” Digital Video Compression: Algorithms and 
+出席國際會議報告書 
+謝錫堃  電機系 
+中文摘要： 
+IIH-MSP 2009 (The Fifth International Conference on Intelligent Information Hiding 
+and Multimedia Signal Processing)由日本 Ritsumeikan University(立命館大學)舉辦，
+2009年 9月 12日到 14日於京都地鐵總站旁的 MIELPARQUE大樓舉行。有來自
+世界各地數百位學界及業界的專家學者蒞臨參與此盛會，由台灣來的學者專家將
+近三分之一。此會議的主題包含資訊隱藏與安全性、多媒體訊號處理、多媒體通
+訊、無線網路技術、以及計算機系統等。藉由這次的大型國際會議，讓與會者可
+以分享其研究成果，並與來自全世界之學者進行學術交流。 
+ 
+英文摘要： 
+IIH-MSP 2009 is the 5th International Conference on Intelligent Information Hiding 
+and Multimedia Signal Processing. This conference is technically co-sponsored by 
+IEEE, KES International, and Ubiquitous International and hosted by Ritsumeikan 
+University. Multimedia technologies are emerging to enable the process of creating a 
+global information infrastructure that will connect heterogeneous computers and 
+various forms of information technologies around the world. The conference is 
+intended as an international forum and/or a shared platform for researchers and 
+professionals in all areas of information hiding and multimedia signal processing. 
+ 
+一、出席目的 
+ 
+IIH-MSP 2009 (The Fifth International Conference on Intelligent Information Hiding 
+and Multimedia Signal Processing)由日本 Ritsumeikan University(立命館大學)舉辦，
+2009年 9月 12日到 14日於京都地鐵總站旁的 MIELPARQUE大樓舉行。有來自
+世界各國〈含美國、印度、荷蘭、台灣、日本、韓國、中國等十幾個國家〉的學
+界及業界專家學者參與此會議。此會議的主題包含資訊隱藏與安全性、多媒體訊
+號處理、無線網路技術、多媒體通訊、以及計算機系統等。本次出席的目的是了
+解目前全世界在這些研究主題的最新發展，同時 也和與會者分享我們實驗室在
+無線網路的創新技術，藉以和世界各地的學者進行交流，互相學習。 
+ 
+二、出席過程 
+2009年 9月 11日早上搭乘日航班次於桃園機場起飛，約 3個小時的飛行時
+間抵達關西機場，出關後先搭火車到和歌山縣參訪，隔天即搭車返回京都參加會
+議。大會地點是在京都地鐵總站旁的MIELPARQUE大樓，對於外國來參加的與
+會者非常方便。 
+出席國際會議報告書 
+謝錫堃  電機系 
+中文摘要： 
+ISCAS2010 (International Symposium on Circuits and Systems)，本年度由法國
+Institut Supérieur d’Electronique de Paris接辦，會議地點在巴黎的迪斯奈樂園的
+Hotel New York，會議時間 2010/5/30~2010/6/02。有來自世界各地一千多位專家
+學者蒞臨參與此盛會。台灣的論文數量排行全球第二，從國內出席參加的人員也
+有數百位教授或學生，主辦單位相當重視，曾在公開場合特別強調，以台灣這麼
+小的國家，有此成就，應該是過去教育部與國科會大力推動的矽導計畫有關。本
+年度會議的主題包含 nanodevice電路與系統設計、實作成本、交換速度、能源效
+率及可靠度等。藉由這次的會議，本人也與幾位國外在此領域的朋友見面，並邀
+請他們適當時機訪問成大。個人覺得本次會議主辦單位相當用心，會議進行的相
+當順利，結果圓滿成功。個人也達成與會的目的。 
+ 
+英文摘要： 
+ISCAS 2010, sponsored by the IEEE Circuits and Systems Society and supported by 
+the Institut Supérieur d’Electronique de Paris, will be held in Paris, France from 30 
+May to 2 June 2010. The Symposium will focus on circuits and systems employing 
+nanodevices (both extremely scaled CMOS and non-CMOS devices) and circuit 
+fabrics (mixture of standard CMOS and evolving nano-structure elements) and their 
+implementation cost, switching speed, energy efficiency, and reliability. The ISCAS 
+2010 will include oral and poster sessions; tutorials given by experts in state-of-the-art 
+topics; and special sessions, with the aim of complementing the regular program with 
+topics of particular interest to the circuits and systems community that cut across and 
+beyond disciplines traditionally represented at ISCAS. 
+ 
+一、出席目的 
+ 
+ISCAS2010 (International Symposium on Circuits and Systems)，本年度由法國
+Institut Supérieur d’Electronique de Paris接辦，會議地點在巴黎的迪斯奈樂園的
+Hotel New York，會議時間 2010/5/30~2010/6/02。本人出席此次會議的目的除了
+收集在電路與系統領域的全球最新技術與趨勢之外，主要也是要參加幾個 TC 
+meeting，同時也與幾位此領域的老朋友見面、交換心得，並邀請他們適當時機
+訪問成大。 
+ 
+ 
+ 
+上屆 ISCAS2009是由成大主辦，地點安排在台北國際會議廳，與 ISCA2010
+比較起來，個人覺得前者的會議規劃與安排內容都不在今年會議之下，甚至有過
+之而無不及，可見台灣在過去國人多年來的努力之下，在軟硬體方面已有長足的
+進步，這是最讓人欣慰的。唯這次出國開會發現法國人生活水準高、日子過得悠
+閒，但是所得高出台灣太多。而台灣人辛苦工作，尤其大部分的高科技工程師每
+天上班到晚上 10、11 點，為了賺錢不顧家庭生活，沒有生活品質可言，相較之
+下我們付出太多但回報太少，政府是有檢討的必要。 
+ 
+ 
+四、建議事項 
+ 
+ 從參加本次會議可以了解，交通、食、宿方便對國際會議的辦理成功是非常
+重要的，這也是本次會議將開會地點安排在巴黎近郊以及台灣的重要國際會議都
+安排在台北的主要原因，唯這樣的安排往往失掉讓國外與會者了解主辦學校學風
+與進步的情況。國內高鐵已經將台灣變成一日生活圈，南北往返非常快速便捷，
+台南是台灣古都，有豐富的古蹟，又有五星級飯店，本校歷史悠久，學豐純樸，
+各領域都發展的很完整及先進，很值得讓外人來參訪，因此建議本校未來主辦的
+國際會議儘可能在校內主辦，讓國外與會者多一些機會了解成大進步的情形。 
+96年度專題研究計畫研究成果彙整表 
+計畫主持人：謝錫 計畫編號：96-2221-E-006-193-MY3 
+計畫名稱：分散式多核心嵌入式原型系統--子計畫四：分散式多核心處理器中介軟體與開發工具之設
+計與開發 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 2 2 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

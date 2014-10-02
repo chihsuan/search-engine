@@ -1,0 +1,292 @@
+1 
+ 
+目錄 
+1. 研究目的 ............................................................................................................... 3 
+2. 研究方法 ............................................................................................................... 5 
+2.1 Network Coding Overview .................................... 6 
+2.2 Mesh AP 架構 ............................................... 6 
+2.3 Mesh AP 內部處理 ........................................... 7 
+2.4 Network Coding Functionality ............................... 8 
+2.5 Wireless Mesh Network 拓樸 ................................. 9 
+3. 數據量測與效能分析 ......................................................................................... 10 
+3.1 測試環境 .................................................. 10 
+3.2 量測封包往返時間 .......................................... 10 
+3.2.1 拓樸與實驗步驟 ............................................................................... 10 
+3.2.2 實驗結果與討論 ............................................................................... 11 
+3.3 量測 TCP 流量 ............................................. 12 
+3.3.1 拓樸與實驗步驟 ............................................................................... 12 
+3.3.2 實驗結果與討論 ............................................................................... 12 
+3.4 量測 UDP 流量 ............................................. 13 
+3.4.1 拓樸與實驗步驟 ............................................................................... 13 
+3.4.2 實驗結果與討論 ............................................................................... 13 
+3.5 在不同 Network Coding 的設定下量測 UDP 流量 ................ 15 
+3.5.1 拓樸與實驗步驟 ............................................................................... 15 
+3.5.2 實驗結果與討論 (packet pool size) ................................................ 15 
+3.6 在不同 Network Coding 的設定下量測 Decode Rate .............. 15 
+3.6.1 拓樸與實驗步驟 ............................................................................... 16 
+3.6.2 實驗結果與討論 (packet pool size) ................................................ 16 
+4. 結論...................................................................................................................... 16 
+參考文獻 ..................................................................................................................... 18 
+ 
+3 
+ 
+1. 研究目的 
+隨著無線網路的普及，使用者開始追求更高品質的服務，例如：更大的頻寬、
+更廣的覆蓋、與更加可靠的無線資料存取等。而無線網狀網路 (Wireless Mesh 
+Network) 的出現，正是因應了這股潮流； Wireless Mesh Network 具有易佈置及
+管理的特性，這種新型態的網路在建築內、戶外皆可適用，而今日半導體及 SOC 
+工業的發展，讓建構無線網路所需的晶片體積變小、花費更少。 
+Wireless Mesh Network 由多個網狀存取點 (Mesh Access Point) 與網狀客戶
+端 (Mesh Client) 共同組成；在 Wireless Mesh Network 中，使用者即為 Mesh 
+Client 、需要連結網路，而 Mesh AP 如同固網中的路由器 (router) 或是交換器 
+(bridge)，轉送從 Mesh Client 送出的封包， Mesh AP  可以自行判斷封包路徑、
+不需經由任何中央控制單元決定，除去中央單元可能發生故障所衍生的種種問
+題；提供自我修復  (self-healing)、自我組織  (self-organized)、自我組態 
+(self-configured) 等功能。 
+在 Wireless Mesh Network 中， Mesh Client 需利用 infrastructure 模式，附
+著上一個 Mesh AP ，而 Mesh AP 必須同時運作 infrastructure 模式與 ad hoc 
+模式：在 infrastructure 模式下，與附著上它的 Mesh Client 溝通，而在 ad hoc 模
+式下，與其他 Mesh AP 溝通；所有 Mesh AP 形成一個行動隨意網路 (Mobile 
+Ad-hoc Network, MANET)。由於 Wireless Mesh Network 與行動隨意網路擁有很
+多共同的特徵，因此， ad hoc 網路發展的路由協定也可以應用到 Wireless Mesh 
+Network 。例如：  Microsoft 的網狀網路及  MIT 的  RoofNet 皆使用  DSR 
+(Dynamic Source Routing)、許多商業上的 Wireless Mesh Network 產品使用 
+AODV (Ad hoc On-demand Distance Vector Routing) 作為根本路由協定。 
+Wireless Mesh Network 卻為 ad hoc 路由協定帶來不同的挑戰，在網狀網路
+中， Mesh AP 具有固定位置，無線網路易有干擾，造成不穩定的位元錯誤率；
+而傳統 ad hoc 路由協定假設網路節點皆為可動，若直接應用在 Wireless Mesh 
+Network 上，將花費不必要的成本去偵測固定位置的 Mesh AP ，所以，這些 ad 
+hoc 路由協定可能並不完全適用於 Wireless Mesh Network 。為避免這個問題，
+一些 Wireless Mesh Network 採用固網的路由協定，例如 OSPF (Open shortest 
+path first routing protocol) 等。 
+在  Mesh AP 中，用來決定封包繞徑的路由協定稱作 “Wireless Mesh 
+Routing”(WMR)，如果我們採用了一個沒有效率的路由協定作為 WMR ，那這
+個 Wireless Mesh Network 將具有很差的效能且可能不具有擴充性；想要實作一
+個能夠廣泛應用的 Wireless Mesh Network ，謹慎評估採用哪一種 WMR 是必
+須的。 
+另外，為了得到更好的效能，我們除了找尋一個兼具效能及擴充性的 WMR 
+5 
+ 
+2. 研究方法 
+觀察哪一種路由協定最適合 Wireless Mesh Network 是相當有趣的，而分析
+種種路由協定表現的文獻卻很稀少，所以，本計劃首先要探討 Wireless Mesh 
+Network 的各種路由協定，利用模擬技術來分析比較它們應用在 Wireless Mesh 
+Network 上的效能，並對其做出改進，以便設計及實作出一個最適合 Wireless 
+Mesh Network 的路由繞徑機制。在計畫前半，我們借助 NCTUns 網路模擬器來
+模擬路由協定應用在 Wireless Mesh Network 上的種種情況； NCTUns 是一個高
+真實性、可擴充的網路模擬器，能夠精確模擬多種無線或有線的網路協定。 
+我們共模擬了三種路由協定─ AODV、STP、OSPF，其中 AODV 是最具
+效率的 ad hoc 路由協定，而 OSPF 及 STP 則是 Internet 上最普遍的路由協
+定。由模擬結果中可以確認： OSPF 為三者中最適合 Wireless Mesh Network 的
+路由協定，實驗數據如期中報告所示。 
+而在計畫後半，我們於 Linux 平台上實作 Wireless Mesh Network ，搭配
+採用先前模擬比較後，最適合 Wireless Mesh Network 的路由協定─ OSPF 路由
+協定以及我們所新加入的 Network Coding 機制，隨後量測我們實作的 Wireless 
+Mesh Network 流量、封包傳送往返時間等真實效能，藉著種種不同的應用程式，
+衡量整體架構的反應表現。 
+圖 1. 單一 Mesh AP 架構 
+ 
+7 
+ 
+以 OSPF 路由協定傳遞 Mesh Client 封包到其目的地。所以，在實作上，如圖 1
+所示，一個 802.11b 的 Access Point ，與一台具備 Ad hoc 無線介面的筆記型電
+腦，兩者以固網相連，充當 Mesh AP 。 Mesh AP  (筆記型電腦) 上執行 OSPF 
+Daemon ，當 Mesh Client 的封包透過 802.11b AP 到達 Mesh AP 後， OSPF 
+Daemon 根據其目的判斷下一個 hop 應該傳送到哪個 Mesh AP ，再透過本身
+以 ad hoc 模式運作的無線介面，傳送出去。 
+在原本的設計中，是打算利用  Host AP  這個 Linux Driver 與 Prism 
+2/2.5/3 無線網卡，讓一台筆記型電腦就可以扮演 Mesh AP 這角色；同時安裝一
+個 USB 無線網卡，運作在 Ad hoc 模式，形成一個 Wireless Mesh Network ，讓
+Mesh Client 可以順利連結上，並傳送封包。但在深入了解 Host AP 後，發現 Host 
+AP Driver 主要運用在處理應用程式直接送下網卡、準備傳送的封包，而無法正
+確處理從低層 Bridge 送來的封包；在我們 survey 的過程中，沒有發現能成功結
+合 Host AP Driver 與 Bridge 的研究或報告。基於計畫時間並不充裕，我們決定
+放棄使用 Host AP Driver ，改成圖 1 這個較為彈性、而且確實可行的架構，來
+完成實作。 
+ 
+2.3 Mesh AP 內部處理 
+圖2 顯示 Mesh AP 內部接收傳送封包情形： OSPF Daemon 利用 Control 
+Message Socket ，在 Mesh AP 間交換訊息：一開始，送出 Hello 封包，確認周
+圍有哪些鄰近 Mesh AP ，接著，送出 LSA 封包到整個網路， OSPF Daemon 根
+據所有收到的 LSA 封包，來建造最短路徑 Tree、存成 Routing Table ；而 Hello 
+封包也被用來確認鄰近  Mesh AP 是否仍然存在。 
+當 Mesh AP 發送出 Hello 封包時，會將此 Mesh AP 本機所擁有的封包附
+加到 Hello 封包上，而在傳輸範圍內的 Mesh AP 收到此 Mesh AP 發送過來的 
+Hello 封包時，會擷取這部分的資訊，將 Neighbor Node 的擁有封包資訊紀錄在
+其 Packet Database 裡，用來當作 Network Coding 中篩選可以 Encode 封包的
+依據。 
+當 Mesh Client 送出封包，經過 AP 連接到 Mesh AP 的 802.3 固網介面
+時，我們藉由 iptables 指定封包過濾規則，將這些封包剝除 Ethernet Header、
+導入  IP QUEUE ，在封包從  IP QUEUE 送至  OSPF Daemon 時，  OSPF 
+Daemon 會在其封包前端附加上一段 SHIM Header ，用來表示此封包執行 
+Network Coding 所需附加的封包資訊，如圖3；此 SHIM Header 裡共包含五種
+新的資料型別分別為 Flag、Packet 1 IP/Sequence NO.、Packet 2 IP/Sequence NO.，
+其中 Flag 用來顯示出封包是否經過 Encode，其後四個資訊紀錄封包是由哪兩
+個封包所 Encode，包含個別的來源位址和封包序號。隨後，根據封包目的位址
+9 
+ 
+2.5 Wireless Mesh Network 拓樸 
+圖 3 為我們實作的 Wireless Mesh Network 基本拓樸，Mesh AP 以 Ad hoc 
+模式相連，它們的 ip 位址屬於同一個子網域；跑在各 Mesh AP 上的 OSPF 
+Daemon，使用 UDP Socket、與其他 Mesh AP 交換 Control Message (Hello 封
+包、LSA 封包) 與 Data Message (Mesh Client 封包)。而 Mesh Client 的 ip 則
+設為另外一個子網域，它們能透過 802.11b AP 連結上 Mesh AP 的固網介面，
+形成整個 Wireless Mesh Network。 
+Routing Component
+Routing Table
+R.S. C.M.S. D.S.
+IP QUEUE
+802.3 fixed NIC 802.11b/g ad-hoc mode NIC
+OSPF Daemon
+Raw Socket
+IP tables
+UDP Socket UDP Socket
+ 
+ 
+圖 4. Wireless Mesh Network 架構 
+11 
+ 
+的影響。同時也量測兩端 Mesh Clients 間隔三個(4 hops) Mesh AP 時，封包的
+往返時間，圖6 即為間隔三個 Mesh AP 的實驗拓樸。
+ 
+圖 6. 間隔三個 Mesh AP 的拓樸 
+ 
+3.2.2 實驗結果與討論 
+ 實驗得到的數據如圖7 所示，可以看出兩個極端，有做 Network Coding 的
+數據都在 600 ms 與 800 ms之間，而沒有做 Network Coding 的數據都在 
+100ms 以下，大致上來說，Hop 數越多，往返時間越長。而且 Network Coding 會
+使得 Ping 的往返時間會比正常情形 (沒有使用Network Coding ) 的時間要來得
+長，主因是 一個 packet 進到 Mesh AP 時，有可能因為需要等待可與其進行 
+encoding 的封包而必須在output queue 等待，造成 Ping 程式所量測 end-to-end 
+delay time 增加。值得注意的是，所量測的 delay time 偶而會有震盪的情況，可
+能是受到作業系統內部處理時間、進行實驗時網路的信號干擾程度，和無線通道
+品質好壞等因素的影響。在整個系列的實驗過程中，我們也感受到信號干擾與通
+道品質會對實驗結果造成相當大的影響。 
+當封包大小超過 1500 位元組，Mesh Client 透過固網傳送給 Mesh AP 
+時，因為 802.3 協定對於封包最大尺寸 (每個封包所帶的資料最大 1500 位元
+組、連 Ethernet Header 為 1518 位元組) 的限定，這個超過 1500 位元組的封
+包會被切割成兩個 (fragmented)，造成往返時間明顯增加，整體表現變差。為
+了避免底層封包切割 (fragmentation) 造成實驗數據的錯誤，在實驗中最大封包
+長度都設在1400位元組。
+13 
+ 
+圖 8 顯示實驗所得數據，可以看到 TCP 流量在 Network Coding Enabled 
+時， throughput 都在 50Kb/sec 以下，反之在 Network Coding Disabled 時，
+throughput 都至少在 100Kb/sec 以上。原因在於使用 Network Coding 機制時，
+一個封包遺失將同時影響兩條 TCP connection。因為，一個 encoding 封包遺失，
+實質上是兩個 TCP connection 各遺失一個封包，因此兩條 TCP Connection 都會
+啟動各自的 congestion control 機制來節制其封包傳送速度。 
+除此之外，由於 Network Coding Enable 的 delay time 比 Network Coding 
+Disable 的 delay time 高很多而且變異更大。這種不穩定的 RTT 也造成了 TCP
+在估算封包往返時間上的困擾，使得 TCP retransmission timer 被誤啟動，進而不
+必要地降低傳送速度。最後的可能原因是“out-of-ordered packet”的問題。由於 TCP
+對應用層必須維持封包的收取順序。因此當 incoming packet 不按照順序到達收
+端時，它必須要將封包放在暫存區裡，直到序號小於此封包的其他所有封包都到
+達為止。但是使用 Network Coding 機制，若封包有遺失，封包的 out-of-order degree
+將會比不使用 Network Coding 機制時更為嚴重，因此 TCP 會將封包留在暫存區
+等待的情形會更常發生，也更為嚴重。在此情形下，應用程式所感受到的 TCP
+效能將會比沒有使用 Network Coding 時來得更差。一個可能的改進方法為在
+Network Coding Daemon 裡加入一個中介層，來設法降低 TCP 對亂序的封包所造
+成的效能低落問題。 
+ 
+3.4 量測 UDP 流量 
+3.4.1 拓樸與實驗步驟 
+這裡主要探討 UDP 連線其流量的變化情形，同時紀錄不同的封包大小，對 
+UDP 流量造成的影響。我們利用 stg/rtg 這對UDP應用程式每隔 0.001 秒發出
+一個封包，產生兩條相反方向的UDP traffic，來進行實驗。實驗拓樸與 3.2 節 (圖
+6) 相同。 
+ 
+3.4.2 實驗結果與討論 
+圖 9 顯示 UDP 連線平均流量與封包大小的變化情形。我們可以看到 UDP 
+throughput 在 Network Coding Enabled 時幾乎都比 Network Coding Disabled 時
+好上很多，這也展現了 Network Coding 的優點 -- 一次傳輸可以送出兩個 flow
+的封包。在圖 9 中，多數的 data sample 顯示 throughput 在 Network Coding 
+Enabled 的情況下可以比 Network Coding Disabled 好上百分之十以上。在無線
+網路環境下，這種同時傳輸的編碼技巧可大幅地節省競爭媒介使用權的程度以及
+所花的時間。 
+15 
+ 
+圖 10. UDP 平均流量提升比率與封包大小關係圖 
+3.5 在不同Network Coding的設定下量測 UDP 流量 
+3.5.1 拓樸與實驗步驟 
+在 Network Coding 中，我們設定了packet pool size這個參數來研究如何設
+定一個最佳的狀況，可以使 UDP 流量達到最佳情形。packet pool size 主要是一
+個 Mesh Node 需要自己儲存多少封包以用來 decode packet。我們利用 srtg 這
+對UDP應用程式以 0.001 秒的週期發出一個UDP封包，產生兩條相反方向的 
+UDP traffic，來進行實驗。實驗拓樸與 3.2 節 (圖6) 相同。 
+ 
+3.5.2 實驗結果與討論 (packet pool size) 
+ 從圖 11 中，我們可以看到不同的 packet pool size 對 UDP 流量影響的圖表，
+雖然除了 size=100 的情況以外差距沒有很懸殊，但是我們仍然可以看到 size<500
+時效能會較為低落，原因在於如果 packet pool size 太小，end-point node 就有可
+能因為需要用來解碼的封包已經被丟棄，而無法成功 decode 收進來的 packet，
+造成 throughput 下降。圖中也看出一個趨勢，就是 packet size 越大，packet pool size
+對 UDP 流量影響越不顯著，這是因為單一 packet size 越大，個數就會減少，越
+少的封包當然所需的 packet pool size 也就越小，如圖 11 中，packet pool size=500
+對於 1000 bytes 以上的封包已經綽綽有餘。 
+ 
+ 
+圖 11. UDP 平均流量與封包大小關係圖 (Different Pool Size) 
+ 
+3.6 在不同Network Coding的設定下量測Decode Rate 
+17 
+ 
+    WMR 對無線網狀網路的穩定與表現影響深遠，雖然一些公司已經將 
+Wireless Mesh Network 商業化、製成產品，但實測這些現存的 Wireless Mesh 
+Network 可以發現，它們所使用的路由協定表現仍遠低於期望，因此，在前期計
+畫中，我們使用NCTUns網路模擬器來評估這些路由協定，並從模擬結果得到結
+論：OSPF是最適合 Wireless Mesh Network 的路由協定。 
+在後期計畫、實作無線網狀網路與 Network Coding 部分，我們的成品具備
+以下幾種特性： 
+(1) 採用可行性高且具有彈性的架構設計：放棄無法與  Bridge 結合的 
+Host AP Linux Driver，Mesh AP 改採用結合  802.11b 的  Access 
+Point，與具備 Ad hoc 無線介面的筆記型電腦；並在其上執行 OSPF 
+Daemon。這個架構可行性高，很容易就達到 Mesh AP 的運作需求，
+順利處理封包、繞送封包，想要改動路由協定等機制也相當容易，不需
+要動到 Linux 內部核心。 
+(2) 可擴展：我們設計出的 Wireless Mesh Network 架構在實作上並不會改
+動到 Kernel 內部 code，更不需要重新編譯 Kernel，機器作業系統版
+本不同對於 OSPF Daemon 執行不會造成差異，整體而言，這個設計架
+構具有相當便利的移植能力，相當容易部署到不同 Linux Kernel 版本
+的電腦。 
+(3) 效能：在測試上，我們已經實驗過封包往返所需時間、UDP 與 TCP 流
+量等，可以描述出我們設計出的 Wireless Mesh Network 基本效能；實
+驗中我們並未拉開 Mesh AP 間的距離，而是依靠 firewall 過濾封包，
+方便測試 multi-hop 的拓樸；但底層信號其實仍然互相干擾，如同在 
+Ad hoc 模式下的 multi-hop 對於彼此的干擾；實際拉開 Mesh AP，減
+少了信號干擾，應能達成比實驗結果還要高的數據。 
+(4) 新技術的延伸：在後期計畫中，我們針對資料封包部分加入了 Network 
+Coding 的機制，藉由多個封包的相互編碼，來減少原本必須進行多次
+傳輸才能完成的資料轉送，換言之，在相同的無線網路環境下，加入 
+Network Coding 的編碼機制後，便可在相同傳送次數下，完成更多的
+資料傳輸；實驗中，我們也試著調整 packet pool size 來增進 Encode 
+Rate 及 Decode Rate，並且於實驗結果得知有效地調整此類參數將可讓
+效能更加提升。 
+完成實用、穩健的 Wireless Mesh Network，是我們希望達成的目標；現在
+的系統架構，適用於真實世界，具有一定的穩定性、彈性、易擴展到不同作業系
+統上等優勢，若能實作成更大型的 Wireless Mesh Network，勢必能達成我們的
+目標、成為實用的網路架構。 
+19 
+ 
+[11] E.M. Royer and C-K Toh, “A Review of Current routing protocols for Ad-hoc mobile 
+wireless networks”, IEEE Personal Communications, April 1999. 
+[12] D. Aguayo, J. Bicket, S. Biswas, D.S.J. De Couto, R.Morris, MIT Roofnet Implementation. 
+Available from:<http://pdos.lcs.mit.edu/roofnet/design/>. 
+[13] BWN lab wireless mesh networks research project.Available from: 
+<http://www.ece.gatech.edu/research/labs/bwn/mesh/>. 
+[14] J. Hauser, Draft PAR for IEEE 802.11 ESS Mesh, IEEEDocument Number: IEEE 
+802.11-03/759r2. 
+[15] IEEE 802.11 Standard Group Web Site. Available from: <http://www.ieee802.org/11/>. 
+[16] IEEE 802.16 Standard Group Web Site. Available from: <http://www.ieee802.org/16/>. 
+[17] Kiyon Autonomous Networks. Available from: <http://www.kiyon.com>. 
+[18] Microsoft Mesh Networks. Available from: <http://research.microsoft.com/mesh/>. 
+[19] Nortel Mesh Networks. Available from: 
+<http://www.nortelnetworks.com/solutions/wrlsmesh/index.html>. 
+[20] Ian F. Akyildiz, Xudong Wang, and Weilin Wang. “Wireless mesh networks: a survey”. 
+Computer Networks Journal (Elsevier), March 2005. 
+[21] Daniel Aguayo, John Bicket, Sanjit Biswas, Glenn Judd, Robert Morris, “Link-level 
+Measurements from an 802.11b Mesh Network”, SIGCOMM 2004, Aug 2004 
+[22] Douglas S. J. De Couto, Daniel Aguayo, John Bicket, and Robert Morris, “A High-Throughput 
+Path Metric for Multi-Hop Wireless Routing”, Proceedings of the 9th ACM International 
+Conference on Mobile Computing and Networking (MobiCom ‘03), San Diego, California, 
+September 2003. 

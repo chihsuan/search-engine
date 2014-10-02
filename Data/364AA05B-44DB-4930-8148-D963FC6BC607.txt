@@ -1,0 +1,993 @@
+applications demand high communication bandwidth for data 
+exchange and high computation bandwidth for media 
+encoding/decoding. Multi-core platforms allow the possibility for 
+partitioning the computation at function level and data level to 
+parallelize the computation, improve the throughput, and, hence, 
+enhance user perceptions. However, how to manage the resources 
+on multi-core platform and how to ease the burden for porting 
+multi-media application from one special designed platform to 
+another one are two challenging issues to be studied in this 
+subproject. In this subproject, we will design and implement 
+microkernel for micro-processing core and nano-kernel for digital 
+signal processing core to manage the resources on each core. The 
+virtualization layer on top of the micro/nano-kernel provides high-
+level resource partition and management. Developing such a run-
+time environment on physical hardware platforms depends on the 
+availability of hardware platforms and introduces great cost for the 
+project. Hence, we will take advantage the virtual platforms 
+developed by other subprojects to reduce the hardware cost and 
+parallelize the development process. In addition, the run-time 
+environment will be the test-bed applications for the multi-core 
+virtual platforms to evaluate their designs. Hence, the four 
+subprojects in this integrated project are closely related to each other 
+and work closely in the three years project period. 
+ 
+I 
+目錄 
+摘要 ............................................................................................................................................................. III 
+Abstract ........................................................................................................................................................ IV 
+一、前言 ........................................................................................................................................................ 1 
+二、研究目的 ................................................................................................................................................ 2 
+三、文獻探討 ................................................................................................................................................ 5 
+四、技術方法 .............................................................................................................................................. 12 
+4.1.1 Methods of the software for control-plane processors: .................................................................. 12 
+4.1.2 Methods of the software for data-plane processors: ...................................................................... 20 
+4.1.3 Conclusion ................................................................................................................................... 34 
+4.2 Zero-Buffer Inter-Core Process Communication Protocol for Heterogeneous Multi-core Platforms . 34 
+4.2.1 INTER-CORE PROCESS COMMUNICATION PROTOCOL DESIGN ...................................... 34 
+4.2.2 SOFTWARE ARCHITECTURE AND IMPLEMENTATION ....................................................... 40 
+4.2.3 Conclusion ................................................................................................................................... 46 
+4.3 Workload Migration Mechanism Between Networked Embedded System and Cloud Server ........... 46 
+4.3.1 System Overview ......................................................................................................................... 46 
+4.3.2 Mobile Workload Migration Mechanisms ..................................................................................... 48 
+4.3.3 Workload Information .................................................................................................................. 48 
+4.3.4 Workload Dispatcher .................................................................................................................... 49 
+4.3.5 Workload Execution Server .......................................................................................................... 50 
+4.3.6 Streaming Execution .................................................................................................................... 50 
+4.3.7 Remote Execution ........................................................................................................................ 52 
+4.3.8 Remote Execution with Source Codes Transmission ..................................................................... 53 
+III 
+摘要  
+ 子計畫二的目標為研究、設計、與開發提供多媒體系統在異質多核心（虛擬）平台上具有高移植
+性、且高效能的即時執行環境，這個環境稱為  Moviola。  Moviola  系統包含在微處理器上執行的
+微核心作業系統、在數位訊號處理器上的奈米核心作業系統、以及一個整合的虛擬化環境。這個整合
+的虛擬化環境提供在虛擬平台上的作業系統以及使用者應用程式一個具有高移植性且高效能的執行環
+境，當  Moviola  所安裝的（虛擬）平台改變，其上所執行的作業系統與使用者應用程式並不需要重
+新設計與開發。多媒體系統的順利執行對於計算能力與資料傳輸的頻寬都有相當高的要求，而多核心
+平台提供多媒體系統的針對函數功能或資料進行分割而後進行平行處理的高效能平台，因此可提高系
+統的資料處理量(throughput)、並提昇使用者對系統效能的觀感。然而，如何管理多核心平台、尤其
+是異質多核心平台的資源以及如何降低系統開發者移植系統至不同多核心平台的困難度則是多核心平
+台的兩大挑戰。因此，在這個子計畫中，我們將設計與開發管理微處理器以及數位訊號處理器資源的
+微核心作業系統以及提供高階資源管理與資源保證的虛擬化技術。本計畫完成的程式碼，將依循開放
+源碼精神，以開放式架構進行設計開發，並開放本計畫所完成之原始碼。 本子計畫與其他子計畫具有
+高度的互補性與整合性。本子計畫所完成的微核心作業系統與虛擬化技術將是其他三個子計畫的測試
+系統，我們也將使用本子計畫所設計的效能量測模型(benchmark)，提供其他三個子計畫系統效能的資
+訊。而本子計畫開發過程也將藉由其他子計畫的虛擬平台進行設計與開發，以縮短開發時程，並減少
+開發所需的硬體環境。其中，我們將在開發初期藉由子計畫三的虛擬平台，進行功能驗證，並藉由其
+快速模擬的特性縮短開發時程。而子計畫一與四則可提供準確的時序資訊，子計畫一可藉由高階多核
+心技術，大幅縮短模擬的時間，使本子計畫在驗證虛擬化計畫的資源管理時可以在短時間內得到準確
+的時序資訊。而子計畫四的  Sample-Base  技術，則可協助本子計畫在進行作業系統核心開發過程中，
+提供開機過程中所需的時序資料。 
+ 
+關鍵詞：異質多核心平台、多媒體應用、數位信號處理器、虛擬化平台、負載平衡、即時程式 
+  
+1 
+一、前言 
+虛擬化技術在近幾年獲得許多系統工程師與系統軟體研究人員的青睞，將其使用在個人電腦，雲
+端伺服器與行動通訊平台上，以提昇其硬體資源的使用率與行動平台的即時性。 
+異質多核心是指系統上包含多顆處理單元，且這些處理單元由兩種以上不同的處理單元所組成。
+異質多核心為現今常被使用的架構，許多平台都屬於異質多核心平台，例如市售的智慧型手機內通常
+包含了至少一顆處理資料的 CPU，一顆處理聲音用的 DSP 以及一顆圖型運算的 GPU。 
+我們開發的虛擬層設計一套高效能的 inter-processor communication(IPC)來達到兩端的 core
+做 interaction，而為了達到更好的核心使用率及穩定度，我們實做了 core 跟 core 之間的 workload 
+migration 機制，除了同質核心間的負載平外，我們亦提供異質多核心甚至與雲端運算單元間的負載
+平衡。  
+3 
+requests from one virtual resource group to the other groups which have spare resources. Hence, the lower 
+bound on resource requirements can be guaranteed and the spare resources can be better utilized by the 
+applications on one platform. 
+ 
+We expect that Moviola can be deployed on two different usage scenarios: physical multi-core platforms 
+and multi-core virtual platforms. Figure 2 illustrates the deployment on physical multi-core platforms. In this 
+usage scenario, one micro-kernel is executed on one micro-processing core and one nano-kernel is deployed 
+on one signal processing core. Micro/Nano-kernels are responsible for managing the resources on each core 
+including thread scheduling, memory management, communication, and interrupt handling. On top of the 
+virtualization layer, the users can partition the entire run-time environment into several virtual run-time 
+environments. Each virtual run-time environment can execute different operating systems and user 
+applications. The operating systems and user applications then share the physical heterogeneous multi-core 
+platform. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Figure 3 illustrates the case for deploying Moviola on multi-core virtual platforms. Deploying Moviola 
+on virtual platforms allows the users and developers to experiment their designs without the physical 
+multi-core platforms. The virtual platforms may execute either on homogeneous multi-core platforms, the 
+ones developed by Subproject 1 and 4, or heterogeneous multi-core platforms, the one developed by 
+Subproject 3. The usage scenario is also the test-bed for the design and implementation of Moviola. The 
+virtual platforms can reduce the cost of purchasing multi-core platform for each developer. In addition, the 
+5 
+三、文獻探討  
+In the past five years, we have done researches in the following three areas: (1) Component Design for 
+SISARL Services and Devices, (2) state-dependent deadline scheduling, and (3) mobile web services, and (4) 
+ESL Design Tool. 
+(1) Component Design for SISARL Services and Devices 
+ The acronym SISARL stands for Sensor Information Systems (Services) for Active Retirees and 
+Assisted Living. It refers broadly to consumer electronic and assistive appliances, as well as services, 
+designed to enrich the quality of life of elderly individuals and to help them live actively and 
+independently. Examples are object locators that help us to find household and personal items; smart 
+storage pantries that inventory grocery supplies and notify designated suppliers for just-in-time 
+replenishment; medicine dispensers that help to ensure correctness and enforce compliance of medication 
+schedules; monitors that record and process vital sign signals, detect irregularities, and send appropriate 
+notifications; and robotic helpers that enhance dexterity and accessibility and minimize the effects of 
+functional limitations. 
+ The thrusts of our work are on technologies for the design, production, and quality assurance of 
+easy-to-use, dependable SISARL appliances and services with state-of-art and future capabilities. These 
+appliances and services are not only needed to improve the well-being of an increasingly larger segment 
+of the global population, but they also present to the ICT (Information and Communication Technologies) 
+industry a tremendous new business opportunity. We want to help the industry to shorten the time and 
+lower the cost required to bring families of high-quality SISARL products and services to market. 
+Problems to be solved include how to partition diverse SISARL appliances and services into common 
+components; how to configure and integrate the components in a systematic, verifiable way to build 
+diverse appliances and services; how to design and implement the appliances for compositional and 
+incremental verification, validation and certification; how to make the appliances easily customizable to 
+users’ needs, preferences, and available support infrastructures; how to ease the incorporation of future 
+extensions and advancements into existing SISARL; and how to effectively exploit application/platform 
+co-design, software/hardware co-design and SoC (system-on-a-chip) technologies. 
+ Our research aims to fill voids in the science and technology needed to strengthen the foundation of 
+component-based design, integration and quality assurance for SISARL. We are also developing a 
+7 
+Computing and Systems and Applications 2003 [6] and a journal paper published on Journal of 
+Real-Time Systems [21]. 
+(3) Mobile Web Services: 
+ As the mobile devices and broadband networks are widely available, it is desirable to provide the 
+mobility for web services. A web service is mobile in the sense that, without interrupting the services, 
+users are allowed to switch the browsing devices or the service providing server could be changed as the 
+users move around. The mobility of users' browsing devices and the change of service providing servers 
+are called client mobility and server mobility, respectively. The researches in this topic develop an 
+innovative approach for realizing client mobility and server mobility. Our approach does not require any 
+third-parties agents and, hence, introduces fewer overheads and provides better backward compatibility 
+for existing services. Only a plug-in module for the web browsing devices is needed to provide the client 
+and server mobility services. The approach has been demonstrated using one of the popular web clients, 
+Konqueror, and one of the popular web servers, Apache. Parts of the research results have been published 
+in the Proceedings of the Sixth International Conference on Information Integration and Web Based 
+Applications & Services (iiWAS2004), 2004 [11]. 
+(4) ESL Design Tool 
+ In 2004, we start a project named MFASE for ESL design tool. The acronym MFASE stands for 
+multi-function SoC Analysis Environment. MFASE is designed as an open integrated design framework. 
+ It consists of system-level design tool to avoid enormous design space exploration, cycle accurate 
+low-level HW/SW co-simulation to verify the design, performance analysis tool to identify the 
+performance bottleneck for design revision. In addition, the MFASE is designed with an open framework 
+in the sense that open document standard is used for intra-components date exchange. The users or other 
+design tools can access all the intermediate design results. 
+ The four major features of MFASE are the following. 
+ 1. Single, cohesive environment. In MFASE, the designers start with function blocks for the system, 
+which are described by data flow diagram of the system, and conclude with RTL level simulation. All the 
+operations are integrated within one integrated development environment.  
+ 2. HW/SW partition, resource manager synthesis and architecture synthesis. MFASE conducts the 
+HW/SW partition with different classes of algorithms including constructive algorithms, iterative 
+algorithms, and generic algorithms. In order to meet the timing constraints for embedded real-time 
+9 
+(4/4)(96-2752-E-002-008-PAE)  
+4.省電與性能最佳化技術:從應用面至系統面之探討－子計畫四：整合型感測控制網路之效能最佳化(三
+年)(95-2221-E-002-099-MY3)  
+5.省電與性能最佳化技術:從應用面至系統面之探討－總計畫(95-2221-E-002-095-MY3) (三年)  
+6.合作式分散式嵌入即時系統資源管理(94-2213-E-002-084-)  
+7.多效能條件即時系統資源管理(93-2213-E-002-090- )  
+8.國立臺灣大學優勢重點領域拔尖計畫 : Excellent Research Projects of National Taiwan University 子計
+畫七(五年) 
+ 
+Reference :  
+[1] Chang-Gun Lee, Chi-Sheng Shih, and Lui Sha, “Service Class based Online QoS Management in 
+Surveillance Radar Systems.” In the Proceedings of the IEEE Real-Time Systems Symposium, Dec. 2001.  
+[2] Chang-Gun Lee, Phil-Su Kang, Chi-Sheng Shih, Lui Sha. “Radar dwell scheduling considering physical 
+characteristics of phased array antenna.” In the Proceedings of IEEE Real-Time Systems Symposium. 
+December 2003.  
+[3] Chang-Gun Lee, Chi-Sheng Shih, and Lui Sha, “Online QoS Optimization Using Service Class in 
+Surveillance Radar Systems.” To be appeared on Real-Time Systems Journal.  
+[4] Chi-Sheng Shih, Lui Sha, and Jane Liu, “Task Scheduling with Variable Deadlines.” In the Proceedings of 
+the seventh Real-time Technology and Applications Symposium, 2001.  
+[5] Chi-Sheng Shih and Jane Liu, “State-Dependent Deadline Scheduling.” In the Proceedings of the IEEE 
+Real-Time Systems Symposium, Austin TX, Dec. 2002.  
+[6] Chi-Sheng Shih, Jane Liu, and Infan Kuok Cheong, “Scheduling Jobs with Multiple Feasible Intervals.” In 
+the Proceeding of the IEEE Real-Time Computing and Systems and Applications, Tainan, Taiwan, 2003.  
+[7] Chi-Sheng Shih and Jane Liu, “Acquiring and Incorporating State-Dependent Real-Time Performance 
+Requirements.” In the Proceeding of the IEEE Requirements Engineering Conference, Monterey Bay, CA, 
+2003.  
+11 
+Dec. 2006.  
+[18] Mark Liao, Jane Liu, and Chi-Sheng Shih, Smart Pantries for Homes, In Proceedings of 2006 IEEE 
+International Conference on Systems, Man, and Cybernetics, Oct. 8 - Oct. 11, 2006, Taipei, Taiwan.  
+[19] Han-Chun Yeh, Pi-Cheng Hsiu, Pei-Hsuan Tsai, Chi-Sheng Shih, and Jane Liu, APAMAT: A Prescription 
+Algebra for Medication Authoring Tool, in Proceedings of 2006 IEEE International Conference on Systems, 
+Man, and Cybernetics, Oct. 8 - Oct. 11, 2006, Taipei, Taiwan.  
+[20] Han-Chun Yeh, Pi-Cheng Hsiu, Pei-Hsuan Tsai, Chi-Sheng Shih, and Jane Liu, Integration Framework 
+for Medication-Use Process, in Proceedings of 2007 IEEE International Conference on Systems, Man, and 
+Cybernetics, Oct. 7 - Oct. 10, 2007, Montreal, Canada.  
+[21] Jian-Jia Chen, Jun Wu, and Chi-Sheng Shih, Approximation algorithms for scheduling real-time jobs 
+with multiple feasible intervals, in the Real-Time Systems Journal, Volume 34, Number 3 / November, 2006, 
+Pages: 155-172.  
+[22] Wen-Hsian Chang, Chi-Sheng Shih, Jane Win-Shih Liu, Component Interface Design for Flexible 
+User-Centric Automation and Assistive Devices, in the Proceedings of the 2008 IEEE International 
+Conference on Systems, Man, and Cybernetics (SMC 2008), October 12 - 15, 2008.  
+[23] Tsung-Yen Chen, C H Chen, Chi-Sheng Shih, Jane Win-Shih Liu, A Simulation Environment for 
+Development and Evaluation of Smart Devices for the Elderly, in the Proceedings of the 2008 IEEE 
+International Conference on Systems, Man, and Cybernetics (SMC 2008), October 12 - 15, 2008. 
+  
+13 
+Moreover, while there are some timing requirements resulted from the workload over the virtual core, some 
+additional constraints on the setting of the replenish period and the maximum budget will be incurred. For 
+example, consider the execution of a real-time task Ti with Ci execution cycles and a relative deadline pi. The pi 
+should be able to be divided by the replenish period T of the virtual core1. Hence, consider a set of real-time 
+independent periodic tasks {T1, T2, … , Tn}to be executed over a virtual core, where independent tasks could 
+preempt the executions of each another at any time. Let Ci and Pi denote the maximum number of execution 
+cycles and the period of a task Ti of the set, respectively. Suppose that the EDF scheduling algorithm is adopted 
+to schedule the task set.  
+Let Ck be the execution cycles that a virtual core can guarantee within any pk, while we set the replenish 
+period and maximum budget of the virtual core according to our configuration, i.e., T = gcd(p1, p2, . . . , pn) and 
+C	 ≥ 	∑ ి೔
+౦೔
+௡
+௜ୀଵ 	 ∙ T. Then, we have 
+Ck = 	 උ
+p݇
+T
+ඏC = 	 p݇
+T
+	C	 ≥ 	 p
+݇
+∑ c݅
+p݅
+݊
+݅=1 		for	݇ = 1,2, … , n. 
+That is, from the perspective of each task Tk, the virtual core can provide sufficient execution cycles within its 
+relative deadline Pk such that the virtual core will behave like a processor whose operating frequency is ిೖ
+౦ೖ
+ , 
+which is no less than Fv. Since it is similar to that these tasks are executed over a processor whose operating 
+frequency is no less than Fv, the total utilization of the task set will be no more than 1. Therefore, the timing 
+constraints of these tasks can be satisfied. 
+ 
+Figure 4.1.3. The delay of the response time incurred while the virtual core is emulated on a physical core. 
+Unlike real-time tasks where the timing constraints are crucial, the concern of non-real-time tasks can be 
+different. Such as multimedia applications and batch applications, users might be only interested in the 
+throughput provided by the virtual core and the response time of a certain workload. While the throughput can 
+15 
+removed from the virtualization system and release its allocated computing resource with the virtual core 
+deletion function. Finally, with the virtual core adjustment function, the virtual core in the virtualization system 
+can be treated as a physical core with the capability of dynamic voltage scaling (DVS).  
+In addition to the functions to utilize virtual cores, the hypervisor also needs to support admission control 
+mechanisms because of limited computing resource of physical cores. That is, at each time of the virtual core 
+creation or the virtual core adjustment, the admission control mechanism will be triggered to examine whether 
+the request could be granted or not. Thus, we define U௖ = 1−	∑ U௜ 	௜ as the remaining utilization for a physical 
+core in the virtualization system, where ∑ U௜௜  is the total utilization of virtual-core servers on the physical core. 
+Then, when the remaining utilization of a physical core is changed due to the virtual core creation or the virtual 
+core adjustment, the proposed admission control mechanism will grant the corresponding request if the new 
+remaining utilization of the physical core is no less than 0; otherwise, the request should be rejected to prevent 
+harming the schedulability of the system.  
+While the physical cores have the capability of DVS, the hypervisor of a power-aware virtualization system 
+should be able to adjust the operating frequencies of physical cores for energy saving. In our virtualization 
+system, we exploit the DVS capability of physical cores by integrating a DVS scheduling policy with the 
+admission control mechanism. As a result, once our admission control mechanism is triggered, it will also 
+invoke the DVS scheduling policy if the physical cores support DVS. Given a remaining utilization of a 
+physical core, our DVS scheduling policy will scale down the operating frequency of the physical core to the 
+lowest available frequency of the physical core such that the remaining utilization of the physical core is no less 
+than 0, and will only ask the admission control mechanism to reject the request if the remaining utilization is 
+less than 0 even if the physical core operates at the highest available frequency. Similar to the scaling of 
+operating frequencies on virtual cores, the replenish periods of virtual cores which have requirements for 
+tolerable response time delay also need to be adjusted after the operating frequency of the physical core is 
+changed. 
+C. Implementation Remarks 
+As we only demonstrate our design for the power-aware virtualization system with a single physical 
+17 
+core maintenance, computing power dispatching, and memory protection, while the context switch overhead Os 
+is a fixed number of execution cycles resulted from the context switch between any two virtual cores assigned to 
+the same physical core. In order to compensate for the impact on the execution of virtual cores caused by the 
+implementation overhead, we need to add some extra execution cycles to the maximum budget in our 
+virtual-core server model. More specifically, if a user application needs a virtual core to provide Ci execution 
+cycles in every Ti time units, we have to create a virtual core with parameters (Ci + Os + Om · Ci, Ti, Fi) when the 
+implementation overhead is considered. Hence, under the deadline constraints of real-time tasks or the tolerable 
+response time delay of non-real-time tasks, we should let the replenish period Ti of a virtual core as long as 
+possible because a long replenish period can reduce the effect of the context switch overhead and thus save 
+computing resource. 
+D.   Performance Evaluation 
+As shown in Figure 4.1.4, there are multiple guest operating systems running on multiple virtual cores 
+where the number of the guest operating systems and the number of the virtual cores can be different. While the 
+hypervisor is responsible for the creation of virtual cores for guest operating systems at the initialization of our 
+virtualization system, the Virtual Core Function Server in the L4Env lets guest operating systems be able to 
+manipulate virtual cores with virtual core functions during the runtime. The Virtual Core Function Server grants 
+or rejects the requests from the guest operating systems according to our admission control mechanism and 
+delivers requests that are granted to the Virtual Core Maintainer inside the L4:Fiasco. The Virtual Core 
+Maintainer maintains an individual ready queue for each virtual core to keep the ready threads of each virtual 
+core and notifies the scheduler of the L4:Fiasco. 
+19 
+Figure 4.1.5. As shown in Figure 4.1.6, the power consumption of the chip was decreased from 0.649 mWatt to 
+0.486 mWatt accordingly as the computing needs of virtual cores decreased. There was no change in the power 
+consumption during the interval from 8 to 12 second because the physical core already operated at the lowest 
+operating frequency. Compared to the system without applying any DVS scheduling policy, i.e., fixing the 
+operating frequency of the physical core at the maximum available operating frequency (297 MHz), the 
+proposed DVS scheduling policy reduced the energy consumption to complete the applications by 13.47% (, i.e, 
+from 10.58 mJoule to 9.16 mJoule). 
+ 
+Figure 4.1.5. The workload trace of virtual cores. 
+ 
+ 
+21 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Figure 4.1.7. Slack Budget for Different Scheduling Approaches. 
+  
+23 
+◦ Importance: The job with higher Sv has higher priority. 
+ The contents of the instance  
+◦ Identifications (core id, subtask id and job id) 
+◦ Deadline 
+◦ Significance value 
+◦ Expected migration overhead 
+ 
+D. Flow of MCLSP 
+ A. Signal communication protocol 
+◦ The master monitors the timing of load sharing by signal communication protocol. 
+ B. Migration conditions checking process 
+◦ The master checks the migration conditions in runtime for choosing a suitable overrun job to 
+be migrated to a idle core.  
+ 
+Figure 4.1.10. Illustration of the Data Structure in Master. 
+E. Signal Communication Protocol (Slave) 
+On Core Signal is sent when the job both in Global Overrun List and local waiting queue is executed. 
+Idle Core Signal is sent when all jobs are completed. 
+Overrun Signal is sent when there are overrun jobs in the end of this stage. 
+25 
+F. Signal Communication Protocol (Master) 
+ 
+Figure 4.1.12. Signal Communication Protocol at Master. 
+ 
+Figure 4.1.13. Signal Communication Protocol at Master (Cont’d). 
+  
+27 
+Table 1 - Term Definition for Migration Conditions 
+ idle time of core X 
+ expected idle time of core X 
+ revised expected idle time of core X 
+ execution time of job Ji on core X 
+ 
+expected execution time of job Ji on core X 
+ allocated budget of job Ji on core X 
+ worst case execution time(WCET) of job Ji on core X 
+ worst case execution time(WCET) of job Ji on core X 
+ 
+Denotes 
+1.  
+This function defines the “Remaining Stages” before deadline of Jy. m and n are the stage numbers. Stage 
+m is the current stage and Stage n is the stage before deadline of job Jy on core X. 
+2.  
+This function defines the “Remaining Jobs” in this stage. j and k are the job numbers. Job Jj is the current 
+job and Job Jk is the last job of core X in this stage. 
+3.  
+This function averages expected idle time of core X 
+ 
+29 
+ 
+Migration Conditions III: 
+ Situation 
+◦ Source core(S) has not sent “On Core Signal” yet. 
+◦ The processing time of S has exceeded the original schedule (only for non-preemptive 
+approach) 
+ 
+  
+31 
+K. Our Solution for Core-to-Core Synchronization Problem 
+ Nearly Distributed Global mutex locking (Nearly Distributed GML) algorithm  
+◦ The Master controls the right to lock the global mutex. 
+◦ The Prime Slave (PS), which is granted to lock the mutex, wakes up the other slaves 
+waiting in Mutex Waiting Queue.  
+ 
+Figure 4.1.17. Illustration of Core-to-Core Synchronization Problem. 
+L. Exception Handling 
+ Exception Situation 
+◦ If by programming error or because of a software or hardware fault the owner does not 
+unlock the mutex, the thread(s) awaiting at a lock operation would remain blocked 
+forever.  
+ Solution: Timed mutex 
+◦ Timeout estimation: WCET of critical section  
+ 
+M. Processes of Nearly Distributed GML Algorithm 
+ Enqueue process 
+◦ Master add signals into Mutex Waiting Queue  
+ Wake-up process 
+◦ Master/Prime Slave wakes up the slaves in Mutex Waiting Queue  
+33 
+N. Master: state transition diagram  
+ 
+Figure 4.1.18. State transition diagram at Master. 
+O. Slave: state transition diagram  
+ 
+Figure 4.1.19. State transition diagram at Slave. 
+35 
+When there is no error for sending the mail, the sender can continue its work without waiting for the mail 
+being read and data being retrieved. On the other hand, the receiving process, named receiver for short, checks 
+its mailbox when expecting a mail. When there is any unread mail in the mailbox, it requests the data to be 
+copied into its local buffer and sets the mail being read. 
+ 
+Fig.4.2.2 NTU Inter-Core Process Communication Protocol 
+ To speed up the inter-core communication and ensure its correctness, NTU ICPC consists of three major 
+components: mail notiﬁcation, direct data movement, and circular buffer management. The protocol is 
+speciﬁcally designed for pipeline scheduled periodic processes on heterogeneous multi-core platforms. We 
+discuss the rationale of using the above three mechanisms and how NTU ICPC protocol works in the 
+following. 
+ 
+A.  Major components of NTU ICPC protocol 
+ Mail notification Traditional mailbox protocol sends the whole data in the mail to the receiving 
+processes on behalf of the sending process. The service copies the transmitted data from sender’s buffer into 
+the mailbox buffer. When the receiving process reads the mail, the data is copied again from mailbox buffer to 
+receiver’s buffer. When the sender and receiver are located in different memory domains, this approach 
+assures the autonomy for both parties. However, on heterogeneous multi-core processors, the sender and 
+receiver are located on the same memory domain. It is not necessary to use so many memory copies. Although 
+mail service is not suitable for large data size movement, it is an effective communication service when the 
+sender and receiver agree on the communication in advance. The mail notiﬁcation service in NTU ICPC uses 
+a short message to notify the receiving processes and does not copy the data to mailbox buffers. 
+ When the sending process sends a mail to its receivers to notify that the data is ready, the sender 
+continues its work after the mail is accepted by the mail service. The mail resides in receiver’s mailbox until 
+the receiver checks its mailbox. After the receiving process reads the mail, it changes the status of the mail to 
+read. In case of stalled mails, the sending processes will be notiﬁed, which will be discussed later. Although 
+the mail will remain unread if the receiving process does not check its mailbox, fortunately, this will not be 
+37 
+ 
+ NTU ICPC also allows the multiple senders and receivers IPC data exchange. It is needed when a sender 
+would like to multi-cast the data to several receivers or a receiver will wait for the data from multiple senders 
+before it continues. 
+ Algorithm 3 shows the pseudo of function icpc_receivemanysender(). 
+ 
+ 
+B. Cache Coherency for NTU ICPC 
+ Cache coherency refers to the integrity of data stored in local caches of a shared resource. When multiple 
+cores share a memory space and the process executing on one of the cores modiﬁes the value of an address in 
+the shared memory, the value of that address in other cores’ local caches are all invalid and should not be read 
+by any other process. In NTU ICPC, receiver’s mailbox and output buffers assure the above characteristics. 
+ To assure the cache coherency for mailbox and output buffers, NTU ICPC conducts the following 
+ operations: 
+39 
+ 
+Fig.4.2.3 Operations to Assure Cache Coherency 
+ When the sender conducts the computation using its input data, the results are wrote to the output buffer. 
+To ensure that the results are stored in the output buffer rather than in sender’s cache, a “Write back” is issued. 
+This operation is illustrated by the dash line labeled by (1). The second case, labeled by (2), ensures that the 
+correct mails are sent to receiver’s mailbox. To do so, we must make sure the mail is written to the receiver’s 
+mailbox. If the mailbox’s address is cached in the sender’s cache, a “Write back” operation is need so that the 
+receiver can get the updated mail. The third case, labeled by (3), ensures that the receiver receives the 
+up-to-date mail. When the receiver is ready to receive its input data, an “Invalidate” operation is issued since 
+the mailbox’s address may have been cached in receiver’s cache. It forces the receiver to get mail from the 
+memory directly instead of fetching out of date mail from cache. The forth case, labeled by (4) in the ﬁgure, 
+ensures that the receiver copies the correct data into its buffer. After getting the “data ready” mail, the receiver 
+starts to copy data from sender’s output buffer to its input buffer. Likewise, before copying data, we should 
+“Invalidate” the cache line corresponding to sender’s output buffer in receiver’s cache to ensure the receiver 
+will get the updated data. The ﬁfth case, labeled by (5), ensures that the receiver writes its computation results 
+into the output buffer, not its local cache. This step is equal to the ﬁrst step described earlier. 
+C. Comparison with traditional IPC protocols 
+ NTU ICPC are different with traditional IPC protocols in several perspectives including its memory 
+management and how the services are provided. In Table II, we compare the major features of NTU ICPC 
+with that of three IPC communication protocols including message box, mailbox, and share memory. 
+ Traditional IPC protocols are mostly implemented as system services to be efﬁcient. Hence, when the 
+service is called, an OS trap which consists of mode switch, software interrupts or context switch. On the 
+other hand, NTU ICPC is a user mode service module. Hence, while requesting the service, there is no mode 
+switch. Second, we compare the way that they wait for certain events including empty buffer, full buffer, and 
+41 
+desired features for the protocol. 
+ 
+Fig. 4.2.4 ICPC Service Module 
+A. Requirements on the Platforms 
+ To conduct inter-core process communication, NTU ICPC module must be installed on each core on the 
+processor. To allow the protocol to be ported to different platforms, there are certain requirements on the 
+platforms. 
+ System software requirements Because NTU ICPC is designed with portability in mind, there are 
+limited requirements on system software. When there is no operating system support, the memory resource 
+will be fully managed by NTU ICPC service module. Many DSP core in SoC does not provide any operating 
+system support. When an operating system is provided on the core and manages the memory resources, it 
+must provide the “memory map” function. Thus, ICPC service module can call this function to map a range of 
+memory space to processes’ address space so that the processes can have the permission and mapped virtual 
+address to access the buffers. If the operating system manages the memory without virtual memory 
+mechanism, it should provide the service of assigning permission of speciﬁc memory region when the caller 
+has no permission to access it. 
+ Hardware Requirement NTU ICPC service module can support different memory architecture and take 
+advantage of the characteristics of different architectures to optimize the performance. The memory 
+architecture of a heterogeneous multi-core platform is classiﬁed as follow. 
+• Individual working space In this architecture, the working space of the sender or receiver core are 
+separated and reside on their local memory. On such platforms, the input buffers will be located on 
+the local memory of each process including sender and receiver. When the sender exchanges data 
+with the receiver, the data in sender’s output buffer will be copied to receiver’s input buffer, 
+represented by a dashed arrow. Figure 4.2.5 illustrates such buffer allocation. It is the default 
+conﬁguration for NTU ICPC service module. 
+• Shared working space In this architecture, the working spaces of sender and receiver reside on the 
+43 
+B. Layered Architecture 
+ As we mentioned above, portability is one of the desired features for the implementation. We use layered 
+software architecture for the ICPC service module. Each layer uses the functions provided by the underlying 
+layer. When porting the module to a different platform, only the platform dependent layer should be changed. 
+ Figure 4.2.7 shows the software architecture for NTU ICPC service module. There are three layers in the 
+module: porting layer, main function layer, and protocol layer. An ICPC protocol may use certain functions 
+which are platform or operating system dependent. We include all those platform or operating system 
+dependent functions in porting layer to provide a uniform interface to upper layers. Main function layer 
+consists of I/O buffer subsystem and mailbox subsystem. These two subsystems are responsible for direct data 
+movement, circular buffer and mail notiﬁcation mechanism used in NTU ICPC protocol. NTU ICPC protocol 
+is implemented in protocol layer. The protocol layer provides application interfaces (API) for the processes to 
+communicate with each other. The following describe each layer in detail. 
+ Protocol Layer It includes the connection configuration, send, receive, sendtomany, and 
+receivefrommany. The connection configuration pairs the senders and receivers for data exchange. The set of 
+senders and receivers is not supposed to be changed after any data exchange starts. Changing the 
+conﬁguration may lost the unread data on the receiver side, which needs to be retransmitted. How to use these 
+functions to complete the inter-core communication will be described at the end of this section. 
+ 
+Fig. 4.2.7 ICPC Service Module Software Architecture 
+ Main Function Layer - IO Buffer Subsystem The IO buffer subsystem is responsible for managing 
+input and output buffers. When the connection is set, it allocates input and output buffers for all the requests 
+and manage them according to the connection topology information speciﬁed by the conﬁguration. (We will 
+discuss the connection topology later.) Allocating input and output buffers follows the following principles: 
+1) The input and output buffers for each process should be allocated in its accessible working space, 
+2) If the process working spaces are located in the same memory, the sender’s output buffer and the 
+ receiver’s input buffer will be set as the same one so as to achieve zero-copy communication, 
+45 
+of the target system, so that the IO buffer subsystem and mailbox subsystem can allocate the input buffer, 
+output buffer and mailbox for all involved processes. The information includes the number of cores, the 
+number of involved processes, which processes reside on which cores, the execution flow of the subtasks, 
+memory map of the platform and the free working space of each core for communication. The configuration is 
+conducted at compile time and is static. Comparing with distributed systems, multi-core SoCs have static 
+hardware configuration which means that no core can be added or removed from the platform during run-time. 
+Based on this characteristic, NTU ICPC service module provides connection oriented and channel based 
+communication. After specifying the configuration at compile time, the ICPC service module stores the 
+information and setups the connection channel between the subtasks which need to communicate with each 
+other. Figure 4.2.8 shows an example. In this figure, there are four cores with six subtasks executed on them. 
+The execution flow of these subtasks is listed in the bottom of the ﬁgure. With the cores and subtasks’ 
+connection topology information, ICPC service module setups the channels for each communication 
+accordingly. The arrows in the ﬁgure mean that each channel is unidirectional. Furthermore, with the 
+connection channel, the input and output buffers involved in the communication are known; the programmers 
+do not need to provide that information each time when using the ICPC service module for communication. 
+This feature can also be seen as a manner to reduce the overhead of each transmission. After this step, NTU 
+ICPC conﬁguration tool will generate the system dependent codes and header ﬁles automatically. Figure 9 
+shows an example program to illustrate how to use the API functions provided by NTU ICPC service module. 
+ 
+ 
+Fig. 4.2.8 ICPC Conﬁguration Setup 
+ 
+47 
+program runs on a physical/virtual machine on the cloud. The device and the machine on the cloud must have 
+the same instruction set and operating system. For example, the mobile device is an EeePC running Linux, 
+and there is a x86 virtual machine running Linux on the cloud to provide extra computing resource. With this 
+property, the workload on the device can be directly migrated to the cloud without binary translation. The 
+users can choose a mechanism according to the network connectivity, and pass it to the workload migration 
+system as an argument. The workload dispatcher provides an interface to receive arguments from users. The 
+workload dispatcher will send input data and necessary ﬁles to the server on the cloud. Once the request from 
+the workload dispatcher is accepted by the server, the server will transmit data and ﬁles from the mobile 
+device and use computing resource on the cloud to execute the workload.  Then, the workload dispatcher 
+will wait until the output data is received from the cloud. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Figure 4.3.1: System Architecture 
+The detail of the control ﬂow, the mechanisms, and the data structures used will be illustrated in the 
+following sections. 
+49 
+ 
+4.3.4 Workload Dispatcher 
+ In our workload migration system, the workload dispatcher running on the mobile device is an interface 
+for the users to migrate workloads to the cloud. The users have to provide the workload information ﬁle as the 
+input of the workload dispatcher and pass an argument to indicate the selected mechanism. Then, it transmits 
+essential ﬁles to the server according to the arguments provided by the user, and receives the results from the 
+server. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Figure 4.3.2: Flow Chart of Workload Dispatcher 
+ Figure 4.3.2 shows the control ﬂow of the workload dispatcher. If the local execution mechanism is 
+applied, the workload dispatcher will execute the workload on the device without workload migration.  
+Otherwise, the workload dispatcher will parse information from the workload information ﬁle.  Next, it will 
+connect to the server, send workload information to the server and notify the server which remote execution 
+mechanism to be applied.  Then, it will send input data ﬁles to the server.  If the remote execution with 
+source codes transmission is applied, the workload dispatcher will transmit source code ﬁles to the server. 
+Otherwise, it will transmit the main program and dynamic loaded libraries.  Eventually, it will wait until all 
+the output data ﬁles are received from the server. 
+51 
+ 
+ According to the deﬁnition, the transmission time overlapped by computation time is not added to the 
+migration overhead. Thus, we can reduce the migration overhead by executing a part of the program and 
+transmitting the other parts concurrently. To apply this mechanism, the program of the workload is divided 
+into multiple dynamic loaded libraries, and the computation has to be synchronized with the transmission. 
+4.3.6.1 Transmission Status Table 
+ The program of the workload is divided into multiple dynamic loaded libraries. To record the status of 
+each dynamic loaded library, the servers maintain a data structure called transmission status table.  Each 
+entry in the table is used to indicate whether a library is transmitted or not. 
+ 
+4.3.6.2 Control Flow 
+ 
+ 
+ 
+ 
+ 
+ 
+Figure 4.3.4: Flow Chart of Streaming Execution 
+ Figure 4.3.4 shows the control ﬂow of streaming execution. Computation and transmission are handled 
+concurrently by computation thread and transmission thread. The transmission thread transmits the dynamic 
+loaded libraries and update entries in the transmission status table when corresponding libraries are 
+transmitted.  In the computation thread, once a function is called, it will be redirected to a middle function. 
+First, the middle function checks the transmission status of the dynamic loaded library containing the original 
+function. If the library is transmitted, it will load libraries, get the function pointer, and jump to the original 
+function. Otherwise, it will block until the library is transmitted.  With this approach, we can treat the 
+program as a stream and execute it before the whole program is transmitted. 
+ 
+53 
+4.3.8 Remote Execution with Source Codes Transmission 
+ The remote execution with source codes transmission is similar to remote execution. As shown in Fgure 
+4.3.5, instead of transmitting executable ﬁles, it transmits the source codes to reduce transmission time.  
+After all the source code ﬁles are transmitted, it runs the building script to build the main program and DLLs.  
+After the executable ﬁles are compiled, the transmission status of each entry in the transmission status table is 
+set to true.  Then, the computation thread executes the migrated program, and the control ﬂow of the 
+computation thread is the same as that we described in section4.6. 
+       
+Figure 4.3.5: Flow Chart of Remote Execution with Source Codes Transmission 
+4.3.9 Conclusion 
+ Due to the limitation of hardware on mobile device, cloud computing technology is used to augment the 
+capability of mobile devices. However, traditional cloud-based applications come with issues such as service 
+availability and information security. Therefore, visualization technology on the cloud is introduced to solve 
+these issues. We design and implementation a workload migration system on system embedded. It migrates 
+workloads from the mobile device to a physical/virtual machine on the cloud. To keep the availability and 
+reduce migration overhead, it provides different execution mechanisms for users to choice under different 
+network condition. To reduce the overhead of workload migration, we design a remote execution mechanism 
+called streaming execution. It overlapped the computation and transmission of a workload to reduce the 
+transmission overhead. We use the programming interface to dynamic linking loader in Linux to implement this 
+mechanism. In addition, we introduce a method to make a workload compatible with it. We implement the 
+framework on our target platform and do several experiments to verify that the mechanism we designed can 
+improve the performance. We verify the performance with two workloads, dark chess and whetstone 
+benchmark. In addition, we analyze the results to find out what kinds of workload are suitable for streaming 
+execution. Finally, we make a manipulated workload to present the best case for streaming execution. 
+55 
+of each kernel from VMi. Let S be the (minimum) basic scheduling time quantum in the system, then the 
+value of Bi is given by S ∗ wi. For each processor p ∈ Ψ, round p is the number of rounds the processor p has 
+gone through. That is, the number of consecutive Switch events p has experienced. At any time t, round max 
+is the largest round p. Denoted by accumulating received round (σi) the number of times a kernel belongs to 
+VMi has been selected for execution by some processor p. At system starts up, VMAFS-P scheduler initializes 
+σi to 0, and increase it by one each time VMi’s kernel is selected by some processor p. σ max and σ min 
+represents the largest and smallest number of all σ i, respectively. During run time, VMAFS-P always 
+maintain an invariant that difference between σ max and σ min is bounded upper by U, a value given 
+empirically by system administrator.  As mentioned earlier, VMAFS-P controls the number of schedulable 
+kernels that enters processor queues for each VM. In this research, this variable is denoted by C total and can 
+be set empirically by system administrator or programmers. Table 4.4.1 summarizes the notation used in this 
+research. 
+Table 4.4.1: VMAFS-P Terminology 
+ 
+ 
+4.4.1.2 VMAFS-P Algorithm 
+ There are four procedures in VMAFS-P algorithm. First, ”Kernel Select Procedure” is the entry point of 
+the VMAFS-P scheduler and is invoked by each processor p when the budget of the current kernel on p has 
+been used up and p is about to select the next kernel for execution.  Second, in Kernel Select Procedure, we 
+design a ”Load Sharing Procedure”, whose goal is to have light-loaded processor to share the work from 
+heavy-loaded processor during each round. The main idea is to balance the load on each processor so that the 
+kernels on light loaded processors do not receive more than enough execution time. Third, ”Lag Boosting 
+57 
+when U is set small. Algorithm 4. 1 lists the detail flow of Lag Boosting Procedure. 
+ The round p of each processor p keeps track of the current round number. Since VMAFS-P is designed as 
+a decentralized algorithm, workload being dispatched on each processor could be uneven. This will result in 
+system performance bottleneck and the possibility of unfairness. To avoid such issues, Load Sharing 
+Procedure always requires light-loaded processors (round p < round max ) to migrate workload from 
+heavily-loaded processors (round p < round max ) before they can advance to the next round. Algorithm 4.2 
+presents this idea. 
+ 
+ 
+Figure 4.4.2: Flowchart of the Lag Boosting Procedure. 
+ Finally, the Entrance Control procedure checks the kernel’s budget. That is, when a kernel completes, 
+VMAFS-P checks if the executing time is equal to its budget or not. If the return result is false, the scheduler 
+will add a new kernel from same VM to active queue and continue to execute for remaining budget. 
+Otherwise, the result shows that the kernel executed full budget then scheduler put the kernel into 
+budget-exhausted queue as usual. We also describe the detail in Algorithm 4.3 and Figure 4.4.4. 
+ 
+59 
+time Ti, where represent the accumulated received execution time of VM1 and VM2 at time Ti respectively. 
+ 
+Figure 4.4.5: An Example of Geometric Presentation on VMAFS-N Terminology. 
+4.4.2.2 VMAFS-N Algorithm 
+ The main idea of non-preemptive scheduler is to use the vector-like interpretation of fairness as 
+described above to identify the most suitable kernel to be executed when the a kernel on a processor has 
+ﬁnished. The geometric interpretation enables us to measure exactly how close it is from current status to 
+ideal fairness. VMAFS-N scheduler adopts a greedy approach. Whenever invoked, VMAFS-N scheduler 
+searches for a kernel yet to be executed so that the angle between the ideal vector IN and the status vector v N 
+(after the execution of the to-be-executed kernel) will be the smallest. The cosine of the angle is given by the 
+following formula: 
+   (4.4.1) 
+ Since cosine function is a strictly descending function, VMAFS-N scheduler maximizes Equation 4.4.1 
+during each scheduling point. In this way, VMAFS-N scheduler tries to keep the status vector always pointing 
+to the direction closest to the ideal fairness vector. In other words, VMAFS-N scheduler achieves VM-level 
+fairness by always trying to align the status vector and the ideal vector. Let vN (Ti) denote the status vector at i 
+t h scheduling instant Ti . To select a new kernel at Ti , note that each kernel belongs to exactly one VM and 
+thus could contribute and only contribute to one(out of N) components of the status vector. Thus the 
+difference between vN(Ti) and vN (Ti+1) is only along one dimension, according to which VM the kernel 
+selected at T i belongs to. To achieve fairness, VMAFS-N always selects a kernel from the pool of all 
+runnable kernels at scheduling instant T i that will minimize the angle between vN (Ti+1) and IN . The details 
+are describes as Algorithm 4.4.  
+ We present a simple example to further illustrate how VMAFS-N works in Figure 4.4.6. There are two 
+VMs in the system and ideal vector I 2 and current execution time vector v2(Ti) are shown in the ﬁgure. When 
+the current kernel terminates, the scheduler calculates the cosine value at scheduling instant Ti+1 for all 
+runnable kernels according to Equation 4.4.1. The v2(Ti) is the black circle in Figure 4.4.6. In this example, 
+61 
+Procedure is responsible to enhance the fairness accuracy among Gen-VMs. That is, the users can set up the 
+parameter of upper bound U, and VMASF-P will maintain the difference of received computing time among 
+Gen-VMs always under U. In VMAFS-P, the VM-level fairness is interpreted geometrically by using 
+vector-like concepts. This geometric approach is appropriate due to the non-preemptive nature of underlying 
+processors. VMAFS-P will choose the next kernel depending on achieving ideal fairness with the smallest 
+angle.  
+63 
+六、未來或後續執行建議 
+ 目前這套系統還處於開發中階段，像是程式的切割或是是否決定進行程序轉移，都還有許多可以
+改善的地方。如果能夠設計一套系統讓以前開發好的程式或是原始碼都能夠支援程序轉移，而不必重
+新撰寫整份程式，將會省去大量的開發程式時間。這套系統對未來開發的程式應該要能支援兩個不同
+的執行情況，分別是有網路的情況跟失去網路連線的情況。在有網路的情況下，使用 cloud 端的資源
+應該要能支援更精確或是更大量的資料庫。而在沒有網路連線的時候也要能夠支援基本的運算處理。 
+65 
+Applications.” In the Proceedings of the Sixth International Conference on Information Integration and Web 
+Based Applications & Services (iiWAS2004), 2004.  
+[12] Li Chia and Chi-Sheng Shih, Template-based Run-time reconfiguration scheduling for partial 
+reconfigurable SoC, in Proceedings of the 13th IEEE International Conference on Embedded and Real-Time 
+Computing Systems and Applications (RTCSA 2007), Daegu, Korea, August 21-23, 2007.  
+[13] Ya-Shu Chen, Chi-Sheng Shih and Tei-Wei Kuo, Dynamic Task Scheduling And Processing Element 
+Allocation For Multi- Function SOCs, in Proceedings of 13th IEEE Real-Time and Embedded Technology 
+and Applications Symposium, Bellevue, WA, United States, April 3 - April 6, 2007.  
+[14] Jian-Jia Chen, Chuan-Yue Yang, Tei-Wei Kuo, and Chi-Sheng Shih, Energy-efficient Real-time Task 
+Scheduling in Multiprocessor DVS Systems, In Proceedings of the 12th Asia and South Pacific Design 
+Automation Conference, pp. 342 - 349, Yokohama, Japan, February 2007.  
+[15] Chun-Nan Chou, Yi-An Chen, and Chi-Sheng Shih, Genetic-based Approach for Scheduling, Allocation, 
+and Mapping for HW/SW Co-Design with Dynamic Allocation Threshold, in the WIP session of the 12th 
+IEEE International Conference on Embedded and Real-Time Computing Systems and Applications 2006 (To 
+be appeared in NICTA technical report series).  
+[16] Chun-Nan Chou, Yi-An Chen, and Chi-Sheng Shih, Genetic-based Approach for Scheduling, Allocation, 
+and Mapping for HW/SW Co-Design. In Proceedings of VLSI/CAD 2006.  
+[17] Pei-Hsuan Tsai, H. C. Yeh, C. Y. Yu, P. C. Hsiu, Chi-Sheng Shih, and J. W. S. Liu, Compliance 
+Enforcement of Temporal and Dosage Constraints. In Proceedings of IEEE Real-Time Systems Symposium, 
+Dec. 2006.  
+[18] Mark Liao, Jane Liu, and Chi-Sheng Shih, Smart Pantries for Homes, In Proceedings of 2006 IEEE 
+International Conference on Systems, Man, and Cybernetics, Oct. 8 - Oct. 11, 2006, Taipei, Taiwan.  
+[19] Han-Chun Yeh, Pi-Cheng Hsiu, Pei-Hsuan Tsai, Chi-Sheng Shih, and Jane Liu, APAMAT: A Prescription 
+Algebra for Medication Authoring Tool, in Proceedings of 2006 IEEE International Conference on Systems, 
+Man, and Cybernetics, Oct. 8 - Oct. 11, 2006, Taipei, Taiwan.  
+[20] Han-Chun Yeh, Pi-Cheng Hsiu, Pei-Hsuan Tsai, Chi-Sheng Shih, and Jane Liu, Integration Framework 
+for Medication-Use Process, in Proceedings of 2007 IEEE International Conference on Systems, Man, and 
+Cybernetics, Oct. 7 - Oct. 10, 2007, Montreal, Canada.  
+[21] Jian-Jia Chen, Jun Wu, and Chi-Sheng Shih, Approximation algorithms for scheduling real-time jobs 
+67 
+ 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。 
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+█ 達成目標 
+□ 未達成目標（請說明，以 100 字為限） 
+□ 實驗失敗 
+□ 因故實驗中斷 
+□ 其他原因 
+說明：Moviola 的目標在建立一個可以適用於多核心行動平台的奈米核心作業
+統，以提供此類平台高效能且穩定的作業環境。在兩年的計畫執行期間，本計畫
+不僅完成了計劃書所規劃的研究項目，並延伸原有計畫中並未包含的虛擬多核心
+平台的排程演算法，以及動態雲端負載移轉的先期研究。 
+ 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：█已發表 █未發表之文稿 □撰寫中 □無 
+專利：□已獲得 □申請中 □無 
+技轉：□已技轉 □洽談中 □無 
+其他：（以 100 字為限） 
+ 
+ 
+ 
+附件二 
+69 
+計畫編號：             領域： 
+研發成果名稱 
+（中文） 
+（英文） 
+成果歸屬機構 
+ 發明人 
+(創作人) 
+ 
+技術說明 
+（中文） 
+ 
+ 
+ 
+（200-500 字） 
+（英文） 
+產業別 
+ 
+技術/產品應用範圍 
+ 
+技術移轉可行性及預期
+效益 
+ 
+     註：本項研發成果若尚未申請專利，請勿揭露可申請專利之主要內容。 
+ 
+ 
+ 
+71 
+五、攜回資料名稱及內容 
+六、其他 
+ 
+ 
+ 
+ 
+國科會補助專題研究計畫項下赴國外(或大陸地區)出差或研習心得報告 
+                                     日期：   年   月   日 
+一、國外(大陸)研究過程 
+二、研究成果 
+三、建議 
+計畫編號 NSC  －    －  －    －    － 
+計畫名稱  
+出國人員
+姓名  
+服務機構
+及職稱 
+ 
+出國時間 
+ 年 月 日至 
+ 年 月 日 
+出國地點  
+附件五 
+73 
+一、國際合作研究過程 
+二、研究成果 
+三、建議 
+四、其他 
+ 
+ 
+  
+合作國家  合作機構  
+出國時間 
+ 年 月 日至 
+ 年 月 日 
+出國地點  
+75 
+程序，由研發成果推廣單位（如技轉中心）線上繳交送出。 
+2.每項研發成果填寫一份。 
+(八)若該計畫已有論文發表者(須於論文致謝部分註明補助計畫編號)，得作為成果報告內
+容或附錄，並請註明發表刊物名稱、卷期及出版日期。若有與執行本計畫相關之著作、
+專利、技術報告、或學生畢業論文等，請在參考文獻內註明之。 
+三、計畫中獲補助國外或大陸地區差旅費、出席國際學術會議差旅費或國際合作研究計畫差旅
+費者，須依規定分別撰寫心得報告，並至本會網站線上繳交電子檔，心得報告格式如附件
+四、五、六。 
+四、報告編排注意事項 
+(一)版面設定：A4 紙，即長 29.7 公分，寬 21 公分。 
+(二)格式：中文打字規格為每行繕打（行間不另留間距），英文打字規格為 Single Space。 
+三 字體：( ) 以中英文撰寫均可。英文使用Times New Roman 
+Font，中文使用標楷體，字體大小以 號為主。12  
+ 
+In this year of HCI International 2011, Prof. Chi-Sheng Shih represented National 
+Taiwan University to attend the conference and present parts of our research works. 
+One paper is presented in the conferences: “Mobile Reminder for Flexible and Safe 
+Medication Schedule for Home Users.” The summary of the paper presented by Prof. 
+Shih is the following. 
+ 
+This paper describes a system of smart medication dispensers, medication schedule 
+managers, and its implementation on smart phones. The system, called iMAT (intelli- 
+gent medication administration tools), targets as users the growing population of eld- 
+erly individuals and people with chronic conditions who are well enough to maintain 
+active, independent lifestyles. Such a person may take many prescriptions and over 
+the counter (OTC) medications and health supplements at home and work without 
+close professional supervision. In subsequent discussions, by a user, we mean such a 
+person. 
+ 
+Nowadays, modern drugs can help people conquer previously fatal diseases, con- trol 
+debilitating conditions, and maintain wellness and independence well into old age, 
+provided that the drugs are taken as directed. Unfortunately, even critically important 
+drugs such as those for treatments of hypertension, diabetes, and heart con- ditions are 
+often not taken as directed [1]. The fact is that statistics on health care quality 
+continue to show alarmingly rates and serious consequences of preventable 
+medication errors [2–5]. Administration errors due to non-compliance to medication 
+directions are known to contribute 25-40% of all preventable medication errors and 
+are the cause of approximately 10% of hospital admissions and 23% of nursing home 
+admissions. The primary goal of iMAT is to prevent administration errors as much as 
+possible and when errors occur despite prevention efforts, reduce the adverse effects 
+caused by them. iMAT can also help to make sure that interactions among all medica- 
+tions of each user and their interactions with food and drink have been properly ac- 
+counted for by the directions for the user. 
+ 
+A look at causes of non-compliance points out that information technology can help 
+eliminate many common ones, including misunderstanding of medication direc- tions, 
+inability to adhere to complex medication regimens, and inconvenience of rigid 
+schedules. iMAT is designed specifically to eliminate these causes. A user of iMAT 
+medication dispenser and schedule manager has no need to understand the directions 
+of her/his medications. iMAT enables the pharmacist of each user to extract a ma- 
+chine readable medication schedule specification (MSS) from the users prescriptions 
+Wang-Chin Tsai and its title is “Electronic Medication Reminder for Older Adults.” 
+The summary of this paper is the following. 
+ 
+The problem of aging population is the trend all over the world [1] [2]. It has become 
+an aging society in Taiwan since 1993. If the elderly people can take care themselves 
+well in the daily living, it will be able to lower the care burden among younger 
+generation; If we can improve the medication compliance, it will promote the physical 
+and mental health of the senior citizens and assist them to live independently [3]. 
+With the aging process is often accompanied by the occurrence of chronic diseases, 
+there are more than half of the older people suffered from different diseases in Taiwan 
+[4]. Because of physical and mental function decline, the elderly need to take multiple 
+drugs, they often occurring medication non-compliance behavior, seriously affecting 
+the health of the elderly. The behavior not only affects the disease, but also seriously 
+endangers their health and security [5][6]. Compliance can be defined as the extent to 
+which a patient’s behavior corresponds to the physician’s therapeutic 
+recommendations. Improvement of the medication compliance would increase 
+cost-effectiveness. Studies have demonstrated the prevalence of poor adherence 
+(/compliance) across all types of regimens and diseases, including life threatening 
+illnesses; for this reason, often caused by medication non-compliance with more 
+discussion and concern [7]. The non-compliance behavior of the elderly often caused 
+from forgotten or misunderstanding[8]; a review of the literature indicates that 
+forgotten is the most frequent problem on older adults[9], whether “forget to take 
+medicine” or “forget taking medicine”, these problems were hazardous to health for 
+the elderly; so there were several products designed for reminder, such as electronic 
+pillbox. 
+ 
+In recent years, with the development of electronic communication products, some 
+software was also designed for medication reminder. Not only notice the medication 
+time, some software also could connect to a comprehensive medication database, or 
+search a list of local personal physicians with office contacts [10]. These powerful 
+features are developed in general NB, PDA, or smart phone, change the act and 
+lifestyle on people. However, the previous studies were targeted on younger adults 
+with computer or other small screen device usage, but few data are available on how 
+different variables vary with electronic reminder products using performance and 
+comprehension for older adults. There are much more information to be presented on 
+the electronic reminder products, however, there is no accurate way to be understood 
+by all users. We would like to analyze the layout and usability of existing products by 
+interviews through the concept of universal design. 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/10/31
+國科會補助計畫
+計畫名稱: 子計畫二:異質多核心平台之虛擬化技術研究(2/2)
+計畫主持人: 施吉昇
+計畫編號: 99-2220-E-002-025- 學門領域: 自由軟體暨嵌入式系統
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+本計劃執行期間共完成七份碩士論文，並與富衍科技洽簽技術移轉中。 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

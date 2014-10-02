@@ -1,0 +1,411 @@
+中文摘要 
+本計劃為期一年，深入探討 streaming 
+data 的運算特性與多核心微處理器架構的
+關連性，並設計管線化切割演算法與電源控
+制機制。我們的作法是把微處理器中的 
+multi-cores 視為  pipeline datapath，各個
+core 的角色就如同  pipeline stage 內的 
+function unit。同時，將 streaming data 的運
+算依據管線化原則切割成數個程式區塊，每
+一個程式區塊都對應到一個 core 中執行，
+則 streaming data 輸入微處理器時，就可遵
+循管線化的流程(pipelining)完成運算並輸
+出。在降低系統功率的設計方面，我們假設
+微處理器提供雙重電壓，且處理器中各核心
+的運算速度(時脈)與其供應電壓成正比。當 
+streaming data 的運算依據前面提過的管線
+化原則被切割並對應到各核心時，每一個 
+core 的工作量不一定均等。當一個 core 的
+工作量低於一預設值時，便應調低其供應電
+壓來降低時脈。反之，工作量高之 core 則
+供應高電壓全速執行運算。這樣做的目的是
+即使各 core 分配到的工作量不均等，但經
+過時脈調整後，各 core 的執行時間可以趨
+於均衡，使 streaming data 流經該管線時能
+發揮最大的產能並降低系統功率。  
+關鍵字:  多核心微處理器、串流式資料運
+算、管線化切割演算法、動態電源控制機制 
+ 
+1. 簡介 
+由於嵌入式運算(Embedded Computing)
+與無所不在運算(Ubiquitous Computing) 的
+蓬勃發展，諸多嵌入式或行動式裝置例如筆
+記型電腦、3G 手機、smart phone  等等，
+大部分都支援多媒體的影音功能。而這些功
+能在在都強調 streaming data 運算的效能需
+求。 
+為了滿足上述應用服務的效能需求，微
+處理器的架構也不斷地推陳出新。多核心微
+處 理 器 (Multi-core microprocessors) 
+[6][7][12][15][16]  即是提高效能的新趨勢
+之一。多核心微處理器架構的特色是將多個
+微處理器核心(cores)整合在同一顆晶片上
+（如圖一所示） ，透過高速 system bus 與 
+shared memory 進行資料交換。藉由各核心
+平行執行多個執行緒(threads)來提高微處理
+器的效能。 
+然而當我們嘗試將 streaming data 相關
+的運算利用 loop scheduling 的方式，對應到 
+multi-core 的微處理器上進行平行運算時，
+存在下列的問題： 
+(1) 由於  loop scheduling 的方法是對 
+loop-level 的 statements 進行切割，而非針
+對 instructions。因此不容易切割出 N 個工
+作量均等的 chunks 來分配給 N 個 
+multi-cores，造成  multi-cores 在  run-time 
+時工作量不均衡(load-imbalance)。事實上，
+大部分 loop scheduling 的演算法仍無法找
+到 load-balanced 的最佳解。  
+(2) 在迴圈中的運算，具有資料相依性（Data 
+dependency）的問題，而其資料相依性又可
+分為  inter-loop dependency 與  intra-loop 
+dependency。而當 loop 的運算被切割成多
+個 chunks 並分配到 multi-cores 時，這些資
+料相依性可能會變成 core 與 core 之間的
+communication costs。由於目前 multi-cores
+的 communications 多透過 shared memory
+的 方 式 完 成 ， 而  shared memory 的 
+communications 又 必 須 注 重  data 
+concurrency 與 consistency 的問題。 
+(3)針對 streaming data 運算程式中，程式中
+可 能 會 具 有 許 多 條 件 判 斷 的 敘 述
+（statement），例如：if-else、loop 是否執行
+的判斷式等等…，對於這些程式 statement
+可能會產生 multi-path 的情形，當不同 path
+間的運算量不相同時，切割執行緒時如何將
+不同 path 上的運算均衡分配到不同的
+chunks 中將會是系統執行效能的關鍵。 
+(4) 在現今的 multi-cores 架構中，不管各 
+core 分配的工作量輕或重，每一個 core 皆
+以最大功率(或最大供應電壓)來執行指令運
+算。由於一個硬體元件的電能消耗是與其供
+應電壓的平方成正比，因此工作量輕的 
+cores 就發生了電能的浪費。所以在平行化 
+streaming data 運算的過程中，如能降低 
+multi-core processors 的電能消耗就攸關於
+path 的 node 之加總執行時間不可大於
+critical path 上 node 的執行時間。 
+第三種為 loop 的 template，如圖 5 所
+示，在圖 5(a)與(b)表示的是具有 loop 結構
+的原始碼範例以及相對應的 CDFG，在此
+CDFG 中我們會根據 loop 所需執行的次
+數，將每個在 loop 內所需執行的 node 之執
+行時間個別乘上此次數，將其結果作為 node
+的預估執行時間。針對具有 loop 結構的
+CDFG，我們會將其 loop 內所需執行的 node
+抽離，如 L4 、 L5 、 L6 、 L7 。將具有
+loop_condition_node 屬性的 node 複製，如
+L2。將新複製的 L2 與 L4、L5、L6、L7 個
+別包成一個新的 node，而新 node 的預估執
+行時間則是由L2再加上其他加入 node的執
+行時間，如圖 5(c)。圖 5(d)表示了最後轉換
+為 single path 的 CDFG 結構。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+圖 3 If-Then CDFG 之 sequentialization 示意圖 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+圖 4 If-then-else CDFG 之 sequentialization 示意圖 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+圖 5. Loop CDFG 之 sequentialization 示意圖 
+  
+ L2.(3)
+L6.(6)
+L7.(6)
+L8.(6)
+L9.(3)
+L12.(3)
+L4.(3)
+L13.(3)
+* =>6 cycles
++ and - =>3 cycles
+Check Condition 
+=>3 cycles
+L1.(3)
+LineNumber
+Estimated exetution cycles
+L2.(3)
+L6.(6)
+L9.(3)
+L12.(3)
+L4.(3)
+L13.(3)
+Check flag.(1)
+Set flag.(1)
+L7.(6)
+L8.(6)
+Check flag.(1)
+Check flag.(1)
+L2.(3)
+L6’.(10)
+L9’.(4)
+L12.(3)
+L13.(3)
+L7’.(7)
+L8’.(7)
+(a) (b) (c) (d)
+ L2.(3)
+L6.(6)
+L7.(6)
+L8.(6)
+L9.(3)
+L16.(3)
+L4.(3)
+L17.(3)
+* =>6 cycles
++ and - =>3 cycles
+Check Condition 
+=>3 cycles
+L13.(3)
+L14.(3)
+L2.(3)
+L6.(6)
+L9.(3)
+L16.(3)
+L4.(3)
+L17.(3)
+Check flag.(1)
+Set flag.(1)
+L7.(6)
+L8.(6)
+Check flag.(1)
+Check flag.(1)
+L13.(3)
+L14.(3)
+L2.(3)
+L6’.(10)
+L9’.(4)
+L16.(3)
+L17.(3)
+L7’.(7)
+L8’.(7)
+(a) (b) (c) (d)
+ 
+* =>6 cycles
++ and - =>3 cycles
+Check Condition 
+=>3 cycles
+L4’.(90)
+L9.(6)
+L5’.(90)
+L6’.(90)
+L7’.(90)
+L2.(60)
+L4.(30)
+L5.(30)
+L9.(6)
+L2.(60)
+L6.(30)
+L2.(60)
+L7.(30)
+L2.(60)
+Loop execute 10 times
+L2.(60)
+L4.(30)
+L5.(30)
+L6.(30)
+L7.(30)
+L9.(6)
+(a) (b)
+(c)
+(d)
+尋找出的切割點則做為我們最後的選擇。
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+(a)  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+(b)  
+圖 6 FIR 的 partition 範例 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+圖 7 四種可能的切割方式 
+ 
+ 
+ 
+L11.(3)
+L12.(8)
+L7.(2)
+L10.(2)
+L16.(4)
+L17.(2)
+L20.(2)
+When ntaps = 7
+The L11 loop execute 7 times
+The L16 loop execute 6 times
+ 
+L12’.(77)
+L7.(2)
+L10.(2)
+L17’.(36)
+L20.(2)
+Critical Path time = 119 cycles
+fh(2*59.5 cycles)fh(2*59.5 +59.5 cycles)mode 4
+fh(1*79 cycles)fl(2*40 +40 cycles)mode 3
+fl(2*40 cycles)fh(1*79+ 40cycles)mode 2
+fl(1*59.5 cycles)fl(1*59.5 +59.5 cycles)mode 1
+Stage 2Stage 1
+Frequency mode table of 2 stages
+Freq:
+High-High
+Freq:
+High-Low
+Freq:
+Low-High
+Freq:
+Low-Low
+L12’.(77)
+L7.(2)
+L10.(2)
+L17’.(36)
+L20.(2)
+L12’.(77)
+L7.(2)
+L10.(2)
+L17’.(36)
+L20.(2)
+L12’.(77)
+L7.(2)
+L10.(2)
+L17’.(36)
+L20.(2)
+L12’.(77)
+L7.(2)
+L10.(2)
+L17’.(36)
+L20.(2)
+Throughput
+=1 output/131 cycles
+Communication 
+cycle=16
+Communication 
+cycle=16
+Communication 
+cycle=16
+Communication 
+cycle=16
+Throughput
+=1 output/97 cycles
+Throughput
+=1 output/131cycles
+Throughput
+=1 output/246 cycles
+Energy= 472.14 J Energy= 376.65 J Energy= 460.8 J Energy= 236.07 J
+TperE=1/ (472.14*131)
+=1/61850.3
+TperE=1/ (376.65*97)
+=1/ 36535.1
+TperE=1/ (460.8*131)
+=1/ 60364.8
+TperE=1/ (236.07*246)
+=1/ 58073.2
+     其中、PPR 定義為: 
+ndissipatioPower
+Throughput
+PPR =
+,   
+       
+其中  Throughput 代表系統執行程式
+的產能，可以用 MIPS 與 MFLOPS 為統計
+單位， Power dissipation 代表該項設計所需
+之硬體電能消耗，以毫瓦 (mW) 為統計單
+位。 
+PPR 代表的意義是評估該設計是否能
+在每單位電能消耗中獲取最大的產能。而”
+使用時間”代表的意義是評估系統可否長效
+使用。 
+ 
+4. 完成之工作項目及成果 
+(1) Power-aware Loop pipelining algorithm 方
+面，2 位研究生參與，完成 
+CDFG modeling for streaming operation 
+Loop transformation algorithm 
+Loop pipelining algorithm 
+(2) Multi-core code generation 方面，1 位研
+究生參與，完成 
+Instruction translation 
+Pipeline stages 與 multi-cores 的對應 
+Communication data allocation 
+(3) DVS circuit for multi-core processor 方
+面，1 位研究生參與，完成 
+Workload monitor design for each core 
+Supplied voltage controller 
+(4) 系統模擬與驗證，4 位研究生共同參
+與，完成 
+實驗平台建立 
+軟體編譯器之修改 
+硬體架構實作與模擬 
+ 
+5. 結論 
+本計畫的成果除了上述各項軟/硬體設
+計開發之外，參與人員更可獲得的經驗包
+括： 
+1. Loop pipelining algorithm 的設計經驗 
+2. Multi-core processor 的硬體架構設計經
+驗 
+3. Multi-core processor 的省電機制設計經
+驗 
+4. 嵌入式多核心微處理器實驗平台之軟硬
+體整合經驗 
+ 
+此外，本計畫培養研究生從軟硬體共同
+設計的分工原則，對於多核心微處理器架構
+和 streaming 程式結合的應用系統有更深的
+了解。
+ 
+ 

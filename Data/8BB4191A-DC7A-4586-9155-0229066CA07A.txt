@@ -1,0 +1,371 @@
+ I 
+ 
+中英文摘要 
+隨著三維立體顯示技術的進步，立體顯示的應用也越來越普及，本計畫中提出了一個多視
+角立體呈像合成系統，此系統可以分為兩大部分，前段部分可稱為立體影像匹配法（Stereo 
+Matching），是將兩張或兩張以上的平面影像利用相對關係與圖片之間的線索，推算出具有深度
+資訊之深度圖（Depth map），在前段部分最主要的目的就是估算出輸入影像的立體視差值
+（Disparity），再利用相似三角形將視差值轉換成物體深度圖。而後段部分稱為 DIBR( Depth- 
+Image-Based Rendering)，將前段所求得的深度圖與左右兩眼其中一張影像作為輸入，虛擬合成
+出多個視角之影像，而所合成的多視角影像可做為立體顯示器的輸入。由於後段 DIBR 所繪製
+的虛擬視點影像會產生一些畫面上的瑕疵，以往的研究提出一些消除瑕疵的方法，其中以對深
+度影像前置平滑處理，為目前最常見的方法。然而，對來源深度影像資訊的前置處理方法雖然
+能有效處理 DIBR 的破洞問題，卻會造成立體效果的衰減。為了避免立體效果的衰減及其他的
+瑕疵影響，捨棄了純粹對深度資訊進行平滑處理的前置方法。再者，為了完美地消彌瑕疵，硬
+體設計大多為面積大、運算複雜且高功耗。有鑑於此，本計畫提出二種新的演算法:一為強調簡
+化 DIBR 的步驟，另一為使用較複雜方式進行破洞瑱補。在關於簡化 DIBR 的步驟方面：主要
+是利用深度資訊圖做影像位移的同時也計算破洞數目，並即時做破洞填補的動作，以破洞周邊
+之有效像素對破洞部分進行修補，可以大幅節省標準 DIBR 做位移完後再做破洞填補在記憶體
+上搜尋破洞所耗費的功率。而在複雜破洞填補方面：由於考慮到幾何圖形原有的平滑性與對稱
+性，因此利用我們所擁有的資訊，將補洞做到更接近原本的圖像。 
+關鍵詞︰3D立體呈像、基於深度影像繪圖法(DIBR)、深度資訊、立體影像匹配法、破洞瑱補。 
+ 
+3D stereo is widely in many applications. In this project, we develop a multi-view stereo image 
+synthesis system which is composed of two parts: stereo matching and depth-image-based rendering 
+(DIBR). The stereo matching calculates the the disparity and the corresponding depth map based on the 
+relationship of two images. The DIBR synthesizes virtual images of different view positions using an 
+imput image and the corresponding depth map so that the synthesized images can be shown in 3D display 
+devices. Many papers have proposed various algorithms to handle the undesirable artifacts caused in DIBR. 
+In this project, we propose two new methods to fill the holes of the synthesized virtual image due to 
+disocclusion effect in the image warping process. The first method merges the operations of both warping 
+and hole-filling in order to reduce the memory bandwidth requirement and power consumption during data 
+access. The second method presents a new hole-filling approach that considering the geometry shape of 
+background objects. The proposed methods can improve the performance and/or image quality in the 
+DIBR system.  
+ 
+Keywords: 3D stereoscopic image generation, Depth Image Based Rendering (DIBR), depth-map, 
+stereo matching, hole filling 
+ 1 
+ 
+一、 前言    
+ 
+人類有立體視覺感知是由於人類的眼睛可以接受現實中的許多靜態與動態的心理線索：當
+物體周圍有模糊感覺或是物體表面細節很難看清楚，就會主觀認定距離較遙遠；當物體的體積
+小於刻板印象的大小時，就會被主觀認定為距離較遙遠；當有連續性的畫面呈現時，場景內位
+移量較大的物件會被主觀認定為較近的物體，相反地，沒有移動的物件，就會認定為畫面的背
+景等…… 
+人眼能看到立體的視覺效果，是透過能夠給左右眼看到不同影像之立體顯示器，空間中同
+一個物體分別用左、右眼觀看，可以察覺影像有些微的差距，這個視覺差異稱為：視差(parallax)。
+傳統顯示器只能提供同一張畫面給我們的雙眼，所以畫面呈現的距離就等於使用者至顯示器的
+距離，傳統顯示器利用光影的變化以及一些線索，讓我們可以感知畫面中物件與物件之間的相
+對前後距離。 
+立體顯示器的重點就在於：如何讓左、右眼的影像分別地正確傳送到觀賞者的雙眼觀看，
+並且不會同時互相干擾。市面上的顯示器技術大概可以分成三類，一種為裸視平面顯示器，觀
+賞者完全不需要配備任何相關設備；另一種為快門式平面顯示器，藉由顯示器發射的訊號，讓
+對應的快門式眼鏡可以做快速開關，只要顯示器更新頻率夠快，即可以達到不同影像分別對應
+給不同的眼睛；最後一種為偏光式的顯示器，觀賞者只需要配戴一般普通不需電源供應之偏光
+眼鏡及可達到立體的效果。由於裸眼式立體顯示器不需要額外配帶眼鏡，實際使用上會比需要
+配戴眼鏡的立體顯示器來的方便，但裸眼立體顯示器，大都有訂定觀賞者的觀賞最適距離，才
+有最好的立體顯示效果。如果可以限定觀賞者的位置與高度的前提下，裸演式立體顯示器顯示
+品質才能優於配戴立體眼鏡之顯示器。 
+本計畫是整合型計畫中的一個子計畫，主要研究方向為：多視角立體呈像合成引擎，經由
+兩張連續的照片，或是一段串流影片，Stereo Matching 出該畫面的深度資訊，利用深度資訊再
+經過多視角的合成硬體來達到即時多視角的立體影像呈現。 
+ 
+二、 研究目的   
+隨著科技的日新月異，3D電影成功問世，帶動一股真實立體深度感知的娛樂風潮，為了取
+得產生立體深度感知效果所需之雙眼視點的影像，必頇耗費更多的成本。以電腦繪圖為例，若
+要取得同一場景不同視點之影像給予左眼與右眼觀看，必頇重複的繪製兩次。 
+傳統一般顯示卡執行雙視點繪圖之效率比單一視點的繪製效率不是線性的衰減，雖然雙視
+點繪圖是對原來場景以不同視點多繪製一次，但卻會造成平均三倍以上的效能衰減。我們希望
+能夠開發一個 2D 轉 3D 的硬體加速模組，運用於低成本、低功耗、可攜式、以及螢幕小為前
+提下達到立體顯示的即時應用。 
+ 
+三、 文獻探討   
+ 
+3D 立體呈像技術之研究可分成三大類：立體顯示器技術[1]、立體影像呈像技術[2]和立體
+ 3 
+ 
+ 
+圖 3-1 即時影像位移及補洞的硬體架構[19] 
+ 
+四、 研究方法  
+本計畫中提出了一個多視角立體呈像合成系統，此系統可以分為兩大部分，前段部分可稱
+為立體影像匹配法（Stereo Matching），是將兩張或兩張以上的平面影像利用相對關係與圖片之
+間的線索，推算出具有深度資訊之深度圖（Depth map），在前段部分最主要的目的就是估算出
+輸入影像的立體視差值（Disparity），再利用相似三角形將視差值轉換成物體深度圖。而後段部
+分稱為 DIBR( Depth- Image-Based Rendering)，將前段所求得的深度圖與左右兩眼其中一張影像
+作為輸入，虛擬合成出多個視角之影像，而所合成的多視角影像可做為立體顯示器的輸入。 
+ 
+4.1  Stereo Matching  
+Stereo Matching （影像匹配），主要目的是用來協助尋找二張影像上點與點之間的對應關
+係。同一影像所對應到左右兩眼的圖片，兩張圖片看貣來相似，但實際在像素位置上會有些許
+的位移量， 若可以找到像素間彼此對應的位移量，那我們便可以知道該物件在實際 3D 場景中
+所代表的深度。 
+我們由圖 4-1，左邊與右邊相機分別代表我們的左右眼，兩台相機中間的距離即為我們的眼
+距（e），觀賞者到顯示平面的距離為 offset。空間中的物件對應到左眼成像的位置在螢幕上的
+C點，而右眼對應到相同的物件所成像的位置為 S。C 點與 S 點的距離差即為該 pixel 對應到
+ 5 
+ 
+ 
+圖 4-2立體匹配主要輸入為左右兩眼影像與深度圖輸出 
+4.1.1 基於像素的立體匹配 
+基於像素的立體匹配（pixel-based stereo matching）是最基本的立體匹配方法[6]。首
+先我們將左圖輸入的 scan line上取一個像素 u ，然後再從它相對應右圖的 scan line 上選
+一個點 u + d ， d 是某個可能的視差值。接下來用下列式子(2)來計算匹配代價，最常用的就
+是兩個像素間的標準差值 SD ( Standard Difference )。 
+ 
+           (2) 
+ 
+最後，把所有可能的 d 值的 SD 都計算出來，擁有最小的 SD 的 d 值被判斷為該點的視
+差值。下圖 4-3為 pixel-based stereo matching 的示意圖。 
+ 
+ 7 
+ 
+ 
+圖 4-4 window-based stereo matching 的示意圖 
+ 
+4.1.3 利用動態規劃進行立體匹配 
+    動態規劃的基本想法是把問題看成貣始點、終點，以及中途的許多相連並且已知相互之間
+的距離的節點。從貣點開始，從近到遠依序計算貣點到達各個點的最短路程。一直到最後才選
+出到達終點的最短路徑。動態規劃常常被用在降低最佳化演算法的複雜度[5-7]。 
+  主要的輸入由原本的 pixel 或 windows 進化到以一整個 scan line 為輸入。首先先將左右兩
+條輸入了 scan line 做成一個二維的像素差值，我們稱為 Disparity Space Image（DSI）如下
+圖。再利用動態規畫的演算法來進行我們最佳路徑的尋找，也就是我們需要的最佳視差值。由
+下圖 4-5我們可以得知對角線所代表的即是左右兩條 scan line上相同 X座標的像素差值。 
+ 9 
+ 
+現在我們想提出一個全新的議題，就是我們我們可以考慮到幾何圖形原有的平滑性與對稱性。
+因此利用我們所擁有的資訊，將補洞做到更接近原本的圖像。以圖 4-7為例。 
+ 
+圖 4-7已知的影像和已知的 depth map 
+    圖 4-7左邊為我們的已知 image，右邊為已知 depth map。以一般生物的視覺辨識，都會覺
+得被擋住的黃色部分，它原本也應該是個三角形。但它究竟是什麼圖形呢?沒有任何一個人可以
+給我們一個正解，但一般人應該猜它是個三角形。這就是我們所要提出的一個新的議題，利用
+已知的軌跡，去猜測它是怎樣的一個圖形，在遵循的補洞。圖 4-8是 warping完的結果。 
+ 
+圖 4-8 warping完的結果 
+ 
+現在我們利用傳統補洞方法的其中一種，也就是我們在初期做 DIBR 是所使用的一個方法，背景
+補洞法。由 Depth map，我們可知道相對於紅色三角形物件而言，黃色是它的背景。因此補出來
+的圖像會是圖 4-9。 
+ 11 
+ 
+以用這樣的一個軌跡偵測補洞方法，將一個完完整整的”N”還原。 
+ 
+    首先，我們先簡介演算法的部分，這個方法首先我們要找出原圖的軌跡，我們這邊稱為有
+興趣的軌跡。第一步，先找出軌跡的貣點，如圖 4-11中紫色的 pixel。 
+ 
+圖 4-11依據軌跡補洞方法第一步之示意圖 
+貣點的特性是它的上下左右一定存在一個 pixel點為洞，且也一定存在一個點與自己的深度差
+不多，且四面八方存在一個點比自己的深度小一個門檻。這邊的硬體只需要包含本身被偵測的
+點的一個 3*3window 即可。找到貣點後就可以開始偵測軌跡，圖 4-12。 
+ 13 
+ 
+再來，根據我們所提出的演算法，設計出硬體架構，如圖 4-14 所示: 
+ 
+圖 4-14 硬體架構圖 
+幸運的是，我們不需要額外增加硬體的面積，使用原本 320*32bits 即可做好軌跡偵測，
+只是這邊需要一些記憶的空間儲存我們所畫出的邊界點。 
+硬體流程大約是我們一次從外部記憶體 load7條 scan line，每條只需 load7個 pixel，
+分別存入我們 internal memory mapping 的位置。然後就可以做上述所說的判斷以及軌跡的偵
+測。 
+做完偵測且把座標記憶下來之後，就可以開始傳統的 DIBR，warping and hole filling。
+只是不同點是我們在補洞的時候就要去判斷是否已經碰見了我們所儲存的邊界，是的話就要停
+止補洞。將來這些沒被補到的黑洞再從周圍抓背景來補即可。 
+ 
+4.3 Hybrid image warping and hole filling 
+Pre-processing
+Depth map
+Warping Hole Filling
+ 
+圖 4-15 標準 DIBR流程 
+標準的DIBR流程如圖4-15，我們提出的設計流程如下圖4-16所示，將步驟簡化，節省運算週
+期數及功率消耗。 
+ 15 
+ 
+Input ImageInput Depth
+Memory
+Data_ROM
+Now_Depth > Last_Depth?
+Filling
+Holes = Filling_counter?
+Filling_counter++
+Yes
+No
+Yes
+No
+Yes
+NoWarping 
+If Empty
+ 
+圖 4-17 混合位移及破洞填補演算法Flowchart 
+五、 結果與討論 
+在這一章節，我們將根據上一章所提出的三種方法，探討其實驗的結果。 
+5.1 Stereo Matching 的結果 
+    我們將左右兩圖片，如圖 5-1所示，經過校正後（將 scan line矯正為水平線），做為 Stereo 
+matching 的輸入，並將這兩張圖片以 4.1.1 小節介紹過的 Pixel-based stereo matching，以
+及 4.1.2 小節介紹的 Window-based stereo matching，來實作。 
+ 17 
+ 
+ 
+window – base stereo matching （window size = 5） 
+圖 5-2 將 Window size 拉大到比對視窗為 5x5 之結果 
+5.2 軌跡偵測補洞法的結果 
+在使用過軌跡偵測補洞法之後，我們可以看到圖 5-3為 warping過後的結果，圖 5-4為我們使
+用軌跡偵測補洞完的半成品。我們做到了傳統補洞方法做不到的，就是可以將物件呈現的較為
+真實。 
+ 
+ 
+圖 5-3  
+ 19 
+ 
+圖 5-6 參考文獻[1]處理5個像素所需耗費週期數示意圖 
+ 
+我們所設計的演算法週期數，如下圖5-7所示，由於設計上不需要Reset memory，直接都做
+寫入動作，所以總週期數只有花在warping上。相較於[19]，無論影像warping為方向為左或是
+右，我們皆固定掃瞄方向都是由左至右，簡化其訊號線之控制。每次處理warping同時，記錄目
+前處理的像素以及前次處理的像素，假設處理目前像素偵測出有破洞，我們也早就同時蒐集破
+洞兩邊有效像素的資訊，由於[1]的概念，我們知道破洞周圍哪個是拿來填補破洞的候選像素，
+可以立即可以做填補的動作，雖然設計上較複雜一點，但是卻可以大大減少週期數到7個
+cycles，相較於[1]減少約59%的週期數，相較於標準DIBR減少約70%週期數。 
+ 
+ 
+ 
+圖 5-7  Our approach處理5個像素所需耗費週期數示意圖 
+ 
+六、 參考文獻 
+[1] D. Scharstein, View Synthesis Using Stereo Vision, Ph.D Dissertation, Cornell Univ., 1997. 
+[2] C.-J. Tsai and A. K. Katsaggelos, “Dense Disparity Estimation with a Divide-and-Conquer 
+Disparity Space Image Technique,” IEEE Trans. Multimedia, vol. 1, no. 1, pp. 18-29, Mar. 1999. 
+[3] D. Scharstein and R. Szeliski, “A Taxonomy and Evaluation of Dense Two-Frame Stereo 
+Correspondence Algorithms,” Int’l. Journal of Computer Vision, vol 47, no. 1/2/3, pp. 7-42, 2002. 
+[4] M. Z. Brown, D. Burschka, and G. D. Hager, “Advances in Computation Stereo,” IEEE Trans. 
+Pattern Analysis and Machine Intelligence, vol. 25, no. 8, pp. 993-1008, Aug. 2003. 
+[5] J. Sun, N.-N. Zheng, and H.-Y. Shum, “Stereo Matching Using Belief Propagation,” IEEE Trans. 
+Pattern Analysis and Machine Intelligence, vol. 25, no. 7, pp. 787-800, July 2003. 
+[6] N. Chang, Y.-C. Tseng, and T. S. Chang, “Analysis of Color Space and Similarity Measure Impact 
+on Stereo Block Matching,” Proc. Asia Pacific Conf. Circuits and Systems (APCCAS), 2008. 
+[7] N. Chang, et al., “Real-Time DSP Implementation on Local Stereo Matching,” Proc. Int’l. Conf. 
+Multimedia and Expo (ICME), pp. 2090-2093, 2007.  
+[8] Y.-C. Tseng, N. Chang and T.-S. Chang, “Low Memory Cost Block-Based Belief Propagation for 
+Stereo Correspondence,” Proc. Int’l. Conf. Multimedia and Expo (ICME), pp. 1415-1418, 2007. 
+[9] Y.-C. Tseng, et al., “Block-Based Belief Propagation with In-Place Message Updating for Stereo 
+Vision,” Proc. Asia Pacific Conf. Circuits and Systems (APCCAS), 2008. 
+[10] T.-H. Tsai, N. Chang, and T.-S. Chang, “Data Reuse Analysis of Local Stereo Matching,” Int’l. 
+Symp. Circuits and Systems (ISCAS), 2008. 
+[11] T.-H. Tsai, N. Chang, and T.-S. Chang, “Low-Memor4y Cost Belief Propagation Architecture for 
+Disparity Estimation,” Int’l. Symp. Circuits and Systems (ISCAS), 2009. 
+[12] S. Jin et al., “FPGA Design and Implementation of a Real-Time Stereo Vision System,” IEEE 
+Total cycles = Warping + Holes Filling  
+ 21 
+ 
+科會補助專題研究計畫項下出席國際學術會議心得報告 
+                                  日期：   年   月   日 
+                                 
+一、 參加會議經過 
+在本次大會發表的 300 多篇論文中，包含了數十個主題，下表所列的主題僅為與本身研究
+領域較相關，以及自己較感興趣的主題： 
+1 Analog Signal Processing 
+2 Blind Signal Processing 
+3 Circuits and Systems for Communications 
+4 Circuits and Systems Education and Outreach 
+5 Digital Signal Processing 
+計畫編號 NSC－99－2220－E－110－005 
+計畫名稱 用於互動式三維多視角顯示系統之智慧型綠能多核心圖形處理器
+技術-子計畫四：多視角立體呈像合成引擎和多核心繪圖處理系統
+支援硬體單元之設計(1/3) 
+出國人員
+姓名 
+溫家聖 
+服務機構
+及職稱 
+中山大學資工系博士班學生 
+會議時間 
+2010年 12月 6日 
+至 
+2010年 12月 9日 
+會議地點 
+馬來西亞吉隆坡 
+會議名稱 
+(中文)2010 年 IEEE 亞太電路與系統學術大會 
+(英文)2010 IEEE Asia Pacific Conference on Circuits and Systems 
+發表論文
+題目 
+(中文)使用由下而上合併非等份區間法來縮減以查表為主之函數評估中之
+表格面積 
+(英文) Design of Table-Based Function Evaluators with Reduced Memory Size 
+Using a Bottom-Up Non-Uniform Segmentation Method 
+ 23 
+ 
+向與視野有著重大的助益。並且能讓我個人在相關學術領域之研究上，得到更多的啟發和
+想法。 
+ 
+三、考察參觀活動（無是項活動者省略） 
+    無 
+四、建議 
+(1) 與各國學者交流後，發現語言的問題仍舊存在於各非英語系的國家，無論是歐洲或亞洲
+學者。要能夠暢談於報告當中、暢談於與他人討論之中，我認為除了自身英語能力的加
+強外，“經驗”也是一個重要的因素，因此多參與國外的會議或學術交流活動累積英文
+報告和與國外學者的溝通經驗是更重要的。教育部如能多獎勵國內學者參加國際會議與
+交流活動，甚或是在國內舉辦國際間的學術交流活動，對於國內學術界或產業界的研究
+人員必有相當之貢獻與幫助。 
+(2) 希望能多參與大型的國際研討會，以瞭解當下最熱門或該領域最新穎的研究動向與研究
+成果，是學術界與產業界的研究人員都應相當重視的。專注於自身的研究固然重要，但
+適時地與其他研究人員互動有時更能激發出更多創新的想法。 
+ 
+五、攜回資料名稱及內容 
+    APCCAS 2010 年論文集 
+ 
+99年度專題研究計畫研究成果彙整表 
+計畫主持人：蕭勝夫 計畫編號：99-2220-E-110-005- 
+計畫名稱：用於互動式三維多視角顯示系統之智慧型綠能多核心圖形處理器技術--子計畫四：多視角
+立體呈像合成引擎和多核心繪圖處理系統支援硬體單元之設計(1/3) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 3 0 100%  
+博士生 1 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 1 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 6 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

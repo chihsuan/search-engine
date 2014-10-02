@@ -1,0 +1,248 @@
+中文關鍵詞： 光子映射法、CUDA 
+英 文 摘 要 ：  
+英文關鍵詞： Photon Mapping, CUDA 
+ 
+2 
+這個問題，我們設法簡化取樣時使用的資料，由於我們導入了光束的概念，我們使用光
+束的方向來進行取樣計算，讓我們不需要每次都去進行光子角度的計算，便可以先將整
+個光束取樣結果儲存成一張顏色圖，並記綠每個pixel上光束的方向，便可以減少重複取
+樣的次數，使其效能提升4000%。 
+傳統取樣是以取樣點附近最近的數個光子為主，但是仍有些許狀況會造成某些光束
+幾乎對結果沒有影響。為了解決這個問題，我們也將光束的概念導入光子取樣的部分，
+對於這個取樣點的影響，我們以每個光束的觀點來看，所以我們對每個光束進行取樣，
+最後的結果為所有覆蓋到取樣點的光束的取樣結果總合，保證了每個光束都有其影響力。 
+儘管有更多的研究工作需要進一步改善GPM的效能，實驗成果顯示：我們已經成功
+使用CUDA將GPM平行化，對其效能作了很大的加速。 
+關鍵字：光子映射法、CUDA 
+4 
+I. Introduction 
+1.1 研究背景與動機 
+Global Illumination 是 3D 電腦圖學領域中模擬場景中真實光源的一系列演算法的統
+稱，這些演算法必須考慮到光源對場景中物體的直接影響，也需要考慮到場景中一個會
+反光的物體對其他物體所造成的影響。 
+Photon Mapping(PM) Method[1]是非常重要的 global illumination 演算法之一，它從
+光源對可照明範圍平均地發射一定數量的光子，並追蹤每個光子與場景中漫射面的交
+點，將這些交點儲存在光子圖中，這些光子圖即為光源對場景的光照資訊，在繪圖的過
+程中，使用 Ray Tracing Method 配合對光子圖取樣去估計每個像素的顏色。然而，PM 由
+於系統上的問題使其沒有一個方法去估計鄰近區域光子密度，這個問題主要可以分成 3
+種狀況下產生的誤差：鄰近、邊界、拓撲學。 
+在標準的PM，沒有非常足夠的資訊去判斷鄰近光子是否可以看見，這問題常照成
+query point取樣到不存在的光子而產生漏光現象。 
+所以我們提出一種新的方法Grouped photon mapping(GPM)來處理這些問題，GPM主
+要延伸自標準PM，提出了光束的概念，並根據此進行取樣。一個光束可以表示成一捆有
+著同樣空間黏聚性的獨立光線，它們有同樣的傳撥過程。根據這個相法，我們根據光子
+的傳撥路進將所有光子分成很多群組，存入獨立的光子圖，並產生polygonal boundary去
+模擬光束的照明區域。在最後產生影像的過程中，便可以根據這些資訊過濾掉不可見或
+區域外的光子，然而，使用這個方法不只可以減少鄰近的誤差和漏光，更可以合理的估
+計拓撲學上的誤差。 
+GPM成功解決了PM漏光的問題，但是卻需要非常多的時間進行計算。根據使用的
+光子數量多寡，需要的時間由一小時至一天以上不等，這造成了研究進度上的緩慢，因
+為單單只是測試結果便需要很多時間，如果這之中又存在程式上的臭蟲需要殺掉，便會
+需要用掉大量的時間。所以，我們想以CUDA來平行化加速GPM，使其能更快執行。 
+1.2 研究目的 
+GPM 成功的解決了標準 PM 系統上的一些問題，但是想產生一個真實的影像，就必
+6 
+在取樣結果方面，由於我們 GPM 導入了光束的改念於 caustic map 上，但是最後估
+計顏色的方法仍有需要改善的問題。我們希望也將光束的概念導入取樣的結果中，讓整
+個取樣的結果更真實。 
+II. System Architecture and Implementation 
+ GPM 主要是在補足 photon tracing 和 rendering pass，主要的流程如圖 1 所示： 
+ 
+圖 1：Group Photon Mapping 流程圖。 
+整個過程分成 Photon Tracing 和 Rendering Pass 兩部份，Photon pass 又可細分成七個
+程序(綠色方塊)去產生多重的 grouped photon map，在 Rendering pass 中，使用四個步驟(紅
+色方塊)去估計最後結果的亮度。 
+2.1 Photon Pass 
+ 在這個程序，我們對每個光源對可照明方向作平均取樣初始化所有光子，並將光子
+平均散播在場景中。在我們追蹤光子時，我們使用一個暫時的陣列去儲存相交記錄，這
+個陣列紀錄的是傳送光子的光線在多邊形面與面間傳播路徑的資訊，這是由於光線與反
+射面或鏡射面產生碰撞而反射或折射，並接著與下一個多邊形面碰撞。額外的，這些資
+訊可以用來區別這個光子是由哪個光源的光束所發射出來的，所以我們也在陣列的開頭
+加上光源的編號。 
+8 
+2.3.2 Rendering Pass 
+Rendering pass 的過程多以遞迴撰寫，而 CUDA 並不支援遞迴，所以我們先將遞迴
+拆開，將所有新產生與現有的資料放進 stack，由於 Monte Carlo ray tracing method[3]，
+會使資料經過一次碰撞後便成非常龐大，所以這部分並非一次執行完成，而是會分成許
+多次來玩成。 
+2.4 Pre-Processing of Photon Pass 
+首先，我們必須確定光源覆蓋場景中每個面的機率，最好的方法就是原先 photon 
+tracing 步驟，所以我們以 photon tracing 的步驟追蹤了足夠數量的光子，便可以取得場景
+中所有面被擊中的資訊，這時我們就可以計算出光源對場景中所有面的照射機率，根據
+這個機率變可以推算出鏡射面的強度比率。 
+接著，在之後的 photon tracing 時，我們便可以使用上面得到的強度比率，直接地對
+鏡射面發射光子使其產生 caustic 光子，且能避免掉去追蹤其他不會生成 caustic 光子的
+面，之後在根據強度比率做能量上的平衡動作，這樣子便可以節省非常多的時間。 
+2.5 Level of Detail (LOD) 
+ 為了改善 LOD 效能的問題，我們想到在 3.4 的 pre-process 之後，我們便擁有足夠的
+場景資訊並推導出一個估計 pre-process 資訊中是否能判斷為有效光子的公式，來動態地
+進行 LOD 步驟。 
+2.6 Sample 
+ 我們設法將 GPM 的光束概念導入取樣中，一個取樣點它應該同時被所有能照射到
+它的光束影響。 
+2.7 Caustic Color Map 
+標準 PM 的狀況下，在對光子取樣的時候，會考慮到每個光子的方向，但這會造成
+每次計算時必須重覆對每個光子作方向計算，因此我們想減化這個動作。考慮到光束的
+概念，所以我們使用光束的方向來代表光子的方向，讓我們只需進行一次計算，之後對
+方向計算時僅需對光束的方向計算，提升了系統效能。 
+ 
+ 
+10 
+作 2 次比較，第一次使用 1 萬 cautsic photon，第二次使用 10 萬 caustic photon，其中由
+於圓球多邊型數目過多，所以會使的有效光子數目過少，必須經過 LOD 的動作以後才
+會有足夠的有效光子。 
+如圖 3 所示，前排會改進的時間，後排為原本的時間，在 1 萬光子的狀況下約快了
+4.26 倍的速度，然而在 10 萬光子的狀況下約快了 70 倍的速度，所以我們可以知道，如
+果光子數量越多在 merge 的時候會越花時間，所以我們可以省下的時間將會越多。 
+下面比較 LOD 改善後的結果： 
+3.1.2 Photon Pass Time 
+這邊比較 photon pass 時間的差異。 
+使用場景如圖 2(右)，圖中光源在中心點正上方，是方型光源，鑽石下方為一普通的
+地板，而鑽石模型會標準鑽石模型。我們分別測試 3 次，分別收集 1 萬、10 萬、100 萬
+caustic photons，圖 4 為 100 萬光子的輸出模擬結果，本次比較為測試 photon pass 時間，
+由程式中自行計算輸出。 
+GPM
+MGPM
+3335.194
+34.174324
+3.757
+31.1
+1.1360
+500
+1000
+1500
+2000
+2500
+3000
+3500
+秒
+1萬
+10萬
+100萬
+ 
+圖 4：時間輸出表，第一列為 1 萬，第二列為 10 萬結果，第三列為 100 萬結果。 
+12 
+ 
+圖 6： (左)原本取樣結果；(右)改進後取樣結果。 
+ 如圖 6 為舊的版本和新的版本的差異，舊的版本在外為光子區域會出現一些雜訊，
+這是因為在那個點可能剛好有非常多的同種顏色，造成都取到同種顏色而忽略其他的顏
+色。而新的結果因為新的取樣方式將這個問題解決了。 
+ 
+IV. Conclusion 
+在這一篇論文，我們成功地將光束的概念導入 PM，將所有光子根據其傳播路徑分
+割成不同的群組，並配合 double-layer kd-tree 改進了鄰近區域光子取樣的方法。由實驗
+得到，我們可以適當的使用 LOD 取得雜訊與誤差的平衡，而 polygonal boundaries 可以
+有效的區分 query point 周圍光子與邊的關係產生清楚的影像。而後，我們使用平行處理
+技術對 GPM 做了加速，也改善了前置處理的 photon-tracing 的效率。 
+在 rendering pass 的部分，我們取得了 40 倍的效能提升速度，並且改善了取樣問題，
+使結果更接近真實。 
+14 
+計畫成果自評: 
+研究內容與原計畫相符程度: 100% 
+達成預期目標情況:90% 
+研究成果之學術或應用價值:有 
+是否適合在學術期刊發表或申請專利:適合 
+四、附件
+照片
+ICNC’11看版(陳昱升博士三年生)           ICNC’11看版(謝杰博士一年生) 
+發表情形 (陳昱升博士三年生)            發表情形 (謝杰博士一年生) 
+會議場地留影(陳昱升博士三年生)                會議場地留影(謝杰博士一年生) 
+論文 1 之摘要 
+A NPR System for Generating Floral Patterns based 
+on L-System 
+Yu-Sheng Chen, Jie Shie, Lieu-Hen Chen 
+Dept. of Computer Science and Information Engineering, National Chi Nan University 
+Puli, Nantou, Taiwan 
+s98321902@mail1.ncnu.edu.tw, s100321903@mail.ncnu.edu.tw, lhchen@csie.ncnu.edu.tw 
+Abstract—in history, the decorative pattern represents the design of art. The styles of decorative patterns are unique according to different 
+countries and cultures. Because of the decorative floral pattern giving human an elegant and abundance impression, it is applied to many 
+fields including product packaging, advertising or multimedia materials design. 
+In this paper, we simulate the plant growth to create the decorative floral patterns. One of plant growth simulation approach is L-System 
+(Lindenmayer System). Due to plant growth information can be stored in the L-system grammar formats, the styles of decorative patterns 
+can be controlled by production rules which users define. However, defining a complex L-system grammar structure by non-professional 
+users is clearly a very difficult task. It requires expert with both botanic and programming knowledge to manipulate. Therefore, we propose a 
+user-friendly CAD system for generating L-grammar based on a sketch-based interface. Users can draw arbitrary lines or curves on the 
+canvas for automatically creating decorative floral patterns. In addition, we integrate the Simeco system with CUDA (Compute Unified 
+Device Architecture) for improving the inefficiency of modeling and simulating plants. 
+Keywords-component; L-system; computer graphics; NPR; decorative  pattern 
+論文 2 之摘要
+Describe Building use L-System and Generate Maze
+Jie Shie , Di-Hua Wu, Lieu-Hen Chen 
+Dept. of Computer Science and Information Engineering, National Chi Nan University 
+Taiwan 
+E-Mail:s100321903@ncnu.edu.tw, s97321027@mail1.ncnu.edu.tw, lhchen@csie.ncnu.edu.tw 
+Abstract — Using L-System to describe botanic 3D structures and grow plants by deriving its self-expandable grammar terms is a main 
+stream of plant simulations. In addition, there are several pioneering projects aiming to adopt L-System to describe city and street 
+structures. Because L-System is suitable for handling structural objects, in this paper, we propose to use a non-deterministic L-System 
+for modeling a building’s composition including its floor layouts. The building can be a house that has similar rooms or even a very 
+complex maze. By using L-system, we can semi-automatically create very flexible floor-layouts and interesting mazes based on different 
+production rules. 
+Keywords-component; L-System; L-Grammar; Direct3D 10; Virtual Reality; 
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：陳履恆 計畫編號：99-2221-E-260-029- 
+計畫名稱：以 CUDA 為基礎的平行化 Grouped Photon Mapping Method 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 1 1 100%  
+博士生 2 2 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+國外 論文著作 
+研討會論文 3 3 100% 
+篇 
+出席國際研討會
+報告如下 
+1. 
+iFAN 2010(The 
+2010 
+International 
+Symposium on 
+Intelligent 
+Systems) 
+’’Parallel 
+Grouped Photon 
+Mapping using 
+CUDA’’ 
+2. 
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

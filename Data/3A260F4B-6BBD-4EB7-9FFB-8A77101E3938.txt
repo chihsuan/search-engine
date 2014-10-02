@@ -1,0 +1,848 @@
+  
+I
+ 
+摘要 
+ 
+獨成成份分析(independent component analysis, ICA)是一個有效分離獨立訊號的
+技術，可以用在麥克風陣列作聲源訊號的分離，如此就可以在有多人同時說話或
+是含有背景噪音的環境下，將一個特定人的語音分離出來。分離之後的語音中通
+常還是含有噪音成分或是其他不要的聲音，接著就以單聲道語音增強(speech 
+enhancement)技術，抑制背景噪音或其他不要的聲音。本研究包含三個部份，(一)
+以獨立成份分析作盲聲源分離(blind source separation, BSS)及其加速運算方法，
+(二)即時語音分離系統的設計，與(三)訊號分離後的語音增強演算。 
+ 
+關鍵詞：獨成成分分析、盲聲源分離、語音增強、麥克風陣列 
+ 
+Abstract 
+ 
+Independent component analysis (ICA) is an effective technique for separating 
+independent source signals. It can be applied in a microphone array for the separation 
+of sounds. By using this technique, the speech of a specific speaker can be extracted 
+in a multi-speaker or noisy environment. Usually the separated speech signal may still 
+contain noises and unwanted speech of other speakers. A single-channel speech 
+enhancement technique is applied for reducing the background noises and those 
+unwanted speech signals. The study contains three parts; (1) the use of independent 
+component analysis in blind source separation, and its speedup algorithm, (2) the 
+design of a real-time speech separation system, and (3) the enhancement of separated 
+speech signal. 
+ 
+Keywords: independent component analysis, blind source separation, speech 
+enhancement, microphone array 
+ 
+ 
+1 
+ 
+一、前言 
+在多人說話或含有背景噪音的環境中，如何取出特定說話人的語音，並抑制
+其中含有的噪音與其他不要的聲音，是一項頗有難度的技術。若是使用單一麥克
+風收取聲音，通常會以單一通道的語音增強方法，抑制其中的噪音成分。比較好
+的作法是使用麥克風陣列 (microphone array) 收取聲音，應用波束成形
+(beamforming)的原理，讓收取聲音時波束指向目標語音來源的方向，就可以降低
+噪音與其他不要的聲音，而達到語音增強的目的。如 Griffiths-Jim 波束成形器的
+使用[1]，它是以調適性濾波器(adaptive filter)的方式來產生指向性波束，並且在
+寬頻範圍內維持固定的增益值。另一種做法是使用盲訊號源分離(blind source 
+separation, BSS)技術，從麥克風陣列收到的混合訊號中，找出解混和矩陣，將訊
+號分離[2]出來，然後抽取出特定說話人的語音訊號。 
+獨立成份分析(independent component analysis, ICA)演算法是用於盲訊號源
+分離的一種方法，若用於語音訊號，就是以此方法取出特定說話人的語音，也就
+是解決多人同時說話環境的雞尾酒會問題。因為在麥克風端收到的混合訊號是摺
+積式的混合，所以求其解混合矩陣的演算比較複雜，通常是將訊號轉換到頻域
+中，然後針對各個頻域成份作 ICA 演算，並解決膨脹與排列問題，再轉回時域
+合成訊波形，所以運算時間較長。ICA 當初用在解決神經生理學方面的問題，後
+來 Tong 等人提出 AMUSE 演算法[3]，Comon 也提出新的演算法[4]，1995 年 Ball
+與 Sejnowski 提出 information maximization 演算法[5]，1997 年 Hyvainen 提出 fast 
+fixed-point 演算法[6]，提高了運算效率，於是才應用在其他領域。 
+在頻域中作聲源訊號的分離，需要在頻域中對每一個頻率成份作 ICA 演算，
+沿著音框觀察某一個頻率成份的變化，也就是將一序列的頻譜值看成一個沿著音
+框改變的訊號，對各個頻率成份沿著音框求出共變異矩陣，找出轉換矩陣讓共變
+異矩陣對角化，於是得到解混合矩陣(demixing matrix)在各個頻率成份完成共變
+異矩陣對角化之後，才在一個音框中組成聲源訊號分離後的頻譜。這樣的演算太
+費時，D.T. Pham 提出一個對多個埃爾米特矩陣(Hermitian matrix)同時進行對角
+化的近似方法，共同找出一個轉換矩陣，使得多個埃爾米特矩陣近似對角化，這
+個演算法叫做聯合近似對角化(joint approximate diagonalization，JADIAG)演算法
+[7]，可以有效作聲源分離。我們就針對這個 JADIAG 演算法進行探討，發展出
+加速的方法，主要的著眼點是利用人類聽覺器官的 Critical Band 現象，在一個頻
+帶內的頻率成份，無需每一個頻率點(Frequency bin)都各別去找一個解分離矩
+陣，而是選擇一個數量的頻率點計算解分離矩陣，分給頻帶內其他頻率點使用，
+因為解分離矩陣的數目減少，而能減少運算量。另一個減少運算量的方式是預估
+JADIAG 演算法中遞迴運算的一個轉換矩陣，利用此轉換矩陣的非對角項在遞迴
+運算中有符號交換的現象。我們提出一個有效預估轉換矩陣的方法，使得收斂加
+快，因而減少運算量。 
+在 JADIAG 演算中，只要音框數不要太長，而能讓所需的運算在此音框數
+的時段內完成，就可以讓分離聲源的演算達到即時完成的效果。因此，我們將麥
+克風收到的訊號分成固定長度的區段，區段間有十分之一的重疊，區段中的音框
+數設定在可以達成即時運算的範圍內，這樣就可以建構一個即時的聲源分離系
+統。於音框少會使得分離效果變差，我們採用累積音框的演算，讓得到的解分離
+矩陣隨著音框數增加而逐步調整，於是隨著語音訊號長度增加，分離的訊號就越
+3 
+ 
+我們抽取出所要的聲音訊號。假設在麥克風端收到的聲音訊號 x是多個聲源訊號
+的混合，也會含有噪音輸入，此系統可以用數學式表示如下， 
+dAsx +=              (3) 
+其中A 是混合矩陣(mixing matrix)，d是一個平均值為 0 的高斯分佈向量，與聲
+源向量 s不相關，我們的目的就是要找一個解混合矩陣W，讓估算出來的訊號，
+y接近於原來的聲源向量。 
+Wxy =               (4) 
+這個問題可以用獨立成份分析來解。在獨立成份分析的處理中，要讓麥克風端收
+到的訊號是平均值為 0，而變異量為 1 的訊號，因此先要對混合訊號作集中處理
+(centering)與白化處理(whitening)，因此得出新的訊號 x~，其中各成份不相關，也
+就是新訊號 x~ 的共變異矩陣(covariance matrix)是一個單位矩陣， 
+Ixx =}~~{ TE              (5) 
+這個轉換可以用特徵值分解(eigen-value decomposition, EVD)方法來做。先分解混
+合訊號 x的共變異矩陣， 
+TTE VDVxx =}{             (6) 
+V 為正交矩陣，由特徵向量(eigen vector)組成，D為對角矩陣，由特徵值(eigen 
+value)組成， 
+},,,{ 21 nddddiag L=D            (7) 
+因此轉換矩陣為 TVVD 2/1− ，它將向量 x轉變成向量 x~ ， 
+sAAsVVDxVVDx ~~ 2/12/1 === −− TT         (8) 
+ 
+2.3 獨立性的準則 
+ 
+在獨立成份分析中，兩個訊號相互獨立的意義，可以從若干面向來觀察。假
+設 X 與 Y 是兩個相互獨立的隨機變數，計算其共變異量，得到 
+}{}{}{),( yEXEXYEYXCov −=          (9) 
+如果 X 與 Y 不相關(uncorrelated)， 
+0),( =YXCov             (10) 
+但反之，則不一定成立。所謂不相關，只定義在二階統計上，並不能正確的說明
+其獨立性。照理應該從高階統計觀察其獨立性，但計算複雜，所以常以不相關來
+表示獨立性(independency)。 
+    另一個觀察獨立性的準則是看其非高斯性(non-Gaussianity)，一個混合訊號
+5 
+ 
+2.4 頻域中的聲音分離 
+在作聲音訊號處理時，麥克風端收到的混合訊號是摺積式的混合
+(convolutively mixing)，分離這些混合訊號需要複雜的演算，其中一個做法是
+將訊號轉換到頻域中，然後以 ICA 演算法對各個頻率成份作盲訊號分離。假
+設在時域中的混合訊號寫成聲源訊號與通道的摺積， 
+][][][ nsnAnx ∗=                                        (18) 
+對此訊號加窗 (windowing)，然後作一個音框 (frame)的短時段傅立葉轉換
+(short-time Fourier transform, STFT)，可以得到， 
+),()(),( mkSkAmkX =                                    (19) 
+其中 k 是頻率點(frequency bin)，m 是音框指標。我們假設收音的環境沒有改
+變，則 )(kA 不隨著音框改變，它只是頻率的函數。得到一序列音框的混合訊
+號頻譜 ),( mkX 之後，針對某一個特定頻率點， ),( mkX 視為延著音框變化的函
+數。比照時域中瞬時混合模型(instantaneous mixing model)的演算法，可以作盲
+訊號分離的演算。對某一個頻率點(frequency bin)，可以找到解分離矩陣 )(kW ，
+使得到， 
+),()(),( mkXkWmkY =                                    (20) 
+而理論上 
+)()( 1 kAkW −=                                           (21) 
+於是(20)式得到的 ),( mkY 就是聲音訊號源 ),( mkS ，但所表示的是對頻率點 k
+的頻率成份沿著音框的變化，需要經過反傅立葉轉換後，在時域中重組聲音訊
+號。 
+ 
+2.5 聯合近似對角化 
+以音框為時間單位，我們要計算 ),( mkX 的共變異矩陣，並且以特徵值分解
+(Eigen-value decomposition, EVD)來求得解分離矩陣，這個矩陣若針對每一個音
+框計算，我們稱之為跨頻譜密度矩陣(cross-spectral density matrix)，計算公式如
+下 
+),(),( 
+12
+1),( ττ
+τ
+++
++
+= ∑
+−=
+mkXmkX
+J
+mkC H
+J
+J
+                   (22) 
+上標 H 表示 Hermitian transpose， ),( mkC 是一個 Hermitian 矩陣。於是找到解混
+合矩陣(demixing matrix)變成是找一個轉換矩陣使一序列的 ),( mkC 同時對角
+化，D.T. Pham [7] 所提出的聯合近似對角化(Joint approximate diagonalization, 
+JADIAG)演算法是一個有效的方法。 
+ 
+7 
+ 
+|det(|log         
+])Re(2)()(det[log
+2
+1 1
+1
+δ
+δδ
++−
+++=∆ −
+=
+∑
+IL
+WWCWWCWWCdiagWWCdiagf HHlHlHlHl
+L
+l   (31) 
+化簡之後得到 
+]Re[))(
+)(
+Re(
+1
+ijij
+ji
+ii
+ii
+H
+l
+ijij
+H
+l
+j
+i
+L
+l
+gL
+WWC
+WWC
+δδ
+δ
+∑∑
+∑
+∑∑
+≠=
+=−              (32) 
+ii
+H
+l
+ij
+H
+l
+L
+l
+ij WWC
+WWC
+L
+g )(
+)(1
+1
+∑
+=
+=                              (33) 
+令 
+    Q              
+2
+1
+2
+1
+
+
+
+
+
+
+=
+
+
+
+
+
+=
+qq
+qq
+pp
+pp
+P                           (34) 
+有一個矩陣 T 使得 HTPT 與 HTQT 皆為對角矩陣，則 T 必為 
+ 
+2
+2
+2112
+2112
+
+
+
+
+
+
+−
+−
+=
+ ∆)qpqβ-sign(pα         
+l               ∆)qpqβ-sign(pT                           (35) 
+ 
+其中 
+αrβq     ∆ppqr
+qpqpqpqp    βqp qpα
+4211
+122122
+−=−=
+−+−=−=
+                          (36) 
+進一步化簡得到矩陣 T 為 
+
+
+
+
+
+
+−−++−+
+−
+
+
+
+
+
+=
+0
+0
+4)1(1
+2
+ 
+10
+01
+2 ji
+ij
+jiijjiijjiijjiijjiij
+h
+h
+hhhhhhhhhh
+T      (37) 
+
+
+
+
+
+
+=
+
+
+
+
+
+
+
+
+
+
+
+ji
+ij
+ji
+ij
+ji
+ij
+g
+g
+h
+h
+w
+w
+1
+1
+                             (38) 
+ii
+H
+l
+ij
+H
+l
+L
+l
+ij WWC
+WWC
+L
+w )(
+)(1
+1
+∑
+=
+=                              (39) 
+演算流程歸納如下: 
+for i=1 to N 
+ for j=1 to N 
+  compute ijg  using Eq(33) 
+9 
+ 
+3.1 減少解混合矩陣之個數 
+  
+在頻域中做聲音訊號的分離，我們必須對每一個頻率點(frequency bin)作獨
+立成份分析，也就是每一個頻率點有一個解混合矩陣。因為一個訊號的頻譜有相
+當的穩定性，頻率點之間不會完全不相關，所以我們建議選擇若干頻率點作 ICA
+演算，得到的解混合矩陣可用於其鄰近的頻率點[10]。 
+ 利用人耳聽覺上具有臨界頻帶(critical band)之特性，在一個臨界頻帶中可以
+容忍稍許的不準確，因此可以對各臨界頻帶作減少解混合矩陣的設計。以訊號取
+樣頻率為 16 kHz 為例，音框長度為 2048 個取樣點，在 8 kHz 的頻域範圍內有 22
+個臨界頻帶，換算成 Bark 值，Bark=10 的頻帶範圍為 1080~1270 Hz，對應 Discrete 
+Fourier transform 之後的頻率範圍，此頻帶有 24 個頻率點。減少解混合矩陣的做
+法可以用在 1270 Hz 以上的頻帶，而 Bark=10 以下的臨界頻帶仍是每個頻率點都
+計算其解混合矩陣，以確保語音品質不太受到影響。而 Bark=11~22 的各頻帶中，
+只選擇 25 個頻率點進行 ICA 演算，因此估計需要作 ICA 演算的頻率點數，就從
+1024 降低為 462，計算解混合矩陣的演算量減少了大約一半。 
+ 
+3.2 有效預估轉換矩陣 
+  
+轉換矩陣 ijT 是一個 2x2 矩陣，其非對角項的值在遞迴中會逐漸趨近於 0，在
+每個遞迴間，非對角項會改變其正負符號，最後收斂成一個單位矩陣。因此我們
+定義一個預估 ijT 的方法， 
+(a) 如果一個遞迴之後非對角項改變符號，令 
+10      )( )()1( <≤−−=+ αα ITIT vijvij         (41) 
+(b) 如果一個遞迴之後非對角項不改變符號，令 
+10      )( )()1( <≤−+=+ αα ITIT vijvij         (42) 
+在實驗中顯示這個預估的方式確實可以快速收歛。 
+ 
+3-3 實驗 
+  
+實驗的設計是兩個相距 4cm 的麥克風，兩個聲源來自麥克風前方 35o與 40o
+方向，圖二繪出此實驗中麥克風與聲源喇叭的位置。 
+ 
+ 
+圖二  實驗中麥克風與聲源喇叭的位置 
+11 
+ 
+減少解混合矩陣的方法，也是讓計算時間減少。以 0=α 與所有頻率點都個別計
+算其解混合矩陣，計算時間為 393.6 秒作基準，可以觀察計算時間下降的情形，
+當 3.0=α ，並採用減少解混合矩陣的方法，其計算量下降了大約 71%，而平均
+對數頻譜距離大致上穩定在約 2.4~2.6 dB 處。 
+圖三可以看到演算中的遞迴次數分佈，在使用臨界頻帶作減少解混合矩陣的
+情形下，遞迴次數會減到 10 左右。 
+ 
+ 
+(a) 未採用減少解混合矩陣的方法 
+ 
+ 
+(b) 採用減少解混合矩陣的方法 
+圖三  JADIAG 演算中的遞迴次數分佈 
+ 
+ 
+四、即時語音分離系統的設計 
+ 
+為了實作一個即時的語音分離系統，我們再度簡化其計算程序，並將 ICA
+演算設計成在區段中執行，而不是整段聲音錄音後執行。 
+ 
+4-1 分區段的語音分離演算 
+ 
+13 
+ 
+Overlap-save O(N) 
+Windowing & Framing O(NK) 
+STFT O(KNTlogT) 
+Correlation Matrix O(KTN2) 
+JADIAG & Ambiguity O(IKTN4) 
+IDFT O(KNTlogT) 
+Demixing O(N2) 
+OLA O(N) 
+ 
+N：訊號源數 
+K：每個區塊的音框數 
+T：計算 Fourier 轉換的 Window 長度 
+I：JADIAG 遞迴次數 
+ 
+在表二中可以明顯看出，Window 長度(T)、音框數(K)、與遞迴次數(I)都會嚴重
+影響到 JADIAG 演算的時間。為了降低運算時間，首要是減少所要解出的解混
+合矩陣個數，其次是減少遞迴次數，以下是我們採取的方式， 
+(1) 只對 6KHz 以下的頻帶做 JADIAG 演算，減少解混合矩陣個數。 
+(2) 兩相鄰頻率點共同求出解混合矩陣，也是減少解混合矩陣個數。 
+(3) 解混合矩陣作平滑處理，以增加其穩定性。 
+),1(~),(),(~ knknkn −+= WWW λ               (44) 
+ 
+4-2 實驗 
+ 
+實驗設定見圖六，在一個筆記型電腦接上多通道聲音輸入介面，以兩個喇叭
+取入混合的語音，經過訊號分離演算，產生兩個分離後的語音檔 [11]。 
+ 
+ 
+ 
+60cm 45cm 30o 45
+o 
+15cm 
+M_AUDIO  
+FireWire 1814 
+NB 
+15 
+ 
+ 
+圖八、主觀評量各組語音的平均分數 
+ 
+以上兩圖可以看出多數評分落在四分，平均分數為 4.08 分。圖八中顯示的 12 組
+分離後的語音，四個一群，依序分別為男女、女女、男男，可以看出男女一組者，
+分離得比較清楚，這應該是男女聲音原本就差別較大的緣故。 
+ 
+ 
+五、訊號分離後的語音增強 
+ 
+經過訊號分離之後取出的語音訊號，仍會含有雜訊，此雜訊即另一個聲源的
+訊號，但強度已減小許多。我們可以用單聲道語音增強(Signal channel Speech 
+enhancement)的方法，讓雜訊的強度降得更低。在一般單通道語音增強的演算中，
+需要估算雜訊的成分，過去已有一些方法被提出，最典型的方法就是最小值控制
+之遞迴平均法規(minima controlled recursive averaging, MCRA)[12]。 
+ 
+5-1 最佳修正對數頻譜預估法(OM-LSA) 
+假設訊號分離演算之後，得到的兩個訊號為 ][1 ny 與 ][2 ny ，對應兩個聲源訊
+號 ][1 ns 與 ][2 ns 。若 ][1 ny 是目標語音，其中主要成份應該是 ][1 ns ，但仍含少許的
+][2 ns ，則這個殘存的 ][2 ns 就視為雜訊。 
+][][][ 11 ndnsny +=             (45) 
+在 ][2 ny 訊號中，主要成份就是 ][2 ns ，因此雜訊可以近似如下 [13]， 
+][][ 2 naynd ≈              (46) 
+為了與 ][1 ny 訊號中的雜訊功率相當，我們將 ][2 ny 訊號乘上一個係數 a。 
+對 ][1 ny 訊號作語音增強時，可以不必另行作雜訊預估，直接把 ][2 ny 訊號引
+進，即可估算雜訊的功率頻譜。將 ][2 ny 訊號乘上分析視窗之後作 Fourier 轉換，
+就得到其頻譜。 
+nk
+N
+jN
+n
+enhlmnylkY
+pi2
+2
+1
+0
+2 ][][),(
+−
+−
+=
++= ∑         (47) 
+17 
+ 
+1])),(|),((),()),(|),(()),(1[(
+)),(|),((),()),(|),(()),(1(
+)),(|),((),()),(|),((),(1(
+)),(1))(,(|),(()),(|),((
+01
+01
+01
+1
+1
++−
+−
+=
++−
+−
+=
+lkHlkYplkqlkHlkYplkq
+lkHlkYplkqlkHlkYplkq
+lkHlkYplkqlkHlkYplkq
+lkqlkHlkYplkYlkHp
+ (60) 
+令 
+)),(|),((
+)),(|),((
+),(
+),(1),(
+0
+1
+lkHlkYp
+lkHlkYp
+lkq
+lkqlk −=Λ         (61) 
+得到 
+),(1
+),()),(|),(( 1 lk
+lklkYlkHP
+Λ+
+Λ
+=          (62) 
+定義事前 SNR 為 
+),(
+),(),(
+lk
+lklk
+d
+s
+λ
+λξ =
+           (63) 
+事後 SNR 為 
+),(
+|),(|),(
+2
+lk
+lkYlk
+dλ
+γ =             (64) 
+計算概似率比值 
+)},(exp{
+1),(
+1
+}
+1),(
+),(),(exp{
+1),(
+1)}
+1),(
+11)(,(exp{
+1),(
+1
+)}),(),(
+),(1(),(
+|),(|
+exp{
+1),(
+1
+}),(),(
+|),(|
+),(
+|),(|
+exp{),(),(
+),(
+)),(|),((
+)),(|),((
+2
+22
+0
+1
+lk
+lk
+lk
+lklk
+lklk
+lk
+lk
+lklk
+lk
+lk
+lkY
+lk
+lklk
+lkY
+lk
+lkY
+lklk
+lk
+lkHlkYp
+lkHlkYp
+ds
+d
+d
+dsdds
+d
+υξ
+ξ
+ξγξξγξ
+λλ
+λ
+λξ
+λλλλλ
+λ
++
+=
+++
+=
++
+−
++
+=
++
+−
++
+=
++
+−
++
+=
+ (65) 
+其中 
+),(),(1
+),(),( lk
+lk
+lklk γξ
+ξ
+υ
++
+=           (66) 
+最後得到 
+)},(exp{),(
+1
+),(
+),(1),( lk
+lklkq
+lkqlk υξ
+−
+=Λ         (67) 
+ 
+求解最佳的增益函數(Gain function)， ),( lkG ，就是要得到(49)式的結果，使
+估算出來的 ),(ˆ lkS 最接近真正的聲源訊號 ),( lkS ，也就是使得估算差值 DE 為最
+小。 
+}|)),(ˆ|log|),(|{(log 2lkSlkSEED −=                       (68) 
+解得的結果是 
+)}),(||),(|{logexp(|),(ˆ| lkYlkSElkS =                       (69) 
+19 
+ 
+
+
+
+
+
+
+
+
+<
+<≤
+<≤
+<≤
+≥
+=
+          0      ,1
+30      ,2
+4.83   ,3
+68.4   ,4
+              6   ,5
+dBSNR
+dBSNRdB
+dBSNRdB
+dBSNRdB
+dBSNR
+β           (79) 
+ 
+ 
+5-3 實驗 
+ 
+我們採用 16 kHz 取樣頻率作錄音，錄音介面為 M-Audio Firewire 1814，用
+兩個動圈式麥克風收音，目標語音與雜訊從兩個喇叭播放，圖十是實驗設定的示
+意圖。語音取自 15 男 15 女的 TCC300 語料，雜訊則是從 AURORA2 語料中取
+出的人聲雜訊(babble noise)，街道雜訊(street noise)，及樂音雜訊(music noise)，
+目標語音與雜訊同時被麥克風收音，麥克風端的 SNR 值安排成 5 dB、0 dB、-5 
+dB、-10 dB、與-15 dB 五種情況。語音增強的成效評量，是經過聲音分離(ICA
+演算)、經過語音預估(OM-LSA 演算)、及經過後置處理的連續三個過程之後，
+SNR 的連續改進值 [13]。表四列出模擬結果，以 SNR 連續改進值(dB)表示。 
+表四、各階段之 SNR 改進。 
+(a)15 個男性語音的平均 SNR 改進 
+ 麥克風收
+到訊號的
+SNR 
+經過聲音
+分離後的
+SNR 改進 
+(dB) 
+經過語音
+預估後的
+SNR 改進 
+(dB) 
+經過後置處
+理後的 SNR
+改進 (dB) 
+最後的
+SNR 
+人聲雜訊
+(babble 
+noise) 
+5 dB 2.8 2.9 -1.0 9.7 dB 
+0 dB 7.7 2.0 0.8 10.5 dB 
+-5 dB 12.0 2.8 1.6 11.4 dB 
+-10 dB 15.0 2.8 2.7 10.5 dB 
+-15 dB 17.0 3.4 3.5 8.9 dB 
+街道雜訊
+(street 
+noise) 
+5 dB -1.0 1.1 2.3 7.4 dB 
+0 dB 4.3 1.1 1.8 7.2 dB 
+-5 dB 8.9 1.1 1.5 6.5 dB 
+-10 dB 12.0 1.7 1.7 5.4 dB 
+-15 dB 14.0 1.5 3.7 4.2 dB 
+樂音雜訊
+(music 
+5 dB 3.2 0.9 1.2 10.3 dB 
+0 dB 8.2 1.2 1.6 11.0 dB 
+21 
+ 
+圖十則是女性語音的例子。 
+ 
+ 
+(a)原始語音訊號 
+ 
+ 
+(b)含人聲雜訊( dBSNR 10−= )的語音訊號 
+ 
+ 
+(c) 經過聲音分離(ICA 演算)的語音訊號 
+ 
+23 
+ 
+ 
+(b)含樂音雜訊( dBSNR 10−= )的語音訊號 
+ 
+ 
+(c) 經過聲音分離(ICA 演算)的語音訊號 
+ 
+ 
+(d) 經過語音預估(OM-LSA 演算)的語音訊號 
+ 
+ 
+25 
+ 
+[7] D. T. Pham. “Joint approximate diagonalization of positive definite Hermitian 
+matrices.” SIAM Journal on Matrix Analysis and Applications, vol. 22, no. 4, pp. 
+1136-1152, 2000 
+[8] N. Murata, S. Ikeda, and A. Ziehe, “An approach to blind source separation based 
+on temporal structure of speech signals,” Proc. IEEE Int. Conf. Artificial Neural 
+Networks, 1998. 
+[9] Seungjin Choi, Shun-ichi Amari, Andrzej Cichocki, and Ruey-wen Liu. “Natural 
+gradient learning with a nonholonomic constraint for blind deconvolution of multiple 
+channels.” Proc. of International Workshop on Independent Component Analysis and 
+Blind Signal Separation, Aussois, France, pp. 371-376, 1999. 
+[10] S. H. Chen and H. C. Wang, “A Speedup Method for the Separation of Speech 
+Signals in Frequency Domain,” Int. Symp. Chinese Spoken Language Processing, 
+ISCSLP 2010. 
+[11] Zhao-Xi Chen, “A real-time speech separation system based on joint approximate 
+diagonalization algorithm,”  Master Thesis, National Tsing Hua University, 2010. 
+[12] Y. Ephraim and D. Malah, “Speech enhancement using a minimum mean-square 
+error short-time spectral amplitude estimator,” IEEE Transactions on Acoustics, 
+Speech, and Signal Processing, Vol. 32, No.6, pp. 1109-1121, 1984. 
+[13] Ming-Jun Lee , “A study on speech enhancement using independent component 
+analysis, log-spectral amplitude estimation, and frequency component modification 
+techniques,”  Master Thesis, National Tsing Hua University, 2007. 
+[14] Israel Cohen and Baruch Berdugo, “Speech enhancement for non-stationary 
+noise environments,” Signal Processing, Vol. 81, pp. 2403-2418, 2001.  
+ 
+ 
+ 
+97年度專題研究計畫研究成果彙整表 
+計畫主持人：王小川 計畫編號：97-2221-E-007-071-MY2 
+計畫名稱：以獨立成份分析與麥克風陣列作語音增強之研究 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 2 0 100%  
+博士生 1 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

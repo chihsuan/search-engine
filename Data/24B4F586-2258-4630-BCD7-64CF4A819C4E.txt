@@ -1,0 +1,730 @@
+一、前言及研究目的 
+The Internet applications such as World Wide Web (WWW) and P2P applications have 
+generated tremendous network traffic on the Internet and hence consume a large percentage 
+of the Internet bandwidth. If the Internet is able to continue supporting good quality of 
+service, the next-generation IP routers have to provide faster packet forwarding rate and 
+quicker adaptation to route changes. All tasks that have to be executed by the router after 
+receiving a packet can be divided into time-critical (fast path) and non-time-critical (slow 
+path) operations depending on the packet type and its frequency. Time-critical operations that 
+are operated on majority of the packets must be implemented in a highly efficient and 
+optimized manner to keep up with the high link speed and router bandwidth. Among all the 
+tasks performed by the router [4], IP table lookups are the most time consuming. In table 
+lookups, the destination addresses are looked up against a forwarding table by a forwarding 
+engine that determines the next-hops in the network, where the packets should be sent. 
+Existing IP table lookup schemes can be broadly classified into two categories: static 
+and dynamic. The static schemes are designed with the assumption that the forwarding table 
+is not frequently updated. A forwarding table precomputation is typically needed in static 
+schemes for improving lookup speed and reducing memory requirement. The disadvantage of 
+static schemes is that when a single prefix is added or deleted, the entire forwarding table 
+may need to be rebuilt. Rebuilding a forwarding table has a negative impact on the lookup 
+performance of routers. On the other hand, in dynamic schemes, frequent insertions and 
+deletions [18] are performed in real time, and thus forwarding table rebuilding is not required. 
+In this report, we will present four different schemes which can forward packet in high 
+speeds while still allowing for frequent updates of the routing table. 
+In order to achieve high packet forwarding rate, multi-bit tries are the well-know data 
+structures that are often used to represent the routing tables [28, 34, 30, 8]. Multibit tries can 
+finish one lookup operation in a bounded number of memory references. However, the 
+drawbacks of multi-bit tries are the large memory consumption and the poor update 
+performance due to the routes changes. To reduce the memory consumption of multi-bit tries, 
+many researchers have focused on the optimization issues of multi-bit tries in terms of the 
+memory consumption [34, 30]. In contrast, researches that deal with the update-optimal 
+multi-bit tries are rare. This report will first represent on finding the optimal multi-bit tries in 
+terms of update costs for the fixed-stride multi-bit tries (FST) and the variable-stride multi-bit 
+tries (VST), respectively. 
+Besides the static algorithms, we will also propose a B-tree structure called Multiway 
+Most Specific Tree (MMSPT) to solve the IP Lookup problem. 
+In this report, we also solve the IP table lookup problem by treating prefixes in the 
+forwarding table as ranges. A range [e, f] matches the destination address d iff e ≤ d ≤ f. The 
+proposed data structure called dynamic multiway segment tree (DMST) is suitable for 
+ 2
+increases the update time and memory requirement. Another B-tree-based data structure 
+called RIBT is proposed in [23] for solving this drawback by storing a range in only O(1) 
+B-tree nodes in each level of B-tree. The asymptotic complexity of PIBT to find the longest 
+matching prefix is the same as MRT, and the measured time for the search operations is 
+almost the same for RIBT and MRT using real routing tables. However, RIBT is more 
+memory efficient than MRT by a constant factor. In addition to the B-tree based algorithms 
+mentioned above, Sun and Zhao [35] proposed some compression techniques that try to put 
+as many nodes as possible into the B-tree nodes in order to fit entire routing table in the 
+on-chip memory of a single chip. However, no efficient update algorithms can be supported 
+because their compression techniques need precomputations. Also, the on-chip memory is 
+expensive and the capacity of the on-chip memory is always limited by the chip area. The 
+off-chip memory used in the proposed pipelined architecture is cheap and can be much larger 
+than the on-chip memory for holding a very large routing table. Also, our proposed algorithm 
+support dynamic updates. 
+Now, it is necessary to decide how to store these keys in the B-tree. In MRT, all keys are 
+stored in the leaf nodes at the bottom level of the B-tree. To build a multiway search tree, 
+some of the keys in the leaf nodes are sent to upper levels. How many keys are sent up 
+depends on the node order m. The process in which some of the keys in the leaf nodes are 
+sent to upper levels will be performed repeatedly until the top level contains only one node. A 
+key may be stored twice in MRT. Thus, the process of inserting or deleting an end point of 
+the new range is complicated because at least two B-tree nodes are involved. In RIBT and the 
+proposed DMST, each key is only stored in one node. Because of the different ways to store 
+keys, the intervals in RIBT or address spans in MRT are defined differently. 
+ 
+三、研究方法 
+3.1 Dynamic Multiway Segment Tree for IP Lookups and the Fast Pipelined Search 
+Engine 
+A dynamic multiway segment tree (DMST) is proposed for IP lookups in this report. 
+DMST is designed for dynamic routing tables that can dynamically insert and delete prefixes. 
+DMST is implemented as a B-tree that has all distinct end points of ranges as its keys. The 
+complexities of search, insertion, deletion, and memory requirement are the same as the 
+existing multiway range tree (MRT) and prefix in B-tree (PIBT) for prefixes. In addition, a 
+pipelined DMST search engine is proposed to further speed up the search operations. The 
+proposed pipelined DMST search engine uses off-chip SRAMs instead of on-chip SRAMs 
+because the capacity of the latter is too small to hold large routing tables and the cost of the 
+latter is too expensive. By utilizing current FPGA and off-chip SRAM technologies, our 
+proposed five-stage pipelined search engine can achieve the worst case throughputs of 33.3 
+and 41.7 million packets per second (Mpps) with 144-bit and 288-bit wide SRAM blocks, 
+ 4
+in a TCAM-based parallel search engine is proposed in [2]. We will describe the design in [2] 
+and its flaw and propose an improved design whose logic is simpler and faster. 
+The main design flaw of the contention resolver in [2] is that the converted priority (i.e., 
+Hix) can not be used to distinguish whether the request signal Reqix of a selector is set or not. 
+As a result, a non-requesting selector may be selected as shown in the example of Table 3.2.1. 
+This design flaw also slows down the speed of the contention resolver because the special 
+case of all requesting selectors having a priority zero must be handled by some additional 
+equations (i.e., equations (5)–(7)). To solve this design flaw, we add one more bit at the Mth 
+bit position in Ai and Hix to make them M bits wide. Our design achieves the following four 
+goals. 1) Non-requesting selectors will not be selected, 2) Only the requesting selector with 
+the highest priority will be selected, 3) If more than one selectors have the highest HP, the 
+one with the lowest ID is selected, 4) No selector starves. 
+Table 3.2.1 lists the equations that implement the proposed contention resolver. We 
+compute Ai in (8) by setting Ai[M] = 1 and other M – 1 bits of Ai to be the highest HP among 
+all the requesting selectors. The converted HP values (i.e., Hix) are computed in (9) by setting 
+Hix[M] = Reqix and the other M – 1 bits of Hix to be HPx. In (10), the signal Bix is set if Ai is 
+equal to Hix, or reset otherwise. In other words, if there is a bit position j{1,…,M} such that 
+Ai[j]  Hix[j] then Bix must be zero. Thus, the signal Bix corresponding to a non-requesting 
+selector x must be zero because Ai[M]= 1 and Hix[M] = Reqix = 0. There may be more than 
+one requesting selectors with the highest HP whose Bix will be set to 1. Therefore, we use (11) 
+to select the one with the lowest ID among all the selectors whose Bix is one. Because the 
+selector that is on hold for M – 1 cycles will be the only one having highest HP of 1…1 (M 
+1s), it will be selected within M cycles and thus will not starve. The proposed contention 
+resolver clearly uses less number of logic equations than that in [2]. 
+ 
+3.3 A Fast and Memory Efficient Dynamic IP Lookup Algorithm Based on B-Tree 
+We propose a B-tree data structure, called MMSPT (Multiway Most Specific Prefix 
+Tree), which is constructed by using the most specific prefixes in routing tables. MMSPT 
+arranges the most specific prefixes as the keys in B-tree. Unlike the previous schemes, every 
+prefixes in routing tables is stored exactly once in our MMSPT. For a routing table of n 
+prefixes, MMSPT requires O(n) memory, and the time for search, insertion and deletion 
+operations are O(logmn), O(mlogmn), and O(mlogmn), respectively (m is the order of the 
+B-tree). Our experimental results conducted by using five real IPv4 routing tables show that 
+MMSPT outperforms two existing B-tree data structures, PIBT (Prefix In B-Tree) [23] and 
+MRT (Multiway Range Tree) [38], in all aspects. Moreover, since the complexities of 
+MMSPT is not subject to the length of IP addresses, the proposed MMSPT can be easily 
+extended to fit the IPv6. 
+3.4 Update-aware Controlled Prefix Expansion for Fast IP Lookups 
+ 6
+SRAMs. We will explain the impact of updates on search performance is minimal later.  
+To measure the search time, the simulation IP traffic is obtained by first collecting the 
+start addresses of all prefixes in the original routing table. Then, the IP addresses are 
+randomized and fed them into our simulator that implements the proposed DMST scheme to 
+obtain the average search times. In order to obtain the update performance results, the data 
+structure for the proposed DMST scheme is first constructed according to the original routing 
+table. Next, we randomly delete 10% prefixes from the structure we built and then insert 
+these deleted 10% prefixes back into the structure. The average update times in the slow path 
+and number of SRAM nodes to be modified are reported. The performance of the proposed 
+DMST scheme is also compared with two existing B-tree-based schemes, namely MRT [38] 
+and PIBT [23]. The experimental results are based on five real-life IPv4 routing tables 
+obtained from [6] and [36]. The simulation programs are written in C and gcc-3.2.2 compiler 
+of Redhat 9.0 with an optimization level –O4 is used. The simulations are run on a 2.5-GHz 
+Intel Core 2 Quad Q9300 PC that has 432 KB 8-way set associative L1 cache of 64-byte 
+blocks, 23072 KB 12-way set associative L2 cache of 64-byte blocks, and 4-GB main 
+memory. The instruction called RDTSC (ReaD Time Stamp Counter) is also used to keep an 
+accurate count of every clock cycle that occurs in the processor. 
+Table 4.1.1 and Figure 4.1.1 present the performance results of order 32 for DMST, 
+Figure 4.1.1 Performance comparisons.
+(a) Memory usage in MByte. (b) Search time in sec. 
+0
+1,000
+2,000
+3,000
+4,000
+5,000
+6,000
+AS6447a AS6447b AS6447c AS7660 AS2493
+Routing Table
+M
+em
+or
+y 
+U
+sa
+ge
+ (K
+B
+)
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+AS6447a AS6447b AS6447c AS7660 AS2493
+Routing Table
+Se
+ar
+ch
+ T
+im
+e 
+(μs
+ec
+)
+MRTMRT
+PIBTPIBT
+DMSTDMST
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+AS6447a AS6447b AS6447c AS7660 AS2493
+U
+pd
+at
+e 
+Ti
+m
+e 
+(μs
+ec
+)
+0
+1
+2
+3
+4
+5
+6
+7
+AS6447a AS6447b AS6447c AS7660 AS2493
+Se
+ar
+ch
+ P
+ac
+ke
+t (
+M
+pp
+s)
+MRT MRT
+PIBTPIBT
+DMSTDMST
+Routing Table Routing Table
+(c) Search time in Mpps. (d) Update time in sec. 
+ 8
+Table 4.1.2 The performance of DMST search engine, where we assume packets are the 
+minimal Ethernet packet of size 64 bytes. 
+Memory usage and on-chip cost  Search Update
+ number of nodes throughput 
+(average/worst-case) 
+RAM which is faster than the implementation by the distributed RAM of the on-chip 
+configurable logic. Based on our experiments, the 12-bit segmentation table consumes only 
+two block RAM blocks.  
+For the search performance, we report the average numbers of nodes accessed per search 
+and the worst-case number of nodes accessed per search in the maximal segment tree in 
+column 8 of Table 4.1.2. The latter represents the worst-case number of off-chip memory 
+accesses. Other than stage 2 that performs the read operations on off-chip SRAMs, stage 3 of 
+the proposed pipelined architecture is the slowest stage which takes a processing delay of 
+4.94 ns and 5.11 ns for 144-bit and 288-bit nodes, respectively. Since the off-chip SRAMs 
+only have a few operating frequencies available (e.g., 250, 200, 166, and 133 Mhz), we have 
+to select the one that meets the processing delay requirement of no smaller than 4.94 ns or 
+5.11 ns. Thus, the best operating frequencies of the off-chip SRAMs are 200 Mhz and 166 
+Mhz for the pipelined architectures of 144-bit and 288-bit nodes, respectively. The processing 
+time taken by stage 2 depends on I/O delays of both FPGA device and off-chip SRAM. In our 
+case, Xilinx Virtex-5 XC5VLX330T FPGA has an output delay of 2.83 ns and an input delay 
+of 2.03 ns. Cypress Pipelined Sync SRAM CY7C1347G-200Mhz [10] is a possible solution 
+because of the following reasons. First, Cypress CY7C1347G has an input delay of 1.2 ns. By 
+including the output delay of Xilinx Virtex-5 XC5VLX330T FPGA which is 2.83 ns, the total 
+delay from FPGA to SRAM becomes 4.03 ns. Second, Cypress CY7C1347G has an output 
+delay of 2.8 ns. By including the input delay of Xilinx Virtex-5 XC5VLX330T FPGA which 
+is 2.03 ns, the total delay from SRAM to FPGA becomes 4.83 ns. Both the delays from FPGA 
+to SRAM and from SRAM to FPGA are less than 5 ns. As a result, by using Cypress 
+Pipelined Sync SRAM CY7C1347G-200Mhz as the choice of off-chip SRAM, the proposed 
+pipelined architecture of 144-bit nodes can be set at the cycle time of 5 ns. However, for the 
+pipelined architecture of 288-bit nodes, we have to use Cypress Pipelined Sync SRAM 
+ 
+Routing 
+Tables Total
+Max.  
+segment 
+off-chip
+SRAM
+(Mb)
+on-chip 
+configurable
+logic 
+(slice) 
+pipeline
+cycle
+time 
+(ns) 
+Number 
+nodes 
+accessed 
+per search 
+(avg/max) Mpps Gbps 
+average 
+number of 
+nodes 
+modified 
+per update
+AS6447a 45,400   788  6.23 4.50/6 44.4/33.3 22.8/17.1 2.75 
+AS6447b 67,556   964  9.28 4.66/6 42.9/33.3 22.0/17.1 2.66 
+AS6447c 85,018 1,036 11.68 4.68/6 42.7/33.3 21.9/17.1 2.52 
+AS7660 81,662
+144-bit 
+  874 11.21 4.57/6 43.8/33.3 22.4/17.1 2.51 
+node 463 5 
+(5-way) 
+AS2493 80,532   870 11.06 4.59/6 43.6/33.3 22.3/17.1 2.52 
+AS6447a 22,201   346  6.10 3.21/4 51.9/41.7 26.6/21.3 2.46 
+AS6447b 31,880   430  8.76 3.29/4 50.7/41.7 25.9/21.3 2.44 
+AS6447c 39,449   464 10.83 3.29/4 50.7/41.7 25.9/21.3 2.29 
+AS7660 37,959   381 10.43 3.22/4 51.8/41.7 26.5/21.3 2.30 
+288-bit 
+node 
+(10-way) 
+AS2493 37,431
+575 6 
+3.20/4 52.1/41.7   390 10.28 26.7/21.3 2.29 
+Note: the 12-bit segmentation table consumes 2 block RAM blocks 
+ 10
+Ethernet packets of size 64 bytes, the overall throughputs will be 102 Gbps and 85 Gbps for 
+the search engines of 144-bit and 288-bit nodes, respectively. Note that the throughputs are 
+independent of routing table sizes. In Table 4.1.3, we also show the total number of nodes 
+needed in each level. For example, there are 4096 and 2997 144-bit nodes in levels 1 and 2 of 
+the 5-way search engine, respectively for routing table AS6447a. The update speed will 
+remain the same as before.  
+In practice, the idea of using multiple off-chip SRAMs in the extended DMST search 
+engine to speed up the search performance is limited by the number of I/O pins provided 
+FPGA devices. If a single FPGA device provides less number of I/O pins than needed, we 
+have to use multiple FPGA devices. In our case, Xilinx Virtex-5 XC5VLX330T FPGA has 
+only 960 I/O pins which is less than needed (about 1087 pins) for the extended architecture of 
+144-bit nodes with four off-chip SRAMs. A simple solution is to use two Xilinx Virtex-5 
+XC5VLX330T FPGA devices. Since there is one more stage needed between the two FPGA 
+devices, the total number of stages in the extended DMST search engine is 31 instead of 30. 
+4.2 Design Contention Resolver for a TCAM-based Parallel Architecture 
+To show the speed and cost advantage of the proposed contention resolver over the one 
+in [2], we conduct simulations by using Verilog HDL synthesized in Synopsys design vision 
+with the standard cell from Artisan TSMC 0.18μm cell library. With the number of selectors 
+(M) varying from 4 to 15, our results show that the proposed contention resolver needs only 
+53%-71% of the chip area and 67%-77% of the critical path delay needed in [2]. 
+4.3 A Fast and Memory Efficient Dynamic IP Lookup Algorithm Based on B-Tree 
+a. Simulation Environment 
+We programmed all tested schemes in C and all codes were run on a 2.4GHz Pentium 4 
+PC that has 8KB L1, 256KB L2 caches, and 512MB main memory. The gcc-3.2.2 compiler 
+of the Redhat 9.0 with optimization level –O4 was used. Moreover, an instruction of the Intel 
+processor called RDTSC (ReaD Time Stamp Counter) is used. This instruction can keep an 
+accurate count of every clock cycle that occurs on the processor. We use this instruction to 
+estimate the speeds of the search, insert, delete time, respectively. 
+b. Tested Data and Tested Schemes 
+Our experiments are conducted by using five real BGP routing tables with different size. 
+Table II shows the detailed information of these five routing tables. The routing tables having 
+the same name (in AS number) means they were obtained from the same BGP backbone 
+router at different dates, and the first three routing tables with the same name are obtained 
+from [25] and other two were obtained from [6]. We can see the routing table AS6447, as 
+time goes on, it grows rapidly. Moreover, the number of prefixes shown in the third row of 
+Table II reveals the current BGP routing tables deployed on the Internet are all very large. 
+We compare our MMSPT with multiway range tree (MRT) [38], prefix in B-tree (PIBT) [23], 
+and prefix binary tree on binary tree (PBOB) [22] in terms of memory usage, lookup speed, 
+ 12
+0
+1000
+2000
+3000
+4000
+5000
+6000
+7000
+8000
+9000
+10000
+11000
+(AS6447
+2000-
+4/79560)
+(AS6447
+2002-
+4/124824)
+(AS6447
+2005-
+4/163574)
+(AS7660
+2005-
+4/159816)
+(AS2493
+2005-
+4/157118)
+Routing Table (AS number and date/# of entries)
+M
+em
+ory
+ U
+sag
+e (
+KB
+)
+MMSPT PIBT MRT PBOB
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+1.4
+(AS6447
+2000-
+4/79560)
+(AS6447
+2002-
+4/124824)
+(AS6447
+2005-
+4/163574)
+(AS7660
+2005-
+4/159816)
+(AS2493
+2005-
+4/157118)
+Routing Table (AS number and date/# of entries)
+Se
+arc
+h T
+im
+e (
+μ
+sec
+)
+MMSPT PIBT MRT PBOB
+Figure 4.3.1  Memory usage of each 
+scheme for five real BGP routing tables 
+Figure 4.3.2 Search time of each scheme 
+for five real BGP routing tables 
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+1.4
+1.6
+1.8
+(AS6447
+2000-
+4/79560)
+(AS6447
+2002-
+4/124824)
+(AS6447
+2005-
+4/163574)
+(AS7660
+2005-
+4/159816)
+(AS2493
+2005-
+4/157118)
+Routing Table (AS number and date/# of entries)
+Ins
+ert
+ Ti
+me
+ (μ
+sec
+)
+MMSPT PIBT MRT PBOB
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+1.4
+1.6
+1.8
+2
+2.2
+(AS6447
+2000-
+4/79560)
+(AS6447
+2002-
+4/124824)
+(AS6447
+2005-
+4/163574)
+(AS7660
+2005-
+4/159816)
+(AS2493
+2005-
+4/157118)
+Routing Table (AS number and date/# of entries)
+De
+let
+e T
+im
+e (
+μ
+sec
+)
+MMST PIBT MRT PBOB
+Figure 4.3.3 Insertion and deletion times of each scheme for five real BGP routing tables 
+keys while MRT and PIBT store 2n keys. Hence, the height of MMSTPT is lower than those 
+of MRT and PIBT. That is the reason why the search speed of MMSPT is faster than MRT 
+and PIBT. 
+e. Insertion Time and Deletion Time 
+To measure the insertion time and the deletion time, we first constructed each scheme 
+according to the original routing table; further, we randomly deleted 5 percent prefixes from 
+the structure we built. The total elapsed time to delete these 5 percent prefixes divided by the 
+number of these 5 percent prefixes is the average time for a single deletion. We proceed to 
+insert these deleted 5 percent prefixes back into the structure. The total elapsed time to insert 
+these 5 percent prefixes back divided by the number of these 5 percent prefixes is the average 
+time for a single insertion. 
+For a prefix p, the insertion/deletion of p in/from MRT and PIBT are a three-pass 
+procedure including 1) inserting/deleting start(p), 2) inserting/deleting finish(p), 3) 
+inserting/deleting p itself. However, the insertion and deletion processes of MMSPT and 
+ 14
+five BGP routing tables. As we can see, the insertion and deletion time of MRT and PIBT are 
+the worst. Since PBOB is a balanced binary search tree, to maintain the balance of the tree, 
+the insertion and deletion of PBOB often involve one or several rotations. Rotations can 
+seriously affect the performance of insertion and deletion of PBOB. Contrast with MMSPT, 
+the number of split and merge operations caused by insertion and deletion are relatively small 
+(when m is acceptably large). Hence, MMSPT has better insertion and deletion time than 
+PBOB. 
+ 
+(a) (b)
+ Figure 4.3.1 Performance of FSTs
+designated by CPE and proposed UCPE in
+terms of (a) time requirement for search
+(in nsec), (b) time requirement for update
+(in nsec), and (c) memory requirement for
+update (in KBytes)  
+(c) 
+(b)
+(a) 
+ Figure 4.3.2 Performance of VSTs
+designated by CPE and proposed UCPE in
+terms of (a) time requirement for search (in
+nsce), (b) time requirement for update (in
+nsce), and (c) memory requirement for
+update (in KBytes) 
+(c) 
+ 16
+we built and then inserted these deleted 5 % prefixes back into the structure. The total elapsed 
+time to delete and insert these 25 % prefixes divided by double the number of these 25 % 
+prefix is the average time for a single update we measured. Simulation results in searching 
+and update of FST are illustrated in Figure 4.3.1, and the results of VST are illustrated in 
+Figure 4.3.2. 
+c. Results for IPv6 
+For IPv6 the width of an IP is 128-bit, there are most 128 bits could be used in a single 
+prefix, which is quite larger than that in IPv4. For our experiment we used several IPv6 tables 
+in which all IP used only first 64 bits, because the last 64 bits are MAC, which we are not 
+able to obtain. Thus, we easily apply our dynamic programming scheme to 64 bits as highest 
+bit position. The IPv6 tables we used are presented in Table 4.3.3. For shortly description our 
+experiment we used table 5000_table as a sample. By observation we found most prefixes are 
+with prefix length 32, 38 and 40. The minimal-storage FSTs solutions a minimal-update tries 
+solutions determined by original controlled prefix expansion and our proposed scheme are 
+presented in Table 4.3.4. Simulation performance in searching and update of FST are 
+illustrated in Figure 4.3.3. 
+ 
+五、結論 
+IP Lookup is the core function of the router design. The ability to achieve high 
+forwarding rate while remain enough performance slot for handling frequent router table 
+update has become the main challenge for design a efficient IP Lookup scheme. In this report, 
+we present several schemes for solving the above issues. Basically, the algorithms for IP 
+Lookup problem can be classified to two groups based on if the whole data structure need to 
+be rebuilt or not when routing table updating is required. 
+In static based schemes, we present Update aware Controlled Prefix Expansion (UCPE). 
+The scheme enhance the well known static algorithm Controlled Prefix Expansion (CPE) for 
+handling high frequently updating situation. 
+On the other hand, we develop dynamic based schemes such as Multiway Most Specific 
+Prefix Tree (MMSPT) and Dynamic Multiway Segment Tree (DMST).  
+The experiments results show that the present schemes outperform than previous 
+schemes both in IPv4 and IPv6 environments. 
+To further improve the throughput, we also propose the FPGA design based on the 
+DMST. As the performance evaluation, the design can achieve 102 Gbps for minimal 
+Etherent packets. 
+ 
+六、參考文獻 
+[1] A. Feldman and S. Muthukrishnan, “Tradeoffs for Packet Classification,” Proceeding of 
+ACM SIGCOMM, vol. 3, pp. 1193-1202, March 2000. 
+ 18
+Trans. Computers, vol. 53, no. 10, pp. 1217-1230, Oct. 2004. 
+[22] H. Lu and S. Sahni, “Enhanced Interval Trees for Dynamic IP Router-Tables,” IEEE 
+Trans. Computers, vol. 53, no. 12, pp. 1615-1628, Dec. 2004. 
+[23] H. Lu and S. Sahni, “A B-Tree Dynamic Router-Table Design,” IEEE Trans. Computers, 
+vol. 54, no. 7, pp. 813-824, July 2005. 
+[24] E. McCreight, “Priority Search Trees,” SIAM J. on Computing, vol. 14, no. 2, pp. 
+257-276, 1985. 
+[25] D. Meyer, University of Oregon Route Views Archive Project, at 
+http://archive.routeviews.org/. 
+[26] S. Nilsson and G. Karlsson, “IP-Address Lookup Using LC-Tries,” IEEE J. on Selected 
+Areas in Comm., vol. 17, no. 6, pp. 1083-1092, June 1999. 
+[27] RIPE Network Coordination Centre, http://www.ripe.net/. 
+[28] M. Ruiz-Sanchez, E. Biersack, and W. Dabbous, “Survey and Taxonomy of IP Address 
+Lookup Algorithms,” IEEE Network, vol. 15, no. 2, pp. 8-23, Mar./Apr. 2001. 
+[29] S. Sahni, K. Kim, and H. Lu, “Data Structure for One-Dimensional Packet Classification 
+using Most-Specific-Rule Matching,” Proc. Int’l Symp. Parallel Architecture, 
+Algorithms, and Networks (ISPAN), pp. 3-14, May 2002. 
+[30] S. Sahni and K. Kim, “Efficient Construction of Multibit Tries for IP Lookup,” 
+IEEE/ACM Trans. Networking, vol.11, no.4, pp.650-662, 2003. 
+[31] S. Sahni and K. Kim, “An O(logn) Dynamic Router-Table Design,” IEEE Trans. 
+Computers, vol. 53, no. 3, pp. 351-363, Mar. 2004. 
+[32] R. Sangireddy, N. Futamura, S. Aluru, and A.K. Somani, “Scalable, Memory Efficient, 
+High-Speed IP Lookup Algorithms,” IEEE/ACM Trans. Networking, vol. 13, no. 4, pp. 
+802-812, Aug. 2005. 
+[33] K. Sklower, “A Tree-Based Packet Routing Table for Berkeley UNIX,” Technical report, 
+University of California, Berkeley, 1993. 
+[34] V. Srinivasan and G. Varghese, “Fast IP Lookups using Controlled Prefix Expansion,” 
+ACM Transactions on Computer Systems, pp.1-40, February 1999. 
+[35] X. Sun and Y.Q. Zhao, “An On-Chip IP Address Lookup Algorithm,” IEEE Trans. 
+Computers, vol. 54, no. 7, pp. 873-885, July 2005. 
+[36] University of Oregon Route Views Archive Project, http://archive.routeviews.org/, 2009. 
+[37] M. Waldvogel, G. Varghese, J. Turner, and B. Plattner, “Scalable High Speed IP Routing 
+Lookups,” Proc. ACM SIGCOMM, pp. 25-36, Oct. 1997. 
+[38] P. Warkhede, S. Suri, and G. Varghese, “Multiway Range Trees: Scalable IP Lookup with 
+Fast Updates,” Computer Networks, vol. 44, no. 3, pp. 289-303, Feb. 2004. 
+[39] Xilinx, “Virtex-5 Family Overview,” Product Specification, DS100 (v5.0), Feb. 2009. 
+[40] K. Zheng and B. Liu, “V6Gene: A Scalable IPv6 Prefix Generator for Route Lookup 
+Algorithm Benchmark,” Proc. IEEE AINA, pp. 147-152, April 2006. 
+ 20
+[11] Yeim-Kuan Chang, Chi-Lu Yang and Chih-Ping Chu"Service Creation and Composition 
+for Realization On Service-oriented Architecture," in Proc. of the 21st International 
+Conference on Software Engineering & Knowledge Engineering (SEKE'2009) Boston, 
+Massachusetts, USA, pp.338-343, July 1-3, 2009. 
+[12] Yeim-Kuan Chang, Yung-Chieh Lin, "A Fast and Memory Efficient Dynamic IP 
+Lookup Algorithm Based on B-Tree," in Proc. of the IEEE 23'rd International 
+Conference on Advanced Information Networking and Applications (AINA-09) pp.278 - 
+284, 26-29 May, 2009. 
+[13] Yeim-Kuan Chang, Yen-Cheng Liu, Fang-Chen Kuo, "A Pipelined IP Forwarding 
+Engine with Fast Update," in Proc. of the IEEE 23'rd International Conference on 
+Advanced Information Networking and Applications (AINA-09) pp.263 - 269, 26-29 
+May, 2009. 
+[14] Yeim-Kuan Chang, Chi-Lu Yang, Chih-Ping Chu, "A Gateway Design for Message 
+Passing on SOA Healthcare Platform," in Proc. of the IEEE International Conference on 
+Service-Oriented System Engineering (SOSE) pp.178 - 183, 18-19 Dec, 2008. 
+[15] Yeim-Kuan Chang, Chi-Lu Yang, Chih-Ping Chu, "A Method to Diagnose 
+Self-weaknesses for Software Development Organizations," in Proc. of the 14th 
+International Conference on Distributed Multimedia Systems (DMS 2008) pp.124 - 129, 
+Sep., 2008. 
+[16] Yeim-Kuan Chang, Chi-Lu Yang, Chih-Ping Chu, "Modeling Services to Construct 
+Service-Oriented Healthcare Architecture for Digital Home-Care Business," in Proc. of 
+the 20th International Conference on Software Engineering and Knowledge Engineering 
+(SEKE'08) pp.351-356, July, 2008. 
+[17] Yeim-Kuan Chang, I-Wei Ting and Min-Yuan Tsai, "Energy-Balanced Broadcasting 
+Scheme for Mobile Ad Hoc Networks," The Fourth Workshop on Wireless Ad Hoc and 
+Sensor Networks (WASN 2008), National Cheng Kung University Tainan, Taiwan, pp. 
+582-588, 4-5 September 2008 
+[18] Yeim-Kuan Chang, Ming-Li Tsai, Yu-Ru Chung, "Multi-Character Processor Array for 
+Pattern Matching in Network Intrusion Detection System," in Proc. of the IEEE 
+International Conference on Advanced Information Networking and Applications 
+(AINA) pp.991 - 996, 25-28 March, 2008. 
+[19] Yeim-Kuan Chang, Ming-Li Tsai , Cheng-Chien Su, "Improved TCAM-based 
+Pre-Filtering for Network Intrusion Detection Systems," in Proc. of the IEEE 
+International Conference on Advanced Information Networking and Applications 
+(AINA) pp.985 - 990, 25-28 March, 2008. 
+[20] Yeim-Kuan Chang, I-Wei Ting, Tai-Hong Lin, "Dynamic Cache Invalidation Scheme in 
+ 22
+表 Y04 
+行政院國家科學委員會補助國內專家學者出席國際學術會議報告 
+                                                           99 年  5 月  4 日 
+報告人姓名  張燕光 
+ 
+服務機構 
+及職稱 
+ 
+成功大學資訊工程系 教授 
+ 
+     時間 
+會議 
+     地點 
+2010/4/20~2010/4/23 
+澳大利亞 伯斯 
+本會核定 
+補助文號 
+NSC 96-2221-E-006-190-MY3 
+會議 
+名稱 
+ (中文) 進階資訊網路與應用會議 2010 
+ (英文) The IEEE 24nd International Conference on Advanced 
+Information Networking and Application 2010 (AINA 2010) 
+發表 
+論文 
+題目 
+Paper 1: 
+ (中文) 用於 NIDS 以預處理為基礎之低成本 NFA 字串比對架構 
+ (英文) The Cost Effective Pre-Processing based NFA Pattern Matching  
+Architecture for NIDS 
+Paper 2: 
+(中文) 用於封包分類之網格化區段樹演算法 
+ (英文) Grid of Segment Trees for Packet Classification 
+報告內容應包括下列各項： 
+一、參加會議經過 
+ 
+    今年第24 屆AINA 國際學術會議，在澳大利亞伯斯的Convention Center 會議
+中心舉辦，除了主要的AINA 會議之外，尚包含20 個workshop 共同於同一地點一
+起舉辦，會議期間為20 號星期二至23 號星期五，每天早晚四個時段，各個時段約
+同時有9 個session 於不同的會議廳發表論文。每天會議的早上皆為keynote 
+speaker 的演講時間，分別邀請了Prof. Lyn Beazley、Prof. Tharam Dillon 、
+Dr. Michael Brodie、Professor IanWhite、Prof. Bogdan M. Wilamowski、Prof. 
+Hai Zhuge、Prof. A. Min Tjoa以及Professor Kwei-Jay Lin等多位學者來作一個
+專題演講。 
+        本人連同二位碩士班研究生，在這次會議中，一共發表兩篇論文，第一篇論文
+探討研究在入侵偵測系統中，如何使用更低成本的硬體空間來達到更有效率的字串
+比對架構，報告論文的時間為20 號星期二下午第一場。第二篇是提出一種較有效
+率的資料結構，以區段數來替換與改善原本使用二元樹為基礎的網格化的數位搜尋
+樹。報告論文的時間為23 號星期五下午第二場。除了我們的研究外，本人亦參與
+數個感興趣及相關的session進行討論，特別是特徵比對以及封包分類的議題。覺
+得各國的研究方法及步驟，部份可值得學習進而觀摩改善。 
+ 
+ 
+ 
+ 
+附
+件
+三
+ 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2010/11/17
+國科會補助計畫
+計畫名稱: 動態的封包路由表查詢及其平行和管線架構的設計與實作
+計畫主持人: 張燕光
+計畫編號: 96-2221-E-006-190-MY3 學門領域: 計算機網路與網際網路
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

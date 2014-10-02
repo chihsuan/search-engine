@@ -1,0 +1,249 @@
+platform and four parts of laboratory exercises to meet 
+the needs.  The educational platform is cheap and 
+simple enough that every student can build his/her own 
+platform during the course.  The servo control of 
+dc-motors is used in this courseware to lead students 
+step by step to get familiar with the digital control 
+theory and the corresponding implementation issues.   
+ 
+II. OVERVIEW OF THE EDUCATIONAL 
+PLATFORM 
+A. Hardware module 
+The educational platform proposed in the open 
+courseware whose block diagram and implementation 
+are shown in figure 1-2 is a single board computer and 
+it costs about NTD$1800 (see table 1 for cost analysis).  
+It consists of an ATmega128 RISC CPU, an RS232 
+port to communicate with a PC, an in system 
+programming (ISP) port for downloading programs 
+from a PC to the 128K byte flash memory, 6 pulse 
+width modulation (PWM) output channels to drive 
+power switches, 8 A/D ports for accessing physical 
+signals, an encoder input port with resolutions being 
+increased 4 times via a programmable logic device 
+(GAL), an LTC-2622 [14] to provide dual 12-bit D/A 
+channels, and several digital I/O ports.  In this 
+educational platform, the H-bridge driver capable of 
+accepting up to 55V voltage source and driving up to 
+3A loads from the National semiconductor Corporation 
+(www.national. com/pf/LM/LMD18200.html) is used 
+as a DC motor driver for convenience, though it is 
+about one-third of the cost of the educational platform. 
+The reasons to choose an 8-bit microprocessor are 
+threefold: 1) the internal flash ROM size (128Kbyte) is 
+quite large, and can be easily accessed via the ISP port; 
+2) software developing environment can be constructed 
+without any additional cost, and 3) the undergraduate 
+students are more familiar with 8-bit micro-controllers.  
+The drawback for this choice is that the computational 
+speed is slower for multiplication and division, 
+although this does not create too much trouble in our 
+laboratory exercises. 
+ 
+Fig.1 The hardware configuration of the educational platform 
+To download programs into the micro-processor by 
+using the ISP port of the educational platform, a simple 
+and cheap hardware interface circuit connected to the 
+printer port of a PC is necessary (www.lancos.com/e2p/ 
+avrisp-stk200.gif).    The idea of 4 times resolution 
+enhancement of encoder signals can be found in an 
+application note [11] by Microchip technology, Inc..  
+In this paper a revised version is devised to not only 
+generate two separate 4 times resolution up and down 
+count signals, but also give an up/down counting signal 
+and a direction signal to meet different needs.   
+ 
+Fig.2 The hardware implementation of the educational platform 
+Table 1. The cost analysis of the educational platform  
+Components and subsystems NTD$ 
+ATmega128_16MHz 
+ 280 
+Resolution enhancement circuit 
+ 100 
+RS232 communication circuit 
+ 40 
+In system programming circuit 
+ 70 
+PCB board 
+ 150 
+LMD18200 H-bridge driver circuit 
+ 600 
+A dc motor with an optical encoder 
+ 400 
+LTC 2622 Dual 12-Bit DACs 
+ 160 
+Total  1800 
+It should be noted that the educational platform also 
+provides a serial peripheral interface (SPI) to 
+communicate with other devices.  For example, a 
+LTC-2622 [14] (shown in figure 3) can be used to 
+provide dual 12-bit D/A channels for signal monitoring 
+on a digital oscilloscope.  Figure 4 shows that the 
+actual rotor position and the control command can be 
+monitored at the same time on a digital storage 
+oscilloscope.   
+ 
+Fig.3 The circuit diagram to provide dual D/A channels for signal 
+monitoring on a digital oscilloscope 
+B. Software module 
+The programming language for the micro-controller 
+AVR ATmega128 used in the educational platform is C, 
+because of its portability and easy readability when 
+B. Part II of laboratory exercises 
+The second part of laboratory exercises is mainly for 
+the basic digital PID controllers with anti-windup 
+functions [8, 5 p.310] which are used for the servo 
+control of dc motors.  The principles of encoders and 
+tachometers which are used as sensors for motor 
+positions and speeds will be first introduced to the 
+students in this part.   
+Students learn later in this part of laboratory exercises 
+how to implement the corresponding codes, what good 
+transient responses are, and why anti-windup functions 
+are needed in practical situations.  Those 
+implementation issues, like the periods of timer 
+interrupts, the overflows of encoder counters, and 
+PWM implementations (unipolar or bipolar) will also 
+be studied. 
+Table 3 is the sample codes for a PID controller with 
+the anti-windup function [8] which are written 
+according to the signal flow diagram in figure 6.  
+ 
+Fig. 6 The signal flow diagram for PID controllers with anti-windup 
+function 
+Table 3: Sample C codes for PID controller with anti-windup function 
+//* software code for PID controller *** 
+now_position = give_positon(); 
+ek_1 = ek; //save previous error 
+//current error 
+ek =  delta_command - now_position; 
+d_out = (ek–ek_1)*kd/100; 
+p_out = ek*kp)/100; 
+//integration of error with saturation 
+sk = sk_1 + uk - dead_zone((saturation(d_out 
++ p_out,saturation_parameter) + sk_1), 
+dead_zone_parameter);  sk_1 = sk; 
+//PID controller with command saturation 
+yk = p_out + (sk*ki)/Fs + d_out; 
+yk = saturation(yk,117)*dir_flag; 
+//calculate and output PWM value 
+pwm_vol = 255-(yk+128); outp(pwm_vol,OCR0); 
+//** read current position **** 
+long give_positon(void){ 
+ timecont1=inw(TCNT1L); 
+ timecont2=inw(TCNT3L); 
+// take care overflow 
+   if(inp(ov1_flag) >= 1){ 
+ position = position + (ov1_flag*65536); 
+// forward run and 16 bit counter is used 
+ timecont1=inw(TCNT1L); ov1_flag=0;  } 
+ if(inp(ov3_flag)>=1){ 
+ position = position - (ov3_flag*65536); 
+// reverse run and 16 bit counter is used 
+ timecont2=inw(TCNT3L); ov3_flag=0;  } 
+//total = all overflow + upcount – downcount} 
+ return (position + (0x0000ffff&timecont1)- 
+ (0x0000ffff&timecont2)); 
+//**saturation subroutine ****** 
+long saturation(long in_value,long limit){ 
+ if(in_value>=limit) {return limit;} 
+ else if(in_value<=(-limit)) 
+  {return (-limit);} 
+ else {return in_value;} } 
+//*** deadzone subroutine ******* 
+long dead_zone(long in_value, long limit){ 
+ if (in_value >= limit) 
+  {return (in_value - limit);} 
+ else if(in_value <= (-limit)) 
+  {return in_value + limit; } 
+ else{return 0;} } 
+ 
+Once the first PID feedback control algorithms [5, 
+p.306] of students are implemented, students can 
+observe at the PC side by using the communication 
+program in figure 5 how the control parameters affect 
+the performances of their servo control system.  For 
+example, oscillations of motor position shown in figure 
+4 can be observed if the closed loop system is an 
+under-damped system. 
+C. Part III of laboratory exercises 
+Since tuning of PID controller parameters may be 
+tedious in practice, techniques [3, 6] in self-tuning 
+adaptive controller design (see figure 7 for the 
+illustration of the algorithm) are then introduced to 
+students after they successfully apply theories to design 
+PID controllers and have the ability to define 
+performance specifications in the servo control 
+problems of dc motors. 
+ 
+Fig. 7 The signal flow diagram for self-tuning adaptive controllers 
+The students would learn the idea of system 
+identification by using recursive least square algorithms 
+in designing self-tuning adaptive controllers.  The 
+identified system parameters are then used to calculate 
+feedforward and feedback gains (see figure 8 for the 
+structure of the self-tuning regulators used in laboratory 
+exercises) such that the poles of the closed-loop system 
+will be located at specified locations which are 
+determined according to performance requirements and 
+system bandwidth.  
+REFERENCES 
+[1] D. S. Bernstein, “Enhancing undergraduate control 
+education,” IEEE Control Systems Magazine, pp. 
+40-43, October 1999. 
+[2] A. Rubaai, “Training of undergraduate engineering 
+students in sensing and control technologies,” 
+International Journal of Engineering Education, 
+Vol. 16, No. 6, pp. 534-543, 2000. 
+[3] Y.-C. Chen and J. M. Naughton, “An 
+undergraduate laboratory platform for control 
+system design, simulation, and implementation,” 
+IEEE Control Systems Magazine, pp. 12-20, June 
+2000. 
+[4] G. F. Franklin, J. D. Powell, and A. Mami-Naeini, 
+Feedback control of Dynamic systems, 4th edition, , 
+chapter 2, Prentice-Hall, Inc., 2002. 
+[5] K. J. Åström and B. Wittenmark, 
+Computer-Controlled Systems: Theory and Design, 
+3rd edition, Prentice-Hall, Inc., 1997. 
+[6] V. Bobál, J. Böhm, and R. Prokop, ” Practical 
+aspects of self-tuning controllers,” International 
+Journal of Adaptive Control and Signal 
+Proccessing, Vol. 13, pp. 671-690, 1999. 
+[7] R. Kelly and J. Moreno, “Learning PID structures 
+in an introductory course of automatic control,” 
+IEEE Transactions on Edcuation, Vol. 44, No. 4, 
+pp. 373-376, November 2001. 
+[8] C. Bohn and D. P. Atherton, “An analysis package 
+comparing PID anti-windup strategies” IEEE 
+Control Systems Magazine, pp. 34-40, April 1995. 
+[9] A. Tornambè, “Analysis and synthesis in the 
+Simulink environment of control laws for dc 
+motors: a real-time implementation with the 
+microcontroller BASIC stamp II as a simple tool 
+for an education control laboratory,” International 
+Journal of Engineering Education, vol. 21, no. 5, 
+pp. 814-837, 2005. 
+[10] J. C. Basilio and M. V. Moreira, “State-space 
+parameter identification in a second control 
+laboratory,” IEEE Transactions on Edcuation, Vol. 
+47, No. 2, pp. 204-210, May 2004. 
+[11] Microchip Technology, Inc., “Servo Control of a 
+DC-Brush Motor,” application note AN532, 1997. 
+[12] Linear Technology, LTC 2622: Dual 12-bit 
+rail-to-rail DACs in 8-lead MSOP, 
+www.linear.com. 
+[13] Basic Stamp microcontrollers, Parallax, Inc., 
+http://www.parallax. com. 
+[14] Basic Stamp FAQ, Parallax, Inc. 
+http://www.parallax.com/dl 
+/docs/prod/stamps/BasicStampFAQ.pdf, 2000. 
+[15] J. Y. Hung, W. Gao, and J. C. Hung, “Variable 
+Structure Control: A Survey,” IEEE Transactions 
+on Industrial Electronics, Vol. 40, No.1, pp. 2-22, 
+Feb. 1993. 
+[16] A. T. Araiza and J. L. M. Medin, “Variable 
+structure with sliding mode controls for dc 
+motors,” Technical proceedings of IEEE 
+International power electronics congress, pp.26-28, 
+Oct. 16-19, 1995. 

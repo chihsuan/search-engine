@@ -1,0 +1,1772 @@
+guess），便成為適合用來做影片分割（video segmentation）的方法，如下圖所示： 
+ 
+ 
+ 
+接著使用 Voodoo Camera Tracker做相機校正（camera calibration）得到每一影格（frame）
+的投影矩陣（projection matrix）。為了擷取出影片中動物的動作，我們需要使用三維幾何模
+型當作參考（reference）。除了本身模型的網格（mesh）所提供的資訊之外，參考模型還會
+另外提供以下的資訊： 
+ 
+1. ASF 檔：這個檔案依據模型的形狀、關節（joint）和骨頭（bone）的性質定義了骨架
+（skeleton）。 
+2. WGT檔：這個檔案定義了骨架如何去影響模型的表面（skin），每一個模型的頂點會被
+許多關節所影響，最後影響的權重為一。 
+ 
+除此之外，還有兩個骨架的限制式是沒有被記錄在 ASF檔： 
+ 
+1. 轉動的限制：有些骨頭是沒有辦法轉動的，例如骨盆。 
+2. 對稱的骨頭：動物擁有對稱的部分，像是右邊前腳會和左邊的前腳對稱。所以對其中
+的一根骨頭做縮放會和對稱的骨頭得到相同的效果。 
+ 
+在我們的方法中，首先會自動的估計參考模型的姿勢，讓他可以去符合影格中目標角色的
+輪廓。我們的物體和影像平面可以相差一個固定的角度而不用完全平行，只要物體移動的
+方向是沿著相同角度的平面即可。動作的重建步驟大致如下： 
+ 
+1. 使用者會被要求從影片中挑選最適合的影格，接著利用旋轉與放大縮小，調整參考模
+型，使得模型可以去符合這個影格中的目標角色。因為輸入的影片是自由移動的單一
+ 
+本系統的結果如下圖所示： 
+ 
+ 
+ 
+三、 室內場景的動態環境光照繪圖 
+PRT（Precomputed Radiance Transfer）被認定為一個很有威力的光照模組，並且許多相關的
+繪圖演算法因此而相繼的被提出來。但是在之前大部分的相關工作之中，室外環境的環境
+光照（environment lighting）是最主要的研究目標。但是，室內環境的光照也有許多相關的
+應用。因此，我們提出了一個利用動態環境光照（dynamic environment lighting）的室內場
+景繪圖系統。首先假設像是建築物或是車子的室內環境，是由許多被動態環境包圍的靜態
+物體們所組成。為了提供一個好的繪圖結果，我們延伸了傳統的 PRT繪圖方法，建立一些
+shell，每個 shell 以光線的入口（portal）為中心。由 shell
+因此，每個 shell都扮演著像是一個環境光照的
+的圖片所決定。藉由不斷的更新每個畫格
+封閉的球體，稱之為室內環境的
+朝向室內空間的光線轉換都會事先被計算，
+點光源一般，而它的強度分布則是由這個場景
+（frame）中的 shell 的強度分布，就有辦法去處理以及掌控殼外面的動態物體（dynamic 
+object）。而光線入口的材質也可以即時的被修改。 
+ 
+要計算室外傳輸到室內的光線，首先要介紹兩個觀念：portals和 shells。portal是指光線在
+房間與房間中傳輸會穿越的空間，在我們的定義中，portal主要代表光線從室外傳輸到室內
+隨會經過的區域，並且假設每個 portal都是由三角型的集合所表示。典型的 portal例子就像
+是一片玻璃的窗戶，或者是一些窗戶的集合。shell則是一個以 portal為中心，封閉的球體，
+將室內空間圍住，每個 shell扮演著環境光照的點光源。就嚴格的定義來說，每個 portal和
+shell存在著一對一的關係。 
+為了要將直接光線編碼，我們使用兩種基底，第一種為脈衝（pulse）函式，第二種為哈爾
+小波（Haar wavelet），視頂點的壓縮比率挑選其中較好的 
+ 
+ 
+ 
+在前計算（precomputation）的部份，主要工作分成計算非直接和直接的光源的組成。針對
+非直接光源的處理步驟如下：(以下步驟針對每個 portal重覆) 
+1. 針對每個基礎函式（basis function）： 
+a) 從 portal追蹤光子（photon） 
+b) 估計每個頂點的光輻射（radiance） 
+2. 針對每個頂點: 
+a) 針對每個基礎函式，進行最後的聚集（final gathering）。 
+之後，在 portal中選擇一個三角形（如下圖中的黃色三角形），並且在上面任意挑一點之後，
+隨機往一個方向發射光線並且追蹤這個光子。下圖中的橘色圓圈指出了光線傳輸反應的地
+點，將會被存入光子地圖中。 
+ 
+ 
+ 
+針對直接光源的處理步驟如下：(以下步驟針對每個 portal和頂點重覆) 
+portal上產生樣本 
+. 將能量函式編碼成 
+a) 脈衝函式 
+b) 哈爾小波 
+5. 將兩種方法的參數量化（quantize）成八位元（8 bits） 
+6. 選擇較佳的壓縮比所得到的結果 
+1. 在
+2. 檢查樣本們和頂點之間的能見度（visibility） 
+3. 將能見度和 BRDF（Bidirectional Reflectance Distribution Function）相乘，並且將能量
+累積進入 cubemap 
+4
+些 portals的直接光源和影子都能被好好捕捉到。 
+ 
+ 
+下圖是在城裡 車子。車子內部被視為室內場景，而城市為動態室外環境，我們可以
+ 
+跑動的
+看出當車子移動時光線分布的變化。 
+ 
+ 
+、 研究成果 
+本研究之主要部份成果已分別於 2009 年的 Pacific-Rim Symposium on Image and Video 
+Technology 2009（同時刊登於 Lecture Notes in Computer Science）與 Pacific Graphics 2009
+（同時刊登於 Computer Graphics Forum）中以 Video-based motion capturing for 
+skeleton-based 3d models [SHIH09] 與 Interactive rendering of interior scenes with dynamic 
+environment illumination [YUE09] 為題進行發表，作者分別為施亮宇、陳炳宇與吳家麟 
+(Liang-Yu Shih, Bing-Yu Chen, and Ja-Ling Wu) 以及樂永灝（日本東京大學博士班中國籍留
+學生）、岩崎慶、陳炳宇、土橋宜典與西田友是 (Yonghao Yue, Kei Iwasaki, Bing-Yu Chen, 
+oshinori Dobashi, and Tomoyuki Nishita)。藉由此一國際合作計畫，我們與日本東京大學之
+CM SIGGRAPH 2009 Posters與 Pacific Graphics 2009
+同時刊登於 Computer Graphics Forum）中以 Extracting depth and matte using a color-filtered 
+aperture [BAND08]、Animating character images in 3d space [CHEN09] 與 Simulation of 
+tearing cloth with frayed edges [META09] 為題進行發表，作者分別為坂東洋介（日本東京大
+學博士班研究生）、陳炳宇與西田友是  (Yosuke Bando, Bing-Yu Chen, and Tomoyuki 
+Nishita)、陳炳宇、戴士強、官順暉與西田友是 (Bing-Yu Chen, Shih-Chiang Dai, Shuen-Huei 
+Guan, and Tomoyuki Nishita) 以及 Napaporn Metaaphanon（日本東京大學碩士班泰國籍留學
+生）、坂東洋介、陳炳宇與西田友是 (Napaporn Metaaphanon, Yosuke Bando, Bing-Yu Chen, 
+and Tomoyuki Nishita)。 
+ 
+ 
+ 四
+Y
+研究團隊亦共同分別於 2008 年的 ACM SIGGRAPH Asia 2008（同時刊登於 ACM 
+Transactions on Graphics）、2009年的 A
+（
+Simulation of tearing cloth with frayed edges. Computer Graphics Forum (Pacific 
+Graphics 2009 Conference Proceedings), Vol. 28, No. 7, 2009. 
+ 23, No. 3, p.309 – p.314, 2004. 
+. Real-time soft shadows in 
+SCHR95a öder and Wim Sweldens. Spherical wavelets: efficiently representing 
+SCHR95b pherical wavelets: texture processing. 
+SLOA02 
+lighting environments. ACM 
+SLOA03a  Snyder. Clustered principal 
+SLOA03b hn Snyder. Bi-scale 
+SLOA05 ed 
+SLOA06 
+ymposium on Image and Video Technology 2009), Vol. 5414, p.748 – 
+TSAI06 r 
+YUE09 saki, Bing-Yu Chen, Yoshinori Dobashi, and Tomoyuki 
+ROTH04 Carsten Rother, Vladimir Kolmogorov, and Andrew Blake. ”grabcut”: interactive 
+foreground extraction using iterated graph cuts. ACM Transactions on Graphics 
+(SIGGRAPH 2004 Conference Proceedings), Vol.
+REN06 Zhong Ren, Rui Wang, John Snyder, Kun Zhou, Xinguo Liu, Bo Sun, Peter-Pike 
+Sloan, Hujun Bao, Qunsheng Peng, and Baining Guo
+dynamic scenes using spherical harmonic exponentiation. ACM Transactions on 
+Graphics (SIGGRAPH 2006 Conference Proceedings), Vol. 25, No. 3, p.977 – p.986, 
+2006. 
+Peter Schr
+functions on the sphere. ACM SIGGRAPH 1995 Conference Proceedings, p.161 – 
+p.172, 1995. 
+Peter Schröder and Wim Sweldens. S
+Proceedings of Eurographics Workshop on Rendering 1995, p.252 – p.263, 1995. 
+Peter-Pike Sloan, Jan Kautz, and John Snyder. Precomputed radiance transfer for 
+real-time rendering in dynamic, low-frequency 
+Transactions on Graphics (SIGGRAPH 2002 Conference Proceedings), Vol. 21, No. 
+3, p.527 – p.536, 2002. 
+Peter-Pike Sloan, Jesse Hall, John Hart, and John
+components for precomputed radiance transfer. ACM Transactions on Graphics 
+(SIGGRAPH 2003 Conference Proceedings), Vol. 22, No. 3, p.382 – p.391, 2003. 
+Peter-Pike Sloan, Xinguo Liu, Heung-Yeung Shum, and Jo
+radiance transfer. ACM Transactions on Graphics (SIGGRAPH 2003 Conference 
+Proceedings), Vol. 22, No. 3, p.370 – p.375, 2003. 
+Peter-Pike Sloan, Ben Luna, and John Snyder. Local, deformable precomput
+radiance transfer. ACM Transactions on Graphics (SIGGRAPH 2005 Conference 
+Proceedings), Vol. 24, No. 3, p.1216 – p.1224, 2005. 
+Peter-Pike Sloan. Normal mapping for precomputed radiance transfer. ACM 
+Interactive 3D Graphics and Games 2006 Conference Proceedings, p.23 – p.26, 
+2006. 
+SHIH09 Liang-Yu Shih, Bing-Yu Chen, and Ja-Ling Wu. Video-based motion capturing for 
+skeleton-based 3d models. Lecture Notes in Computer Science (Proceedings of 
+Pacific-Rim S
+p.758, 2009. 
+Yu-Ting Tsai and Zen-Chung Shih. All-frequency precomputed radiance transfe
+using spherical radial basis functions and clustered tensor approximation. ACM 
+Transactions on Graphics (SIGGRAPH 2006 Conference Proceedings), Vol. 25, No. 
+3, p.967 – p.976, 2006. 
+Yonghao Yue, Kei Iwa
+Nishita. Interactive rendering of interior scenes with dynamic environment 
+illumination. Computer Graphics Forum (Pacific Graphics 2009 Conference 
+Proceedings), Vol. 28, No. 7, 2009. 
+Composition、台灣師範大學張鈞法助理教授的 A Particle-Guided Method for Animating 
+Splashing Stream Water in Real Time 與日本 OLM 公司的 Algorithms for Inter-shape 
+Mapping，均十分具有啟發性，晚上則是前往目黑雅敘園參加晚宴 
+十日主要是參加美國加州大學聖地牙哥分校 Henrik Wann Jensen 副教授以 Simulating 
+the Appearance of Nature 為題所進行的演說，並且參加兩場與 Rendering 及 Global 
+Illumination 相關的論文研討，收穫頗豐，晚上則是前往參加惜別酒會，為這四天的
+會議劃上完美的句點 
+十月十一日～十二日 
+前往千葉縣幕張參加東京電玩展，此為全球最大的電腦遊戲之盛會。今年的東京電
+玩展依舊被視為是前年與去年三大家用遊戲機的戰場延伸，在之前的三大家用遊戲
+機的戰爭中，任天堂的 Wii 大勝 Sony 的 Play Station 3 與 Microsoft 的 Xbox 360，也
+因此後續的三大家用遊戲機的遊戲便被視為是戰場的延伸。在今年的東京電玩展
+中，如同往年一般，大型機台遊戲及個人電腦遊戲均不多見，整個展場均充斥著今
+年底預計上市的三大家用遊戲機的新遊戲，除此之外剩餘的便是手機遊戲，亦可看
+出遊戲市場的重點及未來發展的方向 
+十月十三日 
+搭乘日本航空公司班機由日本東京返回台北 
+ 
+二、與會心得 
+ 
+今年的 Pacific Graphics 2008 國際會議是首度將會議論文直接刊登於知名的 SCI 國際
+期刊 Computer Graphics Forum 之中，而除了 Pacific Graphics 2008 國際會議的會議論
+文之外，自今年起，Computer Graphics Forum 亦同時收錄 Eurographics 2008 國際會
+議、Eurographics Symposium on Rendering 2008 國際會議、Eurographics Symposium on 
+Geometric Processing 2008 國際會議與 Eurographics Symposium on Visualization 2008
+國際會議之會議論文，因此，也是 Pacific Graphics 2008 國際會議擠入一流國際會議
+的第一年，再加上 ACM SIGGRAPH 協會舉辦了第一屆的 ACM SIGGRAPH Asia 2008
+國際會議，所以，所有的參加者以及 Steering Committee 的成員們均十分注意今年的
+Pacific Graphics 2008 國際會議的會議論文的論文品質，而結論是，今年的論文品質
+的確還優於過去幾年的會議論文 
+ 
+跟往年比較起來，今年的 Pacific Graphics 2008 國際會議的會議論文中，多數為與
+Rendering 及 Lighting 相關之論文，此外，亦比往年多出許多 Image 及 Video 的相關
+論文，但少了一些 Visualization 的論文，因此，可以明顯的感覺到整個電腦圖學領域
+對於研究方向上的調整與注目的焦點，也可作為我們未來調整研究方向的參考之一 
+ 
+B.-Y. Chen, K.-Y. Lee, W.-T. Huang, & J.-S. Lin / Capturing Intention-based Full-Frame Video Stabilization
+Global Path
+Estimation
+Video ROI
+Extraction
+Poly-line
+Fitting
+Motion Path EstimationInput
+original video sequence
+Moving Object
+Detection
+Dynamic Region
+Completion
+Static Region
+Completion
+Possion-based
+Smoothing
+Video Completion
+Output
+stabilized video sequence
+Video Deblurring
+Figure 1: System framework.
+After aligning the video frames, we fill the dynamic and
+static missing areas respectively. Since we use a polyline to
+fit the camcorder motion path rather than using a paramet-
+ric curve, the missing areas are usually large and can not be
+easily completed by neighboring frames. To fill the missing
+areas using the frames far from the current one may cause
+discontinuity at the boundary of the filled areas, since the
+intensity of each video frame is usually not necessarily the
+same. Hence, we smooth the discontinuous boundaries by
+using a three-dimensional Poisson-based method while tak-
+ing both of the spatial and temporal consistency into consid-
+eration, so that it can result seamless stitching spatially and
+temporally.
+2. Related Work
+Video stabilization is an important research topic in mul-
+timedia, image processing, computer vision, and computer
+graphics. Buehler et al. proposed an image-based render-
+ing (IBR) method to stabilize videos [BBM01]. For esti-
+mating the camcorder motion path, Litvin et al. estimated a
+new camcorder motion path by altering the camera parame-
+ters [LKK03], and Matsushita et al. smoothed the camcorder
+motion path to reduce the high frequency shaky motions
+[MOTS05]. However, although the high frequency shaky
+motions can be easily reduced, the stabilized videos still
+have low frequency unexpected movements. Gleicher and
+Liu stabilized the camcorder motion to be piecewise con-
+stant [GL07], which is similar with our method, but we also
+take the ROI and the possibility of missing area completion
+into consideration.
+When filling up the missing image areas, there are some
+image inpainting approaches developed for recovering the
+missing holes in an image [BSCB00, CPT03, LZW03]. Al-
+though these approaches can complete the missing regions
+with correct structure, but there will be obvious temporal
+discontinuity if we recover each video frame individually.
+Litvin et al. used a mosaic method to fill up the missing
+areas in the stabilized video [LKK03], however they did
+not consider the moving objects may appear at the bound-
+ary of the video frames. Wexler et al. and Shiratori et al.
+filled up the missing holes by sampling the spatio-temporal
+volume patches from other portions of the video volume
+[WSI04,SMTK06]. The former approach used the most sim-
+ilar patch in color space for completing the missing areas and
+the later one used the patch with similar motion vector. The
+drawback of these methods is that they need large comput-
+ing time for searching a proper patch. Matsushita et al. also
+provided motion inpainting to complete the moving objects
+appeared at the boundary of the video frames [MOTS05].
+Jia et al. and Patwardhan et al. segmented the video into two
+layers and recovered them individually [JWTT04, PSB07].
+These methods focused on long and periodic observed time
+of the moving objects, but this is not guaranteed in common
+home videos.
+3. Overview
+Figure 1 shows the system framework of our algorithm. The
+input of our system is a video captured by a hand-held cam-
+corder without using a tripod. Hence, the video has much
+annoying shaky motions due to the hand shakes. The first
+process of our system is motion path estimation (Section
+4). In this process, the camcorder motion path of the orig-
+inal video is estimated and changed to be a stabilized one.
+There are three steps contained in this process. In the first
+step (Section 4.1), we find out the transformation between
+the consecutive frames and combine all of the transforma-
+tions to obtain the global camcorder motion path of the orig-
+inal video. In the second step (Section 4.2), we extract the
+video ROI from the video by considering both of the spatial
+and temporal regions of interests. In the third step (Section
+4.3), the estimated global camcorder motion path is approx-
+imated by a polyline. When the estimated camcorder motion
+path is fitted by a polyline, the extracted video ROI and the
+possibility of missing area completion are also taken into
+consideration in order to avoid the user’s interested regions
+or objects being cut out and make the stabilized camcorder
+motion path as stable as possible.
+After the stabilized camcorder motion path is achieved,
+c© 2008 The Author(s)
+Journal compilation c© 2008 The Eurographics Association and Blackwell Publishing Ltd.
+B.-Y. Chen, K.-Y. Lee, W.-T. Huang, & J.-S. Lin / Capturing Intention-based Full-Frame Video Stabilization
+0 50 100 150 200 250 300 350 400 450 500
+−50
+0
+50
+100
+150
+200
+250
+horizontal camera motion
+pi
+xe
+l
+frame
+original camera path
+filtered by Kalman filter
+polyline
+0 50 100 150 200 250 300 350 400 450 500
+−40
+−30
+−20
+−10
+0
+10
+20
+30
+vertical camera motion
+pi
+xe
+l
+frame
+original camera path
+filtered by Kalman filter
+polyline
+Figure 4: The original camcorder motion path (red curve)
+and the estimated ones after applying the Kalman filter
+(green curve) and fitting by a polyline (blue straight line)
+for horizontal (Left) and vertical (Right) directions.
+spatio-temporal saliency map Sal(i) is defined as Sal(i) =
+kti × SalT (i) + ksi × SalS(i) [ZS06], where SalT (i) and
+SalS(i) are the temporal and spatial saliency maps of frame
+i, and the weighting parameters kti and ksi are defined as
+kti =
+αi
+αi +β ,ksi =
+β
+αi +β , (1)
+where β ∈ (0,1) is a constant value and
+αi =
+SalT (i)
+max(SalT (i))−min(SalT (i)) . (2)
+4.3. Motion Path Fitting
+To obtain a stabilized camcorder motion path without not
+only the high frequency shaky motions but also the low
+frequency unexpected movements, we use a polyline to fit
+the estimated global camcorder motion path, since the cam-
+corder motion path of the video captured with a tripod is like
+a polyline. We first separate the camcorder motion path es-
+timated from Section 4.1 to be horizontal and vertical ones,
+and operate them respectively. Then, Kalman filter is em-
+ployed to estimate a smooth camcorder motion path [PN04]
+while considering the video ROI extracted from Section 4.2.
+The camcorder motion path smoothed by the Kalman filter
+(Kalman path) is shown as the green curves in Figure 4.
+Then, we use a polyline to fit the Kalman path while con-
+sidering the possibility of missing area completion. To fill
+the missing areas, ideally it can be done by copying pixels
+from other frames. Once it cannot be simply achieved, we
+will use image inpainting to fill the monotonous missing ar-
+eas to make the stabilized camcorder motion path as stable as
+possible. Hence, the possibility of missing area completion
+is evaluated by using the gradient of each frame’s boundary
+areas. Then, the camcorder motion path is fitted by a poly-
+line while taking the video ROI and the possibility of miss-
+ing area completion into consideration as shown as the blue
+polyline in Figure 4.
+Once the camcorder motion path is fitted by a polyline, the
+video frames are aligned along the polyline-fitted camcorder
+motion path. If the global transition matrix from the first
+Figure 5: Top row: Aligned frames of the top row of Figure
+2 without considering video ROI. The black regions show the
+missing areas and the building is cut out. Bottom row: The
+saliency maps of the top row of Figure 2.
+frame to the i-th frame is denoted by Mi, then the i-th frame
+is aligned to Mi ·∏0j=i−1 T−1j · pi, where pi means the pixels
+on the i-th frame and T j represented the affine transforma-
+tion matrix between j-th frame and j + 1-th frame. Hence,
+we can obtain a stabilized video after the polyline fitting and
+frame alignment. The top row of Figure 5 shows the frames
+aligned by a polyline-fitted camcorder motion path without
+taking video ROI into consideration. Hence, the building in
+the original video which the user wants to capture is cut out.
+By considering the saliency maps of the original video as
+shown in the bottom row of Figure 5, we can find a proper
+polyline-based camcorder motion path and the stabilized re-
+sult is shown in the bottom row of Figure 2.
+5. Video Completion
+After aligning the video frames along the stabilized cam-
+corder motion path, there are several missing areas in the
+stabilized video. To complete the video, we first detect the
+moving objects to segment the video to a static background
+region and some dynamic moving object regions (Section
+5.1). Then, we complete the missing areas by filling dynamic
+regions (Section 5.2) and static regions (Section 5.3) respec-
+tively.
+5.1. Moving Object Detection
+In order to detect the moving objects, we first align every
+pair of adjacent frames by using the affine transformation
+obtained in Section 4.1. Then, we evaluate the optical flow
+of them [BA96] to obtain the motion vector of each pixel.
+The motion vector of pixel pi can be described as Fi(pi)
+which represents the motion flow at pixel pi from frame i to
+i + 1, and the length of the motion vector shows the motion
+value. Hence, the pixel pi on frame i and its corresponding
+pixel pi+1 on frame i+1 according to the motion vector have
+the relationship: pi+1 = Ti ·Fi(pi), since the motion vector
+is obtained after aligning the frame according to the affine
+transformation matrix Ti.
+c© 2008 The Author(s)
+Journal compilation c© 2008 The Eurographics Association and Blackwell Publishing Ltd.
+B.-Y. Chen, K.-Y. Lee, W.-T. Huang, & J.-S. Lin / Capturing Intention-based Full-Frame Video Stabilization
+Figure 9: Left: The frame after changing the position ac-
+cording to the stabilized camcorder motion path. There is
+a missing area at the right side and upper side. Right: The
+result of static region completion. Since the missing area is
+large, there is a discontinuity boundary between the recov-
+ered pixels and the original frame.
+5.3. Static Region Completion
+After completing the dynamic regions, we then recover the
+static ones by its neighboring frames which are wrapped ac-
+cording to the affine transformation obtained in Section 4.1.
+For the pixel pi in the static missing area at frame i, if there
+exists its corresponding pixel pi′ at the warped neighboring
+frame i′, we directly copy the pixel pi′ to the missing pixel
+pi. Figure 9 shows the static region completion result.
+To find the corresponding pixel pi′ of pi, we begin the
+search from the nearest neighboring frame and propagate the
+search out. For example, if i is the current frame we want to
+recover, we search the frames i− 1 and i + 1 first, if there
+are missing areas still have not been recovered by the two
+frames, the following two frames i− 2 and i + 2 are used
+to recover the missing areas. We keep the search until all
+missing pixels in the static missing areas are completed or all
+frames are searched. Finally, if there are still some missing
+areas, we then use image inpainting to complete them. Since
+the polyline-fitted camcorder motion path is determined by
+considering the gradient of each frame’s boundary areas, the
+rest missing areas can always be completed.
+5.4. Poisson-based Smoothing
+Although the missing areas caused by the stabilized cam-
+corder motion path are completed, there may be a discontin-
+uous boundary between the recovered pixels and the origi-
+nal frame, since the missing areas may be large and needed
+to be filled from the frame far from the current one. In or-
+der to keep the spatial and temporal continuity, we provide a
+three-dimensional Poisson-based smoothing method, which
+is extended from [PGB03].
+To solve the discontinuity problem, before filling in a
+pixel from other frames, the Poisson equation is applied to
+obtain a smoothed pixel by considering its neighboring pix-
+els in the same frame and neighboring ones. We first apply
+the Poisson equation in the spatial domain which is written
+Figure 10: Upper-Left: The frame after video completion.
+Since the missing area is large, there is a discontinuous
+boundary between the recovered pixels and the original
+frame. Lower-Left: The result of video completion with
+Poisson-based smoothing. Right Column: The close-up view
+of the yellow rectangles in the Left Column.
+as: For all p ∈ Ω,
+|Np| fp− ∑
+q∈Np∩Ω
+fq = ∑
+q∈Np∩∂Ω
+f ∗q + ∑
+q∈Np
+vpq, (5)
+where Ω denotes the missing area, p is a pixel in the missing
+area Ω, Np denotes the neighboring pixels of pixel p, |Np|
+is the number of neighboring pixels Np, fp and fq are the
+correct pixel values of pixels p and q which are what we
+want to derive, vpq determines the divergence of pixels p
+and q, ∂Ω is the region surrounding the missing area Ω in
+the known areas, and f ∗q denotes the known color value of
+pixel q in ∂Ω.
+The Poisson equation can keep the correct structure in the
+missing area and achieve a seamless stitching between the
+recovering areas and the known ones. In order to achieve
+temporal coherence, after recovering the missing areas of
+each frame, we correct the pixel values of the missing areas
+by apply the Poisson equation again by considering not only
+the spatial neighboring pixels but also the temporal neigh-
+boring ones. Hence, the Poisson equation is the same as Eq.
+(5), but Np includes all neighboring pixels of pixel p in the
+video volume. Figure 10 shows the result.
+6. Video Deblurring
+After video stabilization, the blurry frames which look
+smooth in the original video become noticeable. Our video
+deblurring method fundamentally based on [MOTS05], but
+we separate the moving objects from static background first
+and deal with them separatively as the video completion pro-
+cess. The main idea of this method is to copy the pixels from
+neighboring sharper frames to the blurry ones. We first eval-
+uate the "relative blurriness" of each frame by calculating
+c© 2008 The Author(s)
+Journal compilation c© 2008 The Eurographics Association and Blackwell Publishing Ltd.
+B.-Y. Chen, K.-Y. Lee, W.-T. Huang, & J.-S. Lin / Capturing Intention-based Full-Frame Video Stabilization
+Figure 12: Top row: Five frames of the original video. Orange and yellow rectangles show two trees in the video. Due to the
+camcorder hand-shake, the locations of the rectangles in each frame are different. Second row: Stabilized frames resulted by
+smoothing the camcorder motion path. The black regions show the missing areas. Since only high frequency shaky motions
+are removed, the rectangles still locate at different place in each frame. Third row: Stabilized frames resulted by polyline-fitted
+camcorder motion path. The locations of the trees (rectangles) are almost the same, but the missing areas are large. Fourth row:
+The result produced by truncating the missing areas of the third row. The resolution of the stabilized video is reduced, and the
+tree specified by the yellow rectangle has been cut out. Bottom row: Our result.
+large area in the video frames, there will be some problems
+about finding the affine transformation matrix. The inaccu-
+racy transformation matrix would cause the result faulty. To
+deal with large moving objects is one of our future work.
+In addition, some problems about filling up missing areas
+and catching camcorder motion path will appear if the user
+shakes the camera calculatedly to cause the video juddering.
+Although the blurry frames are deblurred, our video deblur-
+ring method still can not deal with extreme blurry frames.
+Acknowledgments
+We would like to thank anonymous reviewers for their valu-
+able comments. This work was partially supported by the
+National Science Council of Taiwan under NSC95-2622-E-
+002-018 and NSC96-2622-E-002-002, and also by the Ex-
+cellent Research Projects of the National Taiwan University
+under NTU95R0062-AE00-02.
+References
+[BA96] BLACK M. J., ANANDAN P.: The robust esti-
+mation of multiple motions: parametric and piecewise-
+smooth flow fields. Computer Vision and Image Under-
+standing 63, 1 (1996), 75–104.
+[BBM01] BUEHLER C., BOSSE M., MCMILLAN L.:
+Non-metric image-based rendering for video stabiliza-
+tion. In IEEE Computer Vision and Pattern Recognition
+2001 Conference Proceedings (2001), vol. 2, pp. 609–
+614.
+c© 2008 The Author(s)
+Journal compilation c© 2008 The Eurographics Association and Blackwell Publishing Ltd.
+B.-Y. Chen, K.-Y. Lee, W.-T. Huang, & J.-S. Lin / Capturing Intention-based Full-Frame Video Stabilization
+Figure 15: Left: Five frames of the original video. Right:
+Our result. The blurry frame specified by the orange rectan-
+gle has been deblurred.
+ings (2004), vol. 1, pp. 364–371.
+[LKK03] LITVIN A., KONRAD J., KARL W. C.: Proba-
+bilistic video stabilization using Kalman filtering and mo-
+saicking. In Proceedings of 2003 SPIE Conference on
+Electronic Imaging (2003), vol. 5022, pp. 663–674.
+[Low99] LOWE D. G.: Object recognition from local
+scale-invariant features. In Proceedings of 1999 IEEE
+International Conference on Computer Vision (1999),
+pp. 1150–1157.
+[LZW03] LEVIN A., ZOMET A., WEISS Y.: Learning
+how to inpaint from global image statistics. In Proceed-
+ings of 2003 IEEE International Conference on Computer
+Vision (2003), vol. 1, pp. 305–312.
+[MOTS05] MATSUSHITA Y., OFEK E., TANG X., SHUM
+H.-Y.: Full-frame video stabilization. In IEEE Com-
+puter Vision and Pattern Recognition 2005 Conference
+Proceedings (2005), vol. 1, pp. 50–57.
+[PGB03] PÉREZ P., GANGNET M., BLAKE A.: Poisson
+image editing. In ACM SIGGRAPH 2003 Conference Pro-
+ceedings (2003), pp. 313–318.
+[PN04] PAN Z., NGO C.-W.: Structuring home video by
+snippet detection and pattern parsing. In ACM SIGMM
+Multimedia Information Retrieval 2004 Conference Pro-
+ceedings (2004), pp. 69–76.
+[PSB07] PATWARDHAN K. A., SAPIRO G., BERTALMIO
+M.: Video inpainting under constrained camera motion.
+IEEE Transactions On Image Processing 16, 2 (2007),
+545–553.
+[SMTK06] SHIRATORI T., MATSUSHITA Y., TANG X.,
+KANG S. B.: Video completion by motion field transfer.
+In IEEE Computer Vision and Pattern Recognition 2006
+Conference Proceedings (2006), vol. 1, pp. 411–418.
+[WSI04] WEXLER Y., SHECHTMAN E., IRANI M.:
+Space-time video completion. In IEEE Computer Vision
+and Pattern Recognition 2004 Conference Proceedings
+(2004), vol. 1, pp. 120–127.
+[ZS06] ZHAI Y., SHAH M.: Visual attention detection in
+video sequences using spatiotemporal cues. In ACM Mul-
+timedia 2006 Conference Proceedings (2006), pp. 815–
+824.
+c© 2008 The Author(s)
+Journal compilation c© 2008 The Eurographics Association and Blackwell Publishing Ltd.
+C.-L. Wen, C.-H. Hsieh, B.-Y. Chen, & M. Ouhyoung / Example-based Multiple Local Color Transfer by Strokes
+(a) (b) (c)
+Figure 1: Three photo enhancement examples. (a) The left two photos are captured at two different places at the same day. The
+upper one is used to enhance the lower one. The right photo shows the result. (b) The left upper and lower photos depict the
+same scene captured from different viewpoints and the lower one is used to enhance the left upper one. The right upper photo
+shows the result. (c) The lower two photos are captured on a mountain and from an airplane, respectively, and the right one is
+used to enhance the left one. The upper photo shows the result.
+wise color transfer functions. Thus, our contribution is to
+provide a new simple yet effective interactive multiple local
+color transfer system that provides an intuitive mechanism
+to enhance photos without tedious manual work.
+2. Related Work
+For transferring color from one image to another, Rein-
+hard et al. [RAGS01] developed a simple yet effective
+method. Welsh et al. [WAM02] presented another global
+color transfer system which is applicable for most scenic
+photos. For photos that contain foreground objects of spe-
+cific interest such as portraits of persons the system is not
+very suitable. Following research work [TJT05,CSN07] pro-
+poses to solve this issue by presenting a probabilistic ap-
+proach to conduct local color transfer. However, the user still
+does not have enough direct control to specify the regions
+that should be modified and the colors to be transferred. The
+only way to fine-tune the result is to make use of a refer-
+ence image then apply the algorithm again in a try-and-error
+fashion.
+To supply more user control, Levin et al. [LLW04] pre-
+sented a scribble-based color transfer method. With their
+user-interface, the user can specify the regions without pro-
+viding an accurate segmentation. However, since the user
+has to choose the color for colorization by himself, without
+the hints that a reference image can provide, it is very diffi-
+cult to acquire the color of the real photo or what the user ex-
+pected. Besides this, under the assumption that neighboring
+pixels with similar intensities should be colored by similar
+colors, the system can only be used to color simple textures
+with only one color, which constricts itself from being suit-
+able in many real cases, such as the scarf in Figure 1 (a).
+On the other hand, Lischinski et al. [LFUS06] proposed a
+scribble-based local parameter editing tool. By using some
+strokes, the user can divide the image into several regions
+and locally adjust parameters such as brightness. However,
+in some cases the "feeling" of a photo is far too subtle to
+be adjusted by separate parameter. In our system we want
+to transfer the "feeling" by referring to one or more other
+images without adjusting individual parameters. In contrast,
+Bae et al. [BPD06] proposed a system that enables the user
+to transfer the "feeling" from one example to a target image,
+but it lacks of the ability of local control which our system
+provides.
+Several methods have been proposed to enhance images
+by combining multiple photographs of the same object in
+one image that has a better quality. Jia et al. [JSTS04] pro-
+posed a method that uses a pair of photos taken with dif-
+ferent exposure conditions to enhance one of them with
+motion blur. Similarly, Eisemann and Durand [ED04],
+Petschnigg et al. [PSA∗04], and Agrawal et al. [ARNL05]
+presented other approaches to achieve an enhanced photo by
+combining flash and non-flash photo pairs. However, these
+methods usually need extra equipment, such as a tripod or
+a high-quality flash lamp. Furthermore, there are various
+prerequisites for taking the photos, i.e., the user needs to
+know what methods he will apply after taking the photos,
+and sometimes professional photographic knowledge is also
+required.
+3. Stroke-based User Interface
+The goal of our system is to enable the user to easily en-
+hance a defect photo by referring to other good quality pho-
+tos. Hence, an interactive and intuitive stroke-based user in-
+terface is provided for specifying corresponding regions on
+both the source and target photos. Besides this, the user can
+draw a stroke only on the source photo to preserve a region
+as the example shown in Figure 8. Figure 2 (a) and (b) show
+c© 2008 The Author(s)
+Journal compilation c© 2008 The Eurographics Association and Blackwell Publishing Ltd.
+C.-L. Wen, C.-H. Hsieh, B.-Y. Chen, & M. Ouhyoung / Example-based Multiple Local Color Transfer by Strokes
+(a) (b)
+Figure 3: Background preservation result for Figure 2 (a).
+(a) The result of progressive cut [WYC∗06] in the first step.
+Since the color of the wall is similar to part of the face, the
+shadow looks like the clothing, and the T-shirt is white, the
+result shows some errors. (b) Our editing (foreground) re-
+gions, which are obtained in one step.
+much cleaner segmentation results as shown in Figure 3 (b),
+and the background regions can be preserved precisely ac-
+cording to the background strokes drawn by the user. Finally,
+after the graph cuts process, each p ∈ Is is labeled by one
+lp ∈ {F ,B}.
+5. Multiple Local Color Transfer
+Our approach for multiple local color transfer is to set a suit-
+able local (pixel-wise) color transfer function for each pixel.
+Since the color transfer is operated in the lαβ color space,
+it can be performed separately in the three channels. The
+following description refers to only one of the channels. The
+same process is applied to the other two channels in the same
+way.
+Just like in the original global color transfer method
+[RAGS01], we treat the pixel-wise local color transfer func-
+tions (Section 5.1) as three linear processes: shifting, scaling
+and then shifting again denoted by u(p), f (p) and v(p) for
+updating the pixel p ∈ Is, respectively. Then, the gradient of
+the original source image Is is used to improve the pixel-
+wise local color transfer functions and obtain the functions
+(Section 5.2) uˆ(p), ˆf (p) and vˆ(p). Finally, the multiple local
+color transfer is defined as:
+c
+′
+p = (cp− uˆ(p)) ˆf (p)+ vˆ(p), ∀p ∈ Is. (3)
+5.1. Pixel-wise color transfer function
+By using the user’s strokes, the source image can be divided
+into two regions: the regions to be edited (foreground) and
+to be preserved (background). For the edit regions, since
+there are corresponding strokes Psj and Ptj on both of the
+source and target images, we first build the Gaussian color
+model pairs Gsj(µsj,σsj) and Gtj(µtj,σtj) by using correspond-
+ing strokes with the same color (label) j ∈ F , respectively,
+where µ j is the mean and σ j is the standard deviation in
+the Gaussian color model G j , so there are |F| local color
+transfer functions. Furthermore, we also build the back-
+ground Gaussian color model GsB(µ
+s
+B,σ
+s
+B) for the preserva-
+tion (background) regions on the source image based on the
+preservation (background) strokes PsB.
+Then, we need to decide by which ratio a pixel should be
+influenced by each local color transfer function. We use the
+following equations to set pixel-wise constraints to accumu-
+late the influences of each local color transfer function on
+each pixel p ∈ Is:
+u(p) =
+
+
+∑
+j∈F
+C(cp, j)µsj + ∑
+j∈B
+C(cp, j)cp, if lp = F
+cp, if lp = B
+(4)
+f (p) =
+
+
+∑
+j∈F
+C(cp, j)
+σtj
+σsj
++ ∑
+j∈B
+C(cp, j), if lp = F
+1, if lp = B
+(5)
+v(p) =
+
+
+∑
+j∈F
+C(cp, j)µtj + ∑
+j∈B
+C(cp, j)cp, if lp = F
+cp, if lp = B
+(6)
+where C(cp, j) indicates by which ratio the color cp should
+be influenced from the j-th local color transfer function and
+is defined as:
+C(cp, j) =
+P(cp|Gsj)
+∑
+j′∈F∩B
+P(cp|Gsj′)
+,
+where P(cp|Gsj) is a Gaussian probability distribution func-
+tion which is used to estimate the probability that the pixel’s
+color cp belongs to the Gaussian color model Gsj of the j-th
+stroke on the source image Is.
+In Eq. (4)∼(6), if a pixel p is in the edit (foreground) re-
+gions (i.e., lp = F ), the weighted average of each function
+is set to p as a pixel-wise local color transfer function. Oth-
+erwise (i.e., lp = B), we set the shifting parameters u(p) and
+v(p) to the original color cp and set the scaling one f (p)
+to 1 to preserve the original color in the preservation (back-
+ground) regions. In addition, the latter term (i.e., j ∈ B) of
+the case lp =F sums up the probability that a given color cp
+appears in the background Gaussian color model GsB . This
+is designed to prevent segmentation errors in the background
+regions which produce unexpected change, especially for the
+edges and some fragmentary background regions between
+the foreground ones.
+5.2. Gradient-guided color transfer function
+Applying only the pixel-wise local color transfer functions
+for color transfer may result in some artifacts as shown
+c© 2008 The Author(s)
+Journal compilation c© 2008 The Eurographics Association and Blackwell Publishing Ltd.
+C.-L. Wen, C.-H. Hsieh, B.-Y. Chen, & M. Ouhyoung / Example-based Multiple Local Color Transfer by Strokes
+(a) (b)
+(c) (d)
+Figure 6: The comparison of our result and that of Rein-
+hard et al.’s global color transfer method [RAGS01]. (a) The
+source overexposed photo. (b) The target photo taken by an-
+other person. (c) Reinhard et al.’s [RAGS01] result. (d) Our
+result.
+(a) (b)
+(c) (d)
+Figure 7: The comparison of our result and that of
+Tai et al.’s local color transfer method [TJT05]. (a) The
+source photo. (b) The target photo. (c) Tai et al.’s [TJT05]
+result. (d) Our result.
+cope with this situation. The source photo as shown in Fig-
+ure 8 (a) is taken under bright sunlight and high contrast.
+In this situation, it is hard to decide on the exposure to take
+a photo with that is satisfying for the whole region. In this
+example, the background is overexposed, but the face is still
+a little bit underexposed. The user can use our system to eas-
+ily create an enhanced photo. To achieve this, we first chose
+a photo with a beautiful sea and coast in the same album,
+then perform background enhancement to obtain a first re-
+sult as shown in Figure 8 (b). After having enhanced the
+(a) (b) (c)
+(d) (e)
+(f) (g)
+Figure 8: The progressive editing example. (a) The source
+photo taken in a high contrast scene. (b) The result of en-
+hancing the background. (c) The result of enhancing the face
+further. (d)∼(g) The strokes for editing, where (e) is used to
+enhance (d) and (g) is used to enhance (f). The red stroke in
+(d) and (f) successfully preserves the person in (a) and the
+background in (b).
+background, the face is still not clear enough, so we chose
+another photo to enhance the skin color of the face and ob-
+tain the final result as shown in Figure 8 (c). To exploit the
+preservation stroke, the sea and coast are not influenced in
+the further editing. Finally, we have a photo with living ex-
+pression and a beautiful background.
+Our system is also able to seamlessly extract colors in dif-
+ferent regions of different images. Figure 9 shows the case
+of using multiple target photos to enhance one source image.
+The source photo as shown in Figure 9 (a) is taken at dusk
+and the sunlight only lightens the mountain top. We acquired
+three target photos to enhance the sky, mountain, and forest
+parts, respectively, as shown in Figure 9 (d)∼(f).
+Figure 10 (a) and (b) show two photos taken in the early
+evening. One photo (Figure 10 (a)) is taken with long expo-
+sure time for recording the track of the cars’ lights, darker
+c© 2008 The Author(s)
+Journal compilation c© 2008 The Eurographics Association and Blackwell Publishing Ltd.
+C.-L. Wen, C.-H. Hsieh, B.-Y. Chen, & M. Ouhyoung / Example-based Multiple Local Color Transfer by Strokes
+users’ expectations. What is more important, our system is
+very easy to learn and use; no detailed photographic or photo
+editing knowledge is required. Along with convenience and
+efficiency, it is also a powerful way to complete creative
+tasks. In future work, we would like to develop other edit-
+ing features under the same scenario.
+Although our system works well for almost photos, it still
+suffers from some limitations. First, a reference photo is nec-
+essary, although it should be easy to be acquired. If there is
+no reference photo at hand, it is hard to enhance the defect
+one by our system. Besides this, it might not be possible to
+recover the details of the defect photo if the details were not
+captured in strongly over-exposed or under-exposed photos.
+Acknowledgments
+We would like to thank Johanna Wolf for proofreading
+the manuscript and anonymous reviewers for their valuable
+comments. This work was partially supported by the Na-
+tional Science Council of Taiwan under NSC95-2622-E-
+002-018 and NSC96-2622-E-002-002, and also by the Ex-
+cellent Research Projects of the National Taiwan University
+under NTU95R0062-AE00-02.
+References
+[ARNL05] AGRAWAL A., RASKAR R., NAYAR S. K., LI
+Y.: Removing photography artifacts using gradient pro-
+jection and flash-exposure sampling. ACM Transactions
+on Graphics 24, 3 (2005), 828–835. (SIGGRAPH 2005
+Conference Proceedings).
+[BPD06] BAE S., PARIS S., DURAND F.: Two-scale tone
+management for photographic look. ACM Transactions
+on Graphics 25, 3 (2006), 637–645. (SIGGRAPH 2006
+Conference Proceedings).
+[BVZ01] BOYKOV Y., VEKSLER O., ZABIH R.: Fast
+approximate energy minimization via graph cuts. IEEE
+Transactions on Pattern Analysis and Machine Intelli-
+gence 23, 11 (2001), 1222–1239.
+[CSN07] CHANG Y., SAITO S., NAKAJIMA M.:
+Example-based color transformation of image and video
+using basic color categories. IEEE Transactions on Image
+Processing 16, 2 (2007), 329–336.
+[ED04] EISEMANN E., DURAND F.: Flash photography
+enhancement via intrinsic relighting. ACM Transactions
+on Graphics 23, 3 (2004), 673–678. (SIGGRAPH 2004
+Conference Proceedings).
+[JSTS04] JIA J., SUN J., TANG C.-K., SHUM H.-Y.:
+Bayesian correction of image intensity with spatial con-
+sideration. In Proceedings of 2004 European Conference
+on Computer Vision (2004), vol. 3, pp. 342–354.
+[KCLU07] KOPF J., COHEN M. F., LISCHINSKI D.,
+UYTTENDAELE M.: Joint bilateral upsampling. ACM
+Transactions on Graphics 26, 3 (2007), 96. (SIGGRAPH
+2007 Conference Proceedings).
+[LFUS06] LISCHINSKI D., FARBMAN Z., UYTTEN-
+DAELE M., SZELISKI R.: Interactive local adjustment of
+tonal values. ACM Transactions on Graphics 25, 3 (2006),
+646–653. (SIGGRAPH 2006 Conference Proceedings).
+[LLW04] LEVIN A., LISCHINSKI D., WEISS Y.: Col-
+orization using optimization. ACM Transactions on
+Graphics 23, 3 (2004), 689–694. (SIGGRAPH 2004 Con-
+ference Proceedings).
+[LSS05] LI Y., SUN J., SHUM H.-Y.: Video object cut
+and paste. ACM Transactions on Graphics 24, 3 (2005),
+595–600. (SIGGRAPH 2005 Conference Proceedings).
+[PSA∗04] PETSCHNIGG G., SZELISKI R., AGRAWALA
+M., COHEN M., HOPPE H., TOYAMA K.: Digital pho-
+tography with flash and no-flash image pairs. ACM Trans-
+actions on Graphics 23, 3 (2004), 664–672. (SIGGRAPH
+2004 Conference Proceedings).
+[RAGS01] REINHARD E., ASHIKHIMIN M., GOOCH B.,
+SHIRLEY P.: Color transfer between images. IEEE Com-
+puter Graphics and Applications 21, 5 (2001), 34–41.
+[RKB04] ROTHER C., KOLMOGOROV V., BLAKE A.:
+"grabcut": interactive foreground extraction using iterated
+graph cuts. ACM Transactions on Graphics 23, 3 (2004),
+309–314. (SIGGRAPH 2004 Conference Proceedings).
+[TJT05] TAI Y.-W., JIA J., TANG C.-K.: Local color
+transfer via probabilistic segmentation by expectation-
+maximization. In Proceedings of 2005 IEEE Com-
+puter Society Conference on Computer Vision and Pattern
+Recognition (2005), vol. 1, pp. 747–754.
+[WAM02] WELSH T., ASHIKHMIN M., MUELLER K.:
+Transferring color to greyscale images. ACM Transac-
+tions on Graphics 21, 3 (2002), 277–280. (SIGGRAPH
+2002 Conference Proceedings).
+[WYC∗06] WANG C., YANG Q., CHEN M., TANG X.,
+YE Z.: Progressive cut. In ACM Multimedia 2006 Con-
+ference Proceedings (2006), pp. 251–260.
+c© 2008 The Author(s)
+Journal compilation c© 2008 The Eurographics Association and Blackwell Publishing Ltd.
+準備，包含了論文的撰寫、修改以及影片的製作等等，而這些工作也一直進行持續
+到深夜 
+十月三日～四日 
+前往東京大學訪問西田友是教授，並與西田教授洽談目前正在執行的財團法人交流
+協會「グローバルイルミネーションを考慮した 3 次元アニメーションモデルと動
+的なシーンのリアルタイムレンダリング」國際合作計畫以及本人剛獲得通過以「三
+維動態模型之動作生成與廣域光照下的即時擬真繪圖之研究」為題的國科會國際合
+作計畫 
+十月五日 
+與東芝（Toshiba）公司坂東洋介先生就雙方共同合作且已獲 ACM SIGGRAPH Asia 
+2008 國際會議所錄取的「Extracting Depth and Matte using a Color-Filtered Aperture」
+論文進行討論，由於我們將於今（2008）年年底於 ACM SIGGRAPH Asia 2008 國際
+會議中進行論文發表，本次討論的目的之一便是針對論文發表等相關事宜進行討
+論，並商討之後將持續合作的研究課題，目前首先鎖定與超高速相機及閃光燈有關
+的主題進行初步論文研討 
+十月六日 
+與德國亞琛工業大學（RWTH Aachen）Leif Kobbelt 教授開會並洽談之後可能之國際
+合作計畫，Kobbelt 教授到東京的主要目的亦是參加 Pacific Graphics 2008 國際會議，
+由於他曾經擔任 Pacific Graphics 2006 國際會議之議程主席而本人則是 Pacific 
+Graphics 2006 國際會議的主辦人，因此，便藉由此次參加 Pacific Graphics 2008 國際
+會議的機會於東京會晤。Kobbelt 教授為國際知名學者，並曾於 2004 年獲得
+Eurographics 頒發 Outstanding Technical Contributions Award，由於今（2008）年本校
+與德國亞琛工業大學簽署了交換學生計畫，Kobbelt 教授便希望能夠利用這個機會加
+強雙方於研究上的合作。當日晚上便與 Kobbelt 教授夫婦、東京大學西田友是教授
+與五十嵐健夫副教授夫婦等人進行餐敘 
+十月七日～十日 
+參加 Pacific Graphics 2008 國際會議 
+十月十一日～十二日 
+參加東京電玩展 
+十月十三日 
+搭乘日本航空公司班機由日本東京返回台北 
+ 
+二、建議事項 
+ 
+為加強雙方合作機制，建議提高國科會國際合作計畫所核定之國際差旅費用，以利
+研究團隊前往討論合作事宜及共同撰寫論文等 
+ 	
+       
+   !
+   		
+!"  
+  	
+ 
+
+
+ 
+ 
+
+
+ 	
+
+
+   	
+
+ 
+    	
+  
+  
+    
+ 
+  
+   
+ 
+
+
+ 
+ 
+  
+  
+  
+ 
+   
+  
+ 
+ 
+
+ 
+
+
+   
+       
+	    
+  
+  
+
+ 
+
+ 	
+  
+  !"  
+   
+ 
+  
+
+ 
+ 
+        "  
+  
+ 
+  
+  
+
+ 
+ 
+ 
+  
+  
+ 
+ 
+  
+  
+ 
+ 
+  
+ # 
+   $
+ 
+   
+ 
+
+ 
+
+  
+     
+ 
+$  
+ 
+  
+  % 
+ 
+ 
+
+ 
+
+  
+  
+     
+
+   
+ 
+ 
+  ! 
+  
+ 
+    & 
+  
+ 
+  
+
+  
+ 
+ "    $ 
+   
+' 
+ 
+ 
+ 
+ 
+  
+ $  
+        
+  	
+ 
+  $
+
+     ##   
+ 
+
+! 
+  !   " #
+$% "&
+	 
+
+  &% '   (#   
+)    *+    %  & +,
+   '      ' 
+%   -    & '   *
+  & % *        
+  + &    %   , 
+          % * + 
+'       & +  
+ & '      
+   %       %
+*   &  & '%  &
+' '     *      +
+%     +     &  '&
+.& %    +      &
+   %  '    
+     &     %  
+**  % * *   
+  
+  ' **%      . 
+    +       
+        &  /" 0   
++1        % *'%
+  '     *   -
+  ( 
+    
+ 
+
+ )* 
+ % * .    +   '  
+  +, 
+2 &%      %    +  
+   &  + +  '   %
+.       !  
+  	 
+ 
+     $
+  &  & %  +    
+   +  +  3
+       68# * 
+           *& C!(?%C!(#%
+  &   !?%@@?#%      
+D(8#   &  * ,  "(	#% 
+   & 6 (#  + & 
+ "47?% 96
+ 
+78% 9<7#  *     *
++          96<
+ 
+7	#% * 
+' +   &  ' &  
+ 9$<!78%4/<7# " &% 7%67# -
+ &        + '
+     *   &   
+   $ *. +     &
+    *     +   &  
+
+    '     
+      % *      
+   & &  )   ' /"
++*. 2  '  0 *   1% 
+            
+ *     *      -
+      %    %
+   &     -     <&
+           
+ &% *  '  *. *   
+   '  *     
+ &   +    &    % 
+     +      
+  +  67	# A'%      
+   +, &  *   >
+!	 " #
+        +  - & '
+    % *  *  %
+
+  % *      9 
+& '  ' ,% +  * &  
++ 
+2%  
+      +   0  &%  
+    '   1  * 
+       $     +  **%
+     + ' **  &  -   +
+    %          
+ %       5   *.  
+'      &   
+ &   +  -  '*
++   +      &%      
+   *     ; '&       % 
+ '       
+  +   +    0%   *
+         1    
+ %  ) +         +  )
++      *  '    %   
+ ' +      ,  '   
+v
+c
+ωoω
+T
+shell
+interior
+exterior sun
+plane
+p
+v
+c ωoω
+T
+Occlusion
+shell
+interior
+exterior sun
+plane
+p
+01 01
+ ! "   
+ 
+" 
+ 
+ 
+ 
+
+   
+  ! 
+ 
+ 
+ 
+  
+
+ 
+  
+  
+ - 
+ 
+	.
+ 
+  $
+ $  
+ 
+ " ! 
+  
+  
+@-% * '   +  E   
+      +    02 
+011% 
+  !
+ 
+     
+
+   + + +   %  
+    +  %   '- $  
+  '   '*   
+
++  
+7  3 @     + 
+          !
+ 
+     
+
+  *  2
+
+01 % *  *    /
+ 
+   
+
+ + +
+    '- $      +  *%
+/
+ 
+   
+
+ 
+ 
+ 
+/
+
+  !
+ 
+     
+
+   01
+* /
+
+       ' +       
+            % *  *
+   /
+ 
+  
+
+ + +     '- $ 
+    +  *%
+/
+ 
+  
+
+ 
+ 
+ 
+ 
+
+/
+
+  !
+ 
+     
+
+   0	1
+* +    +      .  + 
+ ' %      +, &     
+  ' 9 *     
+ 8     %  + + +
+     '- $      
+!
+  
+    
+
+ 
+ 
+
+!
+ 
+     
+
+ 0
+1
+%
+/
+ 
+  
+
+ 
+ 
+ 
+/
+
+  !
+  
+    
+
+  0>1
+$'    +    +  * 2%
+ /
+
+          % *     & 
+++   0% &    /
+
+   * /
+
+
+      /
+
+  1
+      +     * ++
+   2 -  %    &    +, 
+/
+
+   *           +   
++    %     &  ! ,   /
+
+   * 
+'    - ++  +      + +
+  %  +  '   '  +
+  	 
+ 
+     &
+/ /A 01
+    
+ 
+"/A 01G
+  '- $
+"50 $1G
+% 
+% 
+2 !01
+  '- $
+    
+ 
+    ,
+
+!5&0 $ 1
+     ,
+	
+
+5' <"20 1
+% 
+% 
+5- "0 $1
+% 
+% 
+ & ! 
+  
+ 	
+
+  
+ 
+   
+   
+ ,
+
+
+ 
+   & 
+   ,
+	
+
+	
+
+ 
+   
+0 
+   
+
+
+ *  + + *     +
+    
+
+*   )  & *     '
+     %  *     *   
+&   * '  + 7  ++' &  
+   &% * , :)  '  +  + +
+   %       * ' 
+ + 7 $    *&    +,
+*     *'  @"47
+#% *'% +    
+:   %   +,      
+&	 
+2%  '       +
+       +       
+*  ++        
+ % *  * &  +   + 
+        2    
+ % * -       
+ %  +     % * -
+     &   ) % 
+         
+@-% * '      '-  
+        67	#   
+ +         +  /=%
+ +  +, - + +   +
+      2  &%    
+  * -
+l
+θ
+exterior point q
+portal p exterior object interior scene
+distance d
+facing area A
+01 01
+ ' ! 
+  
+ 
+  
+  
+
+
+" 
+ 
+ 
+  " 
+ 
+ 
+ 
+'	 ( %)
+  % *  *     &
+- 
+2%              
+      9 '    '  
+*  -      % *  
+.      % * .   
+      E 1   -  % 
+    *  -   & *
+     %      *   1 
+  +    02 8011     
+      %    + '*   1 *  '&
+  % *     - &    *
+   1  '* +   +    *
+*    & '     % *  &
+       - &   	 %
+&     
+
+% +  	 
+
+ %  * 
+&      '   '  -  % + *
+ 
+
+  ?
+Æ
+%   -  *     
+ 
+%   ) +          ?7
+%     % *    **  
+    
+%       -  *  
+'    3   +   % 
+    +    '* +  -
+   +, &   %        
+ +  :& +  3   E + 
+ +  +    *  - 
+%      *  -  
+   02 8011 % &    
+  
+
+% + + >
+ 
+  
+
+ %  *   
+3    +, &     '  -  % +
+     	
+ 
++   . %  + *
+  
+
+  77	%         	
+%     %  3   +  
+   -     & '&   
+  
+<&  ' * % *     
+ + & -  9     %
+*     +  & , + *&  
+  +    **     %    
+**    ,     +  , 
+
+  	 
+ 
+     (
+01 01 01 01
+01 0+1 01
+ , "' 
+ 
+  
+ (  
+ 
+ 
+
+     
+   
+ 
+ " "' 
+ 
+ "  "'   " "  "' 
+ (  
+ 
+  
+   
+ "'
+3 ) 
+ 
+
+01 01 01
+ - ! 
+       
+
+8%
+> & +  .    9  	A
+  +   +      
+   %  >%7(8 &   '-  
++ ,  9      *  
+   %  %   .   (  
+3      +  ) 
+    <"2    	?8   + 
+      '     9 
+   ) +          +
+   *
++	 "  
+   & *      2 &%
+             
+'-%  & +  *  
+& +         & + 
+ E!(	#  *  2 01  01 
+       ' &    &   
+&     
+ &% * '   *    
+  -         
+ +:&   +     + 
++ +  %     +:&
+  +      %  9%
++% '  +     '  & 
+ +  -      & 
+ +      &  
+& '   /  %    
+  	 
+ 
+     
+.  (
+
+
+  
+  7%7 
+ 
+ 
+ 
+ 
+     3 8" !  
+
+ 
+ 
+  	
+
+  
+ 
+  	
+
+ 
+ 
+  
+ 3( 
+ 
+ 	
+  2  
+ 
+ 1 
+	
+ 0  
+ 
+  
+ 
+ 
+ 
+2%
+ <- . 
+K  8(%>7 ?%88 
+	(%77
+KC >>%8
+ %
+(> 	%>7
+!   	 L  ?8 L > 87 L 	
+
+2/ 7 	 	
+2  
+	( L 7	 ?>
+ L 	(  L 
+>	
+++ *&%       '  
+   +, &   $    + +
+         ' -   
+    +  '   
+ +,& +   +    
+    &        & +    -
+      *   =  % *  
+  ' + %     '* %  
+%    +   %  *    &
+ - '  *  
+2  + *.% *      -    *& +
+'  & + % .   +
+          %  *    
+     &
+
+!?#   A 2% !  /  
+  &   +   - ' 
+(99 +6 :8; 0(?1%    
+M>7
+((# 	
+	 / 4 2       
+   < 9 ! 4% 
+ 0(((1% M7
+(#  / " &  
+       
+ *        &   
+ &  (99 +6 :=8 0((1%    (M(
+6@F(?#  	 F% 6 6% @
+ 4%
+F	
+ 4 $ :.    
+ + + '    
+
+9 3 )4% 
+ 0((?1% 		(M	>7
+67#   B% 6
+ D%  
+ % 
+4/ '          '
+ &  & 9 :-> 0	771%    M8
+7# 	 % 
+ A%
+
+
+	 !%  2    ' & 
+ + '      +2
+! 9 *?% 
+ 0	771% 8
+!6A78# ! /% 6
+ D% A
+	 9% 
+ 2 C*        
+    +   -  @A
+:-? 0	7781%    M>
+4/<78# 4
+
+	 A% / 2% < 6 
+ + +    +2 !
+9 *;% 
+ 0	7781% 7(M7(
+4/<7# 4 A% / 2% < 6 A-
+*     +  &     +2
+! 9 *?% 
+ 0	771% 	8
+D(8# D	 4 9 !       
+    #9  :=? 0((81%    	M
+7
+68# 6 D    :  (9	
+9 +6 :8? 0(81%    >
+M?7
+6 (# 6 $  &  (99 +6 :=>
+0((1%    >(M?8
+6478# 6 
+ D%  5%
+4 	 @%   2 I 9'  "
+   + '  E 
+  !1 0	7781%    8M
+E!(	# E		 %  2% !
+ / & A + $ "&
+### 
+ 9  +
+ )*% 8 0((	1%
+	?M
+(
+@@?# @	
+ % @ 5    
+ +   .  +
+*  3  (99 +6 :8; 0(?1%
+   	
+M
+7
+@"47
+# @ "% "  
+ "% 4 /
+$  +:& *    *'   
+  - +2 ! 9 **% 
+ 0	77
+1% 
+8M
+
+
+"(	# "
+ A + !	  
+ 2
+ 
+
+!
+
+  (  .
+ ( AN
+%   ='&% ((	
+"47?# "	
+  $%    $% 4 D
+A  ' &    +2 ! 9 *4%
+
+ 0	77?1% 8M?
+67	#   //% 6
+ D%  D /
+   + +     &
+%  *+:&   '  (9	
+9 +6 :-* 0	77	1%    ?	M?
+8
+78# 	 F%  B $  +:&  
+   +      +
+       - +2 !
+9 *;% 
+ 0	7781% (8M(8
+C!(?# C 5% !	 E D ;   & 
+   : +      (9	
+9 +6 :=; 0((?1%    >(M>	
+C!(# C 5% !	 E D A     
+   (99 +6 :=> 0((1%    8?M8
+  	 
+ 

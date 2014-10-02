@@ -1,0 +1,406 @@
+使用頻繁情節探勘從誘捕系統日誌檔挖掘攻擊情節 
+ 
+蘇民揚 1   張凱棊 2   林俊淵 3   簡聖瑋 4 
+ 
+1,2,4 銘傳大學資訊工程研究所 
+1,3 銘傳大學資訊工程學系 
+ 
+E-Mail: 1minysu@mail.mcu.edu.tw 
+ 
+摘要 
+誘捕系統日誌檔只能詳實記錄網路連線之動作或稱事件，並無法說明事件與事件之間的關連性。一個由
+外而內的入侵過程，也就是攻擊情節，是一連串相關事件在ㄧ定時間範圍內的序列事件集(serial order set)。本
+文使用頻繁情節探勘(frequent episode mining)的方法，可以從龐大且無關聯的誘捕系統日誌檔中挖掘出少量的
+攻擊情節，包含已知攻擊及未知攻擊。本研究中，我們成功的挖掘出 NetBIOS/NetBEUI 通訊協定當中最重要
+的"伺服器訊息塊通訊協定"(Server Message Block Protocol, SMB )所發生的入侵攻擊情節。本文所提的方法，
+可輕易修改使其用以保護不同的網路服務。 
+關鍵字：網路安全, 頻繁情節探勘, 誘捕系統, 攻擊情節 
+ 
+Abstract 
+Log files from honeypot system can only honestly present events in connections; itself can not express any 
+relationship between events. Frequent episode can be used to strengthen the relevance of using time as the main core 
+during mining spindle, so it has significant effect on detecting sophisticated intrusion attacks. Probe/Exploit (hacking) 
+type intrusion focuses on the relevance and occurring sequence of each action; our method proposed can mine out 
+this kind of attacks, known or unknown. This study successfully excavated the intrusions occurred in SMB, which 
+was the most important among NetBIOS/NetBEUI protocols. The framework of intrusion prevention advanced 
+proposed in this paper could easily be modified to protect different network services. 
+Keywords: Network Security, Frequent Episode Mining, Honeypot System, Attack Episode 
+   
+1. 簡介 
+近年模糊關聯法則(fuzzy association rule)與頻繁情節法則(frequent episode rule)被應用於網路入侵偵測之
+設計也陸續出現於文獻上。在模糊關聯規則方面，[1, 2]提出模糊關聯規則之模糊函數設計的方法並強調其重
+要性，[3, 4]強調模糊關聯規則的合併、精簡與轉換，[5,6]強調模糊關聯規則應用於偵測 DoS/DDoS 攻擊，同
+時具有部分即時處理的能力，[7]則採用線上動態探勘的方式來大幅改進即時偵測之效果。頻繁情節法則
+(frequent episode rule)探勘於 1997 年首先被 Mannila 等人[8]提出後，文獻上相繼有若干研究工作致力將之應
+用於入侵偵測系統之設計[9-13]。Lee et al. [9] 主張，於探勘之資料集中先將特徵分為核心特徵(axis attribute)
+與參考特徵 (reference attribute)，並且主張在探勘頻繁情節法則的同時，動態地調整最小頻繁門檻值
+(mini_frequent threshold)，藉由這種方式可探勘出重要(至少包含一個核心特徵)但數目不致過多的型樣
+(pattern)。Luo et al. [10]提出在關聯法則與頻繁情節法則上結合模糊理論，藉由這種方式便可以探勘出有彈性
+的型樣(flexible patterns)，此舉有助於提升入侵偵測系統的偵測效果。Luo et al. [11]延續[10]的方法並強調可
+運用於線上偵測，可惜沒有明確告知系統實際反應的時間，同時在實驗方面只有使用單一探測工具。Hwang et 
+al. [12, 13]採用頻繁情節法則來設計入侵偵測系統，首先將正常的網路流量訓練成頻繁情節法則，再進而比對
+線上實際挖掘之頻繁情節規則的相似度，倘若差異過大將其視為異常警報。在探勘的過程中，倘若降低最小
+頻繁門檻值會探勘出過多不必要的情節，反之將其調高便不能探勘出有意義的情節。於是 Hwang et al. [12, 13]
+改良[9]的演算法，並且提出 base-support 的概念，藉由 base-support 可以大幅減低頻繁情節法則產生的數目。
+此外[15]作者認為應該要將誤用偵測與異常行為偵測進行結合，於是提出 HIDS(Hybrid Intrusion Detection 
+System)。 
+由於 Probe/Exploit 這類型的攻擊危害甚大，也是防火牆與防毒軟體難以有效解決的議題。卡巴斯基
+(Kaspersky)將 Probe/Exploit(駭客入侵)歸類於網路攻擊，2005 及 2006 的調查超過八成的網路攻擊都屬於
+Probe/Exploit[14]。此類攻擊發生時並不會產生大量封包，但其特色是攻擊過程中的所有動作(或稱事件)具有
+  
+(5) 時間視窗(window)：視窗即相關事件的最大時間間隔。入侵行為是一時間序列的資料流程，在考察事件關
+聯性時還要充分考慮事件之間的時間間隔，因此必須定義一個滑動視窗，在資料庫搜索的過程中，這個視窗
+從第一條記錄滑向最後一條記錄，只有在視窗裏的事件才被觀察。對於事件序列 s = (s, Ts, Te)，有一個視窗 w 
+記為 (w, ts, te)，其中 ts 表示視窗事件序列開始時間，te 表示視窗事件序列結束時間，且 ts＜Te，te＞Ts。也就
+是說，w = (w, ts, te) 是由介於 ts，te之間的所有事件所構成。對一個視窗(w, ts, te)，其視窗寬度為 win = te - ts。 
+(6) 頻繁情節(frequent episode)： W(s, win)表示在事件序列 s 中所有視窗寬度為 win 的視窗事件序列所形成的
+集合。一個情節α在事件序列 s 中出現的頻率計算為： 
+{ }
+),(
+in    ),(
+),,(
+winsW
+woccurswinsWw
+winsfr
+αα ∈=  
+上式分子表示情節α在全部視窗中出現的次數，分母表示總視窗數。總視窗數計算方式如下 
+1 ),( −+−= winTTwinsW se  
+舉例來說，倘若事件序列總長為 0 秒到 30 秒，同時視窗大小為 5 秒，則 s = (s, 0, 30), win=5，視窗總數
+為 30-0+5-1=34，如圖三所示。視窗 w = (w, 2, 6)，圖中標示為紅色，視窗中的事件序為<(A,2), (C,3), (B,4), 
+(B,5)>。視窗定義為半封閉區間，所以(E,6)並不被計算在此視窗內。由於攻擊是由連續事件組成，一般會在
+一定時間內完成。若視窗定義太小，可能會無法涵蓋一次完整的攻擊，若視窗定義太大，可能會產生不必要
+過多的頻繁情節。 
+ 
+ 
+ 
+圖三 視窗總數與視窗事件序列 
+找出不同事件之間的頻繁情節法則演算法基本上是個不斷反覆搜索的過程，即從最簡單的情節，也就是
+單個事件的情節開始。組成初始候選集合 C1，通過對資料庫的搜索，計算出每個情節發生的頻率，從而找出
+C1 中頻繁發生的情節集合 F1，接者把 F1 的情節兩兩結合組成候選集 C2，再重新搜索資料庫，找出 C2 中
+頻繁發生的情節集合 F2，如此不斷反覆，直到再也找不到新的頻繁情節集合為止，演算法流程如圖四。 
+ 
+ 
+圖四 頻繁情節探勘演算法流程 
+挖掘出有意義的頻繁情節 (frequent episode)。由於攻擊過程所發生的事件有其先後順序關係，所以我們只挖
+掘有意義的頻繁序列情節(frequent serial episode)。 
+從安全的角度而言，Honeypot 可對 Probe/Exploit 進行預防(prevention) 、偵測(detection) 與反制 (reaction) 
+[15, 16, 17]。Honeypot 會延緩攻擊者的行動，並透過欺騙、迷惑的方式來混亂與制止駭客的行為。此外，
+Honeypot 降低了攻擊誤報的比例，同時透過對攻擊者的虛擬回應，便能夠達到欺騙與擷取未知攻擊方法的資
+訊。Honeypot 本身並不提供正常服務，進入 Honeypot 之連線可都視為攻擊的連線，如非法掃瞄、錯誤登入
+等，而 Honeypot 所回應的便像是系統已經被攻陷等欺騙駭客之資訊。因此，駭客通常會被誘騙而進行真正
+且大膽的攻擊，而所有的攻擊過程都會被 Honeypot 所記錄。由於 Honeypot 與正常的服務伺服器分隔開，因
+此不會讓蒐集的資訊與正常請求服務的連線資料混淆，此有助於資料的分析與反制行動的進行。 
+誘捕系統主要的優點是利用虛擬機器所組成的網路環境，即使遭到外部的網路攻擊，也不會影響組織內
+原有網路的運作，如果主機被攻擊而造成系統異常只要重新開機，便能夠恢復正常。藉由目的通訊埠之連接
+順序與資料探勘技術的運用，再加上對網路封包內容的分析，系統管理者可以更明確掌握與分析攻擊發生的
+原因(root cause analysis)，並且得知駭客所使用的攻擊工具與方式。 
+   本研究使用的誘捕系統為一商用軟體 KFSensor [18]，其能模擬出所有重要跨平台的網路服務，如 FTP, 
+SMTP, DNS, …等。KFSensor 同時能夠支援匯入 Snort – IDS 常使用的特徵，也由於 KFSensor 功能完善並且能
+夠詳細記錄通訊中的所有資訊，也因如此在整理稽核檔(log file)便需藉由資料庫查詢語法輔助，過濾出我們所
+關心之服務的所有事件。我們所使用的資料庫為 MySQ5.0.45，連結資料庫為 ODBC-3.51.23，資料庫圖形查
+詢工具為 gui-tools-5.0-r12。藉由特定的查詢語法，我們便可以取得針對特定服務 KFsensor 所稽核的記錄，在
+將這些記錄轉換成事件序列(event sequence)做為頻繁情節探勘演算法的輸入(input)。 
+從 KFsensor 稽核檔中找出所關注服務的記錄後，接著必須做的三件事，依序為資料轉換，頻繁情節探勘
+與已知/未知攻擊情節分類，如圖七。由於 KFsensor 每筆記錄(record)是以一個連線(connection)為單位，一個
+連線中可能包含許多動作，或稱事件(event)，所以我們必須先將所有記錄轉換為以事件為單位，並按事件先
+後順序給予時間編號，其目的也就是記錄轉換為事件序列(event sequence)如此方能作為頻繁情節探勘的輸
+入。頻繁情節探勘後，我們還需進一步檢視攻擊情節為已知或未知，並判斷其嚴重性，此部分有賴專家協助。 
+ 
+ 
+圖七 系統處理流程 
+ 
+ 
+5. 實驗及數據 
+經過誘捕系統 KFsensor 長時間的蒐集，我們得到很多攻擊所產生的記錄檔。匯入 My-SQL Server，利用特
+定服務所使用之通訊埠篩選出相關的攻擊記錄。由於 KFsensor 的記錄檔是以連線為單位，一筆記錄記載一次
+連線的所有動作(事件)，因此我們必須先將連線拆解成事件，按照順序給予每個事件連續的時間代號。本實
+驗從 KFsensor 三週的日誌檔中針對通訊埠 139 埠（NETBIOS Session 服務）的所有連線記錄拆解出 1247 個
+事件，屬於 12 種事件類別，類別詳列於表一；也就是事件序列上有 1247 個事件，每個事件∈e-type ={A, B, C, 
+D, E, F, G, H, I, J, K, L}。事件發生的時間窩們依先後順序用連續整數表示之,i.e., Ts = 0, Te = 1246，在頻繁
+情節探勘上，將頻繁門檻值 min_fr 設為 0.1，視窗長度設為 20(假設一個完整攻擊過程不會超過 20 個動作)，
+所以總視窗數 W(s, win) = Te – Ts + win - 1 = 1246 – 0 +20 -1 = 1265。此外，本研究中只挖掘以 event A 
+(session request)作為初使事件的情節，因為對 SMB 所提供的服務，攻擊必須是以連線請求(session request)作
+為第一步驟，如此又可以過濾掉許多不必要的情節。 
+ 
+ 
+ 
+表二所列為根據上述設定所探勘出來的頻繁情節及其對應的頻繁值，表二中長度較短的情節，一般危險
+性較小，例如單一事件情節＂A＂(0.998419)只是做一個連線請求。另外長度雖長，但事件重複性過高的情節
+其危險性也不大，例如長度為 15 的頻繁情節”ABCABCABCABCABC”(0.572332)，表示這個連線持續在做連
+線協商建立的動作。為能挖掘出精緻(事件類別多)而少量(不常出現)的攻擊情節，最小頻繁度應該設定小一
+點。若最小頻繁度設為接近 0，代表即便僅出現過一次的攻擊情節都會被挖掘出來。基本上，會進入誘捕系
+統的活動，都可將其視為攻擊。在頻繁情節法則的探勘上，我們儘可能將頻繁門檻值 mini_fr 設小以探勘出完
+整的攻擊情節，因為大部分的攻擊情節都是探測、嘗試登入等簡單的攻擊行為，只有少部分的攻擊情節可以
+完成精緻完整的攻擊。雖然 mini_fr 設小，會產生過多的情節及衍生的情節法則，不過排除太短的情節，例如
+A, AB, ABC，或重複性過高的情節例如 ABCABCABCABCAB，其實所剩需專家進一步判斷的情節並不會太多。 
+表二中，特別值得注意的是長度 11 中的頻繁情節”ADEFGHIGEFG “(0.120949)，此情節即為著名 Opaserv 
+(或稱 Opasoft.worm) [20, 21]這一系列蠕蟲攻擊所造成的。Opaserv 這一系列的攻擊是先探測 SMB 協定並具有
+破解簡單密碼的功能，該蠕蟲通過 Windows 作業系統的 NetBIOS 服務在區域網路(LAN)和網際網路 (Internet)
+傳染，有關 Opaserv 攻擊的主要過程陳述於附錄 B。這代表我們的方法可以成功挖掘出 Opaserv 的攻擊行為，
+且其頻繁值為 0.120949，代表約 12%的視窗數存在如此的攻擊情節。若日誌檔中尚有其他針對 port 139 攻擊
+方式，理應也可以被挖掘出來。頻繁情節探勘的目的，也就是要找出針對特定服務，所有可能發生過的攻擊
+手法。 
+ 
+6. 結論 
+藉由誘捕系統結合頻繁情節探勘，可以挖掘出 Probe/Exploit 攻擊所使用的步驟，也就是攻擊情節，如此
+可以有助於提早發覺未知的新型攻擊方式，提早防範以避免損害。本研究針對微軟系統中的網路芳鄰服務，
+從 KFsensor 的記錄中探勘出一種 Probe/Exploit 並植入後門程式的攻擊 − Opaserv[19]，此一系列攻擊程式是
+利用 SMB(Server Message Block Protocol)協定的弱點遂行其攻擊任務。經由實驗驗證本文所提方法之可行性，
+相信對於其他服務的已知及未知攻擊情節之挖掘亦可達到相同效果。 
+ 
+ 
+誌謝:感謝行政院國科會專題研究計畫之補助(NSC 96-2221-E-130-009)，使本論文得以順利完成。 
+ 
+參考文獻 
+[1] G. Florez et al., “An Improved Algorithm for Fuzzy Data Mining for Intrusion Detection”, Proc. of the Fuzzy Inf. 
+Processing Society, pp. 457-462, 2002. 
+[2] S. M. Bridges and R. B. Vaughn, “Intrusion Detection Via Fuzzy Data Mining”, Proc. of the Canadian Inf. 
+Technology Security Symposium, 2000. 
+[3] John E. Dickerson and Julie A. Dickerson, “Fuzzy Network Profiling for Intrusion Detection,” IEEE Network, pp. 
+301-306, 2000. 
+[4] Susan M. Bridges and Rayford B. Vaughn, “Fuzzy Data Mining and Genetic Algorithms Applied to Intrusion 
+Detection,” Proc. of the National Information Systems Security Conference, 2000 
+[5] Ming-Yang Su, Kai-Chi Chang, Hua-Fu Wei and Chun-Yuen Lin，" A Real-time Network Intrusion Detection 
+System Based on Incremental Mining Approach "，IEEE ISI 2008, June 17, 2008  
+[6] 蘇民揚, 葉生正, 林呈俞, 張瑞德, “植基於模糊關聯規則的網路入侵偵測系統,” Journal of Internet 
+Technology, Vol. 8, No. 2, pp. 221-228, 2007. 
+[7] Ming-Yang Su et al., “Using Incremental Mining to Generate Fuzzy Rules for Real-time Network Intrusion 
+Detection Systems,” Proc. of the IEEE Intl. Conf. on Advanced Inf. Networking and Applications, 2008. 
+[8] Heikki Mannila, Hannu Toivonen, and A. Inkeri Verkamo, ”Discovery of Frequent Episodes in Event Sequences,” 
+Data Mining and Knowledge Discovery, Vol. 1, pp. 259–289, 1997. 
+[9] W. Lee, S.J. Stolfo, and K. Mok, “Adaptive Intrusion Detection: A Data Mining Approach,” Artificial Intelligence 
+Review, pp. 533-567, 2000. 
+[10] Jianxiong Luo and Susan M. Bridges, “Mining Fuzzy Association Rules AND Fuzzy Frequency Episodes for 
+Intrusion Detection,” Intl. Journal of Intelligent Systems, Vol. 15, No. 1, pp. 687-703, 2001. 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 96-2221-E-130-009- 
+計畫名稱 頻繁情節法則結合有限狀態機於網路入侵偵測系統之研究 
+出國人員姓名 
+服務機關及職稱 
+蘇民揚  
+銘傳大學資訊工程學系副教授 
+會議時間地點 2008-3-24 ~ 2008-3-28, 日本沖繩(Okinawa,Japan) 
+會議名稱 The IEEE 22nd International Conference on Advanced Information Networking and Applications 
+發表論文題目 Using Incremental Mining to Generate Fuzzy Rules for Real-time Network Intrusion Detection Systems 
+ 
+一、參加會議經過 
+2008-3-24 出發，經約 2.5 小時飛行後，抵沖繩那壩機場，隨即下禢飯店。接著持續四天，
+每天上、下午兩時段都全程參與會議之進行；同時也發表論文一篇，如附件。此會議發表
+之論文，將收錄於 IEEE Computer Society。最後一天(2008-3-28)，早上 check out 後，自行
+徒步市區遊覽，下午隨即搭機返台。 
+ 
+二、與會心得 
+這個會議是有關網路技術與服務的學術研討會，以學術性論文發表為主，每天的 keynote
+演講則是邀請擁有國際性聯盟的研發團隊領導人發表對最新產品與趨勢的看法。在此期
+間，聽了十幾場的論文與專題發表，除了自己熟悉的網路安全領域有更深入的認知外，對
+於以往較少接觸的領域，如感測網路(sensor network)與隨意式網路(ad hoc network)也受惠良
+多，引發興趣。未來可以將有線網路上的安全議題與解法，帶入上述的無線網路討論，應
+可以找到許多研究的新題材。很高興，這五天的奔波除了將自己的研究結果順利發表外，
+不僅可以在自己最熟知的領域上與其他學者討論交換意見且受益良多；同時也觸發不少新
+的構想，相信對未來的研究工作，會有很大的幫助。 
+ 
+ 
+附、發表之論文 
+which given two thresholds of mini_sup and mini_conf, the 
+algorithm will find all such rules as X ⇒ Y with s ≥ 
+mini_sup and c ≥ mini_conf.  
+Since Apriori algorithm was designed for mining 
+records in database with binary features (item and feature 
+being used interchangeably throughout the paper), fuzzy 
+association rules mining [1] was one of those variations to 
+deal with quantitative features. Let T = {t1, t2, …, tn} be the 
+database and each record ti represents the ith tuple in T. 
+Moreover, we use I = {i1, i2, …, im} to represent all features 
+appeared in T. Each quantitative feature ik, 1 ≤ k ≤ m, is 
+associate with some fuzzy variables, say v1, v2, …, vj. 
+Every fuzzy variable is represented by a membership 
+function. For easy representation in the following, we use 
+Fik.vj to uniquely denote the jth membership function of 
+feature ik.    
+Suppose four features, say #packet, #SYN, #ACK, and 
+#connection are concerned in a NIDS and each feature has 
+three fuzzy variables, say low, medium, and high, then 4 × 
+3 = 12 membership functions are involved. So, F#packet.low 
+denotes the low function of feature #packet, F#ACK.high 
+denotes the high function of feature #ACK, etc. In fuzzy 
+association rule mining, a fuzzy itemset consists of two 
+parts: items and fuzzy variables, denoted as <X, V>, where 
+X = (x1, x2, …, xi) ⊂ I is a collection of items (or features) 
+and V = (v1, v2, …, vi), is the collection of corresponding 
+fuzzy variables to X in order. The support of <X, V> is 
+computed as [1]: 
+ 
+in recordsofnumber
+ , satisfying  votesof Sum ) ,Sup(
+T
+VXVX ><=><                        
+,
+])[(
+ 
+T
+xtFTt jisxXxi jjj∑ ∏∈ ⋅∈
+=             (1) 
+where ti[xj] denotes the value of feature xj of the ith record, 
+and |T| represents the total number of records.  
+Instead of ″If X, then Y″ in association rule, a fuzzy 
+association rule now has the form of ″If <X, V>, then <X′, 
+V′>″. Here <X, V> and <X′, V′> are two itemsets, X ⊂ I, X′ 
+⊂ I, and X ∩ X′ = ∅. Similarly support s and confidence c 
+of the fuzzy association rule <X, V> ⇒ <X′, V′> are 
+computed as s = Sup (<Y, U>) and c = Sup (<Y, U>) / Sup 
+(<X, V>), where <Y, U> being the concatenation itemset of 
+<X, V> and <X′, V′>. For instance, if X = (x1, x2, …, xi), V = 
+(v1, v2, …, vi), X′ = ( ''2'1 ,,, jxxx " ), and V′ = ( ''2'1 ,,, jvvv " ), 
+then Y = (x1, x2, …, xi, ''2'1 ,,, jxxx " ) and U = (v1, v2, …, vi, 
+''
+2
+'
+1 ,,, jvvv " ). 
+ 
+3. Our Incremental Mining Algorithm for 
+Fuzzy Association Rules  
+    
+3.1 Basic Concept 
+Each current support value of an itemset is kept in the 
+memory for a while; as the next data record is being 
+gathered, our algorithm use the current support value to 
+compute the new one instead. See an example. Suppose the 
+quantitative values of four features: #packet, #SYN, #ACK, 
+and #connection, are measured for each time slot, and in 
+sequence they are t1 = (70, 6, 5, 12), t2 = (59, 8, 4, 3), …, ti 
+= (200, 25, 12, 31), …. For the itemset <X, V> = {#packet 
+is low, #SYN is medium, #connection is low}, its support 
+value s at t1, t2, t3, …, ti, …, is computed individually as： 
+s at t1 = (F#packet.low(70) × F#SYN.medium(6) × F#connection.low(12)) 
+/1 → tmp; 
+s at t2 = (tmp × 1 + (F#packet.low(59) × F#SYN.medium(8) × 
+F#connection.low(3))) / 2 → tmp; 
+… 
+s at ti = (tmp × (i-1) + (F#packet.low(200) × F#SYN.medium(25) × 
+F#connection.low(31))) / i → tmp; 
+… 
+51
+14      for (j = 0; j < m; j++) { 
+15        Matrix[i][j] ← 1; 
+16        CreateLinkList(len - 1, i + 1); 
+17        Matrix[i][j] ← 0;   
+18      }  
+19    }  
+20  } //end else 
+ 
+Following the above example, let′s see how to 
+construct the linked list of length 3 for instance, i.e., the 
+execution of CreateLinkedList(3, 0). The execution is 
+visualized as a tree, shown in Figure 3. In the figure, the 
+last, i.e. third, ′1′ should be placed independently in each 
+position on the shaded area in row major, by the nested 
+for-loop in lines 2 and 3 of the subprocedure 
+CreateLinkedList. During the execution, each possible 
+arrangement is replaced by a node, and STRING field of 
+the node stored the characters for which positions in 
+Matrix are marked ′1′. Two feasible arrangements and 
+their corresponding itemsets are shown in Figure 4. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Figure 3. The execution of CreateLinkedList(3, 0) 
+1 0 0 0 0 0 
+0 0 0 0 1 0 
+0 0 1 0 0 0 
+0 1 0 0 0 0 
+0 0 0 1 0 0 
+0 0 0 
+ 
+0 0 1 
+ 
+″AIK″              ″EMR″ 
+ 
+Figure 4. Two itemset candidates 
+3.4 SupCal Procedure 
+Here we then describe how to fast update each 
+itemset′s support value as one new record is being 
+gathered. Such updating is basically according to the 
+concept presented in Subsection 3.1, and all details are 
+given in the following SupCal procedure.  
+ 
+Procedure SupCal 
+//Input: an incoming record, say (i+1)th record  
+//Output: update of support value for each itemset 
+//Assumption: The (i+1)th record′s n quantitative feature 
+values are stored sequentially in array OneRecord, i.e., fj′s 
+value is stored in OneRecord[j-1], 1 ≤ j ≤ n. 
+01 for each linked list { 
+02   for each node in the linked list { 
+03      FuzzyValue ← 1; 
+04     for each character in the STRING field { 
+05     Transfer the character to its matrix position, say (u, v); 
+06     Take OneRecord[u] to the membership function of 
+fu+1′s (v+1)th fuzzy variable, and assign the 
+result to OneItemTmp;  
+07      FuzzyValue ← FuzzyValue × OneItemTmp;  
+08      } 
+//update the support value  
+09   SupVal ← [ (SupVal × i) + FuzzyValue ] / (i + 1); 
+ 
+10   If SupVal ≥ mini_sup, then 
+RuleGen(length of itemset, STRING, SupVal); 
+11   }  
+12 }  
+ 
+3.5 RuleGen Procedure 
+The final procedure RuleGen contains three 
+subprocedurs: FuzzyRules, RuleConfidence, and 
+PrintOut. The FuzzyRules is used to recursively generate 
+= {f1 is low, f3 is 
+high, f4 is medium}
+= {f2 is medium, f5
+is low, f6 is high}
+fo(i=5 i<6; i++) 
+  fo(j=0; j<3; j++) 
+fo(i=2; i<6; i++) 
+  fo(j=0; j<3; j++) 
+CreateLinkedList (1, 5)
+fo(i=2; i<6; i++) 
+  fo(j=0; j<3; j++) 
+… i=1, j=0 
+CreateLinkedList (2, 1) 
+i=3,
+j=2 
+i=0, 
+j=1 i=0, j=0 
+CreateLinkedList (3, 0) 
+Matrix[0][0] = 1 
+…
+Matrix[1][1] = 1 Matrix[4][2] = 1 
+CreateLinkedList (1, 2) CreateLinkedList (1, 2) 
+1 
+1 
+1 
+1 
+1
+1
+i=0, 
+j=2 i=1, j=0 
+i=1, 
+j=1 
+i=4,
+j=2
+1 1 
+1
+Matrix[1][0] = 1 
+… 
+53

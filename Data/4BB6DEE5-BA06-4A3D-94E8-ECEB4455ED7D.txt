@@ -1,0 +1,491 @@
+ 2
+ 
+摘要--我們提出了一個針對標準元件庫以及SRAM編譯器的自動
+漏電流(leakage power)建模方法。我們解決了兩個重大的挑戰 -
+（1）高靈敏度漏電流的溫度（例如，當溫度升高19.28X 從 25℃ 
+至 100 ° C 的90奈米技術，反向器的漏電流是大大地不同的），
+和（2）快速地處理大量模組（例如，一個SRAM編譯器產生器
+可能會支援高達 80835 macros）。我們的方法快速而有效地實現
+高精確度的漏電流之模型建立。首先，為了考慮到溫度的影響，
+我們加入一個【分段指數模型法】。其次，我們使用一個【多工
+器導向的線性外推法】來考慮SRAM編譯器所產生的各式各樣配
+置的 Macro，實驗顯示，只用要9個小型SRAM macro的線性回歸
+模擬結果，就可以推導出所有SRAM macro的漏電流模型。 
+  
+關鍵詞- Leakage Power Modeling, Leakage Power Estimation, 
+Standard Cell Library, SRAM Compiler，Extrapolation，
+Segmented Exponential Regression，Linear Regression 
+ 
+I. 導論 
+    隨著積體電路技術的微縮，電晶體的漏電流消耗大幅增
+長，甚至可能更糟到可以隨溫度呈指數增長。在先進製程
+中，漏電流在室溫下是可以忽略的，但當IC操作在較高的
+溫度時，將有可能超過50％的總功率[2][13]。因此，功率估
+算應包含動態功耗和溫度相關的漏電流。此外，對於每個
+標準單元和SRAM編譯器生成的macro，我們也需要建立一
+個溫度感知的漏電流模型。 
+     一些全晶片的漏電流消耗預估方法已被發表。例如，作
+者[5] 基於邏輯閘的數目，利用線性回歸模組來估算全晶片
+漏電流。這種方法固然有效，但可能不是很精確，因為漏
+電流消耗與溫度呈強線性關係。筆者在文獻[1] 藉由分析電
+晶體堆疊在一個標準的元件中，考慮到輸入資料對漏電流
+消耗的影響。該方法成功地簡化了漏電流模型的複雜度，
+藉由原本為n輸入單元的2n 輸入組合分類成一個更加簡便
+且數目較少的模型。在[10]，該模型在[1]提出， 進一步地
+延伸，透過神經網絡包含了工作溫度和供電電壓的影響。 這
+種方法的小缺點是它需要每個標準單元的詳細資料。一般
+來說，黑盒方法（不需要的電路細胞內部資訊的方法）往
+往較為可取，因為它可以簡單從一個標準元件到另一個。
+在[11]，Zhang等人，開發了一種方法叫做 HotLeakage，其
+中以系統層級分析了與溫度相關的快取漏電流。此外，對
+於這些漏電流估計納入模型，亦提出了一種方法[7]。 
+ 功率和熱會彼此影響。以往的研究[3][4][6][9]試圖分析這
+種功率和熱的聯合模擬估測，以預測兩個重要的參數，可
+能影響IC的可靠性- （1）當執行一個特定的應用程式的穩
+定狀態溫度，（2）現實的熱感知功耗，這是真正可從IC的
+工作電路板上衡量。在[12]，快速功率和熱聯合模擬可用來
+實行熱感知佈局(floorplaning)。 
+ 上述【功率和熱的聯合估計】方法需要準確的熱感知漏
+電流模型為基礎。在不久的將來，這對於標準單元的設計
+者以及IP供應商（如SRAM編譯器提供商）將是不可避免的
+責任。對於給定的標準單元或一個IP（如SRAM的macro），
+可以用SPICE模擬來建立一個二維漏電流模型，這個二維漏
+電流模型有兩個重要因素 -（1）工作溫度及（2）輸入向量。
+運用傳統的方法，可以對一些溫度點進行【採樣】，並使
+用【內插法】來預測非採樣溫度的漏電流。同時列舉所有
+可能的輸入方式，因為總輸入數目是可承受的。這聽起來
+很適用，因為標準元件庫的漏電流模型建立是單次性的努
+力。然而，效率仍是一個主要問題，因為負責漏電流模型
+建立的人，可能需要對每個單元執行SPICE模擬很多次，可
+能會非常花時間。一個更好的方法應該可以提供一個幾小
+時之內的解決方案。這個問題的關鍵是如何明智地採樣溫
+度而不影響準確性，也與用於預測的公式準確度有關。經
+過深入研究，我們在此研究中發現一個高效且準確的方法 - 
+即【分段指數模型法】，將在後詳述。 
+ 至於SRAM的編譯器，我們需要解決另外兩個問題 - 即
+（1）龐大數量的 SRAM Macros 需要建立模型（在我們的例
+子中高達80835），和（2）稍微大一點的 SRAM macro的模
+擬時間超出負荷（例如256Kbits）。這樣的問題在建立【標
+準元件庫】之漏電流模型中並不會遇到，是一個額外的新
+問題。 
+ 為了避免模擬大型的SRAM macro，更好的方法是只需要
+小型SRAM macro的漏電流的SPICE模擬（或其他快速電晶
+體層級模擬工具）。根據收集到的漏電流訊息，外插法（不
+僅是內插）可以進一步預測規模較大的SRAM macro的漏電
+流。當然，這種推斷的準確性需依賴於所使用的公式的準
+確度。一個好的公式應該能夠處理漏電流和SRAM結構參數
+之間的關係（如word的bit數目，總行數，以及所謂的MUX
+總計劃: 前瞻異質多核心系統開發工具研發 
+子計畫四：【適用於多核心數位訊號處理系統晶片之功率消耗評估軟體工具研發】 (3/3) 
+ 
+計畫編號：NSC 98-2220-E-007-005 
+執行期限：98 年 8 月 1 日至 99 年 10 月 31 日 
+主持人：清華大學電機系 黃錫瑜 教授 
+計畫參與人：曾群凱   曾梓晏   蔡孟修   周彥良  黃冠禎 
+E-mail: syhuang@ee.nthu.edu.tw 
+ 4
+A. 基本思維 
+ 在這項工作，我們的目標是在不同的配置參數（即word 
+depths，word-widths和IOs）和不同溫度下，針對記憶體
+macro建立漏電流模型。以Artisan memory compiler為例，其
+內共有80835記憶體配置。不像標準元件庫，透過SPICE模
+擬在每個配置參數上建立功率模型是不可能的。我們需要
+一個方法，這個方法可以使用小的配置參數來推估更大的
+配置參數的漏電流。我們發現，不同多工器寬度（即數個
+字元線對共享一個IO線）的SRAM macro，往往有不同功率
+的消耗行為。因此，一個多工器導向模型更為合適。這就
+如同我們發現很難用單一的公式去建立SRAM macro的漏電
+流模型，但是我們發現能夠利用多工器特定寬度來細分成
+幾個公式。如此一來，只有幾個小的記憶體配置，需要作
+為training set，就可以準確地推斷所有其他macro的漏電流。
+與前幾節技術（即考慮到溫度的影響之溫度採樣與分段指
+數回歸）結合，就可以在任何溫度下的目標範圍內提供準
+確的任何的SRAM macro漏電流。 
+ 
+0.0E+00
+5.0E-10
+1.0E-09
+1.5E-09
+2.0E-09
+2.5E-09
+3.0E-09
+3.5E-09
+4.0E-09
+4.5E-09
+5.0E-09
+0 10 20 30 40 50 60 70 80 90 100
+L
+e
+a
+k
+a
+g
+e
+ p
+o
+w
+e
+r(
+w
+)
+Temperature(℃)
+HSPICE(pattern 00)
+HSPICE(pattern 01)
+HSPICE(pattern 10)
+HSPICE(pattern 11)
+Piecewise exponential model(pattern 00)
+Piecewise exopnential model(pattern 01)
+Piecewise exponential model(pattern 10)
+Piecewise exponential model(pattern 11)
+圖3：NAND2邏輯單元之HSPICE 及分段指數模型的漏電
+流，採用90nm CMOS製程。 
+B. SRAM 編譯器的特性公式 
+ 在本小節，我們詳細地討論了由SRAM編譯器產生的
+SRAM macro的多工器導向漏電流模型。 
+1）多工器導向功率模型 
+ 如前所述，對於記憶體編譯器的所有配置利用單一功率
+公式模擬，未能有高度精確的結果。因此，我們根據多工
+器寬度將所有的SRAM配置分割成幾部分的主要類別，每個
+類別將有自己的功率公式。如此一來，功率公式將與模擬
+結果相當匹配。功率模型定義如下： 
+對於一特定多工器寬度Mw： 
+Power = C0 + C1W + C2B + C3W．B （2） 
+其中，C0，C1和C2，C3是加權因子，W是word數，B是bit
+數，WxB是記憶體矩陣的大小。 
+ 我們分析了使用多工器導向所推估的漏電流和實際透過
+SPICE模擬在不同溫度和training下漏電流之關係，如圖 4和
+圖 5。在25 ° C和100 ° C下功率數據和理想值相當符合。 
+0.E+00
+1.E-08
+2.E-08
+3.E-08
+4.E-08
+5.E-08
+6.E-08
+7.E-08
+0.E+00 1.E-08 2.E-08 3.E-08 4.E-08 5.E-08 6.E-08 7.E-08
+P
+re
+d
+ic
+te
+d
+ L
+e
+a
+k
+a
+g
+e
+ p
+o
+w
+e
+r 
+(W
+)
+Actual leakage power (W)  
+圖4：以多工器為導向預測的漏電流與SRAM macro在25 ° C
+的實際漏電流 
+0.E+00
+5.E-07
+1.E-06
+2.E-06
+2.E-06
+3.E-06
+3.E-06
+4.E-06
+4.E-06
+0.E+00 1.E-06 2.E-06 3.E-06 4.E-06
+P
+re
+d
+ic
+te
+d
+ l
+e
+a
+k
+a
+ge
+ p
+o
+w
+e
+r 
+(W
+)
+Actual leakage power (w)
+ 
+圖5：以多工器為導向預測的漏電流與SRAM macro在100° C
+的實際漏電流 
+2）SRAM macro的分段指數模型 
+ 到目前為止，我們在某些特定的溫度下，使用多工器導
+向功率模型推導出不同的SRAM的漏電流。但是，我們沒有
+能力預測某溫度下尚未產生自己的多工器導向模型的漏電
+流。從某種意義上說，標準元件庫的漏電流模型是一維預
+測問題（只考慮溫度的影響），而SRAM編譯器的模型是一
+個二維的預測問題，（考慮到SRAM配置和溫度的影響）。
+因此，我們需在SRAM macro上運用到以前使用在標準元件
+庫的概念 分段指數模型。唯一不同的是，我們如何產生在
+很寬的溫度範圍內的漏電流採樣值。 在這個二維預測方法
+中，我們首先針對選定的溫度中，執行不同配置的的多工
+器導向的建立模型。然後，我們在那些非採樣溫度上利用
+分段指數回歸填入每個SRAM配置的功率。 
+C. 推導記憶體 macro 的漏電流 
+ SRAM編譯器的整個漏電流建模流程是更複雜一點，如圖
+6所示。它兩個階段 - 【離線階段】和【在線階段】。如前
+所述，使用了兩種類型的公式，即：（1） 多工器導向模型 
+（考慮到配置的影響）和（2） 分段指數模型 （考慮溫度
+的影響）。建立多工器導向功率模型是離線階段，而建立
+分段指數模型是一個在線階段，即根據指令動態地執行。 
+ 6
+表2：採用180奈米製程，training set的建模誤差結果。 
+Memory 
+Configuration 
+Average 
+Absolute Error 
+(%) 
+Leakage Power (W) 
+25℃ 100℃ 
+W16B4M4 6.00% 1.10E-08W 1.28E-06W 
+W16B8M4 5.43% 1.81E-08W 1.84E-06W 
+W16B12M4 5.16% 2.52E-08W 2.40E-06W 
+W32B4M4 5.65% 1.57E-08W 1.51E-06W 
+W32B8M4 4.85% 2.65E-08W 2.14E-06W 
+W32B12M4 4.50% 3.73E-08W 2.77E-06W 
+W64B4M4 4.82% 2.53E-08W 1.96E-06W 
+W64B8M4 3.88% 4.35E-08W 2.74E-06W 
+W64B12M4 3.47% 6.16E-08W 3.52E-06W 
+Average 4.87% - - 
+ 
+表3：採用180奈米製程，validation set的建模誤差結果。 
+Memory 
+Configuration 
+Average 
+Absolute Error 
+(%) 
+Leakage Power (W) 
+25℃ 100℃ 
+W64B32M4 2.84% 1.53E-07W 7.43E-06W 
+W128B16M4 3.28% 1.43E-07W 5.87E-06W 
+W128B32M4 2.53% 2.75E-07W 1.01E-05W 
+W512B8M4 7.17% 2.76E-07W 9.69E-06W 
+W256B32M4 2.76% 5.23E-07W 1.54E-05W 
+W512B16M4 4.73% 5.19E-07W 1.52E-05W 
+Average 3.89% - - 
+ 
+C. 建模時間 
+ 我們的實驗是在Intel Xeon 3.0GHz x 8 CPU and 64GB RAM
+的Linux工作站PC上執行。我們使用 NanoSim 作為
+transistor-level模擬引擎。我們在所建立的小型標準元件庫
+上考慮我們工具的執行時間，發現大約需要2分鐘13.32秒。
+平均而言，每個基本元件細胞需要大約只有16.67秒。 至於
+用於SRAM編譯器的執行，整體運算時間為1小時6分鐘33
+秒。大部分的時間都花在所謂的功率特性處理(power 
+characterization process)-即在樣本溫度下的training set上執行 
+NanoSim 模擬SRAM macro。相對功率特性處理所花的時
+間，分段指數回歸模型所花的時間是微不足道的。整體而
+言，我們針對每個多工器寬度，在training set下包含九種 
+SRAM的配置。因為使用 NanoSim 模擬一些大型配置是不可
+能的，外插是唯一之法，我們相信約1個小時的建模時間是
+非常有效的。 
+D. 溫度感知的功率估計 
+為了顯示溫度對漏電流的影響，我們使用【高級加密標準
+電路】（AES – for Advanced Encryption Standard）作為測試
+載具。 AES電路的合成採用90nm低臨界電壓標準元件庫。
+在這個設計中，SRAM macro是單一端口的配置，並且使用
+了256 128-bit words。多工器寬度為4。如圖8所示，SRAM 
+macro靜態功耗在溫度上升時大幅增長。漏電流在25 ° C為
+1212.99 mW，並在100 ° C增加至7992.47 mW。 
+0
+1000
+2000
+3000
+4000
+5000
+6000
+7000
+8000
+9000
+0 10 20 30 40 50 60 70 80 90 100
+Le
+a
+k
+a
+g
+e
+ p
+o
+w
+e
+r 
+(u
+W
+)
+Temperature (°C)
+ 
+圖 8：SRAM macro在一AES的測試案例中，不同溫度下的漏
+電流估計。 
+V. 結論 
+ 標準元件庫和SRAM編譯器的溫度感知漏電流的模型建
+立並不是一件容易的事情，尤其是必須兼精準度和效率的
+話，。特別是SRAM編譯器，必須同時考慮配置和溫度的影
+響，因此形成一個二維預測的問題。我們成功地使用了一
+些技術來解決這個問題，譬如像 【分段指數回歸】來考慮
+溫度的效應，針對SRAM macro之【多工器導向線性回歸】
+和【外插法】等，可因而提供一個快速且準確的解決方案。
+我們所開發的方法是非常快速的，只需要16.67就可以處理
+一個標準單元細胞，也只需要1小時6分33秒就能處理一個
+SRAM編譯器所支援之32385 SRAM macros。對於我們建立
+的一個小型的標準元件庫上的8種元件細胞，平均絕對誤差
+只有0.64％，而對於9 個SRAM編譯器training macros 的平均
+絕對誤差是4.87％，對於一套中型的SRAM編譯器validation 
+set則是3.89％。據我們所知，這是第一個用於SRAM編譯器
+的【黑盒子式的漏電流建模方法】。我們也已經整合了這
+個漏電流模型的功能以及內部設計的功耗估算工具，即 
+PowerMixer。有了這項功能，不僅可以在積體電路設計上，
+更準確地考慮到工作溫度影響的總功率估計，而且可以研
+究功率和溫度在什麼互相觸發的條件下會可能造成熱失控
+的嚴重結果。 
+ 
+ 
+ 1
+ 
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+                                     日期：99 年 10 月 16 日 
+一、參加會議經過 
+ Oct. 5, 2010 由桃園國際機場飛往日本京都。 
+ Oct. 6-8, 2010 參加會議，提問一次。 
+ Oct. 8: 論文發表: Session 8-2: 由本人口頭簡報 “AF-Test: 
+計畫編號 NSC 98-2220-E-007-005 
+計畫名稱 前瞻異質多核心系統開發工具研發--子計畫四：適用於多核心數位訊
+號處理系統晶片之功率消耗評估軟體工具研發(3/3) 
+出國人員
+姓名 
+黃錫瑜 
+服務機構
+及職稱 
+清華大學電機系 (教授) 
+會議時間 
+ 99年 10月 6日
+至 
+  99年 10月 8日 
+會議地點 Kyoto, Japan 
+會議名稱 
+(中文) 積體電路瑕疵與容錯技術研討會 
+(英文) IEEE Int’l Symposium On Defect and Fault Tolerance in VLSI 
+Systems 
+發表論文
+題目 
+(中文) 用以偵測微小延遲瑕疵之調變頻率式的掃瞄式測試方法 
+(英文)  AF-Test: Adaptive-Frequency Scan Test Methodology for 
+Small-Delay Defects  
+附件四 
+ 3
+previously people have started to come up with some error detection, warning, 
+and recovery methodology to cope with it. He thinks these timing resilient 
+techniques are necessary in very near future. However, these approaches 
+remain inadequate. Prof. Asada thinks that human beings has a brain that is 
+capable of doing field reconfiguration and repair, and this ability has been 
+developed biologically since 10,000 B.C., and he thinks we should have a 
+robust and resilient error processing capability like our brains.  
+ Prof. Asada advocates that we should re-examine the beauty of completion 
+detection scheme offered in the dynamical logic and used it to tolerate the 
+timing jitters, instead of using a conservative clock to accommodate the 
+worst-case clock cycle time (which is getting harder and harder to predict).  
+ What he proposed sound like a good approach since by doing so we don’t have 
+to worry about the worst-case PVT variation and the logic circuit in an IC 
+will almost “always-work” in some sense. But I raised a question after his 
+talk – Can this scheme easily apply to controller-type of circuits or general 
+circuits with a lot of internal glitches”? He answered that it is possible 
+with some modification and/or enhancement. I think such a methodology has 
+its own problem before it can really become the main-stream. 
+ During the workshop, I figured out a potential research direction: Can we 
+do failure detection in advance and thus prevent the failure altogether? This 
+is different from what people normally do nowadays – People are now doing 
+ 5
+site offers the 360-degree eagle view of the city during either the day time 
+or the night time. Overall, I think Kyoto is very unique and intriguing. It 
+showcases a perfect example of how human beings can build a modern and easily 
+accessed city with beautiful environment full of natural and/or historical 
+beauties.  
+四、建議 
+   I found that this symposium, DFT’10, does not have too many attendee, as 
+many as just 60+. However, most of its talks are delivered by professionals 
+with high quality. The attendees tend to share a quite focused technical 
+interest (i.e., Testing and fault tolerance techniques in IC design) and thus 
+there is only one track. I think that is the advantage of a small symposium, 
+i.e., people are in the same area and speak the same language. They present 
+papers themselves and talk with one another without too much technical barrier. 
+I think I enjoy its atmosphere. Since this symposium will take place all around 
+the world, Taiwan may have the chance to host it sometime in the future. 
+ 
+五、攜回資料名稱及內容 
+ (1) The technical program of the symposium. 
+(2) 446-page Proceedings of the symposium. 
+六、其他 
+    This symposium will be held in Vancouver, Canada, next year. 
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：黃錫瑜 計畫編號：98-2220-E-007-005- 
+計畫名稱：前瞻異質多核心系統開發工具研發--子計畫四：適用於多核心數位訊號處理系統晶片之功
+率消耗評估軟體工具研發(3/3) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 1 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 5 5 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 3 2 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 5 5 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

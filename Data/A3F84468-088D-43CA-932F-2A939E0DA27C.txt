@@ -1,0 +1,603 @@
+ 2
+中、英文摘要及關鍵詞 
+摘要 
+位移貼圖(displacement mapping)是一個以純量高度函數(scalar height-field function)來表
+示模型表面上幾何細節的技術。結合位移貼圖的顯像技術在近幾年來因為繪圖硬體的效率提升，以經
+能夠達到即時顯像的要求。而基於這些現有的結合位移貼圖的即時顯像技術，我們發展出一個新的化
+簡模型的機制，可以產生一個新的網格模型表示法，以一個化簡過後的基底網格模型結合一張位移貼
+圖來表示一個以大量的多邊形建構幾何細節的原始模型。原始模型的整體形狀被轉化成化簡後的基底
+網格模型，而原始模型表面上的那些幾何細節資料則以位移貼圖的型態保存下來。於是我們可以結合
+位移貼圖的即時顯像技術繪製化簡過後，多邊形數量較少的基底網格模型，並且加上位移貼圖來重現
+原始模型的顯像效果。 
+此外我們還提出一種位移貼圖的應用：風化侵蝕模擬。真實世界裡的物體大多受風化作用而呈現
+不完美的表面。侵蝕現象在許多文獻裡都探討過，但風蝕現象在圖學領域卻相對很少被研究。我們結
+合基底網格與位移貼圖的網格表示法表示待被風化的物體，設計了一個簡化的風蝕模擬方程式，並直
+接調整位移貼圖以呈現風化效果，最後以基底網格與位移貼圖的架構畫出風化後的物件。相較於前人
+應用在模擬沙漠環境的研究方法，我們以基底網格與位移貼圖表示被風化的物體，並由位移貼圖呈現
+風化後的幾何變化。我們架構中的風方向是定義在三維空間內，並且可以使用方程式內的控制參數來
+模擬在不同土壤材質條件下的侵蝕現象。 
+關鍵字：位移貼圖、純量高度函數、基底網格模型、顯像技術、建模技術、風化侵蝕模擬 
+  
+ 4
+一、前言 
+由於三維建模技術的進步，所產生的幾何網格模型動輒由數十萬至百萬多邊形組成，如此龐大的
+資料能夠對繪圖硬體造成相當大的負擔。為了能將幾何模型在即時的速率下進行顯像，常見做法是將
+原始網格模型進行簡化，將數十萬至百萬的多邊形個數簡化至可容忍之數量再加以顯像。傳統的網格
+模型技術透過一連串的誤差評量控制將原始模型逐一化簡，在每個化簡階段，選取對模型造成最小誤
+差之單元進行化簡，直到可容忍之多邊形個數為止。可能的誤差計算方式包含考慮幾何、貼圖、或是
+視覺上的影響。透過此架構所得到之簡化模型必然與原始幾何間產生誤差，在大多數情況下，原始網
+格模型的幾何細節將被忽略掉，而只保留住模型之外觀。 
+為了在執行階段能夠同時兼顧模型品質與速度，多層次精細度(Level-of-Details，簡稱 LOD)之網
+格模型架構被提出來。此類方法可根據其執行階段之行為分為視點無關多層次精細度(view 
+independent LOD)網格模型與視點相依多層次精細度(view dependent LOD)網格模型兩大類。 
+視點無關之多層次精細度網格模型將原始網格模型簡化成若干不同精細度之網格模型，並動態根
+據模型投影至影像平面之大小或與視點之距離來決定選擇哪一階層(level)進行顯像。然而，由於視點
+無關之多層次精細度網格模型架構將原始模型簡化成若干解析度之模型，因此其資料量只會更高。再
+者，為了不讓模型在階層轉換時產生明顯的不連續現象，有時會將兩階層之模型透過混合(blending)
+方式顯示出來。例如透明度混合(alpha blending)或是幾何形變(geomorphs)。但不論是何種做法都會
+大幅提高系統之負擔。 
+視點相依之多層次精細度網格模型透過頂點階層(vertex hierarchy)表示網格模型之簡化關係。
+在執行階段，計算目前模型上每一個頂點與視點之距離、視線夾角等關係來決定是否在頂點階層上進
+行簡化(simplify)或精細化動作(refine)。雖然此類作法可以動態根據視點來調整網格以提高品質，
+但在每個畫面都需仰賴 CPU 評量目前網格是否需要簡化或精細化，仍然對系統產生極大的負擔。 
+位移貼圖(displacement map)是一種將網格的幾何細節存於貼圖之技術。為了繪製具有位移貼圖
+之網格模型，傳統的做法是將網格模型上的多邊形細切(tessellate)至與位移貼圖相似的解析度，再
+將細切出來的頂點位置根據位移貼圖作位移(offset)，但此方法會大幅增加所需顯像的多邊形個數。
+由於繪圖硬體的進步，透過可程式化繪圖硬體直接計算欲顯像之像素位移量的作法已經被提出，在此
+架構下，並不需要產生額外的多邊形個數，因此可以大幅加快顯像之速度。 
+關於關於貼圖的應用，其中一個有趣的題目就是用於動態展現風化侵蝕的過程。侵蝕現象會改變
+物體外觀並磨平銳角。過去已有許多針對地形風化侵蝕程序視覺化的研究[MKM89][BA05]，這些方法通
+常以高度圖來表示地形，因此限制了物體的結構。相較於高度圖，網格能表示更多物體的結構。根據
+外力，侵蝕程序可以分為下列幾類：由水和雨滴造成的水力侵蝕，由日夜溫差造成的熱量侵蝕，以及
+由風力造成的風力侵蝕。有許多文獻研究過水力侵蝕[BTH+06][ASA07]  [MDH07]與熱量侵蝕
+[BF01a][BF01b][Belhadj07]，但風力侵蝕現象卻鮮少研究。 
+三、文獻探討 
+3.1 模型簡化 
+利用幾何建模工具所創造出的網格模型，例如 CAD 設計工具和雷射掃描等，鮮少會針對顯像效能
+做最佳化。輸入的模型可能太複雜而不能被有效率的顯像，或在某些視點的情形下有非必要的高精細
+度。這些複雜的網格模型需要化簡其複雜度，以期能被有效率的顯像或被進一步的處理。網格化簡在
+近十年來已被密集的研究。最終目標是在視覺差異不被察覺的代價下減少幾何網格的複雜度，並能提
+供一個折衷的方式讓使用者在正確性(影像品質)和速度(顯像效率)之間作取捨。 
+Hoppe 提出連續之多層次精細度 (continuous level-of-detail)表示法，稱之為漸進式網格(progressive 
+meshes)[Hoppe96]。其概念為將原始網格以一基底網格(base mesh)與一連串的精細(refine)過程來表示, 
+每一個階層與下一階層之間可由一個邊線褶疊(edge collapse)來轉換, 反之則可透過一頂點分裂(vertex 
+split)運算元回到上一層。該架構之好處在於可取得介於基底網格與原始模型之間的任意階層, 因此稱
+為連續(continuous)之多層次精細度架構。為了建構漸進式網格，我們將原始網格利用邊線褶疊逐一進
+行簡化, 簡化的依據為透過計算原始網格上的每一個邊化簡前後的誤差值, 並將其排序後逐一選取造
+成誤差最小之邊來化簡, 直到所有邊都無法化簡為止。許多不同的誤差計算方式被提出, 其中點到平面
+的距離是最簡單的誤差度量。除了幾何誤差外，Garland 和 Heckbert 也將上述二次曲面誤差評量方式延
+伸至更高維度使其應用在有其它屬性之網格上(如顏色等) [GH97]。 
+ 6
+)(x
+另外一種化簡誤差評量為透過點對應來計算。早期的方法是依區域性參數化來尋求點對應，如
+[BS96]。Cohen 等人提出了一透過貼圖對應找到化簡前後之幾何位置對應的方法[COM98]。當輸入的模
+型為一備有參數化之貼圖對應的網格。定義該邊摺疊之化簡誤差評量為 e 在二維貼圖上邊摺疊前後
+區域中之最大距離。由於 Cohen 等人所提出的誤差評量是利用貼圖座標做為網格 3D 上的對應，在化
+簡時可以保持原來的貼圖座標，因此 Cohen 等人的方法比 Garland 和 Heckbert 的方法[GH97]更能保持
+貼圖效果，但由於 Cohen 等人的方法依靠參數化，若參數化有太大的扭曲(stretch)，他的誤差評量並不
+能完全反映出 3D 上的對應，造成其幾何誤差維持比不上 Garland 和 Heckbert 的方法。 
+由於化簡模型會造成幾何形變，且繪圖硬體只能對多邊形內部之貼圖作線性內插著色，因此會造
+成化簡的模型出現貼圖扭曲，Chen 與 Chuang 提出利用貼圖調適(texture adaptation)來消除因為模型化
+簡而造成的貼圖扭曲[CC06]。其概念是將化簡前後的網格在三維空間中找到對應關係, 並透過該關係
+修改三角形內部之貼圖座標以修正簡化後之幾何形變。調整貼圖內容以保留貼圖在網格上的形狀，解
+決了貼圖扭曲的問題。 
+ 
+3.2 網格參數化 
+參數化的目的在於得到三維網格與二維平面間一對一(bijective)的對應關係。其應用相當廣泛，從
+最廣為使用之應用如模型貼圖(texture mapping)、網格重建(remeshing)、形變(morphing)、模型編輯…等。
+ 8
+閉性，使得網格模型與球面空間有較高的相似度，參數化到球面空間也會較低的誤差。根據這樣的構
+想，提出球面空間的參數化，將網格參數化到球面空間後，利用八面體(octahedral)或六面體(cube)等相
+似形狀將參數化結果攤平在一個平面上。 
+3.3 網格模型表示法與位移貼圖(displacement map) 
+網格模型表示法的目在於描述模型表面之幾何資訊，包括模型表面位置、貼圖座標、顏色…等。
+模型表示法因目的需求的不同而發展出許多種表示法。Catmull 和 Clark 設計出分割曲面(subdivision 
+surface)：他們採用均一的多段複合曲線(B-Spline)節點來表示任意拓樸的網格模型[CC78]。從使用者決
+定的拓樸網格模型開始，依照一定的分割流程，從初始網格模型慢慢的加入新的頂點、線、面，漸漸
+的達到將網格模型細緻化的目的。而經由一次又一次遞迴分割的動作，原本的網格模型將會一步步的
+收歛為更平滑的表面。而經由這中間的步驟我們也可以得到一連串越來越精細的多面體網格模型的表
+示法。 
+由於網格來源多半來自 CAD 設計工具和雷射掃描，在網格拓樸(mesh topology)上有許多可能性存
+在，為了方便對多邊形網格進行一些模型上的處理，如形變、動畫、著色等等，需要先將網格進行重
+建，使得拓樸有著一定的規律性，網格重建(mesh remeshing)便是這樣的一個過程，藉由具有規律或半
+規律連結特性的網格模型來近似原始模型[EDD+95]。規律網格重建這個表示法的簡單性質帶來許多好
+處，其中最特別的是它可以消除頂點索引和貼圖座標的間接存取。這使得繪圖硬體的顯像效能更有效
+率，因為不需隨機記憶體存取而因此增進了記憶體存取的效能。 
+Gu 等人在 2002 年提出的幾何關係貼圖(Geometry images)[GGH02]。他們利用對模型裁切並參數化
+的過程將網格攤平在平面上，並透過影像方式儲存。透過繪圖硬體的功能，我們可以將利用影像儲存
+之幾何資料均勻(uniform)取樣，並重建出規律(regular)的網格。此種方法也使得一些如圖片壓縮的技術
+可以直接應用在網格重建上，產生多重解析度的網格模型。 
+對空間上的物體而言，多重解析度幾何模型提供了多層精細度的表示方法及處理
+[BK03][HON06][KL96][LMH00][MK05]。這類表示法因為在地形模型、科學資料形象化、虛擬實境等
+地方被廣泛的影響及應用，因此在文獻上被廣泛的研究。一些多重解析度幾何模型表示法，利用位移
+貼圖(displacement mapping)來記錄高解析度的網格模型上的表面幾何資訊，將原本的網格模型分成基礎
+模型(base model)與紀錄表面幾何的位移貼圖(displacement mapping)。位移貼圖使用一個表示高度值的
+函式對映到網格模型的表面，使它能夠表示網格模型表面上的細節[Cook84]。透過在位移貼圖上取樣，
+可以重建出不同解析度的的網格模型。透過對網格模型表面三維資訊的正確編碼，也可以做到自身遮
+蔽(self-occlusion)、自身陰影(self-shadows)，及輪廓邊(silhouette)的顯像效果。一些表面特徵像是磚塊的
+樣子、刻痕、紡織細紋等也都可以透過位移貼圖來達到和高解析度網格相同的效果。 
+3.4 結合位移貼圖的多重解析度網格模型表示法 
+Krishnamurthy 和 Levoy 提出結合 B-spline 曲面和位移貼圖的網格模型表示法[KL96]。首先他們將
+模型利用人工切分成許多補丁，然後利用 B-spline 曲面來擬合這些補丁，為了達到一階微分連續性(C1)
+另外也有人提出透過可程式化繪圖硬體, 利用個別像素光線追蹤(per-pixel ray-casting architecture)
+之架構顯像位移貼圖[FOC05] [FO06] [Tatarchuk06][Welsh04]。其基本原理為當由眼精出發之射線與物
+體表面產生相交時, 計算該交點於位移貼圖上對應之位置, 並沿著射線在位移貼圖上之投影方向搜尋
+位移後之位置, 最後再計算出所找出之位置的照度值。此過程可透過像素著色器(pixel shader)來完成, 
+因此可達到即時顯像之要求。其中 Welsh 定義沿著特定視線方向的位移上限，利用位移的上限去逼近
+相交點，並且可以模擬動態視差之效果[Welsh04]。Policarpo 等人發展在貼圖空間的線性搜尋(linear 
+search)和二元搜尋(binary search)機制，透過這機制反覆再貼圖空間逼近正確的交叉點[FBS+00]。這架
+構問題在於固定的搜尋次數，在某些高視角的時侯會有跨越高度彎曲區域的可能性。為此 Tatarchuk 提
+出動態次數的搜尋機制，此方法在執行階段(run-time)根據視線角度或光入射角度動態的決定搜尋的次
+數，使得位移貼圖表面能夠避免在視點光跨越高度彎曲的位移貼圖表面時抽樣。Donelly 則提出利用三
+維貼圖紀錄空間中每個點到位移貼圖表面的最短距離，在搜尋時，依照此最短距離來動態改變搜尋的
+距離長度，藉此改善取樣不足的問題[Donnelly05]，透過這些方法, 甚至可以產生自身遮蔽、陰影、及
+動態視差效果等光影及視覺效果。不幸的此類方法在參數化不佳的情況下都會產生嚴重的鉅齒現象, 
+且在視角非常傾斜時會有過度的平坦之結果。 
+3.6 位移貼圖與網格變形 
+結合位移貼圖的多重解析度網格模型表示法可以應用在非常多的幾何處理上，如網格的形變、著
+色(painting)等等。接著我們將探討模型表示法在網格形變上的相關研究。由於網格可能在精細度高時
+在表面上會有相當多的細節特性(detail feature)，如果直接應在這樣的模型上處理變形計算，會遭遇幾
+個問題，首先便是因為網格過於複雜而產生的計算量過大問題，此外可能讓模型幾何細節產生不預期
+之扭曲或穿刺現象。 
+多重解析度的網格形變架構(multi-resolution deformation)便是用來解決上述問題[FB 88,FB 95,GSS 
+99, ZSS 97, KVS 99,GVS+ 00,LMH 00,BK 03,BSP 06,MBK 07]。該類作法將原始模型之幾何細節抽出, 
+以建立出較平滑之基底模型，利用簡化後之基底模型進行形變動作, 最後再將原本抽出之幾何細節加
+回形變後的模型上。其步驟可由圖 3.6.1 表示。 
+ 
+圖 3.6.1：多層解析度的網格形變架構示意圖。 
+根據不同的幾何細節表示法, 可分為位移向量(displacement vectors)與位移容積(displacement 
+ 10
+圖 3.6.4：左圖為帶有凸出的平面(a)，經過非多重解析度的網格形變後的結果(b)，右邊三張
+圖則為應用多重解析度的網格形變不同表示法後的結果，分別使用法向量位移(normal 
+displacement)、梯度位移(gradient displacement)以及 Botsch 等人的方法[MBK07]。 
+ 
+Morinov 等人提出了改進法向量位移的架構，利用估計與前置一些資訊，有效的重建模型以及正
+確的法向量計算[MBK07]。此外更利用 GPU 加速形變與重建的計算。但 Morinov 等人的研究依舊無法
+處理可能發生的自身穿刺現象。相對於位移向量，位移容積方法利用容積不可壓縮的限制避免產生自
+身交叉的問題，此外對於有容積特性模型的形變，也可以產生較為正確的結果[BK03]。如圖 3.6.5 所示，
+可以清楚看到位移容積方法可以產生非常不錯的效果。但是位移容積方法所需之計算量非常大，且必
+須透過非線性之方式的重建，因此無法達到即時的效果。 
+ 
+ 
+(a)        (b)           (c)            (d)                (e) 
+圖 3.6.5：(a)為米開朗基羅大衛像的腿部，經過變形彎折後用位移向量(b,d)與用位移容積
+(c,e)重建後的結果。後面兩張為彎折部分的放大圖。[BK03] 
+ 
+ 
+ 
+3.7 風化侵蝕模擬 
+ 風化效果依照侵蝕、搬運、沉積的順序發生。Merillou 與 Ghazanfarpour[MDG00]提出了一個方法，
+基於 2D NavierStroke 方程式模擬水由表面薄膜滲透入物質內部。Liu 等人[LZL+05]延伸前述方法，
+利用侵蝕沉積的模型，模擬表面流與底層多孔基質的交互作用，這方法可以即時運算。  
+Chiba 等人[CF98]根據水流的速度場，以類似物理的方法模擬被侵蝕的山。Musgrave 等人[MK89]模擬
+以規則高度圖表示的碎裂表面，由溫度差產生地形侵蝕的顆粒，然後考慮水流搬運這些顆粒。
+Nagashima[Nagashima97]提出一個水流和雨滴的侵蝕模型。Benes 和 Arriaga[BA05]提出一個簡化的侵
+蝕程序以獲得接近真實的桌山模型，用高度圖來表示地形，每種材質都用一個簡化的技術來模擬侵蝕。
+Beardall 等人[Belhadj07]提出以立體像素的方法模擬風化。Chen 等人[CXW+05]提出γ-ton tracing，
+是一種類似 photon mapping[Jensen96]的方法。 
+ 
+ 
+ 12
+ 14
+Q୫ୟ୶ ൌ 109.8ሺWF ൈ EF ൈ SCF ൈ KԢ ൈ COGሻ 
+s ൌ 150.71ሺWF ൈ EF ൈ SCF ൈ KԢ ൈ COGሻି଴.ଷ଻ଵଵ           方程式 3.7-2 
+ 
+其中 x 是在測詴範圍中到迎風邊的距離，Q୫ୟ୶是最大的搬運量，EF 是侵蝕係數，SCF 是土壤硬殼因素，
+KԢ是土壤粗糙因素，COG 是農作物因素，WF 是天氣因素。RWEQ 的基礎是風，而 WEQ 的基礎是土壤的可
+侵蝕性[FSD+99]，這些方法提供我們一些線索來找出哪些是在風化侵蝕模擬中重要的因素。 
+ 
+ 16
+面積來增加取樣數。有了基底網格與它的參數化之後，我們就可以來產生位移貼圖。我們在基底網格
+的表面上沿著反向內插的法向量作射線取樣，計算基底與原始網格間的距離，以及射線與原始網格交
+點處的法向量，並儲存在位移貼圖中。 
+ 
+4.1.2 用位移貼圖的網格結構表示法 
+這裡解釋整個系統平台是如何建出一個化簡後的基本網格模型以及位移貼圖，藉此用來表示原始
+的網格模型。在此平台中，涉及了三個主要的步驟。網格模型化簡的步驟是用來獲得一個化簡後的網
+格模型，如此一來我們就可以得到一個有效的位移貼圖。在參數化的步驟中，使用了面積保留的參數
+化方法(area-preserving parameterization)，來找出位移貼圖的貼圖座標。最後，位移貼圖是用射
+線投射法(ray-casting)，找出化簡後的基本網格模型與原始的網格模型的距離差後得到的。 
+ 
+成長邊界殼(Growing a bounding shell) 
+為了搭配位移貼圖的方法，需要截取原本網格模型的輪廓線，而位移方向在貼圖空間上是往內的。
+因為如果視線錯過了參考表面的話，則視線會無法得到位移表面的資訊。如圖 4.1.2(a)所示，視線擊
+中了位移表面，但是卻錯失了基本網格模型。如果視線沒有擊中基本網格模型中的任何一個三角形，
+那麼顯像流程(rendering pipeline)是不會被啟動的，此像素不會出現在畫面上而位移表面的形狀也
+會缺失。 
+藉由確保視線總是會在擊中位移表面之前，先擊中基本網格模型，這個錯誤是可以避免的。最直
+覺的解決方法是像圖 4.1.2(b)一樣，將參考表面提高以至於它能完全地包住位移平面。因為我們期望
+著基本網格模型能位於原始網格模型的外面，但又不會太外面以至於還能保有整體的形狀，我們在原
+始表面上定義了殼體積(shell volume)，並且限制基本網格模型要在殼體積(shell volume)的內部。 
+原始網格模型、基本網格模型以及邊界殼(bounding shell)三者之間的關係，如圖 4.1.2(c)所示。
+為了建立邊界殼(bounding shell)，我們使用了由 Cohen 等人[Coh96]所提出的 Simplification 
+Envelope 概念。增大邊界殼的方法架構是反覆地對於每個頂點，沿著該頂點的法向量作小距離的位移，
+直到所長出的表面達到我們的要求或是沒有頂點能夠移動為止。為了在每次的循環反覆過程之後能夠
+維持一個平滑的表面，我們把凹面曲線上的頂點沿著法向量往外推後畫出。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+面上的同一個點，有三個位移深度值。 
+ 
+圖 4.1.3 高度場重疊示意圖 
+ 
+網格模型參數化(Mesh Parameterization) 
+為了建立位移貼圖，我們首先需要把基本網格模型給參數化。我們希望由基本網格模型上的一個
+多邊型所覆蓋的原始表面的面積，是和該多邊型的面積成比例的。而面積保留的參數化方法
+(area-preserving parameterization)對於原始網格模型中較大的面積，能夠保留較多的貼圖空間，
+可以達到我們的需求。我們使用 Yoshizawa 等人[YBS04]提出的參數化方法，此方法是面積保留的參數
+化方法(area-preserving parameterization)中最快的一種。首先，初始的參數化是藉由套用 Floater
+參數化[FL03]所獲得的。然候，此初始的參數化會基於參數化伸張(stretch)的梯度而被反覆地更新。
+這整個過程可以藉由解回合的線性系統而獲得。 
+ 
+建立位移貼圖(Build the displacement map) 
+在基本網格模型以及參數化都完成了之後，我們便可以計算基本網格模型與原始表面的差異來獲
+得位移貼圖。對於位移貼圖上的每個紋素(texel)，我們會產生一條以在基本網格模型上面的對應的表
+面點為起點，以內插的頂點法向量的反向為方向的射線；而位移的值就藉由算出此射線至原始網格模
+型的第一個交點的長度來獲得。 
+ 
+ 
+ 18
+ 
+圖 4.2.1 我們系統流程 
+4.2.1 建立位移貼圖  
+我們使用第一年所提出的架構作為基礎進行擴充，詳細方法內容見段落 4.1。將輸入的原始精密模
+型，轉換為簡化過的包裹殼模型與對應其參數化並紀錄起伏細節的位移貼圖。 
+ 
+4.2.2 風化侵蝕模擬方程式 
+接著我們將敘述如何利用我們的風化侵蝕方程式進行模擬。觀察 WEQ(方程式 3.7-1)與 RWEQ(方程
+式 3.7-2)，得知這些公式是設計來預測地形學上的土壤損失，而我們設計了我們的方程式，以適用於
+風化侵蝕網格的建模與顯像。我們的方程式是基於以下觀察：  
+z 土壤損失與風力成比例關係  
+z 土壤損失與物體對風化侵蝕的阻力成比例關係  
+z 物體的阻力受到土壤組成的材質影響 
+z 相同的材質在網格表面不同的位置有不同阻力(對應 WEQ 中的 K 因素)  
+ 
+因此我們設計出網格的風化侵蝕方程式： 
+Hሺxሻ ൌ ௐ௙ሺ௫ሻ
+ோሺ௫ሻ
+                           方程式 4.2.2-1 
+其中 x 為網格上的取樣點，Hሺxሻ為被風侵蝕的量。由於我們使用位移網格來表示，取樣點實際上是網
+格表面上一個極小的體積，在轉換的過程中，我們把每個取樣點的分量以高度表示，並儲存在位移貼
+圖中。ܹ݂ሺݔሻ是在 x 點的風力函數，ܴሺݔሻ而是 x 點的阻力函數。 
+ 
+風力函數 
+為了簡化，在整個模擬的過程中我們假設風力為 1.0，並對整個網格加入一個固定的環境效果，我
+們利用風向來操縱結果。當取樣點的平均法向量是正朝著風向時，也就是平均法向量與風向夾角小於
+ 20
+ 22
+我們將曲率正規化至[0,1]，為了讓 R(x)成為一個單調遞減(monotonic decrease)函 
+數，一旦給定߳௠௜௡和߳௠௔௫之後，߳௠௘ௗ௜௨௠必須介於ሾy଴, yଶሿ，且 ambientW 必須介於ሺ ఢ೘೔೙ఢ೘ೌೣିఢ೘೔೙ , ∞ሻ。 
+߳௠௘ௗ௜௨௠或 ambientW 沒有在適當範圍內時，系統會修正這些參數。透過我們設計的參數，我們可以直
+接控制網格的侵蝕量 H(x)，各種材質的特性可以透過 R(x)函數的圖形來得知。 
+ 
+4.2.3 模擬 
+在前處理階段，我們透過全域參數化獲得了位移貼圖，而參數化正是我們模擬的範圍。我們也利
+用參數化取得公式 3.3 中需要的法向量貼圖(normal map)與曲率貼圖(curvature map)。在 GPU 實作
+中，我們還需要位置貼圖(position map)。 
+我們需要每個取樣點的材質資訊，因此在模擬之前，我們指定每個取樣點的߳௠௜௡、߳௠௔௫以及 ௗܹሬሬሬሬሬԦ ，
+為了簡化，網格表面上所有的點都使用相同的 ௗܹሬሬሬሬሬԦ 。由於߳௠௘ௗ௜௨௠和 ambientW 可以由系統計算並校正，
+我們可以用計算出來的߳௠௘ௗ௜௨௠和 ambientW，或是自行指定。在我們的實作中，我們使用計算出來的
+߳௠௘ௗ௜௨௠和 ambientW，在 GPU 實作中，我們將߳௠௜௡、߳௠௔௫、߳௠௘ௗ௜௨௠、以及 ambientW 儲存在一張 4 個
+channel 的材質參數貼圖中，然後我們更新每個取樣點的平均法向量與平均曲率。模擬過程中，我們
+需要一張侵蝕貼圖(erosion map)來儲存每個取樣點在每個時間單位(time step)中暫時的侵蝕 
+高度，這張貼圖也是經由參數化產生。經過上述程序後，初始化便完成。 
+在每個時間單位中，我們依照下列流程進行模擬： 
+1. 根據位移貼圖、法向量貼圖、曲率貼圖、以及材質參數貼圖，計算每個取樣點 x 的 H(x) 
+2. 將 H(x)寫到侵蝕貼圖中 
+3. 對侵蝕貼圖進行低通過濾(low pass filter) 
+4. 透過加上侵蝕貼圖來更新位移貼圖 
+5. 藉由位移貼圖與基底網格更新法向量貼圖、曲率貼圖(CPU 法)/位置貼圖(GPU 法) 
+6. 利用位移後的基底網格與更新後的位移貼圖繪製出模擬的結果 
+重複這些步驟，直到得到我們想要的結果。 
+若在步驟 1 中發現取樣點的曲率為負值，我們會給它一個負的侵蝕高度，因此位在凹陷處的點會逐漸
+增高，就像是逐漸堆積塵土一樣。如果我們偵測到取樣點位在網格的背風處，我們會讓它的
+ܪሺݔሻ＝ ܾܽ݉݅݁݊ݐܹ，即在背風面處只有整體的環境風效果。 
+ 
+4.2.4 顯像 
+在我們的模擬架構中，我們可以很直接地繪製出模擬後的結果。在 CPU 實作中，我們鑲嵌
+(tessellate)位移後的基底網格，直到頂點數與位移貼圖的像素數相同，然後我們將基底網格套用上
+位移貼圖，並更新所有頂點，以 OpenGL 固定繪圖管線(fixed pipeline)繪製出鑲嵌後的網格。在 GPU
+實作中，我們的架構非常適合逐個像素做射線投射的方法[POC05][PO06][Tatarchuk06][Welsh04]。在
+五、結果與討論 
+5.1 輔以位移貼圖的網格模型表示法 
+在這個部分我們將展示新網格模型的成果並且和原本的模型做比較。我們使用 Visual C++ 7.1
+及 OpenGL 搭配著色語言 GLSL 來實作。置換式貼圖法的影像解析度為 1024x1024。我們用來執行
+程式的硬體平台為 Intel(R) Pentium(R) 4 3.0GHz 的 CPU 搭配 512MB 的記憶體。繪圖加速卡方面
+使用 nVidia GeForce 6800，該繪圖加速卡有 256MB 的記憶體並且支援頂點著色器以及像素著色
+器。 
+我們預期的繪圖結果在於近似原本的模型以及利用置換式貼圖法恢復原本的網格，所以我們將
+用原本的模型來和用我們的方法所產生出的模型做比較。圖 5.1.1(a)為原本輸入的模型，其含有
+500 個面並且搭配線框來顯示，圖 5.1.1(b)為由 12 個表面所夠成的基本網格，圖 5.1.1(c)為我
+們重建出來的置換式貼圖。 
+ 
+圖 5.1.1 使用我們方法所重建出的磚面 
+ 
+圖 5.1.2 顯示原本輸入的模型和我們的網格表示法所做的繪圖結果的比較。 
+ 
+最後我們展示一些具任意形狀且含有大量表面細節做為輸入模型的結果。＂Origin＂代表原本
+的輸入模型，＂Base＂代表簡化過後的基本網格，符號＂#＂代表表面數量。我們將不同的繪圖結
+果用不同的視角來呈現，如圖 5.1.3 至 5.1.6 所示。注意原本的模型是在左側，而我們的網格表
+示法則在右側。 
+ 
+ 
+ 24
+[Cohen96]。在簡化的過程中使用了兩種限制條件使得置換式貼圖法有效。 
+最後我們使用保持面積的參數化方式來獲得基本網格與置換式貼圖的對映方式，並且用射線法提
+取貼圖上的值。最後用置換式貼圖法產生的網格表示法具有下列性質： 
+1. 大量的幾何細節被轉換為高度場圖存放在置換式貼圖，剩下的基本網格結構很單純，使
+之成為原始網格的一個良好壓縮版本。 
+2. 簡化過後的基本網格提供一個相較於原始網格整體的外型以及緊密包圍的凸多邊形。 
+3. 被編碼過後的物表細節可用任何的影像處理法來編輯和壓縮。 
+此種網格表示法可被即時顯像。 
+ 
+5.2 以位移貼圖呈現風化侵蝕現象 
+所有的實驗都是在 Intel Core 2 Duo E6750 2.66GHz 的 PC 上執行，顯示卡為 NVIDIA GeForce 
+8600GT，這些結果都是由 CPU 繪製，所有的模型都有 16384 個頂點，每個時間單位中，結果都儲
+存在 800*800 解析度的圖片中。 
+我們用了幾個不同的網格來示範風化侵蝕模擬效果，包括 torus(圖 5.2.1)、relief 
+cylinder(圖 5.2.2)、CGGM cylinder(圖 5.2.3)。圖 5.2.1 示範我們的架構可以在的常見的網格
+模型上進行風化侵蝕模擬，在這個模型上所有的材質都是相同的。圖 5.2.2 示範在相同材質下，
+侵蝕效果在模型不同面上的效果(圖 5.2.2(c)顯示風力效果在背風面在迎風面弱)。圖 5.2.3 示範
+網格固有兩種不同材質情況時的侵蝕效果，「CG」字樣具有較硬的材質，其他部分具有較軟的材質。  
+ 
+  
+圖 5.2.1：Torus。左圖及右圖分別表示經過 1個和 10 時間單位後的結果圖。 
+左邊的白球表示風的來源。風力會將 torus 的邊緣磨平。 
+ 26
+ 28
+6.  參考文獻 
+[ASA07] N. H. Anh, A. Sourin, and P. Aswani. Physically based hydraulic erosion 
+simulation on graphics processing unit. Proceedings of GRAPHITE ’07 , pages 
+257–264.  
+[Belhadj07] F. Belhadj. Terrain modeling: a constrained fractal model. Proceedings of 
+AFRIGRAPH ‘07, pages 197–204.  
+[BA05] B. Benes and X. Arriaga. Table mountains by virtual erosion. In Eurographics 
+Workshop on Natural Phenomena, pages 33–39, Dublin, Ireland, 2005.  
+[BF01a] B. Benes and R. Forsbach. Parallel implementation of terrain erosion applied to 
+the surface of mars. Proceedings of AFRIGRAPH ’01, pages 53–57.  
+[BF01b] B. Benes and R. Forsbach. Layered data representation for visual simulation of 
+terrain erosion. Proceedings of SCCG ’01, page 80.  
+[BK03] M. Botsch, and L. Kobbelt. (2003). Multiresolution surface representation based 
+on displacement volumes. In Proc. of Eurographics 03 (2003), pp. 483–491. 
+[BS96] C. Bajaj and D. Schikore, “Error-bounded reduction of triangle meshes with 
+multivariate data,” SPIE, vol. 2656, pp. 34--45, 1996. 
+[BSP06] M. Botsch, R. Sumner, M. Pauly, and M. Gross. (2006). Deformation Transfer for 
+Detail-Preserving Surface Editing. Vision Modeling & Visualization 2006, pp. 
+357-364 
+[BTH+06] B. Benes, V. Tesinsky, J. Hornys, and S. K. Bhatia. Hydraulic erosion: Research 
+articles. Computer Animation and Virtual Worlds, 17(2):99–108, 2006.  
+[CC06] C.-C. Chen, and J.-H. Chuang.(2006).Texture Adaptation for Progressive Meshes. 
+EUROGRAPHICS 2006, Computer Graphic Forum Vol. 25, No. 3, 2006 
+[CC78] Catmull, E. and Clark, J. (1978). Recursively generated b-spline surfaces on 
+arbitrary topological meshes. In Computer Aided Design, 1978. 
+[CF98] K. M. N. Chiba and K. Fujita. An erosion model based on velocity fields for the 
+visual simulation of mountain scenery. The Journal of Visualization and Computer 
+Animation, pages 185–194, 1998.  
+[Coh06]  J. Cohen, A. Varshney, D. Manocha, G. Turk, H. Weber, P. K. Agarwal, F. P. 
+Brooks, Jr., , and W. V. Wright. Simplification envelopes. In Proc. ACM 
+SIGGRAPH, pages 119–128, 1996. 
+[COM98] J. D. Cohen, M. Olano, and D. Manocha.(1998). Appearance-Preserving 
+Simpli_cation. In Proc. SIGGRAPH '98, pages 115.122, New York, NY, USA, 
+1998. ACM Press. 
+[Cook84] R.-L. Cook. (1984). Shade trees. In Computer Graphics (Proceedings of 
+SIGGRAPH 84), 1984. 
+[CXW+05] Y. Chen, L. Xia, T. T. Wong, X. Tong, H. Bao, B. Guo, and H. Y. Shum. Visual 
+simulation of weathering by g-ton tracing. In ACM Transactions on Graphics, 
+page 1127, 2005.  
+[DMA02] M. Desbrun, M. Meyer, and P. Alliez. Intrinsic Parameterizations of Surface 
+ 30
+[GH97]  M. Garland and P. S. Heckbert. Surface simplification using quadric error metrics. 
+In Proc. ACM SIGGRAGH ‘97, pages 209–216, Aug. 1997. 
+[GSS99] I. Guskov, W., and P. Schroder. (1999). Multiresolution signal processing for 
+meshes. In Proc. of ACM SIGGRAPH 99 (1999), pp. 325–334. 
+[GVS+ 00] I. Guskov, K. Vidimce, W. Sweldens, P. Schroder.(2000). Normal meshes. In 
+Proc. of ACM SIGGRAPH 00 (2000), pp. 95–102. 
+[Hoppe96] H. Hoppe. Progressive meshes. In Proceedings of the 23rd annual conference on 
+Computer graphics and interactive techniques, pages 99–108, aug 1996.  
+[HG00] K. Hormann, and G. Greiner. Mips: An efficient global parameterization method. 
+In Curve and Surface Design: Saint-Malo 1999, pages 153~162. Vanderbilt 
+University Press, 2000. 
+[HON06] M. Hyssain, Y. Okada, and K. Niijima. (2006). An efficient method for converting 
+polygonal models into displaced subdivision representation. In Proc. IEICE 
+Transactions on Fundamentals of Electronics, Communications and Computer 
+Sciences, pages 807–816, 2006. 
+[Hoppe96] H. Hoppe. (1996). Progressive Meshes. In H. Rushmeier, editor, Proc. 
+SIGGRAPH '96, pages 99.108, August 1996. 
+[HP01] J. Houle and P. Poulin. Simplification and real-time smooth transitions of 
+articulated meshes. In No description on Graphics interface, pages 55–60, June 
+07–09 2001. 
+[Jensen96] H. W. Jensen. Global illumination using photon maps. In Eurographics workshop 
+on rendering, pages 21–30, 1996.  
+[KG05] S. Kircher and M. Garland. Progressive multiresolution meshes for deforming 
+surfaces.In Proceedings of ACM SIGGRAPH/Eurographics symposium on 
+Computer animation, pages 191–200, July 29–31 2005. 
+[KL96] V. Krishnamurthy, and M. Levoy. (1996). Fitting smooth surfaces to dense 
+polygon meshes. In Proc. SIGGRAPH 96, Computer Graphics, Annual 
+Conference Series,, pages 313–324, 1996. 
+[KL03] J. Kim and S. Lee. Transitive mesh space of a progressive mesh. IEEE 
+Transaction on Visualization and Computer Graphics, Vol. #9, pages 463–480, 
+Dec. 2003. 
+[KL96] V. Krishnamurthy and M. Levoy. Fitting smooth surfaces to dense polygon 
+meshes. In Proc. SIGGRAPH 96, pages 313–324, 1996. 
+[KVS99] L. Kobbelt, J. Vorsatz, H.-P. Seidel.(1999) Multiresolution hierarchies on 
+unstructured triangle meshes. Comput. Geom. Theory Appl. 14, 1-3 (1999), 5–24.
+[LMH00] A. Lee, H. Moreton, and H. Hoppe. (2000). Displaced subdivision surfaces. In 
+Proc. 27th annual conference on Computer graphics and interactive techniques, 
+pages 85–94, 2000. 
+[LPR+02] B. Levy, S. Petitjean, N. Ray, and J. Maillot. Least Squares Conformal Maps for 
+Automatic Texture Atlas Generation ACM Transactions on Graphics 21, 3, 
+362–371.(2002) 
+ 32
+surface details. In Proc. ACM Symposium on Interactive 3D Graphics and Games, 
+pages 55–62, 2006.  
+[PH 03] E. Praun, and H. Hoppe. Spherical Parametrization and Remeshing. ACM Trans. 
+Graph 2003. 22, 3, 340–349 
+[PO06] F. Policarpo and M. M. Oliveira. Relief mapping of non-height-field surface 
+details. In Proc. ACM Symposium on Interactive 3D Graphics and Games, pages 
+55–62, 2006.  
+[POC05] F. Policarpo, M. M. Oliveira, and J. L. D. Comba. Realtime relief mapping on 
+arbitrary polygonal surfaces. In Proc. ACM Symposium on Interactive 3D 
+Graphics and Games, pages 155–162, 2005.  
+[SF99] D. Schmalstieg and A. Fuhrmann. Coarse view-dependent levels of detail for 
+hierarchical and deformable models. Technical Report TR-186-2-99-20, Institute 
+of Computer Graphics and Algorithms, Vienna University of Technology, 
+Favoritenstrasse 9-11/186, A-1040 Vienna, Austria, sep 1999. human contact: 
+technical-report@cg.tuwien.ac.at. 
+[SGS+02] P. Sander, S.- J. Gortler, Snyder, and H. Hoppe. Signal-Specialized 
+Parametrization. Microsoft Research MSR-TR-2002-27(January 2002) 
+[SPB00] A. Shamir, V. Pascucci, and C. Bajaj. Multi-resolution dynamic meshes with 
+arbitrary deformations. In Proceedings of IEEE conference on Visualization, 
+pages 423–430, 2000. 
+[SSG+01] P. Sander, J. Snyder, S. Gortler, and H. Hoppe. Texture mapping progressive 
+meshes In SIGGRAPH 2001, pp. 409–416. 
+[Tatarchuk06]  N. Tatarchuk. Dynamic parallax occlusion mapping with approximate soft 
+shadows. In Proc. ACM Symposium on Interactive 3D Graphics and Games, 
+pages 63–69, 2006. 
+[Tutte63] W.-T. Tutte. How to draw a graph. Proc. London Math. Soc. 13 (1963), 743-768. 
+[Welsh04] T. Welsh. Parallax mapping with offset limiting: A perpixel approximation of 
+uneven surfaces. Technical report, Infiscape Corporation, 2004.  
+[Wan03]  L. Wang, X. Wang, X. Tong, S. Lin, S. Hu, B. Guo, and H.-Y. Shum. 
+View-dependent displacement mapping. In Proc. ACM SIGGRAGH, pages 
+334–339,2003. 
+[Wan04]  X. Wang, X. Tong, S. Lin, S. Hu, B. Guo, and H.-Y. Shum. Generalized 
+displacement maps. In Proc. Eurographics Symposium on Rendering, 2004. 
+[Welsh04] T. Welsh. (2004). Parallax mapping with offset limiting: A perpixel 
+approximation of uneven surfaces. Technical report, Infiscape Corporation, 2004.
+[WS65] N. P.Woodruff and F. Siddoway. A wind erosion equation. Soil Science Society of 
+America Journal, 29:602–608, 1965.  
+[WWT+03] L. Wang, X. Wang, X. Tong, S. Lin, S. Hu, B. Guo, and H.-Y. Shum. 
+View-dependent displacement mapping. In Proc. ACM Transactions on Graphics 
+(TOG)., pages 334–339,2003. 
+[XCZ06]  D. Xu, W. Chen, H. Zhang, and H. Bao. Multi-level differential surface 
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+                                   日期：   年   月   日 
+計畫編號 NSC 96-2628-E-009-160-MY3 
+計畫名稱 利用位移貼圖表示幾何細節之網格表示法及其在形變網格的應用 
+出國人員
+姓名 黃聰賢 
+服務機構及
+職稱 交大資訊工程系博士生 
+會議時間 
+2009 年 12 月 16 日 
+至 
+2009 年 12 月 19 日 
+會議地點 Yokohama, Japan 
+會議名稱 
+(中文) 2009 年 ACM 電腦圖學與互動技術-亞洲會議 
+(英文) ACM SIGGRAPH ASIA 2009 
+一、參加會議經過 
+12 月 16 日 
+週三 18:00 去聽論文的 Fast Forward Session 
+12 月 17 日 
+週四 
+09：00 聽論文報告: Texturing 
+14:15 聽論文報告: Urban Modeling 
+16:15 聽論文報告: Physically Based Animation 
+12 月 18 日 
+週五 
+09：00 聽論文報告: Lighting & Material 
+11:00 聽論文報告: Real-Time Rendering 
+14:15 聽論文報告: Global Illumination 
+12 月 19 日 
+週六 
+09：00 聽論文報告: GPU Algorithm & Systems 
+11:00 聽論文報告: Perception 
+14：15 聽論文報告: Hair & Collaboration Modeling 
+16:15 聽論文報告: Reconstruction & Modeling 
+ 
+二、與會心得 
+在電腦圖學研究上，Siggraph Asia 是非常頂尖的國際會議。Siggraph Asia 有著極佳的
+論文品質，而且相較於美國本土的 Siggraph 會議，舉辦地點距離我們比較接近。參與此會議
+Mapping)，去年有提出漸進式的架構。因為不儲存對畫面改進無益的的光子，比起原始的方
+法可以省下大量記憶體空間。然而這樣的架構卻喪失了景深、動態模糊的處理能力，因為許
+多需要的資訊在中途已經被捨棄了。而且在 glossy 材質表面上會有很多雜訊出現。今年提出
+的方法並沒有修改大架構，而是擴充架構：增加了分佈光追蹤(Distributed Ray Tracing)
+的回合來解決問題，並強化 glossy 的材質的處理能力。另外還有 Instant Radiosity 延伸類
+型方法的變化，傳統上使用虛擬點光源來處理間接照明。然而虛擬點光源的方法有兩大問題
+存在，第一點是只能處理 diffuse 的反射效果。第二點則是實作上的細節問題，離點光源太
+近的區域會有過亮問題，這是因為計算的公式設計在太近的時候會有很大誤差。一般的處理
+辦法是砍掉(clamping)這種過亮的值，然而這樣當然是不正確的。今年提出的辦法是使用虛
+擬球光源代替點光源。新的算法將不會再有過亮問題，也能找回原本被砍掉的劇烈變化細節。 
+參加 Siggraph Asia 會議，可以看到許多人的新題目與創意，也能看到舊案新解。最重
+要的是能夠知道目前其他國家的研究近況，站在巨人的肩膀上才能夠看得更遠。 
+三、考察參觀活動(無是項活動者略) 
+四、建議 
+五、攜回資料名稱及內容 
+ 會議資料光碟一盒，內含四張 DVD 
+六、其他 
+二、與會心得 
+Siggraph 與 Siggraph Asia 會議在電腦圖學領域上，是首屈一指的頂級國際研討會。其
+中 Siggraph Asia 在亞洲地區舉辦，但品質也不輸美國 Siggraph，對位於東南亞地區的我們
+相當方便。會議內容包羅萬象，例如：顯像、影像處理、模型處理、電腦特效、物理模擬…
+等。議程除了論文報告之外，還有海報、書展以及課程。參與該會議能夠瞭解當前世界的電
+腦圖學發展方向與潮流，也能夠提供研究的靈感與參考。 
+Siggraph Asia 涵蓋相當多種領域，以下就個人比較感興趣或印象深刻的方向做整理報
+告。 
+顯像技術方面，有看到關於人類臉部動態顯像、像素法向量內插新解、全域光照顯像。
+關於人類臉部的顯像，以往都是基礎於半透明(translucent)材質的方法。從 2001 年的均質
+雙極假設法到 2005 的多層皮膚，這些方法都沒有考慮到一個很大的問題：人類的臉部會有表
+情，而這個因素會很大的改變臉部皮膚的外觀。今年的這篇方法首先探討了這個問題，並且
+提出了許多觀察。人類的表情會影響膚色，是因為血管的壓縮或是放鬆會改變血紅素分佈。
+分佈與反應因人而異，但是在同一個人上的分佈並不會變化，每次的反應也會差不多。最後
+推出一個量測辦法，只要紀錄幾個關鍵表情的膚色就能夠推出其他表情會是什麼樣子。 
+像素法向量內插，傳統上使用多邊形的頂點法向量內插算出。然而這個作法會有一些問
+題存在。在計算折射或是反射時，會出現應該離開物體的方向卻反而進入物體的情形。這是
+因為計算打光用的法向量與實際的模型法向量有差異所導致的。問題很簡單，卻一直沒有人
+提出解決辦法。作者提出的處理方法是設定一些規則，並利用兩種法向量的混合。 
+全域光照顯像，一篇是提出光子映射(photon mapping)的誤差估計。是第一篇提出在成
+果完成之前就可以推測需要多少光子的方法。另外一篇則是關於 glossy 材質的間接照明補強，
+這個方向的論文最近幾年內相當熱門。傳統上要做出間接照明，特別是 glossy 的材質時，通
+常都有非常高的計算代價。基礎於光線追蹤法(Ray Tracing)的方式通常都可以處理 glossy
+材質的間接光照，但是顯像時間通常非常久。Instant Radiosity 與後來的虛擬點光源
+(Virtual Point Light, VPL)方法能夠有比較高的速度，但是都不適用於 glossy 的材質上。
+前一年也有過以虛擬球光源來取代虛擬點光源的改進方法，但是這個作法卻含有讓 glossy 反
+射效果變模糊的問題。今年出現的解決方法是拆解光線傳輸時的全域與局部照明效果，並分
+析光線在場景中傳輸時低頻的柔和效果與變化劇烈的部份，再分別以不同方法實作再結合。
+最後可以得到一個比光線追蹤法要快，而品質能比虛擬球光源方法要好的預視顯像方法。 
+物理模擬部份，有碰撞偵測、彈簧網格系統、流體模擬。碰撞偵測在不做任何過濾的情
+況下，會有最差時間複雜度為物件數量平方的計算量。使用過濾的方法以避開不必要的測試，
+則能使所需的計算量遠低於這個級數。今年的方法，有一篇方法先分析空間中物件的方向軸，
+再以 GPU 判斷投影到軸上有無重疊來加速過濾，並達到高度的平行處理以降低時間。另外一
+篇論文的方法則是處理大量彼此堆疊的物體，被壓在內部的物件可以視為大塊的靜止物件，
+進入休眠狀態而不需計算碰撞，從而減低計算量。 
+彈簧網格部份，則有利用利用多層精細度(Level of Detail)的模型來加速彈簧系統的效
+能，以及衣物模擬的複合式方法。傳統上衣物的模擬有使用物理方式以及機械學習方式兩類。
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/07/05
+國科會補助計畫
+計畫名稱: 利用位移貼圖表示幾何細節之網格表示法及其在形變網格的應用
+計畫主持人: 莊榮宏
+計畫編號: 96-2628-E-009-160-MY3 學門領域: 計算機圖學
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

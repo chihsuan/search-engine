@@ -1,0 +1,216 @@
+中文摘要 
+ 在現今的人臉辨識的運用上相當廣泛，諸如門禁系統、攝像監視系統、網路應用、學生考勤系
+統…等等，考慮人臉辨識的準確度與資料有規則性排列選擇 Recognition algorithms using neural 
+network 作為實現的演算法，實現演算法方式可分為三個部分：圖形 Modified Census Transform 
+(MCT)轉換、計算 hypotheses 與以方框標示人臉，第一部分， MCT 轉換在計算的方式上固定以及
+資料來源連續的排列，適合用 SIMD 來執行運算，其他部分則因資料不規則散佈使其對應運算不易
+並行。本計畫使用本實驗室所開發的多資料流 SIMD 架構處理器實現圖形 MCT 轉換，並運用其多
+資料流特性，將須處理之圖形分成四部份同時執行(Isolation mode)，並搭配演算法之需求以切換作
+業模式，達成順暢的資料取存，降低了資料搬移的負擔，且新增指令以 16bits 資料格式將四個 MMX
+暫存器作 4×4 矩陣轉置，和將載入資料的同時作有號數或無號數的位元擴充，以達到加速多資料
+流並行處理，同時為了因應多資料流來源並非都是連續，所以透過 Striping 的機制分別抓取固定間
+距的資料來源，以達到多部份同時執行的目的。此外在身份識別實現上利用被尋目標的 hypotheses
+值與待測目標的 hypotheses 值做比較，兩者相差在千分之 3 以內視為同一個人。最後在 UMVP-2500
+開發平台上實際執行驗證正確，在效能分析方面，透過對於 MMX 與 XScale 的比較，分析多資料
+流 SIMD 架構所帶來的效能提升，與 MMX 相比效能提升了 373%，與 XScale 相比效能提升了
+345%，這顯示出多資料流 SIMD 架構對於平行運算的效能，比起現今其他架構可以有大幅度的提
+升。在固定模式標準化方面，則是因為多資料流 SIMD 架構與新增矩陣轉置的指令，其延伸的使用
+改變了資料行列的位置，進而在計算上有新的概念，從原本的一直線，變成一個面，這是在 MMX
+與 XScale 都沒有的概念。 
+ 
+關鍵詞: 人臉辨識，MCT 轉換，MMX 多媒體指令集，多資料流 SIMD 運算 
+  
+Keywords: Face Recognition，Modified Census Transform，MMX multimedia instruction 
+set，multi-data-stream SIMD 
+ 
+圖 3-1 Adaptive Boosting 流程圖 
+ 
+    圖 3-1 的 Adaptive Boosting 流程圖中，X 指的是需要辨識的物件，Y 表示是否為某物
+件，例如 X 為一張圖，而 Y 則表示是否為人臉，在一開始，每一個物件都有一個權重，而
+且所佔的比重都是一樣的，透過 weak learn 將 X 物件分類，而在分類的時候會將權重納入
+考慮，其結果的集合為 h1，但是此結果與真正的答案 Y 不一定相同，所以必須要將計算出
+來的結果與答案 Y 做比較，並且統計其錯誤的比例，將錯誤的比例用於調整權重，新的權
+重將用於下一次的 weak learn 計算，再經過多次的 train 之後，即可以得到 strong learn，而
+strong learn 就可以運用在辨識物件上。 
+ 
+3-2 face detection 流程及其運算 
+     研究 face detection 流程及其運算主要在了解現行人像辨識的技術，並找出適合 SIMD
+並行化的演算法，以運用在多重 SIMD 之可重組結構(Reconfigurable) 的運算單元。 
+    光線的變化對於人臉的辨識與分類有很大的影響，所以對於一個影像中，如何能夠發
+現人臉在哪裡，並進行比對，所以首先我們需要對光造成物體影像的變化進行偵測，找出
+其特徵並加強，這樣就可以做出較容易辨識的版本。 
+    在 face detection 的技術中，在一個畫面中需要先辨識人臉在那裡，因為在比較複雜的
+環境中，很容易干擾人臉的辨識，如下圖 3-2 
+ 
+圖 3-2 複雜的環境造成人臉辨識的錯誤 
+ 
+))(),(()( yIxIxC
+Ny
+ζ
+∈
+⊗=                   (2) 
+但是公式(2)只能計算到其中的 256 種，並沒有辦法計算到全部的 511 種，所以假設 N’(x)
+為 N(x)∪x，而其中心周為鄰居的色飽和度平均則表示為 )(xI ，因此公式(2)可以改成 
+))(),(()(
+'
+yIxIx
+Ny
+ζ
+∈
+⊗=Γ                   (3) 
+例如 
+ 
+圖 3-5 MCT 例子 
+ 
+I(x)=5 
+))(,5()( yIxC
+Ny
+ζ
+∈
+⊗=  
+而 )(xI =2 
+))(,2()(
+'
+yIx
+Ny
+ζ
+∈
+⊗=Γ                 (4) 
+由此例可以知道，有修改的 Census Transform 可以將區域性的特徵表現出來，沒修改過的
+Census Transform，則有可能沒有辦法將區域性的特徵表現出來，對於有修改的 Census 
+Transform 我們稱為 Modified Census Transform (MCT)。 
+    除了要尋找區域性的特徵，還要考慮到色飽和度的求值，因此假設照度為 L(x)，反射
+比為 R(x)，而 x 表示為(x,y)，因此色飽和度可以寫成 
+I(x)=g L(x) R(x)+b                     (5) 
+g 為增益係數，b 為偏差修正，所以我們對圖 3-6 做 Modified Census Transform 
+ 
+圖 3-6  Modified Census Transform，圖片來源[7] 
+ 
+我們可以發現左上和右上所轉換出來的圖形是一樣的，所以這就意味著我們可以依照轉換
+出來的圖形做比對，如果一樣就是同一個人，如果不同就不是同一個人。 
+ 
+ 
+四、架構實現設計 
+    在每一個 MOSU 中增加 2個 MMX 暫存器，這是因為在計算的時候，MMX 的運算子需要兩
+個，所以會需要用 2 個 MMX 暫存器，其計算完的結果會佔據其中的一個 MMX 暫存器，可是
+ 
+表六、計算標記人臉的公式 
+ 
+圖 4-2 計算標記人臉的總 cycle 數，其圖形大小為 320×240 
+ 
+圖 4-4 計算 8點平均的總 cycle 數，加上 Data prefetch，其圖形大小為 320×240 
+ 
+圖 4-5 計算 8點平均的 speedup，加上 Data prefetch，其圖形大小為 320×240 
+ 
+在總 cycle 數方面，有一定程度的減少，但是不如 speedup 明顯，在 speedup 中，在前面
+區段呈現 speedup 上升的趨勢，這是因為在圖 4-5 中，前面區段減少的 cycle 數的比例是
+固定的，所以當 n 值相對較大時，其總 cycle 數減少的數量也就比較多，所以 speedup 會
+有上升的趨勢，但是其後面區段雖然也有減少相同的 cycle 數，但是後面區段的 n 值卻一
+直增加，這使得減少的比例下降，進而讓總 cycle 數減少的比例也減少，所以就會得到
+speedup 又開始往下降。 
+ 
+計算 MCT 編號加上 Data prefetch 
+    以下將 Data prefetch 運用在 BMMOC 上，並且分析所寫的計算 MCT 編號程式，根據所
+選取的 Queue length 大小，將其可以減少的 cycle 數代入計算，以重新求得新的總 cycle
+數與新的 speedup，在此 Queue length=4，其結果如圖 6-18 與圖 6-19 
+可以給後續的軟體開發者測試、驗證的環境。 
+    第三個目的在於藉由並行化之過程找出其固定運算的模式，將其變成一種標準化，這
+對於後續軟體開發者而言，當遇到相同運算目的的時候，可以藉由套用標準化的程式寫出
+適合該目標的指令，更近一步可以將其納入 complier 中，用於 C 程式與 machine code 之
+間的轉換，如此更可加速軟體的開發。 
+ 
+參考文獻 
+ 
+[1] R. E. Schapire and Y. Singer, “Improved Boosting Algorithms Using Confidence-rated 
+Predictions,” Machine Learning, vol. 37, no. 3, pp. 297-336, 1999. 
+[2] Yoav Freund and Robert E. Shapire, “A Short Introduction to Boosting”, In Journal of 
+Japanese Society for Artificial Intelligence. 
+[3] Derek Hoiem , ”Adaboost” , 
+http://www.cs.uiuc.edu/homes/dhoiem/presentations/Adaboost_Tutorial.ppt 
+[4] Hongbo Deng, “A Brief Introduction to Adaboost” , 
+http://www.cse.cuhk.edu.hk/~lyu/seminar/07spring/Hongbo.ppt 
+[5] B. Roe, “Boosted Decision Trees, An Alternative to Artificial Neural Networks” , 
+http://www-mhp.physics.lsa.umich.edu/~roe/boosting_talk_05.ppt 
+[6] Guy Leshem, “Improvement of Adaboost Algorithm by Using Random Forests as Weak 
+Learner and Using This Algorithm as Statistics Machine Learning for Traffic Flow 
+Prediction” , January 25, 2005. 
+[7] Bernhard Froba and Andreas Ernst, “Face Detection with The Modified Census Transform”, 
+Proceedings of the Sixth IEEE International Conference on Automatic Face and Gesture 
+Recognition, pp. 1-6, 2004.  
+[8] Y. Wei, X. Bing, and C. Chareonsak, “FPGA Implementation of Adaboost Algorithm for 
+Detection of Face Biometrics,” In Int. Workshop on Biomedical Circuits & Systems 2004 
+[9] Henry A. Rowley, Shumeet Baluja, and Takeo Kanade, “Neural Network-Based Face 
+Detection”, PAMI, January 1998 
+[10] John Iselin Woodfill, Gaile Gordon, Ron Buck, “Tyzx DeepSea High Speed Stereo Vision 
+System”, Tyzx, Inc. 
+[11] Jih-Ching Chiu, Shou-Xi Hong and Kai-Ming Yang, "Register Processor for MMX 
+Instructions, " The 18th VLSI Design/CAD Symposium, pp. 696-700, Aug. 2007. 
+[12] Intel Corp. , “Intel XScale® Technology: Intel® Wireless MMX™ 2 Coprocessor” , Order 
+Number 314510-001. July, 2006. 
+[13] Millind Mittal, Alex Peleg and Uri Weiser, “MMX™ Technology Architecture Overview“, 
+Intel Technology Journal, vol. 1 issue 1, 3rd quarter 1997. 
+[14] Intel MMX Instruction Set, http://softpixel.com/~cwright/programming/simd/mmx.php 
+[15] Stefano Tommesani, Intel MMX Instruction Set, 
+http://www.tommesani.com/MMXPrimer.html. 
+[16] AMD 3DNow! Instruction Set, http://softpixel.com/~cwright/programming/simd/3dn.php. 
+[17] Youngsik Kim, Tack-Don Han, Shin-Dug Kim and Sung-Bong Yang, “An 
+Effective Memory--Processor Integrated Architecture for Computer Vision”, 
+International Conference on Parallel Processing (ICPP '97), p. 266, 1997. 
+技術說明 
+中文： 
+ 多媒體運算暫存器為我們實驗室自行開發，用以支援並行化
+MMX 延伸指令集的架構，在功能上多媒體運算暫存器能完全支援
+MMX 指令集的所有運算，並為新的影像處理協定設計加速運算的
+指令。多媒體運算暫存單元具有下列 4 點特性： 
+1. 以提升多媒體運算為目的  
+2. 以 MMX 指令集為基礎做進一步的效能提升  
+3. 利用 SIMD 搭配上多資料流並行處理來提高運算能力  
+4. 運算單元及暫存器整合設計，提高暫存器資料使用率  
+多媒體運算暫存器是由多個 MOSUs 組成，1 個 MOSU 具備運
+算一個多媒體指令的能力，並包含 2 個 64 bits 的多媒體暫存器。
+構成多媒體運算暫存器最基本的需求為 1 個 MOSU，而 1 個 MOSU
+是由 64 個 Operation pair 組合而成，所以 N 個 MOSUs 就具備 N 倍
+的運算能力，也具備了 N 倍的暫存器空間。 
+MOSU 由 Operation pair 組成。因為多媒體指令為 SIMD 架構，
+其運算資料型態分成 byte、word、double-word 及 quad-word，所以
+如圖最左邊所示，Operation pair 包含 2 個 D-Flip-Flop 的儲存空間，
+1 個 Operation pair 具備 1 位元的運算能力。8 個 Operation pairs 串
+接成一個具 byte 運算能力的 Operation pair（Byte），2 個 Operation 
+pair（Byte）構成 1 個 Operation pair（Word），2 個 Operation pair
+（Word）構成 1 個 Operation pair（Double-word），最後再由 2 個
+Operation pair（Double-word）構成具完整多媒體指令運算能力的
+MOSU，組成 MOSU 還包含一個 32 bits 的 SAR（Start Address 
+Register；起始位址暫存器），SAR 是用來定址 MOSU 可存取的記
+憶體空間的起始位址。在多 MOSUs 的架構下，各個 MOSU 利用自
+身的 SAR 來存取不同的記憶體空間，或用 CSAR 來抓取相同的記
+憶體資料。並行運算時，暫存器之間偶爾會有資料交換的動作，這
+是 2 個 MOSUs 之間的交換機制，所以搬移指令不太好多個 MOSUs
+並行執行。為了平衡並行運算與資料搬移的要求，我們將多 MOSUs
+內的多媒體暫存器分成三種群組模式：global mode、couple mode
+及 isolation mode。 
+ 
+出席國際學術會議報告 
+                                            98 年  5  月 29   日   
+報 告 人 姓 名 邱日清 
+服務機關名稱
+（請註明系
+所）及職稱 
+助理教授 
+會議期間及地
+點 2009/05/18~2009/05/20   義大利 納布勒斯 Ischia 
+會 議 名 稱 
+ 
+（ 中文 ）ACM 國際計算新領域會議 
+（ 英文 ） 
+2009 ACM International Conference on Computing Frontiers & 
+Workshops 
+  
+發表論文題目 A Multi-streaming SIMD Architecture for Multimedia 
+ns Applicatio
+報告內容概要： 
+一、參加會議經過 
+二、與會心得 
+三、建議 
+四、攜回資料名稱及內容 
+五、其它 
+ 

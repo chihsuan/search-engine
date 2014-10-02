@@ -1,0 +1,233 @@
+ 2
+ 
+2.2 Goal level G1 
+例外處理最怕遇到的問題，就是例外
+被 忽 略  (ignoring) 或 是 被 吞 掉 
+(swallow)。因為若是元件隱藏例外，則當
+例外發生時，系統內部的狀態可能已經不
+正確，但是從外部看來該系統卻處於正確
+狀態。要找出此種錯誤非常困難。因此，
+我們所列出例外處理的第一個等級，就是
+要求元件不可以隱藏例外，如此一來將有
+助於早期發現程式中的錯誤，以便在程式
+正式釋出之前，找出大部分的錯誤 [4]。 
+ 
+2.3 Goal level G2 
+ 例外發生的原因並非都是由程式的錯
+誤所造成，有許多例外是因為執行環境 
+(runtime environment) 所產生。例如，磁
+碟空間不足、檔案不存在、網路斷線等等。
+因此，若元件只是單純的回報例外，而沒
+有將自己的狀態保持在正常的情況，則這
+些例外將無法由軟體系統或是使用者來執
+行恢復的動作。因此，我們訂定例外處理
+的第二個等級為  state-recovery (狀態恢
+復)，確保例外發生之後，元件還是處於正
+確的狀態。 
+ 
+ 
+ 
+圖 1:強健度等級升級與降級 
+           表 1: 四種強健度等級定義 
+ 
+Element Goal level G0 Goal level G1 Goal level G2 Goal level G3 
+name undefined error-reporting state-recovery behavior-recovery 
+service failing implicitly or explicitly failing explicitly
+failing 
+explicitly delivered 
+state unknown or incorrect 
+unknown or 
+incorrect correct correct 
+lifetime terminated or continued terminated continued continued 
+how-ach
+ieved NA 
+(1) propagating 
+all 
+unhandled 
+exceptions, 
+and  
+(2) catching and 
+reporting 
+them in the 
+main 
+program 
+(1) error 
+recovery 
+and 
+(2) cleanup 
+(1) retry, and/or 
+(2) design diversity, 
+data diversity, and 
+functional diversity
+also 
+known 
+as 
+NA failing-fast 
+weakly 
+tolerant, 
+organized 
+panic 
+strongly tolerant, retry 
+ 
+ 4
+2.5 階段式例外處理 
+區分不同強健度等級的設計使得我們
+的方法可以支援階段式例外處理。軟體的
+強健度將隨著目標等級（goal levels）提高
+而增強，且較高目標等級將包含較低目標
+等級的強健度能力。附帶說明，當一個被
+設計為 G3 的軟體元件在程式執行時無法
+達到 G3，該元件可以降即以便滿足 G2（至
+少保持狀態正確），甚至只達到 G1（將錯
+誤回報給呼叫者）；如圖 1 所示。 
+ 
+三、強健度等級實作 
+隨著強健度等級增加，例外處理也變的
+更加複雜。表 2 列出了我們用來實作不同
+強 健 度 等 級 的 例 外 處 理 基 本 操 作
+（primitive operations）。 
+這些例外處理基本操作在執行時也可
+能會失敗，此時我們需要知道程式該如何
+面對此狀況。在我們的模式中，程式語言
+中直接支援屬於 G1 的基本操作，因此這
+些基本操作原則上不會失敗。例如，丟出
+例外（exception signaling）和傳遞例外
+（propagation）很少會失敗。然而，萬一
+些基本操作失敗，那麼系統將丟出一個
+unchecked 例外來表達嚴重錯誤。 
+G2 和 G3 的基本操作與一般程式碼沒
+有甚麼不同，因此有較高的機會發生例
+外。當這些基本操作發生錯誤時，程式應
+表 3：實作不同強健度等級之成本公式 
+ 
+ 6
+生時它可以被其他物件繼續使用。因此，
+我 們 宣 告 了 一 個  checked exception 
+CVSCheckoutException 在
+CVSCheckout 的介面上。接著，我們參考
+表 2 中所列的例外處理基本操作來修改
+CVSCheckout 使其具有達到 G2 的能力。
+其結果如圖 3(2) 所示，此時原本的
+exception hole 被往上推到 CVSController
+元件中。 
+經過上述的演進，CVSController 現在
+擁 有 一 個 exception hole 。 因 為
+CVSController 是一個應用程式階層的元
+件，且具備足夠的 context information 來執
+行重試 (retrying) ，因此我們將它的例外
+處理等級由 G1 提升到 G3。同樣地，我們
+參考表 2 中所列的例外處理基本操作來修
+改 CVSController 使其具有達到 G3 的能
+力，其結果如圖 3(3) 所示。我們在
+CVSController 介面宣告了另一個 checked 
+exception RepositoryException用以
+表示CVSController 無法成功達到G3的錯
+誤。由於此時 CVSController 已經處於
+G3，PIC 自動變成了 G2（因為 PIC 的例
+外處理能力僅與 CVSController 相關，也
+就 是 PIC 的 例 外 處 理 能 力 主 要 由
+CVSController 來決定)。因此，當使用者
+看到 PIC 所顯示的錯誤對話盒時，使用者
+將可安全的重試 (重新執行) 原本失敗的
+功能 (因為此時雖然有錯誤發生，系統還
+是處於正確的狀態)。 
+ 
+PIC CVSController CVSCheckout JavaCVS
+G1G1G1G1
+(1)
+(2)
+(3)
+G1G1
+G2G3G2
+TTM 
+Iterations
+Robustness
+Iterations
+Actor
+G1
+G1
+G2
+ 
+圖 3：例外處理演進 
+ 
+5.2 例外處理成本評估 
+ 表 4 列出了本範例中例外處理成本分
+布的情況。其例外處理基本操作的成本預
+估值如表 5 所示。在此我們要觀察的是例
+外處理成本在不同開發階段的分布，而不
+是基本操作的值是如何估算。換句話說，
+在給定一組基本操作預估值之後，我們便
+可評估在軟體開發過程中，例外處理的成
+本將會發生在哪一個階段。以此範例而
+言，在 TTM iterations 時，我們只花了總
+例外處理成本的 4.8%，以便滿足快速上市
+的需求。由於我們知道每一個軟體元件的
+強健度等級，因此雖然在 TTM iterations
+我們沒有妥善地處理例外，但是後續的補
+強工作並不會因此而造成混亂。 
+ 
+六、結論與未來展望 
+本研究提出一個包含四個等級的例外
+處理強健度模型，並分析達成不同強健度
+等級所需的例外處理基本操作。我們以實
+際範例說明如何採用本研究所提出的方法
+來實作例外處理設計以及評估例外處理的
+表 4：例外處理成本分佈 
+ 
+Iter. Primitive operation in
+CVSCheckout 
+Primitive operation in
+CVSController 
+Cost 
+value 
+Percentage 
+1   wrapping, signaling, 
+catchingc 
+ 3 4.8% 
+2   declaringc, wrapping, 
+error-handling, cleanup, 
+catchingc, wrapping, 
+signaling 
+29 46.0% 
+3   declaringc, wrapping, 
+selection, alternative,  
+31 49.2% 
+表 Y04 
+行政院國家科學委員會補助國內專家學者出席國際學術會議報告 
+                                                         96 年  12  月  8  日 
+報告人姓名  鄭有進 
+ 
+服務機構
+及職稱 
+國立台北科技大學  
+資訊工程系副教授 
+ 
+     時間 
+會議 
+     地點 
+民國 96 年 12 月 3 日 至 
+民國 96 年 12 月 7 日  
+日本名古屋 
+本會核定
+補助文號
+ 
+NSC 96-2221-E-027-034 
+會議 
+名稱 
+ (中文) 第 14 屆亞太軟體工程研討會 
+ (英文) Fourteenth Asia-Pacific Software Engineering Conference 
+(APSEC) 
+發表 
+論文 
+題目 
+ (中文)  
+1. ezContract: 以標記函式庫及 Bytecode 處理的方式遂行 Java 之依合約
+設計 
+2. Pseudo Software: 一個迭代式需求發展與驗證的概念 
+ (英文)  
+1. ezContract: Using Marker Library and Bytecode Instrumentation to 
+Support Design by Contract in Java 
+2. Pseudo Software: a New Concept for Iterative Requirement 
+Development and Validation 
+附件三
+ 

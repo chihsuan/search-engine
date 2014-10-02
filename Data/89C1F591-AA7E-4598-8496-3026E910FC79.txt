@@ -1,0 +1,941 @@
+ 2
+memory. Hence, the amount of RAM space required by a block mapping scheme is significantly reduced. 
+However, update requests usually incur block-level copy overhead. 
+A hybrid mapping scheme is a block mapping scheme with a limited number of records adopting page-level 
+mapping. In a hybrid mapping scheme, a logical address is consisted of an LBA and a logical page offset as a 
+block mapping scheme. However, unlike a block mapping scheme, it allows data update to the next available 
+page in another physical block. A page mapping table is usually required for recording actual locations of the 
+updated data. Log-buffer based scheme is a popular hybrid mapping scheme. In a log-buffer based scheme, 
+flash memory blocks are classed into data blocks and log blocks. Data blocks keep ordinary data and 
+managed by block-level mapping. A small fixed number of log blocks are used as a temporary space for 
+update requests to data blocks, which are managed by page-level mapping. Hybrid mapping schemes 
+consume an extra amount of RAM space for storing the records with page-level mapping but reduce the copy 
+overhead in return. 
+二、 研究目的 
+We proposed to adopt an on-demand hash-based page mapping scheme for the management of large capacity 
+flash-memory storage systems with very limited embedded SRAM requirement. Depending on the data 
+property, requests are manipulated in an adaptive manner. Although the page mapping table in our scheme is 
+loading on demand, spatial locality and temporal locality amortize the loading overhead. For an 80GB flash 
+memory storage system, our scheme requires no more than 3KB embedded SRAM for managing page-level 
+information while provides better or similar performances compared with well-known hybrid mapping 
+schemes. In addition, SRAM requirement would increase only slightly even apply our scheme to huge 
+capacity flash-memory storage systems. 
+三、 文獻探討 
+FMAX [3] is a hybrid mapping scheme proposed by Ban et al. In FMAX, each LBA is mapped to a logical 
+block, and each logical block has a primary block and at most one replacement block. Both primary blocks 
+and replacement blocks are real blocks in flash memory. An LBA is mapped to the page with the 
+corresponding offset in the mapped primary block. An update of an LBA would involve a linear search of a 
+free page in the mapped replacement block, and a read would have the same overhead. When free blocks in 
+flash memory are insufficient, merge operations would be started to reclaim free blocks. With a merge 
+operation, all live pages in the primary block and the associated replacement block are copied to a new 
+primary block. The old primary block and replacement block are then erased. A merge operation in FMAX 
+may induce an overhead of copying N pages and two block erasures, where N is the number of pages per 
+block. Since the required size of the address translation table is significantly reduced (e.g., 128KB for 
+512MB flash memory), FMAX is popular in the industry. 
+BAST (Block Associative Sector Translation) [4] is a log-buffer based scheme proposed by Kim et al. The 
+basic idea of BAST is identical to FMAX, except that BAST maintains a page mapping table for each 
+replacement block (referred to as a log block in BAST). With the page mapping table, overhead of linear 
+search for either a free page or the target page in FMAX could be eliminated. To reduce the RAM 
+requirement for page mapping tables, BAST maintains a limited number of log blocks in flash memory to 
+ 4
+四、 研究方法 
+System Architecture 
+The system architecture of the proposed on-demand hash-based management scheme is illustrated in Figure 
+2. When a write request arrives, the request is examined by the hot data filter. The main purpose of the hot 
+data filter is to identify whether the written data is frequently updated (referred to as hot data) or not 
+(referred to as cold data). One rule of thumb to identify data property is by examining the requested data size. 
+The size of frequently updated data is usually less than 4KB, as indicated by Chang in [8]. Other efficient 
+and effective data property identification schemes could also be found in [9, 10]. Depending on the data 
+property, the request is manipulated in an adaptive manner. 
+ 
+Figure 2: System Architecture of the On-Demand Hash-Based Page Mapping Scheme. 
+For address translation, two mapping tables with different granularity are maintained in RAM. If data of the 
+write request is identified as hot data, it is manipulated in a page-level mapping. It is impractical to maintain 
+a direct-map (or one-to-one) page mapping table due to its huge RAM requirement. Observing that hot data 
+only occupy a small portion of total data, we proposed to adopt a hash-based page mapping scheme for cost 
+and performance consideration. To further reduce the RAM consumption as well as hash collisions, the 
+hash-based page mapping table (referred to as HPT) is presented in an on-demand manner. 
+As illustrated in Figure 3, the logical space is partitioned (e.g., 1GB per partition), and each partition is 
+managed by a dedicated HPT. These tables are maintained in flash memory, and each HPT is accommodated 
+to a flash memory page (e.g., a 2KB flash memory page). The lookup table keeps track of their physical 
+addresses. When the to-be-accessed LBA of a request is beyond the range of the current HPT (the one 
+resided in RAM), the system writes the table back to a free flash memory page and updates the lookup table 
+accordingly (if the table has been modified). Then, the system loads the corresponding HPT from flash 
+memory to RAM and proceeds the request. If the data of the write request is identified as cold data, it is 
+manipulated in a block-level mapping. 
+Hot data are stored in the hot block set which maintained in a list. Free blocks are also maintained in a list 
+and sorted in an increasing order of block erasures. When there is no free page in the hot block, a free block 
+with the least erase counts would be allocated for the hot block set. Hot data are sequentially written to pages 
+in the hot block. Cold data are written to the cold block set in a similar way as block-level mapping schemes. 
+ 6
+reserved for the management blocks are fixed due to the concern of fast recovery from system crash. The 
+system reserves a number of spare blocks for the replacement of bad blocks (caused by fabrication or worn 
+out during usage). These reserved blocks as well as blocks in the hot block set and cold block set are 
+physically interchangeable and are managed by the wear-leveling algorithm. 
+Data Structure of Hash-Based Page Mapping Table 
+The management of page mapping table in our system is based on the concept of hashing. When data of a 
+request is identified as hot, LBA of the request is hashed by a hash function to obtain the corresponding hash 
+page number (HPN), which is an index to the HPT. An example hash function could be defined as HPN = 
+H(LBA) = LBA mod E. The factor E is the total number of entries in the HPT, which is recommended to be a 
+prime number. Since a large logical address space is mapped to a small page-mapping table, more than one 
+LBA might be hashed to the same table entry. A number of excellent researches have been proposed to deal 
+with the hash collision problem. One possible solution is quadratic probing, and we adopt its basic idea in 
+the paper for illustration. The quadratic probing function adopted in the paper is defined as Q(LBA) = (HPN 
+± i2) mod E, where i ranges from 0 to (E – 1)/2. 
+In the HPT, each entry consists of a physical page number (PPN), an LBA tag (LTAG), a collision parameter 
+(CP), and a reference count (RC). The PPN is the physical address of the corresponding flash-memory page, 
+in which the target data resides. The system writes hot data to pages in the current hot block sequentially. A 
+free page pointer is used to point to the first free page in the current hot block. When the last page of the 
+current hot block is written, a free block will be allocated as the new current hot block. The system always 
+allocates the youngest block (i.e., the one with the smallest erase count) from the free block list to replenish 
+the hot block set. 
+To detect a collision, the system shall check whether the LBA recorded in spare area of the corresponding 
+flash-memory page matches the requesting LBA, which could incur extra flash-memory reads. The LTAG is 
+designed to reduce the detecting overhead and is extracted from specific bits of the LBA. The way to extract 
+the LTAG is not limited, but we will suggest choosing scattered and random bits rather than sequential and 
+most significant bits. For example, tag mask 0xF0000000 might not be a good choice, since LTAG's of those 
+requests with spatial locality are very likely to be the same. Figure 5 shows an example extraction process of 
+an LTAG. When the extracted LTAG does not match the one stored in the corresponding HPT entry, a hash 
+collision is detected without reading spare area of the flash memory page. The system could proceed to 
+locate another entry. The system reads spare area of the flash-memory page to further determine whether a 
+collision has occurred only when the two LTAG's are matched. 
+The CP is used to bound the reading process in hot block sets when a read request is handled. When hash 
+collisions occurred in a write request, after the required HPT entry is found, the system compares the number 
+of collisions encountered with the value of CP stored in the HPT[HPN] and maintains the larger one in the 
+HPT[HPN].CP. When a read request arrives, the system searches the required data in hot block sets first. The 
+HPT[HPN].CP keeps the maximum number of hash collisions encountered when hashing of the LBA is 
+equal to HPN. If the system could not find the required data after HPT[HPN].CP collisions, the required data 
+should be found in the cold block set. The RC accumulates the number of access for the LBA. When the 
+target HPT entry is located, either for a write request or a read request, the value of RC in the target HPT 
+ 8
+BAST, FAST, LAST, and KAST, four different number of log blocks are taken into consideration. In our 
+scheme, the partition size is 512MB, and the threshold value is 100. We also evaluate our scheme with 
+different amount of SRAM available and with/without the proposed LTAG mechanism. As shown in the 
+figure, our scheme outperforms four well-known log-buffer based schemes. Although BAST requires less 
+SRAM than our scheme when the number of log blocks is less than 32, its performance is the worst. For 
+FAST, LAST, and KAST, the number of block erasures is affected by the number of log blocks. Our scheme 
+could reduce up to 51.76% block erasures compared with KAST when its number of log blocks is 8. When 
+FAST has 64 log blocks, the proposed scheme could still reduce about 23% block erasures on average. While 
+the number of block erasures is reduced, a longer product lifetime could usually be expected. When more 
+SRAM is available, our scheme could perform even better. 
+Figure 6(b) compares the number of live-page copies under BAST, FAST, LAST, KAST, and the proposed 
+scheme. As shown in the figure, the proposed scheme still outperforms BAST. When the number of log 
+blocks is 32, LAST and KAST incur less live-page copies (about 4.31% and 5.45%, respectively) than the 
+proposed scheme (with 2,568 Bytes SRAM). However, they are 6.78 times and 7.58 times the SRAM 
+requirements of our scheme. FAST requires even more log blocks to have a better performance. Notably, our 
+scheme could reduce the number of live-page copies by providing a larger SRAM (e.g., 3KB as shown in the 
+figure) or setting a smaller partition size (e.g., 256MB). 
+Readers might point out that the proposed scheme would incur the overhead of extra page reads. In addition, 
+a block erasure requires a much longer operation time than a page write does. To have a fair comparison that 
+takes these factors into consideration, Figure 6(c) compares the normalized overhead ratio for handling write 
+requests under various schemes. We sum up the total processing times of performing all the block erasures 
+and live-page copies for each scheme, and we add the total processing times of extra page reads to our 
+scheme as well. Let BAST with 64 log blocks as a normalized base, the comparisons of BAST, FAST, LAST, 
+KAST, and our scheme are presented. As shown in the figure, our scheme outperforms BAST. When the 
+number of log blocks is limited (e.g., less than 32 log blocks) or more SRAM is provided (e.g., 3KB, which 
+is still less than others), our scheme performs better than other schemes. 
+     
+(a) Block Erasure           (b) Live Page Copies        (c) Normalized Overhead Ratio 
+Figure 6: Performance Comparison of Block Erasures, Live-Page Copies, and Management Overhead. 
+z Average Read/Write Response Times 
+Figure 7(a) shows the average read response time of BAST, FAST, LAST, KAST, and the proposed scheme. 
+As shown in the figure, the average read response times of the five schemes are similar and quite stable, in 
+which BAST achieves the best performance. Since each log block in BAST is mapped to a unique data block, 
+BAST only needs to look up the corresponding entry in the page mapping table (if any). For FAST, since 
+ 10
+and temporal locality amortize the loading overhead. For an 80GB flash-memory storage system, our scheme 
+requires no more than 3KB embedded SRAM for managing page-level information while providing good 
+performance compared with well-known hybrid mapping schemes. The experiment results show that our 
+scheme outperform BAST and reduces up to 51.76% block erasures compared with KAST when the number 
+of log blocks is limited. When FAST has 64 log blocks, our scheme could still reduce about 23% block 
+erasures on average. For the average read response time, our scheme provides a stable performance and is 
+similar to BAST and FAST. For the average write response time, our scheme could achieve a much better 
+performance than BAST and a similar performance to FAST, LAST, and KAST, while FAST, LAST, and 
+KAST are about 14 times the SRAM requirement of our scheme. We believe that the results of this project 
+could provide venders a good solution for low cost solid state disk. Students who are involved in this project 
+also develop excellent experiences in flash-memory storage systems. 
+ 
+References 
+[1] D. Woodhouse. JFFS: The Journalling Flash File System. In Ottawa Linux Symposium, 2001. 
+[2] Aleph One Company. Yet Another Flash Filing System. 
+[3] A. Ban. Flash File System Optimized for Page-Mode Flash Technologies. United States Patent 
+5,937,425, August 1999. 
+[4] J. Kim, J. M. Kim, S. H. Noh, S. L. Min, and Y. Cho. A Space-Efficient Flash Translation Layer for 
+CompactFlash Systems. In IEEE Transactions on Consumer Electronics, Vol. 48, No. 2, pages 366–375, 
+May 2002. 
+[5] S.-W. Lee, D.-J. Park, T.-S. Chung, D.-H. Lee, S. Park, and H.-J. Song. A Log Buffer-Based Flash 
+Translation Layer Using Fully-Associative Sector Translation. In ACM Transactions on Embedded 
+Computing Systems, Vol. 6, No. 3, Article 18, July 2007. 
+[6] S. Lee, D. Shin, Y.-J. Kim, and J. Kim. LAST: Locality-Aware Sector Translation for NAND Flash 
+Memory-Based Storage Systems. ACM SIGOPS Operating Systems Review, 42:36–42, October 2008. 
+[7] H. Cho, D. Shin, and Y. I. Eom. KAST: K-Associative Sector Translation for NAND Flash Memory in 
+Real-Time Systems. In Design, Automation and Test in Europe (DATE), pages 507–512, April 2009. 
+[8] L.-P. Chang. Hybrid solid-state disks: Combining heterogeneous NAND flash in large SSDs. In Design 
+Automation Conference, 2008. ASPDAC 2008. Asia and South Pacific, pages 428–433, Mar 2008. 
+[9] L.-P. Chang and T.-W. Kuo. An Adaptive Striping Architecture for Flash Memory Storage Systems of 
+Embedded Systems. In IEEE Real-Time and Embedded Technology and Applications Symposium, pages 
+187–196, 2002. 
+[10] J.-W. Hsieh, L.-P. Chang, and T.-W. Kuo. Efficient Identification of Hot Data for Flash Memory Storage 
+Systems. ACM Transactions on Storage, 2:22–40, February 2006. 
+ 
+ 2
+學的張耀文教授及黃俊郎教授、清華大學的林永隆教授與張世杰教授、交通大學的陳宏明教授，
+以及成功大學的邱瀝毅教授與何宗易教授，對於申請者未來在國際學術界的交流將有莫大的幫助。 
+三、攜回資料名稱及內容 
+此次攜回收錄 ASP-DAC 2011 所發表論文之光碟，以供日後參考使用。 
+ 
+四、論文被接受發表之大會證明文件 
+Dear Jen-Wei, 
+ 
+    Thank you very much for your contribution to the 7D special session on "Virtualization, Programming, 
+and Energy-Efficiency Design Issues of Embedded Systems". The session will be held between 10:20 and 
+12:20, January 28, 2011 (Friday). 
+ 
+   Each invited speaker can have a paper of up to six pages (an extended abstract is also fine for this 
+purpose). Please check up the conference web site for the paper guidelines:  
+http://www.aspdac.com/aspdac2011/index.html 
+ 
+   For the submission, please send the paper directly to me, and I will forward it, as a single email 
+attachment of the session, to the conference secretary: Professor Youngsoo Shin [ysshinykt@gmail.com] 
+ 
+   My deadline to Prof. Shin is November 15, 2010 (Monday). Please remember to send it to me before 
+noon on Nov 15.  I would also forward a version to the conference program vice chair Prof. Yao-Wen 
+Chang. As we chatted, each session speaker is exempted from the registration fee. Please feel free to let 
+me know if there are any problems. 
+ 
+Best, 
+ 
+Tei-Wei 
+CC: Prof. Chang and Prof. Shin 
+ 4
+國波多黎各大學 (University of Puerto Rico at Mayaguez) 的 Manuel A. Jimenez 教授，以及斯洛維尼
+亞，於盧比亞那大學 (University of Ljubljana) 的 Drago Strle 教授，對於申請者未來在國際學術界
+的交流將有莫大的幫助。 
+三、攜回資料名稱及內容 
+此次攜回收錄 IEEE MWSCAS 2011 所發表論文之隨身碟，以供日後參考使用。 
+ 
+四、論文被接受發表之大會證明文件 
+MWSCAS 2011 Decision Notification - Paper P08_1008 
+ 
+Dear Prof. Jen-Wei Hsieh 
+ 
+CONGRADULATIONS! 
+ 
+The Program Committee for the 54th IEEE MWSCAS 2011 has completed the review and selection process of 
+submitted papers. We received a large number of excellent papers that made our decision difficult. We are 
+pleased to inform you that your paper has been accepted for presentation at IEEE MWSCAS 2011. 
+ 
+- Paper No.: P08_1008 
+- Paper Title: Set-Based Management Scheme for MLC Flash Memory Storage System 
+- Authors: Jen-Wei Hsieh and Yu-Cheng Zheng 
+ 
+The comments of the reviews if any are included at the end of this letter. In submitting a final version of your 
+paper you must ensure to address all the comments raised by the reviewers. 
+ 
+On behalf of the Program Committee 54th IEEE International Midwest Symposium on Circuits and Systems 
+(IEEE MWSCAS 2011), I would like to thank you for your contribution to the IEEE MWSCAS 2011. 
+ 
+Please follow instructions below to upload your camera ready paper and register for the conference. 
+ 
+ 
+Publication Ready Manuscript 
+ 
+Step. 1 
+Prepare a 4-page camera-ready manuscript according to the guidelines published on the conference website. Please 
+use the templates provided. Papers that do not conform to the guidelines will not be accepted.  Follow the instructions 
+on the conference website to prepare an IEEE PDFeXpress compliant version of your paper.  IEEE PDFeXpress 
+non-compliant papers will not appear on the IEEExlopre. 
+An Enhanced Leakage-Aware Scheduler for Dynamically Reconfigurable
+FPGAs
+Jen-Wei Hsieh Yuan-Hao Chang Wei-Li Lee
+Department of Computer Science Department of Electronic Engineering Department of Computer Science
+and Information Engineering National Taipei University of and Information Engineering
+National Taiwan University of Technology National Taiwan University of
+Science and Technology Taipei 106, Taiwan Science and Technology
+Taipei 106, Taiwan e-mail: johnsonchang@ntut.edu.tw Taipei 106, Taiwan
+e-mail: jenwei@mail.ntust.edu.tw e-mail: m9715045@mail.ntust.edu.tw
+The FPGAs (Field-Programmable Gate Array)
+are popular in hardware designs and even hard-
+ware/software co-designs. Due to the advance of man-
+ufacturing technologies, leakage power has become an
+important issue in the design of modern FPGAs. In
+particular, the partially dynamical reconﬁgurable FP-
+GAs allow the latency between FPGA reconﬁgura-
+tion and task execution for the performance consid-
+eration. However, this latency introduces unnecessary
+leakage power called leakage waste. In this work, we
+propose a leakage-aware scheduling algorithm to mini-
+mize the leakage waste without increasing the schedule
+length of tasks. In this algorithm, a priority dispatcher
+with a split-aware placement is proposed to reduce the
+scheduling complexity with considering the hardware
+constraints of FPGAs. A series of experiments based
+on synthetic designs demonstrates that the proposed
+algorithm could eﬀectively reduce leakage waste with
+limited sacriﬁces on the task schedulability.
+I. Introduction
+A ﬁeld-programmable gate array (FPGA) is an inte-
+grated circuit designed to be conﬁgured by the customer
+or designer after manufacturing. Due to its ﬂexibility and
+the fast hardware prototyping, FPGA is widely adopted
+in the new hardware designs including system-on-a-chip
+(SoC) designs. In recent years, it is also adopted in
+the hardware/software co-designs of embedded computing
+systems. However, as the manufacturing technology ad-
+vances to 90nm or below, leakage power becomes a critical
+issue when FPGAs are adopted in battery-backed or low-
+power embedded systems [12]. In addition, the partially
+dynamical reconﬁgurable FPGAs (such as Xilinx Virtex-II
+[2]) designed to optimize performance make the problem
+of leakage power even worse because they introduce leak-
+age waste by allowing the latency between reconﬁguration
+and task execution. Such observations motivate this work
+on how to reduce the leakage power of partially dynamical
+reconﬁgurable FPGAs with the considerations of schedul-
+ing complexity and task schedulability.
+The partially dynamical reconﬁgurable FPGA device
+studied in this paper consists of (several types of)
+conﬁgurable-logic-block (CLB) columns, and each CLB
+column is composed of frames. A CLB column (referred
+to as “column” for short) is the smallest unit to gate
+power supply (i.e., the smallest unit to be turned on/oﬀ).
+A frame is the smallest unit of reconﬁguration and can
+be written to or read from the conﬁguration memory.
+The reconﬁguration time is proportional to the number
+of columns (or frames) used for reconﬁguration. Since
+the studied FPGA device usually contains one reconﬁg-
+uration controller, only one task can be reconﬁgured at
+any time point. During the reconﬁguration to columns or
+frames, the rest columns or frames could continue their
+execution without being disturbed. Although deriving an
+optimal scheduling or placement on FPGAs was proved
+to be an NP-complete problem, numerous researchers de-
+signed routing algorithms for the scheduling and place-
+ment on FPGAs in the literature [14, 15, 18]. In addition,
+some researchers adopted graphical and topological meth-
+ods to achieve simultaneous scheduling [1, 7, 22], and some
+proposed new architectures to enhance the routing perfor-
+mance [19, 20]. Some proposed the concept of physical-
+aware hardware/software partitioning for FPGAs to solve
+the problem on routing hardware tasks [4, 17]. When
+partially dynamical reconﬁgurable FPGAs are considered,
+the idea of conﬁguration “prefetching” was proposed to
+hide reconﬁguration overhead by performing reconﬁgura-
+tion before the execution of the reconﬁgured task as early
+as possible [10].
+In recent years, one research direction is to reduce the
+power consumption of FPGAs when they are adopted in
+low-power embedded computing systems [3, 13, 17, 19].
+Because the advance of manufacturing technology wors-
+ened the leakage power problem, researchers started to
+study new methodologies for the reducing of the leakage
+waste caused by leakage power [9, 21]. Some researchers
+proposed to gate the supply power or to lower the power
+mode of inactive regions so that the leakage waste could
+be reduced [5, 6, 16]. Gayasen et al. [8] proposed to re-
+duce the leakage waste by lowering the unscheduled space
+without adopting the conﬁguration prefetching. Li et al.
+[11] proposed a scheduling algorithm to reduce the leakage
+gorithm to reduce the leakage waste without sacriﬁcing
+the task schedulability. Our goal is to propose an eﬃcient
+scheduling algorithm to minimize the leakage waste with
+the task schedulability maximized.
+III. Enhanced Leakage-Aware Scheduling
+Algorithm (ELAA)
+A. Overview and Problem Definition
+In this section, an enhanced leakage-aware scheduling
+algorithm (referred to as “ELAA”) is proposed to mini-
+mize the leakage waste with a feasible schedule of hard-
+ware tasks. Its goal is to minimize the time delay (or
+gap) between the task reconﬁguration and its execution
+to reduce the leakage waste. Fig. 3 shows the architec-
+ture of the proposed algorithm. When a hardware task
+set is received, the binder binds the reconﬁguration and
+the execution of each task together (see Fig. 2 (a)) by
+setting the time delay between the task reconﬁguration
+and its execution to zero. Then the priority dispatcher
+assigns priority to each task according to the task execu-
+tion time, deadline, and weight, where the weight of a task
+depends on the number of CLB columns occupied by the
+task. According to the task priorities determined by the
+priority dispatcher, the split-aware placer places tasks to
+CLB columns of the FPGA device with the consideration
+of the reconﬁguration constraints. If the current task as-
+signment is not schedulable, the split-aware placer selects
+tasks with the minimal leakage power increment, and then
+split reconﬁguration and execution of the task (see Fig. 2
+(b)) so as to derive a schedulable task assignment and
+placement.
+Priority Dispatcher
+Split-aware Placer
+Binder
+Fig. 3. The ELAA Architecture.
+As shown in Fig. 4, the proposed ELAA adopts the
+linear placement model to schedule the hardware tasks,
+where the x-axis is the time steps and y-axis is the num-
+ber of (CLB) columns. In this model, a task ti is parti-
+tioned into the reconﬁguration phase (ri) and the execu-
+tion phase (ei). Each task cannot start its execution phase
+before the completion of its corresponding reconﬁguration
+phase, and the reconﬁguration time of a task is propor-
+tional to the number of columns occupied by the task. If
+a task cannot start its execution phase right after its re-
+conﬁguration phase, the delay between these two phases
+of the task introduces leakage waste. Time 0 is the prepa-
+ration zone because the reconﬁguration phase of the ﬁrst
+task in each column could be conﬁgured before the start
+of the system’s execution. Therefore, the reconﬁguration
+of multiple tasks could be done in this preparation zone
+without violating the constraint that allows only one task
+being reconﬁgured at any time point. For example, Fig. 4
+shows a four-task schedule. Tasks t1-t4 are reconﬁgured
+before the system’s execution. Since the reconﬁguration
+time of a task is proportional to the number of columns
+that need to be reconﬁgured, the reconﬁguration times r5
+and r6 take 1 and 2 time units, respective.
+0 1 765432 1098
+6
+5
+4
+3
+2
+1
+ri Task reconfiguration ei Task executionLeakage waste
+r4 e4
+e2
+e6
+e3
+e5
+e1
+r6
+r3
+r1
+r5r2
+e2
+e1 e5
+e4
+e3 e6
+Task precedence
+Fig. 4. The Linear Placement Model.
+Consider a task set T = {t1, t2, ..., tn} with n tasks.
+Each task ti = {ri, ei, wi, di} is a hardware task that oc-
+cupies wi columns with (execution) deadline at time di
+and its corresponding reconﬁguration time and execution
+time are ri and ei, respectively. Each task ti also has a
+corresponding parent task set depi that deﬁnes the set of
+parent tasks of ti, where ti cannot start its execution be-
+fore all of its parent tasks complete their execution due to
+the task dependence caused by data dependence between
+the parent and child tasks. TABLE I shows an example of
+a task set that consists of 8 tasks, and its corresponding
+task dependence graph is shown in Fig. 5. In this example,
+t8 needs one CLB column and it needs one time unit for
+reconﬁguration and three time units for execution. This
+task has two parent tasks t2 and t7 so that dep8 = {t2, t7}.
+ti ri ei wi depi
+t1 1 5 1 null
+t2 1 3 1 t3
+t3 2 2 2 null
+t4 2 3 2 t1
+t5 1 4 1 null
+t6 1 3 1 t1
+t7 2 4 2 null
+t8 1 3 1 t2, t7
+TABLE I
+A Task Set Example.
+Given a task set as an input, the proposed ELAA would
+generate a task schedule with RS = {rs1, rs2, ..., rsn} and
+ES = {es1, es2, ..., esn}, where rsi(/esi) represents the
+start time of the reconﬁguration(/execution) phase of task
+ti. When a given task set is being scheduled by the pro-
+pose ELAA, the proposed ELAA assigns each task ti a pri-
+ority pi. Meanwhile, according to the parent task set depi
+of each task ti, the proposed ELAA could determine the
+dependence relation of tasks to generate the dependent re-
+possible. Then the placer resumes the schedule to the
+current highest-priority task.
+Fig. 6 shows the scheduling process for the task set
+given in TABLE I. In this task set, there are ﬁve depen-
+dent relation groups, where DR = {dr1 = {t1, t4}, dr2 =
+{t1, t6}, dr3 = {t3, t2, t8}, dr4 = {t7, t8}, dr5 = {t5}}. As a
+result, S(dr1) = 1, S(dr2) = 1, S(dr3) = 0, S(dr4) = 1,
+and S(dr5) = 5. According to the slack times of depen-
+dent relation groups, task t3 is ﬁrst scheduled because its
+corresponding dependent relation group has the least slack
+time, followed by tasks t7, t1, and t5 (according to Rule
+1 of the priority dispatcher), where each task is scheduled
+to start as early as possible, as shown in Fig. 6 (a).
+After that, t2 satisﬁes its data dependence, so that it
+is placed in a free column starting from time 2 (i.e., its
+earliest possible time slot due to the task dependence on
+task t1). After task t2 has been scheduled, t4, t6, and
+t8 are available for scheduling. Since the slack time of
+the dependence relation group of task t8 is smaller than
+other groups, task t8 is scheduled right after task t2 and
+is placed as early as possible (as shown in Fig. 6 (b)). At
+this time, the remaining tasks t4 and t6 need at least 6
+time units (i.e., r4 + r6 + e6 = 2 + 1 + 3 = 6) starting
+from time 6. As a result, tasks t4 and t6 are not schedula-
+ble. Therefore, the split-aware placer goes back to check
+and split the latest scheduled task t8, and schedule its re-
+conﬁguration phase as late as possible. After that, tasks
+t4 and t6 are schedulable. Since S(dr1) = S(dr2) = 1
+and w4 > w6 (Rule 2), t4 is scheduled before task t6 by
+scheduling them in the columns that could let them start
+as early as possible (see Figures 6 (c)-6 (d)).
+0 1 765432 1098
+7
+6
+5
+4
+3
+2
+1
+e3r3
+0 1 765432 1098
+7
+6
+5
+4
+3
+2
+1
+r1
+r2
+e3r3
+r7 e7
+r5 e5
+e2
+e1
+0 1 765432 1098
+7
+6
+5
+4
+3
+2
+1
+0 1 765432 1098
+7
+6
+5
+4
+3
+2
+1
+r1
+r7 e7
+r5 e5
+e1
+(a) (b)
+(c) (d)
+e8r8 r8r8
+r1
+r2
+e3r3
+r7 e7
+r5 e5
+e2
+e1
+e8r8
+r4 e4
+r1
+r2
+e3r3
+r7 e7
+r5 e5
+e2
+e1
+r4 e4
+r6 e6
+Fig. 6. The Schedule for the Task Set in TABLE I.
+IV. Experiment Results
+A. Performance Metrics and Experiment Setup
+The purpose of this section is to evaluate the capabil-
+ity of the proposed ELAA, in terms of leakage waste and
+schedulability. The leakage waste evaluation was based on
+the number of time units with leakage waste. The schedu-
+lability was evaluated based on the unfeasible schedule
+ratio.
+The proposed ELAA was evaluated to compare its per-
+formance with the “Greedy” algorithm and the Post-
+pLacement scheduling Algorithm [11] (referred to as
+“PLA”). Greedy always schedules tasks as early as pos-
+sible in order to minimize the schedule length without
+considering the preparation zone characteristics. PLA
+adopts the physical-aware scheduling algorithm proposed
+by Banerjee et al. [4] by scheduling the reconﬁguration
+phase of tasks as early as possible and the execution phase
+of tasks as late as possible, followed by binding the two
+phases of tasks as more as possible for the leakage waste
+minimization.
+A simulator was implemented over a platform with Intel
+Core 2 Quad Q9400 CPU to evaluate the performance of
+the proposed algorithm. In this simulator, the evaluated
+number of time slots was 50 and the evaluated number
+of columns was between 10 and 60. The task sets in this
+experiment were randomly generated and there were 5,000
+task sets in total, where the reconﬁguration time of each
+task was between 1 and 5 time units and the execution
+time of each task was between 1 and 10 time units. The
+dependent relation among tasks in the same task set were
+varied between 0% to 100%.
+B. Leakage Waste Comparison
+Fig. 7 shows the result of the average leakage wastes
+of three diﬀerent task schedulers with diﬀerent number of
+tasks, where the x-axis is the number of tasks in the task
+set and the y-axis is the average leakage waste in terms
+of the number of time units. The average task depen-
+dent relation rate was 70% and there were 50 columns in
+the device. As shown in the ﬁgure, the average number
+of time units with leakage wastes of Greedy, PLA, and
+ELAA were 241.85, 10.18, and 0.62 respectively, when the
+average number of tasks in a task set was 7. The pro-
+posed ELAA outperformed Greedy and PLA in terms of
+leakage waste minimization. This is because Greedy al-
+gorithm reconﬁgured tasks once they can be reconﬁgured.
+Although PLA also had very low leakage waste, the pro-
+posed ELAA can achieve a even better performance. It
+was because PLA adopted a greedy algorithm to generate
+its initial placement and this inherent greedy algorithm
+resulted in more leakage wastes.
+C. Schedulability Comparison
+Fig. 8 compares the schedulability of three algorithms
+with diﬀerent number of tasks in a task set, where the
+x-axis is the number of tasks in the set and the y-axis is
+the unfeasible schedule ratio over the randomly generated
+5,000 task sets. As shown in the ﬁgure, PLA always had
+the largest unfeasible schedule ratio because it adopted
+the as-late-as-possible strategy to schedule the execution
+phase of tasks in its ﬁrst step, and the strategy might
+increase the schedule length of the generated schedule.
+[13] F. Li, Y. Lin, and L. He. FPGA Power Reduction
+Using Conﬁgurable Dual-Vdd. Design Automation
+Conference, 0:735–740, 2004.
+[14] Y. Lin, F. Li, and L. He. Routing track duplication
+with ﬁne-grained power-gating for FPGA intercon-
+nect power reduction. In ASP-DAC, 2005.
+[15] C.-H. Lu, H.-W. Liao, and P.-A. Hsiung. Multi-
+Objective Placement of Reconﬁgurable Hardware
+Tasks in Real-Time System. In CICC, 2003.
+[16] Y. Meng, T. Sherwood, and R. Kastner. Leakage
+Power Reduction of Embedded Memories on FPGAs
+through Location Assignment. In the ACM/IEEE
+Design Automation Conference (DAC), pages 612–
+617, 2006.
+[17] J. Noguera and R. M. Badia.
+[18] B. . P. B. Pedram, M. ; Nobandegani. Design and
+analysis of segmented routing channels for row-based
+FPGA’s. In INEC, 2010.
+[19] G. Robins and M. J. Alexander. New performance-
+driven fpga routing algorithms. Design Automation
+Conference, 0:562–567, 1995.
+[20] S. Trimberger. Eﬀects of fpga architecture on fpga
+routing. Design Automation Conference, 0:574–578,
+1995.
+[21] T. Tuan and B. Lai. Leakage Power Analysis of a
+90nm FPGA. In CSE, 2009.
+[22] P.-H. Yuh, C.-L. Yang, and Y.-W. Chang. Temporal
+Floorplanning using the T-tree Formulation. In the
+IEEE/ACM International Conference on Computer-
+Aided Design (ICCAD), pages 300–305, 2004.
+(0, 0)
+(0, 1)
+(0, 2)
+(0, 3) 0 0
+(1, 0)
+(1, 1)
+(1, 2)
+(1, 3)
+2 7
+(LBN, SN) PBN
+Starting
+Address
+(2, 0)
+(2, 1)
+(2, 2)
+(2, 3) 3 1
+0
+2
+0
+Initial 
+Offset
+2
+0
+0
+Access 
+Count
+... ... ... ... ...
+Fig. 1. An Example of Set Mapping Table.
+offsets from 0 to 127. The write request with offset 127 would
+incur 127 dummy page writes in the worst case, while our
+scheme could reduce such dummy page writes to 31. Another
+benefit of the set-based mapping is to make great use of spatial
+locality. When some adjacent data within a block are going
+to be updated, block-level mapping schemes will write the
+updated data together with the rest valid data into a new data
+block. The overhead comes form the copying of the rest valid
+data to the new data block due to the consistency concern
+of data offsets. However, our set-based mapping scheme only
+needs to copy the rest valid pages within at most two sets in
+the case when the updated data spanned two sets.
+Under the concept of set unit, the mapping management for
+a write request is to determine to which set shall we write
+in the physical block. Our scheme manages sets in a flexible
+manner. Every set is unique, and sets in the same logical block
+can be mapped to different physical data blocks. When a set is
+updated, we write the updated set into another data block and
+invalidate the old one. The mapping information is recorded in
+the set mapping table, as illustrated in Fig. 1. The set mapping
+table is indexed by a logical block number (LBN) and a set
+number (SN), which could be derived directly from the logical
+address number (LAN).
+Each entry in the set mapping table consists of four fields,
+PBN, Starting Address, Initial Offset, and Access Count. The
+PBN records the physical block address of the data block in
+which the set resides. The Starting Address keeps the page
+index in the data block where the set begins. The Initial Offset
+maintains the logical offset of the first page written in the set,
+which can avoid dummy page writes. For example, as shown
+in Fig. 1, the set with LBN = 1 and SN = 2 starts from page 7
+in physical block 2, and the first write to the set is LAN 194
+since 128 × 1 + 32 × 2 + 2 = 194. In this case, 66 dummy
+page writes are eliminated. The Access Count is used to record
+how many times a set has been accessed by its updated data
+0
+ʟ
+31
+32
+ʟ
+63
+64
+ʟ
+95
+96
+ʟ
+127
+0
+ʟ
+31
+32
+ʟ
+63
+64
+ʟ
+95
+96
+ʟ
+127
+Physical 
+block 0
+Physical 
+block 1
+•
+•
+•
+Logical block Set mapping Physical block
+Set0,0
+Set0,1
+Set0,2
+Set0,3
+Set1,0
+Set1,1
+Set1,2
+Set1,3
+Logical block 0
+Logical block 1
+SC0,3 and BC1
+SC0,1
+SA0,0
+SA0,1
+SA0,2
+SA0,3
+SA1,0
+SA1,1
+SA1,2
+SA1,3
+SC1,2
+SC1,3
+SC1,1
+BC0
+SC1,0
+SC0,2
+SC0,0
+Fig. 2. Relationships between 𝑆𝐴𝑖,𝑗 , 𝑆𝐶𝑖,𝑗 , and 𝐵𝐶𝑘 .
+or newly coming data since it mapped to a data block. The
+Access Count is used to differentiate sets from hot to cold,
+and it will be deducted 1 from its access count after the set is
+merged.
+B. Threshold
+Although the introduction of set unit can alleviate dummy
+page writes incurred by the high offset data, dummy pages
+might still exist within a set. We adopt the notion of threshold
+to further prevent the high offset data from skipping too many
+free pages within a set. To be more specific, block counter and
+set counter are used to help in determining whether a write
+request should be processed in a data block. Block counter
+records the index of next free page available in a block, and set
+counter records the index of next free page available in a set.
+To facilitate the discussion, TABLE I summarizes the notations
+used in the discussion and Fig. 2 illustrates the relationships
+between 𝑆𝐴𝑖,𝑗 , 𝑆𝐶𝑖,𝑗 , and 𝐵𝐶𝑘. Note that sets in the same
+logical block can be assigned to different physical blocks. A
+set must uniquely exist in a physical block which mean the set
+cannot be divided into two or more segments and allocated in
+different physical blocks. Every set and block have a counter
+to record the next free page.
+Data of a write request with starting page index 𝜔𝑖 could
+be written into its set 𝑗 allocated in the physical block 𝑘, if it
+meets all the following three conditions:
+1) The set is the latest one allocated in the physical block
+𝑘: If the set is physically intercepted by any other set,
+no more data could be written into the set.
+2) 𝐵𝐶𝑘 ≤ (𝜔𝑖−𝜎𝑗+𝑆𝐴𝑖,𝑗): The target page for the request
+must be available for write.
+3) 0 ≤ (𝜔𝑖 − 𝜎𝑗 − 𝑆𝐶𝑖,𝑗 + 𝑆𝐴𝑖,𝑗) < 𝑇 : Dummy pages
+incurred by the write request must be limited (no more
+than the predefined threshold 𝑇 ).
+If any condition is not met, the request will be processed in
+the log block. We refer to such data of the request as out of
+order data (OOD) because these data are not written in order.
+log blocks can have more pages to accommodate log data
+to enhance the effect on temporal locality. However, a large
+number of log blocks also requires a large RAM space for the
+management. To balance between performance and cost, we
+shall consider the purpose of the target systems or devices. For
+example, it would be sufficient to use a smaller RAM space
+for devices such as mp3 player or digital camera, since the
+capacity of such devices are smaller and their access patterns
+are usually simpler. On the contrary, a larger RAM space shall
+be allocated for a solid state disk, since its capacity is much
+larger and its access pattern is complex for miscellaneous
+applications.
+In our experiment, the number of log blocks ranges from
+20 to 50. Since log blocks in our scheme are further parti-
+tioned into hot log blocks and cold log blocks, we shall also
+explore the impact of different hot/cold partition, denoted by
+(ℎ𝑜𝑡, 𝑐𝑜𝑙𝑑), for log blocks. We use 5 log blocks as a basic
+unit and evaluate all the possible combinations. Take 30 log
+blocks as an example, we evaluate settings of (5, 25), (10, 20),
+(15, 15), (20, 10), and (25, 5), respectively. Fig. 3 illustrates
+the performance under different settings of log blocks. The X-
+axis stands for the number of cold log blocks, and the Y-axis
+stands for the number of hot log blocks. The Z-axis shows the
+experiment result. As shown in the figure, the performance can
+be improved by increasing the total number of log blocks. For
+a fixed number of log blocks, it can be observed that, in most
+cases, a better performance can be achieved when the number
+of hot log blocks is more than the number of cold log blocks.
+But if we reserve too many log blocks for hot log blocks, it
+would occupy the required space for cold log blocks and the
+performance would be deteriorated. For a fixed amount of log
+blocks, we shall reserve 25%∼40% of log blocks for cold log
+blocks to achieve the best performance for every case in our
+simulation.
+IV. CONCLUSION
+This paper presents a set-based management scheme, which
+is designed for MLC flash-memory storage system. Different
+from traditional hybrid mapping schemes, our scheme is a
+combination of block-level and set-level mappings. In our
+scheme, each data block is divided into a fixed number of
+sets. Under the concept of set unit, the number of dummy
+page writes and overhead of live page copying incurred by
+updates can be reduced, and the time-out problem can be
+resolved. By exploiting the design of virtual hot/cold log
+blocks, the read/write response time can be improved and the
+shortcoming of full merge in most of hybrid mapping schemes
+can be overcome. Based on our experiment, 25%∼40% of log
+blocks shall be reserved for cold log blocks to achieve the best
+performance for every case in our simulation.
+REFERENCES
+[1] L.-P. Chang. Hybrid solid-state disks: combining heterogeneous nand
+flash in large ssds. In ASP-DAC ’08: Proceedings of the 2008 Asia and
+South Pacific Design Automation Conference, pages 428–433, January
+2008.
+(a) Dummy Page Writes
+(b) Live Page Copying
+(c) Block Erasures
+Fig. 3. Performance Evaluation under Different Settings of Log Blocks.
+[2] L.-P. Chang and T.-W. Kuo. An Adaptive Striping Architecture for Flash
+Memory Storage Systems of Embedded Systems. In IEEE Real-Time
+and Embedded Technology and Applications Symposium, pages 187–196,
+2002.
+[3] S. Electronics. Samsung K9G8G08U0A 2G * 8 Bit MLC NAND Advance
+Flash Memory, 2007.
+[4] J.-W. Hsieh, L.-P. Chang, and T.-W. Kuo. Efficient Identification of Hot
+Data for Flash Memory Storage Systems. ACM Transactions on Storage,
+2:22–40, February 2006.
+[5] S. Lee, D. Shin, Y.-J. Kim, and J. Kim. LAST: locality-aware sector
+translation for NAND flash memory-based storage systems. SIGOPS
+Oper. Syst. Rev., 42(6), October 2008.
+[6] S.-W. Lee, D.-J. Park, T.-S. Chung, D.-H. Lee, S. Park, and H.-J. Song.
+A log buffer-based flash translation layer using fully-associative sector
+translation. ACM Trans. Embed. Comput. Syst., 6(3), Jul. 2007.
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：謝仁偉 計畫編號：99-2628-E-011-005- 
+計畫名稱：低成本之超大容量固態硬碟設計 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 1 100% 件 技術轉移正與廠商洽談中 技術移轉 
+權利金 0 150 100% 千元  
+碩士生 4 4 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 1 100% 
+本研究成果目前
+已投稿到知名國
+際 期 刊 ACM 
+Transactions on 
+Embedded 
+Computing 
+Systems (TECS)，
+正在進行第二階
+段 審 查 (major 
+revision)。 
+研究報告/技術報告 0 0 100%  
+研討會論文 5 2 30% 
+篇 
+使用本計畫經費
+出席國際學術會
+議發表論文 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 博士生 0 0 100% 
+人次 
+ 

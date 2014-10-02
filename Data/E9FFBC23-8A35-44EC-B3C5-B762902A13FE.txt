@@ -1,0 +1,544 @@
+ i
+目錄 
+一、 摘要 .......................................................................................... 1 
+二、 緣由與目的 ............................................................................... 3 
+三、 背景介紹................................................................................... 4 
+3.1 入侵偵測系統簡介 ..................................................................................... 4 
+3.2 入侵偵測系統評估 ..................................................................................... 7 
+四、 系統分析................................................................................... 9 
+4.1 系統設計 .................................................................................................... 9 
+4.2 成本效益分析 ............................................................................................11 
+4.3 封包欄位分析 ........................................................................................... 13 
+五、 系統開發過程 ......................................................................... 15 
+5.1 封包指紋發送端(安全稽核員端)................................................................ 15 
+5.2 封包指紋接收端(IDS 端)........................................................................... 17 
+六、 系統實作................................................................................. 20 
+6.1 封包指紋產生效率 .................................................................................... 20 
+6.2 系統功能實現 ........................................................................................... 20 
+七、 成果自評................................................................................. 25 
+八、 參考文獻................................................................................. 26 
+ 
+ iii
+表目錄 
+表一、The analysis of Cost-sensitive model ........................................ 8 
+表二、現有入侵偵測系統與 IDSIC 偵測模型功能性比較..................... 10 
+表三、IDSIC 成本效益分析................................................................. 12 
+表四、各攻擊行為傳輸封包數目統計 .................................................. 14 
+表五、不同 CPU 等級上計算 fingering 所需時間比較 ......................... 20 
+ 
+ 2
+Abstract 
+Keyword: Cryptography、Intrusion Detection System (IDS)、Cost-sensitive model、false 
+alarm 
+Network security is usually supported by Intrusion Detection Systems (IDSs). In the 
+large-scale or top-secret agencies, system managers always employ many security 
+equipments, such as firewall, intrusion detection systems (IDSs) to protect their 
+network. In order to test the security of the architecture, the auditors usually perform 
+various security tests to check the system managers’ work well done with the same 
+tools as hackers’. However, this action will cause some alarms in traditional IDSs. To 
+be able to separate the diagnosis traffic from malicious attacks, we are motived to 
+design a new model, called IDSIC (Intrusion Detection System with Identification 
+Capability) based on the auditing point of view. 
+Most IDS models do not consider the role of security auditors. In some security 
+standards, it suggests that there should be an inner auditor periodically checks the 
+security issues in the enterprise networks. Most companies set audit department to 
+perform various security tests. In order to discover the real security holes or 
+vulnerabilities, the security tools using by the auditors are the same tools used by the 
+outside hackers. One situation is that auditors imitate hackers’ behaviors when 
+performing security test. The system managers do not know when, where, and how 
+the tests will take place in advance. Because auditors use the same tools that used by 
+hackers, the IDS response component will alert alarms. The active response measure 
+would enable self-protecting ability, such as breaking the outside connections, even 
+these attacks actually caused by auditors. The disconnections will give rise to reject 
+normal connections; to lose company’s credits; to lower company’s production; etc. 
+On the other side, the passive response measure will alert much alarms notifying the 
+system managers to cope with. If hackers attack the system in the meanwhile, system 
+managers may ignore the real attack alarms. Thus, it not only takes system managers 
+up a lot of time to recover the system but also lowers the efficiency of IDSs during the 
+security auditors examining the system. 
+In this project, we propose the definition of design architecture of IDSIC. In IDSIC, 
+its architecture consists of a new detection engine that can examine packet headers, 
+which provide a separability of security auditors and hackers. With this architecture, 
+we will reduce the cost of false alarms, either positive or negative false alarms. 
+ 4
+三、 背景介紹 
+3.1 入侵偵測系統簡介 
+入侵偵測的研究最早可追溯到 James Anderson 在 1980 年的工作，他首先提出了
+入侵偵測的概念，將入侵嘗試(Intrusion attempt)或威脅(Threat)定義為：潛在的有預謀
+未經授權訪問資訊、操作資訊、致使系統不可靠或無法使用的企圖。在該文中，Anderson
+提出審計追蹤可應用於監視入侵威脅。但由於當時所有已有的系統安全程式都著重於拒
+絕未經認證主體對重要資料的訪問，這一設想重要性當時並未被理解。1987 年 Dorothy 
+Denning 提出入侵偵測系統的抽象模型[3]，首次將入侵偵測的概念作為一種電腦系統安
+全防禦問題的措施提出，與傳統加密和訪問控制的常用方法相比，IDS 是全新的電腦安
+全措施。 
+1988 年的 Morris Internet 蠕蟲事件使得 Internet 近 5 天無法使用。該事件使得對
+電腦安全的需要迫在眉睫，從而導致了許多 IDS 系統的開發研製。早期的 IDS 系統都
+是基於主機的系統，也就是說通過監視與分析主機的稽核記錄檢測入侵。1986 年在 IBM
+主機上以 COBOL 程式開發的 Discovery 系統，用來檢測使用者對資料庫異常存取可說
+是最早期的 IDS 雛形之一。1988 年，Teresa Lunt 等人進一步改進了 Denning 提出的
+入侵偵測模型，並創建了 IDES(Intrusion Detection Expert System)[1][2]，該系統用於
+檢測單一主機的入侵嘗試，提出了與系統平臺無關的即時偵測思想。同年，為了協助美
+國空軍安全官員偵測誤用，空軍基地使用的 Unisys 大型主機開發了 Haystack 系統；同
+時，出現了為美國國家電腦安全中心 Multics 主機開發的 MIDAS(Multics Intrusion 
+Detection and Alerting System)。1990 年，Heberlein 等提出了一個新的概念：基於網
+路的入侵偵測—NSM(Network Security Monitor)[6]，NSM 與此前的 IDS 系統最大的不
+同在於它並不檢查主機系統的審計記錄，它在區域網路上主動地監視網路資訊流量來追
+蹤可疑的行為。 
+1991 年 ， NADIR(Network Anomaly Detection and Intrusion Reporter) 與
+DIDS(Distribute Intrusion Detection System)[9]提出了收集和合併處理來自多個主機的
+稽核資訊以檢測一系列主機的協同攻擊。1994 年，Mark Crosbie 和 Gene Spafford 建
+議使用自治代理(autonomous agents)以便提高 IDS 的可伸縮性、可維護性、效率和容
+錯性，該理念非常符合正在進行的電腦科學其他領域(如軟體代理，software agent)的研
+究。另一個致力於解決當代絕大多數入侵偵測系統伸縮性不足的途徑在 1996 年提出，
+這就是 GRIDS(Graph-based Intrusion Detection System)的設計和實現，該系統使得對
+大規模自動或協同攻擊的偵測更為便利，這些攻擊有時甚至可能跨過多個管理領域。近
+年的主要創新包括:Forrest 等將免疫原理運用到分散式入侵偵測領域。1998 年 Ross 
+Anderson 和 Abida Khattak 將訊息檢索技術引進到入侵偵測。2000 年起各種生物資訊
+演算法的技術也逐漸被引入至入侵偵測系統中，包含了類神經網路技術、免疫系統方
+法、基因演算法、資料探勘等技術，目前國內外各著名大學，如 UC Davis、UC Berkley、
+Purdue University 等也都致力於入侵偵測系統的開發與研究工作。 
+一般而言，入侵偵測系統的模組大致可以分為三種模組：資料來源模組(Information 
+ 6
+(a) 建構分析 
+所指的就是各種事件將由作業環境所合成，然後將轉化為證規劃的形式以適合分析
+引擎。這些轉換將能夠使分析隱形能夠分析來自不同作業平的不同格式資料。因此
+偵測技術便可以藉由定義某些特殊標準會是藉由設計某些分類演算法而建立。我們
+可以定義入侵規則或是攻擊特徵以供誤用偵測(misuse detection)使用，或是建立統
+計模式來計量使用者的行為概況(profile)，由異常偵測(anomaly detection)來判斷是
+否有入侵行為的發生。 
+(b) 執行分析 
+即時資料的分析，藉由分析引擎對資料的預處理(preprocess)來進行分析。分析引
+擎決定資料中是否隱含入侵行為或是攻擊藉由事先定義好的規則或是演算法。假若
+有任何的特徵方式比對符合，則會將此資訊傳送到回應技術模組中以產生警報消息
+通知系統管理人員。 
+(c) 回授或精練 
+入侵偵測系統的比對引擎需要不斷的維護與分析，假若分析引擎不能符合現有的環
+境需求，那麼就必須依靠回授機制來進行小部分的修改或增加某些新功能以符合現
+有的狀態。 
+除此之外，在分析引擎中我們通常會依照分析技術不同而區分為誤用偵測(misuse 
+detection)與異常偵測(anomaly detection)。誤用偵測採用的方式很類似於病毒的比對方
+式，藉由定義好的入侵偵測資料庫與分析引擎中所精粹出的資料特徵進行匹配比對，若
+是比對符合則視為有入侵行為的發生；異常偵測則是採用與誤用偵測相反的方式，藉由
+正向表列的定義出正常行為的概廓，而與正常行為比對不符合者則視為可能的攻擊行
+為，常用的異常偵測的方式有模式、運算式或位元元組碼匹配；頻率或閾值比較；次要
+事件的相關性處理；統計異常檢測等。 
+回應技術則是入侵偵測系統中與系統管理員最接近的一個部分，主要的功能就是通
+知系統管理人員目前正有某類的攻擊行為的發生。一般來說，回應模組會通過通知、報
+警以及中斷連接等方式來對攻擊行為做出反應。通常我們可以將回應技術分為主動回應
+與被動回應。主動回應通常再發現有攻擊行為時，會由入侵偵測系統採取主動的動作來
+處理入侵行為，這類的行為通常包含有：蒐集更多相關的資訊以提供更深入的調查入侵
+的證據，藉由重新設定路由裝置或防火牆等改變環境參數以停止或封鎖攻擊程式，或是
+採取必要的行動以對付入侵者。在被動的回應方式上則有產生警報或是通知以提醒管理
+者，常見的通知行為包含有 email、pager，或是發送簡訊的方式。另一種被動的回應機
+制則是利用 SNMP trap 和 messages 來產生警報行為以通知中央網路管理人員來處理
+各種入侵的狀態。 
+ 8
+表入侵事件與正常事件的集合， 1ε 為事件的函式，可視為一種機率行為的發生。 
+Enorm
+EH
+(includ ing security
+test events)
+FP
+FN
+TP 
+or 
+Mis
+TN
+ 
+圖三、現有 IDS 成本效益分析狀態圖 
+ 
+表一、The analysis of Cost-sensitive model 
+Detection 
+outcomes 
+Consequential Cost ( IDSCCost ) Condition 
+FN ∑
+∈ HEe
+eDCost )(   
+∑∑
+∈∈
++
+normnH Ee
+n
+Ee
+ePCosteRCost )()(  if HEeeRCosteDCost ∈∀≥ ),()(  FP 
+0 if HEeeRCosteDCost ∈∀< ),()(  
+∑∑
+∈∈
++
+HH EeEe
+eDCosteRCost )()( 1ε , 10 1 ≤≤ ε if HEeeRCosteDCost ∈∀≥ ),()(  TP 
+∑
+∈ HEe
+eDCost )(
+ 
+if HEeeRCosteDCost ∈∀< ),()(  
+TN 0  
+∑∑
+∈∈
++
+HattH Ee
+att
+Ee
+eDCosteRCost )()( 2ε
+ 
+if Hattattatt EeeRCosteDCost ∈∀≥ ),()(  Mis 
+∑
+∈ HEe
+eDCost )(
+ 
+if Hattattatt EeeRCosteDCost ∈∀< ),()(  
+然而在上述我們所討論的系統中，在 IDS 的設計與評估上均只有考慮到兩種角色，
+一種是攻擊者的角色，即一般所稱的駭客；另一種為防守的角色，即系統管理員，負責
+當入侵偵測系統發出警報行為時偵查出問題的所在並排除。但是在實際環境中，多數企
+業為了確保系統本身的經常修補，通常還另設立有一個稽核檢查部門，定期或非定期的
+檢測系統的安全強度是否能夠抵擋現有的攻擊入侵。然而現有 IDS 的設計上並未將此類
+的角色考慮進去，因此很可能導致當安全稽核員以駭客工具模擬駭客攻擊行為檢測系統
+的安全強度時，入侵偵測系統無法判斷此類行為是測試行為，因而會將之視為攻擊行為
+而產生大量的警報訊息，甚至可能啟動自動回應機制而造成伺服系統的連線中斷。如此
+一來，不但會造成正常使用者無法存取伺服主機應提供的服務，同時也可能使得系統管
+理人員因為大量的警報訊息而疲於奔命。此外，真正的攻擊行為可能混雜在這些警報中
+而被忽略。 
+ 10
+同時另外訂定了-1 的狀態，用來表示安全稽核員所進行的弱點檢測判斷。 
+IDSIC
+event set E
+⎪⎩
+⎪⎨
+⎧
+−=
+=
+=
+=
+ 1)( if      logs,set 
+ 1)( if         ac tions,
+0)( if         ,
+))((
+E
+E
+Enull
+Er
+δ
+δ
+δ
+δ
+⎪⎩
+⎪⎨
+⎧
+−
+=
+estingsecurity t    ,1
+abnorm al             ,1
+norm al                ,0
+)(Eδ
+ 
+圖五、IDSIC 偵測判斷示意圖 
+因此，我們可以將現有入侵偵測系統與本計劃所提出的 IDSIC 偵測模型進行功能性
+的比較。可以發現在本計劃中所提出的 IDSIC 偵測模型上，擴增了原本入侵偵測系統的
+偵測模組與回應模組的功能，用以加強 IDS 的偵測判斷，以減低其誤判率。 
+表二、現有入侵偵測系統與 IDSIC 偵測模型功能性比較 
+ Functionality descriptions 
+Components Current IDSs IDSICs 
+Collection Collecting the event set E coming 
+from different sources 
+Same as current IDSs 
+Detection Analyzing the information sources 
+Detection function )(Eδ  has only 
+two values: 
+0 stands for normal; 
+1 stands for abnormal. 
+Same as current IDSs, but with Identification 
+Capability 
+Detection function )(Eδ ′  has three values:
+0 stands for normal; 
+1 stands for abnormal. 
+-1 stands for security tests. 
+Response Notifying the system managers 
+Response function ))(( Er δ  has 
+only two actions: 
+if 0)( =Eδ , doing nothing; 
+if 1)( =Eδ , active or passive 
+responses. 
+Same as current IDSs, but with Identification 
+Capability 
+Response function ))(( Er δ ′′  has two 
+actions: 
+if 0)( =′ Eδ , doing nothing; 
+if 1)( =′ Eδ , active or passive responses; 
+if 1)( −=′ Eδ ; record the occurrences of 
+security tests. 
+Fingerprint 
+adder 
+N/A Calculating fingerprints and then fill them 
+into the packets 
+Fingerprint 
+checker 
+N/A Validating fingerprints to differentiate 
+between hackers’ attack and SAs’ tests from 
+packets 
+ 12
+表三、IDSIC 成本效益分析 
+Detection 
+outcomes 
+Consequential Cost (CCostIC) Condition  
+FN’ ∑∑
+∈∈
++
+tolSAICH EeEe
+eDCosteDCost
+__
+)()( 3ε , 10 3 ≤≤ ε    
+∑∑
+∈′∈
+′+
+normICH EeEe
+ePCosteRCost )()(
+_
+ 
+ICHEe _∈∀ , if )()( eRCosteDCost ≥  
+ FP’ 
+0 ICHEe _∈∀ , if )()( eRCosteDCost <  
+ 
+∑
+∈
++
+ICHEe
+eDCosteRCost
+_
+))()(( 4ε , 
+10 4 ≤≤ ε  
+ICHEe _∈∀ , if )()( eRCosteDCost ≥  
+ 
+∑
+∈ ICHEe
+eDCost
+_
+)(
+ ICH
+Ee _∈∀ , if )()( eRCosteDCost <  
+ 
+TP’ 
+∑∑
+∈′∈
+′+
+normtolSA EeEe
+ePCosteDCost )()(
+_
+3ε , 10 3 ≤≤ ε tolSAEe _∈∀  
+ 
+TN’ 0   
+∑∑
+∈′′∈
+′′+
+ICHICH EeEe
+eDCosteRCost
+__
+)()( 5ε
+ ICH
+Ee _∈∀ , if )()( eRCosteDCost ≥  
+)(eDCost
+ 
+ICHEe _∈∀ , if )()( eRCosteDCost <  
+case (1)
+0 SAEe∈∀  case (2)
+∑∑∑
+∈′′∈′∈
++′+
+normtolSAICH EeEeEe
+ePCosteDCosteRCost ()()(
+__
+3ε
+ 
+ICHEe _∈∀ , if )()( eRCosteDCost ≥  
+∑∑
+∈′′∈′
+′′+′
+normtolSA EeEe
+ePCosteDCost )()(
+_
+3ε
+ ICHEe _∈∀ , if )()( eRCosteDCost <  
+case (3)
+Mis’ 
+∑
+∈ SAEe
+eDCostp )( , 10 ≤≤ p  
+SAEe∈∀  case (4)
+比較表一與表三的成本效益分析，可以很明顯發現在 TP、FP、FN、TN 與 Mis 五
+種狀態中，IDSIC 模型所造成的損失成本與回應成本均比現有 IDS 模型要降低許多。而
+其中 Mis 的成本分析較為複雜，我們說明如下： 
+Mis (錯誤歸類)的成本主要應考量為四種狀況：(1)將攻擊錯誤歸類在同一攻擊集合
+HE′ 中；(2)將檢測錯誤歸類在同一檢測集合 SAE 中；(3)檢測集合 SAE 被錯誤歸類在攻擊集
+合 HE′ 中；以及(4)攻擊集合 HE′ 被錯誤歸類在檢測集合 SAE 中。在(1)的情況下，所造成的
+錯誤歸類成本將會與表一的錯誤歸類成本相近，意即錯誤歸類成本(Mis Cost)可能是
+ 14
+身分進行攻擊。為避免此種情況發生，本計劃所開發的 IDSIC 偵測模型採用設定臨界值
+方式進行偵測，攻擊者必須連續通過 k 個 fingerprint 的檢驗後，才能偽裝成安全稽核員。
+如此一來，可以使偽裝的機率下降為(2-16)k。為了判斷一般攻擊成功所需的封包數目，
+以助於臨界值的設定，我們針對幾種目前常見的攻擊方式進行測試，計算各種攻擊時的
+封包傳輸數目。其統計結果如表四所示。 
+表四、各攻擊行為傳輸封包數目統計 
+Testing name No. of packets sending 
+IIS ida hack 5 
+IIS5 .print Exploit 4 
+Apache chunked vulnerability 6 
+Ablilty Server BoF 7 
+My doom attack 5 
+RPC DCOM BoF 5 
+RPC DCOM remote exploit (RPC2) 9 
+MS lsa srv expolit (MS 04-011) 17 
+MS Workstation Service BoF (MS 04-039) 21 
+Average packets 8.6 
+由表四中可以看出，平均傳輸的封包數目約為 8.6，因此若為達到有效的安全性，
+避免攻擊者能夠為造出正確的封包指紋，我們可以將臨界值設定為 8.6，使得攻擊者偽
+造封包指紋的機率下降為(2-16)8.6=2-137.6，此一極低的機率將在學理上已可使本計劃的
+IDSIC 偵測模型可滿足安全性的需求。 
+ 16
+把我們想加的資訊加在封包內。藉由 Winpcap 的開發，我們在 Windows XP 上已可使
+發送端程式達到： 
+1. 能夠讀取本機送出的封包內容。 
+2. 選擇要讀取的封包格式。 
+3. 修改竊聽到的封包並且送給其他主機端。 
+然而 Winpcap 有個關鍵性的問題並無法突破，在於 Winpcap 只能單純將所竊聽到
+的主機修改發送，但仍無法在主機內部直接變更封包的內容，因為 Winpcap 主要是在
+用應用層(application level)與核心層(Kernel level)間進行開發，並無法直接在核心層上
+攔截主機送出的封包。圖七顯示在主機中封包包裝流程的示意圖。 
+ 
+圖七、主機內部封包包裝流程圖 
+如圖七所示，核心層中的 NPF 區塊簡單的表示出 Winpcap 在系統中作用的範圍，,
+也就是說基本上 Winpcap 只能在其他應用程式把封包送給核心去進行包裝時(如圖七中
+的 TCP-IP 區塊，包裝完後會丟給 NIC driver 寄出)，順便複製一份相同封包回到我們開
+發的應用程式。在詢問清大相關計畫的研究生後，所得到的答覆為 Winpcap 無法解決
+主機封包擷取後發送的問題，因此只好改尋其他解決方案。 
+因為我們不可能直接修改到 Windows 的核心，因此想要在 Windows 達到本計劃發
+送端所要達成的目的，則必須對網路的驅動部份做修改。我們搜尋到一套名
+為”DriverStudio”整合套裝軟體，號稱能夠縮短大量在 Windows 上開發驅動的時間，不
+過光是手冊就滿滿三百多頁，在計劃時程的限制下，我們將開發重心轉移至完整核心均
+公開的 Linux 系統。 
+由於 Linux 核心層的原始碼均可以公開取得，根據我們在 Windows 系統上開發所
+獲取的經驗後，我們對 Linux 核心層的城市進行適度修改以達到 IDSIC 偵測模型中發送
+ 18
+包中的 IPID 欄位)進行比對，若兩邊的 HMAC 值相等，則接收端的偵測模組將會判斷此
+封包是安全稽核人員為檢測系統漏洞所發出，因此便會允許此封包通過；若兩邊 HMAC
+值不相等，或是封包內沒有包含封包指紋的話，則接收端的偵測模組便會將此封包做一
+般處理，意即交由入侵偵測系統來判斷此封包是否為攻擊封包，並決定是否發出警報訊
+息與紀錄。 
+依照上述的目的，因此我們著手在著名的 Open source 入侵偵測系統—snort 上進
+行開發。根據 snort 官方網站上的文獻資料，snort 主要是由四個模組所構成，分別為：
+1.封包解碼器(Packet Decoder)、2.前處理器(Preprocessor)、3.偵測引擎(Detection 
+Engine)，以及 4.輸出模組(Output)，同時 snort 具有許多可擴充的外掛模組(plugin)，因
+此可以縮短我們在系統開發上的時程。根據我們對 snort 原始碼檢測與研究的結果，我
+們發現若要達到本計劃接收端的功能，可利用 snort 中封包解碼器(Packet Decoder)的
+程式來進行修改，同時在 snort 原始碼中的 decode.h 也對封包格式有很清楚的定義。
+因此我們僅需在我們的程式中 include 這個 decode.h，就可以直接來取得我們所需要的
+封包欄位元來做計算。此外，snort 還有支援 rule language 的功能，所以我們可以撰寫
+一條動態規則存放我們所計算的封包指紋(HMAC 值)，然後再將封包內發送端所計算的
+HMAC 值的值比對。 
+但在我們設計此一動態規則的過程中發現，snort 中的規則並無法進行計算的動
+作，只能存放固定的內容(如：病毒與攻擊特徵)。因此我們必須另外設計一個可以動態
+產生規則的程式。在追蹤過大半的 snort 原始碼與網路資料後，我們發現在 snort 中的
+前處理器(Preprocessor)有個重要的特色，就是它可以加入自訂的函式，同時 snort 本
+身還有提供前處理器的模型(template)，因此我們只要在裡面加入我們所需要的 function
+來計算 HMAC，即可完成所需要的功能。所以在此部分的程式開發便可縮小範圍，僅著
+眼於內部一個動態規則的產生程式，利用開啟檔案的方式(fopen)來動態產生計算出的
+HMAC 值並制定成一條條的規則。只要在 snort 放置 rule 的資料夾下開啟一個新檔(舉
+列而言，如：myrules.rules)，並在 plugbase.c 以及 Preprocessor/Makefile.ini 載入我
+們寫的 Preprocessor，將其重新編譯與執行，便可達到接收端所欲達成之功能，意即每
+次有封包經過，我們所撰寫的動態規則產生程式會動態更新 myrules.rules 所需比對的
+內容(即 HMAC 值)，因此便可有效分辨出入侵者與安全稽核員。 
+但是我們進一步分析系統功能時發現，這樣的結果還是不能阻止安全稽核員所產生
+的封包不被 snort 中的回應模組發出警報(alert)與記錄(log)訊息。根據搜尋 snort 文獻與
+網路資料的結果，發現 snort 它對封包的處理有優先權的特性，也就是說目前 snort 的
+四種封包處理模式：丟棄(drop)、警報(alert)、記錄(log)與通過(pass)，分別有優先處理
+的先後順序，即 drop>alert>log>pass，因此即使我們撰寫一條動態規則符合 HMAC 的
+比對，但其所使用的 pass 處理程式仍然會讓此封包的處理優先權為最低，所以一旦此
+封包也同時滿足了其他條 alert 或 log 的規則時，仍然會造成這個封包還是會被警報及記
+錄。為了改進這種現象已符合我們所預期的成果，我們直接從 snort.c 這個主程式下手，
+ 20
+六、 系統實作 
+6.1 封包指紋產生效率 
+在本系統中為了產生封包指紋(fingerprint)以達到敵我辨識的目的，必須以一雜湊函
+數將封包中的各項資訊進行完整性驗證，同時將此雜湊值填入封包中以供防禦端
+(fingerprint checker)能夠偵測出攻擊者與安全稽核員之不同。我們針對目前常見的兩種
+雜湊函數 MD5 與 SHA-1 來進行運算，並在不同等級的 CPU 上統計估算其計算時間，
+評估在封包產生時額外增加的運算量對系統效能的影響。根據 NASA Ames data set 所
+統計的結果，大約 30-40%的封包大小約為 66 bytes，而其餘大部份的封包大小約為
+1200 bytes。因此在本研究的評估中將以封包大小 40(僅 header，no payload)、66、
+1200 與 1500(Maximum Transmission Unit，MTU) bytes 分別在 Pentium IV 2.4G、2.6G
+以及 2.8G 的系統上統計其所需的計算量，其結果如表五所示。 
+在表五的比較中，很明顯的採用 MD5 來進行封包指紋運算，將可有效提升 IDSIC
+的整體效能。 
+表五、不同 CPU 等級上計算 fingering 所需時間比較 
+ 66 bytes 1200 bytes 1500 bytes(MTU) 
+CPU MD5 SHA-1 MD5 SHA-1 MD5 SHA-1 
+P4 2.4G 1.10 μs 1.94 μs 17.82 μs 34.99 μs 23.33 μs 44.07 μs 
+P4 2.6G 1.04 μs 1.78 μs 14.67 μs 32.83 μs 21.16 μs 40.33 μs 
+P4 2.8G 0.87 μs 1.61 μs 14.48 μs 28.24 μs 17.83 μs 35.39 μs 
+根據[15]中封包偵測的統計數據，當 IDS 進行入侵偵測時，大約需要耗費 21-900
+μs 的時間，因此一旦加上 fingerprint 的計算，其所佔之計算量約僅佔 0.1%-5%左右。
+而在[16]中，封包偵測所需耗費時間大約為 12.7μs-14.7μs，因此計算 fingerprint 約僅
+增加 7-8%的系統時間。由此可見，我們所實現之入侵偵測系統模型不會佔用太多系統
+資源，但卻可有效降低系統管理人員的負擔，降低企業成本。 
+6.2 系統功能實現 
+在此部分我們將以實驗的方式針對本計劃所開發完成的 IDSIC 偵測模型發送端與
+接收端程式進行功能檢測，以確定本計劃開發程式的實用價值。我們以實際網路攻擊工
+具分別模擬駭客的攻擊行為與安全稽核員的檢核動作，並用封包擷取程式來觀測安全稽
+核員所發送出的封包內容，最後則在接收端部分檢驗入侵偵測系統是否能有效的區分攻
+擊者與安全稽核員的不同。 
+ 22
+ 
+圖九、封包擷取與檢驗程式 TcpDump 操作畫面 
+在這個檢測中，我們先執行 TcpDump 觀察當 IDSIC 偵測模型的發送端未啟動本計
+劃所開發的發送模組時，可以從圖十(a)的畫面清楚看出封包中的 IPID 欄位並未有任何
+的值；一旦我們開啟傳送模組，在圖十(b)的地方便可清楚看到 IPID 欄位已被我們的程
+式模組填入封包指紋內容，並可觀察到每個封包中的封包指紋隨著封包的不同而不同。 
+(a)未開啟 (b)開啟 
+圖十、未開啟/開啟 IDSIC 模型發送模組之 TcpDump 畫面比較 
+為達到此偵測模型的安全性，我們必須保證所產生的封包指紋必須與封包內容相
+關，同時必須隨著封包內容的不同而有所變化，以避免攻擊者能藉由猜測固定的封包指
+紋內容而破壞整個系統的安全性。在參考封包中各欄位的變化後，在本系統中我們採用
+TCP 標頭內的 Sequence number 欄位來進行封包指紋的計算。而所採用的 HMAC 計
+算則使用 MD5 將 Sequence number 運算產生雜湊值 h(m)，之後藉由安全稽核員與系
+ 24
+ 
+(a)未開啟 (b)開啟 
+圖十二、未開啟/開啟發送模組時之接收端處理模式比較 
+ 
+圖十三、安全稽核檢驗封包的記錄檔 
+ 26
+八、 參考文獻 
+[1] D. Anderson, T. F. Lunt, H. S. Javitz, A. Tamaru, and A. Valdes. Detecting Unusual Program 
+Behavior Using the Statistical Component of the Next-generation Intrusion Detection Expert 
+System (NIDES). Technical Report SRI-CSL-95-06, SRI Computer Science Laboratory, May 
+1995. 
+[2] D. Anderson, T. Frivold, and A. Valdes. Next-generation Intrusion Detection Expert System 
+(NIDES) A Summary. Technical Report SRI-CSL-95-07, SRI Computer Science Laboratory, May 
+1995. 
+[3] D. E. Denning, An intrusion-detection model. IEEE Trans. on Software Enginering, vol. SE-13, 
+no.2, pp. 222–232, February 1987. 
+[4] D. Dean, M. Franklin, and A. Stubblefield. An algebraic approach to ip traceback. In Network and 
+Distributed System Security Symposium, NDSS '01, February 2001. 
+[5] H. Krawczyk, M. Bellare, and R. Canetti. HMAC: Keyed-Hashing for Message Authentication. 
+Internet RFC 2104, February 1997. 
+[6] L. Heberlein, G. Dias, and K. Levitt et al. A Network Security Monitor. In Proceedings of the IEEE 
+Symposium on Research in Security and Privacy, pp. 296-304, May 1990. 
+[7] R. Bace, P. Mell. NIST Special Publication on Intrusion Detection System. November 2001. 
+http://csrc.nist.gov/publications/nistpubs/800-31/sp800-31.pdf. 
+[8] S. Savage, D.Wetherall, A. Karlin, and T. Anderson. Practical network support for IP traceback. In 
+2000 ACM SIGCOMM Conference, August 2000. 
+[9] S. Snapp, J. Brentano, and G. Dias et al. DIDS (Distributed Intrusion Detection System) -- 
+Motivation, Architecture, and An Early Prototype. In Proc., 14th National Computer Security 
+Conference, Washington, DC, pp. 167-176, October 1991. 
+[10] T. Verwoerd and R. Hunt. Intrusion Detection Techniques and Approaches. Computer 
+Communications, vol.25, pp.1356-1365, 2002. 
+[11] W. Fan, W. Lee, S. Stolfo, and M. Miller. A multiple model cost-sensitive approach for intrusion 
+detection. In Proc. Eleventh European Conference of Machine Learning, pp. 148-156, Barcelona 
+Spain, May 2000. 
+[12] W. Lee, M. Miller, and S. Stolfo et al. Toward cost-sensitive modeling for intrusion detection. 
+Technical Report CUCS-002-00, Computer Science, 2000. 
+[13] N. J. Puketza, K. Zhang et al. A Methodology for Testing Intrusion Detection Systems, IEEE 
+Transactions onSoftware Engineering, Vol. 22 Oct. 1996. 
+[14] R. Durst et al. Testing and Evaluating Computer Intrusion Detection Systems, Communications of 
+the ACM, July 1999, Vol. 42. NO. 7. 
+[15] Lee, W., Fan, W., Miller, Matt, Stolfo, Sal, and Zadok, E.: Toward Cost Sensitive Modeling for 
+Intrusion Detection and Response. Journal of Computer Security, Vol. 10, 2002. (2002) 
+[16] Cabrera, J.B.D., Gosar, J., Lee, W., and Mehra, R.K.: On the Statistical Distribution of Processing 

@@ -1,0 +1,462 @@
+ 2
+robot. A space C  of these configurations, the 
+configuration space (C-space), can be defined, in 
+which every dimension represents one degree of 
+freedom of the robot’s motion. By transforming 
+the motion planning problem of a robot into 
+planning the motion of a point in the 
+configuration space, constraints due to obstacles 
+or joint limits can be more clearly expressed. In a 
+configuration space C , path planning can then 
+be defined as searching for a continuous line 
+connecting the starting configuration iq  and the 
+goal configuration gq  without touching the 
+obstacles obsC . 
+Construction of the configuration space, 
+however, is often not a trivial process, the hardest 
+part being mapping the obstacles into the 
+configuration space. For multi-body articulated 
+robots moving in a space with obstacles this can 
+be very complicated. 
+For a biped robot the number of dimensions 
+of the configuration space can easily exceed 10. 
+Building and searching in such a configuration 
+space can be very inefficient. 
+A much more efficient alternative is to plan 
+only the footsteps and not the motion of 
+individual joints in the robot’s legs. This 
+effectively reduces the configuration space into 
+two dimensions. To do this, the range of valid 
+motion from any configuration is first calculated 
+with forward kinematics. But still, enumerating 
+the set of possible motion exhaustively with an 
+optimal search algorithm such as A* can be too 
+much of a waste. To find a path efficiently we use 
+the Rapidly-Exploring Random Tree (RRT) [14] 
+instead. 
+Rapidly-Exploring Random Trees (RRTs) 
+In recent years, RRT planners have been 
+very popular for a wide variety of problems due 
+to their ability to explore the state space 
+efficiently. It is attractive to us in that it can adapt 
+to any kinds of robot models, that various 
+techniques have been developed to improve its 
+performance, and that it can be biased using 
+heuristics designed for a specific problem to 
+obtain a path with desired characteristics. We 
+will now introduce the basic RRT planner and 
+how we fit our problem into it. 
+The algorithm of a basic RRT planner is 
+shown in Table 1. For any implementation, three 
+functions need to be provided: DISTANCE(), 
+EXTEND(), and COLLISION(). The main 
+differences in many RRT-based planners often lie 
+in these functions. 
+Table 1 Basic RRT planner 
+Function RRT_PLANNER(qi, qg) 
+1. T.add(qi); 
+2. q
+new
+ ← qi; 
+3. while DISTANCE(q
+new
+, qg) > threshold 
+4.   if RANDOM([0, 1]) < goalProb 
+5.    qtarget ← randomConfig(); 
+6.   else 
+7.    qtarget ← qg; 
+8.   q
+nearest ← NEAREST(T, qtarget);  
+9.   q
+new
+ ← EXTEND(q
+nearest, qrand); 
+10.   if !COLLISION(q
+new
+) 
+11.    T.add(q
+new
+); 
+12. return path; 
+The function DISTANCE() returns the 
+distance between two configurations. In an RRT 
+planner, this information is in turn used to find 
+the nearest node to another node. Often, the 
+function means more than the Euclidean distance 
+between the states two configurations represent. 
+Instead it is more similar to a heuristic function 
+as in heuristic search. And indeed, with goal 
+probability set to one the RRT planner reduces to 
+A*. 
+EXTEND() returns a new configuration 
+reachable from the configuration stored in an 
+existing search node. As determined by each 
+variant of RRT planner this new configuration 
+may be the best one calculated analytically, or 
+drawn from a set of controls. 
+COLLISION() normally determines if a 
+configuration collides with the map. This is done 
+by mapping the robot configuration to the state 
+space. 
+The growth of an RRT can be affected via 
+biasing, that is, by directing the growth to 
+configurations other than the randomly chosen 
+ones for some probability. The most commonly 
+used one is the goal bias shown in line 7 in Table 
+1. 
+ 4
+L1 metric, which indicates the Manhattan 
+distance, and the L2 metric, which indicates the 
+Euclidean distance, between the positions two 
+configurations represent. In grid space the L1 
+metric is most convenient, and in other cases the 
+L2 metric is the most intuitive. A distance metric 
+can also be defined in the configuration space 
+without modification to search algorithms 
+provided that it is consistent. 
+We used the L2 metric in pervious 
+experiments. However, while being 
+straight-forward and always consistent, L2 
+metric is not good enough when the robot 
+kinematics is nonholonomic, e.g., when planning 
+for our biped robot as shown in Figure 2. A 
+position right at the side of the robot can take 
+much more time to reach than a position in front, 
+making the L2 metric a wrong indication of 
+distance between nodes. If the L2 metric is used 
+in these scenarios suboptimal nodes will be 
+chosen for expansion, leading to higher 
+computation cost. 
+ 
+Figure 2 L2 metric is not good for biped robots 
+ 
+Better Distance Metric 
+An RRT planner is most commonly biased 
+toward the goal configuration. In that case, the 
+node chosen for expansion is the one with the 
+least distance to the goal, as determined by the 
+distance metric, of which the most commonly 
+used is the L2 metric. 
+For holonomic robots in simple 
+environments this works well, but as the robot 
+kinematics and the environment get more 
+complex its performance degrades significantly. 
+This is partly because the L2 distance to the goal 
+is no longer a good indication of the cost to reach 
+the goal in those situations. Some extreme 
+examples can be found in [15]. As LaValle 
+concludes an environment can always be 
+designed to make an RRT planner perform very 
+poorly, such as nesting or cascading multiple bug 
+traps. Even though a path when exists is 
+guaranteed to be found eventually with RRT, in 
+some situations the higher computation cost can 
+make a difference between finding a solution or 
+not if deliberation time is limited. 
+For our problem we have found a simple yet 
+effective way to bias an RRT planner. This idea 
+combines the venerable navigation function (NF) 
+[11] as a distance metric with the RRT. 
+Navigation functions are a special kind of 
+potential fields which do not suffer from local 
+minima. The simplest and arguably most widely 
+used navigation function is the ones built in grid 
+space using the NF1 wave front propagation 
+algorithm, shown in Table 3: 
+Table 3 NF1 algorithm 
+Function NF1(map[w][h], goal) 
+1. initialize NF[w][h], T 
+2.  for each cell in NF 
+3.   cell ← ∞; 
+4.  T.push(goal); 
+5.  while !T.empty() 
+6.   n ← T.pop(); 
+  for each c in n.neighbors 
+7.       if map[c.x][c.y].occupied 
+8.           continue; 
+9.       newDist←NF[n.x][n.y]+ 
+DISTANCE(n, c); 
+10.    if NF[c.x][c.y] > newDist 
+11.        NF[c.x][c.y]←newDist; 
+12.        T.push(c); 
+13.  return NF;  
+An example navigation function is shown in 
+Figure 3. The resulting potential function only 
+has one local minimum: the global minimum at 
+the goal configuration. This method is useful in 
+that it preserves the simplicity of the potential 
+field method while giving resolution-optimal 
+directions of motion to the goal at every position 
+in the map.  
+As planning starts, a navigation function 
+toward the goal can be built to provide motion 
+directions optimal up to the navigation function 
+resolution at any place in the map. If the gradient 
+of the underlying navigation function is used for 
+biasing towards the goal, it would always be the 
+optimal bias regardless of the complexity of the 
+static part of the environment, only that it does 
+not take kinematic constraints of the robot into 
+ 6
+collected points. 
+10. Define the distance between two legs as W. 
+The position of each foot trajectory falls on 
+the direction of the corresponding tangent 
+vector with W/2 displacement from the 
+corresponding reference point. 
+11. The direction of the foot pad of each foot 
+trajectory is parallel to the corresponding 
+normal vector. 
+12. With the procedures above, we can plan the 
+foot trajectory as Figure 6. 
+Figure 6 The planned steps of biped robot 
+3. Stereo Vision 
+The human visual ability to perceive depth 
+is both commonplace and puzzling. We perceive 
+three-dimensional spatial relationships 
+effortlessly, but the means by which we do so are 
+largely hidden from introspection. One method 
+for depth perception that is relatively well 
+understood is binocular stereopsis, in which two 
+images recorded from different perspectives are 
+used. Stereo allows us to recover information 
+about the three-dimensional location of 
+objects-information that is not contained in any 
+single image. A considerable amount of research 
+has been directed toward finding computational 
+models for stereo vision and for related human 
+perceptual abilities[1][17][18]. 
+Stereo is an attractive source of information 
+for machine perception because it leads to direct 
+range measurements, and, unlike monocular 
+approaches, does not merely infer depth or 
+orientation through the use of photometric and 
+statistical assumptions. Once the stereo images 
+are brought into point-to-point correspondence, 
+recovering range values is relatively 
+straightforward. Another advantage is that stereo 
+is a passive method. Although active ranging 
+methods that use structured light [19], laser range 
+finders, or other active sensing techniques are 
+useful in tightly controlled domains, such as 
+industrial automation applications, they are 
+clearly unsuitable for more general machine 
+vision problems. 
+Three applications have received the most 
+attenti ：on the interpretation of aerial 
+photographs for automated cartography, 
+guidance and obstacle avoidance for autonomous 
+vehicle control [2][22], and the modeling of 
+human stereo vision [17][18]. Other applications 
+include industrial automation, and the 
+interpretation of microstereophotographs [8] for 
+biomedical applications. Each domain has 
+different requirements that affect the design of a 
+complete stereo system. 
+The main goal is aimed to construct a stereo 
+vision system for depth estimation. Two 
+commercial USB webcams are used to acquire 
+stereo image pairs instead of using expensive 
+instruments. Through stereo matching process, 
+the correspondence can be easily found, thus the 
+disparity can be surely determined. After 
+disparity estimation and post-process, depth 
+information can be obtained by stereo 
+triangulation. 
+Figure 7 shows the flow chart of the stereo 
+vision system. At first, camera configuration 
+must be check to make sure of the epipolar 
+constraint. Although the webcams are coaxial 
+configured to approximately coplanar geometry, 
+there is still slight vertical offset that can not be 
+detected by visually check. Therefore, camera 
+rectification is a necessary step before stereo 
+matching. In addition to camera rectification, 
+stereo camera calibration is another necessary 
+step. Parameters estimated by camera calibration 
+are needed for stereo triangulation and increasing 
+the accuracy of the range estimation. When the 
+camera configuration is confirmed, stereo 
+matching and stereo triangulation are performed 
+ 8
+Figure 9 System Description 
+ 
+Figure 10 Webcam configuration 
+ 
+Figure 11 Camera rectification through block 
+matching 
+A carton is used to test the depth estimation, 
+as shown in Figure 12. We use the middle row in 
+image .to estimate the depth information. Due to 
+the disparity constraint, search range of the 
+system is about 60 pixels. In order to enhance the 
+reliability, we use support window size 32 32= × , 
+10γ = . The image size is 320 240× . Table 1 
+shows the disparity versus depth chart. The pink 
+line represents the depth computed by system. 
+The blue line represents the depth calculated. 
+The calculation error is caused by floating point 
+error. We can see that the error becomes 
+enormous when the disparity getting smaller. 
+The system yields an accurate depth estimation 
+resolution (5 mm) from 30 to 60 cm. From 60 to 
+150cm, the resolution becomes about 5 cm.  
+In order to construct a near real-time stereo 
+vision system for depth estimation and 3D 
+reconstruction, a complete and practical 
+procedure is constructed to reach the goal. It can 
+be divided into two main tasks. One is camera 
+configuration, and the other is stereo matching 
+methodology. 
+Figure 12 Carton in the left window is used for 
+depth estimation 
+Table 4 Disparity versus depth chart 
+0
+200
+400
+600
+800
+1000
+1200
+1400
+1600
+1800
+21 23 25 27 29 31 33 35 37 39 41 43 45 47 49 51 53 55 57 59
+Disparty (pixels)
+De
+pth
+ (m
+m)
+Theoretical depth
+True depth
+Cameras must be rectified before 
+performing the stereo matching in case 
+mismatches happen. Projected median is used to 
+achieve this goal. It performs well as the cameras 
+are set up in approximately correct position. 
+After camera rectification, camera calibration is 
+a necessary procedure for accurate depth 
+ 10
+saturation is also low (S near 0). Hue then 
+becomes quite noisy, since in such a small 
+hexcone, the small number of discrete hue pixels 
+cannot adequately represent slight changes in 
+RGB. This then leads to wild swings in hue 
+values. To overcome this problem, we simply 
+ignore hue pixels that have very low 
+corresponding brightness values. With sunlight, 
+bright white colors can take on a flesh hue so we 
+use an upper threshold to ignore flesh hue pixels 
+with corresponding high brightness. At very low 
+saturation, hue is not defined so we ignore hue 
+pixels that have very low corresponding 
+saturation [3]. The restrictions of HSV color 
+space are used to remove most non-skin color 
+regions in face skin samples. We can construct 
+the skin probability CbCr model by removing 
+non-skin region from the face skin samples 
+Figure 13 shows the results. 
+ 
+Figure 13 Construct face skin color model 
+(b) Background Probability Modeling 
+We obtain the initial background parameters 
+from a short video sequence without any moving 
+objects. The median value of intensity at each 
+pixel location in all images is determined as the 
+value of intensity at the corresponding pixel 
+location in the initial background model. This 
+process is called background subtraction, and 
+scene representation is called the background 
+model. Pixel intensity is the most commonly 
+used feature in background modeling. If we 
+monitor the intensity value of a pixel over time in 
+a completely static scene, then the pixel intensity 
+can be reasonably modeled with a Gaussian 
+distribution ( )2,~)(P σμNxr . 
+Modified CAMSHIFT Algorithm 
+MCAMSHIFT is based on CAMSHIFT. 
+The procedure and concept of MCAMSHIFT are 
+reconstructed. The most important job is to 
+combine each CAMSHIFT. Each CAMSHIFT 
+tracker obtains the variables, which is the 
+boundary restrictions of a defined region by 
+other trackers. By verifying the variables, the 
+defined region will not be redefined. In order to 
+reduce unnecessary calculation, the interested 
+probability of search window boundaries of the 
+former search members is ignored. Therefore, 
+each search member will not be affected by other 
+search members and work independently. The 
+algorithm is described below. 
+1) Set the initial search number. 
+2) Each search member ignores the interested 
+probability in the search window of the 
+former search members and performs the 
+modified-CAMSHIFT process. 
+3) Each search member records the search 
+window boundary of the former search 
+members. 
+4) Judge which search member is divergent, and 
+initialize the parameters of the divergent 
+search member. 
+5) If any search member disappears, sort search 
+members by the sort index method and 
+update search number; otherwise, add search 
+number. 
+6) Repeat step2. 
+ 
+ 
+ 
+Figure 14 Modified CAMSHIFT 
+ 
+ 12
+Finally, we can project the pattern to the 
+corresponding eigenface and choose the 
+corresponding face recognition model as its 
+classifier. 
+Figure 17 Multi-view mean faces 
+ 
+Figure 18 Multi-view eigenfaces (21 forms) 
+ 
+Figure 19 Multiple multi-view faces tracking 
+and recognition 
+Multiple Faces Tracking and Recognition 
+For multiple faces tracking and multi-view 
+faces recognition system, the system is 
+composed of four main parts; object tracking, 
+face detection, multi-view face classification and 
+multi-view faces recognition. The four models 
+are constructed for those capabilities. Figure 19 
+indicates the flow chart of all face system. 
+Figure 20 indicates the multi-view faces. 
+The system can know who he is and understand 
+which pose of face is. And the figure shows that 
+the system can work well no matter how the 
+environment is simple or complex. 
+    
+Figure 20 Multi-view faces tracking and 
+recognition 
+5. The New Generation Humanoid Robot  
+We have improved the mechanism of the 
+NTUHR-I and designed the NTUHR-II. The 
+main modifications are listed below. 
+a. The distance between hip and knee should 
+be similar to the distance between knee and 
+ankle. Because hip-knee distance of NTUHR-I 
+is too long to achieve certain configurations, we 
+modify the hip-knee distance and the knee-ankle 
+distance in NTUHR-II. 
+b. To reduce the torque requirement in hip, 
+knee and ankle, the three pitch joints are aligned 
+in a line for NTUHR-II. 
+c. Large knee rotation range. A special knee 
+shape is created to allow NTUHR-II to rotate its 
+knee joint for larger range. 
+d. Selection of material. Since the stiffness of 
+aluminum is poor, partial frame of NTUHR-I 
+sometimes bended and distorted. To increase the 
+stiffness of mechanism, the aluminum alloy is 
+adopted instead. 
+e. More difference of NTUHR-I and 
+NTUHR-II are described in  
+Table 5.  

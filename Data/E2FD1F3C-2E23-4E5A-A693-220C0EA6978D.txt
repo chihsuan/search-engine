@@ -1,0 +1,1295 @@
+(measured in words). For our GBWT, since we explicitly have position information, the |P |/B
+additive term can be achieved.
+We also define a reverse transform called Points2Text, which transforms a set of points into
+text. Each individual point is converted into a string of characters and these strings are concatenated.
+This allows many known lower bounds known for the geometric problems to be applicable to
+compressed text searching problem. Both GBWT and Points2Text preserve space up to a
+constant factor. These transformations allow results in orthogonal range searching and compressed
+text indexing to be interchangeably used for each other. Since orthogonal range searching is a very
+extensively studied field [1], many results (lower bounds and upper bounds) can now be translated
+to the field of compressed text indexing.
+Problems. We start with describing the key problems/queries we consider. For the pattern
+matching query Qmatch, the input is a pattern P , and the query returns the set (or the cardinality
+of the set) Qmatch(T ) =
+{
+i
+∣∣∣ T [i..(i + |P | − 1)] = P}. An index should support these queries
+in O(|P | + polylog(n) + |Qmatch(T )|) time. The problem of designing the data structure for this
+taking only O(n log |Σ|) bits is called CSA (compressed suffix array) problem.
+An extension to pattern matching is the problem of position-restricted pattern matching [31].
+This can be used as a building block for many other complex text retrieval queries [24]. Here, the
+text T is given and the input of a query Qpr match consists of a pattern P along with positions i and
+j. The query returns the set (or the cardinality of the set) Qpr match(T ) = Qmatch(T ) ∩ [i, j].
+In orthogonal range searching, we are given a set of n points by their x and y coordinates:
+S =
+{
+(x1, y1), (x2, y2), .., (xn, yn)
+}
+. The query Qrange specifies a rectangle (x`, xr, y`, yr). The
+answer to query is given by Qrange(S) =
+{
+(xi, yi) ∈ S
+∣∣∣ x` ≤ xi ≤ xr, y` ≤ yi ≤ yr}.
+Two specific versions of this query have been considered: counting and reporting. We shall also
+consider similar queries in dimension 3. We call the problems of designing data structures on S for
+efficient orthogonal range queries theRS2D problem for the 2-D case and theRS3D problem for
+the 3-D case.
+Our Results. Based on our transforms, we show equivalence between the complexities of Qmatch
+and Qrange in 2-dimensions, and between the complexities of Qpr match and Qrange in 3-dimensions.
+We design data structures based on this principle. Following is the summary of our results:
+1. We propose two transforms GBWT and Points2Text; these transforms are simple, quickly
+computable, invertible, and (asymptotically) space-preserving. With these, we show that text
+pattern matching and orthogonal range searching are closely related.
+2
+2 Preliminaries
+This section introduces a few existing data structures for text indexing and orthogonal range search-
+ing which form the building blocks of our compressed text indexes. We will briefly explain their
+roles in our indexes, and also give a brief summary of the external-memory model of [2].
+Throughout this report, we use T to denote the text to be indexed, and n = |T | to denote its
+length. We use P to denote the pattern which comes as an online pattern matching query, and
+p = |P | to denote its length. Further, we assume the characters of T and P are both drawn from
+the same alphabet set Σ whose size is σ.
+2.1 Suffix Trees, Suffix Arrays, and Burrows-Wheeler Transform
+Suffix trees [42, 35] and suffix arrays [34] are two well-known and popular text indexes that support
+online pattern matching queries in optimal (or nearly optimal) time. For text T [1...n] to be indexed,
+each substring T [i..n], with i ∈ [1, n], is called a suffix of T . The suffix tree for T is a lexicographic
+arrangement of all these n suffixes in a compact trie structure, where the ith leftmost leaf represents
+the ith lexicographically smallest suffix. Each edge e in the suffix tree is labeled by a series of
+characters, such that if we examine each root-to-leaf path, the concatenation of the edge labels
+along the path is exactly equal to the corresponding suffix represented by the leaf.
+Suffix array SA[1...n] is an array of length n, where SA[i] is the starting position (in T ) of the
+ith lexicographically smallest suffix of T . An important property of SA is that the starting positions
+of all suffixes with the same prefix are always stored in a contiguous region in SA. Based on this
+property, we define the suffix range of a pattern P in SA to be the maximal range [`, r] such that
+for all j ∈ [`, r], SA[j] is the starting point of a suffix of T with P as a prefix. Note that SA can
+be obtained by traversing the leaves of suffix tree in a left-to-right order, and outputting the starting
+position of each leaf (i.e., a suffix of T ) along this traversal. In particular, we have the following
+technical lemma about suffix trees, suffix arrays, and suffix ranges.
+Lemma 1 Given a text T of length n, we can index T using suffix tree and suffix array in Θ(n log n)
+bits such that the suffix range of any input pattern P can be obtained in O(p) time.
+Suffix trees or suffix arrays maintain relevant information of all n suffixes of T such that on
+given any input pattern P , we can easily search for the occurrences of P simultaneously in each
+position of T . However, a major drawback is the blowup in space requirement, from the original
+Θ(n log σ) bits of storing the text in plain form to the Θ(n log n) bits of maintaining the indexes. In
+our compressed text indexes, we apply a natural and very simple idea to achieve space reduction,
+by maintaining only a fraction of these suffixes. The consequence is that we can no longer search
+4
+The above problem can easily be modeled as a geometric problem as follows. First, for each
+i ∈ [1,m], generate a point (i, A[i]) in the 2-dimensional grid [1,m] × [1, n]. This forms the
+representation of the array A. Then, for any input query with position range [`, r] and value bound
+[y, y′], the desired output corresponds to all points in the grid that are lying inside the rectangle
+[`, r]× [y, y′].
+Such a query is called an orthogonal range query in the literature, and many indexing schemes
+are devised that have different tradeoffs between index space and query time. In our compressed
+text indexes, we will require an index for A which takes O(m log n) bits of space, so we select the
+wavelet tree [31, 24, 43] as our choice, whose results are summarized in the following lemma.
+Lemma 3 Given an integer array A of length m with values drawn from [1, n], we can index A in
+O(m log n) bits such that the 4-sided query of any position range [`, r] and any value bound [y, y′]
+can be answered in O((occ + 1) log n/ log log n) time in the RAM model and O((occ + 1) logB n)
+I/Os in the external-memory model.
+3 Our Proposed Method: GBWT [10]
+In [10], we proposed a variant of the Burrows-Wheeler Transform [7], called geometric BWT
+(GBWT), and show that it can be used to design an efficient compressed text index. The main
+idea is very simple: maintaining a subset of suffixes instead of all suffixes in the suffix tree or SBT.
+In the following, we will explain briefly the GBWT, then later describe how to design a compressed
+index based on GBWT, and show how pattern searching can then be supported.
+3.1 Definition of GBWT
+Given a text T and a blocking factor d, let T ′[1..n/d] be the text formed by blocking every consec-
+utive d characters of T to form a single meta-character. For example, if T = acgtacgtgcgt and
+d = 3, then T ′ would be equal to
+T ′ = acg tac gtg cgt,
+consisting of 4 meta-characters. Thus, the suffix of T ′ starting at position i corresponds to the suffix
+of T starting at position (i− 1)d+ 1. Let SA′[1..n/d] be the suffix array of T ′.
+The GBWT of T is defined as a specific set of 2-tuples (x, c) based on T ′ and SA′, where x is
+an integer between 1 to n/d, and c is a meta-character. Recall that SA′[i] corresponds to the ith
+lexicographically smallest suffix in T ′. For such a suffix, we let ci be the meta-character before
+it (that is, with d original characters), but written in the reverse order. For instance, in the above
+6
+4.0.1 Answering Pattern Matching Queries
+We now show how to use orthogonal range queries on the GBWT tuples for pattern matching. In
+particular, we find all those occurrences of P in T whose starting position is inside some meta-
+character in T ′. That is, those occurring at positions i (in T ) with i mod d = k, where k may not
+be 1. We call such an occurrence an offset-k occurrence. Here, we require that P is longer than d,
+so that its offset-k occurrence does not start and end inside the same character in T ′. For instance,
+let P = tgcg and consider the example text of Figure 1. We see that P indeed occurs once in T ′,
+whose starting position is inside the third meta-character gtg of T ′. Also, because this occurrence
+starts at the second position inside a meta-character, we call this an offset-2 occurrence.
+To find all offset-k occurrences of P in T , we first partition P into two parts: (i) P̂ , which
+contains the first d− k + 1 characters of P , and (ii) P˜ , which contains the remaining characters of
+P . It is shown that we can find all offset-k occurrences as follows:
+Step 1. Search in SBT of T ′ to obtain the SA range [`, r] of P˜ , so that SA′[`..r] are all occurrences
+of P˜ in T ′.
+Step 2. Use the reverse of P̂ to construct a range [c, c′], and search in the 2-d index for all points
+within the rectangle [`, r]× [c, c′]. Output each point as an occurrence.
+For example, suppose we want to find the offset-3 occurrence of P = cgtgc in our example
+text T ′. We know that whenever such an occurrence appears, it must have P˜ = gtgc appearing as
+a prefix of some suffix X of T ′, and P̂ = c as a suffix in the meta-character before X . Indeed, we
+see that the latter condition implies the meta-character before X , when written in reverse order, is
+of the form c??; equivalently, such a reverse meta-character is within the range [caa, ctt].
+We apply the above to find offset-k occurrences for k = 2, 3, . . . , d, giving the following result:
+Theorem 1 Suppose the SBT of T ′ and a 2-d range query index for the GBWT tuples are stored.
+Then all occurrences of P with starting and ending positions inside different (meta-)characters of
+T ′ can be found using d searches in the SBT and d orthogonal range queries.
+Finally, we have to handle the case when P is shorter than d, so that both its starting and ending
+positions can be inside the same meta-character of T ′. In this case, we can apply the traditional
+inverted files for searching such patterns. In some applications where the query patterns are known
+to be longer than d, we can simply discard the inverted files to save space. Thus, a perfect choice
+of d would be the minimum length of a query pattern one may want to search.
+8
+Table 1: Space of the Inverted Index for Short Patterns.
+Meta-char Worst-Case (bytes) Empirical (bytes)
+d = 2 8M 1K
+d = 4 4M 100K
+d = 8 102M 102M
+7. SSBT-d + Wavelet: The sparse version of the String B-tree with wavelet tree. The number
+of characters, d, in a meta-character is either 2, 4, or 8.
+All texts in our experiment are randomly generated texts with alphabet size = 4. The lengths of
+the texts include 1M, 2M, and 4M. For the pattern queries, apart from testing patterns with different
+lengths, we also test patterns selected from the following sets:
+1. Set-0: Patterns with no occurrences in the text.
+2. Set-1000: Patterns with average occurrences = 1000.
+3. Set-3000: Patterns with average occurrences = 3000.
+4. Set-10000: Patterns with average occurrences = 10000.
+4.1.2 Empirical Space
+All the indexes we compared are linear-space indexes. We have constructed these indexes over
+texts of different lengths, including 1M, 2M, and 4M. The following is a close approximation to
+the space we found empirically. The space of ST, FSBT, SSBT-d are measured in the number n
+of characters, while the space of R-tree, KD-tree, and Wavelet are measured in terms of the
+size of the SSBT.
+ST: 17n bytes SSBT-d: 9n/d bytes
+ST+ SA: 21n bytes R-tree: 1.1× size of SSBT
+FSBT: 11n bytes KD-tree: 1.4× size of SSBT
+FSBT + SA: 15n bytes Wavelet: 0.55× size of SSBT
+For the space of the inverted index for short patterns, it consists of two parts: The generalized
+suffix tree and the list of pointers to the text. Table 1 shows the theoretical space (worst-case) and
+the empirical space of the inverted index when indexing a 4M text, for d = 2, 4, 8.
+10
+basically separates the I/Os required for matching pattern apart form I/Os required to output the
+occurrences (which can be an overshadowing factor). The three points in each index correspond to
+d = 2, 4, 8 cases. With d = 8 our indexes are up to 3 or 4 times smaller than the String B-tree.
+However, the number of I/Os go up by about 3 to 4 times as well. For the analysis, we can roughly
+count the space for FSBT as twice of suffix array (SA). Our sparse indexes–SSBT + 2D range
+index—take about 2 ∗ |FSBT|/d space, which is 4 ∗ |SA|/d space. Among our indexes we can see
+that SSBT+KD-tree with d = 4 offers a very good space-time trade-off.
+The subsequent figures show the case when I/Os are dominated by reporting outputs. First we
+start with the moderate 1000 output case. In this case there are about 1000 positions matching
+the query. We can first observe that our indexes perform about 2–3 times more I/Os compared to
+suffix-array-based indexes. The main reason for the factor of 2 being that our point is a tuple and
+hence costs 8 bytes per point as against 4 bytes for SA value. Apart from that our indexes perform
+well in terms of the throughput. In the case of 10000 occurrences the worst of our index takes about
+130 I/Os which amounts to about 66% of the best possible (80 I/Os). In the best case we achieve
+about 85% of I/O throughput. This is in stark contrast with [5] whose throughput is about 5–10%.
+We also note that I/Os for wavelet-tree-based index is much higher as expected.
+There is a further interesting point to note. In the case of 10000 occurrences, SSBT + Wavelet
+with d = 2 has query performance very close to that of FSBT + SA, or ST + SA. The reason is that
+the wavelet tree in our experiment only has 2 levels, and in case d is small, the I/O for outputting
+occurrences becomes O(4d + occ/B) instead of O(occ logB n).
+5 Achieving Entropy Compression [23]
+In [23], we further show that we can modify the GBWT scheme to achieve entropy compression
+on our index, based on a variable-length blocking scheme. Our framework basically includes the
+following three key steps:
+Step 1: Given a text T , we first transform T into an equivalent text T ′ such that T ′ consists of at
+most O((nHk + o(n log σ))/ log n) meta-characters, where each meta-character represents at most
+d consecutive characters in the original text for some threshold d. In addition, we also require that
+each meta-character can be described in O(log n) bits, so that T ′ can be described in O(nHk) +
+o(n log σ) bits.
+Step 2: We maintain the suffix tree or String B-Tree for T ′, where we consider each meta-character
+of T ′ as a single character from a new alphabet.
+Step 3: We perform Burrows-Wheeler transform on T ′ to obtain an array A, and maintain the
+12
+Direct entropy compression of T would have resulted in nHk + o(n log σ)-bit space for T ′. But
+in our scheme, the first k characters are written explicitly in each block. This results in an overhead
+of O((n/ logσ n) × k log σ) = o(n log σ) bits to encode T ′, assuming k = o(logσ n).5 Thus, the
+number of meta-characters from (i) cannot exceed n/d = o(n log σ/ log n), while the number of
+meta-characters from (ii) is bounded by O((nHk + o(n log σ))/ log n). In summary, the length of
+T ′ = nHk+ o(n log σ) bits, and there is a total of O((nHk+ o(n log σ))/ log n) meta-characters in
+T ′.
+By considering each meta-character as a single character from the new alphabet set, we con-
+struct the suffix tree ST ′ of T ′. As the length of T ′ is given by O((nHk + o(n log σ))/ log n),
+so is the number of nodes in ST ′. Thus, ST ′ takes O((nHk + o(n log σ))/ log n × log n) =
+O(nHk) + o(n log σ) bits of space.
+Lemma 4 The total number of distinct meta-characters is O(
+√
+n).
+We also construct an auxiliary trie-structure Π which can be used to rank each of the meta-
+characters among all the meta-characters that are constructed from the text. Let B be a block
+in T which corresponds to a meta-character C in T ′, and let
+←−B denote the string obtained by
+reversing the characters of B. We maintain a string L which is the concatenation of all distinct←−B ’s in the uncompressed form and we construct a compact trie Π storing all distinct ←−B ’s. The
+edges of Π are represented using two pointers, which are the starting and ending points of the
+corresponding substring in L. String L takes O(
+√
+n × (log2 n/ log σ) × log σ) = o(n) bits and Π
+takes O(
+√
+n× log n) = o(n) bits of space.
+Let Π(i) represent the ith leftmost leaf of Π. Now we shall show how to obtain an array A from
+which we construct the wavelet tree. For this, we first compute BWT of T ′. Let BWT [i] = C,
+where C is a meta-character and B is its corresponding character block. Now, search for ←−B in
+Π and reach a leaf node Π(j); then we set A[i] = j. That is, A[i] is the leaf-rank of
+←−B in Π.
+Finally, we maintain a wavelet tree of A based on Lemmas 3 and 4, whose space takes O((nHk +
+o(n log σ))/ log n)× log(O(√n)) = O(nHk)+o(n log σ) bits. The total space requirement for our
+index is O(nHk) + o(n log σ) bits. This leads to the following result.
+Theorem 2 A text T can be indexed inO(nHk)+o(n log σ) bits space, such that all the occurrences
+of a pattern P in T can be reported in O(p log n+ log3 n/ log σ + occ log n/ log log n) time.
+5As mentioned, there is also an extra bit overhead per meta-character; however, we will soon see that the number of
+meta-characters = O((nHk + o(n log σ))/ logn) so that this overhead is negligible.
+14
+into or deleted from L from time to time. The approximate library management problem is to
+construct an index for L such that for any query pattern P and any integer k, we can report all
+k-error matches of P in L efficiently; here, a k-error match of P refers to any substring such that
+its Hamming distance (or edit distance) with P is at most k. Existing work either focussed on the
+static version of the problem or assumed k = 0. When L is static, the problem can be reduced
+to the indexing of a single text TL = T1$T2$ · · · $Tj , formed by the concatenating all texts in L,
+so as to support the k-error matching query. Huynh et al. [26] showed that when the space is
+limited to O(n log σ) bits, which is of the same order as the input text, their index supports query
+in O(σk|P |k log2 n + γ log n) time. Lam et al. [30] proposed an improved index, which reduces
+the query time to O((σk|P |k log log n + γ) log² n), for any fixed ² > 0. When k = 0, the problem
+is known as the (dynamic) library management problem. Given O(n log n) bits of index space,
+we can construct the generalized suffix tree so that the query can be done in O(|P | log σ + γ)
+time, and insertion/deletion of a text T in L can be done in O(|T | log σ) time. When the index
+space is restricted to O(n log σ) bits, Chan et al. [8] proposed the dynamic version of the CSA
+(compressed suffix arrays) which supports query in O(|P | log2 n + γ log2 n) time, and update of
+L in O(|T | log2 n) time. Later, Ma¨kinen and Navarro [33] proposed an alternative index with
+improved space complexity and slightly slower query/update times.
+6.1 Our Results
+We observe that by combining the existing techniques (in a straightforward manner), we can obtain
+the first compressed indexes that require O(n log σ) bits of space which support efficient pattern
+queries and updating simultaneously. The first one is based on a direct combination of the dynamic
+CSA of Chan et al. [8] with the approximate matching algorithm of Huynh et al. [26], and its
+performance is summarized as follows:
+Theorem 5 We can index a collection L of texts of total length n with CSA using O(n log σ) bits,
+such that it supports insertion/deletion of a text T in L in O(|T | log2 n) time. Then for any k, the
+k-error matches of P can be reported in O(σk|P |k log3 n + γ log2 n) time, where γ denotes the
+number of occurrences.
+The second one is based on Sparse SA (sparse suffix arrays, or suffix sampling) and the GBWT
+technique in [10], whose design is conceptually simpler than the first one:
+Theorem 6 We can index a collection L of texts of total length n with Sparse SA and GBWT using
+O(n log σ) bits, such that it supports insertion/deletion of a text T in L in O(|T | log n log σ) time.
+Then for any k, the k-error matches of P can be reported in O(σk|P |k log3 n+γ log2 n) time, where
+γ denotes the number of occurrences.
+16
+[4] L. Arge and J. S. Vitter. Optimal External Memory Interval Management. SIAM Journal on
+Computing, 32(6):1488–1508, 2003.
+[5] D. Arroyuelo and G. Navarro. A Lempel-Ziv Text Index on Secondary Storage. In Proceed-
+ings of Symposium on Combinatorial Pattern Matching, pages 83–94, 2007.
+[6] S. J. Bedathur and J. R. Haritsa. Engineering a Fast Online Persistent Suffix Tree Construction.
+In Proceedings of International Conference on Data Engineering, 2004.
+[7] M. Burrows and D. J. Wheeler. A Block-sorting Lossless Data Compression Algorithm. Tech-
+nical Report 124, Digital Equipment Corporation, Paolo Alto, CA, USA, 1994.
+[8] H. L. Chan, W. K. Hon, T. W. Lam, and K. Sadakane. Compressed Indexes for Dynamic Text
+Collections. ACM Transactions on Algorithms, 3(2), 2007.
+[9] B. Chazelle. Lower Bounds for Orthogonal Range Searching, I: The Reporting Case. Journal
+of the ACM, 37(2):200–212, 1990.
+[10] Y. F. Chien, W. K. Hon, R. Shah, and J. S. Vitter. Geometric Burrows-Wheeler Transform:
+Linking Range Searching and Text Indexing. In Proceedings of Data Compression Confer-
+ence, pages 252–261, 2008.
+[11] S. Y. Chiu, W. K. Hon, R. Shah, and J. S. Vitter. I/O-efficient Compressed Text Indexes: From
+Theory to Practice. In Proceedings of Data Compression Conference, pages 426–434, 2010.
+[12] E. D. Demaine and A. Lo´pez-Ortiz. A Linear Lower Bound on Index Size for Text Retrieval.
+In Proceedings of Symposium on Discrete Algorithms, pages 289–294, 2001.
+[13] P. Ferragina and R. Grossi. The String B-tree: A New Data Structure for String Searching in
+External Memory and Its Application. Journal of the ACM, 46(2):236–280, 1999.
+[14] P. Ferragina, F. Luccio, G. Manzini, and S. Muthukrishnan. Structuring Labeled Trees for Op-
+timal Succinctness, and Beyond. In Proceedings of Foundations of Computer Science, pages
+184–196, 2005.
+[15] P. Ferragina and G. Manzini. Indexing Compressed Text. Journal of the ACM, 52(4):552–581,
+2005.
+[16] P. Ferragina, G. Manzini, V. Ma¨kinen, and G. Navarro. Compressed Representations of Se-
+quences and Full-Text Indexes. ACM Transactions on Algorithms, 3(2), 2007.
+18
+[30] T. W. Lam, W. K. Sung, and S. S. Wong. Improved Approximate String Matching Using
+Compressed Suffix Data Structures. Algorithmica, 51(3):298–314, 2008.
+[31] V. Ma¨kinen and G. Navarro. Position-Restricted Substring Searching. In Proceedings of
+LATIN, pages 703–714, 2006.
+[32] G. Navarro and V. Ma¨kinen. Compressed Full-Text Indexes. ACM CSUR, 39(1), 2007.
+[33] V. Makinen and G. Navarro. Dynamic Entropy-Compressed Sequences and Full-Text Indexes.
+ACM Transactions on Algorithms, 4(3), 2008.
+[34] U. Manber and G. Myers. Suffix Arrays: A New Method for On-Line String Searches. SIAM
+Journal on Computing, 22(5):935–948, 1993.
+[35] E. M. McCreight. A Space-economical Suffix Tree Construction Algorithm. Journal of the
+ACM, 23(2):262–272, 1976.
+[36] G. Navarro and V. Ma¨kinen. Compressed Full-Text Indexes. ACM Computing Surveys, 39(1),
+2007.
+[37] S. J. Puglisi, W. F. Smyth, and A. Turpin. Inverted Files Versus Suffix Arrays for Locating
+Patterns in Primary Memory. In SPIRE, pages 122–133, 2006.
+[38] Pizza&Chili Corpus – Compressed Indexes and their Testbeds.
+http://pizzachili.di.unipi.it/, 2005.
+[39] K. Sadakane. Compressed Suffix Trees with Full Functionality. Theory of Computing Systems,
+pages 589–607, 2007.
+[40] R. Sinha, S. J. Puglisi, A. Moffat, and A. Turpin. Improving Suffix Arrays Locality for Fast
+Pattern Matching on Disk. In Proceedings of International Conference on Management of
+Data, pages 661–672, 2008.
+[41] S. Tata, R. A. Hankins, and J. M. Patel. Practical Suffix Tree Construction. In Proceedings of
+International Conference on Very Large Data Bases, pages 36–47, 2004.
+[42] P. Weiner. Linear Pattern Matching Algorithms. In Proceedings of Symposium on Switching
+and Automata Theory, pages 1–11, 1973.
+[43] C. C. Yu, W. K. Hon, and B. F. Wang. Efficient Data Structures for Orthogonal Range Succes-
+sor Problem. In Proceedings of International Conference on Computing and Combinatorics,
+pages 96–105, 2009.
+20
+List of Research Output for NSC Project 96-2221-E-007-082-MY3
+Wing-Kai Hon
+Journals:
+1. W. K. Hon, M. Patil, R. Shah, and S. B. Wu. Efficient Index for Retrieving Top-k Most Frequent Documents,
+accepted by Journal of Discrete Algorithms (JDA).
+2. C. C. Yu, W. K. Hon, and B. F. Wang. Improved Data Structures for Orthogonal Range Successor Problem,
+accepted by Computational Geometry: Theory and Applications (CGTA).
+3. W. K. Hon, K. Sadakane, and W. K. Sung. Breaking a Time-and-Space Barrier in Constructing Full-Text Indices.
+SIAM Journal on Computing, volume 38(6), 2162–2178, 2009.
+International Conferences:
+1. M. O. Ku¨lekci, W. K. Hon, R. Shah, J. S. Vitter, and B. Xu. PSI-RA: A Parallel Sparse Index for Read Alignment
+of Genomes, to appear in IEEE International Conference on Bioinformatics and Biomedicine (BIBM), 2010.
+2. W. K. Hon, T. H. Ku, R. Shah, S. V. Thankachan, and J. S. Vitter. Faster Compressed Dictionary Matching, to
+appear in Symposium on String Processing and Information Retrieval (SPIRE), 2010.
+3. W. K. Hon, R. Shah, S. V. Thankachan, and J. S. Vitter. String Retrieval for Multi-pattern Queries, to appear in
+Symposium on String Processing and Information Retrieval (SPIRE), 2010.
+4. W. K. Hon, R. Shah, and J. S. Vitter. Compression, Indexing, and Retrieval of Massive String Data, in Sympo-
+sium on Combinatorial Pattern Matching (CPM), pages 260–274, 2010.
+5. S. Y. Chiu, W. K. Hon, R. Shah, and J. S. Vitter. I/O-efficient Compressed Text Indexes: From Theory to Practice,
+in IEEE Data Compression Conference (DCC), pages 426–434, 2010.
+6. W. K. Hon, W. Wu, and T. S. Yang. Compressed Indexes for Approximate Library Management (poster), in
+IEEE Data Compression Conference (DCC), page 534, 2010.
+7. W. K. Hon, T. W. Lam, R. Shah, S. L. Tam, and J. S. Vitter. Succinct Index for Dynamic Dictionary Matching, in
+International Conference on Algorithms and Computation (ISAAC), pages 1034–1043, 2009.
+8. W. K. Hon, R. Shah, and J. S. Vitter. Space-Efficient Framework for Top-k String Retrieval Problems, in IEEE
+Symposium on Foundations of Computer Science (FOCS), pages 713–722, 2009.
+9. W. K. Hon, R. Shah, S. V. Thankachan, and J. S. Vitter. On Entropy-Compressed Text Indexing in External
+Memory, in Symposium on String Processing and Information Retrieval (SPIRE), pages 75–89, 2009.
+10. W. K. Hon, R. Shah, and S. B. Wu. Efficient Index for Retrieving Top-k Most Frequent Documents, in Sympo-
+sium on String Processing and Information Retrieval (SPIRE), pages 182–193, 2009.
+11. C. C. Yu, W. K. Hon, and B. F. Wang. Efficient Data Structures for Orthogonal Range Successor Problem, in
+International Conference on Computing and Combinatorics (COCOON), pages 96–105, 2009.
+12. Y. F. Chien, W. K. Hon, R. Shah, and J. S. Vitter. Geometric Burrows-Wheeler Transform: Linking Range
+Searching and Text Indexing, in IEEE Data Compression Conference (DCC), pages 252–261, 2008.
+13. W. K. Hon, T. W. Lam, R. Shah, S. L. Tam, and J. S. Vitter. Compressed Index for Dictionary Matching, in IEEE
+Data Compression Conference (DCC), pages 23–32, 2008.
+Book Chapters:
+1. W. K. Hon. Non-Shared Edges. Encyclopedia of Algorithms (Editor: M. Y. Kao), 2008.
+1
+訪問時間 
+ 地點 
+ 98 年 12 月 15 日 至 12 月 20 日 
+The 20th International Symposium on Algorithms and Computation 
+(ISAAC 2009), Hawaii, USA 
+一、主要任務摘要 
+出席國際學術會議，報告本人以下論文︰ 
+Title :     Succinct Index for Dynamic Dictionary Matching 
+Authors :  WK Hon, TW Lam, R Shah, SL Tam, JS Vitter 
+ 
+二、對計畫之效益 
+    此學術會議主題為演算法研究，本年共有超過十五篇與字串比對  
+(Pattern Matching)、資料結構 (Data Structures) 及索引設計 (Index Design) 
+有關的論文發表，能參與其中對本人現時及未來之研究有莫大裨益。 
+ 
+三、經過 
+    自12月15日離台，同日抵達夏威夷州 (Hawaii State) 火奴魯魯市 (Honolulu)  
+至12月20日回台，除飛行及轉機時間外，大部份時間都留在會議場地聆聽 
+演講，並在12月18日中午進行本人論文之演講。 
+ 
+   總結行程如下︰ 
+   12月15日             抵達夏威夷州 
+   12月16日至 12月18日  ISAAC 2009 Conference 
+   12月18日             Our Paper Presentation 
+   12月19日             離開美國 
+12月20日             抵達台灣 
+ 
+四、心得 
+此行除了能一睹數學大師 Ronald Graham 的風采及欣賞他精彩的演說外  
+(Prof. Graham 為是次受邀的 Keynote Speaker，曾擔任美國數學學會主席， 
+現為UCSD教授)，更重要的是能聆聽與本人研究方向有密切關係的演講， 
+並與其中作者們交流。本人也十分幸運能與 Prof. Sadakane 會面並得到 
+一些初步的成果 (Prof. Sadakane為日本國立情報學研究所 (National Institute 
+of Informatics) 的副教授，亦本人長期合作伙伴)，故此行獲益良多。 
+ 
+五、建議與結語 
+    本人相信出席學術會議能對主流研究有更好的掌握，亦能增加國際合作 
+的機會，長遠而言能提升研究品質，以及能開拓研究人員的眼界。 
+ 
+   
+ 
+訪問時間 
+ 地點 
+ 99 年 5 月 31 日 至 6 月 08 日 
+The Fifth International Conference on Fun with Algorithms (FUN 2010), 
+Ischia Island, Italy 
+一、主要任務摘要 
+出席國際學術會議，報告本人以下論文︰ 
+Title : Cryptographic and Physical Zero-Knowledge Proof: From Sudoku to Nonogram
+Authors :  CY Chien, WK Hon 
+ 
+二、對計畫之效益 
+此學術會議每三年舉行一次，著重於對演算法與資料結構領域內一些輕鬆 
+有趣題目作出嚴謹的理論研究，故此大會中有不少領域內的大師出席。能 
+參與其中對本人現時及未來之研究有莫大裨益。 
+ 
+三、經過 
+    自5月31日離台，翌日抵達意大利拿波利市 (Naples)，再轉乘渡輪至會議場地 
+Ischia Island。至6月08日回台，除飛行及轉機時間外，大部份時間都留在會議 
+場地聆聽演講，並在6月02日下午進行本人論文之演講。 
+ 
+    總結行程如下︰ 
+    5月31日                      離台 
+    6月01日                      抵達會議場地 Ischia Island 
+    6月02日至 6月04日            FUN 2010 Conference 
+    6月07日                      離開會議場地 
+6月08日                      抵達台灣 
+ 
+四、心得 
+此行最重要的是能聆聽與本人研究方向有關係的演講，並與其中作者們交流。 
+其次也接觸了不少新穎有趣的研究問題。本人也十分幸運能與此次會議中三位  
+invited speakers 之一的 Prof. R Grossi 及其學生初次會面，故此行獲益良多。 
+註︰ Prof. R Grossi 為本人研究領域 (資料壓縮、文字索引) 的專家。 
+ 
+五、建議與結語 
+    本人相信出席學術會議能對主流研究有更好的掌握，亦能增加國際合作 
+的機會，長遠而言能提升研究品質，以及能開拓研究人員的眼界。 
+ 
+ 
+ 
+Succinct Index for Dynamic Dictionary Matching 1035
+query performance. The space for these structures was considered to be “linear”
+but this was only when measured in terms of number of words and in asymptotic
+sense. In the stricter information-theoretic sense (which measures space in bits),
+this could be Θ(log n) times more than the optimal. Furthermore, the hidden
+constants in the asymptotic notions often make these indexes about 20 to 60
+times bigger than the original text.
+Recently, Ferragina and Manzini [10] and Grossi and Vitter [11] presented
+text indexes based on the concept of Burrows-Wheeler transform (BWT) [6]
+whose space bounds are very close to the size of the compressed text. This
+has evolved into a thriving research ﬁeld with many new application-speciﬁc
+compressed/succinct indexes developed.
+The dictionary matching problem is an orthogonal problem to the text index-
+ing problem. Here, some number of patterns are given beforehand and then a
+text comes in as the query. We need to ﬁnd which patterns appear in this query
+text and at which locations. Hence, the index is built on the set of patterns.
+More formally, the problem is deﬁned as follows.
+Index: A set of patterns P1, P2, ..., Pk with total n characters.
+Query: A text T of size |T | characters.
+Output: For each Pi occurring in T , all locations  where Pi matches T
+beginning at position .
+In the dynamic version of the problem, we support two update operations,
+namely insert(P ) and delete(P ). These operations, respectively, insert a new
+pattern to the set and delete any of the existing patterns from the set.
+Dictionary matching problem has a long history starting with Aho and Cora-
+sick in 1975 [1] who solved the problem optimally for the case of static patterns.
+Amir et al. [3] gave a solution for dynamic case where inserts and deletes of pat-
+terns are allowed. Their approach consists of constructing a generalized suﬃx
+tree of the patterns with suﬃx links. In particular, suﬃx links are exploited to
+avoid repeatedly matching the characters of T when diﬀerent positions of T are
+examined for pattern occurrences.
+However, a major problem with all the above solutions was that the index
+takes too much space. With the advent of the ﬁeld of compressed data struc-
+tures, it remained to be shown that a space-eﬃcient index can be designed for
+dictionary matching. Also, the issue of dynamism was somewhat hard to achieve
+with some of the earlier compressed indexing solutions. Chan et al. [7] were the
+ﬁrst to present O(nσ) bit index to solve this problem. Their solution mainly re-
+lied on Compressed Suﬃx Arrays (CSA) [11,18] and the subsequent Compressed
+Suﬃx Tree (CST) [19] with ingenious extension of suﬃx link operations. How-
+ever, this solution remained from optimal in space (it only achieves big-O term)
+usage.
+In this paper, we take a diﬀerent approach than CSA or BWT based indexes.
+Our approach is based on directly sparsifying suﬃx links and using only sampled
+suﬃxes. A similar approach, but with a rather diﬀerent sampling criteria, was
+considered by Ka¨rkka¨inen and Ukkonen [13] to solve the text indexing problem.
+Succinct Index for Dynamic Dictionary Matching 1037
+2 Preliminaries
+2.1 Basic Notation
+Let S = {S1, S2, . . . , Sr} be a set of r strings over an alphabet Σ of size σ. Let
+$ and # be two characters not in Σ, whose alphabetic orders are, respectively,
+smaller than and larger than any character in Σ. Let C be a compact trie such
+that each string Si$ or Si# corresponds to a distinct leaf in C; also, each edge
+is labeled by a sequence of characters, such that for each leaf representing some
+string Si$ (or Si#), the concatenation of the edge labels along the root-to-leaf
+path is exactly Si$ (or Si#). For each node v, we use path(v) to denote the
+concatenation of edge labels along the path from root to v. Note that for each
+Si, there must be some internal node vi such that path(vi) = Si.
+Deﬁnition 1. For any string Q, the locus of Q in C is deﬁned to be the lowest
+node v (i.e., farthest from the root) such that path(v) is a preﬁx of Q.
+2.2 Suﬃx Tree
+The suﬃx tree [16,20] for a set S of strings {S1, S2, . . . , Sr} is a compact trie
+storing all suﬃxes of each Si$ and each Si#. It can be stored in O(m logm)-bit
+space where m = |S| denote the total number of characters in the strings of S.
+For each internal node v in the suﬃx tree, it is shown that there exists a unique
+internal node u in the tree, such that path(u) is equal to the string obtained
+from removing the ﬁrst character of path(v). Usually, a pointer is stored from v
+to such a u; this pointer is known as the suﬃx link of v.
+By utilizing the suﬃx links, the suﬃx tree can be updated according to the
+insertion or deletion of Si in the set S with O(|Si| log σ) time [9].1 In addition,
+we can eﬃciently ﬁnd the loci of all suﬃxes of any text T within the suﬃx tree
+in O(|T | log σ) time [3].
+2.3 Review: Dictionary Matching with Suﬃx Trees
+Let Δ = {P1, P2, . . . , Pk} be the set of patterns that are currently stored in the
+collection. Let Σ be the alphabet, and σ be its size. Let n =
+∑ |Pi| be the total
+characters of the patterns in Δ. Suppose that we store the suﬃx tree for Δ; also
+for each i, we mark the node vi with path(vi) = Pi. Then we have the following:
+Lemma 1. Let T (j) denote the jth suﬃx of a text T and let u be the locus of
+T (j) in the suﬃx tree of Δ. Then, Pi appears at position j in T if and only if
+the marked node vi is an ancestor of u.
+In case the set of patterns is static, we can store a pointer in each node of
+the suﬃx tree, pointing to the nearest marked ancestor. Then by the previous
+lemma, we can answer the dictionary matching query in O(|T | log σ + occ) time,
+1 That is, we insert or delete all suﬃxes of Si in the suﬃx tree.
+Succinct Index for Dynamic Dictionary Matching 1039
+an alphabet of
+√
+n. Note that these loci may not be the same as the loci of those
+T [i..|T |] with i(mod d) = 1, but they are closely related. For instance, the locus
+of T can be at most d nodes further from the locus of T ′. In general, the locus
+of each T [i..|T |] with i(mod d) = 1 can be obtained in an extra O(d log σ) =
+O(log n) time through traversal in C. As a result, the loci of roughly 1/d of all
+suﬃxes of T are obtained. To ﬁnd the other loci, we can repeat the procedure
+for d− 1 times, where at the jth time we search C with the meta-text formed by
+blocking T [j + 1..|T |]. This gives the following lemma.
+Lemma 2. When d = 0.5 logσ n, the compact trie C requires O(n log σ+k logn)
+bits of space. On any input text T , the loci of all suﬃxes of T in C can be obtained
+in O(|T | logn) time.
+Next, we brieﬂy discuss two ideas of further reducing the space terms. The ﬁrst
+one is to reduce the O(k logn) terms, under tha natural assumption that all
+patterns in the set Δ are distinct. For this case, we shall classify patterns into
+two groups, one for those longer than d, the other for those with length at most d.
+The number of patterns, k1, in the ﬁrst group is at most n/d, and these patterns
+will be indexed by a compact trie C′ using Lemma 2. The number of patterns,
+k2, in the second group is at most Θ(
+√
+n logσ n), whose total length is at most
+Θ(
+√
+n(logσ n)2); these patterns will be stored in an ordinary suﬃx tree R, and
+requires only o(n) bits of space. Once the loci of all suﬃxes of T are located in
+both trees, we can proceed as before to output the marked ancestors of these
+loci. We summarize the above discussion as follows:
+Lemma 3. Assuming patterns in Δ are distinct. When d = 0.5 logσ n, we can
+store the compact trie C′ and the o(n)-bit suﬃx tree R, in total O(n log σ) bits
+of space, such that on any input text T , the loci of all suﬃxes of T in C′ and in
+R can be obtained in O(|T | logn) time.
+The second idea to reduce space is by raising the sampling factor d. In particular,
+we set d = logn logσ n.
+3 Then, we can immediately obtain a lemma similar to
+Lemma 2, such that the space of C is reduced to o(n log σ) +O(k logn) bits and
+ﬁnding all loci is done in O(|T | log2 n) time. The increased in time to ﬁnd loci is
+due to the ineﬃciency in extending each of the “approximate” locus (obtained
+from searching T ′ in C) to the true locus. In fact, each such extension can be
+reduced to the preﬁx matching problem in [12], which can be solved more eﬃ-
+ciently using O(d/ logσ n + log k) = O(log n) time (see Lemma 4 of [12]).4 The
+extra space required to support the reduction is O(k log n) bits in total. Thus,
+we have the following lemma:
+3 Due to the increase in d, we can no longer combine this idea with the ﬁrst one; as a
+result, we do not classify short and long patterns, and the O(k log n) term reappears.
+4 The idea is to maintain an extra data structure, called String B-tree [9], to manage
+the marked nodes so that once we obtain an approximate locus, we can easily jump
+to the nearest marked ancestor of the true locus. Due to space limitation, we defer
+the details to the full paper.
+Succinct Index for Dynamic Dictionary Matching 1041
+can cause the pre-order label of many nodes to change, which in turn can cause
+the intervals of many marked nodes to change.
+However, observe that the relative order of the pre-order label of the existing
+nodes, before and after the updates, are not changed. This motivates us to
+represent each marked node v by an “elastic” interval (instead of a ﬁxed interval
+when v is marked), where endpoints are represented by pointers to v and v′, so
+that its interval can be ﬂexibly changed according to the current ranks of v and
+v′ in the tree.
+Now, suppose that the relative rank of two nodes can be compared online
+in f(m) time, where m is the number of nodes in the tree. Then the dynamic
+interval tree of Arge and Vitter can easily be adapted to support each update
+in O(f(m) log k) time and each query in O(f(m)(log k + occ)) time. One simple
+solution is to overlay a balanced binary tree for the nodes so that the exact rank
+of any node can be computed in O(logm) time, thus comparison can be made
+in O(logm) time. A more complicated solution is by Dietz and Sleator [8] or by
+Bender el. [5], which is an O(m logm)-bit data structure for maintaining order in
+a list of items. In this order-maintenance data structure, an item can be inserted
+into the list in O(1) time when either its predecessor or its successor is given,
+while it can be deleted (freely) in O(1) time; given two items, we can compare
+their rank in the list in O(1) time. Thus, we can obtain a solution of dynamic
+marked ancestor by interval tree without any sacriﬁce in query eﬃciency.
+Yet, there are two important points to note for using the ﬁnal scheme. First,
+the insertion of a node v in a tree will require the knowledge of which node is v’s
+predecessor or successor. This can be immediately done when v is the ﬁrst child
+of its parent (so that its predecessor is known), or v is inserted in the middle of
+an existing edge (whose successor is known). However, it will be time-consuming
+in case v is the last child of its parent, in which case we may need to ﬁnd its
+successor by traversing to the root and ﬁnding the ﬁrst branch to the right. Thus,
+the position of where a node is inserted will greatly aﬀect the time in updating.
+Second, as the endpoints of the interval for a marked node v is now replaced
+by pointers to v and v′, it will cause a serious problem if v′ can be deleted while v
+is marked (in that case, the endpoint becomes undeﬁned). To avoid this problem,
+whenever we mark a node v, we will create a dummy node vˆ and insert it as the
+rightmost child of v; on the other hand, vˆ will be deleted only when v becomes
+unmarked. As vˆ will always be the last node visited in the subtree rooted at v,
+vˆ = v′ by deﬁnition, so that the interval of each marked nodes will always be
+well-deﬁned.
+5 All in a Nutshell
+We are now ready to combine the sparse suﬃx tree (Section 3) and the dynamic
+marked ancestor data structures (Section 4) to see their overall performance.
+When d = 0.5 logσ n and assuming the patterns are distinct, we can solve the
+dictionary matching query as follows. Recall that we maintain a compact trie C′
+for long patterns (length longer than d) and a suﬃx tree R for short patterns
+(length at most d).
+Succinct Index for Dynamic Dictionary Matching 1043
+Theorem 2. Suppose that patterns in Δ are stored separately in n log σ bits.
+Then we can maintain an o(n log σ) + O(k logn)-bit index for Δ, such that dic-
+tionary matching query can be answered in O(|T | logn + occ) time. The index
+supports insertion or deletion of a pattern in O(|P | log σ + log n) time.
+References
+1. Aho, A., Corasick, M.: Eﬃcient String Matching: An Aid to Bibliographic Search.
+Communications of the ACM 18(6), 333–340 (1975)
+2. Alstrup, S., Husfeldt, T., Rauhe, T.: Marked Ancestor Problems. In: Proceedings
+of Symposium on Foundations of Computer Science, pp. 534–544 (1998)
+3. Amir, A., Farach, M., Idury, R., La Poutre, A., Schaﬀer, A.: Improved Dynamic
+Dictionary Matching. Information and Computation 119(2), 258–282 (1995)
+4. Arge, L., Vitter, J.S.: Optimal External Memory Interval Management. SIAM Jour-
+nal on Computing, 1488–1508 (2003)
+5. Bender, M.A., Cole, R., Demaine, E.D., Farach-Colton, M., Zito, J.: Two Sim-
+pliﬁed Algorithms for Maintaining Order in a List. In: Proceedings of European
+Symposium on Algorithms, pp. 152–164 (2002)
+6. Burrows, M., Wheeler, D.J.: A Block-sorting Lossless Data Compression Algo-
+rithm. Tech Report 124, Digital Equipment Corporation, CA, USA (1994)
+7. Chan, H.L., Hon, W.K., Lam, T.W., Sadakane, K.: Compressed Indexes for Dy-
+namic Text Collections. ACM Transactions on Algorithms 3(2) (2007)
+8. Dietz, P.F., Sleator, D.D.: Two Algorithms for Maintaining Order in a List. In:
+Proceedings of Symposium on Theory of Computing, pp. 365–372 (1987)
+9. Ferragina, P., Grossi, R.: The String B-tree: A New Data Structure for String
+Searching in External Memory and Its Application. Journal of the ACM 46(2),
+236–280 (1999)
+10. Ferragina, P., Manzini, G.: Indexing Compressed Text. Journal of the ACM 52(4),
+552–581 (2005)
+11. Grossi, R., Vitter, J.S.: Compressed Suﬃx Arrays and Suﬃx Trees with Applica-
+tions to Text Indexing and String Matching. SIAM Journal on Computing 35(2),
+378–407 (2005)
+12. Hon, W.-K., Lam, T.-W., Shah, R., Tam, S.-L., Vitter, J.S.: Compressed Index for
+Dictionary Matching. In: DCC 2008, pp. 23–32 (2008)
+13. Ka¨rkka¨inen, J., Ukkonen, E.: Sparse Suﬃx Trees. In: Proceedings of International
+Conference on Computing and Combinatorics, pp. 219–230 (1996)
+14. Knuth, D.E., Morris, J.H., Pratt, V.B.: Fast Pattern Matching in Strings. SIAM
+Journal on Computing 6(2), 323–350 (1977)
+15. Manber, U., Myers, G.: Suﬃx Arrays: A New Method for On-Line String Searches.
+SIAM Journal on Computing 22(5), 935–948 (1993)
+16. McCreight, E.M.: A Space-economical Suﬃx Tree Construction Algorithm. Journal
+of the ACM 23(2), 262–272 (1976)
+17. Overmars, M.H.: The Design of Dynamic Data Structures. LNCS, vol. 156.
+Springer, Heidelberg (1983)
+18. Sadakane, K.: New text indexing functionalities of the compressed suﬃx arrays.
+Journal of Algorithms 48(2), 294–313 (2003)
+19. Sadakane, K.: Compressed Suﬃx Trees with Full Functionality. Theory of Com-
+puting Systems, 589–607 (2007)
+20. Weiner, P.: Linear Pattern Matching Algorithms. In: Proceedings of Symposium
+on Switching and Automata Theory, pp. 1–11 (1973)
+I/O-efficient Compressed Text Indexes: From Theory to Practice
+Sheng-Yuan Chiu Wing-Kai Hon
+Department of Computer Science
+National Tsing Hua University
+Hsinchu, Taiwan
+Email: {csy,wkhon}@cs.nthu.edu.tw
+Rahul Shah
+Department of Computer Science
+Louisiana State University
+Baton Rouge, LA, USA
+Email: rahul@csc.lsu.edu
+Jeffrey Scott Vitter
+Department of Computer Science
+Texas A&M University
+College Station, TX, USA
+Email: jsv@tamu.edu
+Abstract
+Pattern matching on text data has been a fundamental field of Computer Science for nearly 40 years. Databases
+supporting full-text indexing functionality on text data are now widely used by biologists. In the theoretical
+literature, the most popular internal-memory index structures are the suffix trees and the suffix arrays, and the
+most popular external-memory index structure is the string B-tree. However, the practical applicability of these
+indexes has been limited mainly because of their space consumption and I/O issues. These structures use a lot
+more space (almost 20 to 50 times more) than the original text data and are often disk-resident.
+Ferragina and Manzini (2005) and Grossi and Vitter (2005) gave the first compressed text indexes with
+efficient query times in the internal-memory model. Recently, Chien et al (2008) presented a compact text index
+in the external memory based on the concept of Geometric Burrows-Wheeler Transform. They also presented
+lower bounds which suggested that it may be hard to obtain a good index structure in the external memory.
+In this paper, we investigate this issue from a practical point of view. On the positive side we show an
+external-memory text indexing structure (based on R-trees and KD-trees) that saves space by about an order
+of magnitude as compared to the standard String B-tree. While saving space, these structures also maintain a
+comparable I/O efficiency to that of String B-tree. We also show various space vs I/O efficiency trade-offs for
+our structures.
+I. INTRODUCTION
+Given a text T which is a string of characters drawn from an alphabet set Σ and a pattern P , how can we
+locate all the occurrences of the pattern P in T ? This has been a fundamental problem in Computer Science
+since almost half a century. Many algorithms are known to solve this problem in O(n + m) time where n is
+the size of the text and m is the size of the pattern [19]. When the text T is already known and the patterns
+keep changing, the problem is best seen as a data structure/indexing problem where we can preprocess the text
+into an index, and the query comes in as a pattern or a set of patterns. In particular, suffix trees [22], [27]
+and suffix arrays [21] are two indexes widely used for this purpose, and there is still a considerable amount
+of research interest in database, algorithms, and pattern matching communities on these data structures even in
+this decade. Nevertheless, two of the main short-comings of these indexes make them insufficient for answering
+the needs of nowadays applications whose data volumes are huge. The first one is their space requirements,
+which are often 20 to 60 times the original text, and the second one is their poor locality of reference, which
+often induces main performance bottleneck when the data resides on disk. Each of these short-comings have
+been partly addressed by the research community. Firstly, to reduce space requirements, there has been a lot of
+recent research on compressed text indexing which is based on the Burrows-Wheeler Transform (BWT) of the
+text [11], [12], [13], [14]. Secondly, to improve the locality, Ferragina and Grossi designed the String B-tree [9]
+which achieves theoretically optimal I/O performance. However, these two short-comings have so far only been
+addressed separately but not simultaneously.
+Even though storage space has been increasing, the need for compressing data is still very important due
+to emergence of device-based computing where mobile-devices have limited RAM and the data storage is
+distributed across some network. Also, the compressed data often fits into faster levels of memory hierarchy, thus
+all suffixes of a text, sorted in lexicographical order), and assume the readers have fair understanding on these
+topics. For those readers who may be unfamiliar, we recommend the reference [15] for details.
+A. String B-tree
+While suffix trees and suffix arrays exhibit good searching performance in the internal memory model, they do
+not work well when they are stored on disk, as the searching process may invoke many random I/O accesses. To
+improve the I/O access behavior, Ferragina and Grossi [9] proposed the String B-tree (SBT) index for a text T ,
+which basically organized the entries of the suffix array with a B-tree. Each node in the SBT occupies 1 disk
+page, storing Θ(B) suffix array entries. As a result, SBT has Θ(logB n) levels.
+The SA range of a pattern P (which is the contiguous range in the suffix array containing all occurrences of
+P in T ) can be found by traversing the SBT analogous to searching a key in a B-tree. When a node of the SBT
+is visited, the entries in the node, which are essentially the suffixes of T , are then used to compare with P and
+tell which child node to be visited next. In addition, each node is coupled with a blind trie of the corresponding
+suffixes to further reduce the I/Os incurred in the above comparison.1 The following lemma summarizes the
+performance of the SBT in [9]:
+Lemma 1: Let T be a text of n characters. The SBT of T can be stored in O(n/B) disk pages. Then for any
+query pattern P , we can compute the suffix range of P in O(|P |/B + logB n) I/Os.
+III. GBWT AND I/O-EFFICIENT COMPRESSED TEXT INDEX
+Despite the excellent I/O performance in pattern matching, a major disadvantage of the SBT is the storage
+requirement. While the indexed text T can naively be stored in O(n) bits when the alphabet size |Σ| is a constant
+(more precisely, O(n log |Σ|) bits when the alphabet of T is Σ), SBT will require O(n logn) bits; the exact ratio
+can be up to a factor of 20 to 60 times in practice, when the indexed texts are DNA sequences (whose alphabet
+size is 4). Chien et al [8] proposed a variant of the Burrows-Wheeler Transform [6], called geometric BWT
+(GBWT), and show that it can be used to design a compressed text index that works well in the external memory
+model. Their main idea is very simple: maintaining a subset of suffixes instead of all suffixes in the SBT. In the
+remainder of the section, we will first explain briefly the GBWT, then describe how to design an external-memory
+index based on GBWT, and show how pattern searching can then be supported.
+A. Definition of GBWT
+Given a text T and a blocking factor d, let T ′[1..n/d] be the text formed by blocking every consecutive d
+characters of T to form a single meta-character. For example, if T = acgtacgtgcgt and d = 3, then T ′ would
+be equal to
+T ′ = acg tac gtg cgt,
+consisting of 4 meta-characters. Thus, the suffix of T ′ starting at position i corresponds to the suffix of T starting
+at position (i− 1)d+ 1. Let SA′[1..n/d] be the suffix array of T ′.
+The GBWT of T is defined as a specific set of 2-tuples (x, c) based on T ′ and SA′, where x is an integer
+between 1 to n/d, and c is a meta-character. Recall that SA′[i] corresponds to the ith lexicographically smallest
+suffix in T ′. For such a suffix, we let ci be the meta-character before it (that is, with d original characters),
+but written in the reverse order. For instance, in the above example, SA′[2] = 4, so that cgt is the second
+lexicographically smallest suffix of T ′. Then we have c2 = gtg. The GBWT of T is simply the set of tuples
+S = {(i, ci) | 1 ≤ i ≤ n/d}. See Figure 1 for a complete example.
+Indeed, each meta-character ci in a GBWT tuple can naturally be thought as an integer, whose bit representation
+is exactly the d log |Σ| bits we use to encode ci. For instance, in our example, suppose the original characters
+a, c, g, t are encoded by 00, 01, 10, and 11, respectively. Then a meta-character cat will be encoded by 100011,
+1The blind trie of a set of strings is a specialized compact trie where each internal node stores the length of the common prefix of the
+descendant strings, and each edge from a node is labeled by the first character after the common prefix.
+We apply the above to find offset-k occurrences for k = 2, 3, . . . , d, giving the following result:
+Theorem 1: Suppose the SBT of T ′ and a 2-d range query index for the GBWT tuples are stored. Then all
+occurrences of P with starting and ending positions inside different (meta-)characters of T ′ can be found using
+d searches in the SBT and d orthogonal range queries.
+Finally, we have to handle the case when P is shorter than d, so that both its starting and ending positions can
+be inside the same meta-character of T ′. In this case, we can apply the traditional inverted files for searching such
+patterns. In some applications where the query patterns are known to be longer than d, we can simply discard
+the inverted files to save space. Thus, a perfect choice of d would be the minimum length of a query pattern one
+may want to search.
+IV. IMPLEMENTATION DETAILS
+A. Tuning of String B-Tree
+Recall that in the SBT search, when we visit a node, we need to compare P with the suffixes in the node
+so as to guide the traversal. In the current process, such a comparison is aided by the blind trie in the node,
+and the target is to find out the relative lexicographical order of P among the suffixes in the node. However,
+in contrast to a normal compact trie, the blind trie lacks the complete information in the edges (only the first
+character is stored), so that searching in the blind trie would actually invoke some random I/Os to recover the
+edge information.
+Heuristic 1: Our first heuristic attempts to avoid these random I/Os completely, by explicitly storing the first
+16 characters of each suffix inside the node. Consequently, if the relative lexicographical order of P can be
+determined directly, there will be no further I/Os, and we can proceed immediately to the next node in the
+traversal. A minor drawback with this heuristic is that each node has to reserve the space for these first 16
+characters, such that we can no longer store the same number of suffixes as before. As a result, the branching
+factor of the SBT will be decreased a bit, which may make the height of the tree taller.
+Heuristic 2: Our second heuristic is a standard and well-known trick: storing the first few levels of SBT
+explicitly in the internal memory. While the size of an SBT could be huge, the size of the first few levels, even
+up to half of all levels, is only O(
+√
+n) space. This is quite manageable for indexing texts in most applications.
+As a result, the traversal in these levels will not incur any I/O.
+B. Tuning of Range Query Index
+While R-tree and KD-tree are general-purpose indexes for 2-d range query, the points in our application are
+usually skewed. Precisely, let us consider the ranges of x and y coordinates in a common setting. The x direction
+in our case represents the various suffixes of T ′, so that the range can be up to millions of values. On the other
+hand, the y direction in our case represents the meta-characters, so that when |Σ| and d are small (say, |Σ| = 4
+for DNA texts and d = 4), the range may only be up to a few thousands. As a result, all the points we index
+fall into a very narrow stripe, and the traditional indexes like R-tree or KD-tree may fail to perform well.
+Heuristic 3: Our third heuristic is to fine tune the criteria in the R-tree or KD-tree construction, such as ordering
+the x-cuts and y-cuts in KD-tree, so that a query invoked in our application can be answered more effectively.
+C. Inverted Index for Short Patterns
+The GBWT index handles all pattern occurrences which cross at least one meta-character boundary. To handle
+those occurrences which appear inside of a meta-character, we first generate a generalized suffix tree of all
+(distinct) meta-characters–there are at most |Σ|d of them. For each substring s of a distinct meta-character c,
+we store a pointer from s to c in the generalized suffix tree. The search in the suffix tree follows standard
+procedure, and once we match P and stop at a location ρ, we can identify all meta-characters c’s that contain
+P as its substring, and proceed to find the occurrences of those c’s. These occurrences of c’s can readily be
+reported by searching the sparse SBT. However, in case the meta-character c occurs rarely in T (much less than
+Table I
+EFFECT OF HEURISTICS ON PERFORMANCE OF SBT. THE ENTRIES INDICATE THE AVERAGE NUMBER OF I/OS TO REPORT THE
+SUFFIX RANGE OF THE QUERY PATTERN.
+Normal Heuristic 1 Heuristic 2 Both
+d = 1 15.15 9.20 11.27 5.32
+d = 2 18.45 9.32 12.15 3.02
+d = 4 22.75 16.63 11.44 5.32
+d = 8 32.04 28.54 12.26 9.12
+Table II
+EFFECT OF HEURISTIC ON PERFORMANCE OF KD-TREE. THE ENTRIES INDICATE THE AVERAGE I/OS PER QUERY TO OUTPUT
+OCCURRENCES BY THE RESPECTIVE KD-TREE.
+Pattern Type Default KD-tree (I/Os) Tuned KD-tree (I/Os)
+Set-1000 13 11
+Set-3000 25 21
+Set-10000 60 53
+B. Tuning of SBT
+The main purpose of having SBT (both FSBT and SSBT) in our indexes is to obtain the suffix range of an
+input pattern P . The searching I/O in such a procedure is independent of the number of occurrences of P . In
+our first experiment, we performed various fine tunings (Heuristic 1, or Heuristic 2, or both as described in
+Section IV) and compared the resulting I/O performance to obtain the suffix range when searching patterns with
+different lengths.
+We tested the performance on a single input text which contains 4M characters. The text is indexed by FSBT,
+SSBT-2, SSBT-4, and SSBT-8. We select at random 1024 query patterns of length 25 from the input text. The
+results are shown in Table I.
+As Heuristic 1 and Heuristic 2 both target at reducing the I/Os from searching the SBT, a great improvement
+(about 60–80% reduction) was observed for all different kinds of SBT when both heuristics are applied. This
+confirmed the practicality of the two heuristics. Thus from here onwards, we shall assume all SBTs to include
+both heuristics.
+C. Tuning of KD-tree
+As mentioned in Section IV, we may improve the performance of the 2D index if we take the distribution
+of points into consideration. Table V-C reports the performance of KD-tree with the default implementation and
+with tuning using Heuristic 3. In our experiment, we chose a random text of 4M characters which was indexed by
+SSBT-4. The KD-tree was used for outputting the occurrences. The pattern queries are selected from Set-1000,
+Set-3000, and Set-10000, respectively.
+The above shows that fine tuning of KD-tree consistently gives minor improvements in query I/Os. Nevertheless,
+since fine tuning of KD-tree only re-organize the partition of the points, it will not add any extra space so that it
+should be used. Note that we have not performed tuning on R-tree though we expect similar improvements can
+be achieved.
+D. Empirical Space
+All the indexes we compared are linear-space indexes. We have constructed these indexes over texts of different
+lengths, including 1M, 2M, and 4M. The following is a close approximation to the space we found empirically.
+ 0
+ 5
+ 10
+ 15
+ 20
+ 25
+ 30
+ 0  5  10  15  20
+N
+um
+be
+r o
+f D
+isk
+ A
+cc
+es
+s
+Size of Index (MB)
+No occ chart
+ST
+ST+SA
+FSBT
+FSBT+SA
+SSBT+KDtree
+SSBT+Rtree
+SSBT+Wavelet
+(a)
+ 0
+ 20
+ 40
+ 60
+ 80
+ 100
+ 0  5  10  15  20  25
+N
+um
+be
+r o
+f D
+isk
+ A
+cc
+es
+s
+Size of Index (MB)
+1000 occ chart
+ST
+ST+SA
+FSBT
+FSBT+SA
+SSBT+KDtree
+SSBT+Rtree
+SSBT+Wavelet
+(b)
+ 0
+ 20
+ 40
+ 60
+ 80
+ 100
+ 120
+ 140
+ 160
+ 0  5  10  15  20  25
+N
+um
+be
+r o
+f D
+isk
+ A
+cc
+es
+s
+Size of Index (MB)
+3000 occ chart
+ST
+ST+SA
+FSBT
+FSBT+SA
+SSBT+KDtree
+SSBT+Rtree
+SSBT+Wavelet
+(c)
+ 0
+ 50
+ 100
+ 150
+ 200
+ 250
+ 300
+ 0  5  10  15  20  25
+N
+um
+be
+r o
+f D
+isk
+ A
+cc
+es
+s
+Size of Index (MB)
+10000 occ chart
+ST
+ST+SA
+FSBT
+FSBT+SA
+SSBT+KDtree
+SSBT+Rtree
+SSBT+Wavelet
+(d)
+Figure 2. Performances of Indexes on Various Number of Occurrences
+that our indexes perform about 2–3 times more I/Os compared to suffix-array-based indexes. The main reason
+for the factor of 2 being that our point is a tuple and hence costs 8 bytes per point as against 4 bytes for SA
+value. Apart from that our indexes perform well in terms of the throughput. In the case of 10000 occurrences
+the worst of our index takes about 130 I/Os which amounts to about 66% of the best possible (80 I/Os). In the
+best case we achieve about 85% of I/O throughput. This is in stark contrast with [4] whose throughput is about
+5–10%. We also note that I/Os for wavelet-tree-based index is much higher as expected.
+There is a further interesting point to note. In the case of 10000 occurrences, SSBT + Wavelet with d = 2
+has query performance very close to that of FSBT + SA, or ST + SA. The reason is that the wavelet tree in our
+experiment only has 2 levels, and in case d is small, the I/O for outputting occurrences becomes O(4d+ occ/B)
+instead of O(occ logB n).
+ACKNOWLEDGMENTS
+The authors wish to thank the anonymous reviewers for their careful reading and their constructive comments,
+which have considerably improved the quality of the paper.
+REFERENCES
+[1] P. K. Agarwal and J. Erickson. Geometric Range Searching and Its Relatives. Advances in Discrete and Computational
+Geometry, 23:1–56, 1999.
+[2] L. Arge, M. de Berg, H. J. Haverkort, K. Yi. The Priority R-tree: A Practically Efficient and Worst-Case Optimal
+R-tree. ACM Transactions on Algorithms, 4(1), 2008.
+[3] L. Arge and J. S. Vitter. Optimal External Memory Interval Management. SIAM Journal on Computing, 32(6):1488–
+1508, 2003.
+[4] D. Arroyuelo and G. Navarro. A Lempel-Ziv Text Index on Secondary Storage. In Proceedings of Symposium on
+Combinatorial Pattern Matching, pages 83–94, 2007.
+[5] S. J. Bedathur and J. R. Haritsa. Engineering a Fast Online Persistent Suffix Tree Construction. In Proceedings of
+International Conference on Data Engineering, 2004.
+[6] M. Burrows and D. J. Wheeler. A Block-sorting Lossless Data Compression Algorithm. Technical Report 124, Digital
+Equipment Corporation, Paolo Alto, CA, USA, 1994.
+[27] P. Weiner. Linear Pattern Matching Algorithms. In Proceedings of Symposium on Switching and Automata Theory,
+pages 1–11, 1973.
+[28] J. Ziv and A. Lempel. Compression of Individual Sequences via Variable Length Coding. IEEE Transactions on
+Information Theory, 24(5):530–536, 1978.
+comprehensible zero-knowledge proof. Gradwohl et al. [6] gave a zero-
+knowledge proof for Sudoku that can be implemented physically using
+common tools like envelopes and bags, and the procedures are so simple
+that they can be executed solely by kids. In this paper, we work along
+with this direction, and first propose a simple physical zero-knowledge
+proof for Nonogram.
+1.1 What is Nonogram?
+Nonogram is a picture logic puzzle played on a grid with m × n cells,
+in which cells in the grid have to be colored black or white according
+to some simple rules. For a particular Nonogram puzzle, each row and
+each column has a sequence of numbers associated to it; the sequence is
+used to indicate the number of blocks formed by consecutive black cells,
+the number of black cells in each block, and the order in which these
+blocks would appear in the corresponding row or column. Precisely, if the
+sequence has k numbers, say (x1, x2, . . . , xk), it means there are k blocks
+of black cells, the lengths of the blocks are respectively x1, x2, . . ., and
+xk, and these blocks appear in the same order as in the sequence. (See
+[11] for an example.)
+Let Nonogram be the language that contains all Nonogram puzzles
+with a solution. It is known that Nonogram is NP-complete [10]. In
+this paper, we propose some simple physical zero-knowledge proofs for
+Nonogram. Essentially, the framework of our protocols are the same as
+the one in [6] for Sudoku puzzles. However, due to the difference in nature
+of the Nonogram and Sudoku puzzles, the actual implementation of the
+protocols are quite different.
+2 Zero-Knowledge Proof
+Zero-knowledge proof (ZKP) [5] is a special case of an interactive proof
+system, where the latter consists of a communication protocol (i.e., a
+series of well-defined steps) executed between a prover P and a verifier V
+which allows P to convince V that a particular statement is true. For our
+concern, the statement to be proven will be “the prover P knows a solution
+of the input Nonogram puzzle”. At the end of the execution, the verifier
+must output either accept or reject. The protocol is probabilistic, in a
+sense that the messages exchanged between the two parties P and V are
+functions of the input, the messages sent so far, and the private random
+bits associated to each party. If an interactive proof system is designed
+games, in which some information that determines if we are winning is
+marked on the cards, but the information is hidden by some protective
+coating. In our protocols, the scratch-off cards will be specially designed,
+which are used as a communication means between the prover and the
+verifier. Each card is blank at the beginning, which does not have any
+protective coating, and inside which some entries are to be filled. Once
+the entries are filled, the card is sealed so that each entry is covered by
+the protective coating. All sealed cards have the same appearance, so
+that there is no way to distinguish one from the other. After sealing, we
+may selectively open a specific entry by scratching off the corresponding
+coating, while keeping the other entries still covered. Bags, on the other
+hand, will simply be used for random shuﬄing of the cards. Based on
+these tools, we propose two physical ZKPs for the Nonogram puzzles.
+The common framework of our protocols is described as follows:
+Framework of Our Protocols
+Prover Commitment Phase:
+Step 1: Prover assigns 2 random IDs to each cell of puzzle.
+Step 2: Prover distributes blank scratch-off cards to the cells.
+Step 3: Prover fills out the scratch-off cards and seals them.
+Verifier Checking Phase:
+Step 4: Verifier selects a random checking.
+Step 5: According to the selected checking, Prover opens some
+specific entries of each card.
+Step 6: Verifier accepts if the checking passes; else rejects.
+3.1 Our Scratch-Off Cards
+For a Nonogram puzzle with m × n cells, all of our protocols will make
+use of O(m×n) scratch-off cards, each card has the same set of entries as
+shown in Figure 1. After distributing blank cards to the cells, the prover
+will need to fill in the entries in the cards. Before describing the meaning
+of the entries, we have the following two definitions:
+Definition 1. Consider a row (or a column) in the Nonogram puzzle,
+and let (v1, v2, . . . , vk) be the corresponding sequence, so that in the solu-
+tion to this puzzle, the row (or the column) contains a block with v1 black
+cells, followed by a block with v2 black cells, and so on, if we scan from left
+to right (or from top to bottom). The jth block is called an odd-ranked
+block if j is odd; otherwise, it is called an even-ranked block.
+– Column.*: Filled as in Row.* analogously (by replacing the key-
+words “row, left, right” to “column, top, bottom”, respectively).§
+– Black/After: It contains two 2-dimensional arrays R[1..2][1..n]
+and C[1..2][1..m]. The row IDs of all cells to the right of c will each
+be filled at a random entry of R[1][1..n]. In addition, if c is a black
+cell, then R[2][j] is  if R[1][j] is the row ID of some black cell,
+and is left empty otherwise. If c is a white cell, all R[2][1..n] are
+left empty. Note that some entries of R[1][1..n] may not be filled.
+The entries of C are filled analogously.
+Fig. 2. Filling Row.Ptr(A), Row.Ptr(O), Row.Ptr(E): The first row of
+the figure indicates the black cells in a row of the solution. The second row
+indicates the row ID of each cell assigned by Prover. The remaining rows show
+the three values to be filled in the scratch-off cards in each cell
+Fig. 3. Filling Black/After in a particular scratch-off card
+The row and column IDs give a virtual coordinate to a cell, and
+the various pointers ensure that the adjacency of the cells in the grid,
+or the adjacency of the black cells, are preserved. The OrderB and
+Black/After contains information about the order of a black cell among
+its row or its column. See Figures 2 and 3 for an example.
+Based on the definition of the scratch-off cards, we have a necessary
+and sufficient condition for Prover to know the solution of the Nonogram
+puzzle, as shown in the two theorems below. Briefly speaking, the condi-
+tion includes seven statements which are related to the random checking
+offered to Verifier during the checking phase.
+Theorem 1. If the scratch-off cards can be filled such that all statements
+below are satisfied:
+S1: The (x, y) entry of each card is correct;
+§ We use Column.* as a shorthand notation to denote the collection of Column.ID,
+Column.Ptr(A), Column.Ptr(O), Column.Ptr(E).
+Theorem 3. Let P denote the input Nonogram puzzle and P ′ denote the
+transformed Nonogram puzzle. Then, a person can obtain a solution of P
+if and only if he can obtain a solution of P ′.
+4 Physical ZKP for Nonogram Puzzles
+4.1 First Protocol
+After the Prover Commitment Phase, our protocol enters the Veri-
+fier Checking Phase. At Step 4, Verifier begins by choosing one of the
+seven tests, uniformly at random. Then at Step 5, Prover opens specific
+entries in each card according to Verifier’s choice. After that, at Step 6,
+Verifier checks if there are inconsistencies using the opened entries, and
+accept if and only if none is found. The details of these seven tests, and
+their corresponding responses, are shown as follows:
+(T1) Testing S1, S2, and S3
+Prover’s action: Each card remains in the corresponding cell, while
+Prover opens the following entries of each card: (x, y), ID,Ptr(A),
+R[1][1..n] and C[1][1..m] of Black/After.
+/* R[2][1..n] and C[2][1..m] remain covered */
+Verifier’s action: Examine all cards and check if (i) (x, y) is correct,
+(ii) IDs are distinct, (iii) Ptr(A) is consistent with IDs, and (iv)
+R[1][1..n] and C[1][1..m] are consistent with IDs. Output accept
+if no inconsistencies found.
+(T2) Testing the row parts of S4 and S5
+Prover’s action: Prepare m bags, one for each row. Collect all cards
+of the same row to its corresponding bag. After that, shuﬄe each
+bag, and open Color entry of each card.
+Next, for each black card, open Row.ID, Row.OrderB, and
+R[2][1..n] of Black/After. Finally, open R[1][j] if R[2][j] is .
+Verifier’s action: Examine all cards in each bag. Check if the num-
+ber of black cards in each bag (i.e., row) matches with the sum of
+the corresponding sequence of that row. Next, check if Row.ID,
+Row.OrderB, and the opened entries of Black/After in each
+bag are consistent. Output accept if no inconsistencies found.
+(T3) Testing the column parts of S4 and S5 (Analogous to T2)
+(T4) Testing the row part of S6
+Prover’s action: Prepare m bags, one for each row. Collect all cards
+of the same row to its corresponding bag. After that, shuﬄe each
+bag, and open Row.Ptr(O) entry of each card.
+are inconsistencies using the opened entries, and accept if and only if
+none is found. The details of these nine new tests, and their correspond-
+ing responses, are shown as follows:
+(T1’) Testing S1, S2, and S3, and their related part of S0
+Prover’s action: Each card remains in the corresponding cell, while
+Prover opens the following entries of each card: (x, y), ID,Ptr(A),
+R[1][1..n] and C[1][1..m] of Black/After.
+/* R[2][1..n] and C[2][1..m] remain covered */
+Verifier’s action: Examine all cards and check if (i) (x, y) is cor-
+rect, (ii) IDs are distinct, (iii) Ptr(A) is consistent with IDs, and
+(iv) R[1][1..n] and C[1][1..m] of each card is consistent with IDs.
+Examine if the opened entries in the two cards in each cell are
+identical. Output accept if no inconsistencies found.
+(T2’) Testing Color, R[2][1..n] and C[2][1..m] of Black/After, Or-
+derB of S0
+Prover’s action: Prepare mn small bags, one for each cell. Collect
+all two cards of the same cell to its corresponding small bag. Put
+the mn bags into a larger bag, and shuﬄe the mn bags using the
+large bag.
+Open Color, R[2][1..n] and C[2][1..m] of Black/After, Or-
+derB entries in each card. At this point, each small bag contains
+two cards that are originally from the same cell.
+Verifier’s action: Examine each bag and check if the opened entries
+in the two cards are identical. Output accept if no inconsistencies
+found.
+(T3’) Testing Row.Ptr(O) of S0 (Analogous to T2’)
+(T4’) Testing Row.Ptr(E) of S0 (Analogous to T2’)
+(T5’) Testing Column.Ptr(O) of S0 (Analogous to T2’)
+(T6’) Testing Column.Ptr(E) of S0 (Analogous to T2’)
+(T7’) Testing S4 and S5
+Prover’s action: Prepare m bags, one for each row. In each bag,
+collect one card of each cell from the corresponding row. Then,
+shuﬄe the cards in each bag.
+Next, prepare n bags, one for each column. In each bag, collect one
+card of each cell from the corresponding column. Again, shuﬄe the
+cards in each bag.
+For each bag in each row, open Color entries of each card. Next,
+for each black card, open Row.ID, Row.OrderB, and R[2][1..n]
+of Black/After. Finally, open R[1][j] if R[2][j] is .
+5 Further Discussions
+We have proposed two physical protocols for the Nonogram puzzle which
+have perfect completeness, constant soundness, and zero-knowledge prop-
+erty. The framework of our protocols is adapted from the one in [6] for
+Sudoku puzzles. We utilize the advantage of a scratch-off card that we
+can selectively open its entries in specific order; this may open up the
+possibilities to simplify some of the existing protocols. However, our use
+of scratch-off cards, and their preparation, are much more involved than
+that in [6], making our protocols much harder to be implemented.??
+References
+1. S. Cook. The Complexity of Theorem Proving Procedures. In Proceedings of ACM
+Symposium on the Theory of Computing (STOC), pages 151–158, 1971.
+2. M. Fischer and R. Wright. Bounds on Secret Key Exchange Using a Random Deal
+of Cards. Journal of Cryptology, 9(2):71–99, 1996.
+3. M. Garey and D. Johnson. Computers and Intractability: A Guide to the Theory
+of NP-Completeness. 1979.
+4. O. Goldreich, S. Micali, and A. Wigderson. Proofs that Yield Nothing But their
+Validity, and a Methodology of Cryptographic Protocol Design. Journal of the
+ACM, 38(3):691–729, 1991.
+5. S. Goldwasser, S. Micali, and C. Rackoff. The Knowledge Complexity of Interactive
+Proof-Systems, 1985.
+6. R. Gradwohl, M. Naor, B. Pinkas, and G. Rothblum. Cryptographic and Phys-
+ical Zero-Knowledge Proof Systems for Solutions of Sudoku Puzzles. Theory of
+Computing Systems, 44(2):245–268, 2009.
+7. R. Kaye. Minesweeper is NP-complete. Mathematical Intelligencer, 22(2):9–15,
+2000.
+8. T. Moran and M. Naor. Basing Cryptographic Protocols on Tamper-Evident Seals.
+In Proceedings of International Colloquium on Automata, Language, and Program-
+ming (ICALP), pages 285–297, 2005.
+9. M. Naor. Bit Commitment Using Pseudo-Randomness. Journal of Cryptology,
+4(2):151–158, 1991.
+10. N. Ueda and T. Nagao. NP-completeness Results for Nonogram via Parsimo-
+nious Reductions. Technical Report TR96-0008, Department of Computer Science,
+Tokyo Institute of Technology, 1996.
+11. Wikipedia. Nonogram. http://en.wikipedia.org/wiki/Nonogram.
+12. T. Yato. Complexity and Completeness of Finding Another Solution and its Appli-
+cation to Puzzles. Master’s thesis, University of Tokyo, Department of Information
+Science, 2003.
+?? The protocol of [6] uses only 9 different kinds of scratch-off cards, so that these cards
+can be prepared in advance. For our protocol, the scratch-off cards have to be filled
+on the spot, as there are exponential number of variations. This is one of the major
+drawbacks of our protocol.
+96 年度專題研究計畫研究成果彙整表 
+計畫主持人：韓永楷 計畫編號：96-2221-E-007-082-MY3 
+計畫名稱：全文索引之創新技巧及其應用 
+成果項目 
+量化 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+國內 
+論文著作 
+期刊論文 0 0 0% 
+篇 
+ 
+研究報告/技術報告 0 0 0%  
+研討會論文 0 0 0%  
+專書 0 0 0%   
+專利 申請中件數 0 0 0% 件  已獲得件數 0 0 0%  
+技術移轉 
+件數 0 0 0% 件  
+權利金 0 0 0% 千元  
+參與計畫人力 
+（本國籍） 
+碩士生 0 0 0% 
+人次 
+ 
+博士生 0 0 0%  
+博士後研究員 0 0 0%  
+專任助理 0 0 0%  
+國外 
+論文著作 
+期刊論文 3 3 20% 
+篇 
+另有 1篇已投稿、
+3篇在撰寫中 
+研究報告/技術報告 0 0 0%  
+研討會論文 13 5 80% 
+其中包括1篇頂尖
+會議  IEEE FOCS 
+(2009)，4 篇高水
+準會議 IEEE DCC 
+(2008、2010) 
+專書 1 0 0% 章/本 
+Encyclopedia of 
+Algorithms 
+(2008) 其中 1章
+專利 申請中件數 1 0 0% 件  已獲得件數 0 0 0%  
+技術移轉 
+件數 0 0 0% 件  
+權利金 0 0 0% 千元  
+參與計畫人力 
+（外國籍） 
+碩士生 6 3 75% 
+人次 
+ 
+博士生 2 2 25%  
+博士後研究員 0 0 0%  
+專任助理 0 0 0%  

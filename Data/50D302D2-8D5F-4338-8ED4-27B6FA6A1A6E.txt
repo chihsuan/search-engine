@@ -1,0 +1,415 @@
+ 2
+(b-3) 臉部辨識 
+ 
+整個系統的流程圖如圖 1所示。攝影機取得的影像，
+經由影像前處理後，進行移動偵測與膚色偵測，找出可能
+的臉部位置。接著以分群法跟橢圓模版選出人臉位置。特
+徵抽取的部分，利用 Gabor filter找出人臉的特徵，以
+PCA、LDA降低資料量維度並增加個別和群組間差距，建
+立辨識的資料庫。當系統擷取到人臉時，將與資料庫中的
+人臉進行特徵比對，完成人臉辨識的任務。 
+ 
+ 
+圖 1 系統流程圖。 
+ 
+(a)前端影像處裡單元 
+在前端影像處裡單元裡，包含前述的三項重要工作：
+(a-1)影像前處理(a-2)移動物與膚色偵測。(a-3)臉部擷取。
+(a-4)人員追蹤。以下針對這四項工作稍做介紹。 
+ 
+(a-1)影像前處理 
+影像前處理的工作包含了影像自動白平衡(image auto 
+white balance process, AWB)工作與動態背景系統(dynamic 
+background system, DBS)建立，在建立影線自動白平衡系
+統時考慮到後端影像處裡的相關計算負荷，所以我們選擇
+較快速的灰階亮度調整方式，藉由 YCbCr色彩系統中的
+亮度系統為依據，並在此我們建立了一個比對矩陣，並藉
+由此比對矩陣收集影像亮度資訊，我們選擇監視系統背景
+中較為單調的區域，也就是在監視影像中不會有移動物經
+過的地方，因為這樣的區域可以省去擔心移動物的干擾，
+在這相關區域中還有一個特性存在，那就是這些區域通常
+都具有顏色單調性的特性，因為這些地方大多數都是建築
+物，具有顏色單調與不易受到干擾的位置，所以經由實驗
+證明在經過測試幾組監視系統背景後可以得到證實此一
+假設的正確。所以在我們系統中我們建立了四組比對矩
+陣，並透過簡單的全域亮度調整以達到影像自動白平衡，
+雖然全域自動白衡系統對與某些特殊狀況(區域光源不均
+勻、瞬間光源移動)的緩衝能力有限，不過對於大多數的影
+像光源變化的緩衝能力還算不錯，尤其是在室內的監視統
+容易受到室內光源的閃爍而造成光源不均勻與閃爍的問
+題，透過全域自動白平衡的調整可以減輕光源閃爍與量度
+不均勻的現象。  
+ 
+動態背景建立的目的與自動白平衡系統相同，目的是
+要減少區域不規則的變化造成後續影像處理的干擾，增加
+影像背景變化的包容力與部分雜訊的濾除，我們利用了純
+境背景累積法(pure background stack)，他是利用串流影像
+乾淨背景累加的原理，因為背景的變化在短時間連續的串
+流影像中變化很小，所以利用累加的技術可以加權背景的
+分量，以達到純淨的背景建立，除此之外，我們也可以透
+過動態背景單位質點變化量的設定，來定義單一畫素與前
+後兩張串流畫面的容許變化量與改變量，進而達到動態背
+景的建立。 
+1
+1
+_ ( , ) ( , ) ( , )
+1        , _ ( , ) _
+_ ( , )
+0       , _ ( , ) _
+( , ) ( ( ( , ) _ ))
+t t
+t t t
+Pixel dif i j BG i j DBG i j
+Pixel dif i j Cap Th
+Pixel Weight i j
+Pixel dif i j Cap Th
+DBG i j Avg DBG BG i j Chang Rate
+−
+−
+= −
+≤⎧= ⎨ >⎩
+= + ∗
+ (1) 
+(a) (b) 
+圖 2 (a) 使用固定影像背景。 (b) 使用動態背景系統的背
+景差減法所得到的移動物偵測。 
+ 
+ 
+我們可以利用上述的自動白平衡與動態背景建立的
+影像前處理得到一個準確的背景系統與不錯的抗雜訊干
+擾(如室內光源的變化與閃爍干擾)，有了準確的背景系統
+可以讓我們後續的移動偵測的準確度提高。 
+ 
+(a-2)移動偵測與膚色偵測 
+在移動物偵測方法中，我們使用了背景基底
+(background base)與連續時間影像差減法，作為基礎的移
+動物偵測條件，此方法利用累計時間背景建立法製作基
+底，並將連續時間影像與基底相差減，得到差值 BD 
+(background difference)。如果超過某一臨界值 Th 
+(threshold)，則定義此點為一個移動點，並利用 BDM 
+(background difference mask)來表示。 
+ 
+ 4
+2 2
+1 2( ) ( )( , ) 1      1.2.3
+i i
+n c m cF n m i
+a b
+− −= + − =  (5) 
+1      ,0 ( , ) _1
+( , ) 0.5   , _1 ( , ) _ 2
+0      ,otherwise
+F n m Th
+S n m Th F n m Th
+< <⎧⎪= ≤ <⎨⎪⎩
+ (6) 
+∑∑
+==
+=
+ii M
+m
+N
+n
+mnSP
+11
+),(  (7) 
+⎩⎨
+⎧
+≤
+>=
+PTHP
+PTHP
+syxDE
+_  if   ,0
+_ if    ,1
+),,(  (8) 
+ 
+上述 Mi代表為人臉偵測的列(column)數，Ni代表為人
+臉偵測的行(row)數，s則是代表所偵測的臉部大小。經由
+(5)(6)(7)的計算與(8)式臨界值判斷法，可以得到候選橢
+圓，並利用[1]的膚色(skin-tone)條件，進行候選橢圓內部
+的膚色檢查，以確定候選橢圓為正確臉部位置，並標記偵
+測人數與位置，以利之後的人員追蹤使用。 
+ 
+(a-4)人員追蹤 
+為了提供特定目標之人或物的相關位置或方向等資
+訊，讓 RFID系統有更強大的識別與追蹤功能，所以在臉
+部擷取後，將對於已定位的人臉進行持續追蹤。 
+我們以行人的行為模式作為人員追蹤的策略，因為在
+一般情況下，行人行走模式可視為一個單向定速前進的行
+為模式，因為在運動的模式中，移動物體擁有移動慣性的
+存在，因此在連續影像中，下一個連續影像中的目標物延
+續著上一時刻中影像的位置與速度方向的機率相當高，所
+以藉由此種行人運動的特性，我們可以適當的簡化追蹤的
+複雜度與工作量。 
+在行為模式的狀態表示裡，我們參考了卡曼濾波器
+(Kalman filter)的預測方式，建立我們的行為模型，在行為
+模型假設中，我們假設以行進速度為等速的情況為最有可
+能發生的情況，給予最高的期望值，並經由其他狀態輸入
+來預估下一個時刻的狀態與相關位置，在完成下一時刻的
+評估預測後，先由最有可能的評估位置進行檢查，直到找
+到下一時刻的位置為止。 
+在人員追蹤計算裡，移動物體的空間位置與速度計算
+是需要一個能夠方便計算的座標系，因此我們必須先建立
+出一個能夠簡化移動物體運動的座標系，我們利用了空間
+的透視轉換建立出一個行人頭部移動的座標系，利用這個
+座標系，我們可以計算行人頭部在影像平面中的相對運動
+速度與位置： 
+ 
+圖 8 行人頭部位置透視平面圖。 
+ 
+ 
+圖 9 行人高度透視平面示意圖。 
+ 
+PQRABC ∆≈∆  
+D
+L
+lw
+L
+l
+D
+w
+1
+1
+1
+1 =∆⇒=∆  
+D
+L
+lwwww
+1
+1
+112 +=∆+=  
+ widestateNext  :2w  
+考慮到人員交錯行徑的狀況，也可以藉由預測行人路
+徑與根據不同的交錯程度，給予不同的補償方式。在人員
+交錯的偵測裡，我們在人員追蹤前，會先對目標物是否有
+可能在下一時刻產生交錯現象做偵測，如有發現產生交錯
+現象，則先進入交錯補償動作，如無交錯現象產生，則繼
+續進行人員目標物的追蹤，圖 10中列出幾種交錯的情形。 
+ 
+ 
+ (a) (b) (c) (d) 
+ 
+ (e) (f) (g) (h) 
+圖 10 (a)~(d)單一方向交錯，(e)~(h)對角交錯。 
+在進行交錯補償前，先必須找到臉部鉛直與水平方向
+的對稱軸，然後再依先前所偵測到的交錯形式，進行不同
+形式的交錯補償，圖 11說明了兩個不同情的補償方式。 
+ 
+ (a) (b) (c) 
+ 
+ (d) (e) (f) 
+圖 11 (a)~(c)單一方向補償， (d)~(f)對角補償。 
+Ma
+Ma
+Map
+Map
+ 6
+ 
+(a) v =0 
+ 
+(b) v =1 
+ 
+(c) v =2 (d) v =3 
+ 
+(e)µ =0  (f) µ =1  (g)µ =2 (h)µ =3 
+圖 13 Gabor filter: (a)~(d)分別為 4個不同的空間縮放比
+例，(e)~(h)為 4個不同的旋轉角度，分別為 0°, 45°, 90°, 
+180°。 
+ 
+因此，原本一張 64 64× (1 4096× )的影像經過 4個縮
+放及 4個旋轉的 Gabor filter後，一個特徵向量將會是
+1 65536× ，由於這樣的資料量過大，我們可以先將做完
+Gabor filter後的特徵向量做降低取樣(down sampling)的動
+作，降低取樣使為原本的 1/4大小，然後再去掉邊界，則
+處理後影像大小為15 15× (1 225× )，一張原始影像的特徵
+向量則為1 3600× ，此特徵向量也即代表此張臉部影像的
+特徵。 
+ 
+(2) PCA： 
+ 
+在做完 Gabor filter後，我們可以得到一個1 3600× 的
+特徵向量，可將此特徵向量存入人臉資料庫作以後比對
+用，而當今天人臉數目為 N時，資料量則增加為
+( 3600N × )，因此我們將試圖降低資料量的維度，使在儲
+存及比對方面將會較為方便及迅速。目前所考慮使用的方
+法為 PCA(principle component analysis)，又稱主要成分分
+析，目標是將資料量的維度降低，方法如下： 
+1. 原始資料量為： 1 3600iX = ×  
+2. 計算出平均值： 1
+3600
+im X= ∑  
+3. 減掉平均值 m使影像的平均值為零： 
+i iX X m= −  
+4. 建立資料矩陣，當有 N張影像時，資料量大小為：
+1 2[ , ... ]NX X X X=  
+5. 建立變異矩陣(covariance matrix)： 
+T
+X XΩ =  
+6. 計算特徵值(eigenvalue)及特徵向量(eigenvector)： 
+V VΩ = Λ ，其中Λ為特徵值，V 為特徵向量，且依
+照特徵值的大小順序排列，由大排到小。 
+7. 考慮 P個主要的特徵值，則所對應之新的特徵矩陣
+為 1 2[ , ... ]PV V V V=  
+8. 將原始資料經過特徵矩陣，可得到所對應的特徵
+值： T iix V x′ =  
+ 
+經過 PCA的轉換，我們可將原本資料量為 3600N × 轉變
+成 N P× ，而所使用的主要特徵值多少，則視資料量的大
+小而定。當資料庫內影像不多時，甚至可以不用使用
+PCA，而當之後影像數目增加後，使用 PCA可以將資料
+量降低便於比對及辨識的工作。目前定為原本資料量的
+50%，即 P = 0.5N。以 300張訓練影像來說，我們即使用
+150維特徵向量作為第一次降低資料量維度。此外，PCA
+也具有將個別資料量差異性增加的能力，故使用 PCA可
+以將資料量降低且具有便於比對及辨識的工作。 
+ 
+(3)LDA： 
+ 
+利用 PCA可以第一次降低資料量的維度，並且增加
+個體間的差異性，而 LDA可增加組與組之間的差異性，
+並且提供第二次降低資料量的維度，使資料量的維度恰好
+為組的維度，而 LDA的方法如下：  
+1. 原始資料量為： 1x P′ = ×  
+2. 建立變異矩陣(covariance matrix)： 
+1
+N
+T
+W i i
+i
+S x x
+=
+′ ′= ∑  
+3. 建立組與組之間的變異矩陣：
+1 1
+1,  
+c k
+T T j
+B i i i i
+i j
+S km m m x
+k= =
+′ ′ ′= =∑ ∑  
+4. 計算特徵值(eigenvalue)及特徵向量(eigenvector)： 
+B WS V S Vλ= ，其中 λ為特徵值，V 為特徵向量，
+並且依照特徵值λ的大小順序排列，由大排到小 
+5. 考慮 N個主要的特徵值，則所對應之新的特徵矩
+陣為 1 2[ , ... ]NV V V V=  
+6. 將原始資料經過特徵矩陣，可得到所對應的特徵
+值： T iix V x′ =  
+ 
+利用 LDA的轉換，我們可以將原本為 N P× 的影像
+資料量，轉變成 N c× 的資料量，其中 c為人臉類別的數
+目，因此具有將資料量維度降低的功用，並且可以依照影
+像及組別的增加，同時也增加資料量的維度，使得辨識的
+效果能提升。此外，LDA也可以加大組與組之間的差異
+性，因此對於之後的辨識也有相當的幫助。 
+ 
+(b-2)建立人臉資料庫： 
+ 
+我們將經過 PCA所得到特徵向量，做為人臉影像的
+替代資料存入我們的資料庫，在使用者端所存的資料庫為
+原始的人臉影像，而在遠端處理監控影像系統所存的資料
+庫為人臉的特徵向量，使得在處理影像時的計算量降低，
+而當辨識出結果時，再將辨識出結果的人利用網路將此人
+的編號傳回給使用者端，即可在使用者端直接獲得此人的
+人臉資訊。而若在辨識過程中，此人的人臉不存在於人臉
+資料庫的話，我們將會發出一個警訊給主系統，報告發現
+有不明人士進入，並將此人的人臉也存於人臉資料庫中，
+使得人臉資料庫能得以增加。 
+我們將經過 PCA 所得特徵向量，做為人臉影像的替
+代資料存入我們的資料庫，每個人臉將會有 5張各種姿態
+之影像，每張人臉影像有 10維數據，每維數據都代表著
+人臉的特徵向量，每個人的數據特徵向量也將是獨一無
+二，每張人臉影像大小為 64×64像素，影像也存入在資料
+庫中，系統管理員再進一步將這些人臉影像個別分析將區
+ 8
+low bit rate video coding,” presented at the Circuits and 
+Systems, 2002. APCCAS ’02. 2002 Asia-Pacific, vol. 1, 
+pp. 28-31, Oct. 2002.  
+8. Z.-M. Liu, Y. Li, X. He, W.-K. Wang, J.-L. Zhou, and K. 
+Li, “Extraction of face regions in color image,” in Proc. 
+2002 International Conf. Machine Learning and 
+Cybernetics, vol. 3, pp. 1340-1343, Nov. 2002. 
+9. P. R. Villela and J. H. Sossa Azuela, “Object Recognition 
+by Indexing Using Neural Networks,” in Proc. IEEE 
+15th International Conf. Pattern Recognition, vol. 2, 
+pp.1001-1004, Sep. 2000. 
+10. M.-H. Yang, N. Ahuja, and D. Kriegman, “Face 
+Recognition Using Kernel Eigenfaces,” in Proc. IEEE 
+International Conf. Image Processing, vol. 1, pp.37-40, 
+Sep. 2000. 
+11. H.-S. Kim, W.-S. Kang, J.-I. Shin, and S.-H. Park, “Face 
+Detection Using Template Matching and Ellipse Fitting,” 
+IEICE trans. Inf. & Syst., vol. E83-D, no. 11, Nov. 2000. 
+12. S. E. Sarma and D. W. Engels, “On the Future of RFID 
+Tags and Protocols,” MIT Technical Report, 2003.  
+13. T. Lee, “Image representation using 2d Gabor wavelets,” 
+IEEE Trans. Pattern Analysis and Machine Intelligence, 
+vol. 18, no. 10, pp. 959-971, 1996. 
+14. J. Horn, P. Kalocsai, and C. Malsburg, “Face recognition 
+by statistical analysis of feature detectors,” Image and 
+Vision Computing, vol.18, no. 4, pp. 273-278, 2000. 
+15. M. Grudin, “On internal representations in face 
+recognition,” Pattern Recognition, vol. 33, no. 7, pp. 
+1161-1177, 2000. 
+16. C. Liu and H. Wechsler, “Independent component 
+analysis of Gabor features for face recognition,” IEEE 
+Trans. Neural Networks, vol. 14, issue. 4, pp. 919-928, 
+Jul. 2003. 
+17. B. Gokberk, M. O. Irfanoglu, L. Akarun, and E. Alpaydm, 
+“Optimal Gabor kernel location selection for face 
+recognition,” in Proc. 2003 International Conf. Image 
+Processing, 2003. ICIP 2003. vol. 1, 14-17, pp. I-677-80, 
+Sep. 2003. 
+18. G. Donato, M. S. Bartlett, J. C. Hager, P. Ekman, and T. J. 
+Sejnowski, “Classifying facial actions,” IEEE Trans. 
+Pattern analysis and Machine Intelligence, vol. 21, pp. 
+974-989, Oct. 1999. 
+19. S.F. Lin, S.C. Chien, C.C Wu, and K.Y. Chiu, ”Multiple 
+Moving Human Detecting and tracking for An Indoor 
+Surveillance System ,” in Proc. 2005 CACS Automatic 
+Control conference., Tainan, Taiwan, Nov. 2005.  
+by Using Face Pose Determination,” in Proc. CACS 2006 Automatic Control Conference, Taipei, Taiwan, 
+Nov. 2006. 
+    [3] IEEE Computer Society Conference on Computer Vision and Pattern Recognition (CVPR07) 
+    [4] 2007 IEEE International Conference on Image Processing 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 

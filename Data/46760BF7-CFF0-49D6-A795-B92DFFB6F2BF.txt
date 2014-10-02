@@ -1,0 +1,456 @@
+2 
+(LDA, linear discriminate analysis)以及 HMMs 實現人類移
+動偵測的分類器 [3]；T. Schlömer, etc.則是搭配採用
+K-means、HMMs 和貝氏分類器(Bayes classifier)來分析使
+用者揮動 wiimote 的動作等[4]。除了 HMMs 之外，在研究
+上還有利用共同子序列比對演算法(LCS, Longest common 
+subsequence)與 SVM 來建立以加速度感測器為基礎的 3D
+手寫辨識系統[5]，而根據文獻的探討，上述作法均可得到
+相當不錯的效果。 
+本研究利用所擷取的Wiimote加速度感測器信號進行
+使用者之動作辨識，並依辨識結果來驅動遠端之Altera 
+DE2-70 實驗板所建立的SOPC平台，以執行WAV樂曲播放
+或數位相框之照片切換等特定動作，本研究所建立之關鍵
+技術除可應用於基本的動作感測之外，在其他應用領域也
+具有推廣上的價值。 
+ 
+三、研究方法與系統實現 
+由於為不同使用者之間操作習慣之獨特性等因素，必
+然會造成Wiimote之輸出感測值發生序列變動過大與時間
+長度不一等差異；即使是固定使用者，不同時間重覆比劃
+同一動作亦可能會有程度變形、偏移量、平移、雜訊與速
+度不一等問題。上述這些誤差將會嚴重影響其相似度量測
+的結果，也造成資料序列在分類或辨識上具有一定的難
+度。因此，欲進行以加速度感測器為基礎的動作辨識研
+究，需要先將資料序列作前置處理，並建立適當的辨識架
+構，始能獲得良好的辨識率。圖1所示為本研究之基本架
+構。 
+ 
+Raw sensor data stream
+Preprocessing
+FCM VQ
+Gesture examples
+Learning
+Similarity Measurement
+(Recognition)
+Recognition
+Recognized gestures
+Action selection
+Action
+ 
+圖 1 基本架構 
+ 
+3.1. 信號之前置處理 
+3.1.1. 信號正規化 
+在信號前置處理的問題上，我們先採取序列正規化的
+作法；其概念在於將每一個序列的平均值以及標準差正規
+化，以去除序列間不同的偏移量以及程度變形，如式子
+(1)-(3)： 
+   對每一個序列X，計算其平均值avg(X)與標準差std(X) 
+ 
+              TXXavg i /)()( 
+ (1) 
+ 
+       
+  TXavgXXstd i /))(()( 2
+                                 (2) 
+ 
+  將序列 X 用序列 X’ 取代； 
+ 
+         )(/))((' XstdXavgXX ii   (3) 
+ 
+其中Xi’代表正規化之後時間序列之第 i 個點，而 Xi 為原
+始時間序列之第 i 個點，avg(X) 代表平均值，std (X) 代表
+標準差，T 表時間序列長度。 
+         為了進一步說明信號前置處理的效果，我們以數字
+“3”之動作比劃為例，圖2所示為Wiimote對該動作所偵測
+到的X、Y、Z三軸之加速度變化值，而圖3序列信號則是
+將三軸資料正規化後再轉換成單軸信號的結果。 
+ 
+0 5 10 15 20 25 30 35 40 45 50
+-4
+-2
+0
+2
+4
+6
+Raw sensor data sampled from the wiimote accelerometer  
+圖2. 數字“3”之三軸加速度變化曲線 
+ 
+0 5 10 15 20 25 30 35 40 45 50
+0
+0.2
+0.4
+0.6
+0.8
+1
+The results obtained after normalization of the Raw data  
+(a) 
+0 5 10 15 20 25 30 35 40 45 50
+0.4
+0.6
+0.8
+1
+1.2
+1.4
+Single-Axis data type  
+(b) 
+圖 3 數字“3”之三軸加速度信號 (a) 正規化處理與 (b)單軸
+信號轉換結果 
+ 
+3.1.2. 高斯平滑化 
+當使用者在比畫軌跡時，或多或少會有些微晃動的現
+象，而且每個人手部移動速度不盡相同，因此在正規化之
+後，常需要再作平滑化處理。式子(4)-(7)為1-D高斯函數
+作平滑化處理程序[6]，圖4則是平滑化處理的實例： 
+ 
+                             ''' XXX                              (4) 
+ 
+                             AAA /1                                         (5) 
+ 
+                         
+2
+2
+2
+2
+1
+)( 
+
+x
+exG
+
+                            (6) 
+4 
+表 1. 大小為 15x7 的向量量化碼簿 
+index codevector 
+0 0.2252 0.2518 0.2896 0.3360 0.3834 0.4319 0.4751 
+1 0.2123 0.1853 0.1707 0.1695 0.1809 0.2035 0.2350 
+2 0.3583 0.3672 0.3776 0.3882 0.3999 0.4113 0.4213 
+3 0.5094 0.5569 0.6021 0.6396 0.6675 0.6815 0.6821 
+4 0.5826 0.5291 0.4698 0.4085 0.3501 0.2994 0.2615 
+5 0.3409 0.3364 0.3336 0.3329 0.3344 0.3379 0.3432 
+6 0.5038 0.5081 0.5096 0.5088 0.5060 0.5020 0.4966 
+7 0.2025 0.2066 0.2209 0.2449 0.2756 0.3108 0.3456 
+8 0.6517 0.6286 0.5915 0.5421 0.4864 0.4284 0.3735 
+9 0.3853 0.3281 0.2767 0.2346 0.2056 0.1914 0.1914 
+10 0.6592 0.6718 0.6692 0.6516 0.6207 0.5771 0.5258 
+11 0.4211 0.4230 0.4243 0.4254 0.4255 0.4257 0.4247 
+12 0.4571 0.4609 0.4626 0.4629 0.4624 0.4598 0.4550 
+13 0.6499 0.6828 0.7067 0.7175 0.7151 0.6977 0.6672 
+14 0.3766 0.4281 0.4808 0.5324 0.5788 0.6151 0.6385 
+0 5 10
+0
+0.5
+1
+0 5 10
+0.2
+0.25
+0 5 10
+0.35
+0.4
+0.45
+0 5 10
+0.5
+0.6
+0.7
+0 5 10
+0
+0.5
+1
+0 5 10
+0.32
+0.34
+0.36
+0 5 10
+0.48
+0.5
+0.52
+0 5 10
+0.2
+0.3
+0.4
+0 5 10
+0
+0.5
+1
+0 5 10
+0
+0.2
+0.4
+0 5 10
+0.5
+0.6
+0.7
+0 5 10
+0.42
+0.43
+0.44
+0 5 10
+0.45
+0.46
+0.47
+0 5 10
+0.7
+0.8
+0 5 10
+0
+0.5
+1
+ 
+圖 5 數字資料庫所得到的碼向量 
+ 
+3.2.3. 特徵向量相似度比對 
+經過特徵轉換所構成的一維特徵向量可採LCS進行
+相似度比對。由 D.S. Hirschberg 所提出的LCS演算法[15]
+常被作為計算動作向量相似度的評估，其運算過程簡單
+而且快速，因此無論是語音處理、資料壓縮、文章相似
+度或是生物資訊中的DNA、RNA 序列比對等都有其相關
+應用[16-17]。LCS 的目標是要找出在兩個字串中，共同
+出現且前後次序一致的子字串。假設 LCS(a, b) 是字串 a 
+和  b 的最長共同子字串的長度，則我們可以使用  DP 
+(Dynamic programming) 的方法來進行 LCS 的計算，遞迴
+式如下[18]： 
+ 
+1) If x = y, then LCS(ax, by) = LCS(a, b)+1                                  (17) 
+ 
+2) If x ≠ y, then LCS(ax, by) = max(LCS(ax, b), LCS(a, by))        (18) 
+ 
+        相關的邊界條件則是： 
+ 
+LCS (a, []) = 0, LCS ([], b) = 0.                                  (19) 
+ 
+3.3. SOPC嵌入式平台設計與多媒體功能展示 
+        為了展示動作辨識的結果，本研究另外利用 Altera 
+DE2-70 實驗板建立一個 SOPC 嵌入式平台，如圖 6。當
+Nios II 接收到 PC 端的辨識結果後，立刻在平台上執行對
+應的樂曲播放或數位相框圖片切換等特定動作。 
+Cyclone II FPGA
+UART
+Avalon switch fabric
+MAX232
+LTM 
+control 
+Module
+LTM 
+Module
+Nios II CPU
+Custom 
+Instruction
+TimerPIO
+LED KEY SWITCH
+SDRAM 
+Controler
+SDRAM
+Avalon Tri-state 
+Bridge 
+SRAM FLASH
+JTAG 
+UART
+LCD 
+controller
+LCD
+PIO
+SD Card
+CSR BC04 
+Bluetooth module
+SEG7
+Controller
+SEG7
+AUDIO
+Controller
+Audio 
+Codec Chip
+ 
+圖6 Wiimote手勢動作辨識與SOPC平台遠端控制 
+ 
+3.3.1. PC端程式介面設計 
+在PC端，我們使用C#以及Visual Studio 2010 作為開
+發環境；C# 是一種物件導向的程式語言，可讓程式設計
+人員替新的 Microsoft .NET 平台快速建置各種應用程
+式，並提供完全利用運算與通訊功能的工具與服務。而為
+了使開發過程更加方便，我們採用圖形介面的模式，加入
+大量即時圖型顯示的功能設計，讓使用者可以以目視方式
+判斷G sensor之三軸重力加速度的變化，以方便進行信號
+的分析。當操作者揮動Wiimote，比劃出“3”的軌跡時(圖
+7)，PC端經由藍芽裝置擷取到信號立即進行信號分析與
+辨識，並在介面上顯示辨識結果(圖8)。  
+ 
+圖7 使用者持Wiimote比劃出數字“3”的軌跡 
+ 
+ 
+圖8 手勢“3”之辨識結果 
+ 
+3.3.2. SOPC嵌入式平台之多媒體功能展示 
+本研究使用Altera DE2-70 實驗板建立多媒體播放之
+SOPC嵌入式平台，如圖9所示。為了讓實驗達到不同的展
+示效果，我們以SD Card 作為儲存媒介，分別建置WAV
+格式音樂檔及電子相簿等資料庫，在接收到PC端的辨識
+結果後，可執行對應的音樂換曲或LTM上之照片切換等
+功能。 
+6 
+Main
+Wave Library
+FAT File System
+SD card Driver
+Audio 
+Configure
+I2C Driver
+Audio 
+Streaming
+IOWR/IORD
+NIOS II 
+System
+SOPC Hardware
+ 
+圖 14 Music Player 之 SOPC 軟體架構 
+ 
+ 
+(a) 
+ 
+ 
+(b) 
+ 
+(c) 
+ 
+圖 15 Music Player播放功能 (a) LCD 顯示曲目名稱與音量
+強弱, (b) SEG7 顯示曲目撥放時間, (c) LED 顯示即時音訊
+頻率 
+ 
+4.  實驗結果 
+        依據本論文所述之研究方法，我們在實際測試時，將
+使用人員分成兩組；其中第一組A、B兩位使用者為本研
+究之參與人員，對於Wiimote之操作方法熟悉；第二組中
+的使用者C曾經接觸過Wiimote，使用者D則是未曾有任何
+Wiimote的使用經驗。二組人員各針對上、下、左、右及3、
+6、9、m及w等特定動作的軌跡比劃20次，所得到的辨識
+率如表2所示。從統計數據中可知，經驗豐富之使用者雖
+然可以得到較佳的辨識率；但是初次使用的使用者也可以
+順利操作。顯示本架構之效果已足以應用在一般生活上的
+影音操控或是體感遊戲遙控等用途。 
+表 2. 不同使用者之手勢辨識正確率統計 
+ Player A Player B Player C Player D 
+Error/
+Corret 
+Corret 
+rate 
+Error/
+Corret 
+Corret 
+rate 
+Error/
+Corret 
+Corret 
+rate 
+Error/
+Corret 
+Corret 
+rate 
+Up↑ 0/20 100% 0/20 100% 1/19 95% 1/19 95% 
+Down↓ 0/20 100% 0/20 100% 3/17 85% 2/18 90% 
+Left← 0/20 100% 0/20 100% 0/20 100% 6/14 70% 
+Right→ 0/20 100% 1/19 95% 3/17 85% 5/15 75% 
+0 
+3/17 85% 5/15 75% 5/15 75% 4/16 80% 
+3 
+3/17 85% 5/15 75% 5/15 75% 4/16 80% 
+6 
+4/16 80% 4/16 80% 4/16 80% 3/17 85% 
+9 
+2/18 90% 3/17 85% 4/16 80% 6/14 70% 
+m 
+3/17 85% 3/17 85% 4/16 80% 4/16 80% 
+w 
+4/16 80% 4/16 80% 4/16 80% 3/17 85% 
+ 
+5.  結論與計畫成果自評 
+加速度感測器的特性讓它可以協助科技產品實現更
+多樣化的應用，無論是虛擬實境、互動遊戲、數位學習、
+數位家電控制、居家看護或醫療復健輔助等，都能發揮
+一定的效果；也讓人機之間的溝通得以建立了更自然的
+互動關係。在本研究中，我們介紹一種使用 Wiimote 進
+行加速度感測信號辨識的研究，操作人員可以透過揮動
+Wiimote來下達指令，系統完成信號辨識後便可直接驅動
+遠端的SOPC嵌入式平台，達到切換多媒體播放的遠端控
+制效果。從實驗中可以驗證，本研究所建立的架構對於
+基本的動作比劃具有不錯的辨識率，足以應用在一般生
+活上的影音操控或是結合於遊戲設計中。  
+本計畫之相關研究成果，經整理成英文論文型式後，
+投稿至期刊Advance Science Letters (SCIE Journal, 2010 
+Impact Factor: 1.253)已獲接受並將於2012年刊登，Paper 
+Title: Accelerometer-based Hand Gesture Recognition 
+Using Fuzzy Learning Vector Quantization (Received 01 
+June 2011; Accepted 31 August 2011)。 
+ 
+References 
+[1] L. E. Baum and T. Petrie, "Statistical inference for 
+probabilistic functions of finte state Markov chains," Annls 
+of Mathematical Statistics , Vol.37, pp.1554-1563, 1966. 
+[2] Jozef Mlích, “Wiimote Gesture Recognition,” Proceedings 
+of the 15th Conference and Competition STUDENT EEICT 
+2009, Vol.4, pp. 344-349, 2009. 
+[3] Y. P. Chen, J. Y. Yang, S. N. Liou, G. Y. Lee, and J. S. 
+Wang, “Online Classifier Construction Algorithm for 
+Human Motion Detection Using an Accelerometer,” 
+Applied Mathematics and Computation, 2008. 
+[4] T. Schlömer, “Gesture Recognition with a Wii Controller,” 
+Proceedings of the 2nd TEI'08, pp.11-14, 2008. 
+[5] W.H. Hsu, Y.Y. Chiang, and J.S. Wu, " Integrating 
+weighted LCS and SVM for 3D handwriting recognition 
+on handheld devices using accelerometers ", WSEAS 
+Transactions on Computers, Vol.9, No.3, pp.235-251, 
+2010. 
+[6] S.J. Cho, etc., “Two-stage Recognition of Raw 
+Acceleration Signals for 3-D Gesture-Understanding Cell 
+Phones,” Tenth International Workshop on Frontiers in 
+Handwriting Recognition, 2006. 
+[7] H. Abut, Vector Quantization, IEEE Press, 1990. 
+[8] A. Gersho and R. M. Gray, Vector Quantization and Signal 
+Compression, Kluwer, 1992. 
+[9] T. Berger, Rate Distortion Theory, Prentice Hall, 1971. 
+[10] J. C. Dunn, “A fuzzy relative of the ISODATA process 
+and its use in detecting compact, well-separated clusters,” 
+J. Cybernet. Vol.3, pp.32-57, 1974. 
+[11] J. Bezdek, Pattern Recognition with Fuzzy Objective 
+Function Algorithms, New York: Plenum, 1981. 
+[12] I. Gath and A.B. Geva, "Unsupervised optimal fuzzy 
+clustering," IEEE Trans. Pattern Anal. Mach. Intell., 
+Vol.11, pp.773-781, 1989. 
+[13] R.N. Dave, “Fuzzy-shell clustering and applications to 
+circle detection in digital images,” Int. J. General Syst., 
+Vol.16, pp.343-355, 1990. 
+[14] M.S. Yang and C.H. Ko, “On cluster-wise fuzzy 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/10/24
+國科會補助計畫
+計畫名稱: 以加速度感測器為基礎的動作辨識系統設計
+計畫主持人: 陳慶逸
+計畫編號: 99-2221-E-130-012- 學門領域: 人工智慧
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無。 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

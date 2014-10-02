@@ -1,0 +1,633 @@
+ I 
+中文摘要： 
+ 
+近年來手持式裝置深入人們的日常生活當中，功率消耗的研究在可攜式裝置上已變成重要的系統
+設計議題。動態電壓與頻率調整(Dynamic Voltage and Frequency Scaling, DVFS)根據處理器所運行的程
+式對計算能力的不同需要，動態調節處理器的運行頻率和電壓。而我們研究發現將處理器調降至最低
+頻率並不是最節省電源的方法，因最低的處理器頻率使程式執行時間拉長，導致整體能耗上升，反倒
+是特定頻率卻能讓整體能耗下降。因此我們實驗歸納出理想頻率的方程式，依據此方程式來預測出最
+節省電源的頻率，我們將此機制稱為以臨界速度為基礎的DVFS (Critical speed-based DVFS)。本計畫從
+處理器與記憶體的觀點，探討在嵌入式系統的能源管理機制，並考慮動態電壓與頻率調整之額外負擔，
+同時在Intel PXA270平台上利用硬體資訊回饋機制來實做動態電壓與頻率調整之演算法，並運行於
+Android作業系統中。 
+ 
+關鍵詞：低功耗設計、嵌入式行動裝置、動態電壓頻率調整、臨界速度、Android、PXA270。 
+ 
+英文摘要： 
+ 
+The DVFS (Dynamic Voltage and Frequency Scaling) techniques allow the frequency and voltage of the 
+processors to be adjusted according to the need of the running programs, so as to reduce the power 
+consumption of the devices. However, in our research, we have found that reducing the frequency may not 
+always reduce the energy consumption. The frequency which can minimize the energy consumption usually 
+appear at some frequency other (or higher) than the lowest frequency. This frequency is defined as the critical 
+speed. The reason why the energy can be increased when the frequency is lower than the critical speed is that 
+while the program execution time is lengthened with a lower CPU clock rate, the energy can be inversely 
+increased due to the memory subsystem, which will be kept active during the processor execution time. This 
+is especially obvious for CPU-bound programs. On the other hand, memory-bound program may have higher 
+opportunity to run at lower clock rate with lower energy consumption. From the relationship between the 
+critical speed and an memory access index, called memory access rate (MAR), we are able to create a 
+regression function, called MAR-CSE equation, to predict the critical speed. We have proposed a DVFS 
+algorithm to predict and apply the critical speed from the MAR information which can be fed back from the 
+hardware counters. The algorithm has been implemented in Android/Linux operating system on a real 
+platform. Some methods have also been proposed to reduce the overheads in the implementation. 
+ 
+Keywords: Low Power Design, Embedded Mobile Device, Dynamic Voltage and Frequency Scaling, Critical 
+Speed, DVFS, PXA270
+ 3 
+G. Contrera 和 M. Martonosi 提出文獻[3]，以 PMU 來量測 Intel PXA255 處理器能耗的線性能源估
+算模型(linear power estimation model )。此模型提供一個簡單的方法獲得能耗資訊，而且不需使用特殊
+的硬體量測。在文獻[9] 和[10] ，D. C. Snowdon 等人也提出以 PMU 估算效能降低的時間模型以及能耗
+的能源模型。以文獻[1] 為基礎，文獻[7] D. Rajan 等人利用 PMU 計算記憶體存取，取得記憶體存取率
+(memory access rate, MAR)，記憶體存取率表示一個程式的指令數中資料和指令快取失敗(Cache-miss)
+的比例。又以文獻[8] 提出一個調整雙頻率的方法，利用兩個相鄰頻率趨近理想的頻率，並提出 online
+演算法，依系統負荷選擇最佳的頻率電壓(frequency-voltage)實現節能的效果。 
+文獻[5] ，R. Jejurikar 和 R. Gupta 指出處理器執行程式時，最低的能耗不等於處理器採用最低頻
+率。因處理器頻率下降會使程式完成時間拉長，而在此拉長的時間中週邊元件如記憶體仍在啟動狀態，
+反而使整體能耗上升。在處理器執行程式的過程中，往往會有特定頻率使能耗降低，這種頻率就稱為
+臨界速度(critical speed)。但處理器在執行的過程中，很難選定臨界速度，文獻[6] 觀察出處理器頻率和
+記憶體之間的關係。為了描述處理器執行程式時的記憶體行為，採用記憶體存取率，當記憶體存取率
+越高表示該程式是 Memory-bound 反之是 CPU-bound 的任務。依記憶體存取率和臨界速度的關係，可
+發現程式有越小的記憶體存取率就有愈佳的臨界速度。這表示 CPU-bound 的程式，處理器頻率下降會
+使能耗上升，而 Memory-bound 的程式在處理器頻率下降時能耗也下降。可以用記憶體存取率與臨界速
+度方程式(Memory Access Rate – Critical Speed Equation, MAR-CSE)表示記憶體存取率和臨界速度間的
+關係，此方程式會依當初選的樣本資料不同而略有變化。只要程式執行的過程中，提供該程式的記憶
+體存取率就能預測出臨界速度。 
+本論文採取的樣本資料參考表格 1，由表格 1所建的 MAR-CSE 方程式為圖表 1。 
+ 
+表格 1. 臨界速度與記憶體存取率 
+ 5 
+硬體的操作分離，故移植到支援 Android 系統的機器較為容易。 
+既然 sysfs 是用來設定處理器頻率，那 JNI 就是將 sysfs 和 AD-DVFS 相連的接著劑，本論文製作
+JNI 原生庫(Native Library)，以提供原生函數幫助 AD-DVFS 利用 sysfs 控制 PMU 和處理器頻率。首先
+在 JNI 建立四個函數，函數 PMU_start()和 PMU_stop()是用來開始和關閉 PMU 計數，而 PMU_read()是
+將 PMU 計數值送出，最後一個函數 Set_frequency(int)則是用來設定處理器頻率，如圖表 3 AD-DVFS 
+governor 架構。 
+ 
+圖表 3. AD-DVFS 架構 
+臨界速度是由 MAR-CSE 等式求得，在 500 毫秒時間內完成 MAR-CSE 計算是不可能的。論文採
+用的 MAR-CSE 等式是三次方伴隨浮點的計算，若在 Android 裡運算 MAR-CSE 等式會拖累效能又造成
+AD-DVFS governor 反應變慢，同時產生多餘能量消耗，這違反製作 AD-DVFS 的初衷，故採用查表方
+式取代 MAR-CSE 等式的運算，就可迅速獲得結果。圖表 4 顯示曲線將 MAR 值分為十種等級以減輕計
+算和查找表的大小。 
+ 
+圖表 4 利用查表方式迅速獲得臨界速度 
+現在我們利用查表方式迅速獲得理想頻率，但是理想頻率未必是硬體支援。為此，我們使用雙速
+度(dual speed)方法找出兩個硬體所能支援的相鄰頻率，以此近似理想頻率。圖表 5 展示雙速度方法，
+ 7 
+結果與討論 
+在展現實驗結果前先介紹實驗環境。本實驗是採用 Creator PXA270 開發版，使用 Linux Kernel 
+2.6.25 搭配 Android 作業系統 1.0 版。負責供應電壓的是 LP3971 PMIC，當頻率改變時 LP3971 會提供
+相應電壓，至於實驗環境支持的電壓和頻率列於表格 2。 
+本研究使用 NI USB-6251 以每秒一千筆記錄能量消耗，連同處理器和 SDRAM 的電壓與電流一同
+量測。MAR-CSE 採用表格 1 資料所建的方程式 ，其
+中 y 為臨界頻率、x 為 MAR 值，利用該方程式實做在 AD-DVFS governor，並以 Performance governor
+和 Ondemand governor 作為比較對象。 
+ 
+表格 2. PXA270 支援電壓與頻率 
+首先先執行 Android 內建的程式 FingerPoint、GLSurfaceView 和 Kube，每次開啟程式運行 10 秒鐘，
+實驗結果為圖表 7。自圖表 7 可以看出 AD-DVFS governor 比 Performance governor 和 Ondemand 
+governor 能源消耗少，約額外節能 37.9％到 47.7％，但只關注程式的執行，會發現使用 AD-DVS governor
+的情況下，比 Ondemand governor 慢。AD-DVFS governor 比 Ondemand governor 慢的原因是，AD-DVFS 
+governor 是以減少能耗為目的，而不以維持效能為初衷，故使用臨界速度，只觀察記憶體使用率。 
+ 
+圖表 7 Android 程式能量消耗 
+再來測試 AD-DVFS governor 對效能的影響，設計 DataTransfer 程式模擬網路傳輸，製作
+PictureLoader 瀏覽圖片，因這兩種功能是使用者使用 Android 時最常用的行為。圖表 8 顯示能源消耗
+及程式執行時間，實驗結果顯示在執行 DataTransfer 時，Ondemand governor 和 AD-DVFS 的能耗與程
+式完成時間非常接近，造成相近的原因可能是等待網路回應，使處理器使用率下降造成 Ondemand 
+governor 選擇較低頻率，促成能耗大幅降低，使得和 AD-DVFS governor 相比差異不大。 
+ 9 
+Commercially Representative Embedded Benchmark Suite,” in Proc. IEEE Int.  Workshop on Workload 
+Characterization, 2001, pp. 3-14. 
+[5]  R. Jejurikar and R. Gupta, “Dynamic Voltage Scaling for Systemwide Energy Minimization in Real-Time 
+Embedded Systems,” in Proc. of 2004 Int. Symp. Low Power Electronics and Design. 2004, pp.78-81. 
+[6]  W.-Y. Liang; S.-C. Chen; Y.-L. Chang; J.-P. Fang, “Memory-Aware Dynamic Voltage and Frequency 
+Prediction for Portable Devices,” in Proc. 14th IEEE Int. Conf. Embedded and Real-Time Computing 
+Systems and Applications. 2008, pp. 229-236. 
+[7]  D. Rajan, R. Zuck, and C. Poellabauer, “Workload-Aware Dual-Speed Dynamic Voltage Scaling,” in Proc. 
+12th IEEE Int. Conf. Embedded and Real-Time Computing Systems and Applications. 2006, pp. 251-256. 
+[8]  D. Rajan, R. Zuck, and C. Poellabauer, “A Dual Speed Approach to Workload-Aware Voltage  Scaling,” 
+Technical Report TR-2006-05, University of Notre Dame. 
+[9]  D. C. Snowdon, S. M. Petters, and G. Heiser, “Accurate on-line prediction of processor and memory energy 
+usage under voltage scaling,” in Proc. 7th ACM & IEEE Int. Conf. Embedded Software. 2007, pp. 84-93. 
+[10]  D. Snowdon, G. V. D. Linden, S. Petters, and G. Heiser, “Accurate Run-Time Prediction of Performance 
+Degradation under Frequency Scaling,” in Proc. 2007 Workshop on Operating System Platforms for 
+Embedded Real-Time Applications. 2007. pp. 58-64. 
+[11]  P. Venkatesh and S. Alexey, “The Ondemand Governor” in Proc. Linux Symposium, vol. 2, 2006, pp. 
+223-238, Available at http://www.linuxinsight.com/files/ols2006/pallipadi-reprint.pdf 
+[12]  Android Developers website, [online]. Available at http://developer.android.com/ 
+[13]  Intel XScale® Technology Overview, [online]. Available at http://www.intel.com/design/intelxscale/. 
+[14]  Source and Document of the Android Porting for Creator PXA270, [online]. Available at 
+http://www.ntut.edu.tw/~wyliang/. 
+[15]  Hwisung Jung, Pedram M., "Continuous Frequency Adjustment Technique Based on Dynamic Workload 
+Prediction," International Conference on VLSI Design, 2008. pp.249-254 
+ 
+  
+行政院國家科學委員會補助國內專家學者出席國際學術會議報告 
+ 99 年 08 月 31 日 
+報告人姓名 
+梁 文 耀 
+Wen-Yew Liang 
+服務機構 
+及職稱 
+國立台北科技大學 
+資訊工程系助理教授 
+     時間 
+會議 
+     地點 
+99/08/11~99/08/13 
+菲律賓、宿霧 
+本會核定 
+補助文號 
+NSC 98-2221-E-027-061- 
+會議 
+名稱 
+ (中文) 第五屆國際嵌入是與多媒體計算研討會 
+ (英文) The 5th International Conference on Embedded and Multimedia 
+Computing (EMC-10) 
+發表 
+論文 
+題目 
+ (中文) Android 作業系統上以臨界速度為基礎之動態電壓頻率調整機制
+之設計與分析 
+ (英文) Design and Implementation of a Critical Speed-based DVFS 
+Mechanism for the Android Operating System 
+報告內容： 
+ 
+    感謝國科會的補助，使我有機會到菲律賓宿霧參加這次會議並發表論文 “Design 
+and Implementation of a Critical Speed-based DVFS Mechanism for the Android Operating 
+System”。本次的會議名為“第五屆國際嵌入式與多媒體計算會議(The 5th International 
+Conference on Embedded and Multimedia Computing”(簡稱EMC-10)是FTRA (Future 
+Technology Research Association International)與IEEE Changwon Section及IEEE Computer 
+Society所共同舉辦的國際會議，今年為第五屆，與另外三個國際會議：The 3rd 
+International Conference on Human-centric Computing (HumanCom-10) 、 The 2nd 
+International Conference on Information Technology Convergence and Services (ITCS-10)、
+The 4th International Conference on Multimedia and Ubiquitous Engineering MUE-10)於
+2010年8月11日至2010年8月13日同時舉行，內容含概嵌入式系統、多媒體系統、資訊技
+術、普及運算、以人為中心之運算等領域。其中我們所參與的研討會EMC-10經嚴格篩
+選後僅有18篇論文發表。論文集同時收錄於IEEE Xplore資料庫中。除了於該會議發表論
+文之外，個人並受邀擔任其中一場論文發表議程(5-D)之議程主席。 
+ 
+一、參加會議經過 
+這次在菲律賓所舉行的第五屆國際嵌入式與多媒體計算會議(EMC-10)共計三天，地
+點在宿霧Mactan的PlantationBay飯店會議廳舉行。主辦單位在三天的研討會中安排了非
+常豐富的內容。綜合四個研討會，一共安排了25個論文發表議程於4個會議室同時進行，
+以及九個大會主題演講。其EMC-10的部分包含於其中三個議程與三場主題演講。議程
+進行的過程大致如下：第一天(8/11)的議程包括報到、開幕式、主題演講、及論文發表。
+第二天(8/12)議程主要包含論文報告與主題演講，當晚主辦單位亦安排歡迎酒會。第三
+天(7/15)為論文報告。個人論文報告時間為第三天上午10:30，同時並擔任議程主席。研
+討會舉行過程進行順利，與會學者分別就不同主題發表論文或演說、並廣泛地討論及交
+換意見。 
+ 
+ 
+附
+件
+三 
+Design and Implementation of a Critical Speed-based 
+DVFS Mechanism for the Android Operating System 
+ 
+Wen-Yew Liang* and Po-Ting Lai 
+Department of Computer Science and Information Engineering 
+National Taipei University of Technology 
+Taipei, Taiwan 
+Email*: wyliang@mail.ntut.edu.tw 
+ 
+ 
+Abstract—DVFS is an efficient energy saving technique for 
+processors during program execution time. In this paper, a 
+critical speed-based DVFS mechanism that we have implemented 
+on the Android operating system is introduced. Our studies 
+indicate that due to memory accesses, decreasing the frequency 
+may not always reduce the energy consumption. A critical speed 
+is thus defined as the CPU frequency with which the energy 
+consumption can be minimized. In our mechanism, a prediction 
+equation based on the correlation of the memory access rate and 
+the critical speed was constructed and used to choose a suitable 
+frequency and voltage dynamically at run time. Our initial 
+experiment results show that for real applications running on 
+Android, the energy consumption can be effectively reduced.  
+Keywords-Embedded Systems; Energy-aware Design; Android 
+I.  INTRODUCTION 
+Dynamic voltage and frequency scaling (DVFS) and 
+dynamic power management (DPM) are two common methods 
+to reduce energy consumption and to extend battery life for 
+mobile devices. DPM has been widely used in portable devices 
+to save the power. For example, providing idle modes and 
+power saving modes for the processor and the peripherals are 
+typical mechanisms for energy saving. These components will 
+be put into low-power states when they are not used. 
+Different from DPM, DVFS provides an efficient energy 
+saving mechanism while the component is in an active state. 
+More and more processors have provided multiple voltage and 
+frequency levels for the system software to use. This 
+mechanism is very useful because a system usually does not 
+need to run applications with the highest performance all the 
+time. It adjusts both the frequency and voltage according to the 
+system status and the performance requirement. This 
+effectively saves the battery energy.  
+From real measurements, we have observed that reducing 
+the CPU frequency may not always reduce the  energy 
+consumption. The lowest energy consumption usually appears 
+at some CPU frequency other than the lowest frequencies 
+supported by the processor. The frequency that can induce the 
+lowest energy consumption is defined as the critical speed. In 
+addition, there exists a relationship between the critical speed 
+and the memory access behavior, which can be represented by 
+the memory access rate (MAR). A correlation equation can 
+thus be constructed to describe the relationship between MAR 
+and the critical speed. It can then be used to predict an ideal 
+frequency during the execution time.  
+Google Android [12] is an open source operating system. It 
+has been used in smart phones and some other systems 
+extensively since it was released in 2008. It is built on top of 
+the Linux kernel and contains a novel user level software stack 
+for mobile devices. The software stack includes three layers: 
+the Libraries layer which contains native processes and shared 
+libraries, the Application Framework layer which comprises 
+major components supported by Android for application 
+developments, and the Application layer in which the Android 
+applications exist.  
+Android provides a simple power management framework. 
+It provides application developers a set of power management 
+interfaces through the PowerManager class. The Android 
+power manager basically utilizes the DPM techniques. For 
+example, when an application needs to use the CPU or the back 
+light for a period of time, it has to allocate a WakeLock and 
+acquire the lock from PowerManager so as to keep them 
+powered on. If no application needs to acquire such resources 
+anymore, the CPU will enter a sleep mode and the back light 
+will be turned off once the Android operating system thinks it 
+can do so. 
+While Android has provided an aggressive dynamic power 
+management scheme, it is mainly used to reduce the energy 
+consumption when some of the system components are idle or 
+not used. Our goal is to address the problem when tasks are 
+running. The Android operating system basically relies on the 
+underlying Linux kernel support for dynamic voltage and 
+frequency management. In this paper, we introduce a DVFS 
+mechanism that we have implemented in Android, based on the 
+relationship between MAR and the critical speed. We use the 
+hardware counters in the Performance Monitor Unit (PMU) [13] 
+of the Intel XScale processor to get the memory access related 
+information for computing the MAR.  
+The remainder of this paper is organized as follows. 
+Related works are first described in Section 2. Section 3 
+discusses the effects of memory accesses in energy 
+consumption and the relationship between the MAR value and 
+the critical speed. In Section 4, the implementation of our 
+DVFS mechanism on Android is introduced. Initial experiment 
+results and a comparison with the Android/Linux DVFS 
+This research was partially supported by Opticon Sensors Europe B.V., 
+the Netherlands and National Science Council, Taiwan under the grant NSC 
+98-2221-E-027-061. 
+MAR will have a higher critical speed. This implies that the 
+energy consumption of a CPU-bound program (with a lower 
+MAR value) may be raised with a lower frequency. Conversely, 
+a memory-bound program (with a higher MAR value) will 
+have higher opportunity to consume less energy with a lower 
+frequency. Even more, the performance impact on such 
+programs may be smaller when the CPU frequency is 
+decreased, because the execution time may have been 
+dominated by memory accesses.  
+In order to formally describe the relationship between the 
+MAR and the critical speed, an approximation equation can be 
+created from the measured MAR and critical speed data of the 
+benchmark programs, by the least square curve fitting method. 
+The equation is called the MAR-based Critical Speed Equation 
+(MAR-CSE). It can be used to predict the critical speed during 
+program execution time while a program's run-time MAR 
+information can be obtained. The MAR-CSE equation and the 
+approximation curve are shown in Fig. 1. 
+To get the run-time MAR information, some related counter 
+values can be retrieved from the PMU during task execution 
+time. The MAR value can then be mapped to the corresponding 
+critical speed through the MAR-CSE equation. With the critical 
+speed, we may have the programs run with minimal energy 
+consumption. 
+IV. IMPLEMENTATION 
+In the Linux kernel under the Android operating system, the 
+CPUfreq subsystem provides a modularized interface to 
+manage the CPU frequencies. The policy manager for power 
+management is called a Governor in Linux, which controls the 
+CPU frequency through the interface of CPUfreq. Fig. 2 
+illustrates the CPUfreq infrastructure, in which the CPUfreq 
+subsystem decouples the driver of the CPU-specific hardware 
+from the policies. Several kernel-level governors have been 
+supported by Linux for CPU frequency management. For 
+example, the Performance governor maintains the CPU 
+frequency at the highest frequency, and the Ondemand 
+governor [11] manages the frequency according to the CPU 
+utilization. Linux also provides the Userspace governor to 
+export the available frequency information to the user space 
+and allows the user-level governors to control the CPU 
+frequency through the Linux sysfs interface. Among the 
+governors, Ondemand is normally used as the default DVFS 
+mechanism in Linux and Android. 
+We have implemented the proposed DVFS mechanism as 
+an Android service, a type of Android programs, in user space, 
+called the AD-DVFS governor. The AD-DVFS governor is 
+responsible for calculating the current MAR value and setting a 
+proper frequency according to the MAR-CSE equation.  The 
+Android service is written in Java and runs in the Dalvik 
+Virtual Machine, the Android's implementation of the Java 
+Virtual Machine. The Java Native Interface (JNI) must be used 
+so that the AD-DVFS governor can access the PMU counters 
+and set the CPU frequency indirectly through the Linux sysfs 
+interface. Beneath the sysfs interface, we have also 
+implemented the necessary kernel level supporting code for 
+controlling the hardware. One of the advantages for such 
+implementation is that the policy manager of the AD-DVFS 
+governor can be easily ported to different machines supported 
+by the Android operating system, leaving hardware-dependent 
+parts to lower-level codes. 
+About the JNI part, we have developed a JNI native library 
+in which several native functions are provided for the AD-
+DVFS governor to control the CPU frequency and the PMU 
+CPUfreq subsystem
+ACPI-
+cpufreq
+Intel 
+speedstep
+AMD 
+powernow
+ACPI processor 
+driver
+Performance
+governor
+Ondemand
+governor
+Userspace
+governor
+Android 
+AD-DVFS
+User-level
+governors
+Kernel-level
+governors
+CPU-special
+drivers
+ 
+Figure 2. The infrastructure of CPUfreq. 
+y = -30474.04 X3 + 1885.97 X2 - 37.82 X +  0.797C
+ri
+ti
+c
+a
+l
+S
+p
+e
+e
+d
+ (
+n
+o
+rm
+a
+liz
+e
+d
+)
+Memory Access Rate  
+Figure 1. Curve of the MAR-CSE equation. 
+TABLE I.  CRITICAL SPEED AND MAR FOR THE BENCHMARKS 
+Benchmarks MAR Critical Speed 
+bitcount_b  0.000171 0.785 
+fft_b  0.001489 0.7628 
+bitcount_s  0.00182 0.7377 
+fft_s  0.00236 0.754 
+basicmath_s  0.002597 0.7201 
+sha_b  0.003209 0.6685 
+mad_b 0.003319 0.6567 
+susan_b  0.003708 0.6421 
+basicmath_b  0.005748 0.6888 
+mad_s  0.00848 0.5885 
+susan_s  0.009569 0.5806 
+sha_s  0.010571 0.5305 
+jpeg_b  0.013905 0.5854 
+jpeg_s  0.015367 0.56 
+Note: Program names appended with _b and _s are for 
+big and small data size, respectively. 
+ 
+The MAR and the critical speed data listed in Table I early 
+in this paper were measured on this platform. The MAR-CSE 
+equation in Fig. 1 was conducted from the measured data and 
+has been implemented in the AD-DVFS governor. In the 
+following subsection, our initial results collected from real 
+applications are reported. 
+B. Results of Real Programs on Android 
+We have tested the DVFS implementation with three 
+Android built-in demo programs in the experiments, including 
+FingerPrint, GLSurfaceView, and Kube. The results of the 
+programs from the Linux Performance governor and the 
+Ondemand governor which can be used under the Android 
+operating system, and the results from our AD-DVFS governor 
+were gathered and compared. Since these demo programs run 
+continuously, they were uniformly measured for 10 seconds. 
+The results are shown in Fig. 7. 
+From the figure, we can see that the AD-DVFS governor 
+saves a lot of energy, from 37.9% to 47.7%, compared to the 
+Performance governor. In addition, it is much better than the 
+Ondemand governor, which consumed almost the same energy 
+as that of the Performance governor. However, from the 
+observation, we also noticed that execution of the programs 
+under AD-DVFS are a little slower than that for the Ondemand 
+governor. The reason is that the critical speed-based DVFS 
+tends to approach the lowest energy consumption rather than to 
+maintain the performance.  
+However, to get a more clear picture on how AD-DVFS 
+affects the performance, we have developed two programs with 
+fixed workload, called DataTransfer and PictureLoader. These 
+two programs represent two functions that are often used in 
+Android devices: internet data retrievals and photo browsing. 
+Fig. 8 and Fig. 9 show the results of their energy consumption 
+and execution time, respectively. From the results, we can see 
+that both the energy consumption and the execution time of 
+AD-DVFS and  Ondemand for DataTransfer are close. This is 
+because DataTransfer might be blocked due to network 
+accesses, which lowered the CPU utilization and caused the 
+Ondemand governor to use lower frequencies. The resulted 
+energy consumption was thus greatly reduced for the 
+Ondemand governor. 
+For PictureLoader, while the execution time of AD-DVFS 
+is higher than Ondemand, its energy consumption is lower. For 
+a fair comparison, the energy-delay production (EDP) is 
+calculated from the normalized energy consumption and the 
+normalized execution time. The results are shown in Fig. 10. In 
+TABLE II.  CRITICAL SPEED AND MAR FOR THE BENCHMARKS 
+CPU 
+frequency 
+(MHz) 
+Bus 
+frequency 
+(MHz) 
+Memory 
+frequency 
+(MHz)  
+CPU 
+voltage (V)  
+104  104  104  0.9  
+156  104  104  1.0  
+208  208  104  1.15  
+312  208  104  1.25  
+416  208  104  1.35  
+520  208  104  1.45  
+ 
+ 
+ 
+FingerPoint GLSurfaceView Kube
+preformance 6221.731886 6742.086597 6388.456131
+ondemand 6213.292534 6739.103299 6323.607
+AD-DVFS 3861.830022 3840.194989 3342.324653
+0
+1000
+2000
+3000
+4000
+5000
+6000
+7000
+8000
+En
+e
+rg
+y 
+C
+o
+n
+su
+m
+p
+ti
+o
+n
+ (m
+J)
+Energy Consumption of Android 
+Applications
+ 
+Figure 7. Energy consumption of Android demo programs. 
+0
+500
+1000
+1500
+2000
+2500
+3000
+3500
+4000
+4500
+5000
+Data Transfer Picture Loader
+En
+e
+rg
+y 
+C
+o
+n
+su
+m
+p
+ti
+o
+n
+ (m
+J)
+Energy Consumption
+performance
+ondemand
+AD-DVFS
+ 
+Figure 8. Energy consumption of DataTransfer and 
+PictureLoader. 
+0
+2
+4
+6
+8
+10
+12
+Data Transfer Picture Loader
+Ex
+e
+cu
+ti
+o
+n
+ T
+im
+e
+ (s
+)
+Execution Time
+performance
+ondemand
+AD-DVFS
+ 
+Figure 9. Execution time of DataTransfer and 
+PictureLoader. 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/01/03
+國科會補助計畫
+計畫名稱: 可攜式裝置上具備軟硬體資訊回饋機制且考慮額外負擔之動態電壓頻率調整
+低功耗系統設計之研究
+計畫主持人: 梁文耀
+計畫編號: 98-2221-E-027-061- 學門領域: 計算機結構與計算機系統 
+研發成果名稱
+(中文) 採用執行時期程式行為分析之行動裝置省電演算法
+(英文) An Energy-saving DVFS Algorithm for Embedded Mobile Devices using Run-time 
+Analysis of Program Behaviors
+成果歸屬機構
+國立臺北科技大學 發明人
+(創作人)
+梁文耀
+技術說明
+(中文) 透過擷取作業系統與硬體提供之資訊，經由我們所提出的MAR-CSE (Memory 
+Access Rate - Critical Speed Equation)最低能耗電壓頻率預測模型，可於程
+式執行時期動態決定最佳之頻率電壓組合，達到節省行動裝置能耗並維持一定效
+能之目的。本技術已實現於Linux與Android作業系統上。本方法可實現於作業系
+統核心之中或應用程式層。在Android系統上，我們也配合Android作業系統分層
+架構的設計，分別實現於Android應用程式框架、原生函式庫層、Linux核心模組、
+與驅動程式中。
+(英文) With the OS and hardware related information obtained during the program execution 
+time, our MAR-CSE DVFS (Dynamic Voltage and Frequency Scaling) prediction model 
+can be use to get a suitable voltage and frequency combination to be applied to the 
+processor. In this way, the energy consumption can be reduced, while keeping the 
+performance at an acceptable level. This technology has been realized on the Linux and 
+the Android operating systems.
+產業別 研究發展服務業
+技術/產品應用範圍 使用Linux或Android嵌入式系統與電腦系統。
+技術移轉可行性及
+預期效益
+本技術可轉移。
+註：本項研發成果若尚未申請專利，請勿揭露可申請專利之主要內容。
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+研究之部分成果亦貢獻於本校國際產學合作計畫：『低功耗 Android 系統設計與
+作業系統移植計畫』，主持人：梁文耀。2009.04.01-2010.09.30。 
+ 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

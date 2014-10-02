@@ -1,0 +1,89 @@
+中文摘要 
+從台灣寬頻網路使用狀況調查可以看出來在台灣有一網路使用族群是來自
+家庭，就使用者而言，其中的青少年學童(20 以下)上網率幾達 95%，目前依規定
+網站需依台灣網站內容分級規定處理，但網路世界浩瀚無國界，如何使家庭中的
+青少年學童有個安全的網路空間是家長很關心的課題。 
+本計畫所規劃的情境是，在一般家庭網路中，均具有 IP 分享器，也就是
+NAT(Network Address Translation)，並利用 ISP 所提供的不當資訊過濾服務。如
+前所述各種不當資訊過濾技術均有其缺點，我們希望以開放原始碼建構一個體積
+小、成本低之網路安全設備，使其更適用於家庭使用之 NAT 伺服器，以輔助 ISP
+所提供不當資訊過濾功能。 
+英文摘要 
+Taiwan leads the class for the population of broadband network over the world, 
+according researches. One of the groups for the network users come from family, esp., 
+teenagers. The website must follow the website content classification rule in Taiwan. 
+There are no boundary in the Internet World, so the patriarchs are very concerned the 
+issue: their children can own a no burdens network world. 
+From the view of system architecture, in the project we want to construct a NAT 
+server with packet classification based on Linux embedded system. The 
+hardware-based network security device is very expensive and not suitable to be used 
+in family. The software-based product can lost the packets, because it can share the 
+CPU. The object of the project is to construct a small, the lower cost lowers the 
+network safety equipment, causes it to be suitable NAT of server for the family, by is 
+auxiliary ISP to provide does not work as the information filtration function. 
+1. 前言 
+依台灣網路資訊中心 2007 年台灣寬頻網路使用狀況調查[5]，台灣地區之可
+上網之戶數比例呈現穩定之趨勢，截至 96 年 1 月為止，共計有 551 萬戶可上網。
+就家中可上網的家戶中，以 ADSL 連結上網的家戶比例最高，為 76.03%，其次
+是有線電視電纜線連結線纜數據機(Cable Modem)6.76%；以付費電話撥接連結者
+只有 3.42%。由調查結果可知，大約有 89.51%的家戶使用寬頻上網(此處寬頻上
+網係包括 ADSL、有線電視電纜線連結線纜數據機、固接專線及社區網路)。台
+灣地區 12 歲以上民眾其上網比例依年齡別來看，以「16-20 歲」最高，佔 94.74
+％(156 萬人)；其次為「12-15 歲」，約佔 94.65％(118 萬人)；再其次為「21-25 
+ 1
+3. 技術背景 
+3.1 NetFilter[6] 
+NetFilter 是一個專屬 Linux 封包過濾機制，會在處理封包的流程中，建置一
+系列的切入點(Hook)，依著封包在流程所處位置的不同，可以並依照相關的表格
+(Table)來決定如何處理封包。Netfilter 在 IPv4 定義了五個切入點，分別是
+Pre-Routing、Local-IN、Forward、Local-Out 及 Post-Routing，其間的關係如圖一
+所示。Netfilter 所建置的每個切入點可登記了一些處理函數進行封包處理（如封
+包過濾，NAT 等，甚至可以是使用者自定義的功能） 
+ 
+圖 1.Netfilter 架構[7] 
+圖 1 所描述的架構，其運作方式是當封包進入 Linux 主機的網路介面之後，
+會先經過 Pre-Routing 這個切入點，接著依據 Routing 機制決定是要進入主機還
+是經由另一個網路介面。若是前者則會進進入 Local-IN 這個切入點，若是後者
+則會經由進入 Forward 和 Post-Routing 兩切入點再出去。而當 Linux 主機要送出
+封包時，則會先經過 Local-Out 這個掛入點，再經過 Routing 機制和 Post-Routing 
+切入點送出。 
+Netfilter 定義了三個不同的表格[2]，NAT、Mangle 和 Filter，藉由在表格中
+設定動作來達到所需得功能，其中： 
+z Filter 表格主要是用以過濾封包，不會更改封包內容。。 
+z NAT 表格供 NAT (Network Address Translation)使用。其中有兩個特殊
+ 3
+函數將程式碼註冊在某一切入點。核心將要切入的程式碼之相關資訊儲紀錄在
+nf_hook_ops 結構，註冊在相同切入點的程式碼，以連結串列表示，流經的封包
+便會依序被所註冊的程式碼處理，其可能的回傳值為： 
+z NF_ACCEPT 繼續正常傳輸讓 Kernel 繼續處理該資料封包  
+z NF_DROP 丟棄該資料封包，不再傳輸下去  
+z NF_STOLEN 程式碼接管該資料封包，不要繼續傳輸該資料封包  
+z NF_QUEUE 讓該資料封包進行佇列，資料封包在使用者空間(User 
+Space)供其它程序處理  
+z NF_REPEAT 再次呼叫該註冊函數 
+其函數原型為： 
+int nf_register_hook(struct nf_hook_ops *reg) 
+其中結構體 nf_hook_ops 的定義如下： 
+struct nf_hook_ops{ 
+struct list_head list;/* User fills in from here down . */ 
+nf_hookfn *hook; 
+struct module *owner; 
+int pf; 
+int hooknum;/* Hooks are ordered in ascending priority. */ 
+int priority; 
+}; 
+list：使用連結串列，初始化為{NULL,NULL}。 
+hook：所欲註冊程式之進入點。 
+owner:記錄此結構由那個模組所擁有(註冊) 
+pf：記錄所屬的網路協定，由於一般在 IP 層，pf 總是 PF_INET。 
+hooknum：記錄所謂於的切入點，一個切入點點可能掛多個處理函數，其優
+先順序，便要看 priority。 
+ 5
+的的應用程式，其步驟和設計一般 TCP/IP 網路程式相同，先開啟 Socket，再執
+行 bind()，接著準備資料，再用 sendmsg 送出。需注意開啟 Socket 所用的位址系
+列參數，與送出資料格式(NLMSG_DATA)等問題。同樣的 Kernel 處理資料時要
+轉換成所的格式，從 sk_buf 結構體 [1] data 欄中取出的資料，需經由
+NLMSG_DATA 方能還原成資料的起始位址。 
+ 
+圖 3.程式碼註冊處 
+ 7

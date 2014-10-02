@@ -1,0 +1,311 @@
+II 
+英文摘要 
+With the advances in both software and hardware, and the maturity of flat-panel display technology, 
+audio-visual related standards are seeking to define higher level products which deliver more perceptual 
+experiences. Therefore, the industry moves to the 3D/stereo image and video technology. The 3D rendering 
+technology has been under research for quite a few years, and a small number of prototype systems were 
+implemented. The 3D analysis was not mature, either. Although there were a few discussions on data 
+representation and synthesis, there are many issues left open for research. 
+The goal of this project “Technology in small-number multi-view image synthesis” is to find a method 
+to synthesize a virtual-viewpoint image based on only a small number of captured images. The assumptions 
+are: (1) captured images from multiple viewpoints contain much more 3D space information; (2) the 
+advances in capturing hardware technology makes embedding tightly-arranged camera array in a portable 
+device possible. However, the size and the power of a portable device restrict the number of embedded 
+cameras. This is the reason why we focus on a small number of cameras. 
+During the project, we studied the related works of plenoptic camera and multi-camera. Combining 
+with the small-number assumption, we thought about the relationships among the physical scene depths, the 
+virtual (synthesized) scene depths, and the complexity of the scene/object textures. We also studied the 
+XMPP specifications. The flexibility and scalability of XMPP provides a good infrastructure for future 
+development of the multi-camera experiments. 
+ 
+Keywords: multi-view, representation, synthesis, rendering, XMPP 
+2 
+配置及校正實務上，反而較容易達成穩定可靠，也間接提高了可攜性。 
+C. 文獻探討 
+研究過程中主要參考兩類文獻，第一部分為多視點相關技術，第二部分為即時通訊協定XMPP。
+在多視點相關技術方面，就影像場景來源而言，大致可分為 model-based[5][6]與 image-based[7][8][9]
+兩種方式，前者依賴建構好的場景模型，再根據設定的視點運算出所見的二維影像。後者則根據大
+量擷取的二維影像，以內插方式運算出特定視點所見的影像。本研究計畫探討 image-based 方式，
+比較知名的相關研究有 Light Field Rendering、Lumigraph 以及 RaySpce，不同的研究文獻著重於不
+同部分，發展的重點可能在資料表示法、立體影像分析技術、合成技術、或是壓縮理論。若追溯至
+更早的技術，則是單透鏡以及偏心透鏡成像原理。 
+根據後述的文獻整理結果，我們覺得現階段multi-camera系統較plenoptic camera系統容易實作。
+為了方便實作軟體控制機制，我們進行第二部分的文獻探討，瞭解 XMPP 通訊協定[10][11][12]。
+XMPP 的前身為 jabber 協定，是一種用於傳遞即時訊息的機制。經過多年發展，除了正式成為標準
+之外，亦有眾多的延伸協定，讓 XMPP 得以輔助傳遞串流資訊，例如 Jingle[13][14]即是 Google 貢
+獻的影音串流延伸協定。 
+D. 研究方法 
+本計畫主要以文獻探討與整理為主，研究過程研先從透鏡成像原理，進而到 Plenoptic camera
+系統，接著探討 Light Field 與 Lumigraph，之後探討 multi-camera 系統與 RaySpace。最後我們考量
+實作的軟體架構，並學習 XMPP 相關規範。 
+單一透鏡成像與物體深度 
+單一凸透鏡成像計算時，我們一般依照薄透鏡的假設。如圖 1(a)所示，當我們希望對特定深度
+的點能有清晰的成像，成像平面與透鏡間的距離可以依據該點與透鏡間的距離計算出來。當成像平
+面與透鏡尖的距離固定後，其他景深的點（圖 1(b)及(c)），成像時則會模糊成一個圓形範圍。因此，
+拍攝一個場景的照片，其實是特定景深形成的清晰像點以及其他景深所形成的模糊像點混合而成。
+而模糊像點又可分為兩種，一為較近的點（圖 1(b)），相對於軸心線，所形成的影像與原始影像同
+側；相對地，如果是較遠的點（圖 1(c)）所形成的影像與原始影像落於軸線的反側。因此，理論上
+我們可以根據成像時的方向與大小，估測出該點的距離。不過實務上，我們很難判斷一個點的成像
+方向，因此必須換個方式，方便取得方向資訊。 
+ 
+(a)        (b)       (c) 
+圖 1 單一凸透鏡成像 
+4 
+根據薄透鏡公式，我們得到 
+dgF
+111
++= 。結合前述兩個關係式，我們可以進一步推得 
+
+
+
+
+
+
+−−=
+v
+h
+fFd 1
+111
+ 或 
+DDFv
+h
+d
+1111
++
+
+
+
+
+
+−= 。 
+理論上，利用前述公式可以在單一照片中推算出拍攝場景裡某一點的深度。但是，這關係式的
+前提是欲分析的點必須落在透鏡的軸線上，若想分析整個場景中的所有點，必須針對每一點拍攝一
+張照片，因此並不實用。 
+Plenoptic Camera 系統 
+為了解決前述問題，可以利用 Plenoptic Camera 系統一次擷取所需的資訊。首先分析單一透鏡
+的成像，若我們把透鏡劃分成許多窗口，可以知道其實一次拍攝的結果，是由不同窗口所拍攝的景
+象所合成，而這些影像在成像平面上幾乎完全重疊，也就是說，成像平面上某一點接收到的光，其
+實是由透鏡不同區域提供的光線所合成的。換個角度想，傳統相機拍攝一張照片，其實是多張略為
+不同角度的照片疊合而成。 
+Plenoptic Camera 基於這個原理，採用另一種設計方式，其概念是在原本的透鏡與成像平面間
+安置一個 micro-lens array，若設計得當，micro-lens array 會將成像平面劃分成 macro-pixel array，每
+個 macro-pixel 將主要接收來自某個 micro-lens 的光線，而一組 macro-pixel 與 micro-lens 的組合，對
+應到空間中，將侷限於某個特定方向範圍的入射光線。這種設計能在一次拍攝過程中，將不同方向
+所收集到的影像，對應到不同 macro-pixel 上。也就是說，某個 macro-pixel 影像上的某一點，代表
+的不僅是傳統影像的位置、亮度、色彩，還隱含入射光的方向資訊。多了方向的資訊，我們便可分
+析不同 macro-pixel 影像上的對應點，推算出空間中像點的深度。 
+Plenoptic Camera 概念是將單一鏡頭收集的光線，以 micro-lens 解析出不同方向並加以儲存，這
+樣的結構依賴製成方面技術的成熟。若需要高解析度的拍攝結果，主要有兩大技術需要克服： 
+ Micro-lens array 的密度必須夠高。由於 micro-lens 的大小決定對應在 main lens 上的窗口大
+小，如果需要精確解析入射方向，每個 micro-lens 必須夠小，且密度夠高，才能有效限制
+入射的光線。 
+ 相機的影像 sensor密度與數量必須夠高。這是因為照片的解析度主要取決於 sensor的密度，
+而 Plenoptic Camera 系統由許多 macro-pixel 組成，每個 Macro-pixel 影像的解析度必須夠
+高的條件下，整體的 sensor 不論密度及數量都非常高。 
+為了儲存拍攝下來的資料，不同的儲存結構與壓縮方法陸續提出，以下將簡述其中兩種方式：
+Light Field 與 Lumigraph。 
+Light Field 
+Light Field[16][17]研究可追溯到 1996 研由 Stanford 大學 Marc Levoy 與 Pat Hanrahan 提出的
+Light Field Rendering。其假設為物體發出的光線，在同一行進路線上，除非受到遮蔽，否則其強度
+不會改變。據此他們在降低維度方面，採用所謂的 light slab 表示法 (圖 4)。某個光線 L(u,v,s,t) 代
+表該光線與兩個平行平面 (u,v) 及 (s,t) 的交集座標。uv 平面代表 camera plane，st 平面代表 focal 
+6 
+面在 st 與 uv 平面投影區域涵蓋的光線相關，可利用光學幾何推導 (圖 5)。 
+Multi-camera 系統 
+Plenoptic Camera 系統必須仰賴製程才能獲得解析度夠高的照片，以今日的技術而言，要達到
+實用階段還有一段距離。因此，另一種解決方案則是採用大量的攝影機同時取像，稱為 Multi-camera
+系統。採用 Multi-camera 架構的話，單一攝影機解析度以今日的技術而言已達實用階段，只要有足
+夠的空間架設攝影機與校正，就能取得同時間不同取像區域的高解析度照片。 
+Multi-camera 取得的影像與 Plenoptic Camera 取得的 macro-pixel 影像有些差異，主要是因為攝
+影機的實體較大，導致間隔必須拉開，與 macro-pixel 影像的緊密並不相同，因此雖然看起來都是
+一組略為平移的影像，但遮蔽所造成的問題在 Multi-camera系統中比較嚴重。嚴格說來，Multi-camera
+系統比較接近傳統雙眼立體系統的擴充版。 
+由於 Multi-camera 影像比較接近傳統 stereo image 處理，初期許多研究著重在解決 disparity 
+matching、depth estimation、occlusion 等問題，其中遮蔽（occlusion）在 Multi-Camera 系統中比傳
+統 stereo image 更為複雜。表面上看來，有比較多的照片可供分析，應該有助於解決遮蔽問題，但
+因為 Multi-Camera的架設成本與軟體同步問題，數量受到一定的限制，所以一般無法像 stereo camera
+那麼接近，而攝影機相隔越遠，遮蔽問題就越難處理。 
+RaySpace 
+在 MPEG 3DAV[21][22]實驗報告中關於 FVV (Free Viewpoint Video) 部分，於使用方面期望達
+到讓使用者自由控制視點觀賞視訊，系統方面則希望能即時呈現動態的真實世界景象。而其中一個
+參考系統為日本名古屋大學 Tanimoto 教授等人提出的 free viewpoint television (FTV)，其理論基礎
+為 Ray-Space 表示法[23][24][25]。Ray-Space 表示法為一種通用資料格式，可整合各類型 3D Visual 
+Communication，例如立體影像 (stereo image)、多視點影像 (multi-view image)、以及全像影像 
+(holographic image)。後來其概念被 FTV 的相關研究採用，變成 coding 的資料空間表示法。 
+基於實用的角度，RaySpace 運算必須簡化到一定程度，其影像呈現機制的研究，主要由下列幾
+個概念架構而成： 
+ 任意一個視點（camera）所見到的影像，其實就是 Ray-Space 的 sub-space。 
+ 在 FTV 中，physical camera 代表實體視點，其資料為實際擷取的影像資訊；而 virtual camera
+則代表虛擬視點，其資料為實體資料內插運算而得。 
+ 內插運算主要在 epipolar plane image (EPI) 上進行，每個 EPI 皆為 Ray-Space 的 slice。 
+ 通過某個視點的所有光線，在 Ray-Space 形成一組軌跡。 
+ 從物體上某點發射出的所有光線，在 Ray-Space 中也會形成一組軌跡。 
+而 RaySpace 的資料表示，可分為兩類： 
+ Orthogonal Ray-Space (Type I) (Error! Reference source not found.a)：將光線的交集平面 Q
+定在 Z=0，因此原本的 5D 訊號變成 f(X,Y, θ,φ)，這裡 (X,Y) 代表光線在交集平面上顯示
+的位置，而 (θ,φ) 則是光線的方向。 
+8 
+貢獻的影音串流延伸協定。XMPP 規範中指出，XMPP server 必須以最快速度將訊息傳出，因此在
+區域網路的應用中，XMPP 訊息傳遞的延遲很小，如果以 group-chat 的方式(類似 multicast)發出訊
+息，理論上各接收端近乎同時收到。即使需要跨網域通訊，XMPP network 的結構也使得訊息能以
+最快的方式傳遞出去。 
+如圖 7 所示，XMPP server 與 client 形成 XMPP network，每個 client 皆以 client@server 形式表
+示帳號。例如 client1@server1 想傳遞訊息給 client4@server2 時，訊息先從 client1 傳至 server1，再
+由 server1 直接傳至 server2，最後 server2 傳遞給 client4。這樣的機制方便將不同的 client 分散至不
+同 server上，且傳遞時只經過一次 server與 server間傳輸及兩次 client 與 server間傳輸，又由於 XMPP 
+server 必須儘快傳遞，因此減低軟體方面的延遲。 
+XMPP 的基本協定除了認證方面外，主要為 message 與 presence。Message 代表想傳遞的簡短
+資料，message 型態可分為四類，比較常見的 normal 與 group-chat。Normal 訊息用於一對一傳遞，
+group-chat 訊息則適合用於一對多通訊。Presence 則是用來發布 client 的自身狀態，server 會將該狀
+態送至經過相互認證的朋友，以便朋友取得該 client 的現狀。 
+配合 XMPP 機制，攝影機的控制程式將可包裝成一個 client，每台攝影機給定一個 XMPP 帳號，
+當登入 server 後，立刻加入特定的聊天室以接收控制命令。主控程式可以利用 presence 來確認各攝
+影機的狀態，而命令則可透過 group-chat 訊息發送給各控制程式。至於擷取的照片，則可透過 Jingle
+延伸協定，以串流的方式從各控制程式傳遞至處理程式（可以是主控程式本身）。 
+E. 結果與討論 
+本計畫目的為探討多視點低擷取量的相關技術，本年度以文獻探討與整理為主[27][28]，並構
+思未來實驗與實作時可能需要的技術。執行期間探討的多視點技術主要分為兩種類型，以下將列出
+此兩類型的特性： 
+ Plenoptic Camera Multi-Camera 
+體積 體積小 佔用空間大 
+組態 單一攝影機 多攝影機 
+ 
+圖 7 XMPP network 
+10 
+[7] S. E. Chen, “QuickTime VR an image-based approach to virtual environment navigation,” in Proc. 
+SIGGRAPH Computer Graphics, Annual Confernece Series, 1995, pp. 29-38. 
+[8] W.-K. Tsao et al., “Photo VR: A system of rendering high quality images for virtual environments 
+using sphere-like polyhedral environment maps,” in Proc. of Second Workshop on Real-Time and 
+Media Systems, RAMS'96, Taipei, Taiwan, ROC, July 1996, pp. 397-403. 
+[9] R. Szeliski and H.-Y. Shum, “Creating full view panoramic image mosaics and environment maps,” 
+in Proc. SIGGRAPH '97, 1997, pp. 251-258. 
+[10] P. Saint-Andre et al., XMPP: The definitive guide, O'Reilly, 2009. 
+[11] P. Saint-Andre, "Extensible Messaging and Presence Protocol (XMPP): Core," Jabber Software 
+Foundation, Oct. 2004. 
+[12] P. Saint-Andre, "Extensible Messaging and Presence Protocol (XMPP): Instant Messaging and 
+Presence," Jabber Software Foundation, Oct. 2004. 
+[13] S. Ludwig et al., "XEP-0166: Jingle," XMPP Standards Foundation, Dec. 2009. 
+[14] S. Ludwig et al., "XEP-0167: Jingle RTP Sessions," XMPP Standards Foundation, Dec. 2009. 
+[15] T. Adelson and John Y. A. Wang, “Single lens stereo with a plenoptic camera,” IEEE Transactions on 
+Pattern Analysis and Machine Intelligence, vol. 14, no. 2, pp. 99-106, Feb. 1992. 
+[16] M. Levoy and P. Hanrahan, “Light Field Rendering,” ACM SIGGRAPH’96, pp.31-42, Aug. 1996. 
+[17] M. Levoy, “Light Fields and Computational Imaging,” IEEE Computer, vol. 39, issue 8, pp. 46-55, 
+Aug. 2006. 
+[18] S. J. Gortler, et al., “The Lumigraph,” ACM SIGGRAPG’96, pp.34-54, Aug. 1996. 
+[19] S. E. Chen, “QuickTime VR – An Image-Based Approach to Virtual Environment Navigation,” in 
+Computer Graphics, Annual Conference Series, 1995, pp. 29-38. 
+[20] L. McMillan and G. Bishop, “Plenoptic Modeling: An Image-Based Rendering System,” in Proc. 
+SIGGRAPH’95, Aug. 1995, pp. 39-46. 
+[21] ISO/IEC JTC1/SC29/WG11 N5877, “Applications and Requirements for 3DAV,” July 2003. 
+[22] ISO/IEC JTC1/SC29/WG11 N5878, “Report on 3DAV Exploration,” July 2003. 
+[23] T. Fuji and M. Tanimoto, “Free-Viewpoint TV Systems Based on Ray-Space Representation,” in 
+Proc. of SPIE, vol. 4864, Nov. 2002, pp. 175-189. 
+[24] P. Nabangchang, T. Fuji, and M. Tanimoto, “Experimental System of Free Viewpoint Television,” in 
+Proc. of SPIE, vol. 5006, May 2003, pp. 554-563. 
+[25] T. Kobayashi, et al., “Interpolation of Ray-Space Data by Adaptive Filtering,” in Proc. of SPIE, vol. 
+3958, Mar. 2000, pp. 252-259. 
+[26] L.-Z. Fan, et al., “New Ray-Space Interpolation Method for Free Viewpoint Video System,” in Proc. 
+IEEE PDCAT’05, Dec. 2005, pp. 684-688. 
+[27] E. S. Shijagurumayum and F.-C. Chang, "Preliminary Survey of Multiview Synthesis Technology," in 
+IEEE International Conference on Intelligent Information Hiding and Multimedia Signal Processing 
+(IIH-MSP 2010), Darmsdadt, Germany, Oct. 2010, pp. 163-166. 
+[28] F.-C. Chang, "A Scheme for Network Service Integration by XMPP," in 2010 E-Tourism, Yilan, 
+Taiwan, Jun. 2010, pp.55-64. 
+RDT08 
+  
+策等步驟。而技術的演進則可回溯制 1970 年，當時是以幾何學的角度來表示臉部資訊。到了接近 1990
+年，臉部辨識開始導入外觀（紋理、顏色等等）的特徵，且以 eigen face 作為正規化的方法。2000 年之
+後，由於硬體運算速度突飛猛進，遂加入 multi-cue fusion 的概念，以多重場景特徵協助辨識人臉。 
+臉部辨識面臨的難題包括環境因素，例如環境光線的性質；臉上的物體遮蔽，例如眼鏡、毛髮、飾
+品，甚至是表情與年齡，都會影響臉部特徵的擷取與比對；此外就是動作造成的臉部角度傾斜，或是拍
+攝時的模糊問題，都會影響分析。從資訊處理理論的角度來看，難題包括臉部的多樣及複雜性，使得穩
+定的辨識用特徵不易定義出來。由各式各樣的觀點切入，會看到不同類型的問題。例如訓練用的資料數
+量相對於實際辨識的照片來說，實在不成比例；或是環境光線的色彩或強度，會使得面部陰影甚至是色
+調發生變化；姿勢的不同使得拍攝到的臉部呈現並非理想的正面，造成特徵擷取與比對時的大幅誤差；
+當然，資料庫照片與實際拍攝時的年齡或裝扮並不一定相近，甚至攝影基本深的特性也有很大影響。總
+而言之，這些因素導致資料本身不太具有線性特質，形成的資料空間也非凸面，因此傳統基於 PCA 之類
+的線性相似度計算不太適用。 
+演講的最後提到他們的成果，結合 3D 取像、光影正規化修正、熱感應特徵等等 multi-cue 形成的混
+合式臉部辨識方法。儘管該系統已進行過實際車站內追蹤特定對象的實驗，但作為門禁監控系統的話，
+依然有許多困難待解的問題。除了前述的姿態、裝扮、年齡等已知的問題外，如何判別是否為真人（如
+何辨別照片以及模型），也是相當有趣的課題。可能的解決方式為加入空間掃描，以及利用
+challenge-response 類型的測試。 
+學術研究課題隨時間而變，對於工程領域而言，除了理論與實作之外，還需要不斷吸收相關的新知，
+才能激發靈感。參加本次會議，除了了解最新研究趨勢與成果，與來自各地的學者專家一同討論，觀摩
+學習他人的研究方法，深感獲益良多。 
+三、 考察參觀活動(無是項活動者省略) 
+（無） 
+四、 建議 
+（無） 
+五、 攜回資料名稱及內容 
+這次會議提供各個場次的時程，並附 CD 版的論文集。 
+六、 其他 
+（無） 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：張峰誠 計畫編號：98-2218-E-032-008- 
+計畫名稱：基於低擷取數量之多視點影像合成技術研究 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

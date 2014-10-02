@@ -1,0 +1,996 @@
+ 2 
+2. 研究目的 
+ 
+近年來，資料探勘的研究重點已經逐漸轉移到一種新的資料處理模型(data 
+processing model)，稱為資料串流(data streams)。資料串流是一個由龐大且近乎無
+限多的資料元件(data element)所形成的長串的序列(sequence)，其中每個資料元件
+可視為一筆交易紀錄。資料元件以非常快的速度產生並持續不斷地以傳輸，對於
+接收端系統而言，資料就猶如流水一般源源不絕地湧入。資料串流和傳統資料庫
+最主要的不同，在於前者是沒有固定大小、沒有一定順序、並且隨著時間不斷增
+加其元件數量的動態資料，因此過去的資料無法完整保留下來。相較於傳統以資
+料庫為對象的資料探勘，在資料串流中進行的探勘工作時，我們原則上無法得到
+完全正確的結果（亦即探勘結果是近似值，或者保證誤差範圍的概略值）。此外，
+有幾項額外需求必須滿足[9]，包括：資料串流中的每一個元件無法反覆多次檢視、
+用於探勘無限串流資料的記憶體用量必須有所限制、新收到的資料元件應該盡可
+能快速地被處理完畢、最新的探勘結果能夠在使用者隨時下達要求之後立刻產生
+並且傳回、資料串流所具有的概念漂移(concept drift)的特性必須妥善地處理、當
+輸入資料過多而來不及處理時需要有適當的應付手段等。 
+如果以進行探勘時所要處理的時間長度做為區分，則可以將資料串流歸納成
+為三種不同的時間模型[14]，分別是里程碑模型、滑動時間窗模型，以及衰退式模
+型。里程碑模型(landmark window model)的探勘範圍是包含在一個被稱為里程碑
+(landmark)的特定時間點與目前時間點之間。亦即，從里程碑開始直到目前為止的
+範圍內的所有資料元件，將是資料探勘的進行對象。滑動時間窗模型(sliding 
+window model)的探勘工作是在最近產生（或接收到）的一組固定數量的串流元件
+中執行，將這最近的一組資料元件視為資料探勘的進行對象。衰退式模型(damped 
+window model)基本上類似於滑動時間窗模型，但主要的差別在於其加入「權重值」
+的概念，進一步將範圍內的資料元件劃分為更小的 window 以區分其時間先後，愈
+新的 window 將給予愈高的權重值，反之則否。 
+在本計畫中，我們的目標在於開發一個有效率、有持久性、運作於滑動時間
+窗模型的資料探勘系統。這個系統以交易資料串流作為輸入對象。當使用者提出
+查詢需求時，探勘系統會從串流資料中快速尋找出經常出現的有價值樣式，並將
+此結果輸出給使用者。這個資料串流探勘系統包含了過去所沒有的探勘方法論以
+及控制負載量之機制，並且能夠充分滿足先前所提及之探勘資料串流的各項需
+求。本計畫的探勘系統必須符合下列目標：(1)探勘演算法有優秀且穩定的效能表
+現，同時其探勘結果具有合理的準確度。(2)當資料串流速度過快時系統仍舊能正
+常運作，且其探勘結果的品質仍必須維持在一個可接受的程度。 
+ 
+ 4 
+達 ms（但卻被挖掘出來）的非頻繁樣式，但只要是超過 ms 的頻繁樣式都會完整
+地被探勘出來。另一方面，其探勘結果的項目集的計數值可能存在有誤差，但誤
+差值保證最多不會超過 ε；例如，如果將 ε 設成 ms 的十分之一，則代表誤差最多
+為 10 %。Lossy Counting 的主要想法為，當一個項目集 A 的支持度低於 ms 時，並
+不立刻將 A 當作非頻繁樣式而捨棄掉，而是將 A 視為一個潛在頻繁樣式 (potential 
+frequent itemset)並繼續保留；如果當 A 的支持度降到更低，已經低於第二道門檻 ε
+時，才會將給捨棄掉。這個方法能夠保證結果的誤差值最多為 ε，因為在演算法執
+行過程中完整保留了支持度介於 ε 與 ms 之間的潛在頻繁樣式。 
+ 
+在現實應用中，有許多資料串流的來源都很可能發生劇烈之容量暴增的現
+象。由於位於尖峰時刻的資料負載量可能會是平常的數倍之多，因此要讓資料串
+流探勘系統正常地處理尖峰負載通常是無法做到的。對於處理連續查詢需求的資
+料串流探勘系統而言，當發生非預期的資料量暴增，導致串流的輸入速率高於系
+統本身的處理能力時，必須要具備適應變化的能力。一個系統如果處於超載
+(overloaded)狀態時，將無法完整處理所有輸入的資料，並且趕不上串流資料的抵
+達速率。因此，負載控制(load shedding)這門技術，即拋棄一部份的輸入資料、不
+對其進行處理，讓系統能夠持續運作並提供最新的查詢結果，對於處理資料串流
+的系統而言是不可忽略的一個重要議題 [1] [13]。 
+負載控制機制的設計，除了要能夠達到拋棄部分資料（以讓系統能持續正常
+運作）的功能外，尚必須考慮到因為沒有處理所有接收到的資料而可能對探勘結
+果之品質所造成的負面影響。Yun Chi 等人提出了資料串流領域中第一個結合負載
+控制機制的分類探勘系統「Loadstar」[13]。在這個探勘系統中，多重資料串流（多
+重資料來源）中的原始資料經由通訊頻道進入資料準備與分析的模組，並在這個
+模組中進行資料清理、特徵選取、特徵構成等處理工作，而推導出來的資料特徵
+接著會傳送到分類器(classifier)。通訊頻道的頻寬大小是有限制的，因此原始資料
+並無法保證全部都能夠通過。如果系統因為資料來源太多或者太快而發生超載
+時，一部份的資料會在它們進入通訊頻道之前就被丟棄。雖然這些資料被丟棄了，
+但它們的特徵值可以根據一些歷史資訊而重新獲得，這項工作是由特徵預測器的
+區塊來負責。因此，系統中的分類器會處理兩種輸入，一種是真實的特徵值，另
+一種是預測的特徵值。 
+從 Loadstar 這個系統中，我們可得到兩個有關於「負載控制」機制的重要觀
+念。首先，「負載控制」在可能導致探勘系統超載的資料串流環境中是必須具備的
+功能。其次，當負載控制機制拋棄掉一部分的輸入資料時，必須降低該資料對探
+勘結果的負面影響力，或者設計其他方法以便彌補該部分遺失資料的資訊。 
+ 6 
+對於一個未保留而不知道支持度值的項目集，SWCA 透過底層摘要中該項目集的
+子集合的支持度，藉由組合估算公式求得其支持度的近似值。對 SWCA 方法而言，
+在不需要探勘的一般情況下，它只需要處理一批批接收到的交易並且記錄(保留)
+底層摘要；當使用者要求探勘結果時，才需要透過組合估算進行其探勘程序（即，
+估算較長的項目集的支持度並且選出支持度在最小支持度以上者）。 
+在進行組合估算時，為了能得到較佳的準確度，長度 1 的子項目集之計數值
+可經由長度 2 的子項目集之計數值劃定出一個和欲估算的項目集有較多關聯性的
+範圍；使用這個範圍內的值（而非長度 1 子集的原始計數值）來代入估算公式，
+基本上可以得到較為準確的估算值，因為可以排除掉子集計數值中跟欲估算項目
+集較無關的部分。這個處理長度 1 子項目集的做法稱為計數值劃界技巧(counts 
+bounding)[6]。至於在這個劃定範圍內的計數值，應該如何適當地挑選以獲得較佳
+的估算準確度，更具體地說，應該選擇「上限值」或者「下限值」會比較好，在
+SWCA 方法中使用了一個名為 fair-cutter 的觀念，用來決定該選取的計數值。 
+為了決定該選取上限值或下限值，我們需要先知道兩項事實：選取由於選取
+劃界範圍中的上限值會使得估算出來的計數值有最小可能值，而選取劃界範圍中
+的下限值則會使得估算出來的計數值有最大可能值。這兩點在我們發表的論文[7]
+中已經證明出來。因此，SWCA 以長度 2 的項目集為基本單位，對每一個可以增
+長出長度 3 項目集的 2-項目集，賦予其一個 fair-cutter 的數值；在其增長出來的 3-
+項目集中，計數值在 fair-cutter 以上以及計數值在 fair-cutter 以下的項目集所形成
+的集合，分別都佔了整體集合大小的一半以上。亦即，此 fair-cutter 將 2-項目集的
+超項目集合分成「計數值大於或等於 fair-cutter」與「計數值小於或等於 fair-cutter」
+的兩個近乎相等的部分，且此兩部分的成員分別都佔了集合整體的半數以上。 
+當進行組合估算時，對於一個可以增長出長度 3 項目集的 2-項目集，如果其
+fair-cutter 的值高於最小支持度，表示該項目集所增長出來的 3-項目集有半數以上
+都是頻繁的；反之，如果 fair-cutter 低於最小支持度，則標示該項目集所增長出來
+的 3-項目集有半數以上都是非頻繁的。在前者的情況，因為有半數以上的項目集
+都是頻繁項目集，在估算時應該傾向得到較高的估算值，因此選擇劃界範圍中的
+下限值；在後者的情況，因為有半數以上的項目集都是非頻繁項目集，在估算時
+應該傾向得到較低的估算值，因此反過來選擇劃界範圍中的上限值。由於不同的
+2-項目集有不同的 fair-cutter，因此 3-項目集的 1-子項目集應該選擇劃界範圍的上
+限值或下限值也各自不同。藉由比較每一個 fair-cutter 和最小支持度的大小關係，
+SWCA 在估算不同的 3-項目集時，1-子集合的計數值會分別挑選劃界範圍內的不
+同數值，因此達成了「動態取值估算」(dynamic approximation)的功能。 
+ 
+ 8 
+ 
+(2) 以屬性為基礎(arrtibute-based)的減載策略： 
+串流中的資料以「屬性」(項目)作為拋棄的單位。假設目前必須執行 10%的
+負載過濾，此策略從接收到的交易資料中刪除掉一些項目，使得整體的資料負載
+量（以項目總個數來看）減少掉 10 %；被刪除的屬性是所有屬性中出現頻率最低
+的一群，可根據各個屬性在前一個批次的出現次數，從次數最少的屬性開始刪除。
+當串流資料中所包含的屬性數量（因為減載而）減少時，可能產生的項目集的組
+合數也會跟著減少，因此之後處理減載過的資料的計算複雜度將會降低。優先選
+擇出現頻率低的屬性之理由是因為這種屬性不容易增長出更長的項目集，因此跟
+頻繁項目集的產生與否不太有關係，是比較不重要的屬性。 
+ 
+(3) 以優先度為基礎(priority-based)的減載策略： 
+串流中的資料以「交易」作為拋棄的單位。假設目前必須執行 10%的負載過
+濾，則每接收到 10 筆資料便會選擇拋棄掉其中一筆，被選擇的交易為 10 筆交易
+中優先度最低的一筆。每一筆交易的優先度根據「優先度表格」來決定。此表格
+中記錄了在前一個批次中，支持度接近最小支持度的一批固定數量的最大頻繁項
+目集。在這批項目集之中，支持度愈接近最小支持度者其優先度愈高；此外，擁
+有相同計數值的最大頻繁項目集，長度愈長者其優先度愈高。每一筆接收到的串
+流交易在優先度表格中匹配到一個相同或最相似的最大頻繁項目集，並被賦予該
+項目集的優先度值。根據與最小支持度的接近程度來設定優先度之理由是因為在
+最小支持度門檻值邊緣的項目集容易因為誤差而造成誤判，如果關係到這部分資
+訊的交易能夠盡量保留而不被刪除，對於探勘準確度的維持將會有幫助。 
+ 
+在上面三種減載策略中，「以交易為基礎」和「以屬性為基礎」的兩種策略是
+以處理效率為導向的策略，亦即，減載後的資料可以被探勘方法以更快的平均速
+率給處理完畢。前者的原因是減載後的資料只剩下長度比較短的交易（平均長度
+減少），而後者的原因是減載後的資料可能包含的項目集集合比原本小了很多（樣
+式組合數減少）。相較之下，「以優先度為基礎」的策略是以探勘品質為導向的策
+略，因為其透過優先刪除對於「誤判項目集之頻繁與否」比較沒有影響力的交易
+來維護探勘結果準確度。除此之外，「以交易為基礎」的策略直接在當前批次中進
+行降低負載的處理，不需要回饋資訊；而「以屬性為基礎」和「以優先度為基礎」
+的策略則需要參考前一個批次的結果，才能夠決定當前批次中哪一些元件是應該
+被選擇刪除的。這些減載策略的基本目的都在於當資料串流的資料傳輸速率過
+高，使得探勘系統的負載程度超出正常範圍時，藉由(快速地)刪除掉一部分資料
+而降低負載量，讓系統能夠正常運作並且擁有合理的效能表現。 
+ 10 
+前兩個）長度的項目集，因此效能可以固定維持在一個相當高的水平。相較之下，
+當最小支持度的數值降低時，LC-SW 根據 ε 這個對應著降低的參數，需要處理和
+記錄更多的項目集，因此其單位時間資料處理量和時間窗滑動時間都會持續變差。 
+ 
+圖 2. 演算法於 T15.I6.D100K 資料集的不同最小支持度的設定下的執行效率 
+ 
+接著是關於演算法產生的探勘結果的準確度的實驗。圖 3 呈現 SWCA 與
+LC-SW 在 0.1%～1.5%的最小支持度變動範圍內，對 T10.I4.D100K 測試資料集進
+行探勘的平均準確度。左邊的圖 3(a)顯示 recall 比率（正確找出所有頻繁項目集中
+的多少百分比），右邊的圖 3(b)顯示 precision 比率（判斷為頻繁的項目集的正確判
+斷率）。從圖 3 可以看出 LC-SW 的探勘準確度略高於 SWCA，雖然如此，但 SWCA
+在平均上也達到 90%以上的 recall 比率和 95%以上的 precision 比率，堪稱相當良
+好。如果綜合考慮前面所呈現的 SWCA 在效率上的明顯優勢，那麼 SWCA 不失為
+一個處理速度快又能提供品質可接受之探勘結果的演算法。 
+ 
+圖 3. 演算法於 T10.I4.D100K 資料集的不同最小支持度的設定下的探勘準確度 
+ 
+5.2 負載控制策略的效果 
+ 
+本小節報告的是我們針對一個使用 Lossy Counting 演算法[3]的資料串流探勘
+系統所設計的負載控制機制的評測結果。在這個實驗中，使用的測試資料集為
+T10.I4.D1000K，設定的最小支持度值為 0.5%，探勘系統在一個單位時間內可以處
+理的最大資料量設為 80,000 筆交易。令相同單位時間內所接收到的資料量為 X，
+則該單位時間內的系統負載量為 X/80,000。如果負載量低於 100%則系統可正常無
+虞地處理串流資料；如果負載量為 100%則表示系統剛好滿載但仍然屬於正常狀
+態；如果負載量超過 100%則表示系統過載，需要啟動減載機制來刪除掉一些未處
+理的資料。我們對探勘系統測試了數種不同的負載程度，範圍從 75%(負載正常)
+到 150%(資料過載)，並且測量(在過載狀態時的)探勘效率表現以及探勘結果品
+ 12 
+6. 結論 
+ 
+針對在動態資料串流環境中探勘頻繁項目集的問題，有兩個關鍵的議題，一
+個是可行且效率高的探勘演算法，另一個是針對資料過載所設計的負載控制機
+制。在本研究計畫中，我們分別對這兩個議題進行研究並且提出了解決方案。 
+在探勘演算法的部分，我們提出了一個以「組合估算」為理論基礎、運作於
+滑動時間窗模型之下的 SWCA 方法。SWCA 採取批次處理的方式以滑動時間窗並
+且更新資料結構，從接收到的串流交易中擷取並記錄長度 1 以及長度 2 的項目集，
+稱為底層摘要。當需要探勘時，SWCA 根據這些記錄下來的摘要資訊，使用組合
+估算理論來求出長度更長（沒有記錄）的項目集的計數值，並在估算工作完成後
+將計數值滿足最小支持度的項目集合當作結果傳回給使用者。為了提升估算的準
+確度，SWCA 對長度 1 的子項目集使用計數值劃界技巧，並且用一種動態地從劃
+界範圍中選取上限值或下限值的方式來估算項目集的支持度，此技巧稱為「動態
+取值估算」。從實驗結果中可以發現，SWCA 因為使用估算方式取代掃瞄法，在效
+能上相當具有優勢，明顯優於以 Lossy Counting 為基礎的演算法；而透過估算所產
+生的探勘結果，也具有可以接受的準確程度。 
+在負載控制機制的部分，我們針對一個使用 Lossy Counting 演算法的探勘系
+統，設計一套了透過刪除部份未處理資料的方式來降低系統負載量的做法，並且
+提出了三種不同的資料減載策略：以交易為基礎、以屬性為基礎，以及以優先度
+為基礎。在三種減載策略中，「以交易為基礎」以及「以屬性為基礎」的策略屬於
+探勘效能導向，目的在於加快系統處理減載後資料的速率；「以優先度為基礎」的
+策略屬於探勘品質導向，目的在於維持資料經過減載後的探勘準確度。從實驗結
+果中可以觀察到，三種減載策略在系統處於資料過載情況時都能夠降低執行時間
+（相較於不做減載而直接處理所有資料而言），尤其以「以屬性為基礎」的策略之
+效果最為顯著；在探勘準確度的部分，「以優先度為基礎」和「以交易為基礎」的
+策略都能夠讓探勘系統在資料經過減載後維持不錯的探勘品質。 
+在未來研究工作方面，我們預計改良並且整合上述兩部分的研究成果，開發
+一個使用以組合估算理論為基礎的演算法的探勘系統，並且具有控制負載程度的
+機能。於演算法部分，我們預計在維持高效率特性的前提之下，探討如何設計出
+其他能夠提升估算準確度的技巧。於負載控制機制部分，考慮到探勘系統所使用
+的演算法，我們預計設計新的控制負載量的方式，並且將目前提出的幾種相對粗
+略的減載策略改善得更加精緻。 
+ 
+ 14 
+ 
+ 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。 
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+□ 達成目標 
+□ 未達成目標（請說明，以 100 字為限） 
+□ 實驗失敗 
+□ 因故實驗中斷 
+□ 其他原因 
+達成目標說明：探勘方法 SWCA 使用「組合估算理論」為基礎，按照當初曾經規劃過的
+一些改善估算準確度的構想，我們最終設計出「計數值劃界技巧」以及「動態取值估算
+技巧」。負載控制機制的做法為刪除部分未處理資料，針對當初曾經規劃過的幾種可行方
+式，我們最終提出「以交易為基礎」、「以屬性為基礎」，以及「以優先度為基礎」之三種
+策略。故本計畫之研究成果大致達成原計畫書中所預期達到的兩項主要目標。 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：□已發表 □未發表之文稿 □撰寫中 □無 
+專利：□已獲得 □申請中 □無 
+技轉：□已技轉 □洽談中 □無 
+發表論文說明（共 2 篇）： 
+1. IMECS 2010：The International MultiConference of Engineers and Computer Scientists 
+2010 (會議於 2010 年 3 月在香港舉辦) 
+2. ICMLC 2010：The International Conference on Machine Learning and Cybernetics 2010 
+(會議於 2010 年 7 月在中國山東省青島市舉辦) 
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性） 
+對資料串流頻繁樣式探勘的研究領域而言，SWCA 探勘演算法使用 CA 為理論基礎，略
+微犧牲一些探勘準確度來達到優良的探勘效率，是一種與眾不同的新方法論；至於負載
+控制機制，過去未曾有過相關的研究成果，本計畫的研究首開先例進行嘗試。此外，本
+報告中所提到的演算法以及相關機制皆有實作出來並且經測試是可以運作的，因此，只
+要經過適當地修改與調整，便能夠應用於現實生活中的資料串流頻繁樣式探勘系統中。 
+ˇ
+ˇ 
+ 2 
+  
+Abstract — Frequent-patterns discovery in data streams is an 
+active research area and more challenging than traditional 
+database mining since several additional requirements need to be 
+satisfied. In this paper, we propose a mining algorithm for 
+finding frequent itemsets over sliding windows in a data stream. 
+Different from most existing algorithms, our method is based on 
+the theory of Combinatorial Approximation to approximate the 
+counts of itemsets from some summary information of the stream. 
+We also devise the novel concept of fair-cutter, which results in 
+an original technique called dynamically approximating and 
+makes our method capable of approximating adaptively for 
+different itemsets. Empirical results show that the proposed 
+method is quite efficient and scalable; moreover, the mining 
+result from approximations achieves high accuracy. 
+ 
+Index Terms — Combinatorial approximation, data stream, 
+data-stream mining, frequent itemset, and sliding window. 
+ 
+I. INTRODUCTION 
+In many application domains, data is presented in the form 
+of data streams which originate at some endpoint and are 
+transmitted through the communication channel to the central 
+server. Some well-known examples include market basket, 
+traffic signals, web-click packets, ATM transactions, and 
+sensor networks. In these applications, it is desirable that we 
+obtain some useful information, like patterns occurred 
+frequently, from the streaming data, to help us make some 
+advanced decisions. Data-stream mining is such a technique 
+that can find valuable information or knowledge from a great 
+deal of primitive data. 
+Data-stream mining differs from traditional data mining 
+since its input of mining is data streams, while the latter 
+focuses on mining (static) databases. Compared to traditional 
+databases, mining in data streams has more constraints and 
+requirements [1]. First, each element (e.g., transaction) in the 
+data stream can be examined only once or twice, making 
+traditional multiple-scan approaches infeasible. Second, the 
+consumption of memory space should be confined in a range, 
+despite that data elements are continuously streaming into the 
+local site. Third, notwithstanding the data characteristic of 
+incoming stream may be unpredictable, the mining task should 
+proceed normally and offer acceptable quality of results. 
+Fourth, the latest analysis result of the data stream should be 
+available as soon as possible when the user invokes a query. 
+ 
+The authors are with the Department of Computer Science and 
+Engineering, National Chung-Hsing University, Taichung 402, Taiwan, 
+R.O.C. (e-mail: kfjea@cs.nchu.edu.tw; s9656026@cs.nchu.edu.tw). 
+As a result, one good stream mining algorithm needs to 
+possess efficient performance and high throughput, while 
+slight approximate errors occurred in the mining result is 
+usually acceptable by the user. 
+The research of data-stream mining in general can be 
+classified into three categories according to the stream 
+processing model [2]. The first one is the landmark window 
+model. In this model, there is a time point called the landmark, 
+and the range of mining contains all the data elements (or 
+transactions) between the landmark and current point. The 
+second one is the damped (fading/decay) window model. In 
+this model, each element is associated with a weight which is 
+relative to the time. When a stream element is just arriving, its 
+weight is at the highest value and then will get damped 
+continuously as time goes by. The last one is the sliding 
+window model. In this model, the range of mining is confined 
+to the elements contained in a window which will slide with 
+time. The window always covers a certain number of most 
+recent elements and the mining task focuses on these elements 
+at any point. 
+In this paper, we propose a remarkable approximating 
+method for discovering frequent itemsets in a transactional 
+data stream under the sliding window model. Based on a
+theory of Combinatorial Mathematics, the proposed method 
+approximates the counts of itemsets from certain recorded 
+summary information without scanning the input stream for 
+each itemset. Together with an innovative technique called 
+dynamically approximating to select parameter-values
+properly for different itemsets to be approximated, our method 
+is adaptive to streams with different distributions. Through the 
+experimental results, we found that our method has efficient 
+performance with pretty accurate mining result. 
+The rest of this paper is organized as follows. Section II
+briefly introduces the related research on data-stream mining 
+in recent years. In Section III we state our problem and give 
+the necessary representation of symbols. Section IV describes 
+the way our method processes on a data stream with a sliding 
+window, and explains the technique to approximate 
+dynamically. Next in Section V, we give an explanation of the 
+proposed algorithm. Section VI reports the experimental 
+results of our method with simple analyses. Finally, Section 
+VII concludes this paper. 
+ 
+II. RELATED WORK 
+There are a number of research works which study the 
+problem of data-stream mining in the first decade of 21st 
+A Sliding-window Based Adaptive 
+Approximating Method to Discover Recent 
+Frequent Itemsets from Data Streams 
+Kuen-Fang Jea and Chao-Wei Li 
+ 4 
+for the purpose of obtaining a more preferable mining result. 
+An unchangeable ms leads to a serious limitation and may be 
+impractical in most real-life applications. As a result, we relax 
+this constraint in our problem that the user is allowed to 
+change the value of ms at different times, while our method 
+must still work normally. 
+The following approximate equation, which is derived 
+from the equation of Approximate Inclusion–Exclusion in [8], 
+is the core (or the basis) of our approximating approach. 
+| A1 ∪A2 ∪…  ∪ Am |  ≒ ||||
+,
+|| ∩
+Si
+i
+kS
+mk
+S A
+∈≤
+∑α .                         (1) 
+According to (1), given a collection of m sets, A1, A2, …, Am, 
+the size of m-union term can be approximated even if we know 
+only the sizes of partial intersection terms for some k, where 
+k<m. By considering each item as a set, and the number of its 
+occurrences in transactions (i.e. count) as its corresponding 
+size, we could indirectly apply (1) to approximate the count of 
+an itemset from the sum of counts of its subsets of different 
+lengths. For example, if we have the information called the 
+summary in Table 1, we would approximate the count of a 
+3-itemset, such as abc, through (1), based on the sum of counts 
+of its 1-subsets (i.e., a, b, and c) and 2-subsets (i.e., ab, ac, and 
+bc), both of which can be obtained from Table 1. 
+ 
+Table 1. An example of some itemsets with counts 
+Itemset Count Itemset Count 
+a 25 ab 7 
+b 17 ac 6 
+c 20 ad 6 
+d 13 bc 8 
+  bd 7 
+  cd 5 
+ 
+If we have the summary of I1 and I2 of a stream over the 
+sliding window, we could achieve the mining work anytime 
+when requested by approximating the counts of itemsets, 
+through applying (1) with the parameter setting k=2, based on 
+the summary information we have kept. Now we outline the 
+way how we process the incoming transactions of the data 
+stream. For each incoming transaction T, we find all the 
+first-two-order lengths of subsets contained in T and record 
+their occurrences in our data structure. As a result, the 
+first-two-order summary (i.e., I1 and I2) of the stream is 
+maintained. We say that the summary length in our method is 
+2. The manner of incrementally updating the summary over 
+the sliding window in a stream will be detailed in Section 4. 
+The aforementioned means is the primary concept to 
+approximate the counts of itemsets. In practice, for an itemset 
+X to be approximated, the count of each of X’s subset may 
+come from (be supported by) various transactions where many 
+of them may have insufficient relation to X. Using the original 
+count-values of subsets to approximate the count of X may 
+sometimes bring about considerable error. For a better 
+approximation, there is a possible way, which is to bound the 
+range of counts of subsets for the itemset to be approximated. 
+Let Y be a 3-itemset (to be approximated) and y be a 
+1-subset of Y. To obtain a better approximation of Y, the 
+count-value to each subset y with respect to Y has a particular 
+range, which can be determined by Y’s 2-subsets that have y as 
+their common subset, respectively. This range of y’s count is 
+bounded by an upper bound (i.e., the maximum) and a lower 
+bound (i.e., the minimum), and count-values within this range 
+are the set of portions of y’s original count which is more 
+relevant for y with respect to Y. We define Scby(Y) as the set of 
+count-values of y with respect to Y within the range obtained 
+through the aforesaid manner. Besides, the upper bound and 
+the lower bound of count-values of y are denoted by uby(Y) 
+and lby(Y), respectively. 
+We use the same example in Table 1 to illustrate this 
+concept. To approximate an itemset abc, the count of its 
+1-subset a with respect to abc can be bounded by abc’s 
+2-subsets ab and ac, which have a as their common subset. In 
+Table 1, the counts of ab and ac are 7 and 6, respectively, and 
+therefore the count of a with respect to abc is bounded within 
+the range between the lower bound of 7 (i.e., the one of ab and 
+ac with greater count) and the upper bound of 13 (i.e., the sum 
+of counts of ab and ac). We have Scba(abc) = {7, …, 13}, 
+uba(abc) = 13, and lba(abc) = 7. Compared with a’s original 
+count of 25, count-values in the set Scba(abc) are the portions 
+of 25 which are relevant for a with respect to abc. The ranges
+of counts of other 1-subsets b and c of abc, i.e., Scbb(abc) and 
+Scbc(abc), can be obtained similarly as we do for a. 
+By using a count-value in the range of each 1-subset to form 
+the sum of 1-subset term, we could then obtain a better 
+approximation for an itemset than that of using the original 
+counts of 1-subsets. However, for each 1-subset, we have no 
+idea about what count-value in its range is better than others. 
+For example, in the above instance of a, even if we obtain a 
+range of counts in Scba(abc), we have no idea about which 
+value in Scba(abc), e.g., uba(abc) or lba(abc), is more 
+appropriate than others for a to approximate abc. As a result, 
+our main issue (and also contribution) in this research is to 
+devise a mechanism for the above problem. That is, the mining 
+algorithm needs to be able to choose the appropriate 
+count-values for the 1-subsets when approximating a 
+3-itemset Y, and thus can approximate dynamically for 
+different 3-itemsets. Before we illustrate our means in the next 
+section, the following property is first introduced. 
+ 
+Lemma 1 Let cntub(Y) and cntlb(Y) respectively be the 
+approximate counts of Y obtained by using uby(Y) and lby(Y)
+of count-values to every 1-subset y ∈ Y during the 
+approximating process. Then cntub(Y) ≤ cntlb(Y). 
+Proof .Let Tub and Tlb be the sums of counts of 1-subsets of Y
+obtained by choosing uby(Y) and lby(Y) for each y∈ Y, 
+respectively. Then Tub ≥ Tlb since uby(Y) ≥ lby(Y) for each y. 
+According to (1) with the parameters setting m=3 and k=2, we 
+can eventually obtain the following simplified equation: cnt(Y
+≒ (1－ 3,22α ) c + ( 3,21α －1) d, where the symbol  mkj ,α  denotes 
+the coefficient of linearly transformed Chebyshev polynomial, 
+and c and d represent the sum of counts of Y’s 2-subsets and 
+that of counts of Y’s 1-subsets, respectively. Since the value of 
+3,2
+1α  is less than 1, the coefficient ( 3,21α －1) for 1-subset term 
+is then negative, which means that the value of 1-subset term 
+will be subtracted from the other term. Thus, by substituting 
+Tub and Tlb for d respectively in the approximate equation and 
+knowing that Tub ≥ Tlb, we have cntub(Y) ≤ cntlb(Y). 
+ 
+ 6 
+common itemset(s) whose count(s) equal(s) FC(X), and 
+their sizes reach the majority of P, respectively. As the name 
+of fair-cutter indicates, the sizes of the two sets of P generated 
+by FC(X) are balanced or near-balanced. 
+ 
+Example 1 .Table 2 records a 2-itemset ak and all the 
+3-itemsets which can be grown from ak. The number in the 
+parentheses behind each itemset represents its count. In this 
+example, Growth1(ak) = {akl, …, aky, akz}, |Growth1(ak)| = 
+15, P = {akl, akm, …, akv, akw} (that is, the itemsets in 
+Growth1(ak) whose counts are greater than 0), and |P| = 12. 
+From Definition 2, the FC of ak (i.e., FC(ak)) is 5 since the 
+number of itemsets in P whose counts are above 5 is six, and 
+the number of itemsets in P whose counts are below 5 is seven, 
+both of these two values are above 1/2×|P|. Besides, the value 
+“5” is the minimum count that satisfies the above condition. 
+ 
+Table 2. A 2-itemset and its 3-supersets 
+ak (10) 
+ akl (3) akm (6) akn (2) ako (6) akp (3) 
+akq (7) akr (4) aks (1) akt (7) aku (9) 
+akv (8) akw (5) akx (0) aky (0) akz (0) 
+ 
+Having the aforementioned concept of FC, we now explain 
+how to select the appropriate counts from Ubc and Lbc to 
+1-subsets for approximating the count of an itemset Y. 
+According to Lemma 1, we know that choosing Lbc to 
+1-subsets will result in higher approximations, make more 
+itemsets exceeding ms, thus produce more frequent itemsets in 
+the result than that of choosing Ubc. In contrast, adopting Ubc 
+to 1-subsets will result in lower approximations for itemsets, 
+which leads to less frequent itemsets in the result than that of 
+adopting Lbc. 
+Given a user-specified ms and a 2-itemset X, if the 
+fair-cutter of X (i.e., FC(X)) is above ms, according to 
+Definition 2, we know that the majority of members in P are 
+over the minimum support threshold, i.e., they are frequent 
+itemsets. Oppositely, if FC(X) is below ms, we understand that 
+the majority of members in P are under ms, i.e., they are 
+infrequent itemsets. It is known that a frequent itemset (in the 
+mining result) will raise the true-positive rate, while an 
+infrequent itemset will diminish the true-negative rate and 
+also the precision. By taking both Theorem 1 and Theorem 2 
+into account, this gives us a heuristic to choose Lbc or Ubc 
+dynamically. In the former case, which the frequent itemsets 
+are the majority, we should adopt Lbc to 1-subsets for 
+approximating X’s 3-supersets (to produce more true-positive 
+itemsets). In the latter case, where the infrequent itemsets 
+become the majority, we should instead adopt Ubc to 
+1-subsets for approximating X’s 3-supersets (to produce less 
+false-positive itemsets). By comparing ms with the respective 
+FCs of itemsets, we would determine the better ways to choose 
+the counts of 1-subsets for different itemsets to be 
+approximated. We formally name this technique dynamically 
+approximating. 
+ 
+V. THE SWCA ALGORITHM 
+Based on the previous analysis, we devise an algorithm 
+which would approximate the counts of itemsets dynamically 
+and discover FIs over a sliding window of a data stream. Our 
+stream mining method, namely the Sliding-Window based 
+Combinatorial Approximation (SWCA) algorithm, is 
+described as follows. 
+As mentioned in Section 4, we further divide the sliding 
+window into m equal-size segments of s transactions, and 
+process the sliding of window incrementally in a 
+segment-based manner. The data structure we employ to 
+maintain the summary information is a lexicographic-ordered 
+prefix tree modified from the one in [12]. This tree structure 
+mainly maintains I1, I2, and FCs of 2-itemsets over the current 
+window of a data stream, also in a segment-based fashion. For 
+each itemset X belonging to I1 or I2, the corresponding node in 
+the tree includes a circular array of size m, which corresponds 
+to the m segments of the sliding window, and X’s count over 
+the current window is recorded respectively in these m fields. 
+There is also a pointer to indicate which field the count of X
+over Sn is stored. If we combine the counts of all fields in the 
+array, we then obtain the count of X over the current window. 
+Besides, the summary information (i.e., I1 and I2) of the 
+current segment Sc is kept separately in an array. In this array, 
+we also maintain I3 temporarily for the purpose of finding the 
+FC of each 2-itemset at the time when Sc is going to be inserted 
+into the window. When the user invokes a mining request, 
+SWCA then starts approximating the counts of itemsets 
+(whose lengths are above that of the summary) based on the 
+summary, i.e., I1, I2, and FCs, stored in the tree. 
+The SWCA algorithm processes on an on-line transactional 
+data stream. As long as there is no query from the user, SWCA 
+continues receiving and processing the incoming transactions 
+one by one, and handles the sliding of window in a 
+segment-based manner. For each incoming transaction T in the 
+current segment Sc, SWCA enumerates and records the 
+(counts of) first-three-order lengths of subsets contained in T. 
+When Sc is full of transactions, SWCA first finds the FC for 
+each 2-itemset X whose count is not 0 in Sc, and then performs 
+one segment in-out operation. To insert Sc into the window, 
+only I1, I2, and the FCs of 2-itemsets are updated into the tree, 
+while the temporarily kept I3 over Sc is discarded. 
+When the user invokes a query, SWCA then starts its 
+approximating work. During the process, SWCA first 
+approximates the counts of 3-itemsets dynamically, by 
+choosing different count-values to 1-subsets for different 
+3-itemsets, according to the relation between the FCs of their 
+corresponding 2-subsets and ms. We note that the manner how 
+the FC of a 2-itemset X is found (in our algorithm) is processed 
+according to Definition 2. To summarize, SWCA uses Eq. (1) 
+with k=2 to approximate the counts of 3-itemsets (i.e., m=3). 
+After all 3-itemsets have been approximated, the 
+approximated I3 is then obtained. In the rest part of 
+approximating work, SWCA uniformly uses Eq. (1) with k=3 
+to approximate itemsets whose length are above 4. 
+At the moment we return to the origin. Recall that in Section 3 
+we have stated and explained that a stream mining algorithm 
+should not work based on an already-known and 
+unchangeable ms, which is a constraint our method needs to 
+obey. Now we show that our SWCA algorithm satisfies this  
+ 8 
+         
+           1111      (a) Throughput                                                                           (b) Average window-sliding time 
+Figure 2. Scalability on T15.I6.D100K with varying minimum support threshold 
+ 
+ 
+The second experiment evaluates the scalability of LC-SW 
+and SWCA with varying the value of ms. We measure the 
+throughput and average window-sliding time of both methods, 
+which are similar to those in the previous experiment. The 
+dataset adopted is T15.I6.D100K, and we vary ms from 1.5% 
+down to 0.2%. The experimental result is shown in Fig. 2. 
+According to Fig. 2(a) and (b), the performance of LC-SW 
+becomes worse as the value of ms decreases. In contrast, the 
+performance of SWCA, with respect to throughput and 
+segment in-out time, is almost independent of the change of 
+ms. The scalability of SWCA is well observed through this 
+experiment that it possesses stable performance to both high 
+and low values of ms. 
+The third experiment examines the accuracy of both 
+methods. The adopted dataset is T10.I4.D100K and the 
+accuracy is measured as follows. Starting from the point when 
+the sliding window is full of transactions (and is going to slide 
+next), both of the two methods will output a mining result 
+regularly for every sliding. Therefore, the windows of every 
+two successive mining points have 80% of overlap with each 
+other. From all the mining results of each value of ms, we 
+select several of them to calculate and obtain the average 
+accuracy over the testing data (on that ms). The exact sets of 
+FIs are obtained by running an implementation of the Apriori 
+algorithm [13] on the snapshots (i.e., the w transactions in the 
+current window) at each mining point, respectively. We 
+investigate the accuracy by assessing the recall ratio and 
+precision ratio of the mining results. 
+We report the result of this experiment in Fig. 3. From Fig. 
+3(a) and (b) it is shown that both LC-SW and SWCA achieve 
+high accuracy. In most of the cases, the recall and precision 
+ratios of both methods are above 90% (or even 99%). Even at 
+a pretty low value of ms of 0.3%, SWCA still achieves about 
+80% of recall and 90% of precision, which means that it finds 
+the great majority of FIs over the sliding window. Although on 
+average the accuracy of SWCA is slightly lower than that of 
+LC-SW, by considering the fine efficiency and well scalability 
+of SWCA (as shown in the previous experiments) 
+comprehensively, the performance of SWCA with respect to 
+accuracy is still quite promising. 
+In the last experiment, we examine the effect of the
+dynamically approximating (DA) technique of SWCA on 
+accuracy. The two participants of this experiment are 
+SWCA-Dynamic and SWCA-Static. The former is the SWCA 
+method with applying the DA technique, while the latter is that 
+without the DA technique and always chooses lower bound of 
+counts (Lbc) to subsets for approximating 3-itemsets. The 
+employed dataset is T15.I8.D100K and the value of ms varies 
+from 0.6% to 1.2%. The experimental result is shown in Fig. 4. 
+From Fig. 4(a) it is found that both methods find the whole set 
+of FIs (i.e., are of 100% recall), while the precision ratio of 
+SWCA-Dynamic is higher than that of SWCA-Static for all ms
+especially at lower values of minimum support. We also 
+calculate the F-measure of both methods and present the result 
+in Fig. 4(b), which shows that the F-measure of 
+SWCA-Dynamic (in this experiment) also outperforms that of 
+SWCA-Static. 
+We remark that the DSCA algorithm [12], a data-stream 
+mining method in the landmark model which is based on the 
+approach of Combinatorial Approximation, also bounds the 
+count-values of subsets to approximate itemsets. Assume that 
+DSCA is applied to (or transformed into) the sliding window 
+model, it just randomly chooses count-values in the bounded 
+range to subsets since it has no idea to make a decision. If the
+random strategy is to choose Lbc, then this version of DSCA is 
+just like SWCA-Static. As a result, from the experiment it also 
+indirectly shows that the accuracy of SWCA(-Dynamic) with 
+respect to precision outperforms DSCA. The effect of our DA 
+technique on accuracy is adequately proven through this 
+experiment. 
+ 
+ 
+        
+(a) Recall ratio                                                                                      (b) Precision ratio 
+Figure 3. Accuracy on T10.I4.D100K with varying minimum support threshold 
+ 
+ 
+ 10 
+ 
+國科會補助專題研究計畫項下出席國際學術會議心得報告(2) 
+                                     日期： 99 年 10 月 29 日 
+一、參加會議經過 
+本次參加的研討會為 ICMLC 2010 國際會議，於 2010 年 7 月 11 日至 7 月 14 日在中國山東省
+青島市青島海爾洲際酒店舉辦。本人於 7 月 11 日獨自搭乘山東航空班機出發前往中國山東青島流
+亭國際機場。由於班機延誤數個小時，抵達青島入境後已是晚間十一點多，只能於隔天的 7 月 12
+日至會場進行註冊與報到手續。會議於 7 月 12 日上午八點三時分進行開幕式，並於中午開始為
+Intelligent Information Mining、Intelligent Systems 等共數十項研究議題進行分組報告及討論。 
+本人就個人的研究領域，主要參與了 Intelligent Systems I~V 等場次的議題討論，其中上台發表
+論文的場次為下午三點三十分的 Intelligent Systems III。該場次的主持人為來自澳門的 Eric Tsang 教
+授，席間報告的討論內容除了 data mining 相關議題之外，亦涵蓋影像處理、地理資訊等智能系統
+應用。參加完整天會議議程讓我收穫良多、增廣研究領域的觸角。 
+ 
+二、與會心得 
+ICMLC 國際會議已舉辦多年，與會者來自資訊科學、資訊工程中的各個領域。自 2002 年以來
+至 2009 年的會議論文集均被 EI 收錄檢索。會議中由各個領域的專家學者討論現今嶄新、熱門的研
+究議題。參加此次會議，不僅可以吸收來自各國專家學者的最新成果，對於個人研究領域的廣度、
+深度，都有相當深刻的幫助。另外，透過與其他學者的討論，除了可以相互解答疑惑及激發創意，
+更能認識相關研究專家，建立人脈，擴展研究領域。 
+ 
+三、攜回資料名稱及內容 
+ICMLC 2010 論文集一本、ICMLC 2010 論文電子檔光碟一片、與會紀念品 
+計畫編號 NSC 98－2221－E－005－081－ 
+計畫名稱 運用組合逼近理論於滑動時間窗模型下的資料串流頻繁樣式探勘系統 
+出國人員
+姓名 許智為 
+服務機構 
+及職稱 
+國立中興大學資訊科學與工程系 
+博士班兼任研究助理 
+會議時間 99 年 7 月 11 日至 99 年 7月 14 日 會議地點 
+中國山東省青島市 
+青島海爾洲際酒店 
+會議名稱 International Conference on Machine Learning and Cybernetics 2010 
+發表論文
+題目 
+A load-controllable mining system for frequent-pattern discovery in dynamic 
+data streams  (論文內容於下頁起附錄,共 6 頁) 
+ 12 
+may have (in the previous stream data) before it has 
+been monitored by the algorithm. From the experimental 
+results shown in [2], Lossy Counting can effectively find 
+frequent patterns over a continuous data stream with only 
+slight errors on counts. This method is a representative of 
+the ε-deficient mining methods. 
+In the electrical utility industry, a rolling blackout, also 
+referred to as load shedding, is an intentionally-engineered 
+electrical power outage. Load shedding is a last course of 
+action used by an electric utility company in order to avoid 
+a total blackout of the power system. In the data-stream 
+mining domain, many data-stream sources are prone to 
+dramatic spikes in volume [1]. Since the peak load during a 
+spike can be orders of magnitude higher than typical loads, 
+fully managing a data-stream monitoring system to handle 
+the peak load is almost impractical. Therefore, it is 
+important for systems processing data streams to be able to 
+adapt to unanticipated spikes in input data rates. An 
+overloaded mining system will be unable to process all of 
+its input data promptly, so discarding some unprocessed 
+data, i.e., load shedding, becomes necessary for the system 
+to be durable. 
+To our knowledge, there are no representative studies 
+of load-shedding schemes for frequent-pattern mining in 
+data streams so far. However, the Loadstar system proposed 
+in [6] introduces load shedding techniques to classifying 
+multiple data streams of large volume and high speed. 
+Loadstar adopts a novel metric known as the quality of 
+decision (QoD) to measure the level of uncertainty in 
+classification. Resources are then allocated to sources 
+where uncertainty is high. To make optimal classification 
+decisions, Loadstar relies on feature prediction to model the 
+data dropped by the load shedding mechanism. Loadstar 
+can also adapt to the changing data characteristics in data 
+streams. The system thus offers a nice solution to 
+data-stream classification with resource constraints. 
+The system we propose in this research is a mining 
+system for frequent-pattern discovery in data streams. The 
+mining method of the system is an ε-deficient mining 
+algorithm, like Lossy Counting [2], which can find frequent 
+patterns with high accuracy. Moreover, three distinctive 
+load-shedding schemes are devised and integrated into the 
+system, making the system capable of shedding or 
+controlling the workload during the peak periods. 
+ 
+3. Load shedding for frequent-pattern mining in data 
+streams 
+ 
+Let I = {x1, x2, …, xz} be the set of items in a source of 
+(stream) data. An itemset (or a pattern) X is a subset of I 
+and written as X = xixj…xm. A transaction T consists of 
+ordered items, and T supports an itemset X if X⊆T. A 
+transactional data stream is a continuous sequence of 
+elements entering the local system where each element is a 
+transaction. Given a threshold of minimum support (ms), 
+the goal of frequent-pattern mining is to find out from the 
+stream data the itemsets whose numbers of occurrences are 
+above ms each time. 
+Let the transmission rate of data elements of a data 
+stream be Y transactions in a time unit, and the (maximum) 
+processing rate on stream elements of a mining method be 
+W transactions in a time unit. The system load at a point is 
+defined by the ratio of transmission rate to processing rate 
+at that point, that is, Y/W. We remark that the data stream is 
+dynamic and thus its transmission rate varies with time. As 
+the value of Y becomes greater and closer to that of W, the 
+system gets busier with processing the continuously 
+arriving data. When the transmission rate of data stream 
+becomes higher than the data processing rate of mining 
+method (i.e. Y>W), the system is said to be overloaded and 
+may not work normally any more. 
+Assume that the transmission rate of data stream 
+becomes higher than the processing rate of mining system, 
+thus in a time unit the mining system receives transactions 
+with the amount Y beyond its processing capability of W 
+transactions. Also assume that the average length of 
+elements (transactions) in the data stream is L items per 
+element. To address the overloading problem, we propose 
+three different strategies for shedding the system load. 
+ 
+Transaction-based: Among the received and unprocessed 
+Y transactions, the (Y-W) transactions with longest lengths 
+are selected for discarding, so the remaining amount of 
+transactions becomes W and is able to be handled promptly 
+by the mining system in one time unit. 
+ 
+Attribute-based: Since every transaction has L items in 
+average, the received and unprocessed Y transactions have 
+about Y×L items in total. In these transactions, those items 
+having the lowest frequencies are eliminated from the 
+transactions, so the trimmed data has its amount (in terms 
+of items) below W×L items and can be handled properly by 
+the mining system with processing rate W in one time unit. 
+ 
+Priority-based: Each incoming transaction is assigned a 
+priority. In the received and unprocessed Y transactions, the 
+(Y-W) transactions with lowest priorities are selected to be 
+discarded, so the remaining amount of transactions 
+becomes W and can be rightly managed by the mining 
+system in one time unit 
+ 
+In the three proposed load-shedding schemes, the 
+transaction-based strategy is the relatively simple one (since 
+it just discards transactions with longer lengths), while the 
+other two strategies need some feedback information from 
+previous mining results to perform load-shedding 
+operations. The attribute-based strategy needs the frequency 
+ 
+ 14 
+5. Experimental result 
+ 
+In this section we examine the proposed mining 
+system by conducting an experiment to evaluate the 
+effectiveness of load-control function. The experiment was 
+carried out on the platform of personal computer with a 
+Pentium 2.80 GHz dual-core CPU. The operating system is 
+Windows XP Professional SP3, and the programs of the 
+mining algorithm and the load-shedding schemes are 
+implemented in C++ (and compiled by Visual C++ 6.0). 
+The test dataset is T10.I4.D1000K which is generated 
+by IBM’s synthetic-data generator [7]. The dataset has 1000 
+different attributes and includes 1000 thousands of 
+transactions where each transaction is averagely of the 
+length of 10 items. We employ this dataset to simulate the 
+mining subject, i.e., a transactional data stream. The 
+minimum support (ms) is set to 0.5%, and the value of ε is 
+tenth of ms, i.e., ε = 0.1×ms. The maximum processing rate 
+of the system on the input data is set to be 80,000 
+transactions per time unit (i.e., W=80K). In other words, if 
+more than 80 thousands of transactions arrive in a time unit 
+(i.e. Y>80K), the system is overloaded (and thus needs to 
+perform the load-shedding operation). We experiment the 
+system several times on the input data, with system load 
+changing from 75% (normal) to 150% (overloaded), and 
+observe the efficiency and mining accuracy of the three 
+load-shedding schemes. 
+In the first part of experiment, we check the effect of 
+load-shedding schemes on execution time. The result is 
+shown in Figure 2. For each bar composing of two parts, 
+the upper part and the lower part respectively represent the 
+time for load shedding and that for mining. 
+While the system load is below 100%, there is no need 
+to shed the load, and incoming transactions are directly and 
+wholly processed by the mining method, so all strategies 
+have the same execution time. When the system load is 
+over 100%, a load-shedding scheme is executed before 
+incoming data is forwarded to the data-stream mining 
+module. It is observed from Figure 2 that the proposed 
+load-shedding schemes are all efficacious in shedding the 
+system load. We remark that if a load-shedding mechanism 
+is effective, the total execution time consumed by 
+system-load shedding (which trims the overload data) and 
+frequent-pattern mining (on the abridged data) will be 
+shorter than that consumed by mining directly on the full 
+incoming data. The transaction-based strategy is most 
+effective as it can greatly reduce the execution time for the 
+overloaded system. The attribute-based and priority-based 
+strategies, on the other hand, although not so significant as 
+the transaction-based one does, can really shorten the 
+execution time, especially when the system is highly 
+overloaded (e.g. 150% of system load). 
+ 
+ 
+Figure 2. Comparisons of efficiency among schemes 
+ 
+In the second part of experiment, we check the 
+resultant mining accuracy of load-shedding schemes. The 
+accuracy here is measured by recall rate and precision rate. 
+Briefly, a higher recall-rate of the mining result means a 
+larger portion of true answers (i.e. frequent patterns) is 
+found, while a higher precision-rate of the mining result 
+means a larger portion of found answers is true. We 
+compare the accuracy of three schemes with each other and 
+also with that of the original mining (that is, no 
+load-shedding is performed). Since a load-shedding scheme 
+discards part of unprocessed data, it is intuitive that these 
+schemes may suffer the problem of lower accuracy. The 
+experimental result is presented below in Figure 3. 
+ 
+    
+Figure 3. Comparisons of mining accuracy (in terms of recall and precision) among different schemes 
+ 
+ 16 
+References 
+ 
+[1] B. Babcock, M. Datar, and R. Motwani, “Load 
+Shedding Techniques for Data Stream Systems (Short 
+Paper),” Proceedings of the MPDS 2003 Workshop, San 
+Diego, CA, USA, June 2003. 
+[2] G. S. Manku and R. Motwani, “Approximate Frequency 
+Counts over Data Streams,” Proceedings of the 28th 
+VLDB Conference, Hong Kong, pp. 346-357, China, 
+2002. 
+[3] J. H. Chang and W. S. Lee, “A Sliding Window Method 
+for Finding Recently Frequent Itemsets over Online 
+Data Sstreams (Short Paper),” Journal of Information 
+Science and Engineering, Vol. 20, No. 4, pp. 753-762, 
+July 2004. 
+[4] M. Charikar, K. Chen, and M. Farach-Colton, “Finding 
+Frequent Items in Data Streams,” Proceedings of the 
+29th ICALP Colloquium, Malaga, Spain, pp. 693-703, 
+2002. 
+[5] M. Fang, N. Shivakumar, H. Garcia-Molina, R. 
+Motwani, and J. D. Ullman, “Computing Iceberg 
+Queries Efficiently,” Proceedings of the 24th VLDB 
+Conference, New York City, USA, pp. 299-310, August 
+1998. 
+[6] Y. Chi, H. Wang, and P. S. Yu, “Loadstar: Load 
+Shedding in Data Stream Mining,” Proceedings of the 
+31st VLDB Conference, Trondheim, Norway, pp. 
+1302-1305, 2005. 
+[7] Quest Data Mining Synthetic Data Generation Code. 
+Available: 
+http://www.almaden.ibm.com/cs/projects/iis/hdb/Project
+s/data_mining/datasets/syndata.html 
+ 
+ 
+ 
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：賈坤芳 計畫編號：98-2221-E-005-081- 
+計畫名稱：運用組合逼近理論於滑動時間窗模型下的資料串流 頻繁樣式探勘系統 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 2 100% 
+篇 
+發表論文說明（共
+2篇）： 
+1. IMECS 2010：
+Proceedings of 
+the 
+International 
+MultiConference 
+of Engineers and 
+Computer 
+Scientists, 
+2010(1), pp. 
+532–539. 
+2. ICMLC 2010：
+Proceedings of 
+the 9th 
+Conference on 
+Machine Learning 
+and Cybernetics, 
+2010, pp. 2466–
+2471. 
+國外 
+論文著作 
+專書 0 0 100% 章/本  
+ 

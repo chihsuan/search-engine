@@ -1,0 +1,495 @@
+ 2
+度，整個自動化監控系統最重要的部份當然就是人臉辨
+識，沒有一個可靠的辨識系統，那麼在完美的人臉辨識系
+統與追蹤策略也是沒用的，所以辨識系統的辨識率將是決
+定整個系統成敗的重要關鍵，所以上述的三項工作即為此
+計畫所預計完成的三項重要工作，因此在接下來的介紹中
+將分成三個主題依序介紹: 1.人臉偵測、2.人臉追蹤與 3.
+人臉辨識，下圖 1.即為本計劃的架構圖 
+ 
+ 
+圖 1. 人臉追蹤辨識的流程圖。 
+ 
+2.1 人臉偵測 
+近年來，許多人臉偵測的方法[1-7]被提出，大致可
+分為下幾種：色彩基底(color-based approach)方法、臉部模
+板特徵比對 (face template matching)方法、特徵基底
+(feature-based approach)方法以及類神經網路 (neural 
+network approach)訓練法等四類。本計劃採用特徵基底法
+來抽取出足以代表目標物的特徵，採用人臉影像的
+Haar-like特徵集所訓練的分類器，將影像中出現的人臉影
+像偵測出來。首先介紹 Haar-like特徵的定義與選取方式，
+接著說明訓練分類器的 AdaBoost 學習方法，將選取的人
+臉特徵訓練為一串接式分類器。最後，對整個人臉偵測的
+方法作個簡單的結論。 
+ 
+2.1.1 Haar-like Feature 
+     Haar-like特徵最早是由 Viola[8]提出，此特徵矩形因
+為類似小波轉換(wavelet transform)中的 Haar 小波函數的
+結構而得名。一般的特徵選取，通常會找出影像中變化劇
+烈的部分，例如物體的邊緣或線段，並且將特徵結合基礎
+知識作為物體的代表。圖 2.列出選取不同型態的 Haar-like
+特徵的樣板原型) 
+ 
+ 
+ 
+ 
+(a) (b) (c) 
+圖 2. 不同型態的 Haar-like特徵樣板 (a)邊緣特徵 (b)線
+段特徵 (c)中央特徵。 
+矩形特徵樣板除了讓選取特徵的方式簡化許多，最重要的
+是可以降低特徵值計算的複雜度。因為矩形樣板的特性，
+特徵值的計算可以用積分影像(integral image)的概念快速
+的得到。積分影像 I%在(x, y)座標的值是由 x左側與 y上側
+的所有像素值的加總，可以由下式表示 
+ 
+ 
+' , '
+( , ) ( ', ')
+x x y y
+I x y I x y
+≤ ≤
+= ∑% , (1) 
+ 
+其中 I% (x, y)表示積分影像，I(x, y)表示原始影像。根據積分
+的概念，積分影像可以由下式疊代計算而成 
+ 
+ 
+( , ) ( , ) ( , 1)
+               ( 1, ) ( 1, 1),
+I x y I x y I x y
+I x y I x y
+= + − +
+− − − −
+% %
+% %  (2) 
+ 
+其中定義 
+ 
+ ( , 1) ( 1, ) 0,I x I y− = − =% %  (3) 
+ 
+因此積分影像 I%可以由原始影像的左上角至右下角，經過
+一次的疊代計算便得到。此時，基於矩形特徵樣板的特徵
+值，同樣的利用積分的概念便可以計算得到。圖 3.為矩形
+樣板計算加總值的示意圖，可以發現只要知道矩形樣板的
+左上角與右下角兩點座標值，矩形樣板的加總值由下式所
+表示: 
+ 
+ 
+( ) ( 1, 1) ( 1, 1)
+( 1, 1) ( 1, 1),
+rect
+S r I x y I x w y h
+I x y h I x w y
+= − − + + − + −
+− − + − − + − −
+% %
+% %  (4) 
+ 
+其中 r = (x, y, w, h)，表示矩形的大小與位置。因此經由式
+1，矩形特徵樣板的特徵值表示為 
+ 
+ ( ) ( ),rect rectf S W S B= −  (5) 
+ 
+其中 W與 B代表白色與黑色矩形區域的位置與長寬。 
+ 
+ 
+圖 3. 矩形樣板的加總值的示意圖，粗框線區域的加總值
+可以表示為 D+A-B-C。 
+ 
+ Lienhart 等人[9]更進一步的將積分影像的運用推廣
+至旋轉 45度的矩形特徵。計算旋轉 45度後矩形特徵的旋
+轉積分影像 rI% (x, y)可以由下式表示 
+(x, y)
+ 
+更
+新
+B 
+C D 
+監視器影像輸入 
+臉部偵測 
+臉部追蹤 
+臉部辨識 
+ 4
+ AdaBoost 是一個藉由重寫權重值，將弱分類器組成
+強分類器的學習方式。儘管 AdaBoost 有著不錯的分類效
+果，但是當特徵數量越多，分類的準確度與複雜度也隨之
+提高。為了使人臉偵測有更好的強健性與加快分類的速
+度，接下來將介紹串接式分類器(cascade of classifiers)的概
+念，利用數個強分類器層層相接，完成人臉偵測的工作。 
+ 
+2.1.3 串接式分類器(Cascade of Classifiers) 
+ Viola等人[8]針對人臉偵測問題提出了一種串接式檢
+測器，在本計畫的人臉偵測部分，也採用這樣的架構。傳
+統單一分類器的作法，是輸入一個欲分類的特徵，經過分
+類器後判定是否為目標物。架構雖然簡單，但是當特徵數
+量大或是分佈情況複雜時，分類器的效能便會下降。串接
+式分類器可以透過數個分類器的串聯，改善上述的問題，
+圖 4.表示了串接式分類器的架構。 
+ 
+圖 4. N層串接式人臉分類器的架構。 
+ 
+ 在訓練分類器的時候，設定一個通過的門檻值 rh = 
+99.9%，使得大部分可能的人臉影像能通過該分類器，同
+時，設定一個剔除非人臉特徵的剔除率 rf = 50%。在整個
+串接式分類器中，前面的幾層分類器利用少數的弱分類器
+剔除大部分非人臉的特徵，到了越後層的分類器，結合的
+弱分類器越多，也能判別出越正確的人臉。根據整個分類
+器架構，當串接式分類器由 N個分類器組成時，可以預期
+整體的分類命中率(hitrate) hitR 為 
+ 
+ Nhit hR r= , (19) 
+ 
+而分類誤判率(false alarm) falseR 為 
+ 
+ Nfalse fR r= , (20) 
+ 
+因此當 N=16 時，預期的分類命中率為 (0.999)16  ≒
+98.41%，誤判率為(0.5)16 ≒ 1.526e−5。 
+ 
+ 每一層的分類器都是以 AdaBoost訓練出的分類器。
+當一個可能的人臉區域輸入分類器時，檢測視窗中的特徵
+會被挑選進入分類器，經過層層篩選後才被接受為人臉影
+像。若是一個非人臉的區域輸入，在前幾層中就會被分類
+器剔除，減少不必要的檢測時間。這點對於檢測複雜且數
+量龐大的人臉特徵來說，不但具有更好的檢測結果，又能
+加快分類的速度。 
+ 
+ 
+2.1.4 人臉特徵訓練 
+ 在建構檢測人臉的分類器，需要大量的人臉樣本資
+料與非人臉樣本資料進行訓練。考慮到監測的環境具有不
+均勻亮度變化與可能出現不同角度人臉的情況，本計畫的
+人臉偵測器使用 CMUPIE人臉資料庫[12]作為人臉樣本的
+訓練資料。CMUPIE 人臉資料庫主要包含 68 位年齡性別
+各異、不同角度與不同照明情況下共 41,368張人臉影像，
+在這之中被挑選出 2,102 張人臉影像，作為訓練的人臉樣
+本，部分的訓練影像如圖 3.14所示。訓練的時候，將所有
+的人臉樣本縮小為 24×24的大小，也就是將人臉偵測的檢
+測視窗設定為 24×24。 
+在非人臉影像樣本的部分，則是蒐集各類不包含人
+臉的影像共 4,618 張，包含各式各樣的風景照片，以及人
+為合成的影像等等。最後將這些樣本訓練成一個包含 16
+階的串接式分類器，作為人臉偵測的分類核心。 
+ 
+2.2 人臉追蹤 
+本計畫研發的影像監控系統中，人臉追蹤的流程又
+可以分為兩個部分。第一個是單一攝影機中的多人臉追
+蹤，目的是將出現在某一支攝影機之監視影像中的人臉，
+進行持續的追蹤與定位。第二個部分是整個系統的人臉影
+像追蹤，由於監視系統包含多支攝影機，其監視範圍有可
+能會重疊或是在環境上有所關連，這時候必須對關連的攝
+影機所監控的影像，進行關連性的人臉追蹤。其目的可以
+在兩支或更多的攝影機之下，辨認是否為同一位人員。接
+下來將對這兩部分做一個詳細的說明。 
+ 
+2.2.1 多人臉追蹤 
+在室內監視環境中，監視多人臉影像同樣的是個相
+當大的挑戰。原因不外乎是照明或光源的變化，與監視影
+像粗糙的影像品質，這些都會使得精確地追蹤人臉影像變
+成一項困難的任務。另一個增加追蹤困難度的因素，是欲
+追蹤物（人員）通常是走向攝影鏡頭，與一般要追蹤平行
+於影像平面運動的物體不同。後者因為平行於影像平面運
+動，物體的尺寸不會有劇烈的改變。但是，人員經過走廊
+走向攝影機，會使人臉影像在監視影像中有較大的變化
+性。當人臉距離攝影機遠的時候，人臉影像會呈現較小的
+尺寸；反之，當距離鏡頭越近，人臉影像的尺寸會快速地
+增加。因此，追蹤物的尺寸的改變，也增加了追蹤的困難
+度。 
+要解決上述的問題，這裡提出一個兩階段的追蹤方
+法，來實現追蹤多人臉的流程。整個追蹤流程如圖 5.所
+示，追蹤器包含兩個追蹤階段，每個追蹤階段使用不同的
+特徵來表示物體（人臉影像）。第一個是色彩特徵(color 
+feature)，利用人臉膚色影像的特性來表示。第二個是材質
+特徵(texture feature)，用來表示該人臉影像的組成特性。
+被追蹤的人臉影像，在第一階段用顏色特徵找出欲追蹤的
+候選區域；第二階段使用材質特徵，在候選區域中找到準
+確的位置。 
+ 
+人臉 
+偵測視窗 
+被分類為非人臉 
+被分類為
+人臉 
+…
+rh rh rh rh rh 
+1−rf 1−rf 1−rf 1−rf 1−rf 
+1 2 3 N−1 N 
+ 6
+視野有重疊與監視視野沒有重疊兩種。監視視野有重疊的
+情況下，攝影機之間的追蹤工作能以合作方式完成。換句
+話說，被追蹤的物體有機會同時出現在這些攝影機的監視
+影像中。另一種情況則是監視視野沒有重疊的情況，這時
+候攝影機之間只有位置上的關連性。例如說，被追蹤的物
+體即將離開目前的監視影像，但是根據架設的位置與環境
+限制可以知道，該物體有可能會出現在另一支攝影機的監
+視畫面中。 
+ 
+ 在本計畫的監視系統中，由於監視的環境是出入口
+為主，因此大部分攝影機之間的關係屬於監視畫面沒有重
+疊的情況。而畫面有重疊的攝影機之間，也因為彼此距離
+遙遠，能夠在影像中被追蹤的物體，會以非常小的尺寸出
+現在另一個監視影像中，無法進行特徵的比對與追蹤。因
+此，為了維持被追蹤人臉影像之間的一致性，採用一個狀
+態分配器(status dispatcher, SD)跟追蹤狀態描述子(tracking 
+status descriptor, TSD)，來完成攝影機之間維護彼此追蹤物
+體資訊的工作，達到維持追蹤人臉的一致性。 
+ 
+ 狀態分配器的功能是管理攝影機彼此之間的關連路
+徑(association path)，換言之，就是記錄著攝影機之間資訊
+傳遞的配對方式。舉例來說，狀態分配器會記錄攝影機#1
+的追蹤資料，將會送到攝影機#2與攝影機#4；同樣的，攝
+影機#4的資訊將只會送到攝影機#3。當被追蹤的人臉影像
+要離開影像時，其追蹤狀態描述子的狀態會改變，同時根
+據狀態分配器記載的關連路徑，將資訊送至對應的攝影
+機，以進行後續的追蹤。 
+ 
+追蹤狀態描述子是追蹤人臉影像時附加的一組資
+料，用來描述該人臉影像的追蹤資訊與狀態。追蹤資訊主
+要包含人臉的位置、影像特徵向量。追蹤的狀態被定義為
+三種狀態，分別是正在追蹤(on tracking, OT)、等待追蹤
+(waiting tracking, WT)與失去追蹤(lost tracking, LT)。這三
+種追蹤狀態的變化可以由圖 6.來表示。 
+ 
+圖 6. 三種追蹤狀態的變化關係圖。 
+ 
+當一張人臉影像在目前的攝影機開始被追蹤時，其
+追蹤狀態會被標示為 OT。在追蹤的期間中，若有成功追
+蹤到目標物，則追蹤狀態會被持續更新為 OT。如果該人
+臉影像離開搜尋區域時，則可能會有兩種狀態的改變。第
+一種是目前的攝影機沒有與任何其他的攝影機有關連路
+徑，表示目前的攝影機不需要與其他攝影機維持追蹤的一
+致性，因此該追蹤狀態會被改變成 LT，也就是不再追蹤
+該人臉影像。第二種是目前的攝影機與其他攝影機有關連
+路徑，此時追蹤狀態會被改變為 WT，等候狀態分配器將
+追蹤資訊與狀態分配至有關連的攝影機。一旦分配的動作
+完成後，被分配到的攝影機會檢查監視影像中即將要被追
+蹤的人臉影像，是否符合被分配到的 TSD 資訊。如果有
+配對到，則該攝影機所追蹤的目標其狀態會改變為 OT，
+其餘攝影機的會被改變為 LT。如此便可以完成維持追蹤
+人臉影像，在不同攝影機間的一致性。 
+ 
+2.3 人臉辨識 
+利用樣板比對的人臉辨識理論當中，基本上可分為三
+個步驟：特徵抽取，降低維度，相似度比對，如圖 2.1 所
+示。在特徵抽取的部份，有小波轉換(wavelet)[13,14]、餘
+弦轉換(DCT, discrete cosine transform)[15,16]等等方法。小
+波轉換(wavelet)近年來常用在影像壓縮、邊緣抽取、特徵
+檢測及紋理(texture)分析等問題上，小波轉換會將資訊依
+其重要性的不同而保留在不同的頻帶中，低頻部份可以保
+留大部分人所能觀察到的資訊，而高頻部份則是儲存細微
+的變化。在小波轉換中，最常被拿來做為人臉辨識的是賈
+柏小波函數(Gabor wavelet)。整體來說，利用 Gabor wavelet
+除了可以同時提供一維或二維空間及頻域的資訊之外，它
+可以提供人臉上的特徵抽取，尤其是利用 2D 的賈柏小波
+函數(Gabor wavelet)，其最大的特徵就是可獲得不同的縮
+放比率(scale)和旋轉角度(orientation)的資訊，因此許多研
+究論文中都採用賈柏小波函數(Gabor wavelet)作為一個抽
+取臉部特徵的工具。 
+ 
+2.3.1 賈柏小波函數 
+在面對人臉辨識問題時，由於在空間域中的人臉影像
+資料容易受到光源差異等等的影響，因此頻率域的應用是
+一個常見而好用的方法。賈柏小波函數是基於多通道的濾
+波原理，早期應用在處理人類視覺系統上的視覺資訊，是
+一個同時具有空間與頻域特性的函數，由於它在空間的縮
+放及旋轉角度上有著不錯的特性，因此它很快的被大家廣
+泛的應用在紋理如皮膚、材料、指紋、臉部表情等的分析
+上。由於這樣的特性，我們可以藉此找出臉部最顯著的區
+域特徵，以作為臉部辨識的依據。 
+ 
+一個二維的賈柏小波函數可以看成是具有特殊頻率與
+方向的正弦函數和高斯函數所構成，而賈柏小波函數的公
+式如下： 
+ 
+2
+2( )2 2
+2
+2
+2
+( ) [ ]
+( , )
+( cos , sin )
+2 , ,  0,1,2,3,  0,1,2,3
+8
+T
+T
+T
+T z z ik z
+T
+z e e e
+z x y
+k k
+k v
+κ κ σ
+σκ
+ν µ ν µ
+ν
+ν µ
+κ κψ σ
+κ ϕ ϕ
+πϕ µ µ
+− −
++−
+= −
+=
+=
+= = = =
+ (29) 
+其中 ( , )z x y= 為影像座標，參數 v和 µ分別代表空間縮放
+及旋轉角度，在不同的 v和 µ中的賈柏濾波器(Gabor filter)
+會有所不同。如下圖 7.所示。 
+LT 
+OT WT持續追蹤 
+有下一個目標攝影機 
+恢復追蹤 
+沒有配對的人臉，且沒
+有下一個目標攝影機 沒有配對的人臉
+ 8
+ 
+806805
+818 817
+803802
+圖 8. 監視的環境與攝影機架設的配置。圓點表示攝影機的架設位置，三角形代表監視的視野與方向。
+ 
+可以看出兩台電腦各自負責四支攝影機的影像處理，同時
+可以藉由網路互相傳遞辨識與追蹤的結果。其中 PC #1還
+負責了人臉辨識的資料庫，同樣藉網路分享給另外一台電
+腦，作為人臉辨識的資料庫。與 RFID主系統連接的部分，
+主要是傳遞人臉辨識後的結果，包含辨識出來的人員編號
+(ID)與陌生人的影像，交由 RFID主系統做進一步的判別。 
+ 
+圖 9. 人員影像監控系統的軟體執行介面。 
+ 
+圖 10. 影像監控系統的架構圖。 
+ 
+3.2 實驗結果 
+本系統在前述的架構與環境下，進行人員進出管制
+的實驗。由於室內環境的光線影響相當大，因此實驗的進
+行也需要顧及不同時間下，環境光源改變造成的干擾，以
+便確保所研發的系統有足夠的穩健性。實驗的進行分為三
+個部分：人臉偵測、人臉追蹤與人臉辨識。人臉偵測的實
+驗，目標是能夠對所有攝影機所監視的影像中，正確偵測
+到經過的人臉影像。人臉追蹤的部分，則是分成單攝影機
+與多攝影機兩種狀況，加上單人與多人追蹤組合成四種實
+驗模式。人臉辨識則是辨識所偵測到的人臉，是否能正確
+識別。要評估系統的效能與正確率，首先定義正確率 Rc
+為: 
+ tpc
+total
+R
+Ω= Ω , (32) 
+其中 tpΩ 表示正確偵測、正確追蹤或是正確辨識的人臉數
+量， totalΩ 為在所有影像中所出現的人臉數量。另外需要定
+義 Type I (false positive)與 Type II (true negative)錯誤率 Rfp, 
+Rtn為: 
+ 
+,
+,
+fp
+fp
+neg
+tn
+tn
+pos
+R
+R
+Ω= Ω
+Ω= Ω
+ (33) 
+其中 Rfp表示影像中沒有人臉影像卻有被檢測出人臉，或
+是沒有追蹤目標物卻持續追蹤的錯誤率。 fpΩ 表示出現誤
+判為有的總數， negΩ 表示總共沒有人臉影像的數量，或是
+不需要追蹤的影像張數。而 Rtn表示影像中有人臉卻沒有
+被檢測出來，或是有追蹤目標物卻追蹤失敗的錯誤率。 tnΩ
+表示出現誤判為沒有的總數， posΩ 表示總共需要檢測出有
+人臉影像的數量，或是需要追蹤的影像張數。 
+ 
+ 在人臉偵測部分，以白天、夜間與逆光源三種不同
+照明環境條件下進行實驗。白天的情況總共測試 1,892 張
+監視影像，總共包含 2,124張人臉影像與 379張沒有人臉
+的影像，其實驗結果如表 1所示。而人臉追蹤的部分，分
+成兩種攝影機設置條件與兩種追蹤條件，共計四種實驗模
+式。第一種為單攝影機單人追蹤，總共需要追蹤 583張人
+臉影像，正確追蹤了 512張人臉。第二種為單攝影機多人
+追蹤，總共需要追蹤 1,227張人臉影像，正確追蹤了 1,044
+張人臉。第三種為多攝影機單人追蹤，由兩支到四支攝影
+機不等的環境，總共需要追蹤 621張人臉影像，最後正確
+追蹤了 487張人臉。第四種為多攝影機多人追蹤，同樣是
+ 10
+參考文獻 
+[1] Y. Hori, K. Shimizu, Y. Nakamura, and T. Kuroda, “A 
+real-time multi face detection technique using 
+positive-negative lines-of-face template,” Proc. of the 
+17th Intl. Conf. on ICPR 2004, vol. 1, pp. 765-768, 2004. 
+[2] Y. Ishii, H. Hongo, K. Yamamoto, and Y. Niwa, 
+“Real-time face and head detection using four directional 
+features,” Proc. of 6th IEEE Int. Conf. on Automatic Face 
+and Gesture Recognition, pp. 403-408, 2004. 
+[3] H. Suzuki and M. Minami, “Real-time multiple face 
+detection of pedestrian using hybrid GA,” Proc. of the 7th 
+Int. IEEE Conf. on Intelligent Transportation Systems, pp. 
+708-713, 2004. 
+[4] R. Xiao, M.-J. Li, and H.-J. Zhang, “Robust multipose 
+face detection in images,” IEEE Trans. on Circuits and 
+Systems for Video Technology, vol. 14, no. 1, pp. 31-41, 
+2004. 
+[5] Z.-F. Liu, Z.-S. You, A. K. Jain, and Y.-Q. Wang, “Face 
+detection and facial feature extraction in color image,” 
+Proc. of 5th Int. Conf. on ICCIMA 2003, pp. 126-130, 
+2003. 
+[6] S.-H. Huang and S.-H. Lai, “Real-time face detection in 
+color video,” Proc. of 10th Int. Multimedia Modelling 
+Conf., pp. 338-345, 2004. 
+[7] D. Chai and K. N. Ngan, “Locating facial region of a 
+head-and-shoulders color image,” Proc. of 3rd IEEE Int. 
+Conf. on Automatic Face and Gesture Recognition, pp. 
+124 – 129, 1998.  
+[8] P. Viola and M. Jones, “Rapid object detection using a 
+boosted cascade of simple features,” IEEE Conf. on 
+Computer Vision and Pattern Recognition, Kauai, Hawaii, 
+2001. 
+[9] R. Lienhart and J. Maydt, “An extended set of Haar-like 
+features for rapid object detection,” Proc. of Int. Conf. on 
+Image Processing, vol. 1, pp. 900-903, 2002. 
+[10] Y. Freund and R. E. Schapire, “Experiments with a new 
+boosting algorithm,” Proc. of the 13th Conf. on Machine 
+Learning, Bari, Italy, pp. 148-156, 1996. 
+[11] R. E. Schapire and Y. Singer, “Improved boosting 
+algorithms using confidence-rated predictions,” Machine 
+Learning, vol. 37, no. 3, pp. 297-336, 1999. 
+[12] T. Sim, S. Baker, and M. Bsat, “The CMU Pose, 
+Illumination, and Expression (PIE) Database,” Proc. of 
+the 5th Int. Conf. on Automatic Face and Gesture 
+Recognition, 2002. 
+[13] R. M. Mutelo, W. L. Woo, and S.S, Dlay, “Two 
+Dimensional Orthogonal Wavelet Features for Image 
+Representation and Recognition,” Int. Conf. on Digital 
+Signal Processing, 2007 15th, 1-4 July 2007 
+Page(s):256 – 259. 
+[14] G. Shalini, M.P. Sampat, M.K. Markey, A.C. Bovik, and 
+W. Zhou, “Facial Range Image Matching Using the 
+ComplexWavelet Structural Similarity Metric,” IEEE 
+Workshop on Applications of Computer Vision, 2007, Feb. 
+2007 Page(s):4 – 4. 
+[15] G. Gunlu and H. S. Bilge, “Driver Face Recognition by 
+Using 3D Discrete Cosine Transform,” Intelligent 
+Vehicles Symposium, 2007 IEEE, 13-15 June 2007 
+Page(s):680 – 685. 
+[16] W. Chen, E. M. Joo, and S. Wu ; “Illumination 
+compensation and normalization for robust face 
+recognition using discrete cosine transform in logarithm 
+domain,“ IEEE Trans. on Systems, Man and Cybernetics, 
+Part B, Volume 36, Issue 2, April 2006 Page(s):458 – 
+466. 
+[17] C. Ayan, A.N. Rajagopalan, and C. Rama, 
+“Super-resolution of Face Images Using Kernel 
+PCA-Based Prior,” IEEE Transactions on Multimedia, 
+Volume 9, Issue 4, June 2007 Page(s):888 – 892. 
+[18] W. Lin; Y. Li; C. Wang, and H. Zhang, “Face 
+Recognition using Gaborface-based 2DPCA and 
+(2D)2PCA Classification with Ensemble and 
+Multichannel Model,” IEEE Conf. of Computational 
+Intelligence in Security and Defense Applications, 2007, 
+1-5 April 2007 Page(s):1 – 6. 
+ 

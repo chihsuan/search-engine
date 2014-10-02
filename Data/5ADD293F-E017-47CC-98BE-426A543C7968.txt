@@ -1,0 +1,465 @@
+1 
+行政院國家科學委員會補助專題研究計畫成果報告 
+設計與實作大型 Web 服務之網路檔案系統 
+Design and implementation a load-balancing and fault tolerance 
+network file system 
+1   中英文摘要與關鍵字 
+近年因為全球資訊網的技術日漸成熟，電腦的
+普及率也在全球資訊網的推波助瀾之下，幾乎
+達到人人有電腦的狀況，全世界使用全球資訊
+網的人數也節節高昇因此全球資訊網上的資
+訊服務系統所服務的人數、服務所需要的空間
+也呈現快速的成長，因此如何設計一個強大檔
+案系統是大型網路服務系統不可或缺的技術。 
+本計畫透過設計 1) 主控中心，負責所有檔案
+的結構與控制檔案如何備份，並且協調平衡空
+間伺服器、2) 空間伺服器，負責存放檔案的
+片段，易於設定使用，不管新空間伺服器上線
+或離線，都能快速平衡、3) 相關存取介面，
+透 過 設 計 相 關 的 程 式 庫 以 及  NFS 
+Protocol ，讓所有應用程式都可以快速使用
+本系統。藉由以上三個主要的設計完成容錯、
+負載平衡的網路檔案系統。 
+本系統的特點主要是支援容錯的機制、可變的
+空間區塊大小、空間負載平衡、存取負載平
+衡、檔案快取機制、以及易於管理使用，透過
+以上關鍵技術的設計，讓整個網路檔案系統可
+以運轉的非常良好。 
+本計畫的執行將有效增進大型網路服務的發
+展及應用，並為相關研究提供良好的基礎，培
+養台灣相關網路服務的人才，發表關鍵性技術
+且轉移至產業界。 
+ 
+關鍵字：磁碟陣列、網路檔案系統、容錯
+檔案系統、負載平衡檔案系統 
+ 
+Abstract: 
+Due to the rapid growth of World Wide Web and the 
+popularization of personal computer, the number of 
+World Wide Web users is increasing in an incredible 
+speed. It makes the need of disk space for a large 
+web service also increases in the same rate. 
+Therefore, it becomes to an important technique to 
+design and implement a powerful network file 
+system for the large web service providers. In this 
+paper we proposed three design issues for the 
+scalable network file system. We use the variable 
+number of objects within a bucket to decrease the 
+internal fragmentation in small files. We also 
+proposed the free space and access load-balancing 
+mechanism to balance the overall loading within the 
+bucket servers. And last we proposed a mechanism 
+for caching data which is frequently accessed to 
+lower the total number of disk I/O. These proposed 
+mechanisms will effectively improve the 
+performance of the scalable network file system for 
+the large web services. 
+ 
+Keywords: Network file system, 
+Fault-tolerance, Load balancing 
+2   Introduction 
+The technologies and services of the World 
+Wide Web are more and more mature. This 
+incites the desire for a person to learn and have a 
+personal computer. The number of surfing the 
+web is increasing in a rapid speed. On the other 
+words, the number of web services consumers is 
+also increasing at the same rate. The long term 
+trend of this phenomenon will not change. 
+We can take the web mail system as an example. 
+Generally speaking, the number of emails 
+received by a single email account is 
+approximate one hundred. According to the past 
+experiences, the average size of one email is 
+near to 10 Kilobytes. Assume there are one 
+million accounts in a web mail system, and this 
+3 
+ 
+According to our observation and past experiences, 
+there are a lot of small objects in the web service file 
+system, like one web page for a search engine, one 
+email for a web mail system, and one image 
+thumbnail for a web album system. The easiest 
+method to store these objects in the file system is 
+treating them as files. But, the number of these small 
+objects is often very huge, and it can be billions even 
+more than that. Of course it can be stored in the 
+traditional file system without any modification. The 
+extra cost, as we known in the operation system 
+textbook, of storing the structure of the file system 
+for this huge number of files will be very enormous. 
+The time to access a single file will also increase 
+though searching it within these files. Therefore, we 
+often merge a lot of small objects into a single file, 
+and use internal data structure to access the object 
+we need. Of course, we cannot merge the small 
+objects into one file without any limit. As the 
+Figure 1 shows, if the file size increases, we need to 
+store the block information by indirect block, double 
+indirect, and even triple indirect block. Therefore the 
+access time will increase relative to the file size. 
+According to our experience, we often set the file 
+size smaller than one gigabyte. 
+ 
+ 
+ 
+Figure 2 The architecture of our proposed network file system. 
+ 
+ 
+It needs a lot of storage space for a large web 
+services. According to the price issue, we often use 
+the PC-level computer as our file system server. This 
+means the reliability of these machines is not as good 
+as expensive server-level ones. The computers may 
+often fail unexpectedly. Our proposed system need to 
+detect the failure and recover itself. 
+Figure 2 is the architecture of the network file 
+system based on the Google file system. It is 
+composed by three main parts, they are control 
+center, bucket servers, and NFS [17]  protocol with 
+our designed APIs. The detail of these three main 
+parts will be discussed in the following sections. 
+ 
+ 
+3.1  Control Center 
+As Figure 3 displays, the control center maintains 
+the structures of directories and files stored in the 
+network file system. The file structure is stored in 
+the main memory as a tree structure. Each file is 
+composed by many buckets, and each bucket is 
+labeled by a bucket ID. The bucket ID is unique and 
+issued by the control center. The real data of the 
+bucket will be stored in the bucket servers. The 
+bucket size is fixed, and we now set the size to 64 
+Megabytes. Although the bucket size is fixed, we can 
+store more than one object in the bucket. We put 2
+0 
+to 
+2
+6
+ objects in one bucket. On the other words, the size 
+of each object could be 64 Megabytes, 32 
+Megabytes, …, and 1 Megabytes. The detail of the 
+design of bucket will be described in the section 3.1. 
+The real content of each bucket ID will be stored in 
+at least three bucket servers. Because we can 
+abandon one duplication as our wish to decrease the 
+complexity of processing flow and it also increases 
+the overall reliability in our proposed architecture, 
+we store the data in three different bucket servers If 
+we only store the data in two bucket servers, we may 
+lose all the data when one bucket server is crashed 
+and at the same time we abandon one of them. So we 
+store the data in three bucket servers to make sure 
+we can keep at least one copy of data in our system 
+only if two bucket servers with the same duplication 
+are crashed simultaneously. However the probability 
+of this situation happening is very low. We can easily 
+increase the number of duplications to prevent this 
+kind of situation, but it is not cost effectively. 
+The control center will monitor the status of each 
+bucket ID. When the total duplication of the real data 
+is less than three, the control server will duplicate the 
+5 
+system, it will register the hardware information to 
+the control server and obtain its unique bucket server 
+ID. This mechanism of working flow for each bucket 
+server is very easy for maintainers. When one 
+machine is unpredictable or predictive off-line, we 
+can just make the bucket server re-online, and it will 
+operate itself to synchronize all the data with the 
+control server. If one bucket server is crashed or we 
+need more storage spaces to join the network file 
+system, we can easily put some new bucket servers 
+into it. It will save a lot of maintenance time for a 
+large storage system. 
+The functions supported by a bucket server are 
+simply designing as read/write a bucket and 
+transferring a bucket to another server. Besides the 
+cache mechanism supported by the operation system, 
+the bucket server will also caches the hot spot to 
+improve the overall performance, this will be 
+discussed in the following section 3.3. 
+ 
+ 
+3.3 APIs 
+When we need to read data from a file, we will first 
+communicate with the control server to retrieve the 
+bucket information associated with the desired 
+position in the file. And then communicate with the 
+bucket server to retrieve the real data from the 
+desired position. The write procedure is similar to 
+read procedure besides we need to update the data to 
+all the replicates. The detail of read/write operations 
+can reference to the Google file system [10] . 
+As Figure 1 displays, we also implement the NFS 
+protocol to combine the API we supported in order to 
+provide a standard file access interface. The NFS 
+protocol combined with our API is similar to a 
+middleware to transfer our network file system into 
+standard interface. The drawback is the NFS 
+middleware will become the bottleneck, because all 
+the data transmission need to pass through it. 
+Therefore it will be a tradeoff to use the NFS 
+middleware, when you need to execute some 
+applications that cannot be done through our API. 
+ 
+ 
+4   Design Issues 
+In the following sections, we will discuss some 
+design issues of our proposed scalable network file 
+system. They are the design of the variable buckets 
+to solve the internal fragmentation, load-balancing 
+mechanisms to solve the unbalanced phenomenon, 
+and cache mechanisms to improve the overall 
+performance of the network file system. 
+ 
+ 
+4.1 The Design of the Buckets 
+The real data is stored in the bucket within each 
+bucket server. The bucket ID is composed with 5 
+bytes. The bucket size is now set to 64 Megabytes, it 
+means the total size of our network files system can 
+be 64 Exabytes (226 Terabytes). It will be satisfied 
+for any web service we know nowadays.  
+In order to implement the variable size for an object 
+to store in one bucket, we store the bucket ID as 6 
+bytes in the control center. The 6
+th
+ byte is utilized to 
+indicate the number of objects and the position 
+within a bucket. We define the number of objects in 
+a bucket as 2
+i
+, i=0, 1, …, 6. We set the starting and 
+ending number for the 6
+th
+ bytes for the bucket ID 
+stored in the control center as showing in the Table 1. 
+Therefore we can recognize the size and the position 
+of the object in the bucket by the 6
+th
+ byte. 
+ 
+Table 1 Number of objects in a bucket for the 6th byte 
+of the Bucket ID stored in the control center. 
+# of objects in buckets 64 32 16 8 4 2 1 
+Start # of 6th byte 0 64 96 112 120 124 126 
+End # of 6th byte 63 95 111 119 123 125 255 
+Size of object (MB) 1 2 4 8 16 32 64 
+ 
+When a file is created, we will first assign it to store 
+in a bucket with the object size of 1Megabytes. If the 
+file size increases, we will continue assign the bucket 
+with object size from 2
+0
+ to 2
+5
+ Megabytes. If the file 
+size is still increasing, we will assign the bucket with 
+object size of 64 Megabyte to it. And then merge the 
+first 7 objects into one. You can note that to total size 
+of the first 7 objects is just 64 Megabytes. Through 
+this design, we can decrease the internal 
+fragmentation for small files. And this mechanism 
+does not increase the complexity of the bucket 
+servers. It is because bucket server never recognize 
+what happened to the 6
+th
+ bytes of bucket ID, they are 
+only processed in the control center. The things a 
+bucket server care about is only what position and 
+how many bytes needed by the client. 
+ 
+ 
+4.2 Load Balancing 
+7 
+ACM Symposium on Operating System 
+Principles, pages 224–237, Saint-Malo, France, 
+October 1997. 
+[4]  Thomas Anderson, Michael Dahlin, Jeanna 
+Neefe, David Patterson, Drew Roselli, and 
+Randolph Wang. Serverless network file systems. 
+In Proceedings of the 15th ACM Symposium on 
+Operating System Principles, pages 109–126, 
+Copper Mountain Resort, Colorado, December 
+1995. 
+[5]  Steven R. Soltis, Thomas M. Ruwart, and 
+Matthew T.O’Keefe. The Gobal File System. In 
+Proceedings of the Fifth NASA Goddard Space 
+Flight Center Conference on Mass Storage 
+Systems and Technologies, College Park, 
+Maryland, September 1996. 
+[6]  FrankS chmuck and Roger Haskin. GPFS: 
+A shared-diskfile system for large computing 
+clusters. In Proceedings of the First USENIX 
+Conference on File and Storage Technologies, 
+pages 231–244, Monterey, California, January 
+2002. 
+[7]  John Howard, Michael Kazar, Sherri 
+Menees, David Nichols, Mahadev 
+Satyanarayanan, Robert Sidebotham, and 
+Michael West. Scale and performance in a 
+distributed file system. ACM Transactions on 
+Computer Systems, 6(1):51–81, February 1988. 
+[8]  Cluster File System Inc., 
+http://www.lustre.org/, 2007 
+[9]  Luis-Felipe Cabrera and Darrell D. E. Long. 
+Swift: Using distributed disks triping to provide 
+high I/O data rates. Computer Systems, 
+4(4):405–436, 1991 
+[10]  S. Ghemawat, H. Gobioff, S-T. Leung. "The 
+Google File System," 19th ACM Symposium on 
+Operating Systems Principles, 2003. 
+[11]  Garth A. Gibson, David F. Nagle, Khalil 
+Amiri, Jeff Butler, Fay W. Chang, Howard 
+Gobioff, Charles Hardin, ErikR iedel, David 
+Rochberg, and Jim Zelenka. A cost-effective, 
+high-bandwidth storage architecture. In 
+Proceedings of the 8th Architectural Support for 
+Programming Languages and Operating Systems, 
+pages 92–103, San Jose, California, October 
+1998. 
+[12]  M. Abd-El-Malek, G. R. Ganger, M. K. 
+Reiter, J. J. Wylie, and G. R. Goodson. Lazy 
+verification in fault-tolerant distributed storage 
+systems. In Proceedings of the 24th IEEE 
+Symposium on Reliable Distributed Systems, 
+pages 179--190. IEEE Computer Society, 2005.  
+[13]  M. Abd-El-Malek, I. William V. Courtright, 
+C. Cranor, G. R. Ganger, J. Hendricks, A. J. 
+Klosterman, M. Mesnier, M. Prasad, B. Salmon, 
+R. R. Sambasivan, S. Sinnamohideen, J. D. 
+Strunk, E. Thereska, M. Wachs, and J. J. Wylie. 
+Ursa Minor: Versatile cluster-based storage. In 
+Proceedings of the 4th USENIX Conference on 
+File and Storage Technologies, pages 59--72. 
+USENIX Association, 2005 
+[14]  D. Nagle, D. Serenyi, and A. Matthews. The 
+Panasas ActiveScale storage cluster: Delivering 
+scalable high bandwidth storage. In Proceedings 
+of the ACM/IEEE SC2004 Conference, page 53. 
+IEEE Computer Society, 2004. 
+[15]  Frank B. Schmuck , Roger L. Haskin, GPFS: 
+A Shared-Disk File System for Large Computing 
+Clusters, Proceedings of the Conference on File 
+and Storage Technologies, p.231-244, January 
+28-30, 2002 
+[16]  A. Batsakis and R. Burns, "Cluster 
+Delegation: High-Performance Fault-Tolerant 
+Data Sharing in NFS," in Proc. of the 14th IEEE 
+Intl. Symp. on High Performance Distributed 
+Computing, 2005. 
+[17]  B. Callaghan B. Pawlowski P. Staubach Sun 
+Microsystems, Inc., RFC 1813 - NFS Version 3 
+Protocol Specification, June 1995. 
+ 
+7 計畫成果自評 
+7.1 研究內容與原計畫相符程度 
+我們所執行的計畫內容與原計畫申請內容
+9 
+可供推廣之研發成果資料表 
+■ 可申請專利  ■ 可技術移轉                                      日期：98年 10月 27日 
+國科會補助計畫 
+計畫名稱：設計與實作大型 Web服務之網路檔案系統 
+計畫主持人：張賢宗 
+計畫編號：97-2221-E-182-042-  學門領域：E0817 
+技術/創作名稱 供網路服務使用之容錯與負載平衡大型網路檔案系統 
+發明人/創作人 張賢宗 
+技術說明 
+中文： 
+由於 WWW 的快速發展與個人電腦的蓬勃使用，Web 使用者的數量
+驚人的城長，這也讓網路服務所需要的空間以相同速度成長，因此
+如何去實作一大型網路檔案系統變的非常重要，我們提出了三個主
+要的方法去改進傳統的方法，我們使用可變的 Bucket Size 防止
+內部碎裂，並且透過設計存取與空間負載平衡，使系統運作更加順
+暢，最後我們提出一個快取的方法，提升整體系統的效能。 
+英文： 
+Due to the rapid growth of World Wide Web and the 
+popularization of personal computer, the number of World Wide 
+Web users is increasing in an incredible speed. It makes the 
+need of disk space for a large web service also increases in 
+the same rate. Therefore, it becomes to an important 
+technique to design and implement a powerful network file 
+system for the large web service providers. In this paper we 
+proposed three design issues for the scalable network file 
+system. We use the variable number of objects within a bucket 
+to decrease the internal fragmentation in small files. We 
+also proposed the free space and access load-balancing 
+mechanism to balance the overall loading within the bucket 
+servers. And last we proposed a mechanism for caching data 
+which is frequently accessed to lower the total number of disk 
+I/O. These proposed mechanisms will effectively improve the 
+performance of the scalable network file system for the large 
+web services. 
+可利用之產業 
+及 
+可開發之產品 
+網路服務、大型典藏系統 
+技術特點 
+利用負載平衡機制，讓整體效能更佳提升。 
+推廣及運用的價值 
+透過本設計與實作所產生的大型網路檔案系統，可以用於目前各網
+路服務系統、大型備份系統。 
+※ 1.每項研發成果請填寫一式二份，一份隨成果報告送繳本會，一份送 貴單位
+研發成果推廣單位（如技術移轉中心）。 
+附件二 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 NSC 97-2221-E-182-042- 
+計畫名稱 設計與實作大型 Web 服務之網路檔案系統 
+出國人員姓名 
+服務機關及職稱 
+張賢宗 
+長庚大學資訊工程學系 助理教授 
+會議時間地點 Rodos (Rhodes) Island, Greece, July 22-25, 2009 
+會議名稱 
+13th WSEAS CSCC Multiconference 
+13th WSEAS International Conference on  COMPUTERS 
+發表論文題目 
+Load Balancing and Fault-Tolerance for Scalable Network File Systems Using 
+by Web Services 
+ 
+一、參加會議經過 
+第十三屆 WSEAS 國際計算機會議是第十三屆 WSEAS CSCC 綜合會議（13th 
+WSEAS CSCC Multiconference）中的一個會議，舉辦地點在希臘靠近土耳其的羅德島，
+在 IXIA 的一個五星級 Rodos Palace Hotel 舉辦，是 WSEAS 的年度盛會，這一次的綜
+合會議約有 560 篇論文被接受並且發表，本會議有 5 個 Keynote Speeches、35 Plenary 
+Lectures，算是一個非常大型的會議。 
+因為台灣沒有任何本國籍飛機前往希臘，因此本人搭乘泰航班機在曼谷轉機前往雅
+典，然後在雅典換國內線前往 Rodos Island，整個飛行與等待的時間超過 20 小時，是一
+段非常遙遠的旅程。 
+這一次的會議中包含 COMPUTERS、SYSTEMS、CIRCUITS、COMMUNICATION
+（CSCC）四大部分，涵蓋的主題也非常的廣，主辦單位特別邀請了 2007 年 Turing Award 
+得主 Prof. Joseph Sifakis 前來演講，演講題目為 Embedded Systems –Scientific Challenges 
+and Work Directions，演講內容非常的精彩，與會者發問也非常非常的踴躍，是一場非常
+難得演講，難得參加國際會議看到這樣的場面。 
+另外主辦單位也安排了五場 Keynote Speech，分別為 1) Embedded Systems Design – 
+Scientific Challenges and Work Directions by Prof. Joseph Sifakis, Verimag & ARTIST2 NoE, 
+Centre Equation, FRANCE., 2) Quantum Cryptography and Chaos Functions: The Ultimate 
+for Network Security by Prof. Stamatios Kartalopoulos, The University of Oklahoma, USA., 3) 
+Content-Adaptive Efficient Resource Allocation for Packet-Based Video Transmission by Prof. 
+Aggelos K. Katsaggelos, Northwestern University, USA., 4) Computer Aided-Visual 
+Perception : Challenges and Perspectives by Prof. Nikos Paragios, Ecole Centrale de Paris / 
+INRIA Saclay, FRANCE., 5) Control and Estimation Theory: Current Trends, New Challenges, 
+& Directions for the Future by Prof. Lena Valavani, Massachusetts Institute of Technology, 
+USA.，雖然人數沒有前面那一場的人多，但是演講內容也不錯。 
+COMPUTER 這個會議一共有 13 Sessions，本人所發表的論文被安排在最後一天的
+第 7 個 Session 發表，這一個 Session 一共有 15 篇 Papers 發表，有 5 篇 Paper 沒有
+三、攜回資料 
+1. Conference Proceedings & CDROM 
+2. Conference Program 
+3. 出席報告證明 
+ 
+4. 註冊收據 
+四、建議 
+希臘加入歐盟後開始使用歐元，如果住在會議的飯店需要約 150  EU，折算美金要 
+210 USD，而補助日支費用卻只有 133 USD，單單飯店就不足約 77 USD，在希臘用餐
+一餐約需要 20 EU 以上，所以希望可以重新檢討日支費用。 
+而國科會赴歐美僅補助前後 0.4 日，但是會議都是一大早開始，勢必前一天就必須
+到達住宿，有時候議程安排問題，會議結束也不可能馬上離開，因此希望國科會能恢復
+補助歐美地區前後一天的政策。 
+最後更希望能過多補助研究生前往參加國際會議，參加國際會議絕對可以增加學生
+語文、經驗、膽量，是一個非常好的訓練。 
+ 
+五、其他照片 

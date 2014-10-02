@@ -1,0 +1,643 @@
+ 2
+become more and more popular, even 
+causing the fading of the kernel-mode 
+driver. 
+However, several critical issues still 
+remain when applying the user mode driver 
+architecture to embedded systems. 
+Therefore, we propose a one-year project to 
+address these issues and provide possible 
+solutions. In this project, we focus on the 
+following items. First, we plan to build an 
+execution environment so that a 
+kernel-mode driver can be migrated to user 
+mode without source code modification. 
+This will greatly reduce the efforts for 
+embedded system developers. Second, we 
+design and implement a highly dependable 
+user-mode driver framework, which has the 
+ability to detect driver faults and recover 
+the system immediately. 
+We implemented the proposed 
+techniques in Linux operating system and 
+verify them in an ARM-based development 
+board. Currently, we have finished the 
+implementation of the network and two 
+character device drivers: the LED and the 
+7-segment drivers. According to the 
+performance results, the user mode drivers 
+can achieve 64% to 99% of the 
+performance of the kernel ones, which we 
+believe proves the feasibility of the user 
+mode driver framework, at least for low or 
+medium speed devices.  
+ 
+Keywords: Drivers, High Dependability, 
+Embedded Systems, Linux 
+ 
+ 
+二、計畫緣由與目的 
+在以 Embedded Linux 為主的嵌入
+式系統開發中，驅動程式開發是一個很關
+鍵的一環。因為嵌入式系統的周邊多樣
+化，許多嵌入式系統廠商必須進行驅動程
+式的移植，有些廠商甚至需要自行開發驅
+動程式。然而，要開發沒有錯誤(bug)的
+驅動程式並不是一件容易的事。根據美國
+Stanford 大學對於 Linux 核心 2.4.1 版的
+分析研究顯示，驅動程式發生錯誤的機率
+是核心程式其他部分的 3 到 7 倍。其原因
+有二。第一，許多嵌入式系統廠商屬於硬
+體廠商，並不熟悉軟體的開發。第二，驅
+動程式是屬於核心模式(kernel mode)的
+程式，它跟核心程式之間有一個溝通介
+面。然而大多數的嵌入式系統廠商對於此
+溝通介面並沒有像一般核心程式開發者
+一樣那麼熟悉。因此，在開發驅動程式時
+容易出錯。 
+在現行的作業系統架構中，驅動程
+式出錯將造成嚴重的影響。首先，因為驅
+動 程 式 負 責 驅 動 某 一 特 定 的 設 備
+(device)，如果一個驅動程式出現問題，
+那所有應用程式都將無法使用到該設
+備。例如：網路驅動程式就負責網路的存
+取，如果它壞掉，那麼核心程式以及所有
+應用程式都將無法存取網路。再者，更嚴
+重的是，驅動程式與作業系統是核心連結
+(link)在一起的，驅動程式與核心程式都
+是使用同一個位址空間，驅動程式當掉相
+當於核心程式當掉。一旦核心程式，則核
+心上所有的應用程式，不管有沒有使用到
+該設備，都將因此停頓。所以驅動程式出
+錯對系統而言是一個很嚴重的傷害。 
+使用者模式驅動程式 ( user mode 
+driver)可以降低這樣的傷害。使用者模式
+驅動程式 ( user mode driver)其實早在
+1980 年代時，研究微核心(microkernel)系
+統的學者就已經提出。然而在當時，此方
+法之前有一個致命傷，那就是效能太差。
+因為把驅動程式搬到 user space 後，勢必
+會增加 system call 及 context switch 的次
+數因而降低系統的效能。所以使用者模式
+驅動程式頂多只用於一些慢速的設備。但
+ 4
+就會根據 cmd 及其他相關參數完成對應
+的任務。圖二以使用者模式驅動程式呼叫
+register_netdev()為例。第一，當 driver 
+process 欲將自己註冊(register_netdev)到
+kernel 時會先呼叫到我們的 User_lib 內所
+對應的函式 (register_netdev) 。第二，
+User_lib 到會呼叫我們所實作的 system 
+call，並將 register_netdev 轉成對應的
+command，傳入此 system call。第三，在
+我們所實作的 system call handler 中根據
+command 來呼叫相對的 Kernel API。在
+此，system call handler會呼叫 kernel-mode
+的 register_netdev()。最後會按照原呼叫流
+程返回並傳回值。 
+ 
+圖二 驅動程式呼叫核心程式示意圖 
+ 
+高可信賴度的使用者模式驅動程式
+架構： 
+目前針對使用者模式驅動程式架構
+的研究，都只針對系統的 reliability。即，
+他們只是單純把驅動程式從核心模式移
+植到使用者模式，使得即使驅動程式因
+為出錯而當掉，也不會造成其他應用程
+式或核心程式的 crash。然而，這樣是不
+夠的。因為驅動程式負責驅動某一周邊
+設備，一旦驅動程式當掉，那所有應用
+程式與核心程式都將無法存取該設備。
+為了達到高可信賴度，我們的架構必須
+要去偵測驅動程式是否運作不正常。如
+果不正常，那它必須把驅動程式重新啟
+動讓其回復正常運作。 
+在實作上，我們利用另一個核心模組
+去偵測該驅動程式 process 本身是否存
+在。若驅動程式 process 因為運作錯誤而
+被作業系統 terminate，我們的偵測模組
+就會偵測到此一情形，並啟動回復機
+制。而回復機制會重新執行驅動程式
+process，讓其可以繼續服務其它應用程
+式的要求。值得注意的是，驅動程式尚
+未處理完的要求都還會保留在 shared 
+memory 中，不會因此而失去。因此，重
+新啟動的驅動程式可以再繼續處理這些
+未完的要求。 
+ 
+實作進度： 
+我們已經把所提出的使用者模式驅
+動程式架構實作在 ARM-LINUX-2.4.18
+上 。 我 們 使 用 Microtime Inc. 的
+S3C2410(ARM920T)系統為實作平台以
+實作驅動程式架構的四個主要部分：可載
+入式的 redirection module 核心模組，使用
+者靜態連結函式庫，與多執行緒 driver 
+processes，錯誤偵測與回復模組。 
+目前我們已經初步完成網路驅動程
+式與字元驅動程式兩種類型的使用者驅
+動程式架構的雛型。網路驅動程式方
+面，我們已經將 CS8900 乙太網路驅動程
+式搬移到使用者空間，並可以正常工作
+在 ARM S3C2410 開發板上。字元驅動
+程式方面，我們已經將一個簡單的 LED
+控制驅動程式與 7 段顯示器控制驅動程
+式搬移到使用者空間，並可以正常運作
+在開發板上。 
+ 
+實驗結果： 
+此節我們使用 TTCP[14]測試使用
+者模式驅動程式與核心驅動程式的網路
+效能，並作比較，而我們在測試時是從
+1100 Kbytes 開始測試，這是因為 TTCP
+會使用緩衝機制作傳送，所以我們為了
+使網路的效能在測試時更加精準，我們
+從 1100 Kbytes 開始測試。 
+我們使用 TTCP 測試 ARM 嵌入板
+ 6
+Performance of Ping
+0
+20
+40
+60
+80
+100
+120
+140
+5500 15000 25000 35000 45000 55000 65000
+Size(Bytes)
+Ti
+m
+e(
+m
+s)
+user-mode driver
+kernel-mode driver
+ 
+圖七  Ping 程式效能比較圖 
+ 
+將驅動程式搬移至使用者空間是為
+了使驅動程式即使發生錯誤也不至於會
+影響作業系統核心。然而，我們也可以
+嘗試部份的搬移。部分搬移的好處在於
+可以降低內文轉換的頻率，有助於使效
+能逼近於核心模式驅動程式。然而，其
+缺點在於，當我們把驅動程式某個部份
+留在核心空間執行，留在核心空間執行
+的程式碼造成錯誤就會導致核心的錯
+誤。因此，在這個以客制化為導向的時
+代，我們希望系統開發者針對其系統之
+效能與安全性的需求自行決定該將驅動
+程式哪一部份放入核心中，如此一來可
+以讓系統設計更有彈性。以下如圖八所
+示，我們將網路驅動程式 TX 部份移到
+核心空間，並比較其與其它模式的驅動
+程式在效能上差異。結果顯示，使用者
+模式網路驅動程式若把 Tx 程式放在核
+心空間執行，會讓網路驅動程式的效能
+提昇，較接近於核心模式驅動程式之效
+能。 
+ 
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+ping ttcp tx ttcp rx ftp server ftp client
+N
+or
+m
+al
+iz
+ed
+ P
+er
+fo
+rm
+an
+ce
+kernel-mode driver
+user-mode driver
+mixed-mode driver
+ 
+圖八 混合模式驅動程式與其它模式驅
+動程式效能比較圖 
+ 
+四、計畫結果自評 
+ 在此計畫中，我們在 ARM-based 的
+嵌入式開發板上完成了一個高可信賴度
+使用者模式架構驅動程式。它使得我們可
+以把現有的 Linux 驅動程式從核心原封不
+動地搬移到使用者空間來執行。另外，它
+也會偵測驅動程式 process 因為運作錯誤
+而被作業系統 terminate 的情形而啟動回
+復機制。目前我們已經初步完成網路驅動
+程式與字元驅動程式兩種類型的使用者
+驅動程式架構的雛型，證明其可行性，並
+已評估其效能。根據結果顯示，在
+processor 效能無法與桌上型電腦比擬的
+情況下，目前我們的使用者驅動程式架構
+可達核心驅動程式效能的 64%到 99%。我
+們已著手將此計畫成果投稿到國際期刊
+或會議。 
+ 
+五、參考文獻 
+1. ACME Labs Software. “mini_httpd - Small 
+HTTP Server＂, available at http://www.acme. 
+com/software/mini_httpd/. 
+2. ACME Labs Software. “ http_load – 
+Multiprocessing HTTP Test Client ＂ , 
+available at http://www.acme.com/software/ 
+http_load/. 
+3. M. Aiken, M. F‥ahndrich, C. Hawblitzel, G. 
+Hunt, and J.R. Lauris. “ Deconstructing 
+Process Isolation ＂ , Microsoft Technical 
+Report MSR-TR-2006-43. Microsoft Inc., 
+2006. 
+4. A. Balakrishnan , S. Krishnan. ”Factorization 
+of Device Driver Code between Kernel and 
+User Spaces”, available at 
+http://www.cs.wisc.edu/~arinib/report.pdf, 
+May 2006. 
+5. A. Chou, J. Yang, B. Chelf, S. Hallem, D. 
+Engler. “An Empirical Study of Operating 
+Systems Errors”, Proceedings of the 18th 
+ACM Symposium on Operating Systems 
+Principles, pp. 73-88, Oct. 2001. 
+6. P. Chubb. “Get More Device Drivers out of 
+the Kernel!”, Proceedings of the Ottawa 
+Linux Symposium, vol.1, pp. 149-161, 
+Ottawa, Canada, July, 2004. 
+7. C. L. Conway and S. A. Edwards, “NDL: a 
+Domain-specific Language for Device 
+Drivers”, Proceedings of the 2004 ACM 
+ 8
+可供推廣之研發成果資料表 
+; 可申請專利  ; 可技術移轉                                      日期：96 年 10 月 10 日 
+國科會補助計畫 
+計畫名稱：嵌入式系統上之高可信賴度使用者模式驅動程式架構之
+設計與實作 
+計畫主持人：張大緯 
+計畫編號：NSC 95-2221-E-006-512 學門領域：資訊學門 
+技術/創作名稱 嵌入式系統上之高可信賴度使用者模式驅動程式架構 
+發明人/創作人 涂清祺, 張大緯 
+此架構讓原有的核心模式驅動程式可以原封不動的搬到使用者空
+間來執行。其好處有二：第一，使用者模式驅動程式 crash 並不會
+造成 kernel 當機。第二，原封不動的搬移原有的核心模式驅動程式
+到使用者空間來執行可以大大降低系統開發時間。此外，此架構有
+能力去偵測驅動程式錯誤並即時地進行回復。我們在 Linux 作業系
+統實作這些技術並在 ARM-based 開發板上進行驗證。 
+技術說明 
+The proposed framework allows a kernel mode driver to be executed in 
+the user space without modifications to its source code, which has two 
+advantages. First, the faults of the user mode driver can not crash the 
+kernel. Second, it reduces the system development time because that it 
+requires no source code modification to migrate a kernel mode driver 
+to user space. Moreover, the framework is capable of detecting driver 
+faults and triggering the recovery procedure. We implemented the 
+framework in the Linux kernel and verify its functionality on an 
+ARM-based development board. 
+可利用之產業 
+及 
+可開發之產品 
+嵌入式系統 
+一般電腦系統 
+技術特點 
+z 現有的 Linux 驅動程式，從核心原封不動地搬移到使用者空間
+來執行 
+z 驅動程式錯誤偵測與回復 
+附件二 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 嵌入式系統上之高可信賴度使用者模式驅動程式架構之設計與實作 
+計畫名稱 NSC 95-2221-E-006-512 
+出國人員姓名 
+服務機關及職稱
+張大緯 
+國立成功大學資訊工程系 
+會議時間地點 
+2006/08/18 – 2006/08/20 
+希臘 克里特島 
+會議名稱 6th WSEAS International Conference on APPLIED INFORMATICS AND COMMUNICATIONS (AIC'06) 
+發表論文題目 Improving Flash Storage System Performance by Using an Extra RAM Buffer 
+ 
+ 
+報告內容包括下列各項： 
+一、參加會議經過與心得 
+二、攜回資料名稱及內容 
+三、 其他 
+ 
+ 
+上兩圖是會議進行的一些情形。因為本人沒有準備數位相機，所以從
+WSEAS的網站中貼出當時這三個會議的一些參與情形。在會議的前兩天參與情
+形還算熱烈，但到了會議最後一天下午，有些 sessions參與人數就變得很少，不
+知是否跟主辦單位安排失誤有關，這是本人覺得唯一美中不足的事。不過，這
+次參加會議聽了一些不同領域的演講，也與一些與會學者交換了一些意見，對
+於增廣自己的見聞與未來的研究頗有助益。 
+ 
+攜回資料名稱及內容 
+ 此次參與會議攜回研討會論文集光碟一片與一些其它WSEAS的相關資訊
+刊物。 
+ 
+其他 
+感謝國科會的支持，使得本人有機會可以參與此國際會議，聆聽不同領
+域的演講，並當面與與會研究人員直接交流。這對於本人未來研究有很大的助
+益。以下為此次會議投稿的內容。
+ 
+2.2   Flash Memory Cleaning Policies 
+     Many data management approach divides the 
+flash memory into larger, fix-sized segments for ease 
+of reclaiming invalid data. A segment is made up of a 
+number of contiguous blocks. When the number of 
+free segments is less than a certain threshold, a 
+software cleaning process (i.e., the cleaner) will be 
+triggered to reclaim the invalid data. The cleaner 
+reclaims a segment by migrating the valid data in the 
+segment to another one, and then erasing the segment. 
+After the erase operation, the segment will be 
+available for storing new data. 
+     The cleaner process use a segment selection 
+policy to determine which segments should be 
+cleaned. In this section, we introduce three segment 
+selection policies. 
+ 
+2.2.1   Greedy Policy  
+     The greedy policy selects a segment with the 
+largest amount of garbage. According to the previous 
+study [10], it works well in the case of uniform access. 
+However, it performs poorly under high locality of 
+references. 
+ 
+2.2.2   Cost-Benefit Policy  
+     The cost-benefit policy [9] chooses to clean a 
+segment that maximizes the following formula: 
+ 
+u
+uage
+2
+)1(* −
+, where 10 ≤< u .    (1) 
+ 
+     In the formula, u is the ratio of valid data in the 
+segment, and therefore (1-u) stands for the amount of 
+free space that can be reclaimed. The age indicates 
+the time elapsed since the latest block modification, 
+and it is used to represent the hotness of the valid data. 
+The 2u reflects the overheads of cleaning a segment 
+(i.e., read valid blocks from one segment and write 
+them to another one). This policy performs well 
+under high locality of references. However, it does 
+not perform as well as the greedy policy under 
+uniform access. 
+ 
+2.2.3   Cost Age Time (CAT) Policy  
+     The basic idea of the Cost Age Times (CAT) 
+policy [3, 4] is to minimize the cleaning costs, to give 
+the recently-cleaned segments more time to 
+accumulate garbage for reclamation, and to achieve 
+the goal of wear-leveling [6]. It chooses to clean 
+segments that minimize the following formula: 
+ 
+N
+ageu
+u *1*
+)1( − , where 10 ≤< u .   (2) 
+ 
+     The u/(1-u) reflects the ratio of overheads to the 
+benefit, where u represents the percentage of valid 
+data in a segment. The definition of age is similar to 
+that of the cost-benefit policy, and N stands for 
+number of times a segment has been erased. 
+ 
+ 
+3   Design and Implementation 
+ 
+ 
+3.1 Dynamic Data Clustering 
+     As mentioned in Section 2, when a segment is 
+selected to be cleaned, the valid data in it should be 
+migrated to another segment. If the system migrates 
+the valid data to a segment that will be cleaned in the 
+near future, the migration becomes wasteful. 
+Therefore, data reorganization is an important issue 
+to flash-memory based storage systems. Previous 
+research [3, 9, 12] pointed out that separating hot data 
+(i.e., frequently-updated data) from cold one can 
+reduce such cleaning overheads. 
+     Instead of classifying data into only two 
+categories, DAC [5] uses a more fine-grained 
+approach. It partitions the flash memory into several 
+logical regions that contain data with different 
+degrees of hotness. Each region includes a set of flash 
+segments, which are not needed to be physically 
+contiguous. The basic idea of DAC is to put data 
+segments with similar write access frequencies in the 
+same region. Because data access frequencies may 
+change over time, a data segment can be migrated 
+among regions when its write access frequency 
+changes. As shown in Figure 1, data will be moved 
+toward the hottest region if the update frequency 
+increases. On the contrary, it will be moved toward 
+the coldest region if the update frequency decreases. 
+When a segment is selected for cleaning, all of its 
+valid data will be moved to the free space of the next 
+colder region. This is because valid data in the 
+selected segment is usually colder than other data in 
+the same region. 
+ 
+7. When a segment is selected for cleaning, all 
+valid data blocks in it are copied to the free 
+space of the next colder region. This is the same 
+as the DAC approach. 
+     From the above rules we can see that, DEB 
+clusters data blocks with similar update frequencies. 
+More importantly, it allows the hot data to reach the 
+EBR in a more efficient way. 
+ 
+ 
+3.2 Prototype Implementation 
+     To evaluate the effectiveness of DEB, we 
+implemented a flash-based log file systems, named 
+Log Flash Storage System (LFSS). It uses 
+non-in-place-update scheme for data update and 
+DEB for reducing the erasing times of flash blocks. 
+We implemented LFSS as a MTD [17] user module 
+in Linux 2.4.20. As shown in Figure 5, different from 
+JFFS2 that provides an interface to the virtual file 
+system, LFSS provides its interface (such as read, 
+write, erase, and update) directly to user-space 
+programs. 
+ 
+Fig. 5 LFSS in Linux 
+ 
+ 
+4   Experimental Results and Analysis 
+     For ease of experiment in PC environment, we use 
+SDRAM, instead of flash memory, for performance 
+evaluation. Therefore, we implement a SDRAM 
+MTD driver to connect the MTD layer, as shown in 
+Figure 5. The driver records the number of erase 
+operations of each segment. Note that using SDRAM 
+for experiment does not affect the performance 
+results since they are reported in number of erase 
+operations. 
+     All measurements were performed on a machine 
+with a 2.0 GHz Pentium 4 processor and 256 Mbytes 
+DRAM. Since the cleaning overhead has little impact 
+on system performance at low flash utilization [3], 
+we filled 90% of flash memory space before each 
+experiment is performed. For all the experiments, the 
+size of the (simulated) flash is 64 Mbytes, which is 
+divided into four regions. The stable time intervals 
+are 100, 200, 300, and 400 seconds, respectively. 
+Table 1 shows the four approaches for comparison. 
+The first two approaches do not use extra RAM 
+buffers, while the other two use a 4-Mbyte buffer. 
+ 
+Table 1. Approaches for Comparison 
+Approaches Description 
+JFFS JFFS2 without RAM regions 
+DAC DAC without RAM regions 
+DAC+(4MB) DAC+ with a 4MB RAM region 
+LFSS(4MB) DEB with a 4MB RAM region 
+ 
+ 
+4.1 Benefit of the Extra RAM Region 
+     The first experiment shows the benefit of using an 
+extra RAM buffer as the extension of the flash 
+memory, and presents the performance improvement 
+of LFSS. Figure 6 shows the performance results 
+obtained by the aforementioned SDRAM MTD 
+driver when running the Postmark [8] file benchmark. 
+From the figure we can see that, adding an extra 
+RAM region does help to reduce the number of erase 
+operations. For example, compared with JFFS2, 
+LFSS eliminates 40%-90% of the erase operations. 
+Moreover, DEB outperforms DAC+ with the 
+presence of the RAM region. This is because the 
+former can move hot data to the RAM region in a 
+more efficient way. 
+ 
+ 
+Fig. 6 System Performance under Postmark 
+ 
+ 
+4.2 Effect of Reference Locality 
+     In this experiment, we measure the performance 
+of LFSS under different degrees of reference 
+localities. We use notation y/x for representing 
+locality of references, which means that x percent of 
+the total accesses refer to y percent of the total data. 
+In this experiment, we use a test program to update 40 
+operations performed on each segment to provide 
+better wear leveling.  
+ 
+ 
+6   Conclusions and Future Work 
+     In this paper, we propose using an extra 
+battery-backed RAM region as the extension of flash 
+memory to reduce the number of erase operations. 
+Based on the extra RAM region, we proposed a data 
+clustering technique that allows the hot data to be 
+updated in the RAM region so that the number of 
+erase operations can be reduced. We implemented 
+the technique as a Linux kernel module. According to 
+the performance results, it eliminates a large amount 
+of erase operations. With the increase of the extra 
+RAM size, the number of eliminated erase operations 
+grows. In the future, we plan to implement the VFS 
+interface for LFSS so as to allow application 
+programs to use LFSS through ordinary file-related 
+system calls. 
+ 
+ 
+References: 
+[1] L. P. Chang and T. W. Kuo, An Efficient 
+Management Scheme for Large-Scale 
+Flash-Memory Storage Systems, Proceedings 
+of ACM Symposium on Applied Computing, 
+Nicosia, Cyprus, Mar. 2004, pp. 862-868. 
+[2] L. P. Chang and T. W. Kuo, A Real-Time 
+Garbage Collection Mechanism for 
+Flash-Memory Storage Systems in Embedded 
+Systems, Proceedings of the Eighth 
+International Conference on Real-Time 
+Computing systems and Applications, Tokyo, 
+Japan, Mar. 2002. 
+[3] M. L. Chiang and R. C. Chang, Cleaning Policies 
+in Mobile Computers Using Flash Memory, 
+Journal of Systems and Software, Vol. 48, No. 3, 
+1999, pp. 213-231. 
+[4] M. L. Chiang, P. C. H. Lee, and R. C. Chang, 
+Managing Flash Memory in Personal 
+Communication Devices, Proceedings of the 
+1997 International Symposium on Consumer 
+Electronics (ISCE’97), Singapore, Dec. 1997, pp. 
+177-182. 
+[5] M. L. Chiang, P. C. H. Lee, and R. C. Chang, 
+Using Data Clustering to Improve Cleaning 
+Performance for Flash Memory, Software 
+Practice & Experience, Vol. 29, No.3, Mar. 1999, 
+pp. 267-290. 
+[6] B. Dipert and M. Levy, Designing with Flash 
+Memory, Annabooks, 1993. 
+[7] F. Douglis, R. Caceres, F. Kaashoek, K. Li, B. 
+Marsh, and J. A. Tauber, Storage Alternatives for 
+Mobile Computers, Proceedings of the First 
+Symposium on Operating Systems Design and 
+Implementation (OSDI), 1994, pp. 25-37. 
+[8] J. Katcher, PostMark: A New File System 
+Benchmark, available 
+http://www.netapp.com/tech_library/3022.html. 
+[9] A. Kawaguchi, S. Nishioka, and H. Motoda, A 
+Flash-Memory Based File System, Proceedings 
+of the 1995 USENIX Technical Conference, Jan. 
+1995, pp. 155-164. 
+[10] J. N. Matthews, D. Roselli, A. M. Costello, R. Y. 
+Wang, and T. E. Anderson, Improving the 
+Performance of Log-Structured File Systems 
+with Adaptive Methods, Proceedings of the 
+Sixteenth ACM Symposium on Operating System 
+Principles, Oct. 1997, pp. 238-251. 
+[11] M-Systems, TrueFFS Technology, available at 
+http://www.m-systems.com/site/en-US/Technol
+ogies/Technology/TrueFFS_Technology.htm, 
+2006. 
+[12] M. Rosenblum and J. K. Ousterhout, The 
+Design and Implementation of a Log-Structured 
+File System, ACM Transactions on Computer 
+Systems, Vol. 10, No. 1, 1992, pp. 26-52. 
+[13] M. Seltzer, K. Bostic, M. K. McKusick, and C. 
+Staelin, An Implementation of a Log-Structured 
+File System for UNIX, Proceedings of the 1993 
+Winter USENIX, 1993, pp. 307-326. 
+[14] P. Torelli, The Microsoft Flash File System, Dr. 
+Dobb’s Journal, Feb. 1995, pp. 62-72.  
+[15] University of Szeged, JFFS2 Improvement 
+Project, available at 
+http://www.inf.u-szeged.hu/jffs2/, 2006. 
+[16] D. Woodhouse, JFFS: The Journaling Flash File 
+System, available at 
+http://sources.redhat.com/jffs2/jffs2-html/jffs2-
+html.html, 2001. 
+[17] D. Woodhouse, Memory Technology Device 
+(MTD) subsystem for Linux, available at 
+http://www.linux-mtd.infradead.org/, 2006. 
+[18] C. H. Wu, L. P. Chang, and T. W. Kuo, An 
+Efficient B-Tree Layer for Flash-Memory 
+Storage Systems, Proceedings of the 9th 
+International Conference on Real-Time and 
+Embedded Computing Systems and 
+Applications, Feb. 2003, pp. 409-430. 
+[19] C. H. Wu, L. P. Chang, and T. W. Kuo, An 
+Efficient R-Tree Implementation over 
+Flash-Memory Storage Systems, Proceedings 
+of the ACM 11th International Symposium on 
+Advances on Geographic Information Systems, 
+Nov. 2003, pp. 17-24. 
+[20] M. Wu and W. Zwaenepoel, eNVy: A 
+Non-Volatile, Main Memory Storage System, 
+Proceedings of the Sixth International 

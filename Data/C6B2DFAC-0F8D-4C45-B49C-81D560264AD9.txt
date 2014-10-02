@@ -1,0 +1,312 @@
+英文關鍵詞： H.264/AVC, Deblocking Filter, Filtering Sequence 
+ 
+圖2的濾波順序其實只是眾多合法順序中的一
+種。對於一個子區塊而言，只要左邊的邊比右邊
+的邊先濾，垂直的兩邊濾完之後才能濾水平的
+邊，而水平順序為上方的邊比下方的邊先濾，在
+這個規則下，所排出來的順序都是合乎
+H.264/AVC的標準規定。由於濾波順序具有這個
+彈性，近年來已有不少研究提出數種不同的濾波
+順序，並根據這些濾波順序及不同數目的去區塊
+濾波器，開發出各種新的高效能硬體架構。以下
+我們就這些研究做一些簡單的討論 
+目前的文獻[4-13]在改進去區塊濾波器硬體上
+主要為設計出新的硬體架構來加速整個濾波的
+時效，講求的是效能、記憶體空間使用、記憶體
+讀取的次數及整體的晶片大小等等。所以作者會
+在不違背濾波規則的前提下依照自己設計的硬
+體架構去改變邊緣濾波的順序。邊緣濾波的順序
+主要可以分成二種型式，第一種稱為循序濾波順
+序(Sequential Filter Order)，而另一種稱為混合濾
+波順序(Hybrid Filter Order)。簡單的說循序濾波
+順序是先執行完全部垂直邊緣的濾波後再執行
+水平邊緣的濾波，如圖3(a)。而混合濾波順序就
+是將垂直的邊緣和水平的邊緣混合交錯地濾波
+排序，提高子區塊資料的重複使用率，以降低記
+憶體的存取次數，如圖3(b)。 
+  
+圖 3 (a) 循序濾波順序 
+ 
+  圖 3 (b) 混合濾波順序 [4] 
+    上述的濾波順序是以一個去區塊濾波器為
+基準。如果增加去區塊濾波器的個數則濾波的速
+度可以加快，濾波的順序也可以有更多的變化。
+圖 4(a)(b)分別列出使用兩個水平去區塊濾波器/
+兩個垂直去區塊濾波器[11]和使用四個水平去區
+塊濾波器/四個垂直去區塊濾波器[8]的濾波順
+序。表一則簡單整理出各個文獻中所使用到的去
+區塊濾波器個數。 
+ 
+圖 4(a) 濾波順序 [11]. 
+   
+圖 4(b) 濾波順序 [8]. 
+表一  去區塊濾波器個數 
+ 
+從文獻中也可以看出隨著去區塊濾波器個數的
+增加，處理一個巨集區塊所需要的cycle數也會隨
+之降低。理論上，一個巨集區塊要處理的邊是192
+個像素邊緣，而一個去區塊濾波器在一個cycle可
+以處理1個像素邊緣，如果有N個去區塊濾波器的
+話(一般而言N會取2的指數次方)，其理論最佳
+cycle數為192 / N cycles。舉例來說，文獻[12]使
+用2個去區塊濾波器，平均所需的cycles數為96；
+文獻[11]使用4個去區塊濾波器，平均所需的cycle
+數為48。但這個推論也不完全成立，因為文獻[8] 
+使用8個去區塊濾波器，但所得的cycles數為36而
+非24。雖然如此，增加記憶體個數/容量與加大系
+統匯流排長度還是可以幫助達到最佳cycle數，如
+文獻[11]及文獻[12]所採取的方式。但如果系統沒
+有足夠的硬體資源，如嵌入式系統，則最佳cycle
+數就有可能無法達成。因此，如何在有限硬體資
+源與最佳cycle數的目標間取得最佳平衡點，濾波
+順序扮演一個非常重要的角色。 
+ 
+          圖 7 記憶體組織 
+C. 高效能去區塊濾波器之硬體架構 
+我們會利用 2個水平濾波器 (Horizontal 
+Filter) HF_0、HF_1和2個垂直濾波器(Vertical 
+Filter)VH_0、VH_1總共4個濾波器來完成濾波的
+動作。 
+而Bs Generator Unit是用來產生所需要的Bs值
+以及α、β值等等門檻值。 
+至於三個轉置緩衝器(Transfer Buffer)則是參
+考文獻[9]中所提出的，因為普通的轉置緩衝器
+將一個子區塊中的ROP轉成COP需要4個cycle的
+時間才能把轉置緩衝器的空間清出，提供下一個
+需要轉置的子區塊使用，但是根據我所提出的濾
+波順序我們需要轉置緩衝器一直做轉置的動
+作，並且足夠的時間讓它將資料清出，所以架構
+中所採取的轉置緩衝器可以解決這個問題。其中
+T0以及T1是將HF_0和HF_1處理完的ROP轉置成
+VF_0與VF_1所需要的COP格式，而T2是將處理完
+的3、7、11、15、17、19、21、23子區塊反轉置
+回ROP的格式存回Left Memory。 
+接下來的三個暫存器Temp_0、Temp_1、Temp_2，
+根據所提出的濾波順序中間會有一些子區塊在
+濾波完左邊或是上方之後經過大約3個cycle之
+後馬上就會用到，所以我們用來暫存器來暫存這
+些資料，暫存器的大小為一個子區塊的大小也就
+是128 Bits(1個像素大小為1個Byte)。 
+最後 COP Selector 的部分就是將 Output0 到
+Output4 的資料根據原本子區塊的位置將處理完
+濾波的子區塊寫到 Filtered Memory 的外部記憶
+體中。 
+       圖 8 所提出之去區塊濾波器之硬體架構圖 
+ 
+五、 結果與討論 
+我們利用Verilog HDL撰寫RTL階層的硬體描
+述語言，JM 轉儲資料經由測試平台透過讀檔將
+其參數輸入 ModelSim 中驗證其正確與否，之後
+在 Altera DE-2 FPGA 實驗板上進行實驗。 
+如表二，我們可以看到各個文獻所使用的去區
+塊濾波器個數以及處理一個巨集區塊所需要的
+cycles，可以發現到隨著去區塊濾波器個數的增
+加處理一個巨集區塊所需要的 cycles 數也隨之
+降低。我們所採取的是 4個去區塊濾波器，因為
+在比較過 4個以及 8個去區塊濾波器的條件下對
+於處理一個巨集區塊所減少的 cycles 數並沒有
+達到理論的最佳 cycles 數 24 個，因為一個巨集
+區塊要處理的邊是 192 個像素邊緣，一個去區塊
+濾波器在一個 cycle 可以處理 1個像素邊緣，所
+以8個去區塊濾波器的理論最佳cycles數為192 
+/ 8 = 24 個 cycles，而我們所提出的架構以及
+文獻[11]則是達到了在4個去區塊濾波器的理論
+最佳 cycles 數 48 個(192 / 4 = 48)，再詳細的
+比較對於一個處理一個巨集區塊所需要的
+ 
+ 
+ 
+ 
+ 
+2012 International Conference on Electronics, Communication and Computer Science 
+A High-throughput Deblocking Filter With New Filtering 
+Schedule  
+Che-Ming Chang, De-Sheng Chen, Y-Wen Wang 
+Department of Information Engineering and Computer Science, Taichung, Taiwan, R.O.C. 
+ 
+Abstract. In this paper, we propose a new processing order and a high-throughput hardware architecture 
+for the deblocking filter operations in H.264/AVC video coding standard. The proposed processing order is 
+carefully arranged with a parallel data flow to effectively improve processing speed and reduce the number 
+of memory access. The proposed architecture presents minimum latency, maximum throughput, and full 
+utilization of memory resources. It achieves 48 cycles/macro-block throughput and 56 cycles/macro-block 
+latency for the H.264/AVC decoding. 
+1. Introduction 
+H.264/AVC is the most recent coding standard for video compression. It is devised by ISO/IEC 
+Moving Picture Experts Group (MPEG) and IUT-T Video Coding Experts Group 
+(VCEG)[1][2][3].Previous studies show that H.264/AVC offers up to 30% better performance than 
+MPEG-4 Advanced Simple Profile(ASP) and up to 50% better compression than MPEG-2. The 
+filtering operations of H.264/AVC standard require more instructions and longer computing time to 
+process edge deblocking. Therefore, reduction in computation of deblocking filter operations can 
+significantly improve the overall performance of H.264/AVC. In [4], a new architecture of matrix 
+transposer (MT) was used to effectively transfer sub-blocks. An innovative 2-dimensional group-of-
+pixel (GOP) memory scheme was proposed in [5]. The architecture with 5-stage pipelined filter was 
+proposed in [6,7]. In [8], the VLSI architecture with 8 filters was first developed. The efficient double-
+filter hardware architecture was used in [9]. The hybrid architecture for H.264 BP/MP/HP was 
+presented in [10]. In [11], authors proposed a highly efficient deblocking filter architecture with 
+double-cross processing order and achieved the optimal cycle number with 4 filters. 
+In this paper, we propose a high-throughput hardware architecture with 4 deblocking filters. The size 
+of memory is only 48×32 bits to efficiently buffer intermediate data. This paper is organized as 
+follows. Section 2 describes the basics of deblocking filter. Section 3 introduces the new processing 
+order, organization of required memories, and the proposed deblocking filter architecture. Section 4 
+shows results and comparisons. Section 5 summarizes our work and gives some conclusions. 
+2. Basics of Deblocking Filter 
+2.1. Overview 
+The deblocking filter is designed to eliminate blocking artifacts and generate a smooth picture. In 
+H.264/AVC, the smallest block size of motion estimation is 4×4. Therefore, the deblocking filter is 
+applied to process each edge of the 4×4 block except the picture boundary. First, video screen will be 
+cut to series of macro-blocks. Then, the pixels of the macro-blocks are processed with intra prediction, 
+inter prediction, motion estimation/compensation, inverse transform, dequantization, deblocking 
+filtering and entropy coding steps to complete the video encoding/decoding. Fig. 1 shows the 
+composition of a macro-block. A macro-block contains one 16×16 luminance and two 8×8 
+chrominances.  Deblocking filters handle macro-blocks vertically and horizontally. Two line samples, 
+considered by the filter, for the adjacent 4×4 sub-blocks are shown in fig. 2, respectively. (A line 
+sample is 4 pixels) 
+ 
+ 
+ 
+ 
+ 
+2012 International Conference on Electronics, Communication and Computer Science 
+separately. The associated hardware architecture will be explained shortly. Note that, the operation on 
+the left side of a sub-block appears one cycle earlier than the right side of the same sub-block. This 
+novel arrangement allows us to achieve 48 cycles/macro-block throughput and 56 cycles/macro-block 
+latency for one macro-block. (A block cycle is 4 clock cycles.) 
+3.2. Organization of Related Memories 
+Fig. 7 shows the organization of memories related to our design. Four classes of memories, the 
+reconstruct memory, upper memory, left memory, and filtered memory, are used. The reconstruct 
+memory supplies eight pixels, two row-of-pixels (ROP’s) of sub-blocks, in one cycle when these two 
+sub-blocks are needed to be filtered horizontally. The upper memory is used to store T0 to T7 
+reference sub-blocks. They are obtained from external memory in ROP’s. Two sub-blocks of 8 pixels 
+from the upper memory are transmitted to the vertical filter in column-of-pixels (COP’s). One merit of 
+this memory arrangement is to effectively store and read individual ROP and COP to reduce the 
+number of sub-block transfers. Meanwhile, the left memory is used to store L0 to L7 reference sub-
+blocks, which will be used in processing next sub-blocks of number 3, 7, 11, 15, 17, 19, 21, and 23. 
+When handling horizontal macro-blocks, we do not write them back to filtered memory, but, instead, 
+write them to the left memory with the next reference sub-blocks. Finally, the filtered memory uses 
+64×64 bits to store the filtered data. Since, the reconstruct and filtered memories belong to the same 
+external memory space, when we calculate the memory space, the reconstruct and filtered memories 
+are not included. 
+Figure 5. Detail of proposed filtering order. Figure 6. Block diagram of proposed deblocking 
+filter architecture. 
+ 
+Figure 7. Organization of memories. 
+ 
+ 
+ 
+ 
+ 
+2012 International Conference on Electronics, Communication and Computer Science 
+Examining the memory requirement, [8] first looks slightly better than [11] and ours.  But, its memory 
+requirement increases as the frame resolution increases. On the contrary, our design does not increase 
+the memory requirement as the screen resolution increases. Our result is thus the best among all 
+designs when consider Cycles/MB and Memory requirement simultaneously. 
+5. Conclusion 
+In this paper, we propose a high throughput deblocking filter architecture for H.264/AVC. First, the 
+design needs only 56 cycles/macro-block latency and achieves the theoretical optimal cycle count 
+when 4 deblocking filters are used. Second, we reduce the memories requirement to 48×32 bits. These 
+advantages allow the encoding and decoding speed in H.264/AVC become faster and result in greater 
+processing time reduction. 
+ Table 1. Comparsion on various hardware designs.  
+Ref. Number of deblocking filter Cycles/MB Memory Requirement(bits) Gate Count 
+[4] 1 446 (64+2×96) ×32 24K 
+[5] 1 228 (144+16) ×32 16.60K 
+[6] 1 214 or 246 (96+32+1.5×FW) ×32 20.90K 
+[7] 1 36 64×32 18.70K 
+[8] 8 36 (FW/4+1) ×32 52.55K 
+[9] 2 110 64×32 12.60K 
+[10] 1 260 168×32 36.90K 
+[11] 4 48 64×32 20.14K 
+Ours 4 48 48×32 LUT’s in FPGA
+6. References 
+[1] Draft ITU-T Recommendation and Final Draft International Standard of Joint Video Specification, 
+ITU-T Rec. H.264 and ISO/IEC 14 496-10 AVC, Joint Video Team, Mar. 2003. 
+[2] T. Wiegand, G. J. Sullivan, G. Bjontegaard, and A. Luthra, “Overview of the H.264/AVC video 
+coding standard,” IEEE Trans. Circuits Syst.Video Technol., vol. 13, no. 7, Jul. 2003., pp. 560-576. 
+[3] P. List, A. Joch, J. Lainema, G. Bjontegaard, and M. Karczewicz, “Adaptive deblocking filter,” 
+IEEE Trans. Circuits Syst. Video Technol., vol. 13, no. 7, Jul. 2003 , pp. 614-619. 
+[4] Bin Sheng, Wen Gao and Di Wu, “An implemented architecture of deblocking filter for 
+H.264/AVC,” in IEEE International Conference on Image Processing(ICIP), volume 1, pp. 665-668, 
+October 2004. 
+[5] CHAO Y.C., LIN J.K., YANG J.F., LIU B.D.: “A high throughput and data reuse architecture for 
+H.264/AVC deblocking filter”. Proc. IEEE Asia and South Pacific Conf. Circuits Systems, 
+December 2006, pp. 1262–1265. 
+[6] SHIH S.Y., CHANG C.R., LIN Y.L.: “A near optimal deblocking filter for H.264 advanced video 
+coding’. Proc. IEEE Asia and South Pacific Design Automation Conf., January 2006, pp. 170–175. 
+[7] Qing Chen; Wei Zheng; Jian Fang; Kai Luo; Bing Shi; Ming Zhang; Xianmin Zhang : “A pipelined 
+hardware architecture of deblocking filter in H.264/AVC’.Third International Conf. 
+Communications and Network in China, 2008, pp. 815-819. 
+[8] CHEN C.M., CHEN C.H.: “Configurable VLSI architecture for deblocking filter in H.264/AVC”, 
+IEEE Trans. Very Large Scale Integr. Syst., 2008, 16, (8), pp. 1072–1082. 
+[9] TOBAJAS F., CALLICO G.M., PEREZ P.A., ARMAS V., SARMIENTO R.: “An efficient double-
+filter hardware architecture for H.264/AVC deblocking filtering”, IEEE Trans. Consum. Electron., 
+2008, 54, (1), pp. 131–139. 
+[10] Cheng-An Chien, Hsiu-Cheng Chang, and Jiun-In Guo, “A High throughput In-Loop de-blocking 
+filter supporting H.264/AVC BP/MP/HP video coding,” in IEEE Asia Pacific Conference on 
+Circuits and Systems (APCCAS), pp. 312-315, November 30 - December 3 2008. 
+[11] TSAI T.H. ; PAN Y.N.: “High Efficient H.264/AVC Deblocking Filter Architecture for Real-time 
+QFHD” , IEEE Trans. Consumer Electronics ,2009, 55, (4),pp. 2248-2256. 
+四、攜回資料名稱及內容 ： 
+1、紙本論文摘要集一本  
+2、Proceedings CD-ROM 一份  
+ 
+ 
+100年度專題研究計畫研究成果彙整表 
+計畫主持人：陳德生 計畫編號：100-2221-E-035-041- 
+計畫名稱：H.264 去區塊濾波器之多紋理設計 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 1 1 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 4 4 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

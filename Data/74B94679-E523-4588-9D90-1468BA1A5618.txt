@@ -1,0 +1,498 @@
+中文摘要 
+ 
+ 在資料格網的環境中，建立檔案複本是一種常見的技術，主要用來提升檔案
+存取效能。因為存取本地端的檔案複本，不但可以避免存取遠端檔案所需的網路
+通訊延遲，還可以增強資料的可得性。目前常見的資料格網系統，通常把檔案視
+為唯獨；雖然如此一來設計檔案複本的管理上會比較簡單，但事實上有越來越多
+的應用也需要修改到檔案的內容，因此複本間的資料一致性管理就變成了一個重
+要的議題。而目前常見的一致性管理方式有兩大類(1)以整個檔案為一致性的管
+理單位和(2)以固定檔案區塊大小為一致性的管理單位。本年度計畫則提出了(1)
+支援 Partial Concurrent Write、(2) Adaptive Consistency、(3) Implicit Lock 等機制。
+採用 Adaptive Consistency，系統可以避免 False Sharing 的問題，以達到檔案存取
+效能上的提升。而且我們也使用到 Implicit Lock 的方式做一致性的管理，讓
+Legacy Applications 可以不經過任何修改，就可以在我們設計的系統上執行。 
+ 
+報告內容 
+ 
+一、前言 
+一般的資料格網(Data Grid)都是採用產生檔案複本(Replication)的方式，來提
+高資料的可取得性(Availability)。有了檔案的複本後，應用程式可以在本地端取
+得所需要的資料，會比到遠端特定位置取得資料來得快的多。在本地端的快取中
+置放複本的好處不只能減少應用程式等待資料的時間，還能降低網路上的流量。
+除此之外，當某個持有特定資料的節點當機或者離開 Grid 的環境之後，這份資
+料亦不會因此消失，而能夠從其他節點上取得。 
+ 
+ 
+圖一、管線化運算 
+ 
+目前有關檔案複本的研究當中，大部份都把注意力放在固定不變的檔案類型
+(Permanent Data)。這些研究適合應用在科學上 write-once read-many 的資料，而
+這些資料通常都是由一些感應器或偵測器來產生，再由許多程式或使用者去分
+析、使用。事實上，只針對這樣子唯讀性的資料而設計的資料格網系統顯得太過
+於狹隘，還是有許多應用程式會需要去對這些資料進行修改或更新的動作，例
+如：天氣預測的應用程式，當要預測後天的天氣時，必需要先預測出明天天氣的
+結果，才能由明天天氣的結果去預測後天的。另外，還會有一些應用程式是以管
+線化[1,2]在運作的，如圖 1。這是一個管線化的運作流程，A2 這個運算叢集會
+用到 A1 運算叢集的運算結果、A3 這個運算叢集也會用到 A2 運算叢集的結
+果，而使用者只要知道 A3 運算完後的結果就好，對於 A1 和 A2 所產生的結果
+是用不到的。所以，我們認為可變資料(Mutable Data)在資料網格上被應用的情
+形，將會越來越普遍。而在目前所有的資料格網的服務，對於在大量的資料複本
+中，維持資料的一致性(Data Consistency)將會是個很大的問題。為了維持這些大
+檔案的資料一致性，會需要付出高昂的代價。 
+因此，在本年度計畫的執行過程當中，我們主要探討了(1)支援 Partial 
+Concurrent Write、(2) Adaptive Consistency、(3) Implicit Lock 等技術。 
+ 
+才可以去更新其它份的 Master Copy，此種方式同時只允許一個使用者對一個檔
+案作寫入的動作。 在一致性方面，ARCS 的 Master Copies 間是屬於
+Pessimistic Replication 的方式，當拿到 Key 的 Master Copy 在做修改的同時，也
+會同時去修改其他份的 Master Copies，因此，所有的 Master Copy 都維持在最新
+的狀態下。ARCS 也支援 Implicit Lock，Lock 的取得和管理的動作都由系統來負
+責，使用者並不需要介入。 
+ Hierarchical Replication Control in a Global File System[6]這篇文章中提到的
+NFSv4 系統，使用的是以一檔案或一個目錄，甚至是多個檔案及多個目錄為管理
+單位的方式，而管理單一檔案或目錄的方式稱為 Shallow Lock，另一方面同時管
+理多個目錄或多個檔案的方式稱之為 Deep Lock，每個檔案要被修改時，會先檢
+查此檔案有無 Primary Server，如果還沒有 Primary Server，會動態的去推選
+Primary Server，而推選的方法是透過投票的機制，當有多個 Servers 同時要競爭
+當 Primary Server 時，就比較看哪一個 Server 得到比較多其它 Servers 的同意，
+就被選為 Primary Server。只有 Primary Server 才可以做修改這個檔案的動作，而
+當其他使用者也要做讀取或修改檔案的動作時，就會把要求導到 Primary 
+Server，在 Primary Server 上做處理的動作，而當一段時間都沒有人再讀寫這份
+資料時，Primary Server 就會放棄它的身分。而此篇中採用 Shallow Lock 和 Deep 
+Lock 的管理方式的原因在於在它們系統中，產生 Primary Server 需要經過投票的
+過程，而這個過程所需的時間會造成系統的負擔，所以採用一次管理多個檔案來
+減輕負擔，此篇中提到它們可允許多個使用者同時對一個檔案做寫入的動作，但
+實際上也只允許一個使用者同時對一個檔案作寫入的動作。NFSv4 系統採用的是
+Close-to-Open Semantics 的一致性，保證當一個使用者開啟檔案時，可以看到最
+近一個使用者寫入並關閉檔案的內容。 
+NFSv4 也提供了 Implicit Lock，Servers 會自動的去做 Lock 的管理動作，因此使
+用者是不用介入 Lock 的管理工作，就可以方便的做使用 
+ TLDFS: A Distributed File System based on the Layered Structure[7]這篇文章
+中，管理一致性的單位，是可以調整的，所以可以支援多個使用者同時寫入或讀
+取檔案的不同部分，但是它實現的方法需要改到底層的硬碟，要採用他們提出的
+硬碟的資料配置方式才能配合，因此對使用者來說，是需要比較多努力才可以使
+用的系統。 而在一致性的管理方面，此篇中採用的是 Pessimistic Replication 的
+方法，並採用 Reading-Lease 和 Writing-Lease 的管理方式，當使用者要做讀取動
+作之前會先要 Reading-Lease，而多個 Reading-Lease 是可以同時存在的，當使用
+者拿到 Reading-Lease 之後，才可以做讀取之動作；相對的，使用者要做任何修
+改之前，會先要求 Writing-Lease，而當使用者拿到 Writing-Lease 之後，才可以
+做寫入的動作，同時只能有一位使用者拿到 Writing-Lease，而且 Writing-Lease
+和 Reading-Lease 不可以同時發給使用者。TLDFS 是提供 Explicit Lock，換言之，
+系統要求使用者自行做 Lock 管理的動作，因此可能會造成使用者的困擾。 
+ A Self-Organizing Storage Cluster for Parallel Data-Intensive Applications[3]此
+在目前被修改的範圍亦然。所以，為了改善這個問題，並提升檔案存取的效能，
+在本年度的計畫當中，我們提出了適應性資料同步（Adaptive Consistency）技術。 
+最後，我們也認為目前為了達到複本資料一致性，所採用的 Explicit Lock，
+對於不是專為資料格網開發的系統來說，將造成固有的程式必須加以修改才能使
+用到格網環境的不便。因此，本年度計畫的研究當中，採取了 Implicit Lock，讓
+資料格網系統本身自動的管理 Lock 的取得與釋放。 
+總括來說，我們的系統，支援同時寫入檔案的不同部分，因為可以動態的去
+調整一致性的管理單位，盡量避免衝突產生，讓系統留在 Optimistic Replication
+的狀況，如果無衝突產生，則可以同時寫入檔案的不同部分，提高效能。而在一
+致性方面，我們採用的是 Optimistic Replication 和 Pessimistic Replication 混合的
+方法，一般都是 Optimistic Replication 模式，盡量把 Consistency 管理的單位切小，
+以避免衝突發生，直到衝突無法避免時，則切到 Pessimistic Replication 的模式，
+利用 Lock 來做管理的動作，維持一致性。我們系統採用 Implicit Lock 的方式，
+系統會自動的去做 Lock 的管理工作，所以使用者可以透通的去使用資源，不需
+要費心在 Lock 的管理上。 
+ 
+五、結果與討論 
+ 
+ 
+圖二、Adaptive Consistency Granularity 示意圖 
+為了要達到 Concurrent Write，採用的方式為動態的調整一致性單位的大小。
+當同時可能有不同的使用者寫入資料，但是寫入在檔案的不同部分時，若把檔案
+一致性管理的單位切小，則可以同時做寫入，提高檔案存取效能。在系統開始執
+行的時候，檔案一致性的管理單位皆為整個檔案，有使用者做 Read 或 Write 動
+conjunction with PACT 2003. Extended version to appear in Kluwer Journal of Supercomputing. 
+[2] Matthew Spencer, Renato Ferreira, Micheal Beynon, Tahsin Kurc, Umit Catalyurek, Alan 
+Sussman, and Joel Saltz,“Executing Multiple Pipelined Data Analysis Operations in the 
+Grid,”Supercomputing, ACM/IEEE 2002 Conference. 
+[3] Hong, T., Aziz, G., Jingyu, Z., William, S., Tao, Y., and Lingkun, C.: ‘A Self-Organizing Storage 
+Cluster for Parallel Data-Intensive Applications’. Proc. Proceedings of the 2004 ACM/IEEE 
+conference on Supercomputing2004 pp. Pages 
+[4] Yasushi, S., and Marc, S.: ‘Optimistic replication’, ACM Comput. Surv., 2005, 37, (1), pp. 42-81 
+[5] Ruay-Shiung, C., and Jih-Sheng, C.: ‘Adaptable Replica Consistency Service for Data Grids’. 
+Proc. Proceedings of the Third International Conference on Information Technology: New 
+Generations2006 
+[6] Jiaying, Z., and Peter, H.: ‘Hierarchical Replication Control in a Global File System’. Proc. 
+Proceedings of the Seventh IEEE International Symposium on Cluster Computing and the 
+Grid2007 
+[7] Lei, W., and Chen, Y.: ‘TLDFS: A Distributed File System based on the Layered Structure’, IFIP 
+International Conference on Network and Parallel Computing Workshops, 2007, pp. 727-732 
+[8] Andrea, D., Flavia, D., Gianni, P., and Heinz, S.: ‘Relaxed Data Consistency with CONStanza’. 
+Proc. Proceedings of the Sixth IEEE International Symposium on Cluster Computing and the 
+Grid2006 
+[9] Jiaying, Z., and Peter, H.: ‘NFSv4 replication for grid storage middleware’. Proc. Proceedings of 
+the 4th international workshop on Middleware for grid computing, Melbourne, Australia2006 
+[10] Osamu, T., Noriyuki, S., Youhei, M., Satoshi M., and Satoshi S.: ‘Gfarm v2: A Grid file system 
+that supports high-performance distributed and parallel data computing’, Proceedings of the 2004 
+Computing in High Energy and Nuclear Physics, CHEP04, Switzerland, September 2004. 
+可供推廣之研發成果資料表 
+□ 可申請專利  ■ 可技術移轉                             日期：2009/10/28 
+國科會補助計畫 
+計畫名稱：快取格網：一個基於分散式共用記憶體的透通性資料格
+網系統之研究 (II)(III) 
+計畫主持人： 張志標        
+計畫編號：NSC 97-2221-E-426-005      學門領域：資訊 
+技術/創作名稱 Adaptive Replica Consistency Model in Data Grids 
+發明人/創作人 張志標 
+技術說明 
+中文： 
+在資料格網的環境中，建立檔案複本是一種常見的技術，主要用來
+提升檔案存取效能。因為存取本地端的檔案複本，不但可以避免存
+取遠端檔案所需的網路通訊延遲，還可以增強資料的可得性。目前
+常見的資料格網系統，通常把檔案視為唯獨；雖然如此一來設計檔
+案複本的管理上會比較簡單，但事實上有越來越多的應用也需要修
+改到檔案的內容，因此複本間的資料一致性管理就變成了一個重要
+的議題。而目前常見的一致性管理方式有兩大類(1)以整個檔案為一
+致性的管理單位和(2)以固定檔案區塊大小為一致性的管理單位。本
+年度計畫則提出了(1)支援 Partial Concurrent Write、(2) Adaptive 
+Consistency、(3) Implicit Lock 等機制。採用 Adaptive Consistency，
+系統可以避免 False Sharing 的問題，以達到檔案存取效能上的提
+升。而且我們也使用到 Implicit Lock 的方式做一致性的管理，讓
+Legacy Applications 可以不經過任何修改，就可以在我們設計的系
+統上執行。 
+ 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 NSC 97-2221-E-426-005 
+計畫名稱 快取格網：一個基於分散式共用記憶體的透通性資料格網系統之研究(II)(III) 
+出國人員姓名 
+服務機關及職稱 
+張志標 
+立德大學資訊科學與應用學系助理教授 
+會議時間地點 2009/05/18 ~ 2009/05/21 中國，上海 
+會議名稱 IEEE/ACM International Symposium on Cluster Computing and the Grid (CCGRID 2009) 
+發表論文題目 Memory-mapped File Approach for On-demand Data Co-allocation on Grids 
+ 
+ 
+一、參加會議經過 
+ 
+本人所參加的國際會議是在 2009年五月 18~21日於中國上海交通大學舉行的 IEEE/ACM 
+International Symposium on Cluster Computing and the Grid (CCGRID 2009)，此次已是該會議舉
+辦的第九屆了。CCGRID 一直是格網計算理論、設計與應用，以及分散式系統研究領域中，
+一個歷史悠久並且舉足輕重的國際會議。會議論文之投稿人數與品質皆有相當高的水準，今
+年的論文接受率僅為 21%，為歷年最低紀錄。本會議也邀請了多位學術界與業界之知名人士，
+於會議中進行 keynote addresses，使會議增添不少光彩與內容。尤其是演講者 Rajkumar 
+Buyya，不僅是 CCGRID會議之創始人，他所成立的 GRIDS實驗室，其研究成果與產出，在
+格網計算領域中，更佔有舉足輕重的影響力。 
+ 
+本人的論文宣讀時間為 2009 年 5 月 21 日 10:45~12:30 的 session。由於當天是整個會議
+議程的最後一天，與會的人數並不像前幾天踴躍。然而，本人仍把握機會與在場之研究人員
+與學者，如此次會議 Program Chair的香港大學王卓立教授等人，進行交流。也很榮幸能得到
+透過這樣的機會，未嘗不是幫助台灣積極參與國際社會的管道，這是本人往後值得學習與注
+意的地方。 
+ 
+從此次會議所發表的研究成果，與所舉辦的 keynote speech可以嗅出，雲端運算漸漸受到
+重視的趨勢。由於雲端運算的性質與格網運算有著多所類似的情況下，許多研究學者紛紛將
+觸角伸入這一個嶄新的領域，也都已經有了初步且豐碩的成果。這也激勵著本人未來將研究
+領域擴及雲端運算的計畫，也更堅定本人將在新的年度提出申請有關雲端運算的專題研究計
+畫的決心。 
+ 
+本次會議進行的過程中，充分感受大陸研究人員之活躍與成果之豐碩。在台灣與大陸有
+著奇妙關係的促使下，這更激起本人更加戮力於研究之動力，冀望在本人之專業領域中，可
+以替台灣爭一口氣。 
+ 
+附件：發表論文Memory-mapped File Approach for On-demand Data Co-allocation on Grids之原
+稿 
+ 
+ 
+Although, on-demand access systems reduce the 
+network bandwidth and storage space wasting, on-
+demand access systems still download the necessary 
+file fragments from only one replica server, that is, on-
+demand access systems do not fully utilize the 
+downstream bandwidth of computing nodes. 
+Besides, pre-staging systems enable legacy (grid-
+unaware) applications could cost-effectively migrate to 
+the grid environment without any modification (i.e. re-
+design and re-compile) because the application can 
+access data from the local file system. On-demand 
+access systems, on the other hand, usually require data-
+intensive applications designed by using an explicit 
+API for data transfer on-demand [5,14-15]. 
+Unfortunately, that is costly to adapt legacy 
+applications for use in grid environment. 
+In practice, however, pre-staging systems and on-
+demand access systems are complementary to each 
+other. Accordingly, this paper presents a hybrid 
+system, designated as the On-Demand data Co-
+Allocation (ODCA). ODCA has three key features, 
+namely: (1) transparent data access interface, (2) on-
+demand data transfer, and (3) co-allocation data 
+download mechanism. 
+ODCA also allows legacy applications to directly 
+migrate to the grid environment without any 
+modification. A legacy application can access a remote 
+shared file on-demand by using native I/O system calls 
+as usual. ODCA then intercepts the I/O operations on 
+the shared file issued by the application, and redirects 
+these I/O operations into corresponding ODCA 
+operations. Besides, ODCA introduces the co-
+allocation mechanism into the conventional on-demand 
+access systems, that is, it utilizes multiple data streams 
+to simultaneously download only the necessary file 
+fragments from the multiple replica servers according 
+to a data-intensive application’s demand. To the best of 
+our knowledge, ODCA is the first study to combine the 
+advantages of both pre-staging systems and on-demand 
+access systems. 
+The remainder of this paper is organized as 
+following. Section 2 briefly discusses the major data 
+sharing schemes presented in the literature for grid 
+environment. Section 3 introduces the ODCA 
+technology proposed in this study and describes its 
+system overview. Section 4 details the implementation 
+of ODCA, while Section 5 evaluates its performance 
+under various data sharing scenarios. Finally, Section 6 
+presents some brief concluding remarks and indicates 
+the intended direction of future research. 
+ 
+2. Related Work 
+ 
+The literature contains many proposals for data 
+sharing schemes within the grid environment. Broadly 
+speaking, these proposals can be classified as either 
+pre-staging systems or on-demand access systems. 
+They are briefly compared with ODCA in this section. 
+Typical examples of the former type of scheme 
+includes DCA (Dynamic Co-Allocation) [17] and 
+Fastest1 [12]. DCA uses multiple data streams to 
+concurrently download different fragments of a file to 
+a computing node. However, DCA chooses any replica 
+servers which contain the necessary fragments to serve 
+the data download, that is, DCA connives that the 
+replica server which has lowest bandwidth (i.e. slowest 
+servers) becomes the bottleneck of the file download. 
+The Fastest1 co-allocation scheme overcomes the 
+drawback of DCA. Fastest1 chooses only 
+comparatively better replica servers to serve the data 
+download according to the information about efficient 
+network bandwidth, network latency and the loading of 
+the replica servers. That is slow or busy replica servers 
+will not be allocated to server data download, 
+consequently reducing the data transfer time. 
+Unfortunately, these schemes must duplicate the entire 
+file to computing nodes even if these nodes only need a 
+few small fragments of the file. These schemes 
+consume unnecessary data transfer time and local 
+storage space. As a result, they are less efficient than 
+ODCA when required fragment size is low and data 
+analysis time and network latency are great. 
+The literature contains various proposals for on-
+demand access systems, most notably SRB (Storage 
+Resource Broker) [14], NFSv4.r [20] and JuxMem [5]. 
+All of them ensure that data-intensive applications can 
+access data from anywhere at any time, seeing that data 
+as a single file hierarchy even though the data possibly 
+resides on multiple replica servers. Once a data-
+intensive application demands for a file fragment, they 
+transfer the necessary fragment from a single replica 
+server to the computing node. Because these schemes 
+choose only a single replica server to serve the data 
+download, they do not fully utilize the downstream 
+bandwidth of computing nodes. In contrast, ODCA 
+uses a co-allocation mechanism to download data from 
+multiple replica servers, consequently reducing the 
+data waiting time of data-intensive applications. 
+Besides, SRB require their users to design programs by 
+using their own APIs. Such explicit data access 
+schemes forbid legacy applications to migrate directly 
+to the grid environment without modification, 
+consequently sacrificing user transparency. In contrast, 
+the users of ODCA need merely design their programs 
+as usual, using native I/O system calls. JuxMem is 
+somewhat similar to ODCA. JuxMem is also inspired 
+by the DSM approach for transparent access to data 
+and consistency management. However, under the 
+301
+ 
+3.3. Co-allocation Mechanism 
+ 
+ODCA introduces Fastest1 co-allocation mechanism 
+[12] into its on-demand access scheme. Because the 
+fragments needed by a data-intensive application could 
+be stored in more than one replica servers, a co-
+allocation mechanism can accelerate the data download 
+by using multiple data streams to concurrently 
+download different fragments from different replica 
+servers. 
+For each on-demand fragment needed by the 
+application, ODCA chooses the “fastest” replica server 
+among all candidate replica servers which store the 
+fragment to serve the data download. So-called the 
+fastest replica server minimizes t * (l + 1) [12], where t 
+is the predicted time for downloading the fragment 
+from the server when there is no bandwidth contention. 
+The predicted download time is estimated based on the 
+size of the fragment, and the latency and bandwidth 
+between the computing node and the server itself 
+measured by the NWS server. Besides, l refers to the 
+number of current data downloads from the server to 
+other computing nodes. This co-allocation mechanism 
+prevents the computing node from downloading 
+necessary fragments from “slower” replica servers, 
+consequently improving the data download 
+performance. In addition to each on-demand fragment, 
+ODCA also pre-fetches next necessary fragments 
+according to the read-ahead pre-fetching policy. 
+ 
+4. Implementation 
+ 
+Figure 2. System architecture of ODCA 
+ 
+Figure 2 illustrates the system architecture of 
+ODCA, which consists of two modules, namely O-FS 
+(ODCA file system module) and O-UTIL (ODCA 
+utility module). Additionally, ODCA adopts FUSE [2] 
+and Teamster-G [8, 11, 13] as sub-systems. The 
+operations of these components are delineated in this 
+section. 
+ 
+4.1. Interface 
+ 
+O-FS is the data access interface between data-
+intensive applications and ODCA. O-FS creates a 
+special directory, /ODCA in the local file system of 
+each computing node, and creates virtual (dummy) 
+files in the special directory. Each of virtual files 
+associates with an existing LFN recorded in the RCS. 
+After that, a data-intensive application can access a 
+shared file, consisting of distributed fragments, as 
+though accessing a local file by accessing the virtual 
+file.  
+O-FS promises that data-intensive applications need 
+not explicitly locate and transfer file fragments by 
+using any special data access APIs. O-FS uses FUSE 
+kernel module [2] to intercept the native I/O system 
+calls issued from the application, and then O-FS 
+translate these I/O system call into ODCA I/O 
+operations, as a result, the legacy applications, without 
+any modification, can access distributed file fragments 
+by the same way as accessing local files. 
+Note that, ODCA only intercepts and translates I/O 
+system calls which operate on /ODCA directory, thus 
+I/O system calls which operate on the normal file 
+system are not affected by ODCA. Note also that, O-
+FS is not a full-featured user-level file system, but 
+instead defines only functions such as open( ) (without 
+create), flush( ), read( ), write( ) and lseek( ). 
+ 
+4.2. Data Transmission 
+ 
+O-UTIL is responsible for fulfilling the ODCA I/O 
+operations, that is, O-UTIL uses Fastest1 co-allocation 
+mechanism to concurrently download different 
+necessary fragments from different replica server. O-
+UTIL implements the co-allocation algorithm as a 
+master-worker model. For each necessary fragment, 
+the master thread executed on a computing node, 
+chooses the “fastest” replica server to serve the data 
+download, and creates a worker thread to download the 
+fragment. Once the data download for the necessary 
+fragments is completed and next I/O system calls have 
+not been intercepted yet, the master thread creates 
+worker threads to pre-fetch next necessary fragments 
+according to the read-ahead pre-fetching policy. 
+Different from conventional data sharing systems 
+which use FTP-like [6] protocols as their data transfer 
+mechanism; however, O-UTIL applies a grid-enabled, 
+page-based DSM (Distributed Shared Memory) system, 
+namely Teamster-G [8, 11, 13] to achieve distributed 
+data sharing. 
+The basic concepts of Teamster-G are briefly 
+reviewed here to expedite understanding of the 
+following paragraphs. Teamster-G makes the main 
+303
+The benchmark used in the experiments consists of 
+a synthesized application and two real applications 
+(FFT and 2D wavelets coding). All of the synthesized 
+and real applications perform bulk data accesses on an 
+800MB large file which would be duplicated in each 
+replica server.  
+The advantage of using a synthesized application to 
+conduct the experiment is that it can easily model the 
+relationship between the different data transfer 
+approaches and the diverse behavior of the various real 
+data-intensive applications by swapping experimental 
+parameters. On the other hand, the use of several real 
+applications in the experiments verifies the 
+applicability of ODCA in a way that a synthesized 
+application cannot.  
+The synthesized application reproduces a general 
+data-intensive application that continually reads 8MB 
+data from a large file and analyzes those data. After 
+that, it produces 8MB results and then overwrites the 
+results to the large file. The data analysis process is 
+emulated by repeated sorting of the 8MB data. The 
+required analysis time (Ta) for each 8MB data is an 
+experimental parameter of the synthesized application. 
+Ta can be controlled by increasing or decreasing the 
+number of iterations of the sorting procedure. 
+Obviously, the behavior of the application is correlated 
+with Ta. A greater Ta makes the application tend to be 
+a CPU bound application, whereas a smaller Ta makes 
+the application tend to be an I/O bound application. 
+However, an application may not analyze the entire 
+data of the file, since it may use only partial data of the 
+file. Accordingly, the percentage of the total data 
+consumed by the application (Pc) is also an 
+experimental parameter.  
+The real applications used in the experiments are a 
+Fast Fourier Transform application (FFT) and a 2D 
+wavelet coding application (Wavelet). The behavior of 
+the two real applications is same as the synthesized 
+application. The only difference is the data analysis 
+process is replaced for the FFT application by the one-
+dimensional discrete Fourier transform subroutine 
+from the FFTW library [4] and, for the wavelet coding 
+application, by the 2D wavelet coding subroutine from 
+Wavelet [3]. These particular applications were 
+specifically chosen for testing purposes since their 
+runtime behaviors are well understood in most grid 
+computing environments. Note that, on the strength of 
+ODCA’s transparent access interface, these public 
+access subroutines can be used directly without any 
+modification. Note also that when using the real 
+application benchmarks, the only parameter modified 
+experimentally is Pc, in order to change the input data 
+size. For the real applications, Ta is totally decided by 
+the subroutines. 
+ 
+5.2. Results and Discussion 
+ 
+Figure 5. Results of the on-demand data transfer feature 
+ 
+ 
+Figure 6. Results of the overlapping feature 
+ 
+Figure 5 shows the results derived from executing 
+the synthesized application with the Ta set for 210ms 
+that causes the application tends to be an I/O bound 
+application. Figure 5 displays the relation between the 
+data waiting times associated with ODCA and the pre-
+staging scheme for varying Pc which was increased 
+stepwise from 25% to 100%. Meanwhile the shared 
+file required by the application was duplicated in two 
+replica servers.  
+The data waiting times associated with the pre-
+staging scheme remained constant as the Pc was 
+changed, whereas that associated with ODCA 
+correlated with the Pc. Clearly, ODCA is more 
+efficient than the traditional pre-staging scheme with 
+regard to the data waiting time for all Pc, but this 
+difference becomes much more pronounced as the Pc 
+becomes low. Moreover, this finding reinforces the 
+premise that ODCA prevents wasting of network 
+bandwidth and storage space. 
+Figure 6 shows the results derived from executing 
+the synthesized application with the Ta set for 630ms 
+that causes the application tends to be a CPU bound 
+application. Figure 6 also illustrates the relation 
+between the data waiting times associated with ODCA 
+and the pre-staging scheme for varying Pc while the 
+shared file was also duplicated in two replica servers.  
+Figure 6 also reveals that the data waiting times 
+associated with the pre-staging scheme remained 
+305

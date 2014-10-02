@@ -1,0 +1,485 @@
+ I 
+摘要 
+    本子計畫的研究，以電子系統層級(ESL)的技術方法在系統晶片上設
+計多格式音訊編解碼器，三年來的研究重點如下: 
+ 針對高運算複雜度的模組進行軟體分析與硬體加速 
+ 建立多格式的音訊編解碼技術 
+ 達成軟硬體共同設計、驗證之開發技術 
+ 藉由ESL技術，驗證所發展之音訊編解碼系統 
+而三年來的研究成果包含:設計支援MP3(N=36/12點)、AAC(N=2048/256點)
+以2-D遞迴傅立葉轉換(DFT架)構為核心之IMDCT硬體架構，並利用免係數
+記憶體(memory-free)計算處理不同音框之係數，達到縮小晶片實現面積
+與節省晶片功耗之目的；而快速的正逆傅立葉轉換硬體加速器亦可支援
+其它用途，如:AAC編碼中的心理聲學模型與DRM數位廣播中的OFDM應用。
+在音訊解碼器的部分，Decoder的軟體設計與硬體做整合後可使得設計更
+為精簡並提昇執行效率。將軟硬體共同設計之decoder整合至總計畫所開
+發之環境EPIDETOX (An ESL Platform for Integrated Circuit DEsign 
+and TOol eXploration)上，更有助於實現與驗證電子系統層級之連貫性
+與高彈性之設計理念。 
+ 
+關鍵詞：多格式音訊編碼、電子系統層級設計、正逆離散傅立葉轉換、正逆修正型離
+散餘弦轉換、EPIDETOX。 
+ 
+ 
+ 目錄 
+摘要  ................................................... I 
+ 
+Abstract  ................................................. II 
+ 
+行政院國家科學委員會專題研究計畫成果報告 .................... 1 
+一、前言 ........................................................... 1 
+二、研究目的 ...................................................... 1 
+三、文獻探討 ...................................................... 2 
+四、研究方法 ...................................................... 4 
+五、結果與討論 ................................................... 12 
+ 
+參考文獻   ................................................ 13 
+ 
+專題研究計畫成果報告自評表   .............................. 17 
+ 
+ 
+ 
+ 
+ 
+ 
+ 2 
+三、文獻探討 
+A. MDCT/IMDCT 
+ 
+ 頻帶分析/合成為基礎的正、逆修正型離散餘弦轉換(MDCT 與 IMDCT)[1, 2, 3]演
+算法已經被廣泛的應用在各種音訊 codec 上。即便是相同的 MDCT 或 IMDCT block，
+不同的應用層面也產生多種不同的音框長度需求。如 TABLE I所示: (1) mp3[4]的長
+/短窗分別使用 36/12 點長度的 MDCT 與 IMDCT。(2) AAC[5]的長/短窗使用 2048/256
+點。(3) 在數位廣播系統中[6]，音框長度以縮短成 1920/240點。(4) Dolby AC-3[7, 
+8]的長/短窗分別使用 512/256 點。(5) 在 Twin VQ (transform-domain weighted 
+interleave VQ)[9]中，音框長度分為長窗、中窗以及短窗。長窗的點數為 4096點、
+中窗的點數為1024，而短窗的點數為 256點。(6) Ogg[10]所使用之規格為 8192, 4096, 
+2048, 1024, 512, 256, 128, 64 等點數。 
+ 
+TABLE I 各種音訊規格所需之音框長度. 
+規格 長窗 中窗 短窗 
+MP3 36 -- 12 
+AAC 2048 -- 256 
+AAC in 
+DRM 
+1920 -- 240 
+AC-3 512 -- 256 
+TwinVQ 4096 1024 256 
+Ogg 8192, 4096, 2048, 1024, 512, 256, 128, 64 
+ 
+  大部分的設計方式皆採用 FFT-based 的平行設計架構[11]來實現 MDCT/IMDCT 的
+快速計算，音框長度往往受限為 2的冪次方(power of 2)。這造成了 FFT-based的設
+計不適合應用於整合上述的 codec 於同一平台，尤其當音框長度出現非 2 的冪次方
+(non-power of 2)時。 
+  為了改善點數的限制問題，Britanak and Rao [12]與 Lee [13]分別針對 mp3 codec
+提出新平行架構的 DCT 的演算法。相較於這兩種方式，Lee’s algorithm [13]比
+Britanak and Rao’s algorithm [12]需要更少的乘法與加法運算，而且他也推導出
+一個新的3-point 與 9-point SDCT-II 模組。除了 FFT-based的方式外，由 Hwang and 
+Lai 所提出的以 DCT 為核心運算的平行處理演算法[14]亦可以快速的計算出
+MDCT/IMDCT的結果，但該演算法應用亦受限於音框長度必須為 2的冪次方(power of 
+2)。為了彌補這不足，Li 等人在 2007 年提出一個適用於 mp3點數的以 DCT 為核心運
+算的演算法[15]。另外，Shu et al. 也在同年發表出 radix-3 的快速演算法[16]。
+這些架構皆是以平行處理的方式實現 MDCT/IMDCT 的計算。然而，這樣的方式對於音
+訊應用來說往往 over-designed 而且需要複雜的控制方法與極高的資料頻寬才能完
+成，例如:bit-reversal 與記憶體存取方式。 
+近來，對於有效的實現 FFT演算法有了更重大的突破。以遞迴架構方式實現的硬體
+加速器已證實有低成本、快速記算等效益。相關文獻[17-22]更加將遞迴式的架構發
+展得淋漓盡致。另一方面，以 DCT 為核心的遞迴演算法[23-37]被廣泛的應用於動態
+地切換音框，他的優點在於架構與控制設計簡單。在切換不同音框長度時不需要改變
+硬體架構，儘管在計算上需要較多的時脈周期，但仍可達到即時。若考量有限的硬體
+資源與面積效率，這類架構的演算法較能達到有效地整合，以節省晶片面積。在 1996
+ 4 
+擷取的bits形成新的Codeword)，並再做一次search。Helix [38]與Lee’s method [39]
+改良的方向是類似的。他們都致力於節省在每一次search的計算量，只需要做幾次運
+算，就可以得到search結果，加快解碼時間。 
+  雖然，Helix [38]與Lee’s method[39]縮短了每一次search的計算量，卻沒有
+注意到search次數也是一個重要的因素。search次數決定在於成功解碼時解碼器到
+input buffer抓了幾次資料。而Gutemberg’s method [40]能夠在每一次search時多
+擷取幾個bit而節省search次數。他的概念是來自於在MPEG4-AAC中Codeword的長度增
+加量為1~6個bits。Gutemberg’s method [40]是將這些長度增加量建表。並告訴解
+碼器，在下一次的search之中Codeword的長度增加量是多少bits，這也代表解碼器在
+下一次search可以擷取多少bits。若長度增加量為2~6，則表示解碼器到input buffer
+抓取資料的次數降低，同時search次數也降低了。 
+  雖然，Gutemberg’s method [40]能降低search次數，但在大部分情況，長度增
+加量仍為1個bit。而本團隊所開發出之技術[41]的出發點在於，是否有辦法大量地、
+很貪婪地擷取更多bits？在這個概念下發展了一種在一次search中處理5 bit length
+的方法。在其他方法之中，解碼到Codeword 5bit長度必須經過3~5次的search，但本
+篇paper提出的方法只需一次的search便可成功解碼。可大大地降低search次數，並
+且在單一search之中計算量也較少。不過[41]提出之方法只適用於1~5bit長度，6bit
+之後還是必須藉由其他方法完成。但根據在5bit之內命中的機率平均有72%，改善的
+幅度仍相當可觀。經實驗結果與Helix [38]、Lee’s method [39]與Gutemberg’s 
+method [40]做比較，search次數可以節省26.92%~58.21%，而instruction量也可以
+節省40.21%~66.53%。 
+ 
+四、研究方法 
+A. MDCT/IMDCT 
+ 
+1991年 P. Duhamel [8]提出了以 IDFT來計算 IMDCT之概念，如下 Fig. 1 所示。 
+ 
+Fig. 1 
+ 6 
+TABLE II 列出我們所提出之共架構各種點數與現有遞迴架構之文獻[26]及[27]
+之硬體複雜度比較。其中，由於 MP3 所需點數過少，並不適用於我們所提出之 2-D
+之架構，因此 MP3之計算以單一 DFT單元計算而非 2-D架構計算。 
+    *不包含前處理與後處理 
+由上表可知，我們的共架構除了可共用多種格式外還大幅提升了運算速度。 
+ 
+B. Entropy coding 
+ 
+為了解說方便，一個簡單的例子列在 TABLE III。它的最大長度為 4。首先，所有
+的 Codeword必須左移直到長度為最大長度，並且左移時的新 bit給予 x(x代表 don’t 
+care)。結果列表在 TABLE IV。 
+ 
+TABLE III                           TABLE V        
+           A simple Huffman tree                     Index Table 
+ that max length is four                                    
+Codeword Length Symbol 
+0 1 S1 
+10 2 S2 
+110 3 S3 
+1110 4 S4 
+1111 4 S5 
+ 
+ 
+              TABLE IV 
+Codeword left shift table 
+Codeword Codeword Value 
+0xxx 0~7 
+10xx 8~11 
+110x 11~13 
+1110 14 
+1111 15 
+ 
+  在 TABLE V 中，每一個 Codeword 可以被表示成一段數列(或數字)。在本篇論文
+中，這些數列(或數字)被稱為 Codeword Value，而且他們的範圍不會互相重疊。換
+句話說，每一個 Codeword Value 可以指到他們對應的 Codeword。然後，將 Codeword 
+Value展開到 TABLE VI，並且填入他們所對應 Codeword 的 TABLE VII index。 
+ 
+由於 TABLE V 被建立，Huffman解碼只需要下列步驟： 
+1. 由input buffer讀取4bit。 
+(舉例，若 4bit的資料為 0x1110。) 
+2. 將4bit資料當做Codeword Value，並且從TABLE V讀取TABLE III index。 
+(Codeword Value 為 14，TABLE III index 為 3。) 
+3. 藉由TABLE III index從TABLE III得到對應的Symbol與長度。 (Symbol為S4，
+Codeword長度為4。) 
+Codeword 
+Value 
+TABLE III 
+index 
+0 0 
+1 0 
+2 0 
+3 0 
+4 0 
+5 0 
+6 0 
+7 0 
+8 1 
+9 1 
+10 1 
+11 1 
+12 2 
+13 2 
+14 3 
+15 4 
+ 8 
+由於本研究方法，在一次的 search 之中，只需要 2 次的查表就可以正確解碼。
+因此也可以節省不少 number of instruction。TABLE VII 可以說明，各個方法改善
+的百分比。 
+ 
+TABLE VII 
+Number of instruction improvement table 
+ 
+improve 
+ Helix [38] 
+percent 
+Improve  
+Lee’s method [39] 
+percent 
+Improve 
+Gutemberg’s 
+method [40] 
+percent 
+test1.aac 60.90% 64.69% 39.92% 
+test2.aac 62.93% 66.88% 39.75% 
+test3.aac 61.95% 65.83% 40.05% 
+test4.aac 61.28% 65.12% 39.33% 
+test5.aac 64.70% 68.76% 40.34% 
+test6.aac 62.13% 66.03% 40.36% 
+test7.aac 63.44% 67.42% 40.68% 
+test8.aac 63.50% 67.50% 41.23% 
+average 62.60% 66.53% 40.21% 
+ 
+ 
+  同樣, 在這裡也顯示其中一個檔案(test6.aac)的 number of instruction 在各
+個方法的紀錄圖，如 Fig. 4 縱軸為 number of instruction 單位為 106次，橫軸依
+序為 Helix [38]、improve Helix [38]、Lee ‘s method [39]、improve Lee’s method 
+[39]、Gutemberg’s method  [40]與 improve Gutemberg’s method [40]。由 Fig. 
+4 可以看得出來，Helix [38]、Lee’s method [39]、Gutemberg’s method  [40]
+在計算量上的差異。 
+ 
+ 
+Fig. 4 
+ 
+ 
+ 
+ 10 
+ 
+2. AAC Decoder System 
+ 
+Gain 
+Control
+FilterBankTNS
+Intensity/
+Coupling
+Prediction
+Bitstream Formatter
+Output Time 
+Signal
+Spectral 
+Normalization
+M/S
+AAC 
+Quantization 
+and Coding
+Spectral Processing
+Coded Audio 
+Stream
+Data
+Control
+Legend :
+ 
+ 
+Fig. 6 
+ 
+    標準 AAC的解碼架構流程如 Fig.6，而 AAC Quantization and Coding 這一
+個區塊包含了兩個部分，一個是反量化(Inverse Quantization)而另一個為無
+失真解碼(Noiseless Decoding)。 
+ 
+    其中，FilterBank 所利用的運算為 IMDCT，對於一般的 AAC 格式需有 2048
+點及 256點轉換，同樣地，將此部分抽出來，先給予適當地前、後處理，將 IMDCT
+以 2-D DFT核心來作硬體實現。 
+ 
+    我們可以將 2 個 1-D 之 DFT 單元加上中間乘法器組合為 2-D 之演算法，如
+下式； 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 12 
+系統模擬來加強傳統的驗證方式。 
+    分別利用傳統的設計方式與電子系統層級的設計方式來驗證 mp3 decoder，使用
+電子系統層級的方式如 Fig7(a)、(b)所示，在平台上開啟 MP3 Decoder platform，
+使其 QEMU ARM CPU與 ocp 匯流排連接並與 RTL 的部分連接，在與 Modelsim做
+co-simulation的過程中降低驗證時所需要花費的時間。 
+ 
+ 
+                    Fig. 7(a)                            Fig. 7(b)
+ 
+五、結果與討論 
+  此計畫中，我們提出了一個有效的快速演算法與架構來計算運算量大的 IMDCT模
+組。並且將其與各音訊格之不同的音框進行整合，更能有效地節省晶片面積與功率消
+耗。此成果已經在 FPGA 的平台上完成硬體驗證，可在未來與多格式影音系統進行整
+合，大大地節省硬體加速器的成本與使用。 
+ 
+ 14 
+[16]. H. Shu, X. Bao, C. Toumoulin, and L. Luo, “Radix-3 algorithm for the fast 
+computation of forward and inverse MDCT,” IEEE Signal Process. Lett., vol. 14, no.2, 
+pp. 93-96, Feb. 2007. 
+[17]. C.P. Fan and G.A. Su, “Novel recursive discrete Fourier transform with compact 
+architecture,” IEEE Asia-Pacific Conf. Circuits Syst., pp.1081–1084, Dec. 2004 
+[18]. C. P. Fan and G. A. Su, “Efficient Recursive Discrete Fourier Transform Design with 
+Low Round-Off Error,” International Journal of Electrical Engineering, vol.13, no.1, 
+pp.9-20, February 2006. 
+[19]. L. D. Van, C. T. Lin, and Y. C. Yu,  “VLSI architecture for the low-computation 
+cycle and power-efficient recursive DFT/IDFT design,” IEICE Transactions on 
+Fundamentals of Electronics, Communications and Computer Sciences, vol. E90-A, 
+no. 8, pp. 1644-1652, Aug. 2007. 
+[20]. Shin-Chi Lai, Sheau-Fang Lei, Chia-Lin Chang, Chen-Chieh Lin, and Ching-Hsing 
+Luo, “Low Computational Complexity, Low Power, and Low Area Design for the 
+Implementation of Recursive DFT and IDFT Algorithms”, IEEE Transactions on 
+Circuits and Systems-II, vol. 56, no. 12, pp. 921-925, Dec. 2009. 
+[21]. Shin-Chi Lai, Wen-Ho Juang, Chia-Lin Chang, Chen-Chieh Lin, Ching-Hsing Luo, 
+and Sheau-Fang Lei, “Low-Computation cycle, Power-Efficient, and Reconfigurable 
+Design of Recursive DFT for Portable Digital Radio Mondiale Receiver”, IEEE 
+Transactions on Circuits and Systems-II: Express Briefs, vol. 57, no. 8, pp. 647-651, 
+August 2010. 
+[22]. Shin-Chi Lai, Sheau-Fang Lei, Wen-Ho Juang, and Ching-Hsing Luo, “A Low-Cost, 
+Low-Complexity and Memory-Free Architecture of Novel Recursive DFT and IDFT 
+Algorithms for DTMF Application,” IEEE Transactions on Circuits and Systems-II: 
+Express Briefs, vol. 57, no. 9, pp. 711-715, September 2010. 
+[23]. H.-C. Chiang, J.-C. Liu, “Regressive implementations for the forward and inverse 
+MDCT in MPEG audio coding”, IEEE Signal Processing Letters, Vol. 3 , Is. 4, 
+pp.116 – 118, April 1996. 
+[24]. V. Nikolajevič and G. Fettweis, "New recursive algorithms for the forward and 
+inverse MDCT", Proc. of the IEEE Workshop on Signal Processing Systems: Design 
+and Implementation (SiPS'2001), Antwerp, Belgium, pp. 51-57, Sept. 2001. 
+[25]. V. Nikolajevic and G. Fettweis, “Computation of forward and inverse MDCT using 
+Clenshaw's recurrence formula”, IEEE Transactions on Signal Processing, Vol. 51,  
+Is. 5, pp. 1439 – 1444,  May 2003. 
+[26]. V. Nikolajevič and G. Fettweis, "New recursive algorithms for the unified forward 
+and inverse MDCT/MDST", Journal of VLSI Signal Processing Systems for Signal, 
+Image and Video Technology, Vol. 34, No. 3, pp. 203-208, July 2003. 
+[27]. C.-H. Chen, C.-B. Wu, B.-D. Liu and J.-F. Yang, "Recursive architectures for the 
+forward and inverse modified discrete cosine transform", Proc. of the IEEE Workshop 
+on Signal Processing Systems: Design and Implementation (SiPS'2000), Lafayette, 
+LA, pp. 50-59, Oct. 2000. 
+[28]. Che-Hong Chen, Bin-Da Liu and Jar-Ferr Yang, “Recursive architectures for realizing 
+modified discrete cosine transform and its inverse,” IEEE Transactions on Circuits 
+ 16 
+Huffman Decoding Method for MPEG-4 AAC Standard,” Consumer Electronics, 
+2008. ICCE 2008. Digest of Technical Papers. 
+[41]. Han-Chang Ho, and Sheau-Fang Lei, “Fast Huffman Decoding Algorithm by 
+Multiple-Bit Length Search Scheme for MPEG-2/4 AAC,” Proceedings of 2010 IEEE 
+International Symposium on Circuits and Systems (ISCAS),May 30 2010-June 2 2010, 
+pp. 2844 – 2847.
+ 18 
+國科會補助專題研究計畫項下出席國際學術會議心
+得報告 
+                                     
+日期： 99 年 10 月 28  日 
+計畫
+編號 NSC 98－2220－E－006－005－ 
+計畫
+名稱 
+電子系統層級設計技術開發及其在多格式系統晶
+片之應用－子計畫四：以電子系統層級技術應用
+於系統晶片多格式音訊編解碼器之設計 
+出國
+人員
+姓名 
+雷曉方 
+服務
+機構
+及職
+稱 
+國立成功大學
+電機系 
+ 
+副教授 
+會議
+時間 
+2010年 5月 30日至 2010
+年 6月 2日 
+會議
+地點 
+法國 
+巴黎市 
+會議
+名稱 
+(中文)電路與系統國際研討會 
+ 
+(英文)IEEE International Symposium on Circuits and 
+Systems 
+發表
+論文
+題目 
+(中文)針對 MPEG-AAC中根據多位元長度搜尋策略的快
+速霍夫曼解碼演算法 
+ 
+ 
+(英文) Fast Huffman Decoding Algorithm by 
+Multiple-Bit Length Search Scheme for MPEG-2/4 AAC 
+                                 
+ 20 
+統的觀察，來設計更好的生醫產品。第三場演講由 Google研究部門的主管 
+Wolf-Dietrich Weber 博士主講 “Energy-saving approaches for 
+warehouse-scale computing,” ，現今雲端運算與大型電腦網路系統的應用，節
+能議題在未來是值得關注研究的課題。 
+筆者在論文議程第三天早上的數位信號處理場次中口頭宣讀論文 “Fast 
+Huffman Decoding Algorithm by Multiple-Bit Length Search Scheme for 
+MPEG-2/4 AAC,”， 在 Huffman 解碼時，因為資料量龐大，而每一筆資料可能也
+會使用多次搜尋，造成解碼時間過長。而本篇論文提出一個快速的 Huffman 解碼
+的演算法，降低搜尋次數，因此與傳統的方法比較能夠加速解碼流程與速度，對
+多媒體音訊編解碼系統設計有正面的效益。 
+在三天會議期間，筆者不但有參加許多學術論文發表場次，也參與兩個重要
+的技術委員會組織年會（Visual Signal Processing & Communications 
+Technical Committee 與 Multimedia Systems and Applications Technical 
+Committee），除了聽取技術委員會年會報告，也與來自世界不同國家的技術委
+員交流。參與國際學術會議的規劃與籌備分配工作，而且也參與成功大學與交通
+大學教授合作爭取明年在台灣舉辦影像處理與視覺通訊國際會議（2011 Visual 
+Communication and Image Processing）。 
+ 
+二、 與會心得 
+1.參與本次國際會議與技術委員會，與來自世界各國在專業技術頗具份量代表性
+的學者認識交流，這些學者的態度都很謙和，皆樂於分享他們參與研究與國際性
+組織活動的經驗，筆者與他們提到來自台灣，他們都對台灣近年來在電子與資訊
+高科技產業上的長足進步與發展表示讚賞，也都表示若有適當的機會，很願意來
+台灣與成大作學術交流的訪問活動。 
+ 22 
+六、其他 
+感謝國科會專題研究計畫經費補助，讓筆者有機會參加國際學術會議。 
+ 
+ 
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：雷曉方 計畫編號：98-2220-E-006-005- 
+計畫名稱：電子系統層級設計技術開發及其在多格式系統晶片之應用--子計畫四：以電子系統層級技
+術應用於系統晶片多格式音訊編解碼器之設計(3/3) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 3 3 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 2 2 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 5 5 100%  
+博士生 1 1 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 6 6 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 3 3 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

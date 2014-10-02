@@ -1,0 +1,215 @@
+ 2
+DRAM and Flash memory. Among all 
+these of memory technologies, MRAM is 
+considered to have a large chance to be 
+applied to commercial products in the near 
+future. 
+MRAM is not only a replacement for 
+DRAM or Flash memory, its high speed 
+and non-volatility features also enable 
+further optimizations of computer systems. 
+For example, existing operating systems 
+are usually based on the assumption that 
+the main memory is volatile, and thus dirty 
+data maintained in the buffer cache should 
+be written to disks periodically to prevent 
+data loss due to the loss of power. As 
+MRAM becomes the main memory of 
+computer systems in the future, the 
+assumption will no longer exist and the 
+above mechanism is no longer needed. 
+Thus, we consider that operating systems 
+for the next generation computer systems 
+(with non-volatile memory as the main 
+memory) need to be re-designed. 
+Therefore, we propose a three-year 
+project to explore the optimizations and 
+new designs of a next-generation, 
+MRAM-based operating system. We will 
+emphasize on the design of new file system 
+architecture, performance improvement of 
+file systems, power consumption reduction 
+on storage systems, reliability improvement, 
+and system recovery time shortening.  
+Currently, we have proposed a new 
+file system architecture and finished the 
+design and implementation of the 
+performance improvement techniques on 
+file systems, which will be described in this 
+report. 
+ 
+Keywords: Non-volatile Memory, MRAM, 
+File System, Power Saving, High 
+Reliability, System Recovery 
+ 
+二、計畫緣由與目的 
+現今的主流記憶體技術，包括
+SRAM、DRAM、以及快閃記憶體(FLASH)
+都各有其不足之處。但隨著理論科學與製
+程技術的蓬勃發展，許多新一代非揮發性
+記憶體技術如 FeRAM、MRAM、OUM
+等相繼問世，同時也都有相當大的機會取
+代現存記憶體市場[9]。而眾多新興記憶
+體技術中，MRAM 是目前最廣泛被看
+好，同時也是短期間最可能被量產且應用
+在商業產品的技術[9]。 
+磁阻式隨機存取憶體(MRAM)，最大
+的特性即是利用磁荷取代電荷來儲存資
+料。不同於 DRAM，既使切斷電源供應，
+儲存在 MRAM 上的資料並不會消失，等
+待系統重新運作後即可將記憶體內的資
+料取回。而相對於同為非揮發性的快閃記
+憶體(FLASH)而言，MRAM 則不受存取
+次數的限制，且讀取與寫入資料的速度足
+以媲美靜態隨機存取記憶體(SRAM)。簡
+單的說，MRAM 兼具 SRAM 的高速讀寫
+能力、FLASH 記憶體的非揮發性、以及
+DRAM 的小體積特性，也難怪 MRAM 被
+半導體業界稱許為「夢幻記憶體」。再加
+上其低耗電性，MRAM 明顯優於現有的
+嵌入式記憶體，目前已被定位將取代未來
+嵌入式系統的主要記憶體[9]。 
+雖然 MRAM 目前仍在實驗室發展階
+段，但許多研究機構與全球大廠，包含
+Motorola[10]、 IBM[11]、 Infineon[11]、
+NEC[12]、Toshiba[12]等，均提出了不少
+重要的研發成果，且 MRAM 容量與製程
+仍持續增加與進步中。未來若能量產使每
+位元成本降低至 DRAM 的水準，MRAM
+擁有絕佳的機會取代現今 DRAM 市場，
+成為筆記型電腦或個人電腦上的主要記
+憶體[9]。此外，根據 NanoMarkets[13]最
+近所完成的一篇關於磁阻式隨機存取憶
+體的報告中指出，預估在 2008 年 MRAM
+ 4
+案系統，其將所有檔案資料儲存在 Page 
+Cache 中，而檔案的 metadata 則是利用
+VFS 層的資料結構表示，其並不具額外
+的 fs-dependent 的資料結構。因此檔案資
+料在此時並不會有對應的磁碟空間。 
+為了讓所有新建立的檔案均是建立
+在 ramfs 檔案系統中，我們攔截了 VFS
+的 create 函式，並換成呼叫 ramfs 所提供
+的 create 函式，因此新產生的檔案在系
+統中會被視為屬於 ramfs 的檔案，而後
+續所有對此檔案做存取的動作都會轉而
+透過 ramfs 所提供的各式 file operations
+來完成。 
+ 
+圖一 Architecture of the Temporary Ramfs 
+一般在系統記憶體不足時，系統會
+選擇釋放部分資料所佔之記憶體空間，
+但對於修改過的資料，由於資料尚未寫
+回磁碟，因此為了維持檔案的一致性，
+必須先將資料寫回磁碟，才能釋放其所
+佔空間。但由於在 Temporary-ramfs 裡的
+資料在磁碟上並沒有相對應的位置，因
+此我們無法將在 Temporary-ramfs 內的
+資料寫回並回收其空間，故可預見的是
+若不斷新增檔案，Temporary-ramfs 裡的
+資料也將不斷增大，不久系統將充滿著
+Temporary-ramfs的資料卻苦無可回收之
+記憶體。 
+為了讓系統釋放 Temporary-ramfs
+裡資料所佔據之空間，我們必須將
+Temporary-ramfs內的資料轉換回所屬的
+檔案系統。在轉換的過程中，檔案系統
+會分配磁碟空間給該檔案，我們即可將
+這些資料寫回並回收。轉換的時機主要
+有兩個： 
+一個情況是當一個檔案本身的大小
+超過一定的 threshold(目前為 1MB)時，
+我們會先選擇將其轉換回原本的檔案系
+統。其主因是因為根據研究[15]顯示，大
+部分建立不久之後即會被刪除的檔案為
+較小的檔案。同時，檔案 fragmentation
+主要出現在小檔案上。因此將較大的檔
+案，暫時保留在 Temporary-ramfs 並不會
+得到好處。 
+另一個情況是當記憶體不足時，系
+統會喚醒pdflush核心執行緒將一些修改
+過的資料寫回磁碟，因此我們在 pdflush
+中檢查 Temporary-ramfs 裡是否含有資
+料，若有，則我們會將在 Temporary-ramfs
+裡的檔案轉換回原屬的檔案系統，這樣
+則可將轉換過的檔案寫回磁碟並釋放其
+記憶體空間。 
+而在轉換時，我們利用檔案系統
+super block 裡維持的一個鏈結串列，此
+串列將所有屬於此檔案系統的檔案給串
+連起來，並依照 LRU 做排列。而根據
+LRU 我們選出較久沒被存取的檔案先作
+轉換的動作，因為此種檔案其大小可能
+已經較為確定也較有可能之後會被使用
+者所刪除。 
+轉換的過程主要包含了三個步驟，
+如圖二所示:  
+(A)首先我們會先呼叫檔案系統所提供
+建立檔案的函式，為此新檔案產生檔案
+的 metadata，在 linux 中即為檔案的
+inode。 
+(B)由於某些原本在檔案 vfs inode 裡的
+欄位像檔案建立時間、存取權限、檔案
+大小、使用者 ID、指向檔案資料的指標…
+等是需要繼續被保留住的，因此我們將
+這些欄位複製到剛新建立的 inode 中。 
+ 6
+適當的 segments，我們將所有的 Segment
+依照長度做排序。因此當系統需要寫回
+時，我們從排序好的 Segment 串列中依
+照長度依序取出較長的 Segment 做寫回
+的動作，直到數量達到系統的要求為止。 
+ 
+ 
+圖四 Segment descriptors 
+ 
+z Hybrid Segment/Zone 演算法 
+前述兩個演算法都各有其缺點。在
+zone-based 的演算法中，當 workload 所
+產生之寫入要求的 spatial locality就已經
+很高時，該演算法所試圖降低的 seek 
+time 就已經不具太大的影響力，此時影
+響 I/O 效能最主要的因素取決於寫入的
+資料是否為是連續的資料，因此在此情
+況下，Zone-based 演算法得不到太多的
+好處。反之在 Segment 的演算法中，雖
+然我們每次做寫回時都選擇了最連續的
+資料，但我們並無法將所有的 Segments
+限制在鄰近的區域。因此若是大部分的
+Segment 之間彼此距離很遠，可能仍要
+花相當多的時間在 Segment 之間移動。
+因此為了改善這兩個演算法的缺點，我
+們提出了一個 Hybrid Segment/Zone 的
+演算法。 
+ 
+圖五 Segment/Zone information table 
+ 
+在 Hybrid Segment/Zone 演算法中，
+為了讓寫回的資料處在鄰近的位置，我
+們仍將磁碟切割成 Zones，如圖五，並記
+錄每個 Zone 裡被修改過的分頁數。除了
+記錄分頁數之外，我們也利用 Segment
+的方法，將一個 Zone 內連續並且修改過
+的 pages 視為一個 Segment，記錄一個
+Zone 裡含有多少個 Segment。當需要寫
+回資料時，我們以 Zone 為單位選擇較合
+適的 Zone 寫回。然而和 Zone-based 演算
+法不一樣的地方在於我們並非以一個
+Zone裡修改過的分頁個數做為選擇的依
+據，而是依據一個 Zone 裡的平均
+segment 長度，即 
+ 
+ 
+  
+考慮 Average Segment Length 的原
+因在於，若是單純以一個 Zone 中修改過
+的分頁數做為寫回的依據，我們僅能將
+寫回的資料限制在鄰近區域中，但這些
+資料可能是相當 random 的分佈在 Zone
+中，而 Average Segment Length 越大則代
+表在寫入相同個數分頁的情形下，所經
+過的 segment 數較少，代表寫回的資料
+都是較連續的，因此可以減少 rotation 
+delay。而將資料寫回至磁碟時則是利用
+每個 zone中所紀錄修的改過的分頁數以
+及屬於此 zone 的 segment 數，計算出每

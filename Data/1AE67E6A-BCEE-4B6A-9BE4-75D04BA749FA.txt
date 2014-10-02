@@ -1,0 +1,141 @@
+效率和成本的問題。此時一個很有效率且節省成本的方案出現了，就是 Network 
+Storage，利用網路直接把資料備份到遠端的儲存體上。目前 Network Storage 的
+模式有兩種，一種稱之為 Network Attached Storage（NAS），另一種稱之為 Storage 
+Area Network（SAN）。 
+在 NAS 的模式中，當一個客戶端要存去網路上另一端的資料時，必須透過
+一個 Storage Server 提供服務，而提供服務的方式是以 File 為導向。因此戶端所
+看到的是一個一個的檔案，並不知道儲存體內部的情況。因為 NAS 是 File level，
+由 Storage Server 中的 File System 負責提供服務，因此很容易提供共享的功能（例
+如解決同時寫入檔案）；但因為必須透過 Storage Sever 的 File System，造成許多
+次的 memory copy 及 context switch 因此效能較差。 
+在 SAN 的模式中，Storage Devices 可以直接以 Block 的方式提供客戶端服
+務，也就是客戶端可以直接分配到一個或數個 Raw Disk。使用者可以把這個分
+配到的 Raw Disk 分割或格式化。此種 Block level 的方式，因為不需透過 Storage 
+Server 的 File System，所以效能比 NAS 好；但也因為沒有 File System 的集中管
+理（例如無法避免同時對同一個 Block 寫入），所以無法針對 Row Disk 提供分享。 
+在 Network Storage 上，除了 Network 必須提供 QoS Guarantee，Storage 也必
+須要能夠提供 QoS；兩者結合才能提供真正所謂的 Network Storage QoS 
+Guarantee。由於 Storage 是一個機械的裝置，其速度比起網路自然是慢上許多，
+當有許多存取要求時，服務的優先順序對於系統的效能將有非常大的影響。本計
+畫希望在 Network Storage 中加入適當的 QoS 機制來提供服務的保證。 
+現今網路儲存系統的發展偏重於儲存容量的管理，極少對 network storage 
+QoS 有相關的研究，例如：磁碟空間有效使用率的最佳化、對於磁碟存取要求(disk 
+access request)提供保證等等。然而影響 QoS 的因素還須考慮虛擬磁碟(virtual disk)
+與實際磁碟之間的磁碟參數比較與對應等等。學術界對於此研究的相關貢獻甚少,
+所以希望能針對此方面作更深入的探討與研究。目前較廣為學者接受的 QoS 機
+制有兩種：Stonehenge 系統架構[3]和 Token Bucket Filter 之 QoS 保證機制[4]。本
+計劃即針對 Stonehenge 的 QoS 系統架構加以改進。 
+ 
+我們認為未來的 Network Storage 勢必要架構在以 TCP/IP 為基礎的高速網路
+之上。此種 IP-Based 的 Network Storage 被稱為 IP Storage。 
+Internet Small Computer Systems Interface（iSCSI）是設計在以 TCP/IP 為基礎的
+Network Storage Protocol。而 Fiber Channel over TCP/IP（FCIP）[1]和 Internet Fiber 
+Channel Protocol（iFCP）[2]這兩個協定則是為了讓既有的 FC 儲存體裝置可以相
+容於 IP Network。 
+以 TCP/IP 協定為基礎的網路，隨著網際網路高度的發展，已經成為全球綿
+密的廣域網路。因此有很多早期的 FC-SAN 都無法和目前的廣域網路相互溝通。
+而 iFCP 和 FCIP 這兩種協定的目的，就是以不變更原本的光纖通道，使其上的
+裝置能透過 IP 網路與遠端的裝置相連結。而 iSCSI 便不同了，iSCSI 原本就是基
+Normal Request 和 QoS Request，簡稱為 NR 及 QR。 
+ 
+問題分析 
+AP
+iSCSI
+Initiator
+Client  Server
+ 
+iSCSI
+Target
+Disk
+Driver
+Hard
+Disk
+IP Network
+IT
+ST RT
+ST’ RT’
+CT
+IT: Issue Time
+CT: Completion Time
+ST: Send Time
+RT: Receive Time
+ 
+ 
+ 
+ 
+ 
+圖 2. 架構之元件和演算法相關時間定義之示意圖 
+ 
+    Real-time disk scheduling using deadline sensitive scan [5]中所實現的服務品
+質保證演算法，僅適用於 DAS 架構的儲存設備，若我們要將網路加進整個儲存
+架構時同圖 2.所示，我們則必須能及時因應網路傳輸狀況做排程調整，方式如下: 
+對於 real-time request 要能滿足 Qos 保證之條件，即不違反 deadline 時間的
+情況，我們使用此式 CT IT+EEI≦ 來作為檢查。CT 為完成 request 工作之後，回
+應至 client 端的時間，IT 為 client 端送出 request 之時間，而 EEI 為期望此 request
+於 server 端執行完回應至 client 端所花費之時間間隔。圖 3. 為計算 LST 之演算
+法： 
+ 
+current = ECTN ; 
+for ( i = N ； i≧1；i-- ) { 
+ SDi = min ( current , ECTi ) – X – 1/2RTT ; 
+ Current = SDi ; 
+} (X在此設為worst-case service time) 
+ 
+ 
+ 
+ 
+ 
+圖 3. 計算 LST 之演算法 
+ 
+ 演算法中之 ECT 表示為 expected completion deadline。SD 為 start deadline，
+由演算法計算得來；N 為 queue 中存放 request 之最大數目。此演算法之運作方
+式為從 Queue 中最後一個 request 往前開始計算 LST，簡單來說，每一個 request
+之 LST 皆由後一個 request 之 LST 及 ECT 之中取最小值來計算；然而，queue
+中最後一個 request 根據演算法，其 LST 則由自己之 ECT 來做計算。 
+定義 ECT 為 initiator 端的 ST´，若使用者應用程式發送指令到 iSCSI initiator
+之間的時間極短，我們將這段時間忽略，則 CT IT+EEI≦ 可修改為 ST´ ST+EEI≦ 。
+ECT 的計算式為 ECT = ST + EEI，前述之不等式可變為 ST´  ECT≦ ，其意思為實
+ 
+ 
+模擬結果 
+service time = 25ms
+0
+5
+10
+15
+20
+25
+80 100 125 150
+EEI(ms)
+De
+ali
+ne
+ V
+iol
+ati
+on
+Pe
+rce
+nta
+ge
+(A
+vg
+)
+service time = 25ms
+ 
+圖 5. EEI 對平均 Deadline Violation(%)之影響 
+ 
+圖 6. Service Time 預估對 Deadline Violation(%)之影響 
+ 
+故我們可以得到以下結論 : 
+1. 可以發現 QoS 需求即 EEI 值約在 100ms 到 150ms 時，是本論文提出之磁碟排
+程演算法能夠提供延遲時間保證的較佳值；換句話說，當延遲時間在 100ms
+左右的情況下，是在本演算法所能處理的範圍之內；若更小於 100ms 的話，
+Deadline 違反的情況可能會較為嚴重而無法提供延遲時間保證。 
+2. Service Time 預估值為 15ms 和 25ms 時之 Deadline violation 皆比其他 service 
+time(10ms 和 35ms)都明顯來的要低，尤其是在 80ms 和 100ms 上面，其差異
+較為顯著。如此，可以得知 service time 之預估對於 Deadline Violation 影響是
+很大的。 
+ 
+ 
+ 

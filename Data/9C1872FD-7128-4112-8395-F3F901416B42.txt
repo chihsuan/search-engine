@@ -1,0 +1,1393 @@
+行政院國家科學委員會補助專題研究計畫成果報告 
+計畫名稱：大規模快閃記憶體儲存系統之耐久度暨可靠性之研究 
+計畫編號：NSC 95-2221-E-009-063 
+執行期限：計畫自民國95 年08 月01 日至民國96 年07 月31 日止 
+主持人：張立平 
+共同主持人： 郭大維 
+計畫參與人員：張譽繽，游仕宏，黎光仁，曾士豪 
+國立交通大學資訊工程系 
+摘要 
+ 
+大規模快閃記憶體儲存系統，近年來已為建
+構行動計算平台之不可或缺的一項技術。舉
+例來說，目前工業電腦以及筆記電腦中之硬
+式磁碟，已逐漸為矽碟所取代。雖然高容量
+的快閃記憶體的價格穩定下降，其耐久與可
+靠性卻並沒有對應地提昇。主要原因還是為
+成本考量。其中，多電位快閃記憶體的製造
+技術，雖然將儲存密度大增，卻也使得記憶
+體的耐久程度產生數量級的下降。本計畫的
+研究成果，主要為一針對高容量矽碟之平均
+磨損演算法。該演算法，不同於以往之簡易
+平均磨損演算法，能夠處理大量記憶體區塊
+暴露於強烈的空間區域性時之平均磨損議
+題。該演算法之主要想法有二。第一，我們
+利用冷資料來使得已經過度磨損之區塊停
+止老化。第二，牽涉於平均磨損之區塊，均
+被妥善追蹤保護，已使得平均磨損動作能逐
+漸生效。經由實驗證明，該演算法的確大勝
+以往之各種平均磨損演算法，並延長矽碟的
+讀寫壽命。 
+ 
+關鍵字：快閃記憶體，檔案系統，平均磨損，
+嵌入式系統 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Abstract 
+ 
+Flash-memory-based large-scale storage systems 
+have been crucial components in building 
+next-generation mobile computers. To replace 
+hard drives in mobile computers with solid-state 
+disks (SSDs) is a recently emerging application. 
+However, as high-capacity NAND-flash chips 
+are becoming affordable, the endurance of 
+NAND flash is largely degraded because of the 
+use of new production process. In particular, 
+multilevel cell (MLC) flash increases storage 
+density with the cost of degraded block 
+endurance. In this project, a new wear-leveling 
+algorithm, referred to as the dual-pool algorithm, 
+has been proposed. It is to evenly wear all the 
+flash-memory blocks so as to prolong the 
+lifetime of an SSD. Different from prior work, 
+the dual-pool algorithm successfully level the 
+wearing of a large number of flash-memory 
+blocks under realistic workloads. There are two 
+key ideas in the algorithm: First, the wearing of 
+old blocks is ceased by putting cold data in. 
+Second, blocks are shielded from being 
+repeatedly involved in wear leveling so as to 
+wait for their prior wear-leveling involvement to 
+take effect. By conducting experiments under 
+realistic workloads, the proposed algorithm 
+successfully achieves a very even wearing of all 
+the blocks. 
+ 
+Keywords: flash memory, file systems, wear 
+leveling, embedded systems 
+In this paper, a novel wear-leveling algorithm, referred to as the dual-pool
+algorithm, is proposed. The algorithm is based on two key ideas: First, blocks
+are prevented from being overly worn by storing infrequently updated data. Sec-
+ond, blocks just involved in wear leveling are left alone until wear leveling takes
+effect. The proposed algorithm requires no complicated tuning, and it resists
+changes of spatial locality in realistic workloads. Based on a newly proposed
+data structure, a highly scalable implementation of the proposed algorithm is
+presented. The dual-pool algorithm and previously proposed ones were exten-
+sively evaluated by means of a series of trace-driven simulations. The results not
+only verify merits of the proposed algorithm but also reveal drawbacks of the
+previously proposed ones. How the proposed algorithm can be implemented in
+a USB flash drive and a Linux-based embedded platform are also demonstrated.
+The rest of this paper is organized as follows: Section 2 provides our problem
+formulation. Section 3 summarizes prior work with respect to wear leveling. In
+Section 4, a novel wear-leveling algorithm is presented, and Section 5 addresses
+its implementation issues. Performance evaluation of are provided in Section 6,
+and Section 7 concludes this paper.
+2 Problem Formulation
+There are two major flash-memory architectures in the current market, i.e.,
+NOR-type flash memory and NAND-type flash memory. Each of the two aims
+at different applications [13]. In particular, NAND-type flash memory (referred
+to as “NAND flash” for short) is specifically designed for data storage. Besides
+bare chips, NAND flash also comes in diverse small-form-factor implementa-
+tions such as Smart MediaTM , Secure DigitalTM , MultiMedia CardsTM , Mem-
+ory StickTM , and Compact FlashTM . Compared to NOR flash, NAND flash
+technology offers an ideal mass storage medium for embedded systems at very
+approachable prices.
+Physically, a NAND-flash chip is organized in terms of fixed-sized blocks,
+and each block is of a fixed number of pages. A block is the smallest unit for
+erasure, a page is the smallest unit for reads and writes. The block size and the
+page size of a typical NAND flash are 128 KB and 2 KB, respectively [3]. For
+each page, a small 64 bytes “spare area” is appended to it. Spare areas are for
+the storage of out-of-band data like ECC and page status. A page and its spare
+area can be accessed independently. Because flash memory is write-once, two
+successive writes to the same page must be interleaved by a block erasure. Each
+block could tolerate a limited number of erasure cycles, which is near 100K
+cycles under the current technology. Any block exceeding this limitation (i.e.,
+being worn out) would start suffering from unreliable data access.
+When using NAND flash as a mass-storage medium, its physical charac-
+teristics introduce two major challenges: garbage collection and wear leveling.
+Because two consecutive writes to a page must be interleaved by one block era-
+sure, to avoid unnecessary erasure on every update, new data do not overwrite
+old data on update. Instead, new data are re-directed to some free space, and
+the old data are considered as being invalidated. Such a strategy is referred to
+as “out-place update”. Let a “free page” stand for one available for write. Let
+a page of new data and invalidated data be referred to as a “live page” and a
+“dead page”, respectively. As out-place updates gradually consume free pages,
+2
+ Δ: The maximum difference between any two block-erasure cycles 
+ 
+Algorithm 
+Name 
+Block-Allocatio
+n Policy 
+Triggering 
+Condition 
+Wear-leveling Policy Reference 
+(HC) 
+Hot-Cold 
+Swapping 
+FIFO Periodically 
+If Δ becomes larger than a predefined threshold, data stored in the oldest block and in the youngest 
+block are swapped. 
+Chang et al. [10],  
+Kim and Lee [7] 
+M-System TrueFFS 
+[17] 
+(2L) 
+Two-Level  
+Youngest block 
+first 
+Periodically 
+ First level: To always allocate the youngest block for new writes. 
+ Second level: If Δ becomes larger than a predefined threshold, then move all live data away from 
+the youngest block 
+STMicroeleconics 
+[25],  
+Chang et al. [8] 
+(EP) Erase 
+Pool 
+FIFO On each write 
+Blocks of free space are organized as an erase pool, and newly written data are dispatched to free 
+space allocated from blocks in the pool. How blocks are organized in the erase pool is undefined. 
+FIFO is assumed in this paper. 
+SmartMedia[15],  
+Sandisk [21] 
+(OP) 
+Old-Block 
+Protection 
+Youngest block 
+first 
+On block 
+erasure 
+ If the difference between the erasure cycles of the just-erased block and the youngest block is 
+larger than a predefined threshold, data in the youngest block are moved to the erased block.  
+ If a just-erased block is involved in wear leveling, it won’t be involved again until a predefined 
+number of block erasures have been performed to other blocks. 
+UBI [22] 
+(KL) Kim and 
+Lee 
+Youngest block 
+first 
+On garbage 
+collection 
+Erase the block having the largest score for garbage collection according to Equation (2) Kim and Lee [7] 
+(CAT) 
+Cost-Age- 
+Time 
+Youngest block 
+first 
+On garbage 
+collection 
+Erase the block having the largest score for garbage collection according to Equation (1) Chiang et al. [20] 
+(TB) 
+Turn-Based 
+Selection 
+FIFO 
+Periodically 
+In x out of x+y times, garbage collection selects a block for erasure in favor of efficient garbage 
+collection. In the rest y times, a block is chosen for erasure according to some wear-leveling rules. In 
+[7], a block of all live data is chosen, and in [8] a block is randomly selected for erasure
+2
+. 
+JFFS2 [13],  
+YAFFS [14] 
+(DP) 
+Dual-Pool 
+FIFO 
+Upon the 
+completion of 
+each write 
+ Cold-data migration: use the migration of cold data to cease the wearing of overly worn blocks. 
+ Hot-cold regulation: blocks are shielded from wear-leveling activities to see how the wearing of 
+blocks introduced by cold-data migration develops. 
+This paper 
+ 
+Table 1: A summary of previously proposed wear-leveling algorithms.
+Hot-cold swapping (algorithm HC) is to swap data stored in the oldest block
+and in the youngest block. The procedure is periodically invoked to prevent
+wear-leveling activities from overwhelming the system. Since the youngest block
+and the oldest block are very likely storing hot data and cold data, respectively,
+the rationale behind this approach is to “reverse” the wearing of such two kinds
+of blocks. Similar but slightly different, STMicroelectronics’s reference design
+[19] (algorithm 2L) suggests to “defrost” the youngest block by moving all its
+data away. Bityutskiy et ak., [16] (algorithm OP) proposed to move data in the
+youngest block to an old block. The algorithm proposed by M-System [11] (al-
+gorithm SD) sort free blocks in terms of blocks’ physical addresses. Free blocks
+are allocated in a round-robin fashion for new writes and hot-cold swapping is
+conducted whenever necessary.
+Wearing-aware heuristics refer to garbage collection policies that take wear
+leveling into consideration. Because interests of wear leveling and garbage col-
+lection usually conflict with each other, the algorithm must adaptively adjust its
+preference either to garbage collection or to wear leveling. In particular, Chiang
+et al. [14] proposed CAT heuristic (algorithm CAT) to reclaim dead pages on
+block i of the highest score according to the following formula:
+score(i) =
+µi ∗ ai(t)
+(1 − µi) ∗ ǫi
+, in which µi, ai(t), ǫi denote space utilization, an aging function, and the
+erasure cycle of block i, respectively. Function ai(t) monotonically increases
+with t the time interval between the current time and the most recent time
+block i gets erased. Both blocks of a lot of dead pages and blocks had not been
+erased for long time are preferred by algorithm CAT. Differently, Kim and Lee
+4
+Dirty Swap (DS): On the completion of a write request, the following
+condition is checked:
+EC(H+(QECHP ))− EC(H
+−(QECCP )) > TH.
+If the above condition is true, the following procedure is performed:
+Step 1. Data on all live pages in block H+(QEC
+HP
+) are copied (moved) to some
+other free pages outside of the block.
+Step 2. Erase block H+(QEC
+HP
+).
+Step 3. Copy data on all live pages from block H−(QEC
+CP
+) to block H+(QEC
+HP
+).
+Step 4. Erase block H−(QEC
+CP
+).
+Step 5. Swap block H+(QEC
+HP
+) and block H−(QEC
+CP
+) in terms of their pool
+associations.
+Whenever EC(H+(QEC
+HP
+)) − EC(H−(QEC
+CP
+)) is large enough, it is assumed
+that, on the one hand, block H−(QEC
+CP
+) have not been erased for a long time
+because of the storing of cold data, and, on the other hand, block H+(QEC
+HP
+)
+have been erased a lot because it frequently stores hot data. Step 3 moves cold
+data in block H−(QEC
+CP
+) to block H+(QEC
+HP
+) for cold-data migration. It is to
+cease wearing block H+(QEC
+HP
+) by storing cold data and to start wearing block
+H−(QEC
+CP
+) by moving cold data away. For hot-cold regulation, Step 5 swaps the
+pool associations of blocks H−(QEC
+CP
+) and H+(QEC
+HP
+). Right after Step 5, the
+young blockH−(QEC
+CP
+) (now in the hot pool) would hardly beH+(QEC
+HP
+) because
+of its small block-erasure cycle, and, similarly, the old block H+(QEC
+HP
+) would
+now be “hidden” in the cold pool. As the wearing of the old block is ceased
+and the young block start being worn, eventually they will become queue heads
+H+(QEC
+HP
+) and H−(QEC
+CP
+), and again are eligible for DS.
+4.2 Adaptive Pool Resizing
+This section extends the basic concept in the previous section to deal with
+dynamic changes in spatial locality.
+The basic principles work fine if access patterns never change. But it is
+hardly true in realistic workloads. Access to hot data might sometimes become
+inactive, and applications could start accessing some cold data. To merely use
+DS is fragile if access patterns change from time to time. Consider that a block
+is just moved from the cold pool to the hot pool by means of DS, and the block
+should now store no cold data. Suppose that hot data in the block happen to
+become cold. As the wearing of the block stops, it deeply “sinks” in the hot
+pool because of its relatively small erasure cycle. The block will never involved
+in wear leveling again. An analogous phenomenon can also happen to blocks in
+the hot pool. To correct this, a new operation is defined for the hot pool:
+Hot-Pool Resize (HPR): On the completion of a write request, block
+H−(QEC
+HP
+) is moved from the hot pool to the cold pool if the following condition
+is true:
+EC(H+(QECHP ))− EC(H
+−(QECHP )) > 2 · TH.
+6
+Frequently 
+stores hot data
+In the 
+cold pool
+In the 
+hot pool
+Stores cold 
+data
+Frequently 
+stores hot data
+Dirty Swap (DS)
+Stores cold 
+data
+Hot-Pool 
+Resize (HPR)
+)( ECHPQH +)( ECHPQH −
+)( ECCPQH −)(
+EEC
+CPQH +
+(A)
+(D)
+(B) (C)
+(E) (F)
+The cold pool
+The hot pool
+Cold-Pool 
+Resize (CPR)
+)( EECHPQH −
+(G)
+Figure 1: State Transition of Blocks
+data in the block are moved away. On the other hand, for blocks in the hot
+pool (i.e., in State D), if a block stores no cold data, the block would be worn
+quickly and it moves toward queue head H+(QEC
+HP
+) (i.e., to State F). The block
+would then be involved in DS, by which the block is associated with the cold
+pool (i.e., to State A) and cold data are written onto the block. Ideally blocks
+gradually traverse the circle of State A, State C, State D, State F, and State A.
+Now consider what happens when access patterns changes and how CPR
+and HPR correct blocks’ pool associations. Suppose that data stored in a block
+in the hot pool (i.e., in State D) become cold. The wearing of the block is then
+ceased and the block gradually moves toward queue head H−(QEC
+HP
+) (e.g., to
+State E). HPR will then identify the block and associate it with the cold pool
+(i.e., to State A) as the block should be there. Analogously, consider that hot
+data are frequently written to a block in the cold pool (i.e., in State A). As
+the block is quickly worn and its effective erasure cycle rapidly increases, the
+block gradually moves toward queue head H+(QEEC
+CP
+) (i.e., to State B). Once
+the block reaches State B, CPR would move it to the hot pool (i.e., to State D)
+as the block should be there.
+5 Implementation Issues
+This section is focused on implementation issues of the proposed dual-pool al-
+gorithm.
+5.1 Random Priority Queues
+To realize the dual-pool algorithm, efficient prioritization and search over blocks
+are necessary. Regarding any block, the key is its physical address and the
+priority stands for its erasure cycle (or effective erasure cycle). Because any
+block can be erased, updates to block’s priorities could be random. A data
+structure that supports search, prioritization, and random priority update over
+blocks is needed. Let it be referred to as a random priority queue.
+To realize random priority queues, some approaches could be taken: The
+8
+Max bit-pyramid
+on EEC
+▼ ▲ ▼ ▲ ▼ ▲ ▼ ▼ ▲ ▼ ▲ ▲ ▼ ▲ ▼ ▼
+32 5 5 11 23 75 18 2 34 1 23 15 23 44 44 33EC
+Membership 
+bitmap
+The hot pool
+)(QH ECHP+)(QH ECHP−
+The cold pool
+)(QH EECCP+
+12 4 2 8 16 15 8 2 12 0 14 3 8 12 2 4EEC
+Min bit-pyramid 
+on EC
+Min bit-pyramid
+on EEC
+Max bit-pyramid
+on EC
+)(QH EECHP−
+)(QH ECCP−
+Min bit-pyramid
+on EC
+Figure 3: The linear array of block-wearing information, the membership
+bitmap, and the five pyramid bitmaps for the hot pool and the cold pool.
+H+(QEC
+HP
+), H−(QEC
+CP
+), H−(QEC
+HP
+), H+(QEEC
+CP
+), and H−(QEEC
+HP
+) are used. Note
+that, if a minimal queue head (e.g., H−(QEC
+CP
+)) is needed, bits in the pyramids
+should be defined contrarily. The five bit pyramids prioritize blocks in terms
+of erasure cycles or effective erasure cycles, depending on purposes. Each item
+in the linear array is of a erasure cycle and an effective erasure cycle. Because
+a block is either in the hot pool or in the cold pool, a membership bitmap is
+sufficient to represent pool associations. Items not associated with a particular
+pool are not significant to the manipulating of bit pyramids of the pool.
+5.2 On-Flash Data Structures and System Initialization
+This section is on how block-wearing information can be preserved on flash
+memory so that RAM-resident data structures for the dual-pool algorithm can
+be reconstructed across power-offs.
+For each block, its wearing information including an erasure cycle and an
+effective erasure cycle should be stored on flash memory. The wearing informa-
+tion is contained in a special on-flash data object referred to as a cleanmarker:
+Once a block is erased, a cleanmarker is written to the spare area of the block’s
+first page. Besides of storing wearing information, a cleanmarker also helps
+to check whether a block is entirely or partially erased. Because power failures
+could potentially interrupt the erasing of a block, a block without a cleanmarker
+is assumed to be partially erased. Later on when data is written to the first
+page, housekeeping information such as ECCs are written onto its spare area.
+Although EECs and a cleanmarker are not overlapped by each other, the spare
+area needs to be written twice. Such partial program to flash memory is pro-
+hibited by some NAND-flash implementations. To get around this problem,
+the minimal granularity size for logical-to-physical mapping must be no smaller
+than two pages. A cleanmarkers remains the spare area of the first page of a
+block, while housekeeping information is written onto the second page’s spare
+area of each mapping unit, as illustrated in Figure 4.
+When the system is booting, all cleanmarkers are scanned for constructing
+priority queues for the dual-pool algorithm. During the scan, if a block without
+a cleanmarker is found, it is erased again and its erasure cycle is assigned to the
+largest among all blocks’. The scan can be performed in background, since the
+10
+utilization. Unless explicitly specified, the granularity size for logical-to-physical
+address translation was 2KB (i.e., one page large). Initially, all block-erasure
+cycles were zero. For each run of experiments, the traces were replayed 100
+times over our simulator to emulate the use of a couple of years.
+Performance was evaluated in terms of (1) how even the wearing of all blocks
+was and (2) how much extra traffic was introduced by wear-leveling activities.
+For the first item, the standard deviation of all block-erasure cycles (or simply
+“standard deviation” for short) was used to reflect the majority distribution
+of all block-erasure cycles. The smaller the standard deviation, the more even
+the wearing of all blocks is. The second item was measured by overhead ratios.
+For a wear-leveling algorithm, the overhead ratio is the total number of bytes
+written onto and erased from flash memory with wear leveling enabled to the
+total number without wear leveling. The smaller the ratio, the less extra traffic
+is introduced for wear leveling. A good wear-leveling algorithm should try not
+only to effectively converge the standard deviation at a low value but also to
+reduce the overhead ratio.
+6.2 Placement-Based Wear Leveling
+This part of experiments are focused on data-placement-based wear-leveling
+algorithms, including Hot-Cold Swapping (HC), Turn-Based Selection (TB),
+Two-Level Algorithm (2L), Old-Block Protection (OP), Erase Pool (EP), Static-
+Dynamic Algorithm (SD), and Dual-Pool Algorithm (DP). As readers read on,
+Table 1 serves as a summary of the algorithms. The greedy policy [1] was
+adopted as the garbage-collection algorithm, which always picks the block with
+the largest number of dead pages for erasure. In the rest of this paper, when-
+ever applicable, let the threshold value for the maximum difference between
+any two block-erasure cycles be TH , and let the period of any two consecutive
+invocations of wear leveling be AP write requests.
+Experimental results are shown in Figure 5 and Figure 6, in which the X-axes
+denote the total number of write requests processed so far in units of 10,000.
+The Y-axes of Figure 5 and Figure 6 denote the standard deviations and the
+overhead ratios, respectively. Each wear-leveling algorithm was evaluated with
+two different configurations: One is for aggressive wear leveling (i.e., Figure 5(a)
+and Figure 6(a)) and the other is for moderate wear leveling (i.e., Figure 5(b)
+and Figure 6(b)). Explanations of results are as follows:
+Hot-Cold Swapping (HC): Algorithm HC needs both parametersAP and
+TH . Figure 5 show that algorithm HC did not converge standard deviations at
+low values, and thus the wearing of blocks were quite uneven. Unexpectedly,
+Figure 5(a) and Figure 5(b) show that aggressive wear leveling (with TH = 4
+and AP = 100) resulted in much more uneven block wearing than moderate
+wear leveling (with TH = 8 and AP = 1000) did. The rationale is that it is
+hard to find a proper setting of AP to be combined with TH with respect to
+a particular workload. If AP is too small, the wearing of blocks might go out
+of control as blocks are repeatedly involved in hot-cold swapping. Figure 6(a)
+indicates the considerable overheads. If AP is too large, wear leveling becomes
+ineffective. The proper setting of AP varies as spatial locality in workloads
+changes. Because off-line or on-line workload analysis is too costly, the applica-
+bility of algorithm HC is very limited.
+Turn-Based Selection (TB): Two settings were evaluated for algorithm
+12
+much lower standard deviations with aggressive wear leveling. That is because
+algorithm 2L saved itself from moving data from old blocks to other blocks.
+Because data in old blocks are likely hot data, not to move hot data saves a
+lot of unnecessarily traffic. But the defect of algorithm 2L is that one single
+erasure of the oldest block may result in erasure of many young blocks so as to
+“pull” their erasure cycles closer to that of the oldest block. Doing this helps
+wear leveling little and pointlessly wears young blocks.
+Old-Block Protection (OP): Algorithm OP adopts a new parameter
+PROT instead of AP . As an erased block is involved in wear leveling, it is pro-
+tected from again being involved in wear leveling until PROT blocks are erased.
+Different from algorithm HC and 2L, algorithm OP migrates data stored in the
+youngest block to an old block. Remarkably, compared to algorithms previously
+mentioned, algorithm OP introduced relatively low overheads while comparable
+standard deviations were achieved. The migration of data is proven effective.
+But algorithm OP has two defects: First, to examine only the erased block
+and the youngest block does not timely trigger wear-leveling activities, as the
+erased block is not necessarily an old block. Second, as an old block is no longer
+protected, one single erasure of the block again involves it in wear leveling. In
+general, algorithm OP does not pay enough attention to young blocks but overly
+involves old blocks in wear leveling.
+Erase Pool (EP): Algorithm EP does not actively conduct data movement
+over flash memory but relies on out-place update for “wear leveling”. It needs no
+parameters. However, it is fragile under the presence of cold data: The erasure
+cycles of many blocks remained zero by the end of simulations. Interestingly, as
+can be observed in the results, in many cases algorithms HC, 2L, OP, and TB
+were neither more effective (in terms of standard deviations) nor more efficient
+(in terms of overhead ratios) than algorithm EP. It suggests that it’s better not
+to conduct wear leveling at all if an algorithm is not properly configured.
+Static-Dynamic Algorithm (SD): We found that the performance of
+algorithm SD is very close to that of algorithm HC because they have very
+similar behaviors except the block-allocation policies. Results of algorithm SD
+are omitted in the rest of this paper.
+The Dual-Pool Algorithm (DP): The algorithm we propose in the paper.
+It requires only one parameter TH to guide how aggressive wear leveling should
+be. The results show strong evidence of its merits: In Figure 5 it quickly
+stabilized and converged the standard deviations at low values, and where the
+standard deviations converged were guided by TH . Algorithm DP is the only
+one showing such an excellent property, compared to others. Figure 6 shows that
+its overhead ratios are very close to 1.0, which means that each data movement
+made by algorithm DP were very effective for wear leveling. Different from
+algorithm OP, algorithm DP “protects” blocks from being constantly involved in
+wear leveling by means of hot-cold regulation (please see Section 4.1). Protected
+blocks again become eligible for wear leveling whenever they are old enough or
+young enough.
+This paragraph provides some discussions based on Figure 7, which visualizes
+distributions of all block-erasure cycles of different algorithms. For algorithm
+EP, since it does no explicit wear leveling, erasure cycles of a lot of blocks
+remain zero while a small portion of blocks are severely worn. For algorithm
+TB, aggressive wear leveling did not help much. Many young blocks did not even
+have chances to get erased. For algorithm HC, as it always forces young blocks
+14
+ 1
+ 4
+ 16
+ 0  500  1000  1500  2000  2500  3000  3500St
+an
+da
+rd
+ d
+ev
+ia
+tio
+n 
+of
+ a
+ll b
+lo
+ck
+-e
+ra
+su
+re
+ c
+yc
+le
+s
+Number of write requests processed so far in units of 1,000
+CAT
+KL, k=8
+KL, k=4
+DP, TH=4
+ 0.5
+ 1
+ 2
+ 4
+ 8
+ 16
+ 32
+ 64
+ 128
+ 256
+ 0  500  1000  1500  2000  2500  3000  3500
+O
+ve
+rh
+ea
+d 
+ra
+tio
+s
+Number of write requests processed so far in units of 1,000
+CAT
+KL, k=8
+KL, k=4
+DP, TH=4
+Figure 8: Performance of algorithm CAT and algorithm KL (the Y-axes of (a)
+and (b) are of logarithmic scale.)
+of overhead ratios, algorithm CAT and algorithm KL both degraded into the
+greedy policy if wear leveling was disabled. It should be addressed that the
+scales of X-axes of Figure 8 are relatively smaller than that of previous figures.
+As we shall explain later in Section 6.4, algorithm CAT and algorithm KL ran
+very slow. A Pentium 3GHz box cannot even complete one run of simulation in
+one month, and thus only available results are presented.
+Kim and Lee’s Algorithm (KL): Readers could refer to Section 3 for
+the score function. Algorithm KL is configured by means of parameter kǫ. The
+smaller kǫ is, the more aggressive it would be for wear leveling. Algorithm KL
+and algorithm 2L suffer from the same problem: To erase young blocks does
+not effectively help wear leveling but unnecessarily introduces extra overheads.
+Algorithm KL exaggerated this defect because it did neither efficient garbage
+collection nor effective wear leveling when the wearing of blocks was uneven. As
+shown in Figure 8, standard deviations and overhead ratios seem undesirable.
+Unexpectedly, with moderate wear leveling (kǫ = 8), algorithm KL incurred
+much more overheads than it did with aggressive wear leveling (kǫ = 4). The
+rationale is on term l that controls the preference of the score function: The
+larger kǫ is, the more slowly term l responds to the changing of ∆ǫ (i.e., the
+maximum difference between any two erasure cycles). As a result, when the
+wearing of blocks was uneven (i.e., ∆ǫ was large) and kǫ is large, a lot of young
+blocks were erased until term l slowly responded to the decreasing of ∆ǫ.
+Cost Age Times (CAT): Algorithm CAT needs an aging function (i.e.,
+ai(t)) pre-tuned for workloads. In our experiments, function log2(t) was adopted,
+which is similar to that used in the original paper [14]. As shown in Figure 8(b),
+algorithm CAT is of superior overhead ratios. It reduced the total number of
+bytes written to and erased from flash memory by about 50%. However, algo-
+rithm CAT can not properly suppress the increasing of the standard deviations.
+There were even a lot of young blocks that never had a chance to get erased. As
+mentioned in Section 3, CAT’s score function takes space utilization of blocks,
+blocks’ erasure cycles, and blocks’ ages into considerations. It is not easy to
+properly weight these information in one score function because these three
+16
+ 1
+ 2
+ 4
+ 8
+ 0  500  1000  1500  2000  2500  3000  3500St
+an
+da
+rd
+ d
+ev
+ia
+tio
+n 
+of
+ a
+ll b
+lo
+ck
+-e
+ra
+su
+re
+ c
+yc
+le
+s
+Number of write requests processed so far in units of 1,000
+DP, TH=4
+CAT + DP,TH=4
+KL,k=8 + DP,TH=4  1
+ 4
+ 16
+ 0  500  1000  1500  2000  2500  3000  3500
+O
+ve
+rh
+ea
+d 
+ra
+tio
+s
+Number of write requests processed so far in units of 1,000
+DP, TH=4, granu=2k
+CAT + DP,TH=4
+KL,k=8 + DP,TH=4
+Figure 9: Performance of algorithm DP with different granularity sizes for
+logical-to-physical addresses translation and different garbage-collection poli-
+cies. (The Y-axis of (a) is of logarithmic scale.)
+6.5 Mapping Schemes and Garbage-Collection Policies
+This section provides evaluations of how different mapping schemes and different
+garbage-collection algorithms affect the performance of algorithm DP.
+To reduce RAM space required by logical-to-physical address translation,
+for the management of high-capacity flash memory, granularity sizes for the
+translation are usually large. Algorithm DP was evaluated with granularity
+sizes 2KB, 16KB, and 64KB. As shown in Figure 9, algorithm DP was not much
+affected by different granularity sizes. As expected, algorithm DP introduced
+slightly more overheads with large granularity sizes.
+When algorithm CAT was combined with algorithm DP, interestingly, they
+both did good jobs in what they are good at. Results in Figure 9 show that the
+standard deviations and overhead ratios of “CAT+DP,TH=4” are lower than
+that of “DP,TH=4”. Algorithm CAT was much relieved of wear-leveling activi-
+ties, and algorithm DP was benefited from reduced garbage-collection activities.
+Differently, when algorithm KL was combined with algorithm DP, although al-
+gorithm DP strived to control the wearing of blocks, algorithm KL’s erroneous
+behaviors (see Section 6.3) overwhelmed the whole system. The resulted stan-
+dard deviations and overhead ratios seem quite depressed.
+6.6 Summary of Experimental Results
+Based on the above observations and results, some points are addressed here
+for better explanations of algorithm DP’s advantages and for some insights into
+the development of new wear-leveling algorithms:
+• To cease the wearing of old blocks better helps wear leveling than to start
+wearing young blocks does.
+• Leave alone blocks that are just involved in wear leveling, but identify
+blocks on which prior wear-leveling activities have no effects.
+18
+[6] M. Wu, and W. Zwaenepoel, “eNVy: A Non-Volatile, Main Memory Stor-
+age System,” Proceedings of the 6th International Conference on Architec-
+tural Support for Programming Languages and Operating Systems, 1994.
+[7] D. Woodhouse, “JFFS: The Journalling Flash File System,” Proceedings
+of Ottawa Linux Symposium, 2001.
+[8] C. Manning and Wookey, “YAFFS Specification,” Aleph One Limited,
+http://www.aleph1.co.uk/node/37, Dec, 2001.
+[9] ”SmartMediaTM Specification”, SSFDC Forum, 1999.
+[10] M-Systems, “Flash-memory Translation Layer for NAND flash (NFTL)”
+[11] M-Systems, “TrufFFSr Wear-Leveling Mechanism”
+[12] R, G. Seidel and C. R. Aragon, “Randomized Search Trees,” Algorithmica,
+16:464-497 (1996).
+[13] A. Inoue and D. Wong, “NAND Flash Applications Design Guide,” Toshiba
+America Electronic Components (TAEC) White Papers, April, 2003.
+[14] M. L. Chiang, Paul C. H. Lee, and R. C. Chang, “Using Data Clustering
+To Improve Cleaning Performance For Flash Memory,” Software - Practice
+and Experience, Vol. 29, No. 3, 1999.
+[15] “Sandisk Flash Memory Cards Wear Leveling”, Sandisk White Papers,
+http://www.sandisk.com/Assets/File/OEM/WhitePapersAndBrochures/RS-
+MMC/WPaperWearLevelv1.0.pdf, 2003.
+[16] T. Gleixner, F. Haverkamp, and A. Bityutskiy, “UBI - Unsorted Block
+Images,” http://www.linux-mtd.infradead.org/doc/ubi.html, 2006.
+[17] E. Gal and S. Toledo, “Algorithms And Data Structures For Flash Memo-
+ries,” ACM Computing Surveys, Vol. 37, Issue 2, 2005.
+[18] Freescale Semiconductor, “RDHCS12UF32TD : USB Thumb Drive Refer-
+ence Design”
+[19] “Wear Leveling in Single Level Cell NAND Flash Memories,” STMicroelec-
+tronics Application Note (AN1822), 2006.
+Appendix A: Implementation of the Dual-Pool
+Algorithm
+A.1 Integrating into USB Flash-Drive
+In this part of experiments, the proposed dual-pool algorithm was implemented
+in the firmware of a USB flash drive [18]. The flash-drive referential design is
+of an MC9S12UF32 micro-controller, 3.5KB embedded RAM, 32KB NVRAM,
+and 128MB NAND flash [18]. The block size and page size of the NAND flash
+are 16KB and 512B+16B, respectively.
+The reference design uses a two-level mapping scheme (for logical-to-physical
+address translation): The 128MBNAND flash is partitioned into 1024*16KB=16MB
+zones, resulting 8 zones. The flash drive exposes itself as an 1000*16KB*8 bytes
+disk, and the first-level mapping statically maps each 1000*16KB bytes into a
+zone, resulting 98% space utilization for each zone. The second-level mapping
+handles out-place update in each zone. The granularity for the second-level map-
+ping is 16KB (one flash block). Because sizes of writes and invalidations are
+20
+A BS
+Mapping table
+B SA
+2.Copy
+1. Copy 3. Erase
+S: The spare block (entirely blank)
+A: block 
+B: block
+)(QH ECHP+ )(QH ECCP−
+After DS
+(a) System architecture of integrating the dual‐pool 
+algorithm into JFFS2 
+(b) Illustrating how dirty swaps are handled in the 
+filtering MTD device
+Applications 
+(freads,fwrites)
+Daemon process
+Virtual File‐system Switch (VFS)
+Journaling Flash File system 2 (JFFS2)
+Memory Technology Device (MTD) Core (mtdcore.c)
+SmartMedia 
+NAND‐type flash 
+memory
+SmartMedia MTD driver (nand.c)
+Trace replayer 
+(freads,fwrites)
+K
+e
+r
+n
+e
+l
+ 
+S
+p
+a
+c
+e
+U
+s
+e
+r
+ 
+S
+p
+a
+c
+e
+H
+a
+r
+d
+w
+a
+r
+e
+：New components ：Existing components
+A
+Pseudo MTD device driver (DP_mtd.c)
+C
+B
+Figure 11: Illustrating (a) How the dual-pool algorithm is integrated into Linux
+and (b) How dirty swap is implemented in the filtering MTD device.
+to directly modify JFFS2 and add necessary code. However, quickly we realized
+that this task involves complicated manipulations of JFFS2’s RAM-resident
+data structures such as erase-block lists and hash tables. So we decide to take
+an alternative approach: to implement the dual-pool algorithm as a pseudo
+filtering MTD device. The idea is to hide data migration done by algorithm DP
+from JFFS2. The system architecture is shown in Figure 11(a). A new kernel
+module (i.e., DP mtd.c) registers a new (filtering) MTD device and then open
+the underlying MTD device (i.e., nand.c, that for SmartMedia cards). JFFS2
+is then mounted on the filtering MTD device, and flash-memory operations
+received by the filtering MTD device is first examined by algorithm DP and then
+passed to the underlying MTD device. DS, HPR and CPR of algorithm DP are
+performed in the filtering MTD device whenever necessary. It must be pointed
+out that, because dirty swaps would physically change data placement on flash
+memory, a RAM-resident block-mapping table is maintained in the filtering
+MTD device so that dirty swaps can be transparent to JFFS2, as illustrated in
+Figure 11(b).
+Two sets of experiments were conducted: “Original JFFS2” and “JFFS2
+with DP”. The original JFFS2 adopts algorithm TB for wear leveling. Because
+algorithm TB conducts wear-leveling activities regardless how even the wearing
+of blocks is, JFFS2’s wear leveling was disabled when the filtering MTD device is
+inserted. To disable JFFS2’s built in wear-leveling algorithm, a few lines of code
+in gc.c can do the job. Experimental results are shown in Figure 10(b), in which
+the axes are the same as those of Figure 10(a). Results of “JFFS2+DP” show
+that the dual-pool algorithm greatly improved the evenness of block wearing,
+compared to results of “Original JFFS2”. Although a filtering MTD device
+might not be the best way for our purpose, it indeed demonstrated a quick and
+clean integration of algorithm DP and JFFS2. The filtering MTD device can
+be used by any file system which mounts on MTD devices.
+22
+可供推廣之研發成果資料表 
+■ 可申請專利  ■ 可技術移轉                                      日期：96 年 7 月 31 日 
+國科會補助計畫 
+計畫名稱：大規模快閃記憶體儲存系統之耐久度暨可靠性之研究 
+計畫主持人：張立平         
+計畫編號： NSC 95-2221-E-009-063            
+學門領域：資訊工程 
+技術/創作名稱  An efficient wear-leveling algorithm for large solid-state disks  
+發明人/創作人 張立平 
+技術說明 
+中文： 
+本演算法的特點是就以矽碟所暴露之工作負荷的特性，來進行平均
+磨損。主要想法為（一）透過冷資料的擺設來減緩已經過度磨損之
+區塊的耗用，（二）透過兩個 pool 以及區塊狀態之追蹤與轉移模
+式，使得區塊不致被反覆地被平均磨損演算法叫用，而能有效醞釀
+每次資料擺放改變所產生之平均磨損的效果。 
+ 
+英文： 
+The dual-pool algorithm aims at realisitc SSD workloads. The 
+basic ideas are: 1) to cease the wearing of old blocks by 
+putting cold data in, and 2) to shield blocks from being 
+repeatedly involved in wear leveling so as to develop the 
+effects of their prior wear-leveling involvement. 
+可利用之產業 
+及 
+可開發之產品 
+矽碟/thumb drive 系統商，IC design (SSD controller)產業 
+技術特點 
+ 能針對 SSD 的使用來有效地整平所有區塊之磨損 
+ 速度快，耗費之計算資源少 
+推廣及運用的價值 
+由於目前快閃記憶體的耐久度不斷下修，但目前產業界又缺乏一個
+有效的平均磨損演算法來確保矽碟的壽命。若使用本計畫之研究成
+果，一方面可使得矽碟的壽命獲得保障，二方面可使得矽碟系統商
+更有信心選擇使用廉價但耐久度低之快閃記憶體來製作矽碟。 
+※ 1.每項研發成果請填寫一式二份，一份隨成果報告送繳本會，一份送 貴單位
+研發成果推廣單位（如技術移轉中心）。 
+※ 2.本項研發成果若尚未申請專利，請勿揭露可申請專利之主要內容。 
+※ 3.本表若不敷使用，請自行影印使用。 
+ 
+On Efficient Wear Leveling for Large-Scale Flash-Memory
+Storage Systems∗
+Li-Pin Chang
+Department of Computer Science
+National Chiao-Tung University, Hsin-Chu, Taiwan
+lpchang@cs.nctu.edu.tw
+ABSTRACT
+Flash memory won its edge over many other storage media
+for embedded systems, because it provides better tolerance
+to the extreme environments which embedded systems are
+exposed to. In this paper, techniques referred to as wear
+leveling for the lengthening of flash-memory overall lifespan
+are considered. This paper presents the dual-pool algorithm,
+which realizes two key ideas: To cease the wearing of blocks
+by storing cold data, and to smartly leave alone blocks until
+wear leveling takes effect. The proposed algorithm requires
+no complicated tuning, and it resists changes of spatial lo-
+cality in workloads. Extensive evaluation and comparison
+were conducted, and the merits of the proposed algorithm
+are justified in terms of wear-leveling performance and re-
+source conservation.
+Categories and Subject Descriptors
+D.4.2 [Operating Systems]: Garbage collection; B.3.2 [
+Memory Structures]: Mass Storage
+General Terms
+Design, Performance, Algorithm.
+Keywords
+Flash Memory, Storage Systems, Memory Management, Em-
+bedded Systems, Consumer Electronics, Portable Devices.
+1. INTRODUCTION
+In the recent years, many embedded systems started de-
+ploying flash memory in their storage systems. As solid-state
+devices, flash memory offers non-volatile data storage at a
+very approachable price. Different from ordinary storage
+medium, flash memory is a kind of write-once and bulk-
+erase medium. NAND flash [2] is organized in terms of era-
+sure units referred to as blocks, and a block is of a fixed
+number of access units referred to as pages. Data are writ-
+ten onto free space reclaimed by garbage collection, and a
+∗Supported in part by a research grant from the ROC Na-
+tional Science Council under Grants NSC95-2221-E-009-063.
+Permission to make digital or hard copies of all or part of this work for
+personal or classroom use is granted without fee provided that copies are
+not made or distributed for profit or commercial advantage and that copies
+bear this notice and the full citation on the first page. To copy otherwise, to
+republish, to post on servers or to redistribute to lists, requires prior specific
+permission and/or a fee.
+SAC’07 March 11-15, 2007, Seoul, Korea
+Copyright 2007 ACM 1-59593-480-4 /07/0003 ...$5.00.
+mapping scheme is needed to map logical addresses of data
+to physical locations on flash memory. Under the current
+technology, a block could tolerate a limited number of cy-
+cles before the block becomes unreliable. The number is
+typically 100K cycles. As applications uniformly update
+data on flash memory (as digital cameras do), the entire
+flash memory is evenly worn and thus its overall lifespan is
+prolonged. Recently, vendors have started replacing mobile
+PC’s hard drives with flash-memory devices1, strong locali-
+ties shown by such applications invalidate the assumption of
+uniform data access. As hot data and cold data differently
+wear flash memory, its overall lifespan could be unexpect-
+edly short under such workloads. Wear leveling refers to
+system activities that prevent blocks from being unevenly
+worn so as to lengthen the overall lifespan.
+Many wear-leveling algorithms have been proposed from
+academia and industry. Table 1 is a summary of previously
+proposed ones. The design issues include 1) how to evenly
+wear all blocks and 2) how to reduce traffic introduced by
+wear leveling. Among many prior work, one misconception
+is to prevent some particular blocks from being poorly worn.
+However, as in realistic workloads a majority of data are
+cold, to start wearing such blocks may require a lot of data
+movements, and in turn the data movements unnecessar-
+ily wear flash memory. On the other hand, as high-capacity
+flash memory is becoming affordable2, many previously pro-
+posed algorithms start scaling poorly. Either large RAM
+space or considerable CPU time is required.
+In this paper, a novel wear-leveling algorithm, referred
+to as the dual-pool algorithm, is proposed. The algorithm is
+based on two key ideas: First, blocks are prevented from be-
+ing overly worn by storing infrequently updated data. Sec-
+ond, blocks just involved in wear leveling are left alone until
+wear leveling takes effect. The proposed algorithm requires
+no complicated tuning, and it resists changes of spatial local-
+ity in realistic workloads. Based on a newly proposed data
+structure, a highly scalable implementation of the proposed
+algorithm is presented. The dual-pool algorithm and pre-
+viously proposed ones were extensively evaluated by means
+of a series of trace-driven simulations. The results not only
+verify merits of the proposed algorithm but also reveal draw-
+backs of the previously proposed ones.
+2. A DUAL-POOL ALGORITHM FOR WEAR
+LEVELING
+1E.g., laptops computers Samsung NT-Q30-SSD, Samsung
+NT-Q1-SSD, and Sony VAIO VGN-UX90PS.
+24GB NAND flash is under mass production in late 2005 [2]
+data might sometimes become inactive, and applications
+could start accessing some cold data. To merely use DS
+is fragile if access patterns change from time to time. Con-
+sider that a block is just moved from the cold pool to the
+hot pool by means of DS, and the block should now store
+no cold data. Suppose that hot data in the block happen to
+become cold. As the wearing of the block stops, it deeply
+“sinks” in the hot pool because of its relatively small erasure
+cycle. The block will never involved in wear leveling again.
+An analogous phenomenon can also happen to blocks in the
+hot pool. To correct this, a new operation is defined for the
+hot pool:
+Hot-Pool Resize (HPR): On the completion of a write
+request, block H−(QECHP ) is moved from the hot pool to the
+cold pool if the following condition is true:
+EC(H+(QECHP ))− EC(H
+−(QECHP )) > 2 · TH.
+Readers may question why 2 · TH . For the hot pool,
+basically HPR is to correct pool associations for those blocks
+“frozen” by cold data. If there is any block in the hot pool
+which’s erasure cycle is smaller than block EC(H+(QECHP ))
+by TH , HPR will move the block the cold pool. However,
+as DS brings a block from the cold pool to the hot pool,
+right after DS, EC(H+(QECHP ))−EC(H
+−(QECHP )) is already
+no less than TH (see DS’s condition). To prevent HPR from
+incorrectly identifying these blocks as ones storing cold data,
+another TH (so 2 · TH in total) is given.
+Analogously, as access patterns change, blocks that store
+no (or few) cold data must be identified and moved away
+from the cold pool. However, it is not easy to distinguish
+between a block storing no cold data and a block that is just
+brought by DS, because they both have relatively large era-
+sure cycles among blocks in the cold pool. For this reason,
+new block-wearing information effective erasure cycle is
+introduced: The effective erasure cycle of a block refers to
+how many times a block is erased since the last time the
+block is involved in DS. Effective erasure cycles increase ex-
+actly as erasure cycles do, but they are reset as zero upon
+DS. Two new priority queues QEECCP and Q
+EEC
+HP , which pri-
+oritize blocks in terms of effective erasure cycles, are associ-
+ated with the cold pool and the hot pool, respectively. Let
+function EEC(B) return the effective erasure cycle of block
+B. A new operation is defined for the cold pool:
+Cold-Pool Resize (CPR): On the completion of a write
+request, block H+(QEECCP ) is moved from the cold pool to
+the hot pool if the following condition is true:
+EEC(H+(QEECCP ))− EEC(H
+−(QEECHP )) > TH.
+Additionally, one extra step is added to DS:
+(DS) Step 6. Reset EEC(H+(QECHP )) and EEC(H
+−(QECCP ))
+as zero.
+Consider a block just brought to the cold pool by means of
+DS. The block is of a large erasure cycle and a zero effective
+erasure cycle. DS put cold data in the block so as to cease
+the block’s wearing. On the one hand, if cold data remain
+cold, the block’s effective erasure cycle remains low. On
+the other hand, the block’s effective erasure cycle increases
+fast if it no longer stores cold data. The two cases can be
+identified by examining blocks’ effective erasure cycles. On
+the completion of each write, DS is first examined and then
+CPR. HPR should be the last operation.
+2.3 Random Priority Queues
+Because high-capacity flash memory is considered, the
+number of blocks becomes large. The dual-pool algorithm
+32
+0
+5
+1
+0
+2
+11
+3
+23
+4
+44
+5
+98
+6
+2
+7
+34
+8
+54
+9
+23
+10
+15
+11
+23
+12
+75
+13
+44
+14
+33
+15Key
+Priority
+Bit Pyramid
+L
+i
+n
+e
+a
+r
+A
+r
+r
+a
+y
+Figure 1: An instance of the proposed Bit-Pyramid
+Random Priority Queue.
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ CPU time (cycles) RAM space (bytes) 
+Pyramid RPQ 1,316,394,422 270,336 
+A binary heap + A 
+balanced search tree 4,149,653,233 1,048,576 
+Table 2: CPU time and RAM space needed to handle
+operations over 65,536 randomly generated items.
+(as many other algorithms do) requires two operations over
+blocks: (1) Efficient prioritization and random priority up-
+date in terms of erasure cycles, and (2) efficient search in
+terms of block addresses. Some data structures could be
+crafted to meet this requirement, such as treap [10], com-
+bination of binary heap and a search tree, and combination
+of two search trees[13]. The first approach seems not effi-
+cient because treap would be severely skewed because block
+erasure cycles offer no randomization that treap needs. The
+latter two require large RAM space because of extra refer-
+ential pointers.
+A new data structure, referred to as Bit-Pyramid Random
+Priority Queue (pyramid RPQ for short), is introduced. It
+aims at both efficient operations and RAM-space conser-
+vation. A pyramid RPQ is of a bit pyramid and a linear
+array. Indexes of the linear array stand for keys of items,
+and each slot of the array contains the priority of an item.
+As shown in Figure 1, a bit in the pyramid parents a left
+child and a right child, and a child could be either a bit or
+a linear-array item. Each bit indicates that which of its two
+children parents the largest priority among all linear-array
+items parented by the bit. The bit pyramid is physically
+a linear sequence of bits. Let the total number of linear-
+array items be n. It takes O(log(n)) and O(1) steps to find
+the maximum priority and to locate any item by its key,
+respectively. To update the priority of a randomly selected
+item, there are O(log(n)) bits to be revised and to revise
+one bit takes O(log(n)) steps. So O(log(n) · log(n)) steps
+are taken in total. Table 2 shows RAM space and CPU cy-
+cles needed to randomly insert 65,536 items, randomly query
+all the items, and then remove all of them. Thanks to ma-
+chine instructions BT, BTR, and BTS for bit manipulation
+provided by Intel 80386 processors and above, with a rel-
+atively small RAM footprint, the proposed pyramid RPQs
+even runs faster than combination of a binary heap and a
+search tree.
+3. EXPERIMENTAL RESULTS
+3.1 Experimental Setup/Performance Metrics
+Nine wear-leveling algorithms listed in Table 1 were evalu-
+ated for performance comparison. Different from prior work,
+traces collected from a real mobile PC [4] for one month were
+01000
+2000
+3000
+0 50000 100000 150000
+TB, 99-1
+0
+1000
+2000
+3000
+0 50000 100000 150000
+0
+1000
+2000
+3000
+0 50000 100000 150000
+0
+1000
+2000
+3000
+0 50000 100000 150000
+0
+1000
+2000
+3000
+0 50000 100000 150000
+0
+1000
+2000
+3000
+0 50000 100000 150000
+0
+1000
+2000
+3000
+0 50000 100000 150000
+0
+1000
+2000
+3000
+0 50000 100000 150000
+0
+1000
+2000
+3000
+0 50000 100000 150000
+TB, 70-30
+DP,TH=4
+OP, TH=4, PROT=8 OP, TH=8, PROT=64
+0
+1000
+2000
+3000
+0 50000 100000 150000
+DP,TH=8
+HC, TH=4, AP=100 HC, TH=8, AP=1000
+0
+1000
+2000
+3000
+0 50000 100000 150000
+2L, TH=4, AP=100 2L, TH=8, AP=1000
+EP
+X axes: Addresses of flash-memory blocks
+Y axes: Erasure cycles of blocks
+Figure 4: Distributions of all block-erasure cycles
+under different wear-leveling algorithms.
+ 1
+ 4
+ 16
+ 64
+ 256
+ 0  500  1000  1500  2000  2500  3000  3500
+St
+an
+da
+rd
+ d
+ev
+ia
+tio
+n 
+of
+ a
+ll b
+lo
+ck
+-e
+ra
+su
+re
+ c
+yc
+le
+s
+Number of write requests processed so far in units of 1,000
+(a)
+CAT
+KL, k=8
+KL, k=4
+DP, TH=4
+ 1
+ 2
+ 4
+ 8
+ 16
+ 32
+ 64
+ 128
+ 256
+ 512
+ 0  500  1000  1500  2000  2500  3000  3500
+O
+ve
+rh
+ea
+d 
+ra
+tio
+s
+Number of write requests processed so far in units of 1,000
+(b)
+CAT
+KL, k=8
+KL, k=4
+DP, TH=4
+Figure 5: Performance of algorithm CAT and algo-
+rithm KL (the Y-axes of (a) and (b) are of logarith-
+mic scale.)
+its score function and symbols. It ran very slow, and a Pen-
+tium 3GHz box cannot even complete one run of simulation
+in one month. Only available results are presented in Figure
+5. Algorithm KL is configured by means of parameter kǫ.
+The smaller kǫ is, the more aggressive it would be. Algo-
+rithm KL and algorithm 2L suffer from the same problem:
+To erase young blocks only, regardless where the data are
+moved to, does not much help wear leveling. Unexpect-
+edly, with moderate wear leveling (kǫ = 8), algorithm KL
+incurred much more overheads than it did with aggressive
+wear leveling (kǫ = 4). The rationale is that algorithm KL
+responses to the decreasing of ∆ǫ slowly as kǫ is small.
+Cost Age Times (CAT): Algorithm CAT needs an ag-
+ing function (i.e., ai(t)) pre-tuned for workloads. In our ex-
+periments, function log2(t) was adopted, which is similar to
+that used in the original paper [11]. Like algorithm KL, al-
+gorithm CAT ran extremely slow. As shown in Figure 5(b),
+algorithm CAT helped to reduce the overheads by nearly
+50%, which is quite impressive. However, the standard de-
+viations were still not properly controlled. There were even
+a lot of young blocks that never had a chance to get erased.
+Obviously it is hard to properly weight blocks’ space utiliza-
+tion, erasure cycles, and ages in one score function.
+Figure 4 visualizes distributions of all block-erasure cy-
+cles of different algorithms (excluding algorithm CAT and
+KL as they did not complete). Readers could have more
+insights into behaviors of different algorithms. Table 3 show
+ 
+ RAM-space 
+required by wear 
+leveling only (KB) 
+CPU cycles to complete one run 
+of simulation (in units of 
+1,000,000) 
+HC 3,840 29,393,875 
+2L 3,840 49,777,080 
+EP N/A 10,833,658 
+DP 920 26,247,514 
+TB N/A 11,812,404 
+OP 5,120 37,395,935 
+KL 640 Not completed in one month 
+CAT 1,280 Not completed in one month 
+ 
+ Table 3: CPU-time and RAM-space requirements
+of different algorithms.
+CPU time and RAM space needed by different algorithms
+to complete one run of simulation. It shows that DP scales
+well even when high-capacity flash memory is considered.
+4. CONCLUSION
+While the definition of high-capacity flash memory dra-
+matically evolves in the recent years, many existing wear-
+leveling algorithms start suffering from poor wear-leveling
+performance and/or low scalability. This paper aims at both
+the two issues. A novel wear-leveling algorithm is proposed
+based on two new ideas: To cease the wearing of a frequently
+erased block by storing cold data in it, and to leave alone
+blocks just involved in wear leveling. Based on a newly pro-
+posed data structure, a highly scalable implementation of
+the proposed algorithm is presented. For very-large-scale
+flash-memory storage systems in the upcoming decade, the
+proposed algorithm offers a very attractive solution for wear-
+leveling issues.
+5. REFERENCES
+[1] A. Kawaguchi, S. Nishioka, and H. Motoda,“A
+flash-memory based File System,” Proceedings of the
+USENIX Technical Conference, 1995.
+[2] “K9NBG08U5M 4Gb*8 NAND Flash Memory Data
+Sheet,” Samsung Electronics Company.
+[3] H. J. Kim and S. G. Lee, “An Effective Flash Memory
+Manager for Reliable Flash Memory Space Management,”
+IEICE Transactions on Information and System, 2002.
+[4] L. P. Chang and T. W. Kuo, “Efficient Management for
+Large-Scale Flash-Memory Stroage Systems with Resource
+Conservation”, ACM Transactions on Storage, 2005.
+[5] D. Woodhouse, “JFFS: The Journalling Flash File
+System,” Proceedings of Ottawa Linux Symposium, 2001.
+[6] C. Manning and Wookey, “YAFFS Specification,” Aleph
+One Limited, 2001.
+[7] ”SmartMediaTM Specification”, SSFDC Forum, 1999.
+[8] M-Systems, “Flash-memory Translation Layer for NAND
+flash (NFTL)”
+[9] M-Systems, “TrufFFSr Wear-Leveling Mechanism”
+[10] R, G. Seidel and C. R. Aragon, “Randomized Search
+Trees,” Algorithmica, 16:464-497 (1996).
+[11] M. L. Chiang, Paul C. H. Lee, and R. C. Chang, “Using
+Data Clustering To Improve Cleaning Performance For
+Flash Memory,” Software - Practice and Experience, 1999.
+[12] “Sandisk Flash Memory Cards Wear Leveling”,
+http://www.sandisk.com/Assets/File/
+OEM/WhitePapersAndBrochures/RS-MMC/
+WPaperWearLevelv1.0.pdf, 2003.
+[13] T. Gleixner, F. Haverkamp, and A. Bityutskiy, “UBI -
+Unsorted Block Images,”
+http://www.linux-mtd.infradead.org/doc/ubi.html, 2006.
+[14] E. Gal and S. Toledo, “Algorithms And Data Structures
+For Flash Memories,” ACM Computing Surveys, 2005.
+[15] “Wear Leveling in Single Level Cell NAND Flash
+Memories,” STMicroelectronics Application Note
+(AN1822), 2006.

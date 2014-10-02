@@ -1,0 +1,596 @@
+ 2 
+工作中，在每個運算節點的最長路徑，並選擇
+擁有最短的最長路徑的運算節點來放置被考
+慮的子工作。而CS，除了考慮從起始子工作到
+被考慮排程的子工作外(PS的作法)，還考慮從
+被排程的子工作到結束子工作的最長路徑，將
+被考慮排程的子工作放在具有這兩個值的最
+小加總值的運算節點上。CD排程演算法類似CS
+排程演算法，但是CD與PS、CS不同的是，CD
+會動態去計算新的優先序而不是使用靜態的
+rank值來排程工作。 
+ 
+一個BOT application包含了許多的
+independent tasks，而這些工作之間並沒有
+相依性存在，所以也沒有執行先後的限制。BOT
+依據特性的不同可以分為CBOT (computa-
+tionally intensive BOT application)以及
+DBOT(data intensive BOT application)。在
+[3]中，針對這兩種類型的BOT分別提出排程演
+算法，稱為MQD(Multiple Queues with Du-
+plication)與SLI (Share-Input-data-based 
+Listing)，MQD排程演算法處理CBOT而SLI處理
+DBOT。MQD排程演算法藉由一個運算節點工作
+全部執行完畢後，依該運算節點執行前一個工
+作時的效能，給予該運算節點一個rank值，做
+為分配下一個工作給該運算節點的參考，如果
+運算節點的rank值較高，就處理運算量大的工
+作，而rank值相對較低的運算節點則處理運算
+量較小的工作。另外在某些情況，會觸發task 
+duplication的機制，目的在於降低整體工作
+執行時間(makespan)。SIL藉由思考工作之間
+share-input的情況建立一個task list，有同
+樣share input的task較有可能被分配到同一
+個運算區(site)，而此list會在演算法執行過
+程中動態的重組。SIL也跟MQD一樣，在某些情
+況也觸發task duplication。本篇提出的這兩
+個演算法具有一些較特殊的特性：(1)這兩個
+演算法都不需要知道子工作在某個運算節點
+上預估的執行時間，因為不會藉由工作預估時
+間來考慮排程，所以不用擔心預估執行時間產
+生誤差的時候對演算法效能造成的衝擊。(2)
+傳統的list based 排程演算法是將工作排成
+list並且給予每個工作rank值，而MQD則是給
+予運算節點rank值，而運算節點的rank值會隨
+著先前執行工作的表現動態的改變。 
+ 
+四、研究方法 
+ 
+在本研究中，兩類的 Models 必須事先定
+義才能針對資源重新配置的網格運算平台提
+出適用的策略，第一類為Task Model，此Model
+除了用於描述一個工作中所有子工作
+(subtasks)的運算量與資料相依性，我們將納
+入一般性程式語言對通信語法的規範，這或許
+會對 Task Model 所描述的子工作執行運算的
+模式有所限制，但我們認為只要此 Task Model
+能增加效能預測上的精準度，且不會因此造成
+應用程式設計上的困難度及該程式的時間複
+雜度之下，我們仍認為這是一個有價值的Task 
+Model。我們將一個分散式的工作視為可分解
+成一個起始子工作(entry subtask)、一個結
+束子工作(exit subtask)和許多的介於者兩
+者之間的子工作(intermediate subtasks)的
+集合。起始子工作為所有子工作中第一個被執
+行的，也就是分散式工作的起始點。而所需的
+輸入資料會被存放在其運算節點的 local 
+storage。結束子工作為分散式工作完成之
+前，最後一個執行的子工作。而分散式工作執
+行完畢的結果將存放在結束子工作所屬的運
+算節點的 local storage。在一般的情況，子工
+作的輸出通常為另外某些子工作的輸入資
+料。如果子工作 j 需要子工作 i 完成時所產生
+的輸出作為輸入資料，我們稱子工作 i 為子工
+作 j 的 predecessor，而子工作 j 為子工作 i 的
+successor。將子工作所需的輸入資料以一個訊
+息(message)傳送。當子工作執行完畢之後，才
+能將該子工作所產生輸出以訊息傳送給子工
+作的 successors。一個子工作必須等到其所需
+的所有輸入資料都已經接收到了才能開始執
+行。在許多平行程式的設計例子中，如
+MPI[4]，子工作與數個具有相依性的子工作通
+訊時，必須要詳細指明訊息傳送的順序，而接
+收訊息的順序並不用詳細說明。在為子工作指
+派運算節點時，如果沒有考慮來源端的訊息傳
+送順序，可能會使分散式工作的執行時間增
+加。為了在設計工作排程演算法時，考慮訊息
+傳送的順序，我們在工作模型中使用參數 σ定
+ 4 
+successors 集合以及 predecessors 集合。在
+ranking phase 中，會使用到兩個參數：向上計
+算的屬性值 ranku與向下計算的屬性 rankd。令
+子工作 vi 與子工作 vj 分別被分配在運算節點
+pr 與 ps，並且假設兩者之間有相依關係(vi 為
+vj的 predecessor)。在此情況下，子工作 vi 傳送
+資料到子工作 vj 的通訊花費被定義為 cij = 
+dij/Brs，其中 dij表示子工作 vi 傳送到子工作 vj
+的資料量，而 Brs 代表運算節點 pr 與 ps之間的
+頻寬。另外，令子工作 vi傳送到子工作 vj 的平
+均通訊花費為 Bdc ijij /= ，其中 B 代表所有運
+算節點間的平均傳輸頻寬。ranku與 rankd 詳細
+計算方式如下： 
+ 
+ranku(vi) = })({max )( ijjuvsuccvi cvrankw ij ++ ∈  
+rankd(vi)= })({max )( jijjdvpredv cwvrankij ++∈  
+ 
+在排程階段，HEFT 以及 CPOP 會利用參數
+IRT(vj) (Input Data Ready Time)代表子工作 vj
+最後一筆所需的輸入資料到達 vj 所在的運算
+節點的時間，其算法為 
+ 
+IRT(vj) = })({max )( ijivpredv cvAFTji +∈  
+ 
+而 AFT(vi)為子工作 vi 在某個運算節點確
+切的結束時間，為了將子工作分配 vi 到最恰當
+的運算節點，HEFT 以及 CPOP 定義了最早執
+行的預測時間所代表的參數 EST(vi, pr)，以及
+最早完成的預測時間的參數 EFT(vi, pr)，在排
+程階段時會被用來評估子工作 vi 在每個運算
+節點的完成時間，其中 pr <≤0 。EST(vi, pr)
+的定義為 max{avail(pr), IRT(vi)}而 EFT(vi, pr)
+的定義為 wir＋EST(vi, pr)。 
+ 
+在此研究中，我們提出兩個工作排程演算
+法 ： COB(communication order base) 以 及
+DDR(delayed downward ranking)。兩個工作排
+程演算法在排程時皆考慮了我們的模型在傳
+輸上所給予的限制。在我們的排程演算法中，
+如果子工作可以被排程，代表其所有的
+predecessors 都已經被排程好了。而子工作在
+可以被排程之前，其 rank 值會不斷的變更。
+我們在 ranking phase，並不是使用 ranku 與
+rankd來計算子工作的 rank 值，我們將其修改
+成符合本研究中 Grid Model 所定義的傳輸模
+式，命名為 myranku 和 myrankd，兩個公式的
+描述如下： 
+ 
+myranku(vi)=
+i
+vsuccvj
+ijjuvsuccv wcvmyrank
+ij
+ij
+++ ∑
+∈
+∈
+)(:
+)( )}({max  
+myrankd(vi)= ∑
+∈
+∈ +
+)(:
+)( )}({max
+ij
+ij
+vpredvj
+jijvpredv cvmyAFT  
+ 
+其中 myAFT(vi)為在我們的運算模型中，子工
+作 vj 確切完成時間。在排程階段，因為使用
+IRT(vj)所計算出來的時間與我們的運算模型
+不符合，所以我們的演算法並沒有使用 IRT(vj)
+來為子工作 vi 選擇最適合的運算節點。我們的
+演算法計算子工作 vi 的結束時間會參考兩個
+因素，第一個因素為資料來源端 (也就是
+predecessor)在 ISI 模式底下，輸出資料的傳送
+順序。第二個因素為考慮 agent 不能夠同時傳
+送多筆訊息或者是同時接收多筆訊息的限
+制。因此，我們提出新的參數 myIRT(vj)、
+myEST(vi, pr) 以及 myEFT(vi, pr)，相關的定義
+如下： 
+myIRT(vj)= })({max
+)(:
+)( ∑
+∈
+∈ +
+ji
+ji
+vpredvi
+ijivpredv cvmyAFT  
+myEST(vi, pr) = max{avail(pr), myIRT(vi)} 
+myEFT(vi, pr) = wir＋myEST(vi, pr)。 
+ 
+COB 工作排程演算法介紹如下： 
+因為我們的工作模型針對資料傳輸的順
+序有其限制。也就是說，如果子工作的兩個
+successors vi與 vj，其中 vj的 subtask ID 比 vi
+大，那子工作會先傳送 vi 所需的輸入資料，傳
+送完畢再傳送 vj 所需的輸入資料。以上情況，
+我們稱 vi 對 vj 來說是較年幼的兄弟(younger 
+sibling)子工作，而 vj 對 vi來說是較年長的兄弟
+(elder sibling)子工作。COB 會考慮子工作必須
+先對 younger sibling 來作傳輸的模式並且計算
+相關所需的傳輸時間。如果子工作 vi 在被排程
+時，其所有的 younger sibling 都已經排程完
+ 6 
+模型以及工作模型的參數，深入分析每個演算
+法的效能。實驗設定運算節點的變化量為 4, 6, 
+8, 10, 12。運算節點間的頻寬在 1 到 50 之間亂
+數平均分佈。為了達到與 HEFT 以及 CPOP 比
+較的目的，一些用來控制整個分散式工作的參
+數設定則參考[1]。以下簡介幾個實驗中較為
+重要的參數： 
+z Sv 為分散式工作的子工作數量之集合。在
+實驗中，我們變化 Sv 為{60, 80, 100, 120, 
+140} 
+z SCCR用來表示子工作平均傳輸花費 tcomm與
+平均運算花費 tcomp 的比值。在實驗中，我
+們變化 SCCR 為{0.1, 0.5, 1.0, 1.5, 2.0} 
+z Sout-degree 用來代表除了結束子工作以外的
+每個子工作所擁有的 successors 數量。實
+驗中，我們變化 Sout-degree 為{1, 2, 3, 4, 5} 
+z 在有 p 個運算節點的不一致異質系統中，
+透過演算法 alg 可以達到加速比定義如下。 
+SP(alg, P) = 
+makespan
+w
+Vvi ijPpj ij
+}{min
+:: ∑ ∈∈  
+ 
+發現在考慮通訊模式的限制時，DDR 與 COB
+在大多數的實驗環境下表現較 HEFT 與 CPOP
+佳。藉此我們可以得知，不論是考慮訊息傳送
+的順序或者是利用已經排程完畢的工作所提
+供的訊息來重新計算尚未排程的工作的考慮
+順序，對於提升工作的執行效能，都是有幫助
+的。 
+ 
+ 
+六、參考文獻 
+ 
+[1] H. Topcuoglu, S. Hariri, and M.Y Wu, “Per-
+formance-effective and low-complexity task 
+scheduling for heterogeneous computing,” 
+IEEE Trans. Parallel and Distributed Sys-
+tems, vol. 13, no. 3, March 2000. 
+[2] M. Maheswaran and H.J. Siegel, “A dynamic 
+matching and scheduling algorithm for het-
+erogeneous computing systems,” in Proc. 
+Heterogeneous Computing Workshop, 1998. 
+[3] Y.C. Lee and A. Y. Zomaya, “Practical 
+scheduling of bag-of-tasks applications on 
+grids with dynamic resilience,” IEEE Trans. 
+Computers, vol. 56, no. 6, June 2007. 
+[4] P. S. Pacheco, Parallel Programming with 
+MPI, Morgan Kaufmann Publishers, 1997. 
+[5] C.-C. Lin and C.-H. Hsu, “Algorithms for 
+scheduling distributed tasks of ordered 
+communication on a realistic model of het-
+erogeneous grids,” pp. 500-505, in Proc. 
+IEEE/ACIS Intl, Conf. Computer and Infor-
+mation Science, 2009. 
+[6] C.-C. Lin, C.-W. Shih and C.-H. Hsu, 
+“Adaptive Dynamic Scheduling Algorithms 
+for Mapping Ongoing M-Tasks to PR2 
+Grid,” accepted by Journal of Information 
+Science and Engineering. 
+ 
+ 
+七、計畫成果自評 
+ 
+此計畫研究成果目前已有一篇論文國際研討
+會發表[5]，一篇接受於 SCIE 期刊[6]，總體來
+說，此計畫的執行成效優良，目前正藉由下一
+年度的計畫將已發展出來的技術整合。希望藉
+由來年講師級研究助理的加入能進一步調整
+並整合已發展出的機制，此乃下一階段重要目
+標。 
+ 
+Algorithms for Scheduling Distributed Tasks of Ordered Communication on
+a Realistic Model of Heterogeneous Grids
+Cho-Chin Lin and Chih-Hsuan Hsu
+Department of Electronic Engineering
+National Ilan University
+Yilan, Taiwan
+cclin@niu.edu.tw
+Abstract
+Grid computing provides a platform for users to access
+the worldwide distributed resources. To meet the timing and
+quality requirements imposed by the tasks running on the
+grid, the resources required by the tasks needs to be carefully
+scheduled. In the last decade, a lot of scheduling algorithms
+have been proposed to squeeze the computing power from a
+grid. However, many of them do not consider the message-
+sending order imposed by the programming syntax or do not
+employ the information provided by the scheduled subtasks.
+In this paper, two scheduling algorithms COB and DDR
+which take the useful information into consideration are
+proposed. The COB schedules tasks according to the commu-
+nication restriction imposed by the programming syntax. The
+DDR schedules tasks by incrementally computing the rank
+values of the subtasks based on the information provided
+by the scheduled subtasks. In this paper, the usefulness and
+effectiveness are demonstrated by comparing our algorithms
+with the well known scheduling algorithms HEFT and
+CPOP.
+1. Introduction
+Grid computing platform integrates worldwide computa-
+tion resources into a virtual supercomputer based on the
+Internet infrastructure. There are two advantages of the
+platform: easy access to powerful computing facilities and
+effective use of the distributed resources. The resource
+scheduler of a grid is responsible for assigning computing
+nodes to a task. To squeeze the computing power from the
+distributed computing nodes, a practical and efficient task
+scheduler is needed by the resource broker. The task sched-
+uler takes the task diverseness and resource heterogeneity
+into consideration while assigning the tasks to the most
+suitable computing nodes.
+Many scheduling algorithms have been proposed to meet
+the timing and quality requirements imposed by the tasks
+running on the grid. In [7], the scheduling algorithms MQD
+and SIL were proposed for computation intensive and data
+intensive applications, respectively. Since it is hard to exactly
+know the computing power of the nodes when a task is sub-
+mitted to the grid, the authors proposed a strategy to estimate
+the computing power for each node by combining the history
+record of the nodes with their current status. The algorithms
+also employ duplication heuristics to further reduce the
+execution time. In [4], the algorithms called Minmin and
+Maxmin were proposed. First, the algorithms identify the
+most suitable computing node for each unscheduled subtask.
+The most suitable computing node can finish the subtask
+and its original loading in the earlier time. Next, Minmin
+selects the subtask with minimum finish time and assigns
+the subtask to its most suitable computing node, whereas
+the Maxmin selects the subtask with maximum finish time
+and assigns the subtask to its most suitable computing node.
+The process is repeated until all the subtasks are scheduled.
+In [2], the authors proposed a scheduling algorithm for a par-
+allel application called DAGMap. DAGMap consists of three
+phases: prioritizing, grouping and scheduling. DAGMap
+not only uses list-based strategy but also uses clustering
+technique to improve performance. In [6], a static list-based
+algorithm called DCP was proposed. It is developed for
+scheduling subtasks to unlimited number of fully-connected
+identical processors. In [1], the fault-tolerant scheduling
+algorithm DFTS was proposed. The DFTS chooses a set
+of n candidate sites for the arriving job, where the value
+of n is decided by the job submitter. When the number
+of available candidate sites is less than n, the DFTS still
+schedules the job but reserves sites for further replication. In
+[8], the authors proposed a fault-tolerant scheduling policy.
+Performance evaluation of scheduling policy is used to
+identify the reliability of grid. The number of duplicated
+tasks is according to the reliability of the grid at the time.
+In [9], an algorithm called QM was proposed. The algorithm
+coarsens an application graph until the number of tasks is
+less than a threshold. Then, each subtask in the coarsened
+graph is mapped on a randomly chosen computing node. To
+improve the mapping quality by reassigning the subtasks to
+other computing nodes, the theorem regarding the candidate
+node selection is provided for minimizing the search time.
+In [10], The authors developed a scheduling strategy which
+adopted the dynamic task flow and a genetic algorithm to
+  
+
+
+
+
+
+
+
+ 
+
+ 
+ 
+ 
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ﬀﬁ
+ﬂ
+
+ﬃ
+
+ !
+ﬂ
+ 
+Figure 2. Comparisons on the performances of HEFT
+achieved on different models.
+node. The communication agent sends (receives) an entire
+message to (from) its target (source) computing node before
+it starts to send (receive) the next message. The commu-
+nication agent is always running at the computing node for
+sending/receiving a message or waiting for the next message.
+We assume the communication agent can send and receive
+messages simultaneously. However, an agent cannot send
+messages to or receive messages from multiple computing
+nodes at the same time. Many scheduling algorithms have
+shown to be very successful for their targeting computation
+model. Nevertheless, a scheduling algorithm can present
+very different performances on various computation models.
+Figure 2 compares the performances achieved by the well
+known scheduling algorithm HEFT [11] on its original
+model and our realistic computing model. The original
+model can send and receive multiple messages concurrently.
+The figure is drawn for 60 subtasks running on 3 computing
+nodes. Each of the subtasks has three successors and the
+communication to computation ratio (CCR) varies from
+0.1 to 2. The figure shows that the achieved speedup of
+employing HEFT on our model is less than that on its
+original model.
+3. Related Work
+In this paper, our scheduling algorithm will compare
+with two well-known list scheduling algorithms: HEFT and
+CPOP [11]. A list scheduling algorithm usually consists
+of two phases: ranking and scheduling. The ranking phase
+decides the ranks of the subtasks in a list using a rank
+function. The second phase schedules subtasks to computing
+nodes according to the ranks of the tasks in the list.
+Let succ(vi) and pred(vi) denote the sets of vi’s suc-
+cessors and vi’s predecessors, respectively. There are two
+rank attributes upward rank ranku(vi) and downward rank
+rankd(vi) to be computed in the ranking phase for subtask
+vi. Let subtasks vi and vj are assigned to computing
+nodes pr and ps. The communication cost of transferring
+data from subtask vi to vj is denoted as cij = eij/Brs,
+where eij is the number of data sent from subtask vi to
+subtask vj and Brs is the bandwidth between computing
+nodes pr and ps. Let cij =
+∑
+i<j;i,j<p dij/B, where
+B is the average transfer rate among all the computing
+nodes. Two types of ranking functions are given as follows:
+ranku(vi) = w¯i + maxvj∈succ(vi){ranku(vj) + c¯ij} and
+rankd(vi) = maxvj∈pred(vi){rankd(vj) + wj + cji}. Note
+that we define ranku(v|V |−1) = w|V |−1 and rankd(v0) =
+0. In the scheduling phase, the subtasks are extracted in
+the order of decreasing rank. Let IRT (vj) denote the time
+that all the input data needed by task vj are ready and it
+equals maxvi∈pred(vj){AFT (vi) + cij}, where AFT (vi) is
+the actual finish time of task vi. To assign subtask vi to
+the most suitable computing node, the earliest start times
+EST (vi, pr) and the earliest finish times EFT (vi, pr) are
+computed for 0 ≤ r < p. EST (vi, pr) is defined as
+max{avail(pr), IRT (vi)}, where avail(pr) is the time for
+pr to complete all the subtasks assigned to it. EFT (vi, pr) is
+defined as wir+EST (vi, pr). Based on the above notations,
+HEFT and CPOP algorithms are briefly described as follows.
+HEFT: The ranking phase of HEFT computes ranku(vi)
+for 0 ≤ i < |V |. The task list is generated by
+sorting the tasks in the order of decreasing ranku
+value. In scheduling phase, HEFT assigns task
+vi to computing node pr if EFT (vi, pr) has the
+smallest values compared with EFT (vi, pk) for
+0 ≤ k < p and k 6= r. The HEFT algorithm
+not only considers the available time of computing
+node, but also uses insertion based method to put
+a subtask in the earliest idle time slot of two
+already-scheduled subtasks. If the time slot is big
+enough and precedence constraints is preserved,
+the subtask is assigned in that slot.
+CPOP: The CPOP computes both ranku(vi) and
+rankd(vi) in the ranking phase. The subtasks in
+the critical path have the same largest ranku(vi)+
+rankd(vi) value [13]. Before we go to the
+scheduling phase, the subtasks in the critical
+path vρ(0), vρ(1), vρ(2), · · · , vρ(a) are extracted and
+assigned to pr which is selected such that∑a
+i=0 wρ(i)r ≤
+∑a
+i=0 wρ(i)k for 0 ≤ k < p
+and k 6= r. In the scheduling phase, the remain-
+ing subtasks which are ready for execution are
+immediately extracted and put into a set Sready.
+Simultaneously, the task in Sready with the largest
+ranku+rankd value is selected and assigned to the
+most suitable computing node pr. The computing
+node pr satisfies EFT (vi, pr) ≤ EFT (vi, pk) for
+0 ≤ k < p and k 6= r. The insertion-based
+scheduling policy is also employed.
+4. Scheduling Algorithms
+In this paper, we propose two new scheduling algorithms:
+communication-order based (COB) and delayed downward
+step, more than one subtask can have the prede-
+cessors scheduled. In this case, the rank values of
+the recently ready subtasks can be computed and
+added into the list Lready.
+5. Experimental Results and Analysis
+The experiments are conducted by intensive simulations
+on various parameter settings for the task graph and compu-
+tation model. The numbers of computing nodes used in the
+simulations are set for 4, 6, 8, 10 and 12. The bandwidths
+of the links are randomly selected within the range of 1 to
+50. For comparison purpose, some of the parameters used
+by [11] to control the task graph are also adopted in the
+simulations. The parameter settings of the task graphs are
+described as follows.
+• SV is the set of the numbers of subtasks in a dis-
+tributed task. In the simulations, we have SV =
+{60, 80, 100, 120, 140}
+• The height of a task is randomly generated from a
+uniform distribution with a mean value √nv , where
+nv ∈ SV . For the task, the number of subtasks in a level
+is also randomly selected from a uniform distribution
+with mean value equal to √nv . If the generated task
+with the number of total subtasks less or more than nv,
+then subtasks are added to or deleted from randomly
+selected levels.
+• wij has been previously defined as the cost of running
+subtask vi on computing node pj . It is randomly
+selected within the range of wi/4 and 5wi/4. In the
+simulations, the mean value wi is randomly selected
+within the range of 1 and 1000.
+• SCCR is the set of the values used to define task average
+communication cost tcomm to task average computation
+cost tcomp ratio. In the simulations, we have SCCR =
+{0.1, 0.5, 1.0, 1.5, 2.0}
+• Sout−degree is the set of integers used to define the
+numbers of successors of a subtask, except the exit
+subtask. In the simulations, we have Sout−degree =
+{1, 2, 3, 4, 5}.
+• The weights of the edges are randomly selected
+from a uniform distribution with mean value equal
+to Btcompnccr, where B is the average transfer rate
+among all the computing nodes, tcomp is task average
+computation cost and nccr ∈ SCCR.
+The speedup achieved by scheduling algorithm alg on
+a disharmonious heterogeneous system with p computing
+nodes is defined as follows.
+SP (alg, P ) =
+minj:pj∈P {
+∑
+i:vi∈V
+wij}
+makespan
+The comparisons of the algorithms CPOP, HEFT, COB and
+DDR are given in Figure 3. A 4-tuple (|V |, |P |, CCR,OD)
+is used by each figure to characterize the parameter set-
+tings in the simulations, where OD refers the number of
+out degrees. The data given in each figure are the aver-
+age of 100 experimental results. In Figure 3(a), 3(b) and
+3(c), we observe that SP (COB,P ) > SP (DDR,P ) >
+SP (HEFT, P ) > SP (CPOP,P ). There are several rea-
+sons for DDR and COP to achieve better performances than
+HEFT and CPOP. The first reason is that the computation
+of the rank values and subtask assignment in the COB and
+DDR consider the capability imposed by the communication
+agents running on the computing nodes. The second reason
+is that DDR uses more precise information in the scheduling
+step. Since the downward rank of a subtask is computed
+after the predecessors of the subtask are scheduled, the rank
+values for the ready subtasks can precisely capture the order
+to schedule a subtask. Note that the scheduling algorithm
+CPOP which assigns the subtasks on a critical path to a
+single node is worse than HEFT. This also gives an evidence
+that the ranku and rankd computed by CPOP for estimating
+a critical path may not be appropriate for a disharmonious
+heterogeneous computing system. The third reason is the
+COB takes the programming syntax into consideration. In
+Figure 3(d), the speedups achieved by DDR is better than
+that of COB for small CCR values. The reason is that when
+the task is computation intensive, the communication order
+imposed by programming syntax becomes an insignificant
+factor for achieving high speedup.
+6. Concluding Remarks
+In this paper, the task model which characterizes the
+communication order imposed by the programming syntax is
+proposed. Then, the computation model which captures the
+limited bandwidth imposed by the communication agents
+in the computing nodes is given. Based on the models,
+two scheduling algorithms COB and DDR are developed
+for effectively scheduling tasks to computing nodes of a
+disharmonious heterogeneous computing system. The results
+of our simulations have demonstrated that our algorithms
+outperform the well known CPOP and HEFT algorithms
+under our realistic computation model. In the future, we
+consider to integrate the strategy used by COB and DDR
+to squeeze the computing power for further enhance the
+performance of the disharmonious heterogeneous computing
+system.
+Acknowledgement
+This research is supported by National Science Council
+under the grant 97-2221-E-197-012.

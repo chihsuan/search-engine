@@ -1,0 +1,979 @@
+ 
+ 2 
+術方面，常見的主要有 VNC(Virtual Network Computing)，及微軟的遠端桌面(Remote 
+Desktop)。VNC 使用 RFB (Remote FrameBuffer)協定，將遠端桌面的畫面資料依型態選擇
+較為簡易的壓縮方法(如 Raw encoding、ZRLE encoding 等)進行壓縮後，傳送給用戶端。而
+Remote Desktop 則是採用基於 ITU-T T.120[6]系列協定所開發的 RDP(Remote Desktop 
+Protocol)協定[3,4]，主要以傳送 GDI(Graphic Device Interface)資料為主，無法以 GDI 傳送
+的部分(如影片、影像)才以 Bitmap 方式傳送。因此本計畫採用支援 RDP 協定的相關環境，
+來進行整體系統的設計與實作。此外，由於傳統遠端桌面服務的功能上，僅允許用戶端控
+制與存取單一的遠端伺服器，未來於雲端應用上，若有多用戶端彼此之間欲進行互動與交
+流之需求時，現有的服務架構便無法滿足。因此，綜上所述，本計畫提出一個基於 RDP
+協定，可提供多用戶端互動平台之桌面即服務雲端架構。並設計與實作此一架構運作所需
+之雲端閘道器，同時於系統完成後，亦針對其效能模式加以分析與實驗驗證。 
+ 
+三、 文獻探討 
+文獻[1]中介紹了 Desktop as a Service 概念，此為遠端虛擬桌面技術成熟發展後，演變至今
+與雲端運算應用產生自然結合之趨勢。目前國內外產業界不少從事雲端運算核心技術開發
+之公司，均相當重視甚而積極投入遠端桌面相關技術與應用的研發[2,3]。由於 Remote 
+Desktop Protocol(RDP)是微軟公司根據 ITU-T T.120系列相關標準所設計的遠端桌面協定技
+術。包含 Windows Terminal Service、遠端桌面、遠端協助等應用，均是運作於此一協定之
+上[4,5,7]。因此關於 RDP 的實際細節所能參考的文件相當有限，但我們仍可從一些專家的
+研究中[6]，逐漸瞭解 RDP 的一些基本加解密原理[8][9][10]及 client 端運作方式，而能對於
+Gateway 的運作機制與功能進行設計與實作。此外，於系統實作完成後，我們亦參考並應
+用 Queuing theory 方法[11,12,13,14,15,16,17,18]，對系統進行了效能分析。 
+ 
+四、 研究方法 
+1. RDP session key negotiation 原理 
+RDP(Remote Desktop Protocol)是基於 ITU-T T.120 系列所設計的遠端桌面協定，其原理
+為 client 與 server 之間進行畫面資料傳輸前需先建立連線(又稱為 session)，而資料傳輸的
+過程中均透過 RC4[8]的對稱式加解密演算法對於資料進行加解密。因此，在一條 session
+建立連線時，必頇先決定出此一 session日後進行通訊時，RC4加解密時所需的 session key。
+而 RC4 session key又是由 client 與 server之間進行交換 random number 後，再將兩個 random 
+number 經由 hashing function 計算所得，此一過程稱為 session key negotiation。 
+ 4 
+介於 client與 server之間，並採用MITM(Man-In-The-Middle)方式，將原本每條 client至 server
+之間的 session，各拆開成為 server 與 Cloud Gateway 之間及 Cloud Gateway 與 client 之間的
+兩段 session 的方式(如 Fig. 2 所示)。 
+Cloud Gateway 能將 session 拆成兩段的方法，如 Fig. 3 所示，Cloud Gateway 本身可分
+為兩個對外介面，一是負責與真正 server 之間通訊的 faked client end，一是負責與 client
+端通訊的 faked server end。首先，當 faked client end 收到來自 server 端的 Rs 及 KUs 時，
+此時，faked server end 會將 Rs 與 Gateway 自己的 public key(以 KUsf 表示)轉送給 client，
+而不會將 KUs 送給 client。當 client 端收到 Rs 與 KUsf 後，client 端會以為 KUsf 便是 server
+的 public key，因此便用 KUsf 將 Rc 加密後，送回給 faked server end，因此 faked server end
+收到以 KUsf 加密的資料後，便能以自己的 private key(以 KPsf 表示)，將 Rc 的值順利解密
+出來。然後，再將 Rc 以最初 server 端的 KUs 加密，由 faked client 端送出給 server。最後
+server、Cloud Gateway、client 三者皆得知 Rs 與 Rc，因此均能計算出所需的 session key K，
+因此，後續三者均以 K 作為 RC4 加解密的 Key 來進行資料通訊。 
+Cloud Gateway 一旦擁有每一條 session 的 session key 之後，由於每一個 session 經由
+Cloud Gateway 皆被拆成兩段，因此 Cloud Gateway 便可透過此一架構，作到從任意一條
+session 的 client 端對任意另一條 session 的 server 端傳送控制訊息(即進行控制)，同時也可
+從任何一條 session 的 server 端將結果畫面，分享傳送給其它所有 session 的 client 端。 
+Windows XP
+RDP server
+Linux
+Cloud Gateway
+Faked Client end
+Linux
+Cloud Gateway
+Faked Server end
+Linux 
+RDP client
+(Rdesktop)
+Server Random 
+Number Rs &
+Server Public Key 
+KUs
+EncData = SHA1_MD5_Ec(Rc, KUsf )
+Server Random 
+Number Rs &
+Faked Server Public 
+Key KUsf
+Client Random 
+Number Rc
+Rc = SHA1_MD5_Dc(EncData, KPsf )
+EncData = SHA1_MD5_Ec(Rc, KUs )
+Rc = SHA1_MD5_Dc(EncData, KPs )
+Client Random 
+Number Rc
+Client Random 
+Number Rc
+RC4 Key K = H (Rs, Rc)
+Rs: Server Random Number
+Rc: Client Random Number
+KUs: Server Public Key
+KPs: Server Private Key
+KUsf: Faked Server Public Key
+KPsf: Faked Server Private Key  
+Fig. 3  Session Key Negotiation via Cloud Gateway 
+ 
+ 6 
+ 
+Cloud Gateway 
+Client B
+(Group Attendee )
+rdesktop running on 
+Linux Platform
+server cloud
+Windows Platform Servers
+Client A
+(Group Controller)
+rdesktop running on
+Windows Platform
+Internet
+Client C
+(Group Attendee)
+rdesktop running on 
+Some Other lightweight Platform
+(e.g., Apple ipad)
+1
+2
+3
+4a
+4b
+4cserver cloud
+Windows Platform Servers
+server cloud
+Windows Platform Servers
+  
+Fig. 5 Self-Control/Sharing Mode for Cloud Gateway 
+Windows XP
+RDP server
+Linux
+Cloud Gateway
+for DaaS
+Faked Client end
+Linux
+Cloud Gateway
+for DaaS
+Faked Server end
+Linux 
+RDP client A
+(Rdesktop)
+RC4_Dc(Encrypted Data, KEYa)
+RC4_Ec(Data, KEYb)
+RC4_Ec(Data, KEYa)
+Linux 
+RDP client B
+(Rdesktop)
+RC4_Ec(Data, KEYa)
+RC4_Dc(Encrypted Data, KEYb)
+RC4_Dc(Encrypted Data, KEYa)
+Unencrypted 
+Rendering 
+Data
+Unencrypted
+Control
+Data
+Unencrypted 
+Rendering 
+Data
+Unencrypted 
+Rendering 
+Data
+Unencrypted 
+Rendering 
+Data
+RC4_Ec(Data, KEYa)
+RC4_Dc(Encrypted Data, KEYa)
+Unencrypted
+Control
+Data
+Session Key Negotiation => KEYa
+Session Key Negotiation => KEYb
+Unencrypted 
+Rendering 
+Data
+Linux 
+RDP client C
+(Rdesktop)
+Session Key Negotiation => KEYc
+RC4_Ec(Data, KEYc)
+RC4_Dc(Encrypted Data, KEYc)
+ 
+Fig. 6  Self-Control/Sharing Mode for Cloud Gateway 
+首先三個 client 端仍先經由 Cloud Gateway 建立兩段式的 RDP session，因此便可各自
+獲得其 session Key。而後，client A、B、C 分別向 Cloud Gateway 要求加入同一個 Group，
+ 8 
+Cloud Gateway 
+Client B
+(Group Attendee )
+rdesktop running on 
+Linux Platform
+Server Cloud
+Windows Platform Servers
+Client A
+(Group Controller)
+rdesktop running on
+Windows Platform
+Internet
+Client C
+(Group Attendee)
+rdesktop running on 
+Some Other lightweight Platform
+(e.g., Apple ipad)
+1
+2
+3
+4a
+4b
+4cServer Cloud
+Windows Platform Servers
+Server Cloud
+Windows Platform Servers
+ 
+Fig. 7  Cross-Control/Sharing Mode for Cloud Gateway 
+ 
+Windows XP
+RDP server
+Linux
+Cloud Gateway
+for DaaS
+Faked Client end
+Linux
+Cloud Gateway
+for DaaS
+Faked Server end
+Linux 
+RDP client A
+(Rdesktop)
+RC4_Dc(Encrypted Data, KEYa)
+RC4_Ec(Data, KEYb)
+RC4_Ec(Data, KEYa)
+Linux 
+RDP client B
+(Rdesktop)
+RC4_Ec(Data, KEYa)
+RC4_Dc(Encrypted Data, KEYb)
+RC4_Dc(Encrypted Data, KEYa)
+Unencrypted 
+Rendering 
+Data
+Unencrypted
+Control
+Data
+Unencrypted 
+Rendering 
+Data
+Unencrypted 
+Rendering 
+Data
+Unencrypted 
+Rendering 
+Data
+RC4_Ec(Data, KEYa)
+Unencrypted
+Control
+Data
+RC4_Dc(Encrypted Data, KEYa)
+Unencrypted
+Control
+Data
+RC4_Ec(Data, KEYb)
+RC4_Dc(Encrypted Data, KEYb)
+Session Key Negotiation => KEYa
+Session Key Negotiation => KEYb
+Unencrypted 
+Rendering 
+Data
+RC4_Dc(Encrypted Data, KEYc)
+RC4_Ec(Data, KEYc)
+Session Key Negotiation => KEYc
+Linux 
+RDP client C
+(Rdesktop)
+ 
+Fig. 8  Session Key Negotiation of RDP Gateway 
+    模式 III 是本系統最具特色的一種功能，以上一小節的實際應用範例而言，若 client B 所使
+用的遠端伺服器群的設備等級較高(如有較快的 CPU、較大的記憶體、硬碟空間等)，而其它如
+client A，client C 所使用的遠端伺服器等級較差，也就是說有一些重量型軟體很可能只能安裝於
+ 10 
+as shown in Fig. 9d have a good performance as well and video playing as shown in Fig. 9c 
+runs very smoothly in campus network. In fact, all applications that can be found on the 
+controlled server which the controlled session connects to can be fully controlled and applied 
+by the controller, and any change of the desktop display of the controlled session will be 
+shared and delivered to all clients concurrently. Thus, all users can see the same desktop 
+display immediately on any one of the clients’ screens. 
+ 
+3. Performance analysis: 
+The core system consisting of gateway and the controlled server can be modeled as an open 
+queueing network illustrated in Fig. 10. 
+ 
+S2
+sending
+buffer
+receiving
+bufferGDI information
+processing
+DE
+RDP packet
+encapsulation
+sending
+buffer
+receiving
+buffer
+E D
+S1
+E* E* E* E*
+C1 C2 C3 CN
+D
+receiving
+buffer
+p35
+p34
+GatewayControlled  Server
+Sink
+Fig. 10 The proposed open queueing network for performance modeling 
+ 
+The network consists of 7 nodes, each node is referred to as a          queue for 
+processing RDP packets. The parameters and symbols denoted in Fig. 10, and those which 
+appear in the later analysis are defined in the following: 
+   : Source which represents sending end of the controlling client. 
+   : Source which represents the controlled server. 
+   : Sinks which represent the receiving ends for each client (         
+   : Source which represents the sending end of the controlled server. 
+  : The RC4 decryption service 
+  : The RC4 re-encryption service 
+   : The memcpy() service along with RC4 re-encryption service 
+    : The arrival rate from outside to the  
+   node 
+   : The overall arrival rate at the  
+   node 
+   : The service rate at the  
+   node 
+  
+   
+: The service rate of the     server in sequence at the     node 
+    : The routing probability that a packet delivered to the  
+   node after service completion  
+at the     node. 
+   : The traffic intensity at the  
+   node 
+   : Mean queue length of the  
+   node 
+ 12 
+, which gives the identical result as   
+   . 
+Therefore, the overall mean response time for each client is:  
+         
+ 
+       
+        
+ 
+     
+    
+   
+       
+          
+   
+       
+              (1) 
+ 
+Measuring from the real system in a case of real-time video streaming, we can obtain all 
+arguments required in the above equations by instrumentation codes. These arguments are 
+listed in the following: 
+1. Mean RC4 decoding time: 
+ 
+  
+    
+ 
+  
+    
+ 
+  
+          
+                
+2. Mean RC4 encoding time: 
+ 
+  
+    
+ 
+  
+                     
+3. Mean memcpy() time + mean RC4 encoding time: 
+  
+ 
+  
+    
+ 
+  
+      
+ 
+  
+          
+                
+4. Mean networking transmission time measured on Gigabit Ethernet: 
+  
+ 
+  
+ 
+ 
+  
+                       
+5. Mean service time for management packets: 
+ 
+  
+      
+                
+6. Mean service time for GDI information processing: 
+ 
+  
+                   
+7. Mean arrival rate of S1 (controller command packets):                       
+8. Mean arrival rate of S2 (packets generated by server):                           
+9. Mean RDP packet length:                   ) 
+10. Total elapsed time of the video:           
+11. Routing probabilities          and          . 
+ 
+Thus, we can calculate the overall mean response time for each client by the following steps: 
+    
+ 
+     
+  
+   
+   
+   
+  
+   
+  
+   
+       
+   
+   
+   
+ 
+ 
+ 
+      
+ 
+  
+   
+   
+   
+  
+   
+  
+   
+       
+   
+   
+   
+ 
+ 
+ 
+         
+ 
+ 
+      
+ 
+ 
+      
+ 
+                                                                   
+Hence, 
+          
+ 
+     
+    
+   
+       
+          
+   
+       
+           
+   
+   
+         
+   
+   
+          
+   
+         
+   
+    
+      
+            
+                   
+                               
+         
+By investigating results in the above, if the system facilities are fixed, we can see that there 
+are two crucial arguments which directly impact on the overall system performance, the total 
+number of clients   , and the inter arrival rate of data traffic generated from server,    . 
+ 14 
+ 
+We can see that the intensity    will be decided by both     and  , and thus determines 
+the performance as evaluated by equation (1) and shown in Fig.11. This is obviously that as 
+the number of clients increases, the overall mean response time per packet for each client will 
+increase due to the fact that any client has to wait for his next packet after the current packet 
+go through over the whole re-encryption chain with degree  . In addition, the higher arrival 
+rate the service type needs, the fewer tolerant vacancy of   is. Thus, the overall mean 
+response time will have a rapid growth in the case of bound of   under circumstances of a 
+variety of arrival rates. 
+ 
+        Marginal Probability of the Bottleneck Node 
+The required queue capacity for quality guarantee of service can be reflected by the 
+marginal probabilities of the bottleneck, node  , in steady state at the bound of   according 
+to equation (2) in above cases(Fig. 11) that can be evaluated and shown in Fig. 12. 
+ 
+ 
+ Fig. 12  Marginal probability of node 7 under a variety of workload conditions. 
+ 
+It is obviously that when the maximum number of clients is well-bounded in order to be 
+adaptive to a variety of traffic loads generated by distinguished arrival rates, the marginal 
+probability in steady state can be under control by allocating enough queue capacity to the 
+bottleneck node, and thus it can not only guarantee the quality of service for each client but 
+also achieve the optimization of system utilization. 
+ 
+ 
+0 200 400 600 800 1000
+0
+0.01
+0.02
+0.03
+0.04
+0.05
+0.06
+λ
+04
+ = 2000, N = 14
+Queue Length
+M
+a
+rg
+in
+a
+l 
+P
+ro
+b
+a
+b
+ili
+ty
+0 200 400 600 800 1000
+0
+0.005
+0.01
+0.015
+0.02
+0.025
+λ
+04
+ = 1200, N = 25
+Queue Length
+M
+a
+rg
+in
+a
+l 
+P
+ro
+b
+a
+b
+ili
+ty
+0 200 400 600 800 1000
+0
+0.002
+0.004
+0.006
+0.008
+0.01
+0.012
+0.014
+λ
+04
+ = 855, N = 36
+Queue Length
+M
+a
+rg
+in
+a
+l 
+P
+ro
+b
+a
+b
+ili
+ty
+0 500 1000 1500 2000
+0
+0.5
+1
+1.5
+2
+2.5
+3
+3.5
+4
+4.5
+x 10
+-3 λ
+04
+ = 500, N = 63
+Queue Length
+M
+a
+rg
+in
+a
+l 
+P
+ro
+b
+a
+b
+ili
+ty
+0 1000 2000 3000
+0
+0.5
+1
+1.5
+2
+2.5
+3
+x 10
+-3 λ
+04
+ = 300, N = 106
+Queue Length
+M
+a
+rg
+in
+a
+l 
+P
+ro
+b
+a
+b
+ili
+ty
+0 2000 4000 6000
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+x 10
+-3 λ
+04
+ = 100, N = 321
+Queue Length
+M
+a
+rg
+in
+a
+l 
+P
+ro
+b
+a
+b
+ili
+ty
+ 16 
+Specification”, http://msdn.microsoft.com/en-us/library/cc240445.aspx , Aug. 2011. 
+[6] Matthew Chapman, “rdesktop: A remote Desktop Protocol client”, http://www.rdesktop.org/ , Aug. 2011. 
+[7] ITU-T, “Recommendation T.128: Multipoint application sharing”, Feb. 1998. 
+[8] IETF, “Draft: A Stream Cipher Encryption Algorithm Arcfour”, Dec. 1999. 
+[9] Electronic Frontier Foundation, “Specifications for a Secure Hash Standard (SHS)”, Jan. 1992. 
+[10] IETF, ”RFC 1321: The MD5 Message-Digest Algorithm”, Aug. 1992. 
+[11] L. Kleinrock, “Queueing Systems, Volume I: Theory”, 1975. 
+[12] G. Bolch, “Queueing Networks and Markov Chains”, 2nd ed., 2006. 
+[13] D. Gross et.al, “Fundamentals of Queueing Theory”, 4th ed., 2008. 
+[14] J. Cao et.al, “Web Server Performance Modeling Using an M/G/1/K*PS Queue” , 10th International 
+Conference on Telecommunications (ICT’03), 2003. 
+[15] C. Knesll, “On the sojourn time distribution in a finite capacity processor shared queue”, Journal of the 
+ACM (JACM), Nov., 1993. 
+[16] V. Talwar, et.al, “Modeling remote desktop systems in utility environment with application to QoS 
+management”, the 11th IFIP/IEEE international conference on Symposium on Integrated Network 
+Management, 2009. 
+[17] B. Urgaonkar et.al, ”An Analytical Model for Multi-tier Internet Services and Its Applications”, ACM 
+SIGMETRICS international conference on Measurement and modeling of computer systems, 2005. 
+[18] J. Rhee et.al, “DeskBench: flexible virtual desktop benchmarking toolkit”, the 11th IFIP/IEEE 
+international conference on Symposium on Integrated Network Management, 2009. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 三、建議: 
+從會議接受之論文主題及學者所報告之內容，得以觀察目前國際上
+許多學者當前所從事之前瞻研究方向。其中以多媒體(2D/3D 視訊、
+影像、語音)處理，雲端計算相關領域(分散式計算、串流技術、網
+路協同運作)，智慧型演算法(機器學習、資料探勘)，以及與上述相
+關之嵌入式系統、機器人、行動裝置、軟硬體開發環境發展等，皆
+仍為全球許多學者與產業界所熱衷之研究領域。此外，由於近年來
+計算機軟硬體、通訊網路等基礎技術與施設的高度迅速發展，因
+此，結合上述相關領域之整合型研究所需之環境條件，亦已日漸成
+熟。因此多出席此類相關國際論文會議，定有助於國際視野之開
+拓，並瞭解掌握計算機領域之研究發展趨勢。 
+ 
+四、攜回資料名稱及內容: 
+2010 2nd International Conference on Information and Multimedia 
+Technology(ICIMT 2010)  Proceeding 論文集一份。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+generates a client random number Rc, encrypts Rc with 
+KUs by SHA1 and MD5 encryption, and sends it out to 
+the server. When the encrypted data is received by the 
+server, the server decrypts it with its server private key 
+KPs and thus obtain Rc. Since both the server and the 
+client get Rs and Rc, a RC4 key K can be computed on 
+both sides by applying a hashing function H with 
+parameters Rs and Rc. The key K will be used for RC4 
+encryption and decryption in the later communication 
+of this RDP session. 
+ 
+2.2 RDP Gateway Architecture  
+ 
+The Basic RDP Gateway for multi-party conference 
+is as illustrated in the Figure 2. Each RDP client does 
+not directly connect to RDP server but connect to the 
+RDP gateway. The RDP Gateway then relays the client 
+connection setup request to the RDP server and applies 
+the Man-In-The-Middle technique to obtain both the 
+server and client random numbers during the RC4 
+session key negotiation phase. For the RDP server’s 
+aspect, the RDP Gateway acts as a RDP client. On the 
+other hand, for the RDP client’s aspect, the RDP 
+Gateway acts as a RDP server. 
+RDP client A
+RDP Gateway
+RDP client B
+RDP Server 
+RDP client C
+Se
+ss
+ion
+ K
+ey
+ K
+a
+Session Key Kc
+Session Key Ka
+Session Key Kb
+Session Key Kc
+Session Key Kb
+ 
+Figure 2: RDP Gateway Architecture 
+ 
+2.3 Negotiation via RDP Gateway 
+ 
+Figure 3 shows the complete process of session key 
+negotiation of RDP gateway architecture. The client 
+runs rdesktop[4] on Linux which is an open source 
+developed by Mathew Chapman. He has another 
+implementation of Linux RDP server xrdp[5]. The 
+RDP Gateway can be divided into two parts, the faked 
+client end and the faked server end. When the faked 
+client end receives the actual server random number Rs 
+and a server public key KUs on the initial step of 
+negotiation, the faked server end will send Rs and a 
+faked server public KUsf to the client. The client then 
+generates a client random number Rc, and encrypts it 
+with KUsf by SHA1[12,14] and MD5[12,15] 
+encryption. As the encoded data received by the faked 
+server end, Rc can be decrypted with the faked server 
+private key KPsf. The faked client end then encrypts 
+Rc with KUs and sent it to the real RDP server. Finally, 
+all of them get Rs and Rc, and can compute the 
+RC4[12,13] session key K by a hashing function H 
+with parameters Rs and Rc. Thus, the RDP Gateway 
+can successfully decrypts the later encrypted RDP 
+packets transmitted between the real RDP server and 
+the RDP client with session key K by RC4 decryption. 
+Also, the encryption can be applied as well. 
+ 
+After realizing the session key negotiation and the 
+indirect relay connection architecture that a basic RDP 
+gateway can provide, the proposed system can be 
+further extended to develop more powerful capabilities 
+based on the scenarios described in the following 
+subsections.  
+RDP Server
+(winxp or xrdp)
+RDP Gateway
+Faked Client end
+RDP Gateway
+Faked Server end
+RDP client
+(rdesktop)
+Server Random 
+Number Rs &
+Server Public Key 
+KUs
+EncData = SHA1_MD5_Ec(Rc, KUsf )
+Server Random 
+Number Rs &
+Faked Server Public 
+Key KUsf
+Client Random 
+Number Rc
+Rc = SHA1_MD5_Dc(EncData, KPsf )
+EncData = SHA1_MD5_Ec(Rc, KUs )
+Rc = SHA1_MD5_Dc(EncData, KPs )
+Client Random 
+Number Rc
+Client Random 
+Number Rc
+RC4 Key K = H (Rs, Rc)
+Rs: Server Random Number
+Rc: Client Random Number
+KUs: Server Public Key
+KPs: Server Private Key
+KUsf: Faked Server Public Key
+KPsf: Faked Server Private Key  
+Figure 3. Session Key Negotiation via RDP Gateway 
+ 
+3 Design and Implementation Remarks 
+ 
+The proposed scheme is divided into three phases, 
+the first one is the recording process i.e., logging of 
+RDP packets sent from RDP server during a RDP 
+session. The second phase is the first-time-replaying 
+process by rendering the GDI information contained in 
+the RDP packets logged in the first phase. During the 
+replaying, an important process called referencing 
+points and frames logging will be saved into another 
+file to maintain the important referencing information 
+for latter playback control usage in the third phase. At 
+the third phase, users are able to apply the playback 
+control functionality, for example, the forward, the 
+order. Therefore, the replay will be likely to result in 
+broken windows or other strange appearances if the 
+playback starts from some intermediate RDP packets 
+instead of starting from the first one sent from the 
+gateway. The saved referencing frames during the first-
+time replay mentioned earlier are adopted to solve the 
+problem. The referencing frames are full desktop 
+bitmap images which are snapshot for every certain 
+number (e.g., 50) of RDP packets. The problem of a 
+forward or rewind playback which starts playing from a 
+specific point can be solved by starting playback from 
+the nearest referencing point and reloading the 
+corresponding saved referencing frame. The reloading 
+process of the corresponding referencing frame can be 
+seen in the following: 
+ 
+uint8* cache_get_full_desktop(uint32 offset, int cx, int cy, int 
+bytes_per_pixel, unsigned int snpst_no){ 
+int length = cx * cy * bytes_per_pixel; 
+ 
+fseek(fp_full_desktop_snapshot, length* snpst_no, SEEK_SET); 
+fread(g_full_deskcache, length, 1, fp_full_desktop_snapshot); 
+if (offset > sizeof(g_full_deskcache)) 
+ offset = 0; 
+if ((offset + length) <= sizeof(g_full_deskcache)) 
+ return &g_full_deskcache[offset]; 
+error("get full desktop %d:%d\n", offset, length); 
+return NULL; 
+} 
+ 
+Since the referencing frame is a full desktop bitmap 
+image, there will be no broken windows or other 
+strange appearances. In addition, the GDI information 
+contained in the later RDP packets following this 
+referencing frame can be also rendered accumulatively 
+and normally based on this frame. Thus, the goal of 
+forward and rewind playback control can be achieved. 
+In the cases of fast forward and fast rewind controls, 
+they are as similar as the forward and rewind controls 
+with extension of adjusting the time stamp data logged 
+along with the recording of rendering data. 
+ 
+4. Results 
+4.1 Playback of RDP Packets 
+ 
+As shown in Figure 5, there exists the phenomenon 
+of some broken windows (e.g., the broken client area of 
+window media player) when applying the playback 
+started from a specific number of the RDP packets 
+which are recorded and sent from RDP gateway 
+without the referencing frame support. On the contrary, 
+by integrating the referencing frame support, the 
+playback started from a specific number of the 
+recorded RDP packets works normally. As can be seen 
+in Figure 6, the phenomenon of broken client area of 
+the windows media player no longer exists. 
+ 
+Figure 5. Forward playback of a RDP replay process 
+without referencing frame support 
+ 
+ 
+Figure 6. Forward playback of a RDP replay process with 
+referencing frame support 
+ 
+However a little bit slight defects sometimes may 
+occur, such as the start menu button and the task bar 
+might be shown abnormally. This is resulted from the 
+bitmap cache scheme that windows RDP server adopts. 
+The windows RDP server fully controls the writing and 
+reading actions of the bitmap cache in the RDP client 
+by sending the information of writing or reading 
+actions contained in the RDP packets. So the cache 
+index of some image putted into the bitmap cache in 
+the early stage of the original replay might store 
+another image in the cache of newly-negotiated client. 
+ 
+5 Storage Evaluation 
+ 
+The storage evaluation which one may concern about 
+is the total number of referencing points and the data 
+amount of these referencing frames. The experiment 
+setting is to insert referencing points into a set of pre-
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/10/28
+國科會補助計畫
+計畫名稱: 桌面即服務之雲端互動平台閘道器
+計畫主持人: 蔡駿逸
+計畫編號: 99-2218-E-143-002- 學門領域: 計算機網路與網際網路
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

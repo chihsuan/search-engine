@@ -1,0 +1,2571 @@
+ 1
+中文摘要 
+ 
+本計畫主要以Altera FPGA晶片及內含一顆Nios嵌入式軟核心處理器來研製雙軸
+線型馬達XY平台驅動控制器之系統整合晶片(SOPC)。此系統整合晶片內主要包
+括兩個模組，第一個模組在Nios處理器內以軟體程式實現，其功能包含XY平台運
+動軌跡之計算法則、線型馬達位置與速度迴路控制法則之計算等；第二個模組在
+FPGA晶片內以數位硬體方式實現，其功能主要為雙軸線型馬達電流迴路之計算
+電路，也就是兩組線型馬達向量控制所需要之光學編碼器信號偵測、座標轉換、
+電流迴路、空間向量脈波寬度調變(SVPWM)信號輸出之計算等全部由硬體數位電
+路實現。這兩個模組分別以軟硬體方式實現的原因為，前者在執行馬達位置控制
+及運動軌跡規劃時，計算較複雜及需具有彈性，但是取樣的頻率不需要太快，因
+此非常適合以軟體實現；而後者馬達之電流與向量控制，計算較簡單較固定，但
+是執行速度需要較快，故必須以硬體實現。本計畫為三年期個別型計畫，今年為
+第二年。本年度著重『單軸線型馬達適應性模糊控制器之應用』及『雙軸線型馬
+達伺服系統基本功能之建立與驗證』。今年度計畫首先推導適應性模糊控制法則
+並在Nios處理器內以軟體實現，然後以實驗證實線型馬達具負載時此控制法則之
+穩健性。本年度亦將在SOPC環境下，發展雙組電流向量控制智財(IP)及雙軸位置
+控制器軟體程式，並以具兩顆永磁線型同步馬達之XY平台來驗證系統晶片之正
+確性。 
+ 
+關鍵詞：系統整合晶片、永磁線型同步馬達控制、適應性模糊控制器、現場可
+程式邏輯閘陣列、XY 平台。 
+ 
+ 
+Abstract 
+ 
+This project adopts an Altera’s FPGA (Field programmable gate array) and a Nios 
+embedded processor to develop a system-on-a-programmable-chip (SOPC) for servo 
+system of XY table driven by two-axis permanent magnet linear synchronous motor 
+(PMLSM). This servo control IC has two modules. One module performs the function 
+of the position control of PMLSM and motion trajectory control of XY table. The 
+other module performs the function of the current loop control for two sets of PMLSM 
+drives which includes vector control, SVPWM generations, coordinate transformation, 
+PI controller, the detection of the quadrature encoder, etc. The former is implemented 
+by software in Nios embedded processor due to the need of complicated algorithm but 
+low sampling frequency control. The latter is implemented by PLD hardware due to 
+the need of high sampling frequency control but only simple computation. This project 
+belongs to a three-year project. This year are the second year and this year focuses on 
+the study of “the applications of adaptive fuzzy control on PMLSM” and “the function 
+setup of a SOPC-based two-axis PMLSM drives system”. At first, the adaptive fuzzy 
+control law for PMLSM will be derived and be implemented with software using Nios 
+processor. The robustness of the adaptive fuzzy controller will be evaluated under the 
+effect of external load. Meanwhile, in this year, the two sets of current vector control 
+IP and the software of motion controller will be developed and verified under the same 
+SOPC environment. 
+ 
+Keywords: SOPC, PMLSM, Adaptive fuzzy controller, FPGA, XY table. 
+ 3
+糊控制器之應用』及『雙軸線型馬達伺服系
+統基本功能之建立與驗證』軟硬體功能之正
+確性。圖 1 是今年度建構的 SOPC 線型馬達
+XY 平台伺服控制器系統之實驗架構。圖 1
+中的使用Nios嵌入式處理器以軟體方式來實
+現而兩組 PMLSM 的電流向量控制則是以
+FPGA 內的 PLD 來實現。 
+2.1 永磁線型同步馬達的數學模式 
+永磁線型同步馬達的伺服係統控制方塊
+圖如圖 2 所示，馬達的動態方程式如下所述  
+d
+d
+qp
+d
+q
+d
+d
+sd v
+L
+ix
+L
+L
+i
+L
+R
+dt
+di 1+τ
+π+−= &  (1) 
+q
+q
+p
+q
+f
+q
+q
+s
+dp
+q
+dq v
+L
+1x
+L 
+ 
+i
+L
+Rix
+L
+L
+dt
+di +τ
+λπ−−τ
+π−= &&  (2) 
+其中 vd, vq 是 d 軸與 q 軸的電壓 ; id, iq, 
+是 d 軸與 q 軸的電流, Rs 是相繞組電阻; Ld, 
+Lq 是 d 軸與 q 軸的電感; px&  為 轉子速度; 
+fλ 是永久磁鐵的係數; τ 是磁極間距.電能推
+例如(3)式所示 [3]： 
+qfdqde iiLLF ))((2
+3 λτ
+π +−=  (3) 
+PMLSM 的電流控制是以向量控制來實現。
+因此在圖 2 假如我們控制 id 為  0，則
+PMLSM 將會解偶合，因此在控制 PMLSM
+將會變得如同控制直流馬達般的容易。在簡
+化的與考量機械負載下， PMLSM 的數學式
+能以下面的(4)式來描述： 
+qtqfe iK i2
+3F Δλτ
+π=  (4) 
+配合(5)式  
+ftK λτ
+π
+2
+3 =  (5) 
+PMLSM 的動態機械方程式如(6)式所示： 
+dt
+dx
+B
+dt
+xd
+MFF ppLe +=− 2
+2
+ (6) 
+其中 eF 是馬達的推力， tK 是力的常數，M 是
+移動常數的總合， B 是黏滯摩擦係數而 LF 是
+外部的力量。 
+2.2 線型馬達位置迴路適應性模糊控制法則： 
+線型馬達位置迴路模糊控制器架構如圖 2
+所示。本計畫所使用之模糊控制器為單值模
+糊，歸屬函數為三角形歸屬函數，推論機構
+使用邏輯積運算，而解模糊化則是使用加權
+平均法。模糊控制器之輸入為所追隨之位置
+誤差 e 以及位置誤差變化量 de定義如下： 
+ ( ) ( ) ( )m pe k x k x k= −  (7) 
+ ( ) ( ) ( 1)de k e k e k= − −  (8) 
+以及輸出為 fu ，而本計畫所使用之模糊控制
+器設計流程如下： 
+(1) 首先定義模糊控制器之輸入誤差 e 及誤差
+變化量 de 的語言變數。誤差 e 及誤差變化量
+de其語言變數分別為{A0,A1,A2,A3,A4,A5,A6}及
+{B0,B1,B2,B3,B4,B5,B6}。每個語言變數都為對
+稱式三角形歸屬函數，其中對稱式三角形歸
+屬函數個別定義至三個實數 1 2 3ξ ξ ξ≤ ≤ ，假使
+其固定為 1 3( ) ( ) 0f fξ ξ= = 以及 2( ) 1f ξ = ，至於論
+域定義為 [ 6.6]− ，而語言變數如下。 
+0 0 1 1
+2 2 3 3
+4 4 5 5
+6 6
+:{ 6, 6, 4}, :{ 6, 4, 2},
+:{ 4, 2,0}, :{ 2,0,2},
+:{0, 2,4}, :{2,4,6},
+:{4,6,6}
+A B A B
+A B A B
+A B A B
+A B
+= − − −    = − − −    
+= − −    = −   
+=    =   
+=
+ (9) 
+(2) 計算誤差 e以及誤差變化量 de其各自對應
+歸屬函數的歸屬程度。一個輸入只會觸發兩
+個語言變數，若其誤差 e 介於 ie 以及 1ie + 之
+間，兩個語言變數 iA 及 1iA + 將被觸發，則其歸
+屬程度 ( )
+iA eμ 及 1 ( )iA eμ + 可以表示如下： 
+ 1( )
+2i
+i
+A
+e e
+eμ + −=  (10) 
+  
+1
+( ) 1 ( )
+i iA Ae eμ μ+ = −  (11) 
+在此 1 6 2 ( 1)ie i+ = − + ⋅ + 。以同樣的方式可以得到
+誤差變化量 de 其對應之歸屬程度 ( )
+jB deμ 。 
+(3) 選擇模糊控制器其規則庫之初始值必須依
+據馬達的動態方程式，可表示為， 
+ 
+,
+          
+,      0,1,2,3,4,5,6.
+i i f
+j i
+IF e is A and de is B then u is
+c for i and j =  (12) 
+在此 iA 及 jB 為模糊數， ,j ic 為實數。 
+(4) 利用模糊控制器其中經過單值模糊化、邏
+輯積運算、以及加權平均解模糊化法可以得
+到控制器輸出 ( , )fu e de ，雖然全部有 49 條模
+糊規則被推論如圖，但實際上每次只會觸發
+4 條規則將有效的被觸發然後產生一個非零
+的輸出值。因此，假使誤差 e 座落於 ie 以及 1ie +
+之間，以及誤差變化量 de 座落於 ide 以及 1ide +
+之間，只會有 4 個語言變數 iA , 1iA + , jB , 1jB + 以
+及規則庫對應的推論值 ,j ic , 1,j ic + , , 1j ic + , 1, 1j ic + +
+被觸發，將可以統合為(13)式： 
+ 5
+各軸速度控制器採用PI控制器而位置控制器
+採用適應性模糊控制器。位置控制器之取樣
+頻率為 1KHz。 
+永磁線型同步馬達之電流向量控制 IP 如
+圖 4 所示，其中座標轉換如 PARK、CLARK、
+PARK-1、CLARK-1 及 PI 控制器為模組化電
+路。各模組之設計若採並行式處理，速度非
+常快。各模組之運算約在 1~2 時脈(clock, 
+50MHz)即可完成，但是將浪費相當多之資
+源，各模組所需的資源共約 3,679 LEs 及
+24,576 bit RAM。因此為簡化 FPGA 晶片資
+源，本計畫採用有限狀態機法。此方法主要
+將並行式處理改成串列處理，也就是若有 n
+個計算步驟在一個時脈內完成者，改由一個
+時脈計算一個步驟而由 n 個時脈完成。因此
+本計畫提出 FSM 方法之永磁線型同步馬達
+之電流向量控制 IP 將如圖 5 所示，其中 FSM
+方塊圖之運算功能即如圖 4 中黃色底匡內之
+電路方塊圖一樣，詳細之計算內容如圖 5。
+在設計 FSM 方塊計算時，首先設定每一個
+串列執行步驟皆僅使用一個乘法器及一個
+加法器。因此，將圖 5 之計算內容分成 24
+個狀態(state)，即 s0~s23。雖然 24 個步驟之
+串列運算，浪費不少計算時間，但是以
+25MHz 之時脈來計算也僅需不到 1μs，整體
+之運算速度仍然很快。而且由硬體資源來比
+較，以 FSM 方式實現 PI 控制器及座標轉換
+電路之資源共約 1,252 LEs 及 49,152 bit 
+RAM。故經由我們的實驗模擬，應用本計畫
+提出應用 FSM 方式所設計之單軸永磁線型
+同步馬達之電流向量控制 IP 將可節省約
+2,427 LEs。若雙軸者可節省之資源更達
+4,854 LEs。至於圖 3 中，Nios 處理器使用
+3,440 LEs 及 49,920 bit RAM。 
+ 
+2.4 實驗系統與實驗結果： 
+ 
+a. 實驗系統:  
+SOPC-based全數位線型馬達XY 平台伺
+服控制器系統架構圖如圖 1 所示。此系統整
+合晶片內主要包括兩個模組，第一個模組在
+Nios 處理器內以軟體程式實現，其功能包含
+線型馬達位置之適應性模糊控制法則之計
+算；第二個模組在 FPGA 晶片內以數位硬體
+方式實現，其功能主要為雙軸線型馬達電流
+迴路之計算電路，也就是兩組線型馬達向量
+控制所需要之光學編碼器信號偵測、座標轉
+換、電流迴路、空間向量脈波寬度調變
+(SVPWM)信號輸出之計算等全部由硬體數
+位電路實現。圖 1 中，硬體主要組成有一台
+線型馬達 XY 平台、兩組馬達驅動板、一組
+以 FPGA 晶片為基礎之交流馬達控制電路
+板。說明如下： 
+線型馬達 XY 平台：如圖 6 所示。此 XY
+平台為兩支線型馬達(PMLSM)所組成。各
+軸 PMLSM 為雙側磁極的結構，屬於永磁
+線型同步馬達。各軸 PMLSM 採用
+BALDOR 單軸線型馬達其長度 600mm.最
+大的速度與加速度分別是  4m/s 與  4 
+g’s。移動的負載量是 2.5kg，在連續狀態
+下最大的負載為 22.5kg，最大的推力是 
+73N。PMLSM 所裝置的線性編碼器採用 
+5μm 之解析度可當作位置感測器，而磁極
+間距為 30.5mm (大約為 6100 脈波)。 
+ Altera FPGA 晶片：乃系統核心，作為發展
+交流伺服馬達之運動控制晶片； FPGA 元
+件採用 Altera Stratix EP1S10F780C6，共有 
+10,570 個 Les 元件， 最大有 426 使用者 
+I/O 腳位，6 個 DSP 方塊，共有 920,448 
+bits 的記憶體，而 Nios 嵌入是處理器有 
+16 位元或是 32 位元可規劃 CPU 程式碼，
+1~20Kbytes 晶片內部記憶體與 4Gbytes 晶
+片外部記憶體，可以下載到 FPGA 與 IP
+電路一起運作來組合出 SoPC 環境。軟體
+開發工具(SDK) 由 SoPC 軟體程序組成的
+編譯資料庫, 包含需建立的 make-file 與每
+一個週邊設備連結架構的 C header files。
+SOPC-based 永磁線型同步馬達伺服系統
+控制方塊圖如圖 2 所示。 
+ 換流器及信號偵測元件：換能器採用六個
+IGBT 功率晶體，其集極電壓範圍是 600V， 
+閘級電壓範圍是 ±20V, 集極的直流電流
+範圍是  25A 瞬間  (1ms) 而直流電流是
+50A，光耦合元件使用 Toshiba TLP250 用
+來作為 IGBT 的閘極電流開關。換能器的
+輸入訊號 PWM 是由 FPGA 產生。 
+ 外部記憶體模組：儲存運動控制之動態響
+應資料。 
+以 SOPC 線型馬達 XY 平台驅動控制器實驗
+系統如圖 7 所示。 
+b. 實驗結果： 
+為驗證今年度所提 SOPC線型馬達XY平
+台伺服控制晶片之正確性，進行步階響應實
+ 7
+[16] Y.S. Kung, C.C. Huang and T.Y. Tai, “Motion 
+Control IC for X-Y Table based on SoPC 
+Technology,” International Journal of Computer 
+Science and Network Security (IJCSNS). 
+[17] Y.S. Kung and G.S. Shu, “Development of a Servo 
+Control IC for Drives of XYZ Table Based on SoPC 
+Technology,” Journal of Southern Taiwan University 
+of Technology, December 2006, no.31, pp.85-98. 
+[18] J. L. Ha, Y.S. Kung, S. C. Hu and R.F. Fung, 
+“Optimal design of a micro-positioning Scott-Russell 
+mechanism by Taguchi method,” Sensors and 
+Actuators A, January 2006, vol. 125, issue 2, 
+pp.565-572. (SCI) 
+[19] J.L. Ha, Y.S. Kung, R.F. Fung and S.C. Hsien, “A 
+Comparison of Fitness Functions for the 
+Identification of a Piezoelectric Hysteretic Actuator 
+Based on the Real-Coded Genetic Algorithm,” 
+Sensors and Actuators A, Nov. 2006, vol. 132, issue 2, 
+pp.643-650. (SCI) 
+[20] 龔應時,許哲誌,蔡明宏,陳建武,“機械手臂伺服控
+制晶片與伺服系統,” 中華民國專利，  發明第 I 
+257342 號。專利權期間：自 2006 年 7 月 1 日至 2024
+年 6 月 7 日止。 
+[21] 龔應時, 黃中雋, 蔡幸岸, “以軟硬體方式實現
+空間向量脈波寬度調變法,” 電機月刊, 第十六
+卷,第八期, pp.136-153, 2006 年 8 月. 
+[22] 龔應時, “次世代 DSP 數位馬達與運動控制平
+台之發展(III),” 工程科技通訊期刊, 90 期, pp. 
+51-56 ,2007 年 2 月. 
+[23] 龔應時、黃中雋、盧俊豪、呂明典 , “以
+TMS320F2812 DSP 為基礎電動跑步機速度控制
+系統之研製,” 機械月刊, 第三十三卷,第四期, 
+pp.文 84-文 99, 2007 年 4 月. 
+[24] 龔應時、蔡明宏, “永磁同步馬達電流控制晶片
+之研製,”馬達電子報, 第 241 期, 2007 年 8 月. 
+[25] Y.S. Kung and F.Y. Tai, “Development of a Control 
+IC for a Linear Table with a Full Closed-loop 
+Control,” CACS 2005, Proceedings of 2005 CACS 
+Automatic Control Conference, pp. 
+i-five-55~i-five-60. Nov 18-19. [ISBN: 
+986-80773-4-6] (Tainan, Taiwan) 
+[26] Y.S. Kung, “FPGA-based Servo Control IC for 
+Permanent Magnet Linear Synchronous Motor,” 2005 
+ACIAR, Asian Conference on Automation and 
+Robotics, May 11~13, 2005. (Bangkok, Thailand) 
+[27] Y.S. Kung, C.S. Chen, K.I. Wong and M.H. Tsai, 
+“Development of a FPGA-based Control IC for 
+PMSM Drives with Adaptive Fuzzy Control,” IEEE 
+IECON’05, Proceedings of the 28th Annual 
+Conference of IEEE Industrial Electronics, 
+pp.1544-1549, Nov. 6~10, 2005. (North Carolina, 
+USA) (EI) 
+[28] Y.S. Kung, K.H. Tseng and F.Y. Tai, 
+“FPGA-based Servo Control IC for X-Y Table,” 
+IEEE ICIT’06, Proceedings of the IEEE 
+International Conference on Industrial Technology, 
+pp. 2913-2918, December 15-17, 2006. (Mumbai, 
+India) 
+[29] M.H. Tsai, Y.S. Kung and K.H. Tseng, 
+“Development of a Servo System for Linear X-Y 
+Table Based on DSP controller,” IEEE ICIT’06, 
+Proceedings of the IEEE International Conference 
+on Industrial Technology, pp.2907-2912, December 
+15-17, 2006. (Mumbai, India) 
+[30] Y.S. Kung, M.H. Tsai and C.S. Chen, 
+“FPGA-based Servo Control IC for PMLSM Drives 
+with Adaptive Fuzzy Control,” IEEE ICIEA’06, 
+Proceedings of the IEEE International Conference 
+on Industrial Electronics and Applications, pp. 
+731~736, May 24-26, 2006. (Singapore) (EI) 
+[31] Y.S. Kung, K.H. Tseng, C.S. Chen, H.Z. Sze and 
+A.P. Wang, “FPGA-Implementation of Inverse 
+Kinematics and Servo Controller for Robot 
+Manipulator,” IEEE ROBIO 2006, Proceedings of 
+the IEEE International Conference on Robotics and 
+Biomimetics, pp. 1163~1168, December 17-20, 
+2006. (EI) (Kumni, China) 
+[32] Y.S. Kung, Ming-Shyan Wang and Chung-Chun 
+Huang, “Digital Hardware Implementation of 
+Adaptive Fuzzy Controller for AC Motor Drive,” 
+Accepted by IEEE IECON’07, Proceedings of the 
+33th Annual Conference of IEEE Industrial 
+Electronics. (Taipei, Taiwan) (EI) 
+[33] Y.S. Kung, M.S. Wang and C.S. Chen, “FPGA 
+Realization of Inverse Kinematics for Articulated 
+Robot Arm,” Automation 2007, Proceedings of the 
+ninth international conference on automation 
+technology (Taipei, Taiwan). 
+[34] 龔應時, “機器人微小馬達驅動控制研究”,工業技
+術研究院產學合作計畫，95年4月~ 95年11月。 
+[35] 龔應時, “永磁同步馬達(PMSM)驅動控制技術
+於跑步機之應用”，亞星健康科技有限公司產學合
+作計畫，94年8月~ 95年7月。
+ 
+ 
+ 
+ 
+ 9
+Nios Processor
+(motion controller
+, position controller) 
+Current vector 
+control IP
+X-axis PMLSM
+Current vector 
+control IP
+Y-axis PMLSM
+Adaptive 
+Fuzzy
+QEP speed
+PI
+- - A/D
+PWM
+and
+Driver ABZ
+i
+FPGA
+Speed 
+Estimator QEP
+Trajectory 
+command
+NIOS Processor Current
+vector 
+Control IP
+(x-axis)
+PMLSM
+Adaptive
+Fuzzy
+QEP speed
+PI
+- - A/D
+PWM
+Current 
+vector and
+Driver ABZ
+i
+Speed 
+Estimator QEP
+Control IP 
+(Y-axis)
+PMLSM
+X-axis
+Y-axis
+Trajectory 
+computation
+ 
+圖 3. 以 FPGA 實現之雙軸線型馬達伺服控制系統整合晶片內部組成電路 
+ 
+ 
+ 
+SAMPLE
+VA[11..0]
+OT_U[11..0]
+OT_W[11..0]
+SAMPLE
+VC[11..0]ID[11..4]
+SAMPLE
+SPCLK
+CLK KP[11..0]
+CK1
+KI[11..0]
+ID[11..0]
+VA[11..0]
+VC[11..0]
+SCAN[1..0]
+SAMPLE
+SPCLK
+VM[11..0]
+CLK
+SAMPLE
+SEL1
+OT_U[11..0]
+OT_W[11..0]
+DSPA[11..0]
+SAMPLE
+sel
+sel
+EN_Z
+HALL[3..1]
+EN_B
+RE
+EN_A
+VCC
+SEL2
+INT
+PWM[6..1]
+IQ[11..0]
+VCCSEL1
+sel
+VCCADIN[11..0]
+VCCBDIN[11..0]
+VCCSTSB
+RCB
+RCA
+VCCSTSA CHB
+CHA
+SVPWM
+ADC
+Control
+SYSCTRL A/D Signal
+QEP[11..0]
+QEP
+PWM 1~6
+Encoder 
+Signal
+Encoder Position 
+to Nios Processor
+Digital 
+Current 
+Signal
+Current Command 
+from Nios processor
+Finite State 
+Machine
+For the 
+implementation of  
+PI controller and 
+Coordinate 
+Transformation 
+QEP[11..0]
+ 
+圖 4. 以 FSM 方式實現之永磁式線型同步馬達電流向量控制 IP 
+ 
+ 11
+1 2 3 4 5 6 7 8
+-5
+0
+5
+10
+15
+Time (s)
+Po
+sit
+io
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+0 1 2 3 4 5 6 7 8
+-20
+-10
+0
+10
+20
+Time (s)
+Po
+sit
+io
+n 
+er
+ro
+r 
+(m
+m
+) 
+0 1 2 3 4 5 6 7 8
+-10
+-5
+0
+5
+10
+Time (s)
+Iq
+ (A
+)
+Position command Mover position
+Reference command
+Po
+sit
+io
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+Po
+sit
+io
+n 
+er
+ro
+r 
+(m
+m
+) 
+Iq
+ (A
+)
+Po
+sit
+io
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+Po
+sit
+io
+n 
+er
+ro
+r 
+(m
+m
+) 
+Iq
+ (A
+)
+ 
+圖 10. Y 軸：模糊控制器之步階響應(負載為 X 軸
+本體重量 23.42 公斤) 
+1 2 3 4 5 6 7 8
+-5
+0
+5
+10
+15
+Time (s)
+Po
+sit
+io
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+0 1 2 3 4 5 6 7 8
+-20
+-10
+0
+10
+20
+Time (s)
+Po
+sit
+io
+n 
+er
+ro
+r 
+(m
+m
+) 
+0 1 2 3 4 5 6 7 8
+-10
+-5
+0
+5
+10
+Time (s)
+Iq
+ (A
+)
+Position command Mover position
+Reference command
+Po
+sit
+io
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+Po
+sit
+io
+n 
+er
+ro
+r 
+(m
+m
+) 
+Iq
+ (A
+)
+ 
+圖 11. Y 軸：適應性模糊控制器之步階響應 (負
+載為 X 軸本體重量 23.42 公斤) 
+0 0.5 1 1.5 2 2.5 3
+-20
+-10
+0
+10
+20
+Time (s)
+Po
+sit
+io
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+0 0.5 1 1.5 2 2.5 3
+-10
+-5
+0
+5
+10
+Time (s)
+Po
+sit
+io
+n 
+er
+ro
+r 
+(m
+m
+) 
+0 0.5 1 1.5 2 2.5 3
+-10
+-5
+0
+5
+10
+Time (s)
+Iq
+ (A
+)
+2 Hz 6 Hz
+Position command Mover position
+Po
+sit
+io
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+Po
+sit
+io
+n 
+er
+ro
+r 
+(m
+m
+) 
+Iq
+ (A
+)
+Po
+sit
+io
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+Po
+sit
+io
+n 
+er
+ro
+r 
+(m
+m
+) 
+Iq
+ (A
+)
+ 
+圖 12. X 軸：模糊控制器之弦波響應(負載 11 公
+斤) 
+0 0.5 1 1.5 2 2.5 3
+-20
+-10
+0
+10
+20
+Time (s)
+Po
+sit
+io
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+0 0.5 1 1.5 2 2.5 3
+-10
+-5
+0
+5
+10
+Time (s)
+Po
+sit
+io
+n 
+er
+ro
+r 
+(m
+m
+) 
+0 0.5 1 1.5 2 2.5 3
+-10
+-5
+0
+5
+10
+Time (s)
+Iq
+ (A
+)
+2 Hz 6 Hz
+Position command Mover position
+Po
+sit
+io
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+Po
+sit
+io
+n 
+er
+ro
+r 
+(m
+m
+) 
+Iq
+ (A
+)
+Po
+sit
+io
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+Po
+sit
+io
+n 
+er
+ro
+r 
+(m
+m
+) 
+Iq
+ (A
+)
+ 
+圖 13. X 軸：適應性模糊控制器之弦波響應(負載
+11 公斤) 
+0 1 2 3 4 5 6
+-20
+-10
+0
+10
+20
+Time (s)
+Po
+si
+tio
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+0 1 2 3 4 5 6
+-10
+-5
+0
+5
+10
+Time (s)
+Po
+si
+tio
+n 
+er
+ro
+r 
+(m
+m
+) 
+0 1 2 3 4 5 6
+-10
+-5
+0
+5
+10
+Time (s)
+Iq
+ (A
+)
+1 Hz 3 Hz
+Position command Mover position
+Po
+si
+tio
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+Po
+si
+tio
+n 
+er
+ro
+r 
+(m
+m
+) 
+Iq
+ (A
+)
+Po
+si
+tio
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+Po
+si
+tio
+n 
+er
+ro
+r 
+(m
+m
+) 
+Iq
+ (A
+)
+ 
+圖 14. Y 軸：模糊控制器之弦波響應(負載為 X 軸
+本體重量 23.42 公斤) 
+0 1 2 3 4 5 6
+-20
+-10
+0
+10
+20
+Time (s)
+Po
+si
+tio
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+0 1 2 3 4 5 6
+-10
+-5
+0
+5
+10
+Time (s)
+Po
+sit
+io
+n 
+er
+ro
+r 
+(m
+m
+) 
+0 1 2 3 4 5 6
+-10
+-5
+0
+5
+10
+Time (s)
+Iq
+ (A
+)
+1 Hz 3 Hz
+Position command Mover position
+Po
+si
+tio
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+Po
+sit
+io
+n 
+er
+ro
+r 
+(m
+m
+) 
+Iq
+ (A
+)
+Po
+si
+tio
+n 
+re
+sp
+on
+se
+ (m
+m
+) 
+Po
+sit
+io
+n 
+er
+ro
+r 
+(m
+m
+) 
+Iq
+ (A
+)
+ 
+圖 15. Y 軸使用適應性模糊控制器之弦波響應：
+負載 23.42(X 軸本體重量) 
+ 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 NSC 95-2221-E-218-071 
+計畫名稱 應用 SOPC 技術研製雙軸線型馬達伺服驅動控制器 (II) 
+出國人員姓名 
+服務機關及職稱 
+龔 應 時 
+南台科技大學電機工程系教授 
+會議時間地點 95/12/15 ~ 95/12/17 
+ Mumbai, India 
+會議名稱 
+(中文) IEEE 工業技術國際研討會 
+(英文) IEEE International Conference on Industrial Technology  
+(ICIT 2006)    
+發表論文題目 
+第 1 篇： 
+(中文)  以 FPGA 為基礎之 X-Y 平台伺服控制晶片 
+    (英文)  FPGA-based Servo Control IC for X-Y Table 
+第 2 篇： 
+(中文) 以 DSP 為基礎之線型 X-Y 平台伺服系統之研製 
+    (英文) Development of a Servo System for Linear X-Y  
+Table Based on DSP controller 
+ 
+ 
+一、 參加會議經過 
+ 
+本人此次參加的國際會議為國際電機電子工程 (IEEE) 工業電子學會
+(Industrial Electronics Society, IES)所主辦的『IEEE工業技術國際研討會，ICIT 
+2006』。會議時間為2006年12月15至17日，會議地點在印度孟買(Mumbai, India)
+的Renaissance Mumbai Hotel & Convention Centre飯店。此會議之論文分為下列
+類別： 
+1. Computational Intelligence and its applications (計算智能及其應用 ): 
+Neural Networks, Fuzzy Systems, Evolutionary Computation, Bioinformatics 
+and Bioengineering, Autonomous Mental Development, Computational 
+Finance, Intelligent Systems Applications, Emerging Technologies.  
+Keynote Speech 1: Robot as Physical Agent, by Professor Kouhei Ohnish, Keio 
+University, Japan. 
+Keynote Speech 2: Whither Motor Drives: A Case Study in Switched Reluctance 
+Motor Drives, by Professor Ramu Krishnan, Virginia Tech, 
+Blacksburg, VA, USA. 
+Plenary Speech 1: Application of Advanced Motion Control Techniques and the 
+Prospect of Super Capacitors in Electric Vehicles, by Professor 
+Yoichi Hori, University of Tokyo, Japan. 
+Plenary Speech 2: Information Aggregation: an Application Oriented Survey, by 
+Professor Imre J. Rudas, BudapestTech,Budapest, Hungary. 
+Plenary Speech 3: Design Intent Specification and Verification: New Challenges for 
+Intelligent Automation, by Professor Partha P. Chakrabarti, 
+Indian Institute of Technology Kharagpur, India. 
+Plenary Speech 4: Applications of Modern IPM Drives for Inverter-fed Air 
+Conditioners, by Professor M. A. Rahman, Memorial University 
+of Newfoundland, St. John’s, Newfoundland, A1B 3X5 Canada. 
+Special Lecture 1: A New Approach to Control Engineering and Education, by 
+Professor Shankar P. Bhattacharyya, Texas A & M University, 
+USA. 
+國內此次約有10篇論文在此會議中發表，皆為國內大學所研究的成果。與
+會者除了主辦國印度本身的專家學者 (38%)外，尚包括來自中國 (含香港 ) 
+(11%)、伊朗(10%)、日本(9%)、韓國(4%)、法國(3%)、台灣(2%)、美國(2%)、
+巴西 (2%)等國家。本人的論文發表為口頭簡報，被大會安排在第三天
+(December 17th)下午之『Servo Drives and Actuators』場次報告。本人也應邀與
+新加坡學者Prof. Panda共同主持此場次之論文發表(如附件)。由於本場次簡報的
+論文有7篇，因此每篇論文時間為15分鐘，其中報告時間為12分鐘，另有3分鐘
+三、 建議 
+ 
+此次 ICIT 2006 研討會，有許多碩博士班研究生出席，包括歐美國家、香
+港、新加坡、中國及日本等，而台灣也有研究生參與，但人數卻較少。本國
+研究生出席國際會議不僅需要經費的支援，研究生的外語能力也是相當重要
+的一環。因此，為了創造具有外語論文簡報的環境，建議在國內電力研討
+會，增設幾場英文簡報 Session 及學生論文競賽，讓作者與聽眾全程以外語簡
+報及發問，以創造優質的外語研討會學習環境。 
+ 
+ 
+四、 攜回資料名稱及內容 
+ 
+大會研討會論文 CD 片及明年度各項研討會資料。 
+ December 17, 2006 
+ 
+T2Y-7: Servo Drives and Actuators 
+Time: 15:50-17:40 
+Place: Powai Ball Room-2 
+Chairs: S.K. Panda, National University of Singapore, Singapore 
+Ying-Shieh Kung, Southern Taiwan University of Technology, Taiwan 
+ 
+15:50 PMSM Servo Drive System for Electric Power Steering Based on Two-Degree-of-Freedom TorqueControl 
+Hui Chen, Canlong Jin, Ping Jiang, Xiaoping Gong, Xiangzhi Feng, Tongji, University, China 
+16:05 Development of a Servo System for Linear X-Y Table Based on DSP controller 
+Ming-Hung Tsai, Ying-Shieh Kung and Chung-Chun Huang, Southern Taiwan University of 
+Technology,Taiwan 
+16:20 FPGA-based Servo Control IC for X-Y Table 
+Ying-Shieh Kung, Kuan-Hsuan Tseng and Ting-Yu Tai, Southern Taiwan University of Technology, Taiwan 
+16:35 High-Precision Position Control of Linear Permanent Magnet BLDC Servo Motor for Pick and Place 
+Applications 
+C. L. Ku, Y K Tan and Sk Panda, National University of Singapore, Singapore 
+16:50 A Positioning Control of a Serial Twin Linear Slider System with Machine Stand Vibration 
+Fumio Terasaki, Jun Kobayashi, Ryuichi Oguro and Fujio Ohkawa, Kyushu Institute of Technology, Japan 
+17:05 Inverter Fault Tolerance In BLDC Drives For Electromechanical Aerospace Actuators 
+Siddhartha Swarnakar, Vijay Sagar, Siddhartha Mukhopadhyay and Debaprasad Kastha, Indian Institute 
+ofTechnology, Kharagpur, India 
+17:20 Solutions for Optimal Control of the Electrical Servo Drive Systems 
+Corneliu Botan and Florin Ostafi, Technical University of Iasi, Romania 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Comparator 
+circuit
+A, B
+LP filter 
+circuitbi
+U,V,W
+ADC
+ADC
+ai
+z
+Comparator 
+circuit
+A, B
+z
+Y-axis 
+Inverter
+PWM1
+PWM6
+Comparator 
+circuit
+A, B
+LP filter 
+circuit
+bi
+U,V,W
+ADC
+ADC
+ai
+z
+Comparator 
+circuit
+A, B
+z
+B,BA,A zz,
+X-axis 
+Inverter
+PWM1
+PWM6
+XY Table
+X-axis 
+PMSM
+Y-axis 
+PMSM
+B,BA,A zz,
+B,BA,A zz,
+B,BA,A zz,
+To Y-axis PMSM
+From Y-axis rotary encoder
+From Y-axis 
+linear encoder
+From X-axis linear encoder
+From X-axis rotary encoder
+To X-axis PMSM
+Digital circuit of 
+vector current
+control for Y-axis 
+PMSM
+Digital circuit of 
+vector current
+control for X-axis 
+PMSM
+FPGA-based Motion Control IC
+Nios II Processor
+External
+memory
+Motion controller 
+ 
+Fig. 1. The architecture of the proposed FPGA-based servo control system for a X-Y table 
+The current loop control of each PMSM drive in Fig.1 is 
+based on a vector control approach and its detail description is 
+shown in Fig.2. If the id is controlled to 0 in Fig.2, the PMSM 
+will be decoupled, and control a PMSM like a DC motor. 
+After simplification, the modeling of a PMSM can be written 
+as the following equation, 
+qtqfe iK i
+PT ∆= λ
+4
+3  (3) 
+with  
+ft
+PK λ
+4
+3=  (4) 
+Considering the mechanical load with linear table, the overall 
+dynamic equation of linear table system is obtained by 
+dt
+ds
+r
+B
+dt
+sd
+r
+JTT pm
+p
+mLe
+ππ 22
+2
+2
++=−  (5) 
+where Te is the motor torque, Kt  is force constant, Jm is the 
+inertial value, Bm is damping ratio, TL is the external torque, sp 
+represents the displacement of x-axis or y-axis table and  r is 
+the lead of the screw. 
+B. Coordinate transformation 
+The coordination transformation of the PMSM in Fig. 2 
+can be described in synchronous rotating reference frame. The 
+coordination system used in rotating motor includes stationary 
+a-b-c frame, stationary α-β frame and synchronously rotating 
+d-q frame. These transform equations are described as follows, 
+and the 
+sf  represents a space vector refer to current, voltage or 
+flux. 
+Clarke: stationary a-b-c frame to stationary α-β frame. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+−
+−−
+=
+
+
+β
+α
+c
+b
+a
+f
+f
+f
+f
+f
+3
+1
+3
+10
+3
+1
+3
+1
+3
+2  (6) 
+ Modified 1−Clarke : stationary α-β frame to stationary a-b-c 
+frame. 
+
+
+
+
+
+
+
+
+
+
+
+=
+
+
+
+
+
+
+
+
+−−
+−
+α
+β
+f
+f
+f
+f
+f
+c
+b
+a
+2
+3
+2
+1
+2
+3
+2
+1
+01
+ (7) 
+ Park : stationary α-β frame to rotating d-q frame. 
+
+
+
+
+
+
+−=
+
+
+β
+α
+θθ
+θθ
+f
+f
+f
+f
+ee
+ee
+q
+d
+cossin
+sincos
+  
+(8) 
+ 1−Park : rotating d-q frame to stationary α-β frame. 
+
+
+
+
+
+ −=
+
+
+q
+d
+ee
+ee
+f
+f
+f
+f
+θθ
+θθ
+β
+α
+cossin
+sincos
+ 
+(9) 
+C. Fuzzy controller for position control loop 
+The internal block diagram of motion controller for X-Y 
+table in Fig.1 is shown in Fig.3. The motion controller, which 
+is implemented by software in Nios II embedded processor, 
+performs the function of the motion trajectory, two-axis’ 
+position and speed controller, etc.  
+rωSVPWM
+PI
+PI
+rfxv
+rfyv
+rfzv
+ai
+wici
+*
+qi
+*
+di
++
+−
+−
+αv
+βv
+dv
+qv
+Z
+3-Phase
+inverter
+PWM1
+PWM2
+PWM3
+PWM4
+PWM5
+PWM6
+Current
+detector
+ui
+U
+V
+W
+qi
+di
++
+Encoder
+detector & 
+Transform.
+-
+Rectifier
++ −
+AC
+A/D
+bi
+1−
+Modified 
+Clarke1−Park
+Park Clarke
+A
+B
+βα,
+βα,
+cba ,,
+cba ,,
+βα,
+qd,
+βα,
+qd,
+Sin&Cos
+= 0
+LPF
+A/D LPF
+Current vector control for each axis of X-Y table
+Which is Implemented by hardware (PLD) in FPGA
+αi
+βi
+px
+eθ Comparator
+Circuit
+Z
+-A
+B
+Comparator
+Circuit
+To x-axis or 
+y-axis PMSM
+Signal from 
+Rotary Encoder
+Signal from
+Linear Encoder
+Encoder
+detector & 
+Transform.
+pyor
+ 
+Fig.2. Block diagram of current vector control at each axis of X-Y table 
+2914
+E. Design of FPGA-based servo control IC for X-Y Table 
+The internal architecture of the proposed FPGA-based 
+servo control IC for X-Y table is shown in Fig. 4. The FPGA 
+uses Stratix II EP2S60, which has 24,176 ALMs (equivalent 
+60,440LEs), maximum 718 user I/O pins, 36 DSP blocks, total 
+2,544,192 RAM bits, and a Nios II embedded processor which 
+has a 32-bit configurable CPU core, 16 M byte Flash memory, 
+1 M byte SRAM and 16 M byte SDRAM. A custom software 
+development kit (SDK) consists of a compiled library of 
+software routines for the SoPC design, a Make-file for 
+rebuilding the library, and C header files containing structures 
+for each peripheral. In this control IC, it has two modules. One 
+module performs the functions of the motion trajectory and 
+two-axis position servo control. The other module performs the 
+functions of vector control of two PMSMs. Module 1 in Fig.4 is 
+Nios II embedded processor used to implement the complicated 
+control algorithm by software. The flow charts of interrupt 
+service routine (ISR) for motion control are plotted and shown 
+in Fig.5. The module 2 in Fig.4 includes two set of circuits of 
+current vector control which is implemented by hardware in 
+FPGA due to the need of high-speed processing but simple 
+computation. Each circuits of vector control includes two PI 
+controllers, coordinate transformation of Clarke, Park, inverse 
+Park, modified inverse Clarke and circuits of SVPWM, QEP 
+and ADC conversion control. Figure 6 shows the digital circuit 
+of PI controller which includes 3 adders, 2 multipliers, 2 D-type 
+flip-flops and 3 max value limiters. Figures 7 to 8 are the 
+circuits of modified Clark-1 and Park-1 transformation, 
+respectively. The block diagram of SVPWM circuit is shown in 
+Fig. 9. SVPWM circuit is designed with 12 kHz frequency and 
+1µs dead-band. The overall circuits included a Nios II 
+embedded processor IP (10%) and two current vector control 
+circuits (15%) in Fig. 4, use 25% utility of Stratix II EP2S60. 
+IDD[11..0]
+IBB[11..0]
+I-U[11..0]
+IQQ[11..0]
+IAA[11..0] I-W[11..0]
+VQQ[11..0]
+VDD[11..0]
+VAA[11..0]
+VBB[11..0]
+VA[11..0]
+VC[11..0]
+ID[11..0]
+IDD[11..0]
+IQ[11..0]
+CLK-ctrl
+IQQ[11..0]
+yEncoder2-A
+SIN/COS
+IQ[11..0] SVPWM 
+(y-axis)
+Modified
+INV CLARK
+(y-axis)
+CLARK
+(y-axis)
+PARK
+(y-axis)
+INV PARK
+(y-axis)
+QEP[15..0]
+VB[11..0]
+VC[11..0]
+VB[11..0]
+VA[11..0]
+ID[11..0]=‘0’
+Flux angle
+by
+LUT
+EN-Z
+Flux-angle[11..0]
+EN-A
+EN-B
+EN-Z
+yEncoder2-B
+yEncoder2-Z
+yPWM-1
+yPWM-2
+yPWM-3
+yPWM-4
+yPWM-5
+yPWM-6
+CLK-sys
+CLK-sys
+CLK-sys
+CLK-sys
+CLK-sys
+CLK-sys
+CLK-sys
+CLK-sys
+CLK-ctrl
+CLK-sys
+CLK-sys
+CLK-sp
+CPU
+On-chip
+ROM
+On-chip
+RAM
+UART
+PIO
+Timer
+SPI
+A
+va
+lo
+n 
+B
+us
+A
+va
+lo
+n 
+B
+us
+Nios II Embedded Processor
+QEP[15..0]
+IQ[11..0]
+QEP[15..0]
+I-U[11..0]
+I-W[11..0]
+Current vector 
+Control for x-axis 
+PMSM 
+sram_cs
+sram_we
+sram_oe
+sram_be[3]
+sram_be[2]
+sram_be[1]
+sram_be[0]
+D[31]
+D[0]
+A[22]
+A[0]
+yEncoder1-A EN-A
+EN-B
+EN-Z
+yEncoder1-B
+yEncoder1-Z
+CLK-sys
+CLK-sp
+QEP[15..0]
+EN-Z
+QEP[15..0]
+From Linear
+Encoder of
+y-axis 
+From Rotary
+Encoder of
+y-axis 
+y-I-U[11..0]
+y-I-W[11..0]
+ySTSB
+yRCB
+yRCA
+ySTSA
+yCHB
+yCHA
+ADC
+Control
+(y-axis)
+yADIN[11]
+yADIN[0]
+yBDIN[11]
+yBDIN[0]
+CLK-ctrl
+CLK-sys
+IDD[11..0]
+IBB[11..0]
+I-U[11..0]
+IQQ[11..0]
+IAA[11..0]
+I-W[11..0]
+VDD[11..0]
+VQQ[11..0]
+VAA[11..0]
+VBB[11..0]
+VA[11..0]
+VC[11..0]
+ID[11..0]
+IDD[11..0]
+IQ[11..0]
+CLK-ctrl
+IQQ[11..0]
+xEncoder1-A
+SIN/COS
+IQ[11..0]
+Modified
+INV CLARK
+(x-axis)
+CLARK
+(x-axis)
+PARK
+(x-axis)
+INV PARK
+(x-axis)
+QEP[15..0]
+PI 
+Controller 
+(x-axis)
+QEP 
+(x-axis) VB[11..0]
+ID[11..0]=‘0’
+Flux angle
+by
+LUTEN-Z
+Flux-angle[11..0]
+EN-A
+EN-B
+EN-Z
+xEncoder1-B
+xEncoder1-Z
+CLK-sys
+CLK-sys
+CLK-sys
+CLK-sys
+CLK-sys
+CLK-sys
+CLK-sys
+CLK-ctrl
+CLK-sys
+CLK-sp
+CLK-sys
+CLK-sp
+QEP[15..0]
+xEncoder2-A EN-A
+EN-B
+EN-ZxEncoder2-B
+xEncoder2-Z
+CLK-sys
+CLK-sp
+QEP[15..0]
+EN-Z
+QEP[15..0]From Linear
+Encoder of 
+x-axis
+From Rotary
+Encoder of 
+x-axis
+SVPWM 
+(x-axis)VC[11..0]
+VB[11..0]
+VA[11..0]
+xPWM-1
+xPWM-2
+xPWM-3
+xPWM-4
+xPWM-5
+xPWM-6
+CLK-sys
+x-I-U[11..0]
+x-I-W[11..0]
+xSTSB
+xRCB
+xRCA
+xSTSA
+xCHB
+xCHA
+ADC
+Control
+(x-axis)
+xADIN[11]
+xADIN[0]
+xBDIN[11]
+xBDIN[0]
+CLK-ctrl
+CLK-sys
+QEP[15..0]
+IQ[11..0]
+I-U[11..0]
+I-W[11..0]
+CLK-sp
+CLK CLK-ctrl
+CLK-sysFrequency 
+divider
+CLK
+CLK-sp
+PI 
+Controller 
+(x-axis)
+PI 
+Controller 
+(y-axis)
+PI 
+Controller 
+(y-axis)
+QEP 
+(x-axis)
+QEP 
+(y-axis)
+QEP 
+(y-axis)
+Altera FPGA (Stratix II  EP2S60)
+Current vector 
+Control for y-axis 
+PMSM 
+ 
+Fig. 4. The block diagram of internal circuit of FPGA-based servo control IC 
+Start of 
+main program
+Initial interrupt
+Initial timer
+Set the 
+position command
+loop
+Start of ISR
+( each 1kHz )
+Return
+Read QEP and calculate 
+position value ( X&Y axis)
+Calculation of position
+error and velocity error 
+( X&Y axis)
+Set parameters
+of each axis 
+Calculation of output of 
+Fuzzy controller ( X&Y axis)
+Output the control 
+effort to current loop 
+( X&Y axis)  
+Calculation of 
+speed loop ( X&Y axis)
+Computation of 
+position for each axis
+from motion trajectory
+command
+ 
+Fig. 5. Flow chart of main and ISR program in Nios II processor 
+Sub +/-saturate
+D-Type
+FF
+Multi
+Multi
+Adder
+D-Type
+FF +/-
+saturate
+Adder +/-
+saturate
+CMD
+FBK
+e(k)
+CK
+CK
+Ki
+Kp
+Ui(k-1)
+Ui(k)
+U(k)Up(k)
+e(k-1)
+PI Controller
+CK
+CK
+CK
+ 
+Fig. 6. Digital circuit of PI controller  
+1/2
+1/2
+1/4
+1/16
+1/32
+2‘S COMPLEMENT
+2‘S COMPLEMENT
+αv
+βv
+av
+bv
+cv
+1/64
+1/256
+1/512
+1/2048
+adder
+adder
+adder
+ 
+Fig. 7. The designed circuit of  modified 1−Clarke  formulation 
+αv
+βv
+12 bits
+multiplier
+12 bits
+multiplier
+12 bits
+multiplier
+12 bits
+multiplier
+12 bits
+adder
+12 bits
+adder
+eθcos
+eθsin
+eθsin−
+eθcos
+dv
+qv
+dv
+qv  
+Fig. 8. The designed circuit of  1−Park  formulation 
+2916
+0 1 2 3 4 5
+0
+20
+40
+60
+80
+100
+Time (s)
+Po
+si
+tio
+n 
+(m
+m
+)
+0 1 2 3 4 5
+0
+6
+12
+18
+24
+30
+36
+Time (s)
+Ve
+lo
+ci
+ty
+ (m
+m
+/s
+)
+(a)
+(b)
+Velocity command
+Velocity tracking
+Position command
+Tracking response
+X-axis
+X-axis
+ 
+Fig. 12. Position and its velocity profile tracking response of X-axis table  
+0
+20
+40
+60
+80
+100
+Po
+si
+tio
+n 
+(m
+m
+)
+0 1 2 3 4 5
+Time (s)
+0
+6
+12
+18
+24
+30
+36
+Ve
+lo
+ci
+ty
+ (m
+m
+/s
+)
+0 1 2 3 4 5
+Time (s)
+(a)
+(b)
+Velocity command
+Velocity tracking
+Position command
+Tracking response
+Y-axis
+Y-axis
+ 
+Fig. 13. Position and its velocity profile tracking response of Y-axis table 
+0 2.5 5 7.5 10
+0
+2.5
+5
+7.5
+10
+Position (cm)
+Po
+si
+tio
+n 
+(c
+m
+)
+0
+0.4
+0.5
+0.6
+radian
+er
+ro
+r (
+m
+m
+)
+0.2
+0.8
+(a)
+(b)
+π2ππ5.0 π5.1
+Command
+Tracking 
+response
+ 
+Fig. 14. Circular motion tracking of X-Y table 
+REFERENCES 
+[1] E. C. Park, H. Lim, and C. H. Choi, “Position control of X-Y table at 
+velocity reversal using presliding friction characteristics,” IEEE Trans. 
+Control Systems Technology, vol. 11, no. 1, pp. 24-31, 2003. 
+[2] D. Hanafi, M. Tordon, and J. Katupitiya, “An active axis control system 
+for a conventional CNC machine,” in Proceedings of IEEE/ASME 
+International Conference on Advanced Intelligent Mechatronics, pp. 
+1188-1193, 2003. 
+[3]    C. G. Julio, L. H. Hoang, “A VHDL-based Methodology to Develop 
+High Performance Servo Drivers,” in Proceedings of IEEE Industry 
+Application Conference, pp. 1505-1512, 2000. 
+[4]   X. Shao and D. Sun, “A FPGA-based Motion Control IC Design,” in 
+Proceedings of the IEEE International Conference on Industrial 
+Technology, 2005, pp.131-136. 
+[5]    R.Wei, X.H. Gao, M.H. Jin, Y.W. Liu, H.Liu, N. Seitz, R. Gruber and G. 
+Hirzinger, “FPGA based Hardware Architecture for HIT/DLR Hand,” in 
+Proceeding of the IEEE/RSJ International Conference on intelligent 
+Robots and System, 2005, pp. 523~528. 
+[6]    Y.Y. Tzou and T.S. Kuo, “Design and Implementation of an FPGA-based 
+motor control IC for permanent magnet AC motors,” in Proceedings of 
+the International Conference on Industrial Electronics, Control and 
+Instrumentation, 1997, pp. 943~947. 
+[7]  Y.S. Kung, P.G. Huang and C.W. Chen, “Development of a SOPC for 
+PMSM Drives,” MWSCAS 2004, the 47th IEEE International Midwest 
+Symposium on Circuits and Systems, vol. II, pp. II-329~II-332, 2004. 
+[8]    Y.S. Kung, M.H. Tsai and C.S. Chen, “FPGA-based Servo Control IC for 
+PMLSM Drives with Adaptive Fuzzy Control,” IEEE ICIEA’06, in 
+Proceedings of the IEEE International Conference on Industrial 
+Electronics and Applications, pp. 731~736, 2006. 
+[9]   Y.S. Kung and G.S. Shu, “Design and Implementation of a Control IC for 
+Vertical Articulated Robot Arm using SOPC Technology,” in 
+Proceedings of IEEE International Conference on Mechatronics, pp. 
+532~536, 2005. 
+[10] www.altera.com. 
+[11] Altera, Nios II Development Kit, Stratix Edition – Getting Started user 
+Guide, 2005. 
+[12] C.M. Liaw and Y.S. Kung, “Fuzzy Control with Reference Model-
+Following Response,” Fuzzy Theory Systems: Techniques and 
+Applications, vol.1, pp. 129-158, 1999. 
+2918
+bi
+L
+C
+Rectifier Inverter
+ac source
+Isolated and driving circuits
++
+AT
+−
+AT
++
+BT
+−
+BT
++
+CT
+−
+CT
+U,V,W
+Low-pass 
+filter
+ai
+PWM6PWM1
+SVPWM
+a,b,cβα,
+d,q
+βα,βα,
+d,q
+a,b,cβα,
+PI
+PI
+sθ
+*
+qi
+0* =di
++
++
+-
+- qi di
+αi βi
++
+-
+Speed 
+controllerd/dt
++
+- ω
+K
+u
+ADC Module QEP Circuit
+B,B
+A,A
+.
+Fuzzy 
+Controller
+d/dt
+a,b,cβα,
+d,q
+βα,βα,
+d,q
+a,b,cβα,
+PI
+PI
+sθ
+*
+qi
+0* =di
++
++
+-
+- q
+i di
+αi βi
++
+-
+Speed 
+controller
+d/dt
+Position 
+controller
++
+- ω
+K
+u
+Fuzzy 
+Controller
+d/dt
+L
+C
++
+AT
+−
+AT
++
+BT
+−
+BT
++
+CT
+−
+CT
+Rectifier
+Inverter
+ac source
+Isolated and driving circuits
+U,V,W
+SVPWM ADC Module QEP Circuit
+Low-pass 
+filter B,B
+A,A
+biaiPWM6PWM1
+Trajectory 
+planning
+command
+TMS320F2812 DSP
+Y-axis  
+PMLSM
+px
+τπ /px
+px
+τπ /px
+1
+px
+2
+px Linear X-Y Table 
+driven by two 
+PMLSMs
+X-axis  
+PMLSM
+Position 
+controller
+Fig. 1. DSP-based servo system for a linear X-Y table 
+ 
+with  
+ftK λτ
+π
+2
+3 =  (5) 
+Considering the mechanical load, the dynamic position-
+movement equation of PMLSM can be written as follows: 
+dt
+dx
+B
+dt
+xd
+MFF pm
+p
+mLe +=− 2
+2
+ (6) 
+where eF , tK , mM , mB , LF  are the motor thrust force, the 
+force constant, the  total mass of the moving part, the viscous 
+friction coefficient and the external force, respectively. 
+B. Design scheme of Space Vector Pulse Width Modulation 
+(SVPWM) 
+SVPWM is a special switching scheme of a 3-phase power 
+converter with the six power transistors. According to the 
+ON/OFF switching of upper transistors, there are eight 
+possible combinations. The eight vectors are called basic 
+space vectors and denoted by U0, U60, U120, U180, U240, U300, 
+O000 and O111, which are shown in Fig. 2. The SVPWM 
+technique is applied to approximate the reference voltage Uout, 
+which is combined by the switching pattern with the basic 
+space vectors. Therefore, the motor-voltage vector Uout will be 
+located at one of the six sectors (S3, S1, S5, S4, S6, S2) at any 
+given time. Thus, for any PWM period, it can be 
+approximated by the vector sum of two vector components 
+lying on the two adjacent basic vectors, as the following: 
+T
+OorOTU
+T
+TU
+T
+TU XXout
+)  ( 1110000
+60
+21 ++= + , (7) 
+where 
+0T = 21 TTT −−  and T  is half of PWM carrier period.  
+)011(180U
+)010(120U )110(60U
+)100(0U
+)101(300U)001(240U
+1T
+2T outU
+4
+S
+3
+S
+2
+S
+6
+S
+1
+S
+5
+S
+α
+β
+)
+3
+,
+3
+( DCDC VV)
+3
+,
+3
+( DCDC VV−
+)
+3
+,
+3
+( DCDC VV −)
+3
+,
+3
+( DCDC VV −−
+)0,
+3
+2( DCV)0,3
+2( DCV−
+ 
+Fig. 2. Basic vector space and switching patterns 
+ 
+The detailed design scheme is described as following steps: 
+1) Calculation of T1 and T2: Any output voltage can be 
+projected into each adjacent basic vector in SVPWM 
+strategy. For example, in Fig. 2, the output voltage vector 
+Uout at the sector S3 is the combination of U0 and U60. 
+Therefore, the T1 and T2 can be calculated as,  
+α= rDCVU 3
+2
+0
+ (8) 
+2908
+Step 2: Calculation of TX, TY and TZ from (23). 
+Step 3: Determination of T1 and T2 from TABLE I. If the 
+saturation condition is occurred, the (16) and (17) are 
+used to calculate the T1 and T2. 
+Step 4: Determination of the duty cycle Taon, Tbon, Tcon from 
+(18)~(20). 
+Step 5: Assignment of the duty cycles to CMP1, CMP2 and 
+CMP3 from TABLE II.  
+C. Fuzzy controller for position control loop of each axis 
+The fuzzy controller is adopted in position loop of each 
+axis in Fig. 1. It comprises fuzzification, fuzzy rules, 
+inference mechanism and defuzzification. In Fig. 1, the 
+tracking error, e , and its error change, e∆ , are defined by  
+)n(x)n(x)n(e p
+*
+p −= , (24) 
+)1()()( −−=∆ nenene , (25) 
+and fu  represents the output of the fuzzy controller. The 
+design procedure of the fuzzy controller is as follows. 
+ Take Ke*e, Kde*∆e and Ku*uf as the input and output 
+variables of the fuzzy controller, and define their linguistic 
+values as EAA ,, 21  which have the same set of { }PBPMPSZONSNMNB ,,,,,, and are based on the 
+symmetrical triangular membership function: 
+ 
+      
+2
+2
+2
+    2/
+   when   
+0
+2/
+2/
+2/
+2/
+0
+),,(
+m
+im
+ii
+m
+im
+ii
+m
+i
+m
+ii
+m
+im
+i
+m
+i
+m
+ii
+m
+i
+i
+m
+i
+m
+i
+m
+i
+m
+i
+m
+ii
+m
+i
+m
+iim
+w
+xx
+w
+xxx
+xx
+w
+x
+wxx
+w
+xwx
+w
+wxx
+wxx
++≥
++<<
+<<−
+−≤
+
+
+
+
+
+
+
+−+
++−
+=ξ
+ (26) 
+where ix  is input value, )(•mξ  is output value, mix and miw  
+are mean value and width of the triangular function, 
+respectively. 
+ Select the initial fuzzy control rules by referring to the 
+dynamic response characteristics [12], such as,  
+mm
+2
+m
+1 E is    THEN   A is  e  and  A is    IF fue ∆ , m=1,.,M (27) 
+ Construct the fuzzy system with )| ( θxu f  by using the 
+singleton fuzzifier, product-inference rule, and central 
+average defuzzifier method. Therefore, (27) is replaced by 
+the following expression: 
+∑
+∑
+∑ ∏
+∑ ∏
+=
+=
+= =
+= = ∆= M
+m
+m
+M
+m
+mm
+M
+m
+i
+m
+i
+m
+iim
+M
+m
+i
+m
+i
+m
+iimm
+f
+c
+  
+wxx
+wxxc
+ | xu
+1
+1
+1
+2
+1
+1
+2
+1
+)],,([
+)],,([
+)(
+µ
+µ
+ξ
+ξ
+θ  (28) 
+where mccc ,..,, 21 denote the center of the output 
+membership function. 
+III. EXPERIMENTS AND RESULTS 
+The overall experimental system is depicted in Fig. 1, and 
+it includes a TMS320F2812 DSP controller, two sets of 
+voltage source IGBT inverter and a linear X-Y table driven by 
+two PMLSMs. Each PMLSM uses BALDOR single-axis 
+stage with cog-free linear motor and its stroke length is 
+600mm. The maximum speed and acceleration are 4m/s and 4 
+g’s, respectively. The moving mass is 2.5kg, the maximum 
+payload is 22.5kg and the maximum thrust force is 73N at 
+continuous condition. A linear encoder with 5µm resolution is 
+mounted on the PMLSM as position sensor, and the pole pitch 
+is 30.5mm (about 6100 pulses). The inverter has three sets of 
+IGBT type power transistors. The collector-emitter voltage of 
+the IGBT is rating 600V, the gate-emitter voltage is rating 
+±20V, and the collector current in DC is rating 25A and in 
+short time (1ms) is 50A. The photo-IC, Toshiba TLP250, is 
+used for gate driving circuit of IGBT. Input signals of the 
+inverter are PWM signals from DSP chip. The TMS320F2812 
+DSP controller in Fig.1 is used to develop a fully digital 
+controller for drives of the linear X-Y table, which two sets of 
+current vector control scheme, the position control strategy 
+and the trajectory motion control are all realized by software 
+in this DSP chip. In each servo drive of  the proposal system, 
+the PWM switching frequency of inverter is designed with 
+16k Hz, dead-band is 1µs, and the control sampling frequency 
+of current and position loop are chosen as 8kHz, and 2kHz, 
+respectively. The flow chart of main program and the 
+interrupt service routine (ISR) for two-axis position control 
+algorithm are designed and shown in Fig. 5. The programs are 
+coded by C language and the computation time of DSP for 
+executing each current loop is 3.6µs and executing the overall 
+motion control loop is 11.7 µs. 
+In the experiment, the position step response, frequency 
+response and the motion trajectory control are used to 
+evaluate the dynamic performance of the proposed system. In 
+the experiment of the step response, the response results of 
+position and current for X-axis table and Y-axis table under 
+the square wave command are shown in Fig. 6 and Fig. 7, 
+respectively. The rising time and steady-state value in Fig.6 
+are 48ms and near 0mm, and in Fig. 7 are 96ms and near 
+0mm. The slow response in Fig. 7 reveals that the mass 
+carried in Y-axis table is heavier than those in X-axis table 
+because the X-table is mounted upon the Y-axis. In the 
+experiment of the frequency response, the response results of 
+2Hz and 4Hz frequency command for X-axis table and Y-axis 
+table are shown in Fig.8 ~ Fig.11. Except the 4Hz frequency 
+response of Y-axis table in Fig.11 has a worse-following 
+response, others reveal good tracking results. In the 
+experiment of the motion trajectory control, the tracking of 
+the linear and circular trajectory are shown in Fig.12 and 
+Fig.13, respectively. In Fig.12, the linear X-Y table moves 
+from (33,33)mm toward (163,163)mm position, and the 
+tracking error between 0~0.13mm. In Fig. 13, the motion 
+trajectory of linear X-Y table is a circle with center 
+(250,250)mm, radius 250mm and it shows the tracking error 
+between 0~2.4mm. Figs. 12~13 show good tracking responses 
+in motion control of the linear X-Y table. Therefore, from the 
+experimental results above demonstrate that the proposed 
+DSP-based servo controller for drives of linear X-Y table is 
+effectiveness and correctness. 
+2910

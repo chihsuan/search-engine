@@ -1,0 +1,293 @@
+II 
+摘要 
+ 
+在現今行動式無線網路架構與發展的趨勢下，一般的通訊協定無法同時使用多路徑進
+行資料傳輸，造成資源的浪費，而我們延伸 SCTP 的特性，讓資料能夠同時多路徑的傳輸
+(Concurrent Multipath Transfer, CMT)提升網路效用。而大部份的使用者，對於換手時的決
+策，一般都只考慮訊號強度作為選擇依據，而針對因為無線網路環境，不同傳輸媒介擁有
+不同傳輸能力的情況，我們有別於以往只是單純的選擇訊號強度，更考慮傳送端的發送能
+力與接收端的接收能力等因素，讓 SCTP 通訊協定，不只能夠同步多路傳輸，並且也能因
+應路徑狀況，給予不同的傳輸權重。 
+因此本計畫延續先前執行之計畫，並綜合過去相關學者的文獻探討以及我們的研究累
+積與成果，設計出一個以 RWND 為封包分配機制的 SCTP 同步多路徑傳輸機制，稱作
+ARD-CMT，使網路傳輸效能提升。 
+ 
+關鍵字：CMT, SCTP, Mobile SCTP, Load balancing, Multi-homing, Multi-streaming, Seamless 
+handoff, QOS, scheduling 
+ 
+ 
+Abstract 
+ 
+Recent research on extending the stream control transmission protocol (SCTP) multi-homing 
+to support concurrent multipath transfer (CMT) has been in progress. The CMT, being capable of 
+simultaneously transferring data chunks over all available paths, possesses the potential to 
+increase the transmission throughput.  
+The allocation of the weights for different paths is one important issue to realize CMT. Most 
+researches focus on the transmission bandwidth in sending side, nevertheless, the receiving 
+capability and the correlation between sending and receiving rates were not paid too much 
+attention. Therefore, we can dynamically adjust the transmission weights for different wireless 
+links according to the transmission rate of mobile node (MN) and the RWND rate of 
+corresponding node (CN). 
+ 
+Keywords: CMT, SCTP, Mobile SCTP, Load balancing, Multi-homing, Multi-streaming, 
+Seamless handoff, QOS, scheduling
+1 
+壹、前言 
+近年來，由於無線網路科技的發展迅速，各種不同的傳輸介面也相對應的產生，讓使
+用者有了多樣的選擇，終端設備可以同時的擁有不同的無線網路連線，但目前普遍所使用
+的傳輸協定中，大部分無法支援在同個時間點，同時的選擇多種網路介面來同步進行資料
+的傳輸，而在此種情況之下，就會造成終端設備網路資源的浪費，因此，針對如何做到增
+進最大傳輸量的多路徑傳輸與無線網路的行動管理議題，是近年來許多研究所注目的焦點。 
+SCTP (Stream Control Transmission Protocol)[1]是由網路工程組織 Internet Engineering 
+Task Force(IETF)的信號傳輸工作組織(SIGTRAN Working Group)在2000年10月正式制訂的
+傳輸層協定，SCTP 協定並且在 2007 年 9 月完成更新[2]，SCTP 具有優異的機制設計，因
+此能獲得較佳的傳輸效能表現[12]。SCTP 與 TCP、UDP 同為架構於 IP 層上的傳輸層，可
+同時適用於 IPv4 及 IPv6 兩種 IP 協定，SCTP 主要的特性如：(1) Multi-streaming 的特性，
+可允許端點設置多重的 Stream Queue Buffer，因而能相對降低 Head-of-Line (HOL) blocking
+問題、(2)區塊綁定(Chunk bundling)使得多個應用程式類型資料可集合於一封包中傳送、(3)
+支援多宿( Multi-homing support)，使兩端點之間所建立的 Association 能支援多重 IP 界面，
+而 Session 的維持是植基於 Association 之上，經由 IP 集合與 Port 的對應，因此可轉換使用
+的 IP 界面，並且保持 Session 的連線不為單一路徑斷裂而中斷，因此在傳輸機制上能提供
+更可靠且穩定的傳輸效能、(4)在連線建立方面，SCTP 藉由四向交握連線機制，能有效防
+止避免在傳統 TCP 半開啟連線方式，所造成阻斷攻擊(DoS)之問題等；由於 SCTP 具有如上
+四項特性，因此可以解決傳統 TCP 上的問題。 
+此外 SCTP 還具有：(1)簡化標頭及選擇性的擴充、(2)多重傳輸模式(Multiple delivery 
+modes)、(3)繼承 TCP 壅塞控制機制(TCP-friendly congestion control)、(4)選擇回覆(Selective 
+acknowledgments)、(5)最佳的封包切割( User data fragmentation)、(6)網路連線存活狀態偵測
+(Heartbeat keep-alive mechanism) 等六種特性。在RFC 2960中也定義數個不同的Chunk Type 
+及用途，並保留許多 Type number 做為延伸定義使用。此外，SCTP 更具備有序、無序、部
+份有序等多重傳輸模式及其他更可靠強健的特性，可以完全取代 TCP，基於上述之種種特
+性，亦證明 SCTP 在機制上比 TCP 機制具有更強健穩定的優點，使之成為新一代網際網路
+傳輸協定。在 SCTP 實作方式，目前亦由 Stewart 等人提出 SCTP socket 與實作 API 的指南
+[8]，日前正不斷的修改與實作。 
+SCTP 傳輸協定中，所提供之可靠傳輸機制，其優異的傳輸效能也在眾多實驗數據中被
+證明，特別是在高遺失率的網路環境下。然而 SCTP 機制管理 IP 介面於建立初始連線時，
+在具有移動特性的無線網路環境中，難以適應動態的 IP 介面及其子網域變動的需求，故
+mobile SCTP(mSCTP)[6][7][8]機制被提出，以支援行動式無線網路傳輸。 
+而在無線網路環境之中，移動所造成的換手問題，是所有使用者將會遭遇之情況，而
+藉由 CMT SCTP 之技術，可以讓使用者在換手程序發生時，仍然保持著網路連線並擁有一
+定的傳輸效能，如此的特性，可以讓使用者在進行語音與影像等即時性資料的傳輸時，比
+傳統的網路協定更具有可靠性，並且由於 UDP 先天缺乏壅塞控制而容易導致網路線路全面
+癱瘓，可利用 Partially-Reliable Stream Control Transmission Protocol(PR-SCTP)協定，並藉由
+過時的資料設定為即可丟棄的機制，來取代傳統的 UDP 協定，更適合用來傳遞及時性的多
+3 
+路徑都產生 CWND 的下降，間接造成傳輸效能的降低，而他們利用 CWND 做為分配封包
+排程的基礎，讓封包走向 CWND 較大的路徑來避免路徑擁塞的情況；在 Jiemin Liu 等學者
+[13]提出在 R. Stewart 等學者[11]提出的 CMT 重送規則仍然有 buffer 的缺陷，為了減輕接
+收端 buffer blocking 造成的吞吐量的下降，他們將結合擁塞控制、Slow start threshould 
+Lossrate 並納入考慮中，所以，他們提出在 CMT 為基礎的架構下使用混合不同參數的重傳
+規則來改善 CMT 接收端 buffer 的吞吐量，雖然上述學者對於封包排程已提出了 CWND 跟
+混合式的重傳機制，但是並沒有考慮路徑上的情況，整體來說，在網路的環境不佳時，重
+傳機制就會啟動，但這樣的機制會造成網路封包的增加，間接導致網路的負擔性，因此，
+在傳輸過程中，封包排程機制可降低避免重傳的可能性，進而增進網路的整體效能。 
+肆、研究方法 
+本研究計畫中，主要目的即在以使用 SCTP 結合 CMT (Concurrent multipath transfer) 技
+術的基礎架構下，經由多路徑傳輸 Heartbeat Chunk 來取得每個網路裝置的路徑資訊跟端點
+資訊，並以此為基礎，設計並實作多路徑下的封包排程機制來安排封包在各個路徑上的序
+列順序，並透過實驗來驗證其效能，以其獲得更佳的傳輸效能。 
+因為在 SCTP 標準的傳輸機制上因為只有一條主要路徑進行傳輸，在擁有多個網路介
+面的主機或者行動設備，就無法善用其資源以提升整體網路傳輸效能，如果延用標準 SCTP
+傳輸協定的 CMT 技術因為沒有偵測路徑情況來做封包排程的依據採用平均傳輸的方式，則
+可能會因為，Receiver 無法即時處理資料，而 Sender 因為無法得知此情況，而仍然不斷的
+送資料給 Receiver，將導致該界面繼續忙碌處理，甚至癱瘓路徑，並間接產生資料遺失、
+資料不斷重傳等問題。 
+1. 有效同步多路傳輸 SCTP 之系統設計 
+ARD-CMT 實作架構如圖１所示，(1) 當傳輸資料時會將 payload 經由不同的 stream 送
+入到緩衝區，(2) 在緩衝區蒐集到一定程度的 payload 後會將資料集中送到傳送端的 Queue 
+Management 模組，並且依據(3) 傳送端的 Location Info Management 會利用 SACK chunk 蒐
+集到的雙方傳輸品質和路徑品質記錄成資訊，(4) 此時傳送端的 Queue Management 會將緩
+衝區送來的資料跟傳送端的 Location Info Management 的資訊做媒合，將其放置到合適的傳
+輸序列，並在 DATA chunk 中的 PID 放入該傳輸序列的編號，之後交由傳送端的(5)Packet 
+Dispatcher 依照 DATA chunk 中的 PID 組成封包，並且依照 PID 丟到每一條輸出佇列(output 
+queue)中，經由實體裝置傳輸至接收端的輸入佇列(input queue)，(6) 接收端的 Packet 
+Dispatcher 模組收到每一條輸入佇列的封包後，將其解開成 chunks，並送到(7) Queue 
+Management 將收到的封包資訊與 payload 分開來，由接收端的 Location Info Management
+記錄路徑品質與及對方傳輸品質，之後再將每一條輸入佇列的 payload 送到緩衝區塊蒐集
+後，(8)由上層組成完整的資料。 
+當程式啟動時，建立連線後開始需要讀取緩衝區大小的資料，並存到緩衝區中，在傳
+輸資料前，程式會使用 pthread_mutex()執行多線程序，讓 SCTP 的傳輸程式達到多路徑傳
+輸，當路徑可以進行傳輸時，程式將會計算目前所有路徑的平均傳輸速率，當收到任何DATA 
+chunks 後，則執行 SACK Process Module 去取得 a_rwnd 值，並記錄到 Location Info 
+5 
+衡，其程式虛擬碼如圖２ ： 
+圖２、ARD-CMT 演算法 
+nowT ：目前程式執行時間。 
+lastT ：上次計算權重的時間。 α ：為 0.125 的常數，讓以往的 RWND
+權重擁有較重的比例。 
+iW ：發送端第 i條路徑的權重。 
+iP ：發送端第 i條路徑， i為路徑編號，
+avg_rwnd 為以往的 RWND 平均值，
+now_rwnd 是目前接收端可用的 RWND。
+伍、實驗結果與分析 
+在本研究計畫中，我們使用了各類的系統跟軟體來實作和實驗分析，本實驗中我們使
+用開放式原始碼的 Linux 作業系統做為開發平台，Linux 系統發行版本是 ubuntu 8.10[17]，
+系統核心版本是 2.6.27，在 SCTP 應用程式的開發上，我們使用的 API 選擇 SCTP 程式較普
+及的 LKSCTP[16]作為應用程式的函式庫，版本為 1.0.8，而在實際網路環境模擬軟體，我
+們使用 NIST NET[15]軟體在實驗環境加入干擾因素等，如：封包遺失率、封包延遲等等，
+在觀察實驗記錄方面，我們使用 wireshark[18] 封包擷取軟體，取得封包相關資訊，並將實
+驗記錄繪製成圖。 
+圖３為本實驗的基本網路環境架構圖，在兩端的 Host 都安裝了我們所實作的 CMT 模
+組，並且都各自配備三張網路介面，當 Linux 作業系統掛載 CMT 模組後，將可以使用所有
+網路介面進行傳輸。本實驗在兩台主機之間分別使用三條路徑作為資料的傳輸，每個路徑
+的 buffer 都是設定 1024K，中間有三台 Network Emulator 主機模擬成路由器，可以產生實
+際環境中的封包遺失跟封包延遲等問題，此外當沒有使用 CMT 模組時，標準 SCTP 程式將
+會使用 Interface 1 當作主要路徑，其餘的路徑做為備援路徑。 
+ 
+圖３、網路環境架構圖 
+ 
+7 
+究成果投稿至相關期刊論文。 
+1. L.H. Chang, Y.C. Lian, Y.H. Chien, “Priority Based Scheduling in WiMAX System”, 
+Journal of Internet Technology, vol. 11, no. 2, pp. 143–151, Mar. 2010 [SCIE] 
+2. L.H. Chang, C.C. Wang, T.H. Lee, "A Handover Mechanism Using IEEE 802.21 in 
+Heterogeneous Wireless Networks", proceeding of Communications in Computer and 
+Information Science (CCIS), vol. 77, pp. 95-108, Miyazaki, Japan, June 23-25, 2010 [EI] 
+3. 簡鈺軒, 王朝棨, 張林煌, “User-based跨層預先換手機制於車載網路環境”, Proceedings 
+of The 15th Mobile Computing Workshop, Taichung, Taiwan, pp.250-254, May. 28, 2010 
+4. 張林煌, 顏丞均, 黃柏勛, “在無線網路環境下實作與評估SCTP的多路同步傳輸機制”, 
+presented at第二十屆物件導向技術及應用研討會, Taichung, Taiwan, Nov. 20, 2009 
+5. 張林煌, 黃柏勛, 顏丞均, 廖俊鑑, “基於rwnd 的CMT-SCTP 傳輸機制研究”, presented 
+at National Computer Symposium (NCS 2009), Taipei, Taiwan, Nov. 27-28, 2009 
+6. 王朝棨、楊智鈞、廖俊鑑、朱鴻棋、張林煌, “運用IEEE802.21換手機制於異質性3G與無
+線網路”, presented at The Fifth Workshop on Wireless Ad Hoc and Sensor Networks (WASN 
+2009), Hsinchu, Taiwan, Sep. 10-11, 2009 
+7. 連祐正、簡鈺軒、張林煌, “PGS排程機制於WiMAX系統”, presented at The Fifth Workshop 
+on Wireless Ad Hoc and Sensor Networks (WASN 2009), Hsinchu, Taiwan, Sep. 10-11, 2009 
+8. 張林煌, 陳源泰, 簡碩瑤, 簡鈺軒, “實作Web-Base Skype監控系統於嵌入式IXP平台”, 
+presented at TANET 2009, Changhua, Taiwan, Oct. 28-30, 2009 
+參考文獻 
+[1] R. Stewart, et al., “Stream Control Transmission Protocol,” IETF RFC 2960, October 2000. 
+[2] R. Stewart, et al., “Stream Control Transmission Protocol,” IETF RFC 4960, September 
+2007. 
+[3] Hong-ke. Zhang, Bo. Wang, Dong.Yang, “Wireless Multi-path Transmission Using SCTP”, 
+draft-zhang-wcmt-sctp-00.txt, September 2008. 
+[4] J. Iyengar, K. Shah, P. Amer, and R. Stewart. “Concurrent Multipath Transport Using SCTP 
+Multihoming”, Tech Report TR2004-02, CIS Dept, University of Delaware, September 
+2003. 
+[5] J.R. Iyengar, P.D. Amer, R. Stewart, "Concurrent Multipath Transfer Using SCTP 
+Multihoming Over Independent End-to-End Paths", IEEE/ACM Transactions on 
+Networking, Volume 14, Issue 5, Oct. 2006. 
+[6] R. Stewart, et al, “Stream Control Transmission Protocol (SCTP) Dynamic Address 
+Reconfiguration,”IETF RFC 5061, July 2007. 
+[7] S. Ladha, P.D. Amer, "Improving file transfers using SCTP multistreaming", IEEE 
+International Conference on Performance, Computing, and Communications, pp: 513 – 522, 
+2004. 
+[8] Gerard J. Heinz II, Paul D. Amer, "Priorities In Stream Transmission Control Protocol 
+(SCTP) Multistreaming", Thesis of University of Delaware, 2004. 
+[9] A. Abd El Al, T. Saadawi, Myung Lee, "Bandwidth aggregation in stream control 
+transmission protocol", Ninth International Symposium on Computers and Communications, 
+pp. 975 - 980 2004. 
+[10] Chung-Ming Huang, Ching-Hsien Tsai, "WiMP-SCTP: Multi-path Transmission using 
+Stream Control Transmission Protocol (SCTP) in Wireless Networks", IEEE International 
+Symposium on Frontiers in Networking with Applications, pp. 209-214, 2007. 
+9 
+<附錄一> 
+ 
+自評內容表 
+ 
+一、 計畫執行結果與目標達成評估 
+本研究計畫之執行，與當初評估之完成項目大略符合。本計畫設計出一個以 RWND 為
+封包分配機制的 SCTP 同步多路徑傳輸機制，稱作 ARD-CMT，使網路傳輸效能提升。 
+ 
+二、 研究成果學術成就價值評估 
+ 本計劃之相關成果已投稿至相關研討會中 
+1. L.H. Chang, C.C. Wang, T.H. Lee, "A Handover Mechanism Using IEEE 802.21 in 
+Heterogeneous Wireless Networks", presented at The Second International Conference on 
+Advanced Communication and Networking (ACN 2010), proceeding of Communications in 
+Computer and Information Science (CCIS), vol. 77, pp. 95-108, Miyazaki, Japan, June 23-25, 
+2010 [EI] 
+ 
+Abstract: The IEEE 802.21 framework is a novel standard and the scope of this standard is to 
+optimize and facilitate handover in heterogeneous networks. In this paper, we propose a handover 
+mobility management by using the IEEE 802.21 to solve some handover issues, such as handover 
+delay and packet loss, in homogeneous and heterogeneous networks. By setting certain signal 
+thresholds and probability confidence to trigger the Link Going Down event, the proposed 
+handover mechanism is capable of providing better handover efficiency and reducing the 
+handover delay and possible packet loss during handover. The NS-2 simulation is conducted to 
+verify the performance of our handover mobility management across WLAN and WiMAX 
+heterogeneous networks. 
+ 
+三、 學術期刊發表與專利申請可行性評估 
+本研究計畫中之內容已彙整並且預計發表於相關的期刊，如 Journal of Internet 
+Technology。 
+ 
+ 
+四、 其他有關價值 
+在計劃中，我們應用我們之前之研究成果 A-ARD 演算法更進一步設計出 ARD-CMT
+機制，並且實作此機制的 test-bed。藉由本計畫可以讓研究生深入了解 Linux 核心的運作方
+式與 Kernel 的編譯，並應用於 CMT-SCTP 系統。 
+ 
+ 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 NSC 98-2221-E-142-003 
+計畫名稱 有效同步多路傳輸 SCTP 之封包排程機制實作設計與應用 
+出國人員姓名 
+服務機關及職稱 
+張林煌  國立台中教育大學 資訊科學系  副教授兼主任 
+會議時間地點 June 23-25, 2010, Miyazaki, Japan (日本宮崎) 
+會議名稱 The 2nd International Conference on Advanced Communication and Networking (CAN 2010) 
+發表論文題目 A Handover Mechanism Using IEEE 802.21 in Heterogeneous Wireless Networks 
+ 
+一、 參加會議經過 
+ 
+本次 ACN 2010 (The 2nd International Conference on Advanced Communication and 
+Networking)會議與 AST2010 (The 2nd International Conference on Advanced Science and 
+Technology)、ISA2010 (The 4th International Conference on Information Security and Assurance)
+及 UCMA 2010 (The 2010 International Conference on Ubiquitous Computing and Multimedia 
+Applications)等會議共同於日本宮崎舉行，總共約有 200 多篇論文發表。 
+ 
+會議的第一天包含一場 Keynote Speech，由 Prof. Hojjat Adeli, Abba G. Liechtenstein 
+Professor, The Ohio State University, USA 主講” Chaos-Wavelet-Neural Network Models for 
+Automated EEG-Based Diagnosis of Neurological Disorders”, 此演講主要以資料探勘的方法來
+處理腦神經中腦波訊號之問題。Keynote Speech 之後即展開三個 concurrent session 之主題論
+文報告與討論，此次會議之主要討論 session 議題包括無線通訊、網路技術、資訊安全、雲端
+同儕計算、多媒體應用等議題。 
+ 
+會議的第二天包含兩場 Keynote Speech，由 Prof. Tadashi Dohi, Department of Information 
+Engineering, Graduate School of Engineering, Hiroshima University, Japan 主講” Software 
+Reliability Modeling in Past, Present and Future “及 Dr. Adrian Stoica, Senior Research Scientist, 
+Principal MTS Supervisor, Advanced Robotic Controls, Mobility and Robotic Systems, 
+Autonomous Systems Division, NASA Jet Propulsion Laboratory, USA, 主講” Security in the time 
+of robots and cyborgs”，Keynote Speech 之後再度展開三個 concurrent session 之主題論文報告
+與討論，我們的論文成果被安排在第二天下午 1:45，此 session 共有十篇論文發表，我是此
+session 論文發表中之第四位報告者。 
+ 
+會議的第三天包含兩場 Keynote Speech，由 Dr. Tatsuya Akutsu, Professor, Bioinformatics 
+Center, Institute for Chemical Research, Kyoto University, Japan 主講” Mathematical Models and 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/01/26
+國科會補助計畫
+計畫名稱: 有效同步多路傳輸SCTP之封包排程機制實作設計與應用
+計畫主持人: 張林煌
+計畫編號: 98-2221-E-142-003- 學門領域: 計算機網路與網際網路
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+隨著無線異質網路環境之普遍化使用者可以同時接收到多個基地台的資訊。為
+達最佳傳輸效率因此本研究提出 ARD-CMT 機制，以達異質網路中同步多路徑之
+整體傳輸。 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

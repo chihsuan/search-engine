@@ -1,0 +1,624 @@
+Extensions to Inverse Displacement Mapping:
+Towards More Accurate Silhouette and Intersection
+Yu-Jen Chen1 Zong-Nan Shen2 Ying-Chieh Chen2 Chun-Fa Chang3 Yung-Yu Chuang1 Jieh Hsiang1
+1National Taiwan University 2National Tsing-Hua University 3National Taiwan Normal University
+ABSTRACT
+This paper presents two extensions to inverse displacement map-
+ping, methods which attempt to render effects offered by displace-
+ment mapping, motion parallax, self-occlusion, self-shadowing and
+silhouette, without actually perturbing the surface geometry. The
+first extension, Normal-Based Curved Silhouette (NCS), allows bet-
+ter rendering for object’s silhouette. At each step of intersection
+finding, NCS continuously bends the viewing ray according to the
+current local tangent space associated with the surface. Thus, it al-
+lows mapping a displacement map onto an arbitrary curved surface
+with more accurate silhouette. The second extension, Anisotropic
+Cone Mapping (ACM), provides a more efficient and accurate way
+for calculating intersections. Anisotropic cones are used as the
+bounding volume for the empty space above texels, allowing faster
+convergence and rendering speed. In addition, it allows extreme
+close-up and very steep angle views without noticeable artifacts.
+Furthermore, we propose a hierarchical adaptive preprocessing method
+that is around 10 times faster than conventional methods, allowing
+ACM to be used for rendering dynamic displacement maps. Both
+proposed methods are suited for many real-time 3D applications
+like games or interactive simulations because of their low memory
+cost and good performance in both rendering quality and speed.
+Categories and Subject Descriptors
+I.3.7 [Computing Methodologies]: Computer Graphics – Three-
+Dimensional Graphics and Realism.
+General Terms
+Algorithm.
+Keywords
+Inverse displacement mapping, Normal-based curved silhouette,
+Anisotropic cone step mapping.
+1. INTRODUCTION
+Over the past few years, we have seen an impressive improve-
+ment in the capabilities of graphics processing units (GPUs). Among
+many revolutionary features, the most fascinating achievement is
+the realization of GPU programmability for real-time realistic ren-
+dering. This capability allows us to synthesize many compelling
+effects in real time. To create appealing appearance, texture and
+bump mapping are often used to significantly improve the realism
+of rendered images by adding spatially-varying appearance due to
+surface details. These mapping techniques are widely adopted be-
+cause they are suitable for GPU implementation. Bump mapping
+simulates surface details of uneven surface’s interaction with light
+by adjusting normals to provide more realistic look [2]. However,
+bump mapping has its limitations. It only captures the shading
+caused by normal variation, but not the visually important effects
+such as motion parallax, self-occlusion, self-shadowing and silhou-
+ette.
+Displacement mapping [4] provides a more effective representa-
+tion for surface details with a displacement map instead of many
+small triangles. Points on a surface are moved along their normals
+by the amount specified by the displacement map. All the features
+that bump mapping fails to capture are naturally supported by dis-
+placement mapping. However, it requires altering geometry during
+shading. Even with today’s graphics hardware, this is still a very
+expensive operation.
+Inverse displacement mapping [15] is a class of mapping meth-
+ods which attempt to render those effects offered by displacement
+mapping, such as motion parallax, self-occlusion, self-shadowing
+and silhouette, without actually perturbing the geometry of the sur-
+face being mapped. These methods have several advantages: they
+require lower amount of memory; they do not need to change the
+original geometry; and most importantly, they are performed in
+image space and can be efficiently implemented using fragment
+shaders on current GPUs. Recent progresses of inverse displace-
+ment mapping take advantage of the programmability and parallel
+nature of modern graphics hardware to render surface details in real
+time. One key question these methods attempt to answer is how to
+effectively search for the closest intersection to the surface defined
+by the displacement map along a given viewing ray. A compromise
+between convergence speed and rendering quality is often made by
+these methods. Another important problem that inverse displace-
+ment mapping has to deal with is how to render object’s silhouette
+correctly.
+This paper proposes two extensions to existing inverse displace-
+ment mapping methods. The first extension, normal-based curved
+silhouette (NCS), renders more accurate silhouette for inverse dis-
+placement mapping, especially when mapping to a curved surface.
+It differs from curved relief mapping [12] by offering a more ac-
+curate and robust representation of the surface curvature. The sec-
+ond extension, anisotropic cone mapping (ACM), provides a bet-
+ter tradeoff between rendering speed and guaranteed accuracy than
+previous methods. It is faster than other approaches for a given ac-
+curacy to achieve. Furthermore, we propose a fast preprocessing
+algorithm, which is around 10 times faster than previous methods.
+Thus, our ACM method can be used for rendering scenes with dy-
+namic displacement maps at a frame rate of 50 fps.
+The main contributions of this paper include: (1) A novel method
+to render object’s silhouette, which is easy to implement and more
+robust and accurate than previous methods. (2) An improved tech-
+nique to provide better compromise between accuracy and render-
+Baboud et al. used a pre-computed safety radius texture such that
+a viewing ray could walks along until a binary search can be safely
+run [1] (Figure 1(f)). One disadvantage for this is that it requires
+a long preprocessing by sampling lots of rays. In addition, to find
+the intersection, a binary search is still required. Kolb et al. applied
+maximum filter of different radius on the displacement map [10].
+For each radius, they found a rectangular prism to bound the fil-
+tered displacement map. The union of these prisms is used as the
+bounding volume. The above two methods both faced two prob-
+lems. First, it just skips empty space but not jumps to the converge
+point. Thus, at the end, it still relies on linear search or binary
+search to find the intersection. Second, the bounding volume is not
+very tight. Hence, its skip range is potentially limited and this often
+causes slow convergence.
+Distance mapping (DM) uses a 3D texture to store the short-
+est distance from any 3D-point of the empty space to the surface
+specified by the displacement map [5]. It is equivalent to use a
+sphere as the bounding volume for the empty space around any
+point within the volume (Figure 1(g)). The distance stored is the
+sphere radius. With this information, a viewing ray can repeat-
+edly skip empty space until it hits the surface (radius is zero). The
+results are very accurate. However, it uses an order of magni-
+tude more memory than standard 2D textures. Other more gen-
+eral precomputation-based approaches such as view-dependent dis-
+placement mapping [20] and generalized displacement mapping [21]
+can be used for inverse displacement mapping as well. However,
+they suffer from the same problem of large memory consumption
+and are not suitable for applications like games.
+Another space leaping method is cone step mapping (CSM) pro-
+posed by Dummer [6]. Since our ACM method is based on it, we
+will discuss it along with our method in Section 4. In addition,
+because shadow computation for a point light source is just a sim-
+ilar visibility problem, these methods can be extended to handle
+shadows in a straightforward way of replacing viewing rays with
+lighting directions..
+Though effective for self-occlusion, shadows and interpenetra-
+tions, most methods do not handle object’s silhouette correctly, es-
+pecially when applying to non-planar surfaces. Oliveira et al. [12]
+proposed curved relief mapping (CRM) to extend RM to address
+this issue. This method, however, requires a preprocessing stage
+to find a piecewise-quadric approximation for the surface to be
+mapped. Hirche et al. [8] tackled the silhouette problem by extrud-
+ing each triangle of the bash mesh along the normal directions to
+form a prism. The use of prisms however inevitably produces larger
+number of triangles and complicates the intersection process.
+3. NORMAL-BASEDCURVED SILHOUETTE
+Curved Relief Map (CRM) approximates the surface curvature
+using a piecewise-quadratic approximation. While this approach
+works well in most cases, it could break in some special situations
+such as the case shown in Figure 2. In this section, we present
+Normal-Based Curved Silhouette (NCS) to render object’s silhou-
+ette more accurately than CRM though imposing some constraints
+on surface parameterization.
+CRM pre-computes curvatures of the base mesh. Instead of us-
+ing pre-computed curvatures, we use the tangent space associated
+with each vertex to describe the local shape of the base mesh. Such
+a tangent space is defined with vertex’s normal and tangent vectors.
+The advantage of using these vectors is that they have often been
+included in the base mesh.
+The basic idea of our NCS algorithm is as follows. As shown
+in Figure 3, the viewing ray is straight in the object space, but
+curved in the texture space. If we bend the viewing ray accord-
+Curved relief mapping Normal-based curved silhouette
+Figure 2 Comparisons between curved relief mapping and normal-
+based curved silhouette. Circled areas shows rendering artifacts using
+CRM.
+object space texture space
+Figure 3 The basic idea of normal-based curved silhouette. A straight
+viewing ray in the object space becomes curved in the texture space. If
+we bend the viewing ray according to the tangent space of the current
+fragment when marching along the viewing ray, we obtain a piecewise
+linear approximation of the curved viewing ray in the texture space. If
+the bent ray does not intersect with the displacement map, the fragment
+should be discarded; otherwise, it is shaded accordingly.
+ing to the tangent space of the current fragment when marching
+along the viewing ray, we essentially obtain a piecewise linear ap-
+proximation of the curved viewing ray in the texture space. Thus,
+if the bent ray hits the displacement map, it is shaded. Otherwise, it
+should be discarded. However, to achieve this, we need to be able
+to obtain the tangent space for any fragment, not just for vertices.
+To answer such a query, we first render the normal and tangent
+maps, N and T, for the base mesh. With these maps, for a given
+texture coordinate (u, v) of the current fragment, we can look up
+these maps for the associated normal vector N(u, v) and tangent
+vector T(u, v). Algorithm 1 presents the method for rendering
+normal and tangent maps. Figure 4 shows the normal and tangent
+maps for a torus. Note that this method assumes that the texture
+coordinate is parameterized continuously over the base mesh. In
+addition, tiling of the displacement maps needs to be handled with
+extra care. One may argue that it is not necessary to render the nor-
+mal and tangent maps into textures, since they may be interpolated
+from the vertices during the rasterization step. The main problem
+with such a strategy is that the viewing ray may go beyond the
+texture volume of the currently shaded triangle. Note that we use
+orthogonal projection in line 2 of Algorithm 1 for setting up the ba-
+0%
+5%
+10%
+15%
+20%
+25%
+30%
+0.00 0.25 0.50 0.75 1.00
+CSM cone ratio
+average cone ratio
+max cone ratio
+Figure 6 Histogram of cone ratio.
+CSM ACM4 ACM8
+brick 0.040 0.073 0.102
+rockwall 0.116 0.176 0.221
+stone 0.096 0.176 0.230
+Table 1 Average cone ratios of three displacement maps for different
+numbers of sectors.
+map can be found by repeatedly performing 2D ray-line intersec-
+tions. Dummer used a more expensive procedure for finding 2D
+ray-line intersection. Here, we present a simpler and faster method
+as shown in Figure 5(b). Because of similar triangles, we know
+that α : β = ξ : |Vxy|, where Vxy is the vector PQ’s projection
+on the x − y plane of the tangent space, P and Q are entry and
+exit points. Hence, the ratio γ = α/(α+ β) equals ξ/(ξ + |Vxy|).
+Therefore, we should march γVxy in the texture space. The proce-
+dure halts when either the solution converges or loop count exceeds
+a maximum limit.
+Note that, similar idea, using cones as the bounding volumes for
+finding ray-height-field intersection, has actually been explored by
+Paglieroni et al. [14] earlier. However, they used it for height dis-
+tributional distance transform (HDDT) for ray tracing height field.
+4.2 Anisotropic cone mapping
+We propose a method to improve CSM by removing cone sym-
+metry. We observed many displacement maps have strong anisotropic
+property. It is too conservative to use the minimal cone ratio as the
+representative because other directions with larger empty space are
+often be compromised. Dummer suggested that ellipses probably
+could be for anisotropic displacement maps. However, it seems
+to be computationally more expensive. Hence, we propose to use
+asymmetric cones as the bounding volumes. An asymmetric cone
+has n sectors and each has its own cone ratio. Figure 5(c) shows
+the configuration for a 4-sector asymmetric cone. The intersection
+finding procedure is similar to CSM, except that the cone ratio is
+now indexed by the viewing direction. Figure 5(d) shows such a
+procedure of ray marching. Similar suggestion of using asymmet-
+ric cones has also been proposed by Paglieroni [13] for ray tracing.
+One choice we have to make for ACM is the number of sec-
+tors. Table 1 shows the average cone ratios for CSM, 4-sector ACM
+and 8-sector ACM for three displacement maps. The use of more
+sectors obviously increase the cone ratio, thereby, offering faster
+convergence. Figure 6 displays the histogram of average and max-
+imum cone ratios for 4-sector ACM. To compare the performance
+of CSM, 4-sector ACM and 8-sector ACM we performed an exper-
+iment to analyze the relationship between accuracy and rendering
+13
+.70 8.0
+0
+5.1
+8
+3.5
+4
+2.7
+0
+1.9
+1
+0.8
+2
+error
+fr
+am
+e 
+ra
+te
+CSM
+ACM4
+ACM8
+0
+100
+200
+300
+400
+Figure 7 Comparisons of error and frame rate among CSM, ACM4 (4-
+sector ACM) and ACM8 (8-sector ACM).
+20 steps 30 steps 40 steps
+Figure 8 Comparisons of convergence between CSM and ACM. The
+top row shows convergence of CSM and the bottom row is for ACM.
+Note that, on the discontinuity border in the middle, CSM at 20 steps
+appears too flat. However, ACM at 20 steps is already very close to the
+final solution.
+speed. We first generate a ground truth image using displacement
+mapping. Then, for each algorithm, we run it with 10, 20, 30, 40
+and 50 steps and recorded the corresponding frame rate and its L2
+error from the ground truth. The results are shown in Figure 7. It is
+obvious that for a fixed accuracy, ACM4 is the fastest and CSM is
+the slowest. We observed that there is almost no visually noticeable
+difference when the error is below 3.0. The frame rates when error
+equals to 3.0 for CSM, ACM4 and ACM8 are roughly 100, 200 and
+150fps respectively. Therefore, ACM4 is roughly two times faster
+than CSM. In the following experiments, we will use ACM4 to rep-
+resent ACM. Figure 8 compares the progression of convergence for
+CSM and ACM. Note that, on the discontinuity in the middle, CSM
+at 20 steps appears too flat. However, ACM at 20 steps is already
+very close to the final solution. It is obvious that ACM converges
+faster than CSM.
+4.3 Adaptive hierarchical preprocessing
+The preprocessing of ACM is pretty straightforward. For each
+texel, we expand the search radius incrementally for each sector.
+For each expansion, several new texels are considered. The cone
+ratio is updated if the new texel offers a lower cone ratio. The cur-
+Figure 11 Renderings of normal-based curved silhouette method for various meshes on several displacement maps.
+(a) (b)
+(c)
+(d)
+Figure 12 Rendering of a complex model, Venus, with roughly 524K
+triangles. We obtained a continuous parameterization using geometry
+image and applied the stone displacement map over the base mesh. (a)
+The rendering. (b) The base mesh for the circled region. (c) The red pix-
+els are carved by NCS algorithm. (d) Rendering with correct silhouette.
+from its larger cone ratios, allowing us to converge in less steps.
+This has big impact on performance. For current GPUs, there is a
+performance bound for texture accesses. When a shader has more
+texture accesses than this bound, the shader performance drops dra-
+matically. Because ACM can converge with less steps, namely less
+texture accesses, it has better chance to reach the target accuracy
+before exceeding this bound than other methods.
+5. RESULTS
+We performed experiments on a Pentium 4 3.0GHzmachine with
+an NVIDIA GeForce 7900 GTX GPU with 512 MB memory. We
+used several displacement maps, exhibiting both high-frequency
+and low-frequency contents. All scenes were rendered at a reso-
+lution of 1024× 768. Figure 11 displays various rendering results
+using our NCS method. The rendering rate is around 200 fps for
+models with roughly 1,000 triangles as shown in Figure 11. CRM
+is around 3 times faster than our method. However, as shown in
+Figure 2 and the supplementary video, the silhouette rendered by
+CRM is not as accurate as NCS. Figure 12 show results for the base
+Figure 13 Renderings of a more complex scene consisting of multiple
+objects.
+mesh, Venus, with 524K triangles, parameterized using the geomet-
+ric image approach [7]. It shows NCS’s capability to handle rather
+complex base meshes. The rendering rate is around 15 fps because
+of the complexity of the model. Figure 13 demonstrates the results
+for a complex scene consisting of multiple objects.
+In Figure 14, we show comparisons of POM, RM, CSM and
+ACM. POM and RM have an aliasing problem with discontinuity
+of height field. Hence, even with 200 steps, there are still stair-
+stepping artifacts. Because many steps are used, their frame rates
+drop to around 25 fps. On the other hand, CSM and ACM have
+less artifacts. The frame rates of CSM and ACM are around 100
+fps and 200 fps respectively. Figure 15 shows an example of ap-
+plying dynamic displacement on a simple water simulation. We
+generate displacement maps at each time instance using simple si-
+nusoids. The synthetic displacement map is then processed by our
+adaptive algorithm to obtain its ACM texture. These processes are
+performed on CPU. The displacement map and its ACM texture are
+then fed to the rendering system on GPU. The combined frame rate
+is around 50 fps including synthesizing height field, preprocessing
+of height field, texture transfer from CPU to GPU and rendering on
+GPU.
+6. CONCLUSIONS AND FUTUREWORK
+In this paper, we present two extensions towards more accurate
+silhouette and intersection for real-time inverse displacement map-
+ping. Our normal-based curved silhouette algorithm can render ob-
+ject’s silhouette reasonably well. Our anisotropic cone mapping
+provides better cone ratio than cone step mapping because of the
+use of asymmetric cones. Therefore, it usually requires less steps
+to converge. As a result, it is faster than exiting algorithms to reach
+a target quality. Furthermore, we propose an adaptive hierarchical
+Real-time Rendering of Splashing Stream Water 
+ 
+ 
+Jun-Wei Chang Su Ian Eugene Lei Chun-Fa Chang Yu-Jung Cheng 
+Department of Computer Science, 
+ National Tsing Hua University 
+National Taiwan 
+Normal University1 
+Institute for 
+Information Industry
+ 
+                                                          
+1 Department of Computer Science and Information Engineering 
+Abstract 
+ 
+We present a real-time method to simulate and 
+render the turbulent flow and splash of stream water 
+over irregular terrain and with dynamic rigid objects. 
+In order to achieve real-time frame rates, we adopt a 
+GPU-based particle system to perform the simulation, 
+which can simulate interaction between water and 
+dynamic rigid object in real time.  We use 2D 
+metaballs with billboards to represent the 3D water 
+surface. Our billboard rendering method does not 
+possess the traditional clipping artifact. Although our 
+proposed method is not a direct physical simulation, 
+the results are empirically plausible and efficient, and 
+especially suitable for interactive graphics application 
+such as computer games.  
+ 
+ 
+1. Introduction 
+ 
+Traditionally flowing water such as rivers, streams, 
+are represented using grid mesh and texture mapping. 
+Such method could not easily adapt to interactive 
+change of terrain (landslide, objects passing on water 
+surface etc). We propose a method based on particle 
+systems that can realistically present water flowing 
+over a dynamic terrain. Our method can produce 
+realistic splash effects with interactive rigid objects, 
+such as a dropping rock, and achieving a high frame-
+rate. 
+We design a system that focuses primarily on the 
+turbulent flow and splash of water streams. Our 
+particle system is based on the work by Lutz Latta [6] 
+and was modified to allow the sub-particle generation 
+and the state transition. We use a set of primary 
+particles to simulate the general flowing water, while 
+sub-particles may be spawned from the primary 
+particles to portray splash effects. 
+Our visualization of the water effect is inspired by 
+surface splatting and metaball rendering techniques. 
+The organic look of metaballs is suitable for creating 
+fluidic effects such as viscidity of water drops. 
+However 3D metaballs are too computationally 
+expensive for our system where thousands of particles 
+are presented at the same time. Therefore our method 
+uses a multi-layered 2D metaball rendering to create 
+the effect of the water surface. 
+ 
+2. Previous work 
+ 
+There have been many methods to simulate realistic 
+dynamic motion of fluids. Matthias et al. [1] proposed 
+an interactive method based on Smoothed Particle 
+Hydrodynamics (SPH) to simulate small amount of 
+fluid with free surfaces. Kipfer et al. [2] propose a real-
+time approach based on SPH simulation and a “carpet-
+covering” method to reconstruct the surface of river, 
+with some loss of fine details. Takahashi et al. [3] 
+describe a method for modeling and rendering dynamic 
+behavior of fluids with splashes and foam, using a state 
+machine to generate the fine details. Maes et al. [4] 
+present a column-based and height field approach to 
+simulate water flow over irregular terrains in GPU. 
+However, their work is not able to exhibit the 
+phenomena of turbulent flows.  
+Iwasaki et al. [5] propose an off-line point-based 
+rendering approach to divide particles into sub-
+particles to represent the effects of splash. Lutz Latta 
+[6] and Kipfer et al. [7] introduced a full GPU 
+implementation using fragment shaders of simulation 
+and rendering of large-scale particle system. They 
+present a general framework for GPU-based particle 
+system and describe how to utilize the resources on the 
+current graphic hardware.  
+ 
+3. Simulation 
+ 
+There are three sets of data that needed to be 
+precomputed or provided by the user. The first is the 
+terrain data that is represented by a height field. The 
+second is the precomputation of the animation 
+sequence, the transition condition, and sub-particle 
+transition condition, which consists of the collision 
+state, the flow field state, and the transition target state. 
+These three states will be packed into the RGB 
+channels respectively.  
+ 
+3.4 Particle motion simulation 
+ 
+We adopt the Euler integration scheme to update 
+particles: 
+( ) ( ) ( ( ))
+( ) ( ) ( )
+particle flow flowt dt t scale t scale dtm
+t dt t t dt dt
++ = ⋅ + ⋅ +
++ = + + ⋅
+Fv v v p
+p p v
+ 
+where vflow is the 2D texture computed in Section 3.2, 
+and scaleparticle and scaleflow parameters which can be 
+adjusted by users manually. F represents the external 
+force such as the gravity. In order to maintain the 
+simulation efficiency, we do not model the inter-
+particle collision here. 
+ 
+3.5 Collision and dampening  
+ 
+The collision with obstacles and the dampening of 
+water are important effects of stream water. 
+Here we attempt to use an intuitive method to 
+mimic these phenomena. If the particle collides with 
+the terrain, the velocity of the particle will be reflected 
+against the terrain normal. And if the particle 
+penetrates the highest water depth, which is defined by 
+users, we will damp the particle velocity. 
+  
+3.6 State transition 
+ 
+The state transition plays an important role for 
+generating the sub-particles. To determine if a state 
+transition occurs, we can compute the collision state 
+and flow field state from the current particle in the 
+pixel shader, and compare the two states with the 
+transition texture. If the transition condition is satisfied, 
+the state transition occurs, and the current particle state 
+will be set to the next state recorded in the transition 
+texture. Then by reading back the state texture of 
+particles from GPU to CPU, we can generate sub-
+particles as the method described in the section 3.3. 
+ 
+ 
+3.7 Transfer the position data to vertices 
+ 
+In our implementation, we use the vertex texture 
+fetch (VTF) method to transfer the position texture 
+data into the vertex data using graphic hardware. We 
+can cache the vertex data in the graphic hardware in 
+advance, and then use the VTF to translate these 
+cached vertices to the appropriate locations.  
+We can render particles as point sprites, billboards, 
+or triangle mesh, etc. Here we choose to render 
+particles as billboards. Thus we need to cache four 
+vertices per particle. Since we recorded the particle 
+size in the state texture, we can determine the billboard 
+size dynamically in the vertex shader with VTF. 
+ 
+4. Rendering 
+ 
+There are several optical effects that are necessary 
+when we create the look of water, such as reflection, 
+refraction and Fresnel. Both reflection and Fresnel are 
+related to the incident viewing angle and normal vector 
+of the water surface, and refraction is related to the 
+depth of the water body. Therefore our implementation 
+will concentrate on acquiring the normal vector and 
+depth information from our particle data. 
+In our method, all particles needed to be traversed 
+and rendered once into a rendering target. Then we use 
+a set of pixel shaders operating upon this texture to 
+create the effect we need. 
+Our first step is to render all particles using view-
+aligned billboards. The billboard texture is a spherical 
+gradient texture representing a water drop. The 
+billboards are rendered into different layers based on 
+their Z value. For the ease of our experiments, we use 
+the RGB channel of a single texture as the three 
+separate layers. The particles do not need to be sorted 
+since we are simply using alpha blending to 
+accumulate the depth. These layers represent the depth 
+of the water body. 
+Then we use a pixel shader to perform Gaussian 
+blur on the layers. While the billboards are gradient 
+textures, we need to filter the resulting image to 
+eliminate the blending artifact in order to create the 
+metaball effect. 
+On the next step we create two maps: the normal 
+map and a metaball “mask”. The normal map is created 
+by applying linear gradient function on the filtered 
+depth layers, with the sum of all layers representing the 
+total depth on a pixel. 
+   
+Figure 2. (Left) Filtered depth map, with RGB 
+channels representing different layers. (Right)
+Metaball mask. 
+ 出席國際學術會議報告 
+ 
+報 告 人 
+姓 名 張鈞法 
+服 務 機 構
+及 職 稱
+清 華 大 學 資 工 系
+助 理 教 授
+會 議 時 間 
+地 點 
+2007/06/25~2007/06/27 
+法國 Grenoble 
+會議名稱 Eurographics Symposium on Rendering (EGSR) 2007 
+發表論文題目 主持討論”General Linear Camera with Finite Aperture” 
+ 
+一、參加會議經過 
+ 
+此會議是由法國INRIA Rhone-Alpes主辦，(In Cooperation with)ACM SIGGRAPH
+協辦，主要目的是提供世界各地在擬真成像(photorealistic rendering)與電腦圖學的學者
+專家交換研究發展心得。此會議每年舉辦一次，今年為第十七屆。本次會議收錄33篇
+年度重要的正式論文(regular papers)。 
+ 
+今年會議於 6 月 25 日至 6 月 27 日在 Grenoble 的 MINATEC Reseach Center 舉行，
+Grenoble 位於巴黎東南方，距離約三小時車程。Keynote speech 安排於 27 日上午，其
+餘時間為 paper sessions。我於會議前一日 6 月 24 日晚間搭乘長榮 BR87 班機至法國巴
+黎(CDG)機場，轉搭高速(TGV)火車至里昂，再轉搭一般火車至 Grenoble，於 25 日下
+午至 27 日參加會議，並於 26 日上午第一個 paper session 主持”General Linear Camera 
+with Finite Aperture” 論文的討論，於 6 月 29 日下午搭 TGV 火車至巴黎，於次日 30 日
+上午搭乘長榮 BR88 班機返回台灣。 
+  
+二、與會心得 
+ 
+Eurographics Symposium on Rendering (EGSR)前身為Eurographics Workshop on 
+Rendering。雖然它發源於小規模的workshop，但近十餘年來已發展為許多歐美學者認
+為僅次於SIGGRAPH的重要圖學領域的會議，近來雖有I3D與Pacific Graphics等會議的
+興起，仍因它特別專注於rendering主題的特色，而保持其吸引力，許多圖學方面的重要
+里程碑，如photon map技術，乃於此會議中首先發表。有趣的是，EGSR名稱上雖是附
+屬於Eurographics，其論文品質卻不輸給Eurographics (EG)，甚至在rendering主題方面超
+越EG。 
+ 
+由於長榮飛往法國的班機約每兩天才有一班，我必須搭乘6月24日的航班，於6月
+25日上午7:25抵達巴黎，隨即搭9:45的火車前往Grenoble，雖然到達Grenoble時已是下
+個重要的觀察，也就是全域照明效果可以變化的快慢程度，大致分為變化較快的小區
+域照明引起的明暗變化、散射(caustics)、及glossy highlight等效果，和變化較慢的間接
+照明或環境光源(如skylight)等效果，在利用典型的全域照明技術，如bidirectional path 
+tracing, Metropolis light transport, radiosity, photon map等方法時，若能依所需變化的快慢
+程度，將可較有效的選取合適的全域照明技術。例如photon map適用於caustics，但因
+易產生splat artifacts，不適用於變化較慢的區域。演講之後的休息時間，大會則安排所
+有與會的學者到會場戶外合影留念。 
+ 
+ 
+ 
+第三天上午另有一個paper session，下午則有兩個paper sessions，合計九篇論文發
+表。其中上午的 ”Population Monte Carlo Energy Redistribution”是由目前就讀於
+University of Wisconsin的賴祐吉(Yu-Chi Lai)所發表，賴同學畢業於台大電機系，出國
+前並曾於成大擔任研究助理。該篇論文主要探討Monte Carlo path tracing中的兩個問
+題，第一是如何重複使用樣本，第二是如何機動性(adaptively)產生無偏差(bias)的樣本。
+下午第一個paper session中三篇論文即有兩篇是來自亞洲微軟研究院，其中一篇將相片
+中因曝光過度或不足而失去的細節部份，利用texture synthesis方法加入合理的猜測，延
+續亞洲微軟研究院近年來在computational photography領域的創意與應用。 
+ 
+三、攜回資料名稱之內容 
+ 
+Eurographics Symposium on Rendering 2007會議論文集(又名Rendering Techniques)一冊。
+ 
+四、結語 
+ 

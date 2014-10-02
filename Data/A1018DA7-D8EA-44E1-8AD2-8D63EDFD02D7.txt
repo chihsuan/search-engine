@@ -1,0 +1,660 @@
+摘要 
+近年來，本實驗室已經成功地於實現一個支援共用
+記 憶 體 程 式 介 面 的 計 算 網 格 系 統 稱 為
+Teamster-G，並且將 OpenMP 共用記憶體程式介面
+實現於 Teamster-G。此項成果大幅地降低計算網
+格上撰寫平行程式的困難度，使得網格應用程式快
+速地豐富起來。然而，計算網格為一動態的環境。
+資源的可用度會隨著擁有者的工作負載而改變。因
+此必須小心選擇計算資源來使用，並且動態地改變
+資源的配置與工作的分配，才能獲得良好的執行效
+能。有鑑於此，本計畫開發了一個基於負載樣式的
+資源選擇方法以及多層的重新資源配置的機制來
+解決上述兩個問題，以確保 Teamster-G 系統上使
+用者程式的執行效能。 
+ 
+1. 簡介 
+經過這幾年來努力，本實驗室成功地開發一
+個可以支援網格計算的分散式共用記憶體系統稱
+為 TEAMSTER-G[1]，並且將 OPENMP 共用記憶體程式
+介面移植至 TEAMSTER-G 上[2]，讓使用者可以在計
+算網格上使用 OPENMP 介面開發平行程式，而不須
+再使用 MPI[3]、RPC[4]或者 RMI[5]的方式，因此
+大幅地降低在計算網格上撰寫平行程式的困難
+度，也加快網格運算應用程式的多樣化。 
+然而，由於計算網格上實為一動態的環境。資
+源可用度會隨著時間而變化，因此必須小心地選擇
+計算資源來執行使用者程式。如果選擇的機器可以
+穩定提供足夠的計算資源給使用者程式，則可以獲
+得良好的程式執行效能。反之，程式執行效能則會
+因資源不足而低落。由於資源可用度必須視機器擁
+有者的工作負載來決定。因此如何有效準確地預測
+機器擁有者未來的工作負載量，以作為資源選擇的
+標準，實為維繫程式執行效能的關鍵。過去雖然有
+相關地研究提出預測負載的方法[6][7][8]，卻都只
+適用於預測下一個短暫時間區間的工作負載，對於
+需要長時間運算的網格程式，這樣的負載預測方式
+來說是不夠的。因此需要一個可預測長時間之連續
+負載的方法。 
+另一方面，計算網格上通常是非專屬的。當使
+用者程式在某一機器上執行時，其機器擁有者亦可
+能在同一機器上執行其工作，如此便會造成資源競
+爭的現象。雖然藉由小心的資源選擇可以降低此一
+現象的發生機會，卻無法完全避免。故當此一現象
+發生時，就必須對使用者程式的資源配置作自我調
+適。通常過去的方法[15]是當擁有者在使用機器
+時，就暫停使用者工作，或者將使用者工作遷移至
+其他機器上執行。然而，在廣域網路上行程遷移的
+代價很高，而且資源擁有者亦非一直都維持高的工
+作負載。貿然地進行程的遷移對程式效能與資源利
+用率來說都不是一個好的策略。必較好的方式，是
+應該是根據資源擁有者的負載情形，採用不同程度
+的工作搬移策略。若負載輕，則進行小單位的工作
+搬移如：執行緒遷移。若負載重才進行大單位的遷
+移如行程遷移。 
+針對上述之問題，本研究劃特別在 Teamster-G
+系統上為 OpenMP 應用程式設計一套基於負載樣
+式的資源選擇演算法以及多層次之動態自我調適
+機制，藉以提升使用者程式在計算網格上執行的效
+能。 
+以下成果報告內容組織如下：第二章為
+Teamster-G 的介紹。第三、四章則分別詳述本研
+究計畫所發展之資源選擇演算法與程式自我調適
+之機置。第五章則是效能評估的討論，第六章則為
+本研究之結論與未來工作。 
+ 
+2. TEMASTER-G 
+TEAMSTER-G為一個可支援共用記憶體程式介面
+的運算網格系統。此系統是實現在 LINUX作業系統
+之上，可支援以 INTELX86 硬體架為主的 SMP 或 PC
+電腦叢集所形成的運算網格系統 TEAMSTER-G 主要
+包含了三個部分：TGRUN、TGRB(TEAMSTER-G RESOURCE 
+BROKER)與 TGCM( TEAMSTER-G CLUSTER MANAGER)。TGRUN
+的功能在提供使用者操作介面，讓使用者可以在其
+介面上下達資源配置與程式執行的命令，並觀看程
+式執行的結果。TGRB 則是負責提供資源搜尋與配
+置、檔案與 I/O 轉送的服務。至於 TGCM 則是負責
+管理叢集內的資源並與接受 TGRB 的協調，以滿足
+使用者資源配置的請求。在 TEAMSTER-G 系統裡，計
+算叢集被視為一個網格點(GRID POINT)。當一個計算
+叢集的擁有者願意提供資源給其他人使用時，須在
+其系統上執行 TGCM 並向網路上 MDS 註冊。TGCM 會
+定期將資源狀態回報給 MDS，而 TGRB 則會週期地
+向 MDS 詢問並更新資源狀態的資訊。 
+基本上，在 Teamster-G 的使用者行為可分為
+程式開發、資源配置與程式執行三個階段。下面就
+三個階段的系統運作做一概略的介紹。 
+程式開發階段，使用者可選擇 Pthread 或者
+OpenMP 介面來撰寫平行程式。如果選擇 Pthread，
+則只需利用 gcc 編譯器來編譯程式並連結 Pthread
+與 Teamster-G 的函式庫即可產生執行檔。若是使
+用 OpenMP，則需先經由 Omni 編譯器轉譯後，再
+利用 gcc 編譯器來編譯轉換過的程式並連結
+Pthead、Teamster-G 與分散式的 OpenMP 函式庫。
+為了提供最大的方便性，這些編譯的命令都已經寫
+成 Makefile，使用者只需呼叫 Makefile 來編譯程式
+即可產生執行檔。 
+當程式要開始執行之前，使用者可透過 TGrun
+的介面提出資源的需求，包括 CPU 的個數、速度
+與記憶體的容量等。TGRB 則會根據使用者需求找
+出合適的計算叢集然後向管理該計算叢集的
+TGCM 提出資源配置需求。若 TGCM 接受請求，
+則 TGRB 會得到一個成功訊息與資源配置的
+handler。若是 TGCM 拒絕要求，則 TGRB 會再尋
+找其他的可用資源，直至資源配置成功為止。若
+TGRB 找不到任何一個計算叢集可以滿足使用者
+的資源需求時，則會聚集多個計算叢集的資源來執
+行使用者的程式。Teamster-G 採用 session-oriented 
+與 space-sharing[9]的資源配置策略，在一個 session
+使用的比率；反之，則增加虛擬處理器的個數。當
+負載由輕度轉為中度時，則轉移部分的執行緒至其
+他節點，以減該節點的工作量，反之則從其他節
+點，轉移部份工作來執行。當負載由中度轉為重度
+時，則將使用者工作轉移至新的節點上執行。當工
+作整個轉移出去後，則要等到節點變為閒置後，才
+會有可能再把工作轉移回來執行。值的一提的是此
+自我調適方法是漸進式的。即使資源的擁有者負載
+一下由輕度轉為重度，自我調適的過程還是得有虛
+擬處理器開始執行，若狀態一直維持重度則繼續執
+行緒的轉移，直至整個工作轉移至新的節點。此策
+略之目的是為了避免負載突波所造成的誤判。 
+為了在實現此自我調適方法。我們在
+Teamster-G 上實現了四個機制：負載監測器、虛
+擬處理器調整機制、執行緒轉移機制以及節點重組
+機制。負載監測器之用途在於監測資源擁有者的負
+載狀態，並根據狀態的變化情形觸發對應自我調適
+機制。值得注意的是，當某節點想要進行執行緒轉
+移或者節點重組時，必須詢問 TGRB 以尋找接收
+的節點。當接收的節點找到後，新舊節點之間則開
+始進行執行緒或者行程轉移，並和其他節點進行資
+料一致性的同步。 
+ 
+5. 效能評估 
+在本研究計畫，我們針對所研發的資源選擇演
+算法與動態自我調適機制，分別進行效能的模擬與
+實測。其實驗的數據的討論如下： 
+ 
+5.1 資源選擇之效能 
+在資源選擇之效能評估中，我們製造了 50 個資
+源 30 天的負載波形作為模擬的實驗資料，並且分
+別對下表四種 cases 進行測試。而其中 Case A 的
+資源需求為 normal distribution，其所需 node 數的
+mean 值為 12.5，標準差為 1；工作時間的 mean 值
+為 6 小時，標準差為 1 小時。Case C 的資源需求
+則為 normal distribution 其 node 數的 mean 值為 25
+小時，標準差為 1 小時；工作時間的 mean 值為 6
+小時，標準差為 1 小時。 
+ 
+表一、模擬工作參數 
+Case A 50 個 test jobs 　  normal distribution 
+Case B 50 個 test jobs 採 uniform distribution 
+Case C 100 個 test jobs 採 normal distribution 
+Case D 100 個 test jobs 採 uniform distribution 
+ 
+在模擬的過程中，我們假設所有節點的計算能力一
+樣，而且採用 FIFO 與 space sharing 排程方式。
+在排程的過程中，分別採用只考慮目前負載的資源
+選擇演算法（Based on Current Workload, BCW）
+以及本研究所提出的基於負載樣式（Based on 
+Workload Patterns, BWP）的資源選擇演算法，並
+比較這兩種演算法對於所有工作完成的時間以及
+資源利用率上的效能表現。其結果如表二所示，BWP
+不論是在工作完成的時間上，還是在資源的利用率
+上，其效果都比只考慮目前負載狀態的 BCW 明顯要
+好很多。在完成全部工作的時間上，其改善幅度可
+達到 38%，而資源使用率上則可由 52%提升至 87%，
+其改善幅度為 60%。 
+ 
+表二 A、資源選擇演算法效能 
+執行時間(hr) BWP BCW 改善率 
+Case A 93 141 34% 
+Case B 119 191 38% 
+Case C 154 234 34% 
+Case D 225 352 36% 
+ 
+表二 B、資源選擇演算法效能 
+資源使用率 BWP BCW 改善率 
+Case A 0.814 0.537 52% 
+Case B 0.884 0.551 60% 
+Case C 0.841 0.553 52% 
+Case D 0.871 0.556 57% 
+ 
+另外，我們為了測試負載波形變動對 BWP 的影響，
+我們對每個節點的負載波形分別加入 5%及 10%的
+noises 使其與學習時的波形不一樣，藉以測量負
+載波形變化對 BWP 演算法的影響，以及顯示動態適
+的必要性。其實驗結果如表三所示。從數據看來，
+不管資源的需求分佈為何，資源負載波形的改變確
+實會對 BWP 演算法造成不良的影響，然而其效能的
+衰減程度尚在可接受的範圍內。另外，數據也顯示
+動態適應調整確實能夠減少資源負載波形改變所
+帶來的負面效應。由於其適應的速度與樣本更新速
+度有關，因此若要加快適應的速度，應該要將過時
+的樣本剔除，以減少其對資源可用度計算的影響。 
+ 
+表三 A、資源選擇演算法效能 
+執行時間 Non-adaptive BWP 
+Adaptive 
+BWP 
+0%noise 93 93 
+5%noise 94 94 
+Case
+A 
+10%noice 95 94 
+0%noise 119 119 
+5%noise 124 122 
+Case
+B 
+10%noice 127 126 
+0%noise 154 154 
+5%noise 161 157 
+Case
+C 
+10%noice 163 161 
+0%noise 225 225 
+5%noise 229 227 
+Case
+D 
+10%noice 226 224 
+價也要來得高些。未來我們將會針對這些議題進行
+深入的研究與討論。 
+ 
+參考文獻 
+[1] Tyng-Yeu Liang, Chun-Yi Wu, Ce-Kuen Shieh, 
+Jyh-Biau Chang, A Grid-enabled Software 
+Distributed Shared Memory System on Wide 
+Area Network, Future Generation Computer 
+Systems, Volume 23, Issue 4, p.547-557, May, 
+2007. (SCI Expanded) (國科會計劃補助 NSC 
+94-2218-E-151-003-) 
+[2] Tyng-Yeu Liang, Shig-Hsien Wang, Ce-Kuen 
+Shieh, Ching-Ming Huang and Liang-I Chang, 
+Design and Implementation of the OpenMP 
+Programming Interface on Linux-based SMP 
+Clusters, Journal of Information Science and 
+Engineering, vol. 22, pp. 785-798, July, 2006. 
+(國科會計劃補助 NSC 93-2218-E-151-004-) 
+(SCI) 
+[3] N.T. Karonis, B.R. Toonen, I.T. Foster, 
+MPICH-G2: A Grid-enabled implementation of 
+the message passing interface, Journal of 
+Parallel and Distributed Computing, 63 (5) 
+(2003) 551–563. 
+[4] G. Von Laszewski, I. Foster, J. Gawor, W. Smith, 
+S. Tuecke, CoG Kits: A bridge between high 
+performance grids computing and high 
+performance grids, In: ACM 2000 Grade 
+Conference. 2000, pp. 97-106. 
+[5] K. Seymour, H. Nakada, S. Matsuoka, D. 
+Dongarra, C. Lee, H. Casanova, GridRPC: A 
+remote procedure call API for grid computing, in: 
+ICL Technical Report ICL-UT-02-06, Innovative 
+Computing Laboratory, Department of 
+Computer Science, University of Tennessee, 
+June 2002. 
+[6] R. Wolski, N. Spring, and J. Hayes, “Predicting 
+the CPU Availability of Time-shared Unix 
+Systems on the Computational Grid,” Proc. 8th 
+IEEE Symp. on High Performance Distributed 
+Computing, pp. 1-8, 1999. 
+[7] L. Yang, I. Foster, and J.M. Schopf, Homeostatic 
+and tendency-based CPU load predictions, Int’l 
+Parallel and Distributed Processing Symp. 
+(IPDPS'03), pp. 42-50, 2003. 
+[8] Yuanyuan Zhang, Wei Sun, Yasushi Inoguchi, 
+CPU Load Predictions on the Computational 
+Grid, Sixth IEEE International Symposium on 
+Cluster Computing and the Grid (CCGRID'06), 
+pp. 321-326 2006. 
+[9] Dandamudi, S.P.; Ayachi S., “Performance of 
+hierarchical processor scheduling in 
+shared-memory multiprocessor systems”, IEEE 
+Transactions on Computer, Volume: 48 , Issue: 
+11, pp.1202 – 1213, Nov. 1999. 
+[10] Tyng-Yeu Liang, Chun-Yi Wu, Jyh-Biau Chang, 
+Ce-Kuen Shieh, “Enabling Software DSM 
+System for Grid Computing”, In the Proceeding 
+of International Symposium on Parallel 
+Architectures, Algorithms, and Networks 
+(I-SPAN2005), pp. 428-435, Las Vegas, USA, 
+Dec. 7-9, 2005.( 國 科 會 計 劃 補 助
+NSC93-2218-E-151-004-) 
+[11] R. Agrawal and R. Srikant, “Mining sequential 
+patterns”, IEEE International Conference on 
+Data Engineering, pp. 3-14 1995 
+[12] Tyng-Yeu Liang, Po-Cheng Chen, Sheng-Yuan 
+Chen, “A WWW Server for Developing 
+OpenMP Programs on Computational Grids”, 
+Appearing in The 2007 International Conference 
+on Grid Computing and Applications, Las Vegas, 
+USA, June-25-28, 2007. 
+[13] Po-Cheng Chen, Jyh-Biau Chang, Tyng-Yeu 
+Liang, Ce-Kuen Shieh, “A Multi-layer Resource 
+Reconfiguration Framework for Grid 
+Computing”, Appearing to 4th Workshop on 
+Middleware for Grid Computing, Melbourne, 
+Australia, Monday November 27, 2006. 
+[14] Keir Fraser, Steven Hand, Rolf Neugebauer, Ian 
+Pratt, Andrew War_eld, Mark Williamson, Safe 
+Hardware Access with the Xen Virtual Machine 
+Monitor, in Proceedings of the OASIS ASPLOS 
+2004 workshop, 2004. 
+[15] R. H. Arpaci, A. C. Dusseau, A. M. Vahdat, L. 
+T. Liu, T. E. Anderson, and D. A. Patterson, 
+"The Interaction of Parallel and Sequentail 
+Workloads on a Network of Workstations," 
+SIGMETRICS. May 1995, Ottawa, pp. 267-278. 
+ 
+英文：This method is to predict the future availability of 
+resources by mining the workload patterns from the workload 
+history of owners, and then select a set of resources for user 
+jobs according to the prediction result. Basically, A 
+workload pattern consists of the information as follows. 
+ 
+nodeid: node id。 
+power: computational power factor。 
+stime: start time of workload pattern（0-24）。 
+etime: end time of workload pattern (0-24) 
+length: length of workload pattern。 
+pattern: The workload pattern from stime to etime 
+support: the number of workload patterns appearing in 
+history。 
+era: the resource availability from stime to etime。 
+ 
+After workload pattern mining，we can select resource for user 
+jobs as follow. For example：If a user job is submitted at 
+time t，and it requires M nodes and R computational power
+demand，N free nodes：(Pntl represents the pattern of node n
+from t and (t+l-1)) 
+ 
+7. if N<M ， reject the request of resource allocation; 
+otherwise,go to the the next step。 
+8. Detect the load state s of each free node nn,and set 1 equal 
+to 1。 
+9. For each free node n，find the pattern Pntl with the condition 
+that its stime is t, and its length is l, and its first 
+code is sn , and its support value is maximal。 
+10.Sorting the N patterns obtained by step 3 in descendent
+order according to their era values。 
+11.Select the first M patterns in the sorted list, and summate 
+their era to total_era。 
+6. if total_era is more than or equal to R，allocate the nodes 
+corresponding to these M patterns for the user job；
+otherwise increase l by 1，repeat Step 3、4、5 and 6 until 
+total_ear is more than or equal to R。 
+可利用之產業 
+及 
+可開發之產品 
+叢集與網格運算系統之排程器。 
+技術特點 
+此技術的特點在於利用資料探勘的技術去預測資源於的未來工作
+負載，藉以選擇可用度較高的計算節點來使用者執行程式。 
+推廣及運用的價值 
+本技術可用於負載預測、工作排程與資源配置等。 
+ 
+  
+A Multi-layer Resource Reconfiguration Framework 
+ for Grid Computing 
+ 
+Po-Cheng Chen 
+ 
+Jyh-Biau Chang1 
+ 
+ 
+Tyng-Yeu Liang2 
+ 
+Ce-Kuen Shieh Yi-Chang Zhuang3
+Institute of Computer and Communication Engineering,  
+Department of Electrical Engineering, National Cheng Kung University 
+Department of Information Management, Leader University1 
+Department of Electrical Engineering, National Kaohsiung University of Applied Science2 
+Home Network Technology Center, Industrial Technology Research Institute/South3 
+ 
+ABSTRACT 
+Grid is a non-dedicated and dynamic computing environment. 
+Consequently, different programs have to compete with each other 
+for the same resources, and resource availability varies over time. 
+That causes the performance of user programs to degrade and to 
+become unpredictable. For resolving this problem, we propose a 
+multi-layer resource reconfiguration framework for grid 
+computing. As named, this framework adopts different resource 
+reconfiguration mechanisms for different workloads of resources. 
+We have implemented this framework on a grid-enabled DSM 
+system called Teamster-G. Our experimental result shows that our 
+proposed framework allows Teamster-G not only to fully utilize 
+abundant CPU cycles but also to minimize resource contention 
+between the jobs of resource consumers and those of resource 
+providers. As a result, the job throughput of Teamster-G is 
+effectively increased.   
+Categories and Subject Descriptors 
+C.1.4 [Parallel Architectures]: Distributed architectures;  
+C.2.4 [Distributed Systems]: Distributed applications; 
+D.4.1 [Process Management]: Threads;  
+D.4.7 [Organization and Design]: Distributed systems;  
+D.4.8 [Performance]: Operational analysis 
+General Terms 
+Design, Experimentation, Performance, Measurement.  
+Keywords 
+Reconfiguration, Non-dedication, DSM, Cluster, Grid. 
+1. INTRODUCTION 
+Grids [11] are a new solution for compute-intensive and data-
+intensive applications. This system is built by aggregating 
+geographically-distributed resources to form a single resource for 
+resolving the same problems. It allows users to access different 
+types of resources by a uniform mean and without caring about 
+resource location. As a result, computational grids have been 
+applied in many research topics such as bioinformatics, high 
+energy physics, weather forecast and data mining etc. 
+However, different to computing clusters, grid resources are non-
+dedicated. When users and resource owners simultaneously 
+execute their programs on the same resources, the turnaround 
+times of these programs will increase due to resource competition. 
+This will degrade the willingness of resource owners to share their 
+resources with other people. Moreover, users will prefer clusters 
+rather than grids to be the platform of executing their jobs for the 
+sake of program performance. Therefore, dynamic resource 
+reconfiguration is necessary for resolving this problem. 
+In the past studies, several methods have been proposed for the 
+problem of resource reconfiguration. The authors of the paper [18] 
+[24-26] proposed an immediate method to prevent the resource 
+competition between users and resource owners. In other words, 
+user jobs are immediately migrated to another resource when the 
+resource owner starts to execute their jobs on their resources. This 
+method is the best for minimizing the interference to owner jobs. 
+However, it is not proper for user jobs to exploiting abandon CPU 
+cycles of resources especially when the owner jobs just execute 
+for a very short time. In order to effectively steal abandon CPU 
+cycles, Pete proposed a method called linger longer [23]. As 
+named, a user job does not immediately migrate to another 
+resource when owner jobs start to run. Conversely, the user 
+program will linger at the same resources for a period time. If it 
+predicts that the benefit from moving to another resource is more 
+than the loss from competing with owner jobs for the same 
+resource, it will decide to migrate to another resource. Although 
+this method is better than the immediate method, it is not effective 
+enough for exploiting available CPU cycles. The main reason is 
+that the work load of owner jobs varies over time, and then the 
+CPU cycles are not always fully exploited. Therefore, adjusting 
+the percentage of stealing CPU cycles according to the workload 
+kid@hpds.ee.ncku.edu.tw andrew@hpds.ee.ncku.edu.tw lty@hpds.ee.ncku.edu.tw shieh@eembox.ee.ncku.edu.tw yczhuang@itri.org.tw 
+"Permission to make digital or hard copies of all or part of this work for 
+personal or classroom use is granted without fee provided that copies are 
+not made or distributed for profit or commercial advantage and that copies 
+bear this notice and the full citation on the first page. To copy otherwise, 
+to republish, to post on servers or to redistribute to lists, requires prior 
+specific permission and/or a fee. 
+MGC '06, November 27, 2006 Melbourne, Australia Copyright 2006 
+ACM 1-59593-581-9/06/11... $5.00"  
+  
+guest jobs from the over-loaded cluster and our MRF provide 
+cluster reconfiguration to remove the overloaded cluster. 
+Finally, if the resource owners execute heavy-loaded applications 
+in a very short period of time, this kind of workload is called 
+pulse-loaded. Actually, this resource condition has almost no 
+effect upon the guest jobs of the grid systems. Taking any 
+reconfiguration action under this situation will induce unnecessary 
+ping-pong effect that could be harmful to the performance of the 
+grid systems. Nevertheless, it is a troublesome matter that the grid 
+system can detect this situation. In our MRF, the low cost of 
+applying virtual processor reconfiguration could minimize the 
+performance impact caused by the pulse loads. 
+4. MRF on Teamster-G 
+4.1 The System Architecture 
+In this section, we present a brief overview of our implementation. 
+A more detailed exposition could be found in [1]. To provide 
+Teamster-G with multi-layer reconfigure-ability, we add six 
+components of the MRF into our experimental platform, 
+Teamster-G (shown as Figure 2). These components supply the 
+user of the MRF a set of API to command corresponding 
+reconfiguration manager for achieving different layers 
+reconfiguration. In the node and cluster reconfiguration, two or 
+more different managers need to work together. In the following 
+paragraph, we are going to discuss the functions of these 
+components respectively. 
+ 
+Figure 2. MRF on Teamster-G 
+ 
+MM (Monitoring Module) is started on every node when 
+Teamster-G is initiated. It is responsible for collecting workload 
+information and providing this information to the user of MRF. 
+Thus, the users of MRF can analyze this information to judge 
+which layer of reconfiguration mechanisms should be performed. 
+VPRM (Virtual Processor Reconfiguration Manager) is in charge 
+when virtual processor reconfiguration mechanism is invoked. It 
+has abilities to add or delete virtual processors, thus it can 
+effectively modulate the CPU utilization ratio of Teamster-G node. 
+NRM (Node Reconfiguration Manager) is provided with two 
+abilities for user to perform node reconfiguration. These abilities 
+include adding and deleting normal node in a Teamster-G cluster. 
+In addition, CRM (Cluster Reconfiguration Manager) takes order 
+from the user to produce cluster reconfiguration. Both NRM and 
+CRM need help form WTMM (Working Thread Migration 
+Manager) and Coordinator. WTMM is responsible for moving the 
+working threads of the DSM parallel application between nodes 
+(as well as between clusters). Further, both NRM and CRM are 
+also responsible for keeping the synchronization of working 
+threads after thread migration. Coordinator is used to help NRM 
+and CRM for finding a suitable node (as well as a suitable cluster) 
+for substituting the overloaded node (as well as overloaded cluster) 
+whenever the user of MRF wants to perform node reconfiguration 
+(as well as cluster reconfiguration). However, in the current 
+implementation, we do not discuss how Coordinator searches new 
+grid resources because it is not the main concern of this paper. We 
+assumed that Coordinator could find new grid resources by 
+querying the resources broker of Teamster-G. Furthermore, every 
+Coordinator also collects the workload information of every node 
+in the local cluster and exchanges this information with sibling 
+Coordinator on the other cluster of the same Teamster-G Grid. 
+Thus, if the user likes to perform node or cluster reconfiguration 
+but there is no new Grid resources could be a substituted node or 
+form a substituted cluster, Coordinator can find an appropriate 
+light-loaded node or cluster to be a substituted node or cluster 
+from existed Grid resources. 
+4.2 The Operation of the MRF on Teamster-G 
+In this section, we are bringing a living example to explain how  
+our reconfiguration framework operation.  
+At first, it is a DSM parallel application which is running on a 
+virtual dedicated cluster of Teamster-G with our MRF. The virtual 
+dedicated cluster consists of many nodes. In a moment, certain 
+nodes of this virtual dedicated cluster become overloaded due to 
+continuously running applications of resource owner. In dealing 
+with this situation, the user of MRF does not replace the overhead 
+nodes with new nodes immediately, rather progresses resource 
+reconfiguration step by step with the multi-layer reconfiguration 
+mechanisms.  
+In the beginning, the user of MRF periodically (the default value 
+is every 30 sec. in the current implementation) inquires MM about 
+the workload status of each node. MM finds the workload of every 
+node is all in the light state, so it does not initiate any 
+reconfiguration at this time. After some time, the resource owner 
+starts to execute the host own job on a certain node. In the next 
+workload monitoring state, the user of MRF is aware of workload 
+change on the overloaded node via MM, yet it is in the medium 
+state not heavy state. Therefore, the user of MRF just invokes 
+VPRM to yield some virtual processors (the default value is 
+cutting down a half of virtual processors) on the overloaded node 
+for intra-node reconfiguration.  
+After that, the resource owner again runs another host own job on 
+the same node. It implies that the resource owner really demands a 
+great amount of computational power of this node to do his (or her) 
+jobs. Consequently, the user of MRF calls NRM to replace this 
+node for intra-cluster reconfiguration after he (or she) detects that 
+the workload state of this node becomes heavy. At this moment, 
+NRM asks Coordinator on this cluster for a substituted node. First 
+of all, Coordinator looks the resource broker of Teamster-G up for 
+a new node. If there is no available node can be the substituted 
+node Coordinator finds a light-loaded node to be the substituted 
+node for NRM. Finally, NRM commands WTMM to migrate 
+working threads of the overloaded node to the substituted node 
+and finishes node reconfiguration. 
+After some time, the resource owner wants to execute a large-
+sized host own job. Once the user of MRF detects the average 
+  
+Figure 4 shows the experimental result in the case of the medium 
+host workload. In this case, our MRF strategy decreases a half of 
+virtual processors which are employed by the guest application 
+but does not immediately. Basically, the experimental result in 
+this case is similar to the result in the case of the heavy host 
+workload. However, MRF can improve about 25% system 
+throughput compared to ND, if the experimental guest application 
+is also part of medium loaded jobs, such as MM. The reason is 
+that our MRF strategy can steal more available CPU cycles than 
+ND strategy. Besides, as our anticipation WTM strategy can not 
+perform well. 
+Figure 5 shows that doing nothing is the best for the case of the 
+pulse workload. Unfortunately, we can not recognize the pulse 
+workload unless we observe the workload state for a period of 
+time. However, MRF is progressive in resource reconfiguration. It 
+always applies virtual processor reconfiguration and then node 
+reconfiguration. Therefore, after the pulse workload is over, MRF 
+can increase the number of virtual processors and quickly regain 
+the CPU cycles lost in the last virtual processor reconfiguration. 
+As a result, the negative influence on system throughput can be 
+minimized. 
+According to our experimental results, we get a brief summary 
+here. Although, the users who adopt our MRF can not obtain the 
+best performance of all cases, the users can give consideration to 
+different host workload situation. 
+5.2 The Inter-cluster Reconfiguration 
+In this experiment, we intend to evaluate the effectiveness of 
+inter-cluster reconfiguration. Table 1 is the parameters of the 
+experimental environment. 
+Initially, the guest application was executed across the Cluster 1 
+and the Cluster 2. At the same time, we ran a host application in 
+the Cluster 2. Because the host application requires a great deal of 
+computational resources, all of the execution nodes in the Cluster 
+2 become overloaded. After applying MRF, the guest job 
+distributed to the Cluster 2 is migrated to the Cluster 3 for 
+execution. 
+Table 2. Parameters of the experimental environment 
+ Host Name CPU RAM Network 
+Cluster 1 Khpds1, 2, 3, 4 
+2 × Pentium IV 
+3 GHz 
+1 GB 100 Mbps Ethernet
+Cluster 2 Hpds32, 33 
+4 × Pentium III 
+Xeon 500 MHz 
+512 MB 100 Mbps Ethernet
+Cluster 3 Hpds34, 36 
+4 × Pentium III 
+Xeon 500 MHz 
+512 MB 100 Mbps Ethernet
+Software Configuration: Linux Fedora Core 2 (2.6.8-1.521 SMP) and GCC 3.3.3 
+Average Round Trip Time Between Cluster 1 and 2: 5.034 ms, 9 hops 
+Average Round Trip Time Between Cluster 1 and 3: 5.034 ms, 9 hops 
+Average Round Trip Time Between Cluster 2 and 2: 2.424 ms, 1 hops 
+The experimental results are depicted in Figure 6 and Figure 7. 
+Among them, the concurrently executing time includes the times 
+of resource workload monitoring time (30 sec.) and the 
+reconfiguration overhead. The results suggest that our multi-layer 
+reconfiguration framework can achieve 7% improvement in 
+system throughput compared with doing nothing. Furthermore, 
+our multi-layer reconfiguration can deliver 5% and 53% 
+performance improvement to the host application and the guest 
+application, respectively. 
+The experimental DSM parallel application (Guest AP)
+0 100 200 300 400 500 600 700
+Dedication
+MRF
+No Reconfiguration
+Executing Alone in G1 + G2 Concuerrently Executing
+Executing Alone in G1 + G3
+ 
+Figure 6. The turn-around time of the guest AP 
+Host DSM parallel application (Heavy Workload)
+0 200 400 600 800 1000
+Dedication
+MRF
+No Reconfiguration
+Executing Alone in G2 (Before Reconfiguration)
+Concuerrently Executing
+Executing Alone in G2 (After Reconfiguration)
+ 
+Figure 7. The turn-around time of the host AP 
+ 
+6. Conclusions and Future Works 
+In this paper, we have proposed a multilayer resource 
+reconfiguration framework called MRF for grid computing. We 
+have implemented the proposed framework on Teamster-G. Our 
+experimental results show that MRF is more effective for 
+minimizing the interference to the owner jobs, and maximizing the 
+utilization of CPU cycles than the other methods. As a result, the 
+job throughput of Teamster-G is significantly improved. 
+In our current implementation, the effectiveness of resource 
+reconfiguration is dependent on user decisions such as 
+reconfiguration timing and adopted reconfiguration type. In order 
+to reduce user’s work, we will develop an automatic mechanism to 
+handle these problems for resource reconfiguration in 
+computational grids.  We will perhaps provide resource owners 
+with a mechanism to specify how much CPU they want to share. 
+Besides, we also suppose that a history-based performance 
+prediction for each resource could be useful for automatic 
+workload detection. 
+7. Reference 
+[1] Po-Cheng Chen., “A Multi-layer Reconfiguration Framework 
+on the Grid-enabled DSM System: Teamster-G”, Master 
+Thesis, National Cheng Kung University, Tainan, Taiwan, 
+R.O.C 2006 
+(sec.) 
+(sec.) 

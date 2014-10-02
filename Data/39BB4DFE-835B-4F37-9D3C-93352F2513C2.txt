@@ -1,0 +1,418 @@
+ 2
+中文摘要 
+ 
+關鍵字：封包分類、防火牆、服務品質、封包過濾、規則、衝突分析  
+ 
+封包分類藉由在封包檔頭中的欄位所構成的多維空間中執行點定位，藉由預先設定好的規
+則來將封包分成不同的類別。目前封包分類的應用十分廣泛，從傳統應用在網際網路差異
+化服務中來決定封包傳送之優先權到網路安全中用來過濾潛在威脅之封包，以及其他如負
+擔平衡和流量計費等。 
+在封包分類中，由於各個欄位所組成的多維度空間大小高達 2104 個座標，因此封包分類演
+算法經常被視為無法同時兼顧時間與空間的複雜度，當資料庫不大時，採用犧牲空間的方
+式經常可以達到不錯的效能，但是當資料庫超過上萬條規則時，現有方法的效能經常會大
+幅衰減，甚至在時間與空間兩端都無法滿足現有的要求。也因此我們希望能針對這類型超
+大規則資料庫來設計一個能確保時間與空間複雜度的演算法，以滿足未來網路的需求。 
+在此計畫中，我們針對封包分類問題提出一個可擴充的高速演算法。該演算法以雜湊表為
+基礎，將規則依據其欄位的值來予以分類並放入不同的雜湊表中。在此一架構中，最大的
+優勢在於雜湊表的搜尋本身即具有可擴充的特性，但是當規則資料庫增大時，雜湊表個數
+仍可能太多而導致搜尋時間過長。在我們目前的測試中，當規則數目超過一百萬條時，雜
+湊表的個數將高達一千五百個以上，也因此我們必須進一步減少雜湊表的個數。 
+在此研究計畫中，我們設計了數個雜湊表的處理技術。以目前而言，要合併不同的雜湊表
+經常要付出相當多的記憶體空間，也就是以空間換取時間，新的演算法可以針對這部份加
+以改良。改進的方式結合編碼技術以及新的資料結構以大幅改善在雜湊表合併時所需的空
+間。此外，我們也針對規則更新的議題提出完整的解決方案，在新的方案中，每一筆更新
+的規則都可以在單一筆搜尋的時間內完成。透過與目前現有的著名演算法作比較。我們發
+現新的演算法可在時間與空間兩者之間提供更好的平衡與實際的效能。 
+ 4
+一、研究計畫內容： 
+（一）前言 
+在目前的網際網路上，路由器只需依據目的地位址判斷每筆封包的路由後再加以傳送即
+可，因此在傳送的優先權上所有的封包都一視同仁。然而網路服務提供者為了滿足上述額
+外的需求，路由器必須具備封包分類的功能，此功能讓路由器能夠判斷封包內除了目的位
+址以外的欄位，例如來源位址、傳送層的埠號與傳送層的通訊協定等，並可依據相關欄位
+的值來判斷該封包的用途與合法性，而為了進一步判斷其用途與決定如何處理封包，路由
+器中必須維護一組封包規則(Rule)或是過濾條件(Filter)，每條規則內都必須載明如何處
+理符合該規則的封包。每一個進入路由器的封包經過比對後確認符合的規則，再進一步由
+路由器進行相關的處理。例如，符合某個規則的封包會被辨識為一個合法的封包，而只有
+符合的封包方能被允許其進入企業內的網路，反之，則基於安全原則將該封包直接刪除以
+避免影響內部網路。網路安全對多維度封包分類的需求較之於網路服務品質複雜性更高，
+原因在於網路威脅的多樣性可能導致防火牆必須要找出所有可能與該封包相關的威脅(例
+如病毒)，而後才能依所有可能的威脅來處理該封包。在本計畫中我們針對超大型規則資料
+庫進行研究，由於其效能不但對於影響網際網路的未來應用，對網路設備生產者的發展亦
+有重要影響，而且對於研究者來說也是相當具有挑戰性的議題，同時，我們也將把資料結
+構的更新納入我們研究的議題中。接下來我們分別針對封包分類議題進行問題定義、文獻
+探討與研究方法進行說明。 
+ 
+（二）研究目的 
+我們先定義封包分類演算法所要解決的問題，在一個規則資料庫中，包含了許多的規則與
+過濾條件，每個規則(與過濾條件)都是由封包檔頭中的數個欄位中的值所組成，每個欄位
+的值可以是變動長度的位址字首字串(Variable-length Prefix)、一個任意區間(Range)
+或是一個數值(Explicit Value)，對於一個 d個欄位的規則 Rj，我們可以定義成 Rj=(Rj [1], 
+Rj [2],…, Rj [d])。通常在封包分類中，會使用到的欄位包括 IP 起始位址、目標位址、
+協定類別、發起端與接收端的傳送層埠號等。圖一列舉出封包中可以作為分類規則的欄位，
+這些欄位並不限於網路層的欄位(如起始位址與目標位址)， 資料連結層與傳送層的欄位也
+可包含在內。我們稱一個封包符合一個規則的條件是每一個封包的 d 個欄位值與該規則的
+d 個欄位定義值均相符。對於任一封包而言，有可能同時符合數個規則，在單一配對的封
+包分類中，每一個規則都被設定權重(如圖二所示)，當封包符合數個規則時，最高權重規
+則的指定動作會被執行(如圖三所示)。但是針對防火牆或入侵偵測系統所設計之封包分
+類，則所有的符合規則都將被取出，因此無法使用利用權重簡化搜尋的加速手段。此外，
+IP 位址搜尋（IP Address Lookup）在理論上可視為封包分類問題的一維度特例或是簡化
+版本，許多在 IP 位址搜尋的技巧亦被用來改善封包分類演算法的效能。利用將多欄位搜
+尋的問題分解成多個單一欄位的搜尋，以進一步簡化搜尋的時間與空間複雜度。 
+ 
+ 6
+使用軟體製作的演算法具有較高的彈性。 
+在上述的六個評量因子中，我們將著重於速度、空間、規則數目與更新等四項因子。因為
+我們的演算法是利用軟體方式設計與實作，因此可以滿足第六項對製作彈性的要求。 
+ 
+（三）文獻探討 
+最直覺的封包分類演算法即利用線性搜尋，透過逐一比對來找出符合的規則，然而此方法
+無法處理大量的規則，但由於其簡易的設計與節省的空間，線性搜尋在封包分類演算法中
+仍扮演了重要的角色，許多的演算法透過將規則資料庫切成許多小資料庫的組合，進而使
+用線性搜尋來處理小資料庫內的規則，透過這種分類的方式可以大幅降低對空間的需求，
+然而搜尋的速度勢必會受到影響。接下來我們將分類回顧現有的演算法並說明相關的弱
+點，同時針對各演算法探討其支援更新的能力。 
+ 
+硬體解決方案：最常見的硬體解決方案是利用三態內容定址記憶體(Ternary Content 
+Addressable Memory, TCAM)，透過這類型的記憶體，我們可將規則直接放入TCAM中，然後
+平行比對所有的規則。此方法可說是最快的解決方案[7][8]。然而，TCAM的一些限制仍造
+成其不適用於某些應用環境，例如，TCAM無法有效的處理任意區間的欄位而會導致儲存的
+規則數目大增，此外，TCAM亦有高耗電、成本高等缺點，且TCAM每個欄位的長度都是固定
+了，間接導致一些空間的浪費，另外，TCAM支援的規則數目不多亦限制了其使用的環境。
+除了上述限制外，TCAM只能找到第一筆符合的規則，因此並不適用於多重配對封包分類，
+在[29]中，應用TCAM來處理多重配對封包分類的方法已被提出，然而其所需的TCAM容量經
+常是規則數目的數倍之譜。 
+ 
+另一類型的硬體解決方案則是使用一個位元來代表一個規則，所有的規則進一步組成一個
+位元向量(Bit Vector, BV)，並在資料結構中針對每個不同欄位值內都產生一個BV，搜尋
+時只需找到相關的欄位值，並將相關的BV取出後交集即可得到所有符合的規則。此方法的
+問題在於當規則數目很多時，位元向量將佔很大的空間，並需要花很長的時間來存取。在
+[4]中，針對存取時間改善的方案已被提出，然而其空間的問題並未解決。在[28]中，我們
+亦提出了針對時間與空間效能同時改良的方案。 
+ 
+在硬體解決方案中，更新是一個持續存在的議題，例如在TCAM中進行更新會需要搬動大量
+的記憶體項目，而在位元向量方案中，新增的規則亦可能牽涉到多筆位元向量的重建，進
+而導致大量的時間延遲。所以硬體方案通常在更新的支援能力表現不佳。 
+ 
+樹狀資料結構解決方案：在[9]中提出了利用Grid-of-tries的資料結構來處理封包分類，
+然而此演算法只能處理二維規則。因此在[14]中另提出了將Grid-of-tries的資料結構延伸
+到多維規則的演算法，但是搜尋效能O(W2)較不理想。另一類針對二維的資料結構有
+Area-Based-Quadtree [15]與Fat Inverted Segment Tree [11]等。有數篇論文針對只有
+兩維的情況作演算法設計，細節可參考[5]與[22]。 
+ 
+在Grid-of-tries演算法中因為牽涉到複雜的鏈結資料結構，因此通常被視為無法更新。而
+ 8
+結構設計了一個混合式的封包分類演算法，透過動態調整規則存放的資料結構，我們可以
+降低整體資料結構所需空間，並且加快搜尋的速度。此方法另一最重要的特色在於可以支
+援動態更新。 
+ 
+在[36] 中我們同樣設計了一個混合式資料結構的演算法，此論文中我們結合雜湊表與
+Cross-product表格來達到比前述演算法更快的搜尋效能，同時我們的演算法仍可支援動態
+更新。 
+ 
+除了上述已接受的論文之外，我們尚有數篇論文已投稿中。 
+（五）結果與討論 
+在本計畫中，我們設計了數個更新的演算法，透過運算產生最佳的資料結構，我們的資料
+結構可以同時兼顧搜尋的時間與空間，以得到更加的擴充性。除了三篇已經接受的成果外，
+目前其他研究的成果也都已經進入發表的程序，例如包含我們主要的演算法的論文目前正
+在進行revise，另外我們在研究的過程中亦陸續衍生出數篇規模較小的封包分類效能改進
+方案，希望能夠在近期內陸續完成投稿。 
+ 
+二、參考文獻： 
+[1] S. Blake et al, “An Architecture for Differentiated Services,＂ RFC 2475, 1998. 
+[2] P. Gupta and N. McKeown, “Packet Classification on Multiple Fields,＂ in ACM SIGCOMM, 
+September 1999, pp.147–160. 
+[3] V. Srinivasan, G. Varghese and S. Suri, “Packet Classification using Tuple Space 
+Search,＂ in ACM SIGCOMM, September 1999, pp. 135–146. 
+[4] F. Baboescu and G. Varghese, “Scalable packet classification,＂ in ACM SIGCOMM ＇01, 
+August 2001, pp. 199–210. 
+[5] Pankaj Gupta and Nick McKeown, “Algorithms For Packet Classification,＂ IEEE Network 
+Magazine, vol. 15, no. 2, pp. 24–32, 2001. 
+[6] Vijay P. Kumar, T. V. Lakshman and Dimitrios Stiliadis, “Beyond Best Effort: Router 
+Architectures for the Differentiated Services of Tomorrow＇s Internet,＂ IEEE 
+Communication Magazine, vol. 36, no. 5, pp. 152–164, 1998. 
+[7] J. van Lunteren and T. Engbersen, “Fast and scalable packet classification,＂ IEEE 
+JSAC, vol. 21, no. 4, pp. 560–571, May 2003. 
+[8] Huan Liu, “Efficient mapping of range classifier into ternary-CAM,＂ in Hot 
+Interconnects X, August 2002, pp. 95–100. 
+[9] V. Srinivasan, G. Varghese, S. Suri and M. Waldvogel, “Fast Scalable Level Four 
+Switching,＂ in ACM SIGCOMM, September 1998, pp. 191–202. 
+[10] T.V. Lakshman and D. Stidialis, “High Speed Policy-based Packet Forwarding Using 
+Efficient Multi-dimensional Range Matching,＂ in ACM SIGCOMM, September 1998, pp. 
+203–214. 
+[11] Anja Feldmann and S. Muthukrishnan, “Tradeoffs for Packet Classification,＂ in IEEE 
+ 10
+[30] X. H. Sun, S. K. Sahni, and Y. Q. Zhao, “Packet classification consuming small amount 
+of memory,＂ IEEE/Acm Transactions on Networking, Vol. 13, No. 5, pp. 1135-1145, 2005. 
+[31] Pi-Chung Wang, Chia-Tai Chan, Shuo-Cheng Hu, Chung-Liang Lee and Wei-Chun Tseng, 
+“High-Speed Packet Classification for Differentiated Services in NGNs,＂ IEEE 
+Transactions on Multimedia, Vol. 6, No. 06, December 2004, pp. 925-935. 
+[32] Pi-Chung Wang, Chia-Tai Chan, Chun-Liang Lee and Hung-Yi Chang, “Scalable Packet 
+Classification for Enabling Internet Differentiated Services,＂ IEEE Transactions 
+on Multimedia, Vol. 8, No. 06, December 2006, pp. 1239-1249. 
+[33] Pi-Chung Wang, Chun-Liang Lee, Chia-Tai Chan and Hung-Yi Chang, “Performance 
+Improvement of Two-Dimensional Packet Classification by Filter Rephrasing,＂ 
+IEEE/ACM Transactions on Networking, Vol. 15, No. 04, August 2007, pp. 906-917. [SCI, 
+EI] 
+[34] Pi-Chung Wang, “Efficient Packet Classification with a Hybrid Algorithm,＂ 
+International Journal of Communication Systems (Special Issue: Next Generation 
+Networks), Accepted. 
+[35] Pi-Chung Wang, “Efficient Packet Classification with a Hybrid Algorithm,＂ IEICE 
+Transactions on Information and Systems (Special Issue: Technologies and their 
+Applications on the Internet), Accepted. 
+[36] Pi-Chung Wang, “Scalable Packet Classification with Controlled Cross-producting,＂ 
+Computer Networks (Special Issue: Traffic classification and its applications to 
+modern networks), Vol. 53, Issue. 6, 2009, pp. 821-834. 
+三、計畫成果自評： 
+在本研究計畫中我們完成了數個新的封包分類演算法與數個改良式演算法，輔以詳盡的效
+能驗證，在實作其他現有的演算法並與之比較後，我們證明我們的演算法確實可以大幅增
+進封包分類的效能，目前共有三篇期刊論文發表，後續我們仍將持續鑽研此一領域，並加
+速論文發表的時程。後續我們亦將朝向系統實作的目標邁進，期能建立一可運作的平台並
+建立技術授權的管道。 
+二、 與會心得 
+本次會議中我們發表的第一篇論文是關於在 mobile ad hoc networks 的架構
+下的路由演算法，該演算法結合定位機制做到可以在更短的時間內完成路由
+的建立，並且降低建立路由所需的訊息量。與現有其他方法比較時，我們發
+現新的方法可以有效改善原有的機制。 
+在第二篇論文中，我們結合無線感測網路與電話系統，達到利用無線感測網
+路定位以達成電話系統自動轉接的功能，透過此系統，可減少人力設定的成
+本並減少電話漏接的情況。 
+透過在論文報告中所得到的迴響，我們希望能在近期內進一步加強論文的內
+容與架構，並投稿至期刊發表。 
+update message may need to be sent to a distant virtual home 
+region and traverse a long distance to discover the destination 
+node’s location. 
+The second representative service is SLALoM [1]. 
+SLALoM combines the concept of the hierarchical grid with 
+virtual home region of SLURP to maintain multiple virtual 
+home regions that are distributed uniformly over the network 
+area. Similar to SLURP, the geographic area of the network is 
+divided into many squares which are called order-1 squares 
+and each combines k*k order-1 squares to form order-2 
+squares. Each node in the network selects one order-1 square 
+in each order-2 square as its virtual home regions. Figure 1(b) 
+shows an example where a node D selects 16 virtual home 
+regions by a hash function and updates its location to the 
+nodes inside those regions. To reduce the update overhead, 
+SLALoM uses a hierarchical update strategy. Every node 
+updates the virtual home regions that lie in or are adjacent to 
+the node’s present order-2 squares more frequently than those 
+in the other areas. Those virtual home regions are called near 
+home regions and other regions are called far home regions. 
+Thus, near home regions have the latest location information 
+and the information in a far home region would be inexact. 
+SLALoM keeps track of location information for each node in 
+multiple regions, thereby improving the query performance. 
+However, it is unavoidable for SLALoM to incur update 
+overhead much more than SLURP creating the problem of 
+scalability. In addition, some of those multiple virtual home 
+regions may not be queried by other nodes which means extra 
+resources will be required to maintain those virtual home 
+regions constantly. 
+ADLS [8] adopts an adaptive demand-driven approach in 
+creating and maintaining multiple virtual home regions to 
+improve resource efficiency of SLALoM. In ADLS, the 
+network geographic area is divided in a similar way as in the 
+SLALoM scheme, but each node maintains only one primary 
+home region in the initial condition. When a node becomes 
+aware of the querying nodes that are not in the same order-2 
+square as its primary home region, secondary home regions 
+could be created in the order-2 squares of the querying sources. 
+Each secondary home region is then maintained only for a 
+limited lifetime. For example, when node D gets data packets 
+from node S, it will be aware of the demand for its location 
+information from S’s current order-2 square which is not in 
+the same order-2 square as its primary home region. Then D 
+will create the secondary home region in S’s current order-2 
+square by sending an update message, other node in the same 
+order-2 square could query the secondary home region to get 
+the latest location of D. Figure 1(c) gives an illustration. A 
+concern for ADLS is that the query pattern of nodes may not 
+be anticipated. In other words, nodes in the same order-2 
+square may rarely query the same destination node, and as a 
+result, a waste of resources just like SLALoM to maintain 
+those secondary home regions would be inevitable. In addition, 
+when a query fails in a secondary home region, the proxy node 
+then relays the query to the destination node’s primary home 
+region. The problem of traversing long distance to discover 
+the destination node’s location in SLURP is still present in 
+ADLS. 
+In [10], it is assumed that each ad hoc node can calculate 
+its own position, e.g., through a GPS system. Each node, or a 
+user, has a circle-shaped VHR centered at a fixed point. The 
+center of the VHR is the result of a hash function using this 
+node’s ID and center of the ad hoc network as the input. The 
+network center is roughly estimated at the time the network is 
+initialized, which is useful for reducing the possibility that a 
+VHR is out of the network coverage. The size of a VHR is 
+determined by the server density and the node mobility. When 
+a node requests a position, it sends the position request to the 
+requester’s VHR. The position request also carries the updated 
+position of the requester. This information is needed for a 
+server to send the position reply to the requester. The request 
+will be received by the proxy first. If the proxy happens to be 
+a server that has the requested position, it sends back a 
+position reply directly. Otherwise the proxy starts searching 
+for the servers. When a server receives the request, it will 
+judge whether it has the updated position of the requester. A 
+server has the updated position of a user if, since it receives 
+the last position update from the user, it stays within the VHR 
+all the time. If the request is received by a server who has the 
+position information, or in other words, such a server is found, 
+the server will send a position reply directly to the requester 
+through GPSR. 
+   
+(a)  SLURP                                          (b) SLALoM 
+ 
+(c) ADLS 
+Figure 1:  Examples of virtual home region location services 
+III. DESCRIPTION OF  SAVHR 
+In previous virtual home region schemes, the problem 
+with a distant position to discover a node’s location mainly 
+stems from the independent selection of virtual home regions. 
+In order to solve this problem, the basic idea behind our 
+165
+(3) Query success ratio – The ratio of the number of query 
+replies received at the source nodes to the number of 
+location queries initiated by all nodes. 
+A. Update and Query Path Length 
+      Our results show that SAVHR outperforms SLURP and 
+ADLS in terms of the update path length. Since each scheme 
+uses nodes in different positions, SAVHR creates the shortest 
+path length and CHR could bound the worst case update path 
+length. 
+SAVHR also performs better than the other two protocols 
+in the worst case of query path length. This is because the 
+update strategy adopted by SAVHR constantly varies with the 
+node’s newest location. The establishment of the CHR, 
+therefore, depends on the selection of the shortest path as 
+shown in Figure 2(a, b). 
+B. The Total Overhead 
+The total overhead comprises the total cost of all control 
+messages. Most of the previous multiple virtual home region 
+research aimed to enhance the efficiency of location discovery 
+but also increased the overhead of updates. The total overhead 
+of the previous schemes could be much more than SLURP that 
+uses the single virtual home region protocol. ADLS induces a 
+higher overhead than the other two protocols, as the majority of 
+its traffic is from the extra location updates for secondary home 
+regions. Although SAVHR needs to defray the extra cost of 
+message deletions, the scheme still has the lowest cost of the 
+total overhead shown in Figure2(c). 
+C. Query Success Ratio 
+In our simulations, queries cannot be retransmitted. They 
+were confined to one trial only.  Errors occurred during the 
+simulations, mainly when a neighbor node moved out of the 
+forwarding node’s transmission range during a beacon period. 
+Then the forwarding node would make a mistake by 
+forwarding the message to the missing node that had already 
+left the transmission range. Therefore, when the transmission 
+path length is longer, the number of false positives is also 
+higher. Due to its capability to select the shortest query and 
+reply path lengths, SAVHR has fewer false positives than the 
+other two location services as shown in Figure 2(d). 
+V. CONCLUSIONS 
+In this paper, we proposed a spatial aware virtual-home-
+region-based location service (SAVHR) that selects different 
+update and query strategies and different virtual home regions 
+for maintaining a node’s location information by using the 
+location as spatial information. We showed that SAVHR is 
+more efficient in location maintenance and discovery with the 
+least cost of the total overhead. We also designed a handover 
+scheme to keep the locations in virtual home regions with an 
+increased accuracy rate and to increase the probability of a 
+node in the VHR to function as a location server for the 
+destination node. 
+ 
+ 
+(a) Update path length 
+ 
+ 
+ (b) Query path length 
+ 
+(c) Total Overhead 
+ 
+(d) Query success ratio 
+Figure 2: Experimental  results 
+REFERENCES 
+1 [1]  C. Cheng, H. Lemberg, S. Philip, E. V. den Berg, T. Zhang, 
+"SLALoM: A Scalable Location Management Scheme for 
+Large Mobile Ad-hoc Networks". Proc. of IEEE Wireless 
+Communications and Networking Conf. (WCNC), Mar. 2002. 
+167
+An Intelligent Auto Call-Transfer Service Based on Location-Awareness through 
+Wireless Sensor Network for the Traditional Phone System 
+Shyr-Kuen Chen, Yi-Ting Fang, Pi-Chung Wang  
+Department of Computer Science and Engineering 
+National Chung Hsing University  
+Taichung, Taiwan 402  
+{phd9609, phd9509, pcwang}@cs.nchu.edu.tw 
+ 
+ 
+Abstract—The Public Switched Telephone Network (PSTN) is 
+the oldest and largest telecommunications network in 
+existence. The auto call-transfer function is one of the basic 
+services supported by PSTN that switches incoming calls to 
+the subscriber. It is likely for the subscribers to lose incoming 
+calls when they leave the room. Therefore, we propose a 
+ZigBee location-awareness and tag identification technique for 
+the traditional phone system. Our technique identifies a 
+person’s location as he/she moves around the office building. 
+Whenever there is an incoming call, the call will be transferred 
+to the office phone nearest the person. As a result, the overall 
+service quality would be enhanced to practical effect. 
+ 
+Keywords: PSTN; ZigBee; Location-Awareness; Tag. 
+I.  INTRODUCTION  
+The current telephone systems can be grouped into PSTN, 
+GSM and the new digital technology SIP [8, 12] (VOIP) and 
+Skype [14] systems. These systems intercommunicate through 
+different gateway interfaces (Fig. 1). PSTN has been around 
+for hundreds of years and remains high in market shares. 
+Therefore, integration into PSTN is a common goal for the rest 
+of the systems. PSTN provides an important function: the auto 
+call-transfer service. This service switches unanswered 
+incoming calls to a back-up position after a pre-determined 
+interval of time. (If a call is not answered at phone X after a 
+set time, the call will be transferred to Y). Currently, the GSM 
+system can automatically transfer a PSTN call to a predestined 
+cell phone line. However, the service charges an additional fee 
+from the cell phone customers.  
+ 
+Figure 1: Intercommunication Telephone Networks 
+Lately, a number of studies have sprung to study RFID 
+(Radio Frequency Identification) [3, 6, 13] and Zigbee [7] 
+technology and aimed to reach the goal of positioning. RFID 
+is an auto-identification technology using radio to identify 
+objects. Its principal operation theory is to use a reader for 
+transmitting radio signals and reading the tag embedded or 
+posted on the objects. RFID uses the radio data to trace its 
+objects using the reader as a positioning reference. It has 
+become a common practice to include these indoor positioning 
+devices in both wired and wireless networks. However, 
+because the wireless network is built upon the backbone 
+network of the wired, the infrastructure of the wireless cannot 
+be established without the wired network. The other auto-
+identification system, Zigbee, has a self-built network that can 
+be constantly updated. It also has low power consumption. 
+Zigbee uses the intensity of the received signals from the laid-
+out sensors to identify the position of the mobile devices. In 
+this study, we propose a location-awareness technique in the 
+traditional phone system that offers a call-transfer service by 
+locating the person moving around with an RFID and Zigbee. 
+Our system also supports Mesh and provides Multi-path 
+functionality to enhance network stability.  
+The rest of the paper is organized as follows. In Section II 
+the related works are presented. Section III gives a description 
+of the system architecture.  Section IV presents the experiment 
+environment and the simulation result. Finally, Section V 
+concludes this work. 
+II. RELATED WORK 
+Current approaches to the indoor positioning system can 
+be categorized in two systems: wireless signals and 
+measurement principle.  Fig. 2 shows the taxonomy based on 
+the technology and the technique classifications. 
+ 
+Figure 2: Taxonomy of positioning system [4] 
+The 13th IEEE International Symposium on Consumer Electronics (ISCE2009)
+978-1-4244-2976-9/09/$25.00 ©2009 IEEE 798

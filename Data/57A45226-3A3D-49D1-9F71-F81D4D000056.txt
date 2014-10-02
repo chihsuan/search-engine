@@ -1,0 +1,1744 @@
+ 2 
+ 
+I. INTRODUCTION 
+ 
+The Scalable Power-Aware Custom Embedded Systems (SPACES) project has just been proposed by research 
+teams at Princeton University and University of Wisconsin, Madison, USA. The Taiwan team will assist in this 
+international collaborative research project to design a custom, power-aware PLX-core based System-on-Chip (SoC) 
+platform for H.264 video coding. PLX is a fully sub-word parallel single instruction multiple data (SIMD) proces-
+sor architecture, developed by Prof. Ruby B. Lee in Princeton University [1]. 
+The PLX core instruction set architecture (ISA) differs from existing SIMD ISAs such as MAX-2 [2] in HP 
+PA_RISC or MMX [3] in Intel IA-32, in that all instructions in PLX ISA are designed to support sub-word parallel 
+evaluation. For a 128-bit word size with 8-bit sub-word processing capability, it is possible to perform 16 byte-wide 
+operations simultaneously in one clock cycle, promising great potential for parallel computing. It also includes 
+many instructions to support multimedia processing, such as saturation arithmetic and sophisticated permutation 
+instructions. PLX is intended to be more efficient than other RISC processor on multimedia and security applica-
+tion. 
+In the first year of the project, we evaluated the PLX specification and designed a SystemC-based virtual plat-
+form for system level simulation, as depicted in Section II. The specification and the system level simulation tool 
+designs were mainly done by Prof. Sao-Jie Chen and his two PhD students (Guang-Huei Lin and Ya-Nan Wen) 
+during their visiting University of Wisconsin, Madison, and in collaboration with Prof. Yu-Hen Hu in University of 
+Wisconsin – Madison, and the specification of the PLX platform was confirmed by Prof. Ruby Lee in Princeton 
+University.  
+In the second year, researches on PLX system verification (as depicted in Section III) and PLX parallel compi-
+ler (as depicted in Section V) were completed by Prof. Sao-Jie Chen and his two other PhD students (Chun-Jen Wei 
+and Dian-Jia Wu) during their visit in the University of Wisconsin, Madison, in collaboration with Prof. Yu-Hen Hu. 
+Also, we have designed an H.264 Encoder Accelerator (as depicted in Section IV) and a PLX core (as depicted in 
+Section VII), and taped-out some chips through CIC. 
+In the third year, we focus on the research of on-chip multi-core, including the designs of a parallel compiler 
+and profiler framework (Xiao-Long Wu and Jia-Wei Lin) as depicted in Section VI, a network on chip 
+(Ying-Cherng Lan) as depicted in Section VIII, and PLX2, a DLP/ILP/TLP/CMP duo-core hardware architecture 
+(Guang-Huei Lin and Ya-Nan Wen), as depicted in Section IX. Finally a conclusion is drawn in Section X. 
+ 
+ 
+I.1  REFERENCES 
+ 
+[1] R. B. Lee and A. M. Fiskiran, “PLX: An Instruction Set Architecture and Testbed for Multimedia Information 
+Processing,” Journal of VLSI Signal Processing 40, 2005, pp. 85-108. 
+[2] R. B. Lee, “Accelerating Multimedia With Enhanced Microprocessors,” IEEE Micro, vol. 15, no. 2, 1995, pp. 
+22–32. 
+[3] A. Peleg and U. Weiser, “MMX Technology Extension to the Intel Architecture,” IEEE Micro, vol. 16, no. 4, 
+1996, pp. 42–50. 
+ 
+ 
+II. SYSTEMC VIRTUAL PLATFORM DESIGN 
+SystemC is a class library under C++ compiler, which helps designer to develop the hardware and software 
+codesign on system level. For most complex system, especially multimedia and communication system design, we 
+need to analyze the protocol and resource occupation to decide the system specification. We can write a C++ pro-
+gram to simulate the protocol handshaking, but without timing information, the result is hardly useful. SystemC 
+supports a tool that we can develop system behavior model easily as we do in C++, and can be cycle-accuracy as 
+design in HDL. 
+PLX is a new processor architecture, it is more important to evaluate the resources we need before we deep into 
+detailed design. Figure 2.1 shows the PLX platform architecture. The platform contains PLX core, instruction cache, 
+data cache, SDRAM, disk, LCD, CMOS sensor and other peripherals. 
+ 4 
+ 
+SystemC
+chip
+design
+LCD
+Thread
+KEY
+Thread
+Network
+Thread
+RS232
+Thread
+Our Computer
+Other
+Computer DirectShow
+Filter
+Video
+Thread
+ 
+Figure 2.2. System virtual prototype. 
+ 
+ 
+For network protocol analysis, we write a Network Thread that behaves as a TCP/IP gateway. This thread 
+receives a packet from the chip interface and then sends the packet to a computer network socket. Thus, our PLX 
+SystemC prototype can communicate with other computers as a real chip does. The transaction to LCD interface 
+can be captured and displayed on a window, and the TCP/IP packet can be passed to other computer through net-
+work card on PC. This PC-based system-level virtual prototype can be used to verify application under real-time 
+condition before any hardware designed. 
+ 
+II.2  H.264 SOFTWARE IMPLEMENTATION 
+H.264/AVC is the newest multimedia coding standard. It is focused on internet-based application, such as in-
+ternet video conference. The H.264 encoder and decoder are shown in Figure 2.3. 
+ 
+ 
+ 
+Figure 2.3(a). H.264 Encoder. 
+ 
+ 
+ 
+Figure 2.3(b). H.264 Decoder. 
+ 
+ 
+ 6 
+ 
+PLX register without incurring any overhead. Then the SAD calculation (Step d) can be performed efficiently using 
+the sub-word parallel instructions.  
+ 
+ 
+| - | | - |
+Si01
+| - | | - |
+C0
+R0
+C1
+R1
+C2
+R2
+C15
+R15
+| - |
+C3
+R3
+| - |
+C4
+R4
+Si00 Si02 Si03 Si10 Si33
+ 
+S000S001S002S003
+S100S101S102S103
+S200S201S202S203
+S300S301S302S303
+S033
+S133
+S233
+S333
+S010
+S110
+S210
+S310
+S000S100S200S300
+S001S101S201S301
+S002S102S202S302
+S003S103S203S303
+S330
+S331
+S332
+S333
+S010
+S011
+S012
+S013
+SAD
+00 10 20 30 01 33
+00 01 02 03
+10 11 12 13
+20 21 22 23
+30 31 32 33
+Trans
+pose
+(b)
+(c)
+ 
+ 
+ 
+ 
+The detailed procedures are described as follows: First, as illustrated in Figure 2.4(a), the row-wide parallel 
+absolute difference and accumulation operations will be repeated 4 times, giving the sum of absolute difference of 
+16 4×1 columns of the macro-block. These partial sums will be stored in a registers. These operations will be re-
+peated for the next four rows of the macro-block until all 16 rows are evaluated. This step will consume 160 clock 
+cycles using 128-bit PLX ISA. And the results are stored in 4 of the 32 PLX 128-bit general purpose registers. Next, 
+as shown in Figure 2.4(b), each of the 4×1 column sum will be added to each other giving the SAD values of each 
+of the 16 4×4 sub-block for the given displacement (cf. Figure 2.4(c)). This will require transpose operations using 
+the PLX ISA and will take 11 cycles to implement. 
+It can be shown that Steps e and f can both be efficiently implemented with the PLX instructions using 26 and 
+36 clock cycles respectively. Due to space limitation, the details are omitted here. The remaining Steps a, b, c, and g 
+and the condition evaluation of the while construct will take 40 clock cycles; and the operations outside the while 
+loop will take 100 cycles. Assuming that the search range is 64, and that 2/3 of the search points within the search 
+range are skipped due to the use of MSS search, the total execution time then will be 
+16641×(160+11+26+36+40)/3+100 = 1514431 cycles. 
+ 
+ 
+II.3  REFERENCES 
+[1] G. H. Lin, Y. N. Wen, S. J. Chen, and Y. H. Hu, "Multimedia SoC System Level Virtual Platform Design," 
+VLSI Design/CAD Symposium, HuaLien, Taiwan, pp. 329-332, Aug. 2006. 
+[2] Iain E. G. Richardson, H.264 and MPEG-4 Video Compression, Video Coding for Next-Generation Multime-
+dia, John Wiley & Sons Ltd, 2003. 
+[3] N. Kroupis, M. Dasygenis, K. Markou, D. Soudris, and A. Thanailakis, “A modified spiral search motion 
+estimation algorithm and its embedded system implementation,” IEEE International Symposium on Circuits 
+and Systems, May 2005, pp. 3347 - 3350. 
+ 
+ 
+Figure 2.4. 4×4 SAD by SIMD (a) column summation, (b) transpose and row summation,  
+and (c) sixteen 4×4 SADs. 
+Absolute  
+Difference 
+ 
+ 
+Summation 
+(a) 
+ 8 
+ 
+mix.2.l Rt1, R1, R2 
+mix.2.r Rt2, R1, R2 
+mix.2.l R1, R3, R4 
+mix.2.r R2, R3, R4 
+mix.1.r R3, Rt1, R1 
+mix.1.l R1, Rt1, R1 
+mix.1.r R4, Rt2, R2 
+mix.1.l R2, Rt2, R2 
+Figure 3.1. A 4x4 matrix transpose in PLX assembly. 
+ 
+ 
+{R[5, 1], R[5, 2], R[5, 3], R[5, 4]}  
+= {R[1, 1], R[1, 2], R[1, 3], R[1, 4], R[2, 1], R[2, 2], R[2, 3], R[2, 4]} [[{1, 5, 3, 7}]] 
+{R[6, 1], R[6, 2], R[6, 3], R[6, 4]}  
+= {R[1, 1], R[1, 2], R[1, 3], R[1, 4], R[2, 1], R[2, 2], R[2, 3], R[2, 4]} [[{2, 6, 4, 8}]] 
+{R[1, 1], R[1, 2], R[1, 3], R[1, 4]}  
+= {R[3, 1], R[3, 2], R[3, 3], R[3, 4], R[4, 1], R[4, 2], R[4, 3], R[4, 4]} [[{1, 5, 3, 7}]] 
+{R[2, 1], R[2, 2], R[2, 3], R[2, 4]}  
+= {R[3, 1], R[3, 2], R[3, 3], R[3, 4], R[4, 1], R[4, 2], R[4, 3], R[4, 4]} [[{2, 6, 4, 8}]] 
+{R[3, 1], R[3, 2], R[3, 3], R[3, 4]}  
+= {R[5, 1], R[5, 2], R[5, 3], R[5, 4], R[1, 1], R[1, 2], R[1, 3], R[1, 4]} [[{3, 4, 7, 8}]] 
+{R[1, 1], R[1, 2], R[1, 3], R[1, 4]}  
+= {R[5, 1], R[5, 2], R[5, 3], R[5, 4], R[1, 1], R[1, 2], R[1, 3], R[1, 4]} [[{1, 2, 5, 6}]] 
+{R[4, 1], R[4, 2], R[4, 3], R[4, 4]}  
+= {R[6, 1], R[6, 2], R[6, 3], R[6, 4], R[2, 1], R[2, 2], R[2, 3], R[2, 4]} [[{3, 4, 7, 8}]] 
+{R[2, 1], R[2, 2], R[2, 3], R[2, 4]}  
+= {R[6, 1], R[6, 2], R[6, 3], R[6, 4], R[2, 1], R[2, 2], R[2, 3], R[2, 4]} [[{1, 2, 5, 6}]] 
+Figure 3.2. Matrix transpose modeled in Mathematica. 
+ 
+ 
+The result of this Mathematica program is shown in Figure 3.3, where the matrix has obviously been trans-
+posed. This algebraic simulation example shows how variables are represented symbolically and reveals how oper-
+ations are applied on variables and instructions executed in Mathematica. 
+ 
+ 
+R1 = {a[1, 1], a[2, 1], a[3, 1], a[4, 1]} 
+R2 = {a[1, 2], a[2, 2], a[3, 2], a[4, 2]} 
+R3 = {a[1, 3], a[2, 3], a[3, 3], a[4, 3]} 
+R4 = {a[1, 4], a[2, 4], a[3, 4], a[4, 4]} 
+Figure 3.3. The result of the matrix transpose program. 
+ 
+ 
+B. Algebraic Analysis 
+For those implementations that perform complex for-loops and/or while-loops, all conventional simulation 
+methodologies are not suitable. Instead, an algebraic analysis is called for. In the following, algebraic analysis of an 
+assembly implementation of the Sum-of-Absolute-Difference (SAD) algorithm on a PLX platform is illustrated. 
+The SAD is a criterion used in block-based matching motion estimation algorithms to gauge the similarity be-
+tween a given macroblock in the current frame and a corresponding macroblock in a reconstructed reference frame. 
+The displacement between these two macroblocks is used to find a motion vector candidate. For a K×L macroblock, 
+one has: 
+,|),(),(|),(
+1
+0
+1
+0
+∑∑−
+=
+−
+=
+++−=
+K
+i
+L
+j
+jnimRjiCnmSAD  
+where C(i, j) is the luminance value of a current frame pixel and R(i, j) is the luminance value of a reference frame 
+pixel. Argument (m, n) is the displacement between these two blocks. 
+First, the SAD assembly program listed in Figure 3.4 is parsed and translated by running the symbolic verifica-
+tion algorithm as shown in Figure 3.5. Mathematical expressions are derived after the loops and subroutine calls.  
+ 
+ 
+ 10 
+ 
+ 
+push return address into stack 
+deal parameters by respective types of parameter passing policies
+A call (to a subroutine) 
+record the value or the name
+An immediate value or  
+variable name written to a register 
+retrieve the name of the variable, interpret the mathematic expression
+A register used as a 
+variable 
+make sure there is an increase/decrease, a comparison and a jump
+A register used as a counter 
+of a control flow 
+output delay timeA jump 
+Translate 
+pre-defined 
+macro to 
+compliant 
+statements 
+output the variable name of the address 
+output the respective mathematical expressions which results the values
+A value written to a 
+memory address 
+load the name or the value pointed by the registerA register used as an index 
+right before the  
+increase/decrease and  
+comparison 
+Yes
+Op code 
+ 
+No 
+somewhere after 
+this jump 
+conditional branchYes 
+Yes
+Remark: A branch jumps somewhere after 
+the register is loaded and before the in-
+crease/decrease and comparison.
+No 
+extract register/memory address used to accumulate or product 
+translate the summation or product in a form of for-loop, ∑ or ∏ respectively 
+EOF 
+Start Tabulate and match memory addresses with variables names
+Switch 
+No
+End
+ 
+End  
+of extracted ex-
+pression
+ Pre-defined 
+macro?
+ Equivalent?
+Error  
+evaluation 
+No
+No
+Equivalence 
+check by a CAS 
+Yes
+No 
+Yes
+Probability 
+distribution 
+function 
+Yes 
+Read an op code 
+Read an operand 
+Figure 3.5: Symbolic verification and error prediction algorithm. 
+ 12 
+ 
+where 'UnitStep[t]' is the unit step function. Then the probability of errors occurring is: 
+P[fDUV > a – 1] 
+= ∑ ∑ ∑ ∑ ∑ ∑− = − = − = − = − = − =1 0]1[ 1 0]1[ 1 0]2[ 1 0]2[ 1 0]3[ 1 0]3[aC aR aC aR aC aR  
+( UnitStep[∑ =3 1i  Abs[ C[i] – R[i] ] – (a – 1)] ) / a6 
+= 3a ∑ −= 11ai [2(a – i) x 2∑ =ij j1 ] + ∑ −=11ak 2(a – k) ∑ −−= 11kai [2(a – i) ∑ +=kij j1 2 ] + ∑ −=11ak 2(a – k) ∑ − −= 1a kai [2(a – i) 
+∑ −=11 2aj j ] 
+= a(a – 1)(a+1)(12 -22a + 42a2 + 43a3) / (90 a6) ≈ 47.959% 
+Since Mathematic 4.0 does not handle unit step function perfectly; the summation of unit step function in the 
+above equation is done manually. 
+ 
+III.4  CONCLUSION 
+In this report, we proposed an effective symbolic simulation methodology to verify functional equivalence 
+and precisely evaluate the error caused by the operations in a design implementation at low computation complex-
+ity. Though one mathematical calculation is done manually in our example, all the processes can be done auto-
+matically by a parser and a computer algebra system, such as Mathematica. Verification and error evaluation of 
+some software implementations on a PLX platform were shown as examples. The same methodology is obviously 
+easy to be applied to applications on other platforms. Fully automated process at low computation complexity is a 
+major advantage of applying this proposed methodology to real world applications. 
+  There are many applications where logical operations have to pick up a few values from the results. Errors in 
+the results will surely affect the correctness of such logical operations. In some cases it even results in a fatal error. 
+This issue is undergoing our study and experiments. Further results are expected to come out soon. 
+ 
+III.5  REFERENCES 
+ 
+[1] N.D. Liveris, H. Zhou, and P. Banerjee, "An Efficient System-Level to RTL Verification Framework for 
+Computation-Intensive Applications," Proc. of the 14th Asian Test Symposium, pp. 28-33, Dec. 2005. 
+[2] J. R. Harrison and L. Théry, “A skeptic’s approach to combining HOL and Maple,” J. Autom. Reason., Vol. 
+21, No. 3, pp. 279–294, Dec. 1998. 
+[3] B. Akbarpour and S. Tanar, "An Approach for the Formal Verification of DSP Design Using Theorem 
+Proving," IEEE Transactions on Computer-Aided Design, Vol. 25, No. 8, pp. 1441-1457, Aug. 2006 
+[4] Ruby B. Lee, "Subword Permutation Instructions for Two-Dimensional Multimedia Processing in Micro-
+SIMD Architectures," Proc. of the IEEE International Conference on Application-specific Systems, Archi-
+tectures and Processors, pp. 3-14, July 2000. 
+[5] E. Clarke, D. Kroening, and K. Yorav, “Behavioral Consistency of C and Verilog Programs Using Bounded 
+Model Checking,” Proc. of Design Automation Conference, pp.368–371, June 2003. 
+[6]  
+ 
+IV.  H.264 ACCELERATOR DESIGN 
+ 
+In this report, we design and implement an area aware H.264 encoder architecture including full search varia-
+ble block size motion estimation, intra prediction supporting nine INTRA_4×4, four INTRA_16×16, and four 
+INTRA_CHROMA prediction modes, forward and inverse transforms, and forward and inverse quantizations. The 
+choice of architectures of each function and the schedule of processes were done with the consideration of ease 
+area cost. After combining all these modules, the system can encoder a QCIF picture in 7.13K clocks. The proto-
+type can be operated in 108MHz. The core size of the chip is 2mm×2mm and the die size is 2.95mm×2.95mm 
+after placement and routing. 
+IV.1  INTRODUCTION 
+The demand of multimedia application is very popular in these days. To seek a high-performance video qual-
+ity, good video technology is required. Motion Picture Experts Group (MPEG) and ITU-T Video Coding Experts 
+Group (VCEG) formed the Joint Video Team (JVT) to develop the video coding standard, H264/Advanced Video 
+Coding (AVC). H.264 incorporates a set of new coding features to achieve a coding efficiency higher than all oth-
+ 14 
+ 
+(1)  INTRA_4×4 Prediction Type 
+In INTRA_4x4 prediction type, totally nine prediction modes are provided. Besides one DC mode, other eight 
+prediction directions are shown in Figure 4.2(a). Each 4x4 block of luma sample in a ME can choose one of the 
+nine modes. 
+The luma samples labeled as a to p in prediction block are calculated based on the neighboring samples labeled 
+as A to Q in Figure 4.2(b). The neighboring samples come from previously coded blocks. And they could be parti-
+tioned into four subgroups as Upper-side neighboring samples, Left-side samples, Upper-left side sample, and 
+Upper-right side samples. If some of these neighboring samples are not available, the prediction mode using these 
+samples will be skipped. 
+ 
+ 
+(2)  INTRA_16×16 Prediction Type 
+The entire luma MB has only one mode of INTRA_16x16 prediction type. As Figure 4.3 shows, there are four 
+different INTRA16x16 prediction modes introduced by H.264. The prediction values of luma samples of this type 
+are calculated based on the neighboring samples of a previously coded MB. 
+ 
+ 
+ (3)  INTRA_Chroma Prediction Type 
+In H.264, two chroma components, Cb and Cr, use the same prediction mode. This prediction type is like 
+INTRA_16x16, but with a block size of 8x8. 
+C. Transformations and Quantizations 
+No matter inter or intra prediction mode is chosen, the source coding block is subtracted by prediction values as 
+residual block. In H.264 encoding process, the residual block is transformed by DCT-like transformation and 
+quantized. The transformation in H.264 is designed to operate in integer arithmetic and makes it easy to be im-
+plemented by hardware. The quantization is also designed to match the orthogonality of forward and inverse 
+transforms. Besides, the quantization steps are adjusted. The quantization step is doubled when the quantization 
+parameter (QP) increase six. 
+H.264 also designs the hierarchical coding for DC coefficients. If the prediction mode which is used in predict-
+ing coding block values is INTRA_16x16. The DC coefficients in a DCT-like transform of residual data still have 
+a significant correlation between sixteen 4x4 blocks in a MB. H.264 groups the DC coefficients into a 4x4 block 
+and applies a second stage transform on it to further improve compression efficiency. A 4x4 Hadamard transform 
+is selected as the second stage transform operator. Since Hadamard transform uses orthogonal matrix, the inverse 
+1
+0
+43
+5
+6
+7
+8
+    
+A B C D
+I
+J
+K
+L
+Q E F G H
+a b c d
+e f g h
+i j k l
+m n o p  
+(a)         (b) 
+Figure 4.2.  INTRA_4x4 Prediction Mode. (a) Prediction Directions and (b)
+Block and Neighboring Samples. 
+ 
+ 
+Figure 4.3.  Illustration of all INTRA_16x16 Prediction Modes. 
+ 16 
+ 
+ 
+B. Intra Predictor 
+   In our design, hardware architecture of intra process elements (IPEs) in the intra predictor is based on [7] and 
+is illustrated in Figure 4.7. There are two adders, rounding and scaling unit and clipping unit in each IPE. We de-
+fine five operation modes for this IPE to accommodate all operations used in the prediction process. The four IPEs 
+in a prediction generator are working in parallel. The throughput of the predictor is thus four pixels per clock. 
+ 
+Figure 4.5.  Data Flow for Broadcasting Reference Frame Data [6]. 
+ 
+Figure 4.6.  SAD Values Update Schedule for Memory Usage. 
+ 18 
+ 
+In this work, we use an architecture with a four parallel processing elements to process the four coefficients per 
+clock. 
+ 
+ 
+ 
+E.  System Integration 
+After all modules are designed, we can integrate them into a H.264 encoding system. The system integration is 
+shown in Figure 4.10. As we can see, for the sake of having a hierarchical coding for DC coefficients, the DC 
+coefficients of chroma and INTRA_16x16 need to be stored separately. The DC coefficients of INTRA_16x16 
+have 16 values and consistent with general coding loop. The chroma DC coefficients have only four values which 
+we can process individually without too much cost. 
+ 
+ 
+IV.4  HARDWARE IMPLEMENTATION 
+Architectures are realized using Verilog HDL. Each RTL module is simulated and verified separately by us-
+ing ModelSim. After checking the correctness of RTL codes by comparing the simulation results and the JM soft-
+ware results, we will carry out the synthesis and the placement and routing. Also we carry out the design for test 
+(DFT), which is beneficial to the testability of the chip. 
+The chip layout is shown in Figure 4.11. The manufacture process is TSMC 0.18μm 1P6M CMOS process 
+supported by CIC. The die size is 2.9mm x 2.9mm and the core size is 2mm x 2mm. The maximum operating fre-
+ 
+Figure 4.9. Quantization Process Element Architecture. 
+ 
+ 
+Figure 4.10. System Integration of H.264 Encoder Components. 
+ 
+ 20 
+ 
+V. COMPILER DESIGN 
+ 
+Multimedia extensions are ubiquitous in today’s general-purpose processors. It has prompted the needs for 
+generating efficient simdized codes that SIMD architectures can benefit from. This report set out to investigate 
+compiler techniques to target short vector instructions effectively and automatically. The most common aspects of 
+compilation are the effective management of memory alignment and handling of mixed data lengths. Based on a 
+code study of various multimedia workloads, we identify several new challenges arise in simdizing multimedia 
+extensions, and provide some solutions to these challenges. This report, present framework that addresses several 
+of simdization issues mentioned above.  
+ 
+V.1  INTRODUCTION 
+In recent years, multimedia applications are anticipated to be the prevalent workloads in the near future. To 
+respond to the growing performance demand of multimedia workloads, most general-purpose processors have 
+adopted multimedia extensions to achieve higher performance. The multimedia extensions primarily consist of a 
+set of short vector instructions that operate on width data of 8 or 16 bits. As such, short vector instructions it is not 
+suitable for general-purpose processor that is optimized for processing word-size data. Hence, the idea of short 
+vector Single Instruction Multiple Data (SIMD) unit is utilized for accelerating the processing of the low precision 
+data. Because of the similarity between multimedia extension and vector processors, it is believed that adopting to 
+vector technology provide the most promising means of exploiting multimedia instructions. Since a number of 
+multimedia sources contain a high degree of loop level parallelism that are vectorizable. However, many important 
+multimedia applications are only partially vectorizable. Thus, the traditional vector technology is not well-suited 
+for multimedia extensions and actually leads to performance degradation. The primary cause for poor performance 
+is the compiler’s failure to account for processor’s scalar processing capabilities. Therefore, multimedia extension 
+designs have targeted their Instruction Set Architecture with instruction target operate on relatively short vectors 
+of packed data. These instructions exploit the vector SIMD parallelism at sub-word level. Development effort thus 
+shifts from hardware to compiler design.  
+A better solution for SIMD architectures is to use compiler technology to target short vector instruction au-
+tomatically. This approach completely hide the processor’s instruction set from the programmer and makes short 
+vector operations universally available. Our compiler was built and tested within the SUIF compiler infrastructure. 
+The compiler construction process is mostly related to the development of SUIF passes for restructuring the In-
+termediate Representation of the SUIF system.  
+The multimedia extensions offer new obstacles that the compiler must address. Two of the most important 
+aspects of simdization are memory misalignment and length conversion. Therefore, the designs of compiler pri-
+marily focus on mapping high-level language to machine-independent representation and generate simdized codes.  
+The report is organized as follows: Section V.2 presents the prior research on automatic simdization. In Sec-
+tion V.3, we present the simdization issues and introduction on our simdization framework. Section V.4, we gives 
+a brief overview of the SUIF compiler used and its simdization infrastructure. Section V.5 concludes.  
+V.2  RELATE WORK 
+There is a fair amount of literature related to SUIF compiler and in the field of automatic simdization. SUIF 
+compiler tools and libraries are available on the Internet such as Aigner and Lam [1]. Understanding these tools 
+and the libraries they use is important for effectively implementing our compiler. Most approaches for automatic 
+simdization compilation employ techniques developed for vector supercomputers [2, 3, 4]. At a high level, these 
+approaches directly adopt the traditional vectorization strategy. The modern multimedia instruction sets require 
+special attention. One important issue is memory alignment but however in the open literature to date, there have 
+been surprisingly few simdization schemes which able to handle misalignment, mixed data type, control flow and 
+interleaved data access.  
+Shin et al. [5] discusses the optimization of conversion of the if-else control flow for short vector SIMD. ILP 
+optimizes code inside a basic block, and control flow limits the size of basic block. The if-else block is converted 
+into prediction instructions, and superword select operation is used to handle the prediction instructions. 
+ 
+V.3  SIMDIZATION FRAMEWORK 
+This section, presents challenges face when simdizing multimedia applications and described the integrated 
+framework based on works [2, 4, 6]. Furthermore, we specify the alignment constraints which contribute to a valid 
+simdization.  
+One of the most important issues is the alignment restriction placed on vector memory references. The 
+alignment of vector memory operation affects code generation and performance. The SIMD memory operation can 
+ 22 
+ 
+Phase 4: Alignment Devirtualization. During this phase, we satisfy the alignment constraint which states that the 
+data being logically operated on by a SIMD operation must reside in the same slot of their respective input and 
+output SIMD registers. In other words, when adding a[i] and b[i+1] in SIMD fashion, we must ensure that both 
+a[0] and b[1] values are in the same relative position in their respective register. Data realignment instructions are 
+inserted only for relatively misaligned memory streams. After the completion of this phase, all virtual vector ac-
+cesses are to aligned data regardless of the compile time/runtime nature of their alignment. A virtual vector may 
+still have a virtual length, i.e. a length that is too long with respect to the physical vector registers provided by the 
+underlying architecture. 
+Phase 5: Length Devirtualization. During this phase, long vectors are chunked into physical length vector regis-
+ters, or they may revert back to scalar statements. This phase also handles data size conversion [6], e.g., generating 
+twice as many instructions for 4-byte integer expressions that use results generated by 2-byte short integer expres-
+sions. After this phase, all virtual vectors are aligned and have the physical vector length.  
+Phase 6: SIMD Code Generation. During this phase, we generate SIMD instructions that are specific to the tar-
+get SIMD units. After this last phase, the simdization process is complete and the SIMD operations can be safely 
+scheduled and register allocated. 
+ 
+V.4  VECTOR SIMD COMPILER DESIGN 
+In this section, we describe the development of a SIMD compiler for extracting SIMD parallelism. Our inte-
+grated framework is implemented in Stanford’s SUIF compiler. The concept of SUIF pass is used for implement-
+ing simdization algorithm. A pass can be freely inserted at any point in a compilation. This approach simplifies the 
+process of making code modifications. If the modifications are performed as the last step in a pass, only the actual 
+SUIF code needs to be changed. Other data structures associated with the code are simply reconstructed by the 
+next pass that needs them.  
+Prior to simdization, several high-level optimization techniques can be performed. One of the common tech-
+niques used is if-conversion which collapse the multiple basic block constructs into single basic blocks containing 
+conditional operations. Other techniques such as loop distribution are used to split codes that cannot be simdized 
+and loop version is used to create multiple version of a loop. 
+To highlight the challenges to face when simdizing real applications, let us consider the code fragment in Fig-
+ure 5.2(a). This code exhibits several simdization issues as mentioned above, such as misalignment, data conver-
+sion, and presence of flow control.  
+To increase code parallelism, the if-else block is removed by condition distribution [8]. The Boolean result is 
+distributed into every statement even inside the loop. All statements are converted into conditional execution 
+statements that can be parallelized independently. The result is shown in Figure 5.2(b), where statements S2 and 
+S4 are two separate if conditions. We introduce two local bool variables p and q to store the compare results of S2 
+and S4 respectively. Then p is distributed to S3, S4, and S5, q distributed to S5, and !p distributed to S6 for the 
+else block. To find instruction level parallelism, loop must be unrolled. Each VL (vector length) of statements that 
+has the same operation and without data dependency can be grouped into a subword-parallel operation. 
+Predicated instructions (p) and (!p) are grouped together and then unrolled, followed by unrolling the predicate 
+instructions (q). After unrolling and if-conversion, the loop body becomes one basic block of predicated instruc-
+tions. The resulting code is shown in Figure 5.2(c). Next, we show loop from the perspective of superword level 
+parallelism. As shown in Figure 5.2(d), the code is unrolled by a factor of four, based on the assumption that su-
+perword register is sixteen bytes and the data type is four bytes. Figure 5.2(d) shows the results of converting 
+statements S30, S60, S31, and S61 from Figure 5.2(c) into the form of a = p ? y : z. Figure 5.2(e) shows the results 
+of converting statements S50, S51, S52, and S53 from Figure 5.2(c) into the form of a[i] =q[i]?y[i]:a[i]. Statement 
+S50 shown in Figure 5.2(d) inhibited the presence of loop carried dependency. To overcome this, high-level opti-
+mizations are applied, such as scalar expansion by introducing a local variable psum to remove dependencies. It is 
+followed by loop transformations that can significantly improve the quality of the simdized codes, namely loop 
+unrolling. The presence of flow control makes it difficult to parallelize. Hence, we can now unroll the statement 
+S50 into 4 statements S50, S51, S52, and S53 as depicted in Figure 5.2(e). The result of scalar expansion and loop 
+unrolling is shown in Figure 5.2(e). The packing process effectively moves packable statements to contiguous po-
+sitions. This packable statement can be packed and executed in parallel. The final results for converting statements 
+into vector forms are shown in Figure 5.2(e). 
+ 24 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+In the first three phases of the simdization framework, we proceed regardless of the alignments and lengths of 
+vectors. Now, we can consider the memory misalignment in the alignment devirtualization phase. This step is 
+necessary when memory references are not aligned. We realign the data into stride-one access by shifting the mis-
+aligned streams using the zero-shift policy. Zero-shift policy shifts each misaligned load stream to offset zero, and 
+shifts the store stream from offset zero to the alignment of the store address. This is the least optimized policy, but 
+for simplifying the implementation of compiler we have adopted this zero-shift policy. In statement S3 of Figure 
+5.2(a), c[j] is aligned, but a[j+2] and b[j+1] require explicit realignment. The realigning of data register b[j+1] is 
+achieved by shifting the data register right by a stream offset of 1. The data register a[j+2] is shifted by an offset of 
+2, the vector add is applied to b[j+1] and c[j] then the result of vector add is stored in a[j+2] to produce the ex-
+pected results. The result of a valid simdization is shown in Figure 5.3. 
+ 
+ 
+ 
+ 
+ 
+ 
+   
+Next, we address the limitation of mixed data types by supporting length conversion. In Figure 5.2(a) S6 
+operates on distinct data lengths within single statement, thus conversion operation between data of different 
+length is needed. Length devirtualization consumes one physical vector and produces multiple physical vectors, or 
+vice versa. To handle the length conversion for S6 in Figure 5.2(a), it consists of three distinct parts shown in Fig-
+ure 5.4. The top part represents the computations done in short, the bottom two parts represents the computations 
+done in int, with the left and right bottom parts each consuming half of the data produced by the top part. When 
+devirtualizing the short to int conversion, the stride-one access in the original loop becomes two non stride-one 
+vector access. After devirtualization phase, the simdized code is generated by mapping generic operations to in-
+structions of the target platform. 
+ 
+ 
+Figure 5.3. Correct SIMD Execution (Zero-Shift).
+Figure 5.2.  (a) C code, (b) Control distribution, (c) Loop 
+unrolling Exploiting SLP after unrolling, (e) Scalar 
+expansion, and (f) Final result. 
+for ( i=0; i<16; i++){ 
+psum[i] =0; 
+           for (j=0; j<16; j+=4){ 
+         
+S30: a1[j+2: j+5] = padd(b[j+1:j+4], c[j:j+3]); 
+S31: a2[j+2;j+5]  = padd(a[j+2:j+5], e[j:j+3]);  
+S32: a [j+2:j+5] =  (a1[j+2:j+5]&(p))|(a2[j+2:j+5]]&!p); 
+ 
+S40: q1[0:3] = pcmp(a[j:j+3],{9,9,9,9}); 
+S41: q[0:3] = {p,p,p,p} &q1[0:3]; 
+ 
+S50:  psum1[0:3] = psum[0:3]; 
+S51:  psum2[0:3] = padd(psum[0:3], a[2:5]); 
+S51:  psum  [0:3]   = 
+(psum1[0:3]&q[0:3])|(psum2[0:3]&!q[0:3]); 
+ 
+ } sum=psum[0]+psum[1]+psum[2]+psum[3]; 
+}                                       
+(f) 
+ 26 
+ 
+VI. FRAMEWORK FOR PARALLELISM PROFILING 
+ 
+As chip multiprocessor (CMP) has become the mainstream processor architecture, there emerges an important 
+research topic on how to make the multi-core processor execute program more efficiently. Unfortunately, tradi-
+tional compilers focus on single-core processor and sequential execution, thus they are deficient in parallelism 
+extraction. In this report, we developed a compiler front-end framework for parallelism profiling. The program 
+dependence graph (PDG) intermediate representation (IR) applied in the framework introduces a more clear view 
+on which statements can be executed in parallel. Furthermore, the profiling information obtained will assist the 
+ESL (Electronic System Level) designers in developing embedded system applications more efficiently on a CMP 
+environment.  
+ 
+VI.1  INTRODUCTION 
+In the past years, the mainstream processor was one complex single core processor. Facing to the low power 
+and performance issues, the industry has moved to chip multiprocessor (CMPs) consisting of simple cores inside. 
+In order to make good use of CMPs, we must extract the parallelism in a program to make it execute faster.  
+In early 1990s, most researches on parallelism extraction focus on loops of scientific computation which was 
+bounded in a basic block boundary. In this report, we propose a framework that extracts parallelism from an ab-
+stract syntax tree (AST). An AST depicting the grammatical structure of a source program is full of parallelism 
+information. But if it has been translated into a three-address code (3AC) IR, some of the parallelism information 
+will disappear. 
+Moreover, we propose a framework where coarse-grained profiling information can be used to identify pro-
+gram hot spots by employing program trace technique. Coarse-grained profiling differs from the two popular pro-
+filers in GNU [1], gcov and gprof. Programmers can use gcov and gprof, to generate statistics about execution 
+frequencies of code lines as well as CPU time spent in different functions, so the granularity is statement level and 
+function level respectively. Valgrind Massif [2], a heap profiler, measures how much heap memory is used. They 
+are lack of profiling memory access information. The granularity of our profiler is at coarse-grained level that can 
+obtain array peak access information with time ingredient. This information can assist ESL designers to determine 
+the appropriate memory bandwidth. Coarse-grained profiling may also provide information on statement to state-
+ment communication. This information can support ESL designers to decide which variables can be properly put 
+in memory, register or cache dependent on the obtained statement to statement communication frequency.  
+The contribution of this 3-year research project is on the development of a compiler front-end framework for 
+parallelism profiling. The obtained coarse-grained profile will keep the source program control structures, because 
+the source program is abundant of parallelism information while the goto-label transformed 3AC will left these 
+information out. In addition, identifying hot spots provides distribution information which includes time ingredient 
+in addition to the accumulated statistics information. Finally, exploring program semantics via these two informa-
+tion was integrated to provide parallelism information. This information is useful for ESL designers to make good 
+decision on hardware/software partitioning, memory bandwidth and cache management.  
+This report is organized as follows: after a discussion of related work in Section VI.2, the compiler front-end 
+framework is outlined in Section VI.3. Then Section VI.4 describes the coarse-grained profiling and Section VI.5 
+concludes this report. 
+ 
+VI.2  RELATED WORK 
+GNU Compiler Collection [1] is a portable and retargetable compiler with a sound front-end and two profilers, 
+gcov and gprof, used widely in general purpose program and single core environment. These profilers can be used 
+with the C compiler to generate statistics about CPU time spent in different functions as well as execution fre-
+quencies of code lines. Valgrind profiler [2] currently includes several tools such as cache, branch-prediction pro-
+filer and heap profiler. The LANCE compiler proposed in [3] comprises ANSI C front-end and profiler for ASIP 
+design [4, 8]. Karuri et al. proposed a source code profiler [5] at the three address code (3AC) level to bridge the 
+gap between traditional C-level and assembly-level profiling while combining advantages of flexibility, speed and 
+accuracy. 
+ 
+VI.3  COMPILER FRONT-END FRAMEWORK 
+In this section, we introduced our framework of compiler front-end for parallelism profiling as depicted in 
+Figure 6.1. The compiler front-end framework consists of the following components: a scanner, a parser, a sym-
+bol-table management, a 3AC generator, two graphical IR generators (CDFG generator and PDG generator), and a 
+coarse-grained profiler. We will describe each of the components in details in the following. 
+ 28 
+ 
+ 
+ 
+Figure 6.2. (a) Example C Description, (b) Transformed Code from (a), (c) CDFG Con-
+structed from (b), and (d) PDG Constructed from (a). 
+ 
+ 
+PDG is shown in Figure 6.2(d) which has three kinds of nodes and two kinds of arrows. The first kind of 
+nodes is the elliptic nodes that represent statements in a program. The second region nodes, drawn as circular 
+nodes, summarize control dependences for statements in a region. The third kind of nodes: predicate nodes drawn 
+as rectangular nodes, represent if-then-else statements and those that involved if-then-else semantics, such as 
+for-loop, while-loop and so forth. As to the arrow representations, dashed arrows represent control dependences 
+while solid arrows stand for data dependences. For example, statement line 4 is data dependent on line 1 in Figure 
+6.2(b).  
+Note that PDG has more explicit representation of control dependence. For example, nodes S1, S2, and S11 
+in Figure 6.2(d) have no data dependence on each other. S11 can be executed with S1 and S2 in parallel. But in 
+Figure 6.2(c) we cannot detect that node 9 (S11 in Figure 6.2(d)), node 1 (S1) and node 2 (S2) can be executed in 
+parallel except after some compiler optimization technique such as code motion is applied.  
+ 
+VI.4  COARSE-GRAINED PROFILING 
+In this section, we present coarse-grained profiling technique used in our framework as depicted in Figure 6.1. 
+Using a coarse-grained profiler to collect information targeting at multi-core architecture requires the following 
+two procedures. First: keep the source program control structures and explore program semantics for parallelism. 
+Second: identify program hot spots [4].  
+ 
+Keep the Source Program Control Structures. The intuition behind keeping source program control structures 
+is on that it will help a compiler to determine which program segments have to be executed in parallel or in se-
+quence. Although C language is not a system description language that cannot be able to represent the system be-
+haviour completely, it contains certain program structures describing the parallel and sequential characteristics of a 
+given system implicitly. For this reason, coarse-grained profiling attempts to extract parallelism by exploring se-
+mantics from a source program. Unfortunately, after the program being parsed, the high level language control 
+structures are replaced by the goto-label control structures. Under this situation, to identify the implicit semantics 
+in a loop structure is not easy. It motivated us to profile source program at a higher level than the CDFG level 
+adopted by traditional compilers. 
+First, we found that it is difficult to tell the difference between a nested if-else control structure and a 
+switch-case one at a 3AC or CDFG level. The statements under a nested if-else structure should be executed se-
+quentially, while the statements under a switch-case can be executed in parallel because they are all irrelevant. 
+Moreover, a program segment using a while-loop or a do-while-loop has different meaning. A program segment 
+ 30 
+ 
+ 
+ 
+ 
+ 
+ 
+VI.5  CONCLUSION AND FUTURE WORK 
+In this report we introduced a framework of compiler front-end for parallelism profiling in a multi-core envi-
+ronment. The reasons that we prefer to employ PDG as IR are attributable to that PDG relaxes the sequential flow 
+restriction and has a more clear view on which statements can be executed in parallel. Furthermore, the 
+coarse-grained profiling information collected help to keep the source program control structures, to explore pro-
+Figure 6.3. (a) Example C Code for Bubble Sort Program, (b) Array Access with Time Ingredient, 
+(c) Peak Memory Access Times of Each Array Element, (d) Variable “define-use” Access 
+Times, and (e) A[1] S10 -> S7 “define-use” Relationship. 
+ 32 
+ 
+multimedia processing. To respond to the growing performance demand of multimedia workloads, processors 
+have to adopt parallel processing techniques to achieve higher performance. 
+Power consumption becomes an important issue in portable devices. Using a slower clock frequency and a 
+lower supply voltage is a basic consideration in power aware designs. With the same workload, if we can double 
+the throughput of a design by adding 10% gates, decrease the clock frequency to half, and reduce the voltage to 
+80%, then the CMOS dynamic power consumption of this design can be obtained as: 
+    Power’=α×C’×Vdd’2×f’=α×1.1C×0.8Vdd2×0.5f=0.35Power 
+On algorithm level, datapath width adjustment can release more power budget. For example, if a program 
+operates only on 8-bit data with a value range of -128 to +127, in implementing it into a 32-bit ALU, the expan-
+sion of an 8-bit data to a 32-bit register will waste register resource and power. Different applications contain va-
+riables with different widths. An MPEG-2 video decoder [25] for example contains fifty 1-bit Boolean variables, 
+nine 8-bit char variables, 39 16-bit short variables, 17 24-bit variables, and 82 32-bit variables. If implemented 
+into a 16-bit datapath, the 24-bit and 32-bit operations cannot be completed in one cycle, the performance is thus 
+reduced, but the power consumed is much saved by the reduction of meaningless data expansion. This example 
+showed that when using a datapath with a width larger than 28 bits, the performance increases very little, but the 
+power and area will increase linearly, so the best power-efficient design is using a 28-bit datapath. 
+An SWP-SIMD processor integrates the above two concepts to reduce its power consumption. Multimedia 
+applications mostly operate on low-precision data, such as 16-bit audio samples and 8-bit video pixels. But today 
+processor word size is mostly 64 bits wide. It is a waste to compute 16-bit data on a 64-bit ALU. If the 64-bit ALU 
+can compute four 16-bit data simultaneously, its computation power can be fully utilized. Processor with this fea-
+ture is called an SWP-SIMD processor. Many low-precision data are packed into a superword which occupies a 
+full-size 64-bit register, and each element is called subword which only occupies part of a register. This feature is 
+also called multimedia extension for it is specified for multimedia application. MAX-1 of HP PA-RISC [3] is the 
+first instruction set architecture (ISA) with multimedia extension, introduced in January 1994. Other famous ex-
+amples are MMX/SSE in Intel IA-32/64 [4,5], VMX/AltiVec in IBM PowerPC [6], 3DNow! in AMD K6 [7], VIS 
+in SUN SPARC [8], and MDMX in MIPS [9] processors. 
+PLX [10] is a subword-parallel SIMD ISA developed by Professor Ruby Lee in Princeton University. Un-
+like IA32/MMX which operates as a processor/coprocessor architecture, PLX is a native SIMD architecture, with 
+only one vector ALU. Its scalar unit is a subset of the vector unit. Since its hardware cost is lower, PLX is more 
+suitable for portable devices. The PLX native subword-parallel design extends the flexibility to adjust the datapath 
+width during software execution. We can either compute one 64-bit scalar operation, or parallelly compute many 
+low-precision operations on PLX to explore its computation power. 
+Memory access latency is relatively long, compared to modern processor execution speed. Sometimes 
+memory access dominates the performance, especially in processing multimedia applications. Multimedia algo-
+rithm often contains much redundant memory access, where a memory item is referenced many times during 
+processing. For example, to calculate a matrix multiplication product, a row of the first matrix operands and a 
+column of the second matrix operands are used. The times of each row/column matrix item is referenced are equal 
+to the matrix size. Therefore, reuse memory items loaded in registers can significantly improve performance. 
+To perform memory reuse in an SWP-SIMD core is a challenging job. While neighbor items are packed 
+together, they form a vector in row major order. In matrix multiplication, the second matrix operands are accessed 
+in column major. A 64-bit word will cover 4 columns of operands if the data precision is 16-bit. We have to 
+process 4 columns simultaneously to reuse the memory items loaded in a register. To analyze the best partitioning 
+of memory items in an SWP-SIMD core is a tedious work. We have to rely on an optimization compiler. 
+Many compile-time optimization tools have been proposed to transform a software to increase performance 
+by satisfying the constraints of a given platform architecture, such as cache size and register number. Examples are 
+ATLAS (Automatically Tuned Linear Algebra Software) [11] for BLAS (Basic Linear Algebra Subprograms), 
+FFTW [12] for FFT, and SPIRAL [13] for DSP algorithms. 
+In this report, we design a code generator to optimize block-based multimedia algorithms. This tool tries to 
+find the best SWP-SIMD structure under the constraints of a PLX-based platform by analyzing memory access 
+redundancy on a rescheduled data dependency graph. An aligned basic block is found by maximizing register 
+reuse, and the process is repeated until all data have been dealt with. This tool was developed with the SUIF com-
+piler infrastructure [24]. 
+ 
+ 
+ 34 
+ 
+For comparison purpose, we briefly describe two traditional SIMD processor architectures, ILLIAC-IV [1] 
+and Cray-1 [2]. ILLIAC-IV uses a processor array architecture of 256 processing elements (PEs) partitioned into 
+four groups, and each group contains 64 PEs and one control unit (CU). The 64 PEs are structured as an 8×8 array, 
+where each PE contains a 64-bit ALU and a 2048-word local memory. Each PE can only access its own local 
+memory and communicate with its 4 neighbors through a data routing network. The CU decodes instructions and 
+executes conditional test and branch instructions, thus, it can access the whole memory array. 
+Though Cray-1 does not own a processor array architecture, it has independent scalar and vector function 
+units. Eight vector registers are used for vector operation, each of which has 64 words. Memory elements should 
+be loaded into vector registers before execution.  
+We will use the following vector operation to explain how to SIMDize a code for the above mentioned two 
+processors. 
+ C[I][I]=A[I][I]+1, for I=1 to 64 
+With an ILLIAC-IV, memory A and C should be dispatched over PE local memories. Each PE processes 
+the same addition instruction on its local memory with a different index I. 
+With a CRAY-1, 64 discontinuous items of memory A are loaded into vector registers by one load instruc-
+tion and they are processed word by word. Loop can be handled by the vector unit that owns many complex mem-
+ory addressing modes. 
+A subword-parallel processor such as PLX cannot efficiently process the above vector operation. The only 
+one DCACHE unit in PLX cannot feed discontinuous memory items into subwords as ILLIAC-IV does. Moreover, 
+the RISC-based decode unit cannot afford complex addressing modes for subwords. 
+To resolve the above problem, PLX has to load the discontinuous memory items A[0][0], A[1][1] with dif-
+ferent load instructions, and pack them into one register to perform the addition instruction. While memory access 
+speed is much lower than execution speed, the addition of A[0][0] can be performed in a scalar execution mode 
+when waiting for A[1][1] to be loaded. This kind of SIMD operations would not improve performance while vec-
+tor operands are discontinuous. 
+When vector items are continuous, subwords can be loaded together by one load instruction, and memory 
+access count can thus be reduced. To optimize a program on an SWP-SIMD core, minimizing the memory access 
+count is the most important. It requires a compiler to consider on the whole algorithm, not just on only one vector 
+operation, to maximize the memory load and register usage. 
+ 
+VII.3  RISC-LIKE 8051 DESIGN 
+On our architecture, a high performance I/O controller is required to share some real-time work from PLX. 
+We implement a RISC-like 8051 for this purpose. 8051 is an 8-bit CISC microcontroller developed by Intel in 
+1970s. Most CISC architecture contains a long critical path between ALU and memory, which restricts clock fre-
+quency enhancement. The idea of utilizing RISC technology for CISC processor is brought from the Intel P6 pro-
+cessor project [5]. 
+The RISC philosophy can be simplified as: (1) build hardware in which almost all of the operations are simple 
+and fundamental operations and (2) operate on simple data kept in registers plus load and store operations. 
+The RISC conversion design is shown in Figure 7.3. Our designed 8051 is a 3-way superscalar architecture, 
+which instruction length is 1 to 3 bytes. The codes are fetched from the 32-bit embedded ROM, and stored in 
+IBUFF. The ALIGN stage ex-tracts 3 instructions from IBUFF with the aid of Length Decode Chain. Then, every 
+instruction is translated into 1 to 3 μOps which follows RISC philosophy. The following stages of OPFETCH, 
+EXECUTION and STORE are the same as the RISC ones. 
+To reduce pipeline invalidation penalty, a SKIP mechanism is designed to emulate the conditional execution 
+that most RISC cores use. When a jump occurs and the destination is short in forward direction, this jump is rec-
+ognized as an if-else block, and a SKIP flag is set instead of a jump assertion. During SKIP set, all μOPs in the 
+execution unit are replaced by NOPs. When the program counter contains a target jump destination, the SKIP flag 
+is cleared and the μOP executed normally. This mechanism reduces a branch pipeline invalidation penalty from 7 
+to 4 cycles. 
+ 
+ 36 
+ 
+PLX system plays as digital camera. An 8-bit local bus is used to communicate with FPGA. It is translated into 
+AHB by the 8-bit bridge on FPGA. 
+We have built a PLX-core based multimedia SoC development platform, from system level virtual proto-
+type, SIMD code generation to chip design. The PLX platform can be used in small portable devices by its tiny 
+core and high-performance in processing multimedia functions. 
+ 
+VII.5  PARALLELIZATION BACKGROUND 
+To explore code parallelism, a basic way is to transform operations in a loop into vector operations as many 
+as possible. In most cases, parallelism is destroyed by bad code structure. Vectorization techniques try to improve 
+parallelism by dependence reduction and loop transformation. Though many techniques described in this section 
+have been well developed in the parallel compiler field, we still have to tailor them for an SWP-SIMD core. 
+A vector operand is represented in the following as A[begin: end: stride]. The array index is extended to 3 
+literals to represent the vector operation performed on elements indexed by begin, begin+stride, be-
+gin+2*stride, … , end. When the stride is equal to 1, it can be omitted. 
+If a loop has no semantic difference between being executed as a sequential loop and executed as a vector 
+operation, this loop can be vectorized. Two statements can be executed in parallel only when there is no depen-
+dence between them. Dependence can be classified into the following three types [15], 
+(1) Flow dependence, or Read after Write (RAW) dependence. 
+(2) Anti dependence, or Write after Read (WAR) dependence. 
+(3) Output dependence, or Write after Write (WAW) dependence. 
+The anti and output dependences can be removed by variable rename technique, thus they are called false 
+dependences, and only the flow dependence is a true dependence. Therefore, the loop-carried flow dependence 
+actually limits vectorization.  
+To precisely determine the loop-carried flow dependence, we can use the GCD (Greatest Common Divisor) 
+test to evaluate the array index relationship of the statements in a loop [16]. By number theorem, GCD test works 
+only when the loop index begins from 1, ends at a number N, and is increased by 1. General loop that does not 
+satisfy this constraint needs to normalize.  
+Loop transformation [17, 18] is the key technology to improve parallelism and data locality. Most proces-
+sors work in row-major, where row array is more compact than column array. If two nested loops can be ex-
+changed to increase data locality, they are suggested to perform such kind of loop transformation. 
+Parallelism can be improved by removing false dependence. The lifetime of a local variable starts from its 
+value settled, thus rename it as a new variable will not cause semantic difference. Variable rename can be used to 
+solve output dependence. Scalar expansion expands local variables into an array. Control flow conversion [19] 
+changes control dependence into data dependence to avoid branch target ambiguity. Node splitting extracts the 
+parallelizable part of a complex equation. 
+Data dependence graph [20] uses graph theorem to help dependence analysis. A data dependence graph is 
+a directed graph, whose nodes represent program statements and arcs represent dependences. 
+On a directed graph, a strongly connected components (SCC) is defined as: for every pair of nodes u and v 
+if there is a path from u to v, there is also a path from v to u. An SCC can be found by using depth-first search 
+technique [21]. 
+In geometric view, an SCC contains nodes that form a circle. A circle in a data dependence graph means 
+that there are loop-carried dependences on these statements, which are not vectorizable. A single-tone SCC is de-
+fined as an SCC having only one node and no arc to itself. Loop distribution changes SCCs into independent loops, 
+and transforms single-tone SCCs into a vector. 
+Figure 7.5 shows a simple example of parallelization. Figure 7.5(a) shows an original sequential code. Fig-
+ure 7.5(b) is the result after dependence removal. Figure 7.5(c) illustrates the code in vector format after loop dis-
+tribution. Fig 3(d) shows the data dependence graph (DDG) of the original example, and Figure 7.5(e) the data 
+dependence graph after dependence removal. 
+ 38 
+ 
+ify the data organization analysis in an SWP-SIMD core. Our method sequentially selects an aligned basic block, 
+and then parallelizes the operations bound to this block to avoid misalignment. 
+The first stage is to find a parallelizable memory load operation and its maximum parallelizable code range. 
+From the memory load operation, the loop-carried data dependence is checked from innermost loop to outer loop. 
+A parallelizable operation might be hidden under bad coding style. To find the largest parallelizable loop, all false 
+dependences should be removed by the techniques introduced in Section VII.5. After dependence removal, an 
+SCC in the data dependence graph as shown in Figure 7.5 represents the largest parallelizable part of the algorithm. 
+Our procedure begins with the selection of a single tone SCC for memory load operation. A single-tone SCC 
+memory load operation represents that all memory items covered by this operation are able to perform simulta-
+neously. Thus we can reorganize the computation sequence to fit our SWP-SIMD PLX platform constraint. 
+After a parallelizable memory load operation in the largest loop is determined, we have to examine its cov-
+er area and redundancy. The memory cover area is obtained by explore the memory index on the loop. For a mul-
+timedia application, the cover area usually forms a 2-D rectangle. The redundancy is obtained by dividing the load 
+operation count by the cover area word count. For example, 8 load operations work on a 16-byte (two 64-bit words) 
+area, the redundancy is 8/2=4. It means we can reduce memory access time to 1/4 if all reuses can be applied. 
+The second stage is to group operations from the store operation on the unrolled data flow graph. The group 
+is used to select proper operations to pack into an SWP-SIMD core. From each store operation, operations can be 
+grouped by backward tracing till the leaf of load operations. These operations are necessary to generate the store 
+result. A data should be kept in register until it is written into memory. Grouping store operations as soon as poss-
+ible can reduce the number of registers used for temporary data. Thus the operations in the same group have higher 
+priority to pack together. 
+With these groups, we can examine the redundancy information. For a regular array-based code, each group 
+may cover the same size of load block by their load operations. If a memory item can be reused for two blocks, 
+their load blocks are overlapped on this item. The load block offset can be transformed into a linear form to help 
+the block reorganization. For the image filter example in Section VII.6.A, the load block is 3×3, and the next block 
+is one item right or down shift. 
+The third stage is to allocate an aligned basic block, which is the smallest memory area to preserve in reg-
+ister for reuse, and to be merged with the loaded blocks. The left-top load block is selected first. When its right 
+edge is not aligned to the (64-bit) word boundary, the right load block which is not overlapped is merged into the 
+basic block. With this basic block size, we can immediately know how many registers are necessary to buffer the 
+basic block. 
+The decision of the basic block size is dependent on the available number of registers. A basic block is the 
+minimum aligned set that can be fully buffered into these registers. If more registers are available, the basic block 
+can be extended to right or down to increase register reuse. 
+The fourth stage is to analyze which groups need to reuse from this basic block. The groups whose load 
+operations are binding to the first row of the basic block are chosen. These blocks may extend the load area to 
+right. The extra load result can be reused for next basic block. These groups become the unit to generate an 
+SWP-SIMD code. 
+The other groups can be generated by repeatedly applying the above four stages. The outer loop can first go 
+either rightward (in the x-axis direction) or downward (in the y-axis direction). The direction which has a better 
+reuse rate is chosen first. 
+We use five examples to explain this strategy. The first spatial-image filter example containing much re-
+dundant memory access will be described in detail. The second SAD example shows that its load block is not 
+overlapped. And the third matrix multiplication shows the application of a simple loop-unrolling parallelization 
+method. The last two examples use the proposed method to decide basic block region and graph-based method to 
+manage SWP-SIMD code inside basic block to improve performance for complex algorithms. 
+ 
+A. Spatial Image Filter 
+A spatial image filter is a 2-D FIR (finite impulse response) filter, defined as: 
+),
+2
+,
+2
+(*),(),(
+1
+0
+1
+0
+LjyKixfjihyxg
+K
+i
+L
+j
+−+−+= ∑∑−
+=
+−
+=
+ 
+where f(x,y) is the image value at position (x,y), g(x,y) is the result image value, and h is the filter impulse response 
+matrix of size K×L. For example, a 3×3 sharpness filter which can emphasize object boarder is given as 
+ 40 
+ 
+The aligned basic block f[0:2][0:11] belongs to groups indexed by {y,x}={1,1},{1,4},{1,7},{1,10}. Nine registers 
+are used to buffer this basic block. 
+The load operations bound to the first word of the basic block are y+j-1=0 and 0≤x+i-1≤3, and they contain 
+S1 of iterations {y,x,j,i}={1,1,0,0:2},{1,2,0,0:2},{1,3,0,0:1} and {1,4,0,0}, having totally 9 operations. 
+S1{1,1,0,0:2} and S1{1,4,0,0} are within the basic block groups, they are packed to generate first vector load in-
+struction. By similar analysis, S1{1,2,0,0:2} will induce a block f[0:2][1:12] by groups of 
+{y,x}={1,2},{1,5},{1,8},{1,11}. The block is overlapped on basic block with 1 item offset. Thus the left 11 col-
+umns can be shifted out from the 9 registers of the basic block, but the rightmost column needs to be loaded. The 
+extended load block f[0:2][0:15] uses 12 registers to buffer. S1{1,3,0,0:1} induces a block f[0:2][2:13] which is 
+able to reuse from the extended load block. Thus, groups of {y,x}={1,3},{1,6},{1,9},{1,12} are selected. 
+The SWP-SIMD instructions can be generated by processing the remaining data flow graph begins from the 
+first generated vector load instruction, as the yellow area in Figure 7.6. The constant assignment S2 is expanded to 
+fit the SWP-SIMD size. The summation operation S4 is converted into partial summation. 
+The next step can move to right (x-index) or down (y-index) in a similar way. The right basic block 
+f[0:2][13:24] targets to groups {y,x}={1,13:24}. The overlapped area with the extended block is f[0:2][12:15], 
+where 27 load operations of the target groups are bound to it. The down basic block f[1:3][0:11] targets to groups 
+{y,x}={2,1:12}. The overlapped area is f[1:2][0:12], where 72 load operations of the selected groups are bound to 
+it. The better reuse rate is y-axis. 
+The result pseudo code is built as follows. The outmost loop is x, increased by 12. The inner loop is y, in-
+creased by 1. The basic block is loaded into 12 RL registers at the beginning of y loop. At y=1, the 12 registers are 
+loaded from memory, as listed in SLa. The following y loop only needs to load 4 registers, other 8 registers are 
+able to reuse from previous iteration, as listed in SLb. The loop k represents the three reuse phases. The basic 
+block is the one obtained when k=0. The other k loops are the two reused phases indexed by S1{1,2,0,0:2} and 
+S1{1,3,0,0:1} as discussed above. The innermost loop j contains the three rows of a block. In loop j, R1 is shifted 
+out from RL by an index of k. Finally, partial summation should be summarized as S4b. 
+ 
+ 
+Code2. SWP-SIMDized Spatial Image Filter 
+short f[98][98], g[98][98]; 
+const short h[3][3]={{1,1,1},{1,-7,1},{1,1,1}}; 
+register packed_short RL[3][0:15]; 
+register packed_short R1[0:11],R2[0:11],R3[0:11],R4[0:11],Rs[0:11]; 
+for(x=1;x<=96;x+=12) { 
+   for(y=1;y<=96;y++) { 
+S0:        R4[j][0:11]=0; 
+           If (y==1) { //first y, load from memory 
+SLa:           for(j=0;j<2;j++) { 
+for(i=0;i<4;i++) RL[y+j-1][i*4:i*4+3]=*(&f[j][x+i*4]); 
+                  } 
+    } else { //reuse 2 rows from last y 
+SLb:           for(j=0;j<2;j++) {for(i=0;i<4;i++) RL[j][i*4:i*4+3]=RL[j+1][i*4:i*4+3]; 
+        for(i=0;i<4;i++) RL[2][i*4:i*4+3]=*(&f[y+1][x+i*4]); 
+    } 
+           for(k=0;k<3;k++) { //k=0:basic block, others: overlapped block 
+               for(j=0;j<3;j++) { 
+S1:              R1[0:11]=RL[j][0:15] << (k*16); 
+S2:              R2[0:11]={h[j][0:2],h[j][0:2],h[j][0:2],h[j][0:2]}; 
+S3:              R3[0:11]=R1[0:11]*R2[0:11]; 
+S4a:             R4[0:11]+=R3[0][0:11]; 
+               } 
+               //final sequential summation 
+S4b:           Rs[k]=R4[0][0]+ R4[0][1]+ R4[0][2]; 
+           Rs[k+3]=R4[0][3]+ R4[0][4]+ R4[0][5]; 
+           Rs[k+6]=R4[0][6]+ R4[0][7]+ R4[0][8]; 
+           Rs[k+9]=R4[0][9]+ R4[0][10]+ R4[0][11]; 
+      } //k 
+S5:        for(j=0;j<12;j+=4) g[y][x+j:x+j+3]=Rs[j:j+3]; 
+ 42 
+ 
+ 
+There are two memory load operations: S1 and S2. The largest parallelizable loop in S1 is the loop indexed 
+by sb. The S1 operation count is 16×4×4=256, and the C array size used is 16×16=256 bytes. Thus, the redundan-
+cy is 256/(256×8/64)=8. This redundancy value is the same to the SWP-SIMD vector length, which means no 
+memory can be reused. The group of store operations in S5 is shown as the blue area in Figure 7.8. 
+The left-top load block C[BY:BY+3][BX:BX+3] belongs to the group indexed by sb=0, which is not 
+aligned to the 64-bit boundary. Its right non-overlapped block C[BY:BY+3][BX+4:BX+7] belongs to group in-
+dexed by sb=1, which is aligned. Only four registers are used as the buffer memory. It has room to expand the 
+basic block, which is decided as C[BY:BY+3][BX:BX+15] that uses eight registers. 
+To deal with the outer loop, where no load block can leave rightward (in the x-axis direction), we can only 
+go downward (in the y-axis direction). And we observe that all load operations bound to the basic block were 
+transformed already, the next block C[BY+4:BY+7][BX:BX+15] to deal with is not overlapped with the basic 
+block. 
+ 
+ 
+Figure 7.8.  SWP-SIMD for Code 3. 
+ 
+ 
+The result pseudo code is built as follows. The outmost loop is indexed by sb. While the basic block does 
+not need to buffer for reuse, and the remaining four rows behave the same, they are rolled into a loop indexed 
+row-wise. While alignment check is based on array C, alignment may occur at array R. This can be checked by 
+offset m. While S2b contains misaligned access, we can use one additional load and one shift to maintain the 
+alignment. While S3 works on 16-bit precision, the 8-bit precision R1b and R2b should be expanded into 16-bit 
+precision by using a permutation instruction, as listed in S1w and S2w.  
+ 
+Code4. SWP-SIMDized SADs 
+unsigned char C[PICH][PICW]; //current_frame; 
+unsigned char R[PICH][PICW]; //reference_frame; 
+register packed_byte R1b[0:15], R2b[0:23]; 
+register packed_short R1w[0:15], R2w[0:15], R3[0:15], R4[0:15], Rs[0:3]; 
+for(sb=0;sb<16;sb+=4) { 
+ S0:     R4[0:15]=0; 
+         for(row=0;row<4;row++) 
+S1:       for(j=0;j<2;j++) R1[j*8:j*8+7]= *(&C[BY+sb/4+row][BX]); 
+          If ((m%16)==0) { 
+S2a:         for(j=0;j<2;j++) R2[j*8:j*8+7]= *(&R[BY+n+sb/4+row][BX+m]); 
+          } else { 
+S2b:         for(j=0;j<3;j++) R2[j*8:j*8+7]= *(&R[BY+n+sb/4+row][BX+m-(m%15)]); 
+             R2[0:15]=R2[0:23]<<((m%16)*8); 
+S1;0,0
+S2;0,0 
+S3;0,0 
+S5;0,0
+S1;1,0 
+  S6 
+S1;0,1 
+S2;0,1
+0
+S3;0,1 
+S5;0,1 
+S1;0,2
+S2;0,2
+S3;0,2
+S5;0,2
+sb=0 S1;2,0 
+S1;0,3
+S2;0,3
+S3;0,3
+S5;0,2
+S4;0,0 S4;0,1 S4;0,2 S4;0,3
+S1;0,0
+S2;0,0
+S3;0,0
+S5;0,0
+S1;1,0
+  S6 
+S1;0,1
+S2;0,1
+0
+S3;0,1
+S5;0,1
+S1;0,2 
+S2;0,2 
+S3;0,2 
+S5;0,2 
+sb=1 S1;2,0
+S1;0,3 
+S2;0,3
+S3;0,3
+S5;0,2 
+S4;0,0 S4;0,1 S4;0,2 S4;0,3
+ 44 
+ 
+S4:          R4[0:P-1]+=R3[0:P-1]; 
+    } 
+S5:       C[m][n:n+P-1]=R4[0:P-1]; 
+  } 
+} 
+Above matrix multiplication performance is not so satisfactory. In ATLAS research [11], partition a matrix 
+into smaller sub-matrices by considering cache strategy and instruction set constraint can generate an optimal re-
+sult. We have to call for these good SIMD code generation techniques. 
+ 
+D.  Other Examples 
+For computation-intensive algorithms, optimal solution cannot be obtained by applying memory access 
+analysis only. Consider the Discrete Cosine Transform (DCT) algorithm used in a JPEG encoder, which operates 
+on an 8×8 block. Each frequency component can be obtained after performing a convolution on all these 64 pixels. 
+Therefore, every pixel had to be read 64 times and the memory access redundancy is large. Pixel precision is 8-bit 
+and frequency component is 16-bit. By our proposed method, we can decide to buffer two 8×8 blocks in 8 regis-
+ters as the basic block, and knows moving basic block on x-direction is better. Inside the basic block, while whole 
+block is buffered, no further SIMD generation techniques can be used to reduce memory access latency. However, 
+data flow graph based code selection [30] or heuristic based SIMD code selection [31] can help to manage the 
+reverse ordering or butterfly ordering of DCT algorithm. 
+De-blocking filter used in a video decoder is another example. The de-blocking filter smooths the ma-
+cro-block border adjacent to the left and top macro-block. Each macro-block had been referenced 3 times. Ma-
+cro-block content is generated by inverse transform and motion compensation in real-time from the data stream; 
+reorganize the macro-block order to reduce redundant memory access is impossible. Thus parallelization can only 
+apply inside a macro-block. Similar to DCT, the whole macro-block has to be buffered in registers, and the data 
+flow graph method can thus be used to generate a better SIMD code. 
+ 
+E.  Performance Analysis 
+To calculate the performance, some platform parameters, such as cache block size and memory access latency, 
+are needed. The latency to load data from main memory is α cycles, and the burst length is 4 for a 32-bit SDRAM. 
+The cache word line is 32 bytes, and latency of cache hit load is β cycles. Cache contains a line buffer; sequential-
+ly load from the line buffer needs γ cycles of latency. On a portable device running at 100MHz clock, the typical 
+value of β is 7, which includes address calculation, bus issue, SRAM address assert, SRAM data load, send to 
+store stage, write into register buffer, and fetch into operand. The average value of α is 20, which contains cache 
+miss, external bus request, and SDRAM refresh wait. Cache size is assumed large enough to buffer all data.  
+To focus on comparing load reuse, memory store latency and all arithmetic instructions are assumed to be 
+1-cycle. All codes have been unrolled to remove the jump invalidation penalty and memory address calculation 
+overhead. The execution cycles of above 3 codes are listed in Table 7.1, assuming α=20, β=7, γ=3, M=N=K=32, 
+and P=8. Without loss of generality, we assume that data in the current frame exist in cache, and those in the ref-
+erence frame are loaded from main memory for the SAD example. 
+We can observe from Table 7.1 that memory access latency of the Spatial Image Filter example is largely re-
+duced, but ALU execution has only two times speedup. It is because the additional shift operation SLb and the 
+final sequential summation S4b occupy a large part of the execution time. In the SAD and Matrix Multiplication 
+examples, loaded data are not reused; their speedup is contributed by SWP-SIMD parallelization. 
+VII.7  CONCLUSION 
+To parallelize instructions in an SWP-SIMD core, memory latency and memory alignment are two key points 
+to consider. We introduced a method to reduce memory latency and avoid misalignment. Our method is specially 
+designed for multimedia applications in an embedded system, which memory behavior is regular and analyzable at 
+compile time. A best basic block region and best basic block processing order is determined by minimizing re-
+dundant memory access in coarse grain. Memory access redundancy information is obtained from the block over-
+lap information. Registers are allocated to reduce memory access redundancy. Loop structure is decided by the 
+best memory reuse flow. The SIMD code is generated from data flow graph. Other graph-based or heuristic-based 
+fine grain methods are able to cooperate with our method to get better performance. 
+Note that the memory access redundancy in the Spatial Image Filter example (Code2) is not fully utilized, 
+because in deciding which of the x-axis or y-axis to reduce first, we have to give up the access redundancy in the 
+ 46 
+ 
+[16] K. Kennedy and R. Allen, "Automatic translation of FORTRAN programs to vector form," ACM Transac-
+tions on Programming Languages and Systems, Vol. 9, No. 4, pp. 491-554, Oct. 1987. 
+[17] M. E. Wolf and M. S. Lam, "A loop transformation theory and an algorithm to maximize parallelism," IEEE 
+Transactions on Parallel and Distributed Systems, Vol. 2, No. 4, pp. 452-471, Oct. 1991.  
+[18] A. Darte and F. Vivien, "A classification of nested loops parallelization algorithms," IEEE Symposium on 
+Emerging Technologies and Factory Automation, Vol. 1, pp. 217-234, 1995. 
+[19] J. R. Allen, K. Kennedy, C. Porterfield and J. Warren, "Conversion of control dependence to data depen-
+dence," Proceedings of the 10th ACM SIGACT-SIGPLAN Symposium on Programming Language, pp. 
+177-189, 1983.  
+[20] R. Kramer, R. Gupta and M. L. Soffa, "The combining DAG: a technique for parallel data flow analysis," 
+IEEE Transactions on Parallel and Distributed Systems, Vol. 5, No. 8, pp. 805-813, Aug. 1994. 
+[21] Robert Tarjan, “Depth-first Search and Linear Graph Algorithms,” SIAM Journal on Computing, Vol. 1, No. 
+2, pp. 146-160, 1972. 
+[22] Tung-Chieh Chen, Shao-Yi Chien, Yu-Wen Huang, Chen-Han Tsai, Ching-Yeh Chen, To-Wei Chen, and 
+Liang-Gee Chen, “Analysis and Architecture Design of an HDTV 720p 30 Frames/s H.264/AVC Encoder,” 
+IEEE Transactions on Circuits and Systems, Video Technology, Vol. 16, No. 6, pp. 673-688, Jun. 2006. 
+[23] G. H. Lin, S. J. Chen, R. B. Lee, and Y. H. Hu, "Memory Access Optimization of Motion Estimation Algo-
+rithms on a Native SIMD PLX Processor," IEEE Asia-Pacific Conference on Circuits and System (APCCAS), 
+Singapore, pp. 567–570, Dec. 2006. 
+[24] M. W. Hall, J. M. Anderson, S. P. Amarasinghe, B. R. Murphy, S.-W. Liao, E. Bugnion, and M. S. Lam, 
+"Maximizing Multi-processor Performance with the SUIF Compiler," IEEE Transactions on Computers, Vol. 
+29, No. 12, pp. 84-89, Dec. 1996. 
+[25] T. Ishihara and H. Yasuura, “Programmable power management architecture for power reduction,” IEICE 
+Transaction on Electronics, vol. E81-C no. 9, pp. 1473-1480, Sep. 1998. 
+[26] M. W. Hall, J. M. Anderson, S. P. Amarasinghe, B. R. Murphy, S.-W. Liao, E. Bugnion and M. S. Lam, 
+"Maximizing Multiprocessor Performance with the SUIF Compiler," IEEE Transactions on Computers, Vol. 
+29, No. 12, Dec. 1996, pp. 84-89. 
+[27] N. Mazur, G. Janssens, and M. Bruynooghe, "A Module Based Analysis for Memory Reuse in Mercury," 
+Proceedings of the International Conference on Computational Logic, pp. 1255-1269, 2000. 
+[28] C. J. Hyun, S. D. Kim, and M.H. Sunwoo, "Efficient Memory Reuse and Sub-Pixel Interpolation Algorithms 
+for ME/MC of H.264/AVC," IEEE Workshop on Signal Processing Systems Design and Implementation, pp. 
+377-382, 2006. 
+[29] G. Ren, P. Wu, and D. Padua, "Optimizing data permutations for SIMD devices," Proceedings of the 2006 
+ACM SIGPLAN Conference on Programming Language Design and Implementation, pp. 118-131, 2006. 
+[30] R. Leupers and S. Bashford, "Graph-Based Code Selection Techniques for Embedded Processors," ACM 
+Transactions on Design Automation of Electronic Systems, Vol. 5, No. 4, pp. 794-814, Oct 2000. 
+[31] S. Larsen, R. Rabbah, and S. Amarasinghe, "Exploiting Vector Parallelism in Software Pipelined Loops," 
+Proceedings of the 38th International Symposium on Microarchitecture, Barcelona, Spain, pp. 119-129, No-
+vember 2005. 
+ 
+ 
+ 48 
+ 
+tion results indicate that the proposed CARRS routing method is capable of decreasing average excess delay of 
+existing NoC routing algorithms in many different traffic patterns.  
+ 
+ VIII.3  CONGESTION AVOIDANCE AND RELIEF ROUTING SCHEME 
+ 
+A.  NoC Architecture 
+We assume the NoC fabric consists of an n × n 2-D mesh network of routers. Besides the core, each rou-
+ter is also connected to four neighboring routers (North, East, South, and West) such that propagating a flit 
+through one hop requires one clock cycle. Each router is also equipped with input buffers to each of its five 
+connections. 
+The NoC uses wormhole routing to save buffer area. The types of algorithms employed are minimal path. 
+This will ensure the routing is livelock-free [11]. We also adopted an odd-even turn model to guarantee the 
+routing is free of deadlock [10]. 
+ 
+B. Latency Analysis 
+Since one of the main NoC objectives is lowering average packet latency, we study the sources of latency 
+that hinder buffers from being fluid. Latency λ can be separated into three different causes and can be ex-
+pressed as: 
+λ = h+ pf +ε 
+Hops h occurs when a flit at the front of a buffer wins arbitration and moves to the next node. The number 
+of flits in a packet pf cause latency due to wormhole routing transmitting one flit at a time. These two are the 
+only unavoidable forms of delay inherently found in traffic patterns. A lower bound for average latency for 
+any given traffic pattern is given by: 
+Lower_bound = h + pf 
+Figure 8.1 is a simplistic view of two streams of three buffers each four flits long. Each transition 
+represents the transaction the flit will take on the next cycle. When a flit does not win, it may be due to Sb or a 
+stall due to buffer space unavailable, or Sl stalls due to link unavailable, in other words a different link winning 
+contention. When a flit is not at the front of a buffer, it may stay at the same location in the FIFO Sf or it may 
+move ahead to the next slot in the buffer which we designate as Sm. Note that while this flit moves ahead in the 
+buffer, it does not make any progress towards the next node in terms of hops. This moving ahead is artificially 
+created by buffer size. 
+ 
+ 
+Figure 8.1: Components of Latency. 
+ 
+ 
+These stalls should all be considered different kinds of excess delay, ε: 
+ε= Sb + Sl + Sf+ Sm 
+Sf and Sm are excess delays that are a function of buffer size, buffer utilization, and the other two stalls Sb 
+and Sl. Sm is completely dependent on the buffer usage at the time of flit entry into the buffer. Therefore the 
+design of a routing algorithm should not consider stalls due to Sm. Sf is a function of buffer usage at the time of 
+flit entry multiplied by the number of times Sf and Sm occur while this particular flit is in the buffer. Therefore 
+reducing on Sb and Sl will automatically reduce Sf. Therefore, design of a routing algorithm should focus on 
+reducing Sb and Sl. 
+The architecture can be modified to collect statistical information about sources of delay from a buffer 
+standpoint. The following we term as a measure of how efficiently all the buffers of an NoC are being used: 
+efficiency
+bl
+b
+b B
+ssh
+h
+=++∑
+∑
+∈
+∈
+)(
+B
+B  
+ 50 
+ 
+current fill level and the transactions of the input buffer. Inactive represents a buffer which has not maintained 
+ability output flits. Fluid represents a buffer which had the capability to perform I and O simultaneously or 
+sustain O but remain in the fluid state due to current buffer size. Finally, non-fluid represents a buffer in which 
+a buffer has just been unable to perform O or been at a size of N. 
+When O is true and the buffer size is [1, 2, …, (N-1)], this describes the capability of a buffer to maintain 
+fluid. There are two possibilities of being in the inactive state. It was either empty or stopped being empty. If 
+the former is true, it must remain in the inactive state until it, via I, has a chance to send packets. If the latter 
+case is true, it has a chance to immediately become fluid and maintain fluidity by taking the [1]:O transition. 
+The last state is the non-fluid state. This represents a buffer that is not maintaining the ability to input and 
+output flits at the same time. For example, a non-fluid buffer that has reached a buffer size of N needs to first 
+output a flit in order to have a chance of transitioning to a fluid state at next cycle. This last state is used as the 
+indicator of network congestion for the following two sub-Sections. 
+Most conventional algorithms depend on some form of buffer fill level information and provide a re-
+sponse to them. Regardless of the response, this information is not as indicative of congestion. Minimal path 
+adaptive routing algorithms can take advantage of precise indicators provided by fluidity state modeling in 
+order to optimize their corresponding response. In the next section, we will show two examples of this appli-
+cation. 
+ 
+D. Implementation 
+Congestion Avoidance Scheme (CAS) depends on neighboring nodes to report downstream non-fluidity 
+information to the current node. In Figure 8.3(a), the packet P1 at the West input buffer of the node (1,2) has a 
+destination of (3,0). It can travel in two possible directions, North and East. In this case, the CAS examines the 
+downstream non-fluidity sent by the North and East neighbors. The North neighbor sends a non-fluidity level 
+of two because its two possible downstream directions are both non-fluid. The first possible downstream di-
+rection, North, is unavailable due to odd-even restriction. The second possible direction, East, is unavailable 
+because of the non-fluidity in the (2,1) West buffer. The East neighbor (2,2) checks its possible downstream 
+directions. In this case East is still fluid, so a non-fluidity level of one is sent back to (1,2) and therefore P1 is 
+routed to (2,2). If the decision was instead based on buffer fill levels, P1 would not be necessarily routed to 
+(2,2).  
+Congestion Relief Scheme (CRS) depends on upstream nodes fluidity information to influence arbitration 
+of the current node. In Figure 8.4(b), the west input buffer P1 and the south input buffer P2 of the node at (2,1) 
+are contending for the north output port. The node at (1,1) sends fluidity information downstream to P1. In this 
+case, one fluid level and one non-fluid level are reported and then passed to (2,1)’s congestion relief scheme. 
+Meanwhile, (2,2) forwards two non-fluid levels to the congestion relief scheme. Since two non-fluid levels 
+indicate higher congestion, P2 wins arbitration and routes its flit to the north output port. If two buffer fill le-
+vels are used instead for congestion relief, P2 would not necessarily win arbitration. 
+ 
+ 
+  
+(a)                         (b) 
+Figure 8.4: (a) Congestion Avoidance Scheme (CAS) and (b) Congestion Relief Scheme (CRS). 
+ 
+ 
+Since congestion avoidance and relief work in parallel, we combine CAS and CRS to develop the CARRS 
+Router Architecture as shown in Figure 8.5. First, a packet enters the router and is detected by the Pathing unit. 
+Before a request, the CAS block analyzes Buf_Cond and Neighbor_DownFState. For each of the two possible 
+directions the packet can travel in, if the corresponding Buf_Cond is not full, then Neighbor_DownFState is 
+looked at for the amount of fluidity. The direction with the most fluidity is requested. The Arbiter then collects 
+the requests and utilizes the Reserved Ports unit and the CRS block to grant and deny requests. Because of 
+wormhole design, the Reserved Ports unit automatically causes body flits to be granted by the Arbiter pro-
+vided there is space at the downstream buffer. The CRS collects the non-fluidity states, Up_FState, of neigh-
+ 52 
+ 
+With the NoC as a constant, algorithms can be compared among different traffic patterns to characterize 
+their resulting effect upon fluidity as depicted with a radar diagram in Figure 8.6(b). The three axes represent 
+different traffic patterns. The radar diagram shows CARRS capable of sustaining higher network efficiency for 
+transpose and hotspot traffic compared to XY. In the uniform traffic pattern, XY maintains higher network effi-
+ciency. This is expected since in terms of average packet latencies, XY performs significantly better than adap-
+tive algorithms when traffic is uniform as shown in [10,11]. 
+ 
+ 
+                     (a)                             (b) 
+Figure 8.6: (a) Packet Injection Rate versus Packet Consumption Rate for Transpose Traffic 
+and (b) Fluidity Efficiency of XY and CARRS versus Traffic Patterns. 
+ 
+   
+This diagram can also be used to measure the overall impact of the fluidity concept of different algorithms. 
+The CARRS algorithm can be broken down into two parts: OE-CRS, a congestion relief algorithm and also 
+CAS-FCFS, a congestion avoidance algorithm. In Figure 8.7(a), OE-CRS sustains higher fluidity efficiency 
+under all three traffic patterns as opposed to OE-CAIS. In Figure 8.7(b), CAS-FCFS also sustains higher fluid-
+ity efficiency under all three traffic patterns as opposed to NoP. This evidence suggests our concept enables 
+algorithms in general to sustain higher fluidity efficiency regardless of the type of traffic pattern. Furthermore, 
+CARRS embodies the information captured in both CAS and CRS and gains the fluidity benefits from both 
+avoidance and relief. 
+ 
+              (a)                                                 (b) 
+Figure 8.7: (a) Fluidity Efficiency of OE-CRS and OE-CAIS versus Traffic Patterns and (b) 
+Fluidity Efficiency of CA-FCFS and NoP-FCFS versus Traffic Patterns. 
+  
+The benefits of this increase in fluidity can be seen by examining reductions in average packet excess de-
+lay. However, reducing average packet excess delay is the conventional objective. When we compare injection 
+rate versus average packet excess delays, the algorithms with the highest fluidity efficiencies also have the 
+highest sustainable injection rates within the saturation point. Figure 8.8(a) displays relative packet excess 
+delays of different algorithms under uniform traffic. As a result of the increased network efficiency, CARRS 
+performs significantly better than both NoP and OE-CAIS. This is because only CARRS can perform both 
+congestion avoidance and relief well. However, XY performs better than CARRS due to its intrinsic nature. 
+ 54 
+ 
+IX. PLX2 AND NOC DESIGN 
+ 
+In embedded multimedia systems, increasing operations per cycle and reducing clock frequency in a de-
+sign are the key concepts to reduce its energy consumption. To achieve this goal, various parallelization tech-
+niques have been introduced. 
+Data level parallelism (DLP) processes many data in one cycle. It can be realized in a single instruction 
+multiple data (SIMD) core to save instruction fetch and decode power [1]. 
+Instruction level parallelism (ILP) that processes many instructions in one cycle can be realized in a su-
+perscalar or a very long instruction word (VLIW) core. Superscalar schedules instructions by hardware, which 
+needs large out-of-order buffer and dependence checking hardware. VLIW instructions are scheduled by com-
+piler to generate a wide microcode [2]. 
+Memory latency and branch stall are the major barriers in processor performance. Video and image ap-
+plications are memory-dominant. That is, much time is spent on waiting memory response. Usually, an image 
+size is much larger than the cache capacity, thus that image cannot be fully buffered in a cache. Any process 
+that needs to load a full image from external main memory will cause many cache-miss loads. 
+Simultaneous multi-threading (SMT) [3], or hyper-threading [4] technique was proposed to solve memo-
+ry latency and branch problem through thread level parallelism (TLP). SMT allows multiple instruction se-
+quences (threads) to share processor resources, such as caches, execution units, and memory. Many threads 
+can be alive simultaneously, but only one thread owns the execution unit. When one thread is stalled by mem-
+ory or branch, another thread can takeover the execution unit to hide memory latency. 
+Chip multi-processor (CMP) integrates all cores in one chip. When too many cores co-exist on a chip and 
+these cores have to co-work tightly, communication becomes bottleneck. No high-performance bus can offer 
+such high communication bandwidth, thus network on chip (NoC) becomes important [5]. 
+To utilize the complex CMP hardware, compiler plays an important role. A parallel compiler needs to 
+partition a sequential code into threads and dispatch more threads into cores. A challenge is to balance the 
+loading of all threads by the SIMD/VLIW ability and predict memory latency. We also need to arrange in-
+ter-core data flow to minimize the communication impact. Thus a compiler framework for parallelism profil-
+ing is necessary. 
+ 
+IX.1  MULTI-CORE NOC IMPLEMENTATION 
+Figure 9.1 shows our designed 16-tile multi-core NoC architecture, which contains 32 PLX cores. Every 
+two cores are clustered as a tile which shares an L1 cache. Tiles are connected by an NoC. The NoC is a ho-
+mogeneous mesh type, having 16 routers to transfer inter-core packets. The L2 cache is located between the 
+NoC and an external double data rate (DDR) memory controller. Some necessary peripherals are integrated 
+into this NoC platform for multimedia data accesses. Since transfer latency is a challenge in NoC design, to 
+avoid deadlock, many routing algorithms had been introduced. These peripherals as listed in the following are 
+in charge to supply the required types of messages for NoC test. 
+I2S is an audio codec interface standard. The I2S block transforms audio samples into I2S serial signals. 
+The message input to the I2S block owns the highest priority and a low bandwidth, and is a discardable 
+real-time packet. For a 48KHz 16-bit stereo waveform, the required bandwidth occupies only 0.024% of the 
+NoC capacity, but the message should arrive in time to keep the I2S FIFO full. If the message cannot arrive in 
+time, it will be discarded and the sound from speaker will be discontinuous. 
+Sensor block gets images from an external CMOS sensor chip. Its message type owns a low priority and a 
+high bandwidth, and is a discardable real-time packet. When the processor is unable to process the image in 
+time, the message can be discarded and we may see the video stalled a while. 
+IDE block handles the disk or compact-flash (CF) card interface. Processor handles its file allocation table 
+(FAT) and buffers the file read/write to a unit of 512 bytes. The message owns a low priority and a middle 
+bandwidth, and is a non-discardable packet. 
+USB communicates to PC in a 480Mbps bandwidth. We implement the Bulk protocol. Two 512-bytes 
+ping-pong FIFO’s are implemented to maximize the actual data rate. The message owns a low priority and a 
+middle bandwidth and is a non-discardable packet. 
+L2 cache access occupies most NoC bandwidth. All main memory access should pass through L2 cache. 
+Inter-core shared-memory communications also need to pass through L2 cache. 
+ 56 
+ 
+ALU
+OPROPR
+RES
+OPR OPR
+RES
+RegFile
+CPSR
+O
+P
+C
+O
+P
+CShuffle
+OPERAND
+ALU
+OPR OPR
+RES
+OPR OPR
+RES
+RegFile
+CPSR
+O
+P
+C
+O
+P
+CShuffle
+OPERAND
+PC10
+PC11
+IBUF10
+IBUF11
+DEC
+DEC
+PC00
+PC01
+IBUF00
+IBUF01
+DEC
+DEC
+ISSUE ISSUE
+IFETCH IFETCH
+Dbuff
+maddr mdata
+AHB
+bridge
+Dbuff
+mdata maddr
+AHB
+bridge D$
+I$
+Load/
+Store
+Load/
+Store
+NoC
+ 
+Figure 9.2. One Tile of Shared-Cache Duo-core. 
+ 
+ 
+Figure 9.3 shows the router design. We utilize a novel fluidity concept to analyze and develop routing al-
+gorithms in our Network-on-Chip design for congestion avoidance and relief. We develop a new model to 
+capture congestion information which improves the performance of routing algorithms. Comparisons show 
+that algorithms used in our model consistently outperform the original algorithms themselves. We apply a 
+flow-maximization methodology and develop a minimal-latency, adaptive routing scheme towards lower av-
+erage packet latencies in a Network-on-Chip. The minimal-latency adaptive algorithm allows packets to be 
+forwarded in multiple directions. Typical routing algorithms select the next hop path for each packet and then 
+resolve conflicts between packets that have been selected to have the same next hop path. We propose a novel 
+decision flow which combines routing direction and port arbitration while maximizing flow. Upon a 2-D mesh 
+NoC, our implementation lowers average packet latencies across all packet injection rates in an NoC. 
+ 
+ 
+ 
+Figure 9.3. Flow Maximum Router. 
+ 58 
+ 
+In dispatching finer-grain threads, data locality is an important consideration. For example, if one core ac-
+cesses array elements 1, 3, and 5, and another core accesses array elements 2, 4, and 6. The two data groups 
+have no common items, so they can be executed in parallel. But a cache line contains 32 data elements. That is, 
+both caches will contain the same elements. Thus each cache needs to be synchronized whenever data is mod-
+ified, that wastes much time. In our architecture, two cores in a tile share the same cache, so they can work in 
+a threading type without synchronization overhead, but cores in different tiles should avoid this type of shar-
+ing. 
+An important analysis of our specified architecture is the 64-bit operation and supply voltage trade-off. If an 
+algorithm consists mainly of 64-bit accumulation operations, it will be assigned to a core in the VDD1 area of 
+Fig 1. But if it has heavy communication to any core in the VDD2 area, the performance will be reduced by 
+the longer message transfer path. Then we have to implement this algorithm in a 32-bit half-ALU only and put 
+the two full cores in the same tile. The trade-off constraints include power and performance. 
+Except parallelization, speculative precomputation [10] is a useful technique to improve performance using 
+simultaneous multi-threading ability. It is a scheduling technique to compensate memory latency. Cache-miss 
+loads are analyzed, and their memory address generation instructions are collected into a pre-computed thread 
+to prefetch data such that the main thread can be executed in full speed without waiting for cache-miss delay. 
+ 
+ 
+ 
+Figure 9.5. Divide and Conquer Threading. 
+ 
+ 
+IX. 3  RESULTS 
+Figure 9.6 shows the duo-core PLX2 layout, its size is 1.62x1.62 mm by UMC 90nm process. Its maximum 
+execution frequency is 175 MHz by post-simulation. The 16-tile chip is under working. 
+ 
+ 
+ 
+Figure 9.6. Duo-core PLX2 Chip. 
+ 
+ 
+Figure 9.7 shows the Flow Maximum Router performance evaluation. It evaluated three algorithms under 
+transpose traffic with packet injection rates ranging from 0.026 to 0.04. Under transpose traffic conditions, 
+FMAX produces slightly better results than DyAD [11]. 
+ 
+Partitioning Constraints: 
+Execution time
+SW 
+Block
+Mem.
+C
+Mem.
+C C
+Mem.
+C C C
+Evaluation Stage 
+T.E.: 1 
+T.D.C.: 1
+T.E.: 0.6 
+T.D.C.: 1.1
+T.E.: 0.4 
+T.D.C.: 1.2
+1. Fine-grained weights 
+2. Coarse-grained weights 
+3. Fine-grained connections 
+4. Coarse-grained connec-
+tions
+Memory 
+models 
+Nodes are blocks. 
+Edges are dependencies. 
+Partition SW Blocks in 
+sequential or parallel 
+General HW 
+Architectures 
+ 60 
+ 
+X.  CONCLUSION 
+In this 3-year project, we have sent 6 PhD students abroad, 5 (Guang-Huei Lin, Ya-Nan Wen, Dian-Jia Wu, 
+Chun-Jen Wei, and Jia-Wei Lin) to the University of Wisconsin, Madison and one (Mr. Xiao-Long Wu) to the 
+University of Illinois, Urbana-Champaign to collaborate with Professors Yu-Hen Hu and Michael Schulte in 
+UW, Madison and with Professor Wen-Mei Hwu in UIUC respectively. During these 3 years, we have com-
+pleted the designs of a PLX SIMD single core, an H.264 accelerator chip, a DLP/ILP/TLP/CMP duo-core 
+hardware architecture, a parallel compiler and profiler framework, and a network on chip. Also, we have pub-
+lished 38 papers (25 conference papers [1-25] and 13 journal papers [26-38]) and two books [39,40] from the 
+results of his project.  
+ 
+X.  REFERENCES 
+[1] P. Y. Hsiao, L. T. Li, C. H. Chen, S. W. Chen, and S. J. Chen, “An FPGA Architectural Design of Para-
+meter-Adaptive Real-Time Image Processing System for Edge Detection,” Emerging Information Tech-
+nology Conference (EITC), Taipei, Taiwan, August 2005, pp. 130-132. 
+[2] P. H. Cheng, T. H. Yang, C. H. Yang, G. H. Lin, F. Lai, C. L. Chen, H. H. Lee, Y. S. Sun, J. S. Lai, S. J. 
+Chen, “A Collaborative Knowledge Management Process for Implementing Healthcare Enterprise In-
+formation Systems,” 2005 IEEE/IEE International Engineering Management Conference (IEMC), New-
+foundland, Canada, September 2005, pp. 604-607. 
+[3] P. Y. Hsiao, C. H. Chen, S. S. Chou, L. T. Li, and S. J. Chen, “A Parameterizable Digital-Approximated 
+2D Gaussian Smoothing Filter for Edge Detection in Noisy Image,” 2006 International Symposium on 
+Circuits and Systems (ISCAS), Island of Kos, Greece, May 2006 pp. 3189-3192. 
+[4] S. TenqChen, Y. K. Tu, C. H. Wang, C. H. Lee, S. L. Tung, and S. J. Chen, “The Commercial Vehicle 
+Operation’s Service Technique and Application in Taiwan’s Market,” 2006 Emerging Information Tech-
+nology Conference (EITC), Dallas, Texas, August 2006, pp. T4-3.  
+[5] C. H. Wang, J. W. Lin, T. C. Yang, C. G. Lin, S. J. Chen, S. Y. Lin, B. Lin, L. Tsai, and C. Chang, “Inte-
+grated Circuits for 6.4Gbps Per-Pin Chip-to-Chip Interconnection,” 2006 Emerging Information Tech-
+nology Conference (EITC), Dallas, Texas, August 2006, pp. T12-2. 
+[6] H. S. Chen, J. J. Luh, C. L. Chen, P. H. Cheng, S. J. Chen, and F. Lai, “Mobile Health Information Sys-
+tem Integrated with VoIP Technology in a Wireless Hospital,” 2006 The 8th International Conference on 
+e-Health Networking Application and Services (HealthCom), New Delhi, India, August 2006, pp. 19-23. 
+[7] P. H. Cheng, J. J. Luh, H. S. Chen, S. J. Chen, J. S. Lai, and F. Lai, “A Healthcare Pattern Collection for 
+Rural Telemedicine Services,” 2006 The 8th International Conference on e-Health Networking Applica-
+tion and Services (HealthCom), New Delhi, India, August 2006, pp. 84-87. 
+[8] F. M. Shyu, P. H. Cheng, M. J. Su, J. J. Luh, H. S. Chen, and S. J. Chen, “Context-based Model for Mo-
+bile Electronic Medical Records,” 2006 The 8th International Conference on e-Health Networking Appli-
+cation and Services (HealthCom), New Delhi, India, August 2006, pp. 140-146. 
+[9] Y. N. Wen, S. J. Chen, and Y. H. Hu, “Multiple-bit Huffman Decoding for Video Encoding SOC Design,” 
+2006 IEEE International SOC Conference (SOCC), Austin Texas, September 2006, pp. 79-82. 
+[10] G. H. Lin, S. J. Chen, R. B. Lee, and Y. H. Hu, “Memory Access Optimization of Motion Estimation Al-
+gorithms on a Native SIMD PLX Processor,” 2006 IEEE Asia-Pacific Conference on Circuits and System 
+(APCCAS), Singapore, December 2006, pp. 567-570. 
+[11] C. H. Chen, P. Y. Hsiao, and S. J. Chen, "Edge Detection on the Bayer Pattern," 2006 IEEE Asia-Pacific 
+Conference on Circuits and System (APCCAS), Singapore, December 2006, pp. 1134-1137. 
+[12] Y. N. Wen, G. L. Wu, S. J. Chen, and Y. H. Hu, “Multiple-Symbol Parallel CAVLC Decoder for 
+H.264/AVC,” 2006 IEEE Asia-Pacific Conference on Circuits and System (APCCAS), Singapore, De-
+cember 2006, pp. 1242-1245. 
+[13] Y. J. Lin, M. J. Su, S. J. Chen, S. C. Wang, C. I. Lin, and H. S. Chen,“A Study of Ubiquitous Monitor 
+with RFID in an Elderly Nursing Home,” The First International Conference on Multimedia and Ubi-
+quitous Engineering (MUE), Seoul, Korea, April 2007, pp. 336-340. 
+[14] M. J. Su, H. S. Chen, C. Y. Yang, S. J. Chen, W. J. Lee, P. H. Cheng, P. K. Yip, H. M. Liu, F. P. Lai, and 
+D. Racoceanu, “A Preliminary Study of Medical Image Distributed Intelligent Access Integrated with 
+Electronic Medical Records System for Brain Degenerative Disease,” The 9th International Conference 
+on e-Health Networking, Application, and Services (Healthcom), Taipei, Taiwan, ROC, June 2007, pp. 
+19-23.  
+[15] J. C. Lin, M. J. Su, P. H. Cheng, Y. C. Weng , S. J. Chen, J. S. Lai, and F. P. Lai, “A Persistent Healthcare 
+Quality Model with Knowledge Management,” The 29thAnnual International Conference of the IEEE 
+Engineering in Medicine and Biology Society (EMBC), Lyon, France, August 2007.  
+[16] G. H. Lin, Y. N. Wen, X. L. Wu, S. J. Chen, and Y. H. Hu, “PLX SIMD SoC Platform Design,” IEEE 
+International SOC Conference (SOCC), Hsinchu, Taiwan, ROC, September 2007, pp. 51-54. 
+ (SOCC 2007)  
+本人於 9月 22日(週六)於Madison搭乘聯合航空 UA 5984上午 05:35班機，
+抵達 Chicago，再轉 UA0831上午 07:10之班機前往 San Francisco機場。因原
+UA6871班機延誤，改搭中華航空 CI003於 9月 24日(週一) 上午 05:30抵達中
+正機場。9月 25日驅車前往新竹清大會館安頓妥當後。 
+9月 26日，週三上午即到 IEEE International SoC Conference (SOCC 2007)大
+會會場報到，取得名牌、研討會議程簡介一冊、及會議論文集 CD等資料。上午
+參加由聯華電子的 Jackson Hu 主講之 Keynote Presentation “Will Moore’s Law 
+continue?”，然後參加由 LightSpeed的 Dave Holt主講之“Beyond standard cell”，
+及由 Aachen University of Technology 的 Heinrich Meyr 主講之“A Future of 
+Heterogeneous Many Processor SoCs: Nightmare or a Necessary Paradigm Change” 
+等 Plenary presentations，收獲良多。中午與這些專家學者用餐後，參加了下午
+1:20-2:40之 DSP and Embedded Systems議程及 Poster Session。 
+第二天（9月27日，週四）參加上午的Industrial SoC Applications and Method
+及System Level Design Methodology等議程。中午用餐後，開車回台大參加了下
+午Prof. Heinrich Meyr的演講，討論主題為“Signal Processing for Wireless 
+Communications: Design, Tools, Architectures”。晚上開車回新竹參加TPC 
+Meeting。 
+第三天（9月28日，週五）上午到思源科技(Springsoft)報告本人的產業計畫
+報告後，下午回到大會會場參加Tutorial，分別為由Springsoft 的Dr. Alan Su (蘇
+培陞博士 )主講之 “Introduction to ESL Design Methodology” 由本人主講
+“Development of a Virtual Platform for Multimedia SoC” 由University of 
+Wisconsin, Madison的Prof. Yu-Hen Hu (胡玉衡教授)主講之“Code Generation for 
+SIMD ISA”及由National Chung Cheng University的Prof. Pao-Ann Hsiung (熊博
+安教授)主講之“Development of an Embedded OS for a SIMD Processor”。 
+9月29日（週六）搭乘聯合航空 UA 872上午12:10班機抵達San Francisco，
+停留一天後，於9月30日（週日）搭乘聯合航空 UA0136 09:45班機再轉UA 5832
+班機於下午18:51回到Madison。 
+ 
+ (ISSCC 2008) 
+本人於 2 月 3 日(週日) 搭乘西北航空 NW 3409 上午 12:42 班機，抵達
+Minneapolis 再轉 NW 369 14:35 班機前往舊金山參加國際固態電路研討會 
+(International Solid State Circuits Conference, ISSCC 2008)。本人於 16:34抵達舊
+金山後搭乘機場巴士前往舊金山 Stratford旅館安頓妥當。 
+2月4日(週一)上午到大會會場所在之Marriot旅館報到，取得名牌、及會議論
+文集CD等資料。參加上午的Opening Keynote SESSION，第一場“The 2nd Wave of 
+Digital Consumer Revolution: Challenges and Opportunities”主講者為Samsung CEO
+之Hyung Kyu Lim。接著由另外三位專家報告，分別為由Microsoft Research之Bill 
+Buxton報告“Surface and Tangible Computing, and the ‘Small’ Matter of People and 
+Design”由ARM之CTO，Mike Muller報告“Embedded Processing at the Heart of Life 
+and Style”及由Numenta之Jeff Hawkins報告“Why Can't A Computer Be More Like 
+A Brain? Or What To Do With All Those Transistors?”。下午參加了SESSION 4 
+MICROPROCESSORS。晚上則參加了SESSION SE3: From Silicon to Aether and 
+Back。 
+第二天（2月5日，週二）參加上午的SESSION 13: MOBILE PROCESSING及
+下午的SESSION 20: WLAN/WPAN。第三天（2月6日，週三）參加上午的SESSION 
+25: BUILDING BLOCKS FOR HIGH-SPEED TRANSCEIVERS及下午的
+SESSION 29: TRENDS IN COMMUNICATION CIRCUITS AND SYSTEMS。至
+此會議結束。 
+第四天（2 月 7 日，週四）上午退房後搭機場巴士前往舊金山機場搭乘西北
+航空 NW360中午 12:20班機經Minneapolis再轉 NW924班機前往Wisconsin州
+之Madison，於晚上 8:28pm抵達。 
+行政院國家科學委員會補助研究計畫出國研究心得報告 
+                                                 97 年 7 月 29 日 
+報告人姓名 
+ 
+陳少傑 
+ 
+服務機構
+及職稱 
+ 
+國立台灣大學教授 
+ 
+     時間 
+ 
+     地點 
+自 95 年 8 月 23 日至  
+   96 年 1 月 21 日 
+UW, Madison 
+本會核定
+補助文號
+  
+ NSC-96-2221-E-002-247 
+ 
+ 
+計畫 
+名稱 
+ (中文)   應用於可展延低功耗定製內嵌系統之多媒體系統晶片平台研製
+(3/3) 
+ ( 英文 ) Implementation of a Multimedia SoC Platform for Scalable 
+Power-Aware Custom Embedded Systems (3/3) 
+ 

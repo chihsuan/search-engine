@@ -1,0 +1,848 @@
+2才能再繼續進行視訊串流的播放，這種斷
+斷續續地視訊播放，對收視者來說，是非
+常不舒服的，故如何解決此問題，對 IPTV
+業者來說是刻不容緩的事。另外，視訊播
+放過程中一般也要求不能出現馬賽克
+(Blocks)、爆裂音等，而此種現象主要是因
+為視訊框遺失所造成的，而視訊框的遺失
+除了網路壅塞因素外，接收端緩衝器溢位
+(Buffer Overflow)也是一個很重要的原
+因。有鑒於上述種種問題，本計畫擬設計
+一套適用於各種網路環境的適應性媒體播
+放控制機制，藉此來改善視訊串流的播放
+品質。
+二、國內外相關研究
+根據文獻[7][8]對網際網路視訊框延
+遲所做的量測，我們發現視訊框在網際網
+路上傳輸時，其端對端的視訊框延遲在短
+時間內可能會有極大且顯著的變化，此擾
+動會造成多媒體視訊框在接收端播放時的
+不順暢，嚴重影響播放品質[9]。有鑒於
+此，許多文獻開始著墨於擾動緩衝器管理
+機制的研究[10]-[17]。
+然而，上述所有機制皆只靠調整視訊
+框的播放時間點來補償延遲擾動所造成的
+影響。這種方式在即時的語音應用上或許
+是有效的，但在網路視訊傳輸應用中，由
+於視訊傳輸的資料量遠遠高於語音應用，
+其所需的頻寬自然也比語音應用來的更
+大，相對地在網路上傳輸所遭遇的挑戰也
+更多。且上述文獻所採用的適應性播放緩
+衝器機制，在網路延遲變動極大的環境
+中，便需要使用較大的緩衝器，因而造成
+較大的播放延遲。換言之，在多媒體視訊
+傳輸應用上，單靠調整接收端緩衝器大小
+值或是變更播放延遲來因應網路延遲變化
+是不足夠的。因此，能動態的調整播放速
+率的適應性媒體播放機制便是一種解決的
+辦法。所謂適應性媒體播放機制就是指播
+放器藉由加快或放慢播放速率的方式來調
+節緩衝器內的視訊框數量，使其能盡量維
+持在一個穩定的水位，進而降低下溢事件
+的發生，以減少視訊播放中斷的情形。一
+般傳統播放速率的調控可分成兩類，一是
+放慢播放速率[18][19]，此機制在用戶端緩
+衝器的視訊框數量超過某一臨界值時會以
+正常播放速率來進行播放，但當緩衝器內
+的視訊框數量低於此臨界值時，則會依視
+訊框數量的多寡等比率的放慢播放速率。
+另外一類的播放速率調控機制則是放慢與
+加快播放速率機制[20]-[22]，文獻[20]提出
+了一種串流傳輸新技術，此技術同時結合
+了伺服器端之最佳化視訊框傳輸速率調控
+與用戶端之適應性媒體播放方法。接著作
+者們又在文獻[21]中，分析所提出之 AMP
+機制在可發生錯誤與遺失的通道上之視訊
+播放效能，並證明此 AMP機制可在給定的
+下溢機率條件下有效降低播放延遲。此
+外，一種基於緩衝器水位變化的新穎 AMP
+播放機制在文獻[22]中被提出，此 AMP播
+放機制能夠根據當時的網路情況盡可能的
+讓視訊平順地播放。
+近年來，相關的文獻亦開始著墨於無
+線網路上多媒體視訊串流服務的研究
+[23]-[26]。在文獻[23]中，作者針對無線多
+媒體傳輸系統提出一個結合功率控制與播
+放控制之機制。文獻[24]提出一種演算法能
+夠基於目前緩衝器狀態、緩衝器水位目標
+值、過去媒體資料接收的狀況以及估測的
+網路情況，進而動態地計算加快或放慢播
+放速率的倍數。文獻[25]則設計了一個適用
+於行動裝置上的播放演算法，此機制使用
+一個統計模型，利用統計理論去假設視訊
+框抵達及離開程序，進而即時的去決定緩
+衝器臨界值及播放速率的最佳調整方式。
+而在文獻[26]中，作者們提出了一種新的播
+放機制，此機制主要是在傳送端的部分使
+用視訊框排程機制，並在接收端部分使用
+一個以畫面動態強度為基準的內容感知
+(Content-Aware)播放機制。此機制只在影
+響人類視覺感官較輕微的低動態強度的畫
+面部分才執行播放速率的調整，藉此降低
+播放速率變動對感官的影響。
+三、抵達程序控制之適應性媒體播放機制
+(一)多臨界值之播放系統架構
+4來設定播放臨界值 nP 。為了要解釋動態播
+放臨界值演算法，我們先定義在緩衝期間
+（Preroll Period）前 n個視訊框抵達緩衝器
+時的累積平均擾動（Cumulative Average
+Jitter） nJ 如下：
+1
+1
+1
+
+
+
+
+
+
+n
+TX
+J
+n
+i
+i
+n  
+TX
+n
+J
+n
+nn 
+
+
+  11
+1
+1
+)
+1
+1
+1( , (1)
+其中 n >1， iX 為第 i個視訊框與第(i+1)個
+視 訊 框 之 抵 達 時 間 間 隔 (Interarrival
+Time)，而 T是每個視訊框的正常播放持續
+時間(Normal Playout Duration)。於是根據
+nJ 我們設計的動態播放臨界值 nP 便可由
+下式求出：
+     },1min{)( 00
+cT
+J
+LLLP nn  (2)
+其中 L 、 0L 和 c均為設計參數，例如
+100L 、 100 L 、 5.1c 。由(2)式可知 nP
+的值會介於 0L 到 L 之間。
+根據上面的說明，我們所提出的動態
+播放臨界值演算法 DPTA可摘要如下。當
+緩衝器處於緩衝期間時，每當有視訊框抵
+達時，播放系統便會根據(1)式來計算累積
+平均擾動 nJ 。接著根據(2)式來計算動態播
+放臨界值 nP 。若目前緩衝器內的視訊框數
+目n超過或是等於 nP ，則會立即進行視訊
+的播放，其播放速率則會由播放控制器來
+決定。在 DPTA中，當 n值滿足 n nP 時，
+此時的 n 值稱為啟動播放臨界值(Startup
+Playback Threshold) SP ，如下所示：
+        }min{ nS PnnP  . (3)
+(三) 抵達程序追蹤演算法 APTA
+本計畫接著提出一種抵達程序估測的
+演算法，我們稱此演算法為抵達程序追蹤
+演算法 APTA。其運作原理就是當緩衝器
+資料量介於安全區時，為了要讓緩衝器內
+的視訊框數量維持在較為穩定的狀態，所
+以必須盡可能讓播放速率與視訊框抵達速
+率貼近，因此，在此安全區內，我們會讓
+播放速率跟隨著視訊框抵達速率來變動，
+亦即在此區的播放速率調控上我們將藉由
+抵達程序的瞬時速率估測值來做為速率調
+整的依據。
+在抵達程序瞬時速率估算上，由於網
+路環境的隨機性，使得視訊框到達接收端
+之抵達程序亦為一隨機程序。因此，為了
+準確的估算出視訊框抵達程序的瞬時速
+率，我們利用移動平均(Moving Average)
+的觀念來進行瞬時速率的估測。而所謂移
+動平均法是指某個時間點的估測值只由它
+之前最接近此時間點的幾個值來決定，當
+估測點移動時，其取值的視窗範圍也將随
+之移動。然而，在接收端部分，在緩衝期
+間及播放期間(Playback Period)的估測時間
+點是不同的，因此，我們將抵達程序的瞬
+時速率之估算分為在緩衝期間及播放期間
+這兩種不同情況來說明。
+在緩衝期間，估測程序執行的時間點
+是在每個視訊框抵達接收端的瞬間進行估
+測動作。然而，在播放期間，估測程序則
+是在每個視訊框進行播放的瞬間才執行估
+測動作。因此，我們定義 1t 為某個緩衝期
+間中第一個視訊框抵達接收端的時間，而
+it 則為緊鄰著這個緩衝期間之後的第 i 個
+估測時間點。同時，我們令在 it 這段時間
+內抵達接收端的視訊框總數為 iA ，則我們
+可得到第 i次的抵達速率估測值如下。
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ,if,
+,if,
+)(
+1
+1
+1
+1
+Mi
+tt
+AA
+Mi
+tt
+AA
+iR
+i-Mi
+i-Mi
+i
+i
+A (4)
+在(4)式中，M 為此移動平均的視窗大小
+(Window Size)。亦即在任一時間點，其估
+測值是由它之前M個最接近此時間點的幾
+個值來決定。
+然而，值得注意的是在這 M個時間點
+中，是有可能會包含了視訊框抵達瞬間及
+該緩衝期間後的訊框播放時間點。而為了
+消除估測的雜訊，我們必須再把(4)式中所
+得之估測值利用指數平均法(Exponential
+6
+
+
+
+
+
+
+H.nnR
+H,nLiR
+L,nnR
+ni
+H
+S
+L
+if)(
+if)(
+if)(
+),( (10)
+上式的播放速率與緩衝器內視訊框數
+目 n的關係則如圖 2所示，其中安全區
+的播放速率變化以虛線表示，代表其為
+一隨機程序，而非如警報區是採用確定
+的(Deterministic)二次函數曲線。
+四、AMP播放機制之評估參數
+由於 AMP 播放機制在評估效能優劣
+上是一個非常棘手的問題，因此，為了評
+估一個播放系統的優劣，我們定義了以下
+幾項效能參數，做為我們評估各種 AMP
+播放機制的依據。
+1. 緩衝器下溢參數：緩衝器內因無視訊框
+可供播放的狀況稱為下溢(Underflow)，
+而下溢會讓用戶收視中斷，造成影片播
+放時斷斷續續，這對使用者來說是最不
+能接受的，故緩衝器下溢參數是評估
+AMP效能中最重要的參數。如何消除或
+減少緩衝器下溢發生的次數自然是最主
+要的考量，且除了計算次數外，緩衝器
+下溢所發生的時間長短也是需要考慮
+的，亦即下溢發生的總時間比率或每次
+下溢的平均時間，都可做為評估 AMP
+效能的依據。
+2. 播放延遲參數：在視訊開始播放前，緩
+衝器內視訊框數需累積到預設的臨界值
+後才能開始進行播放，此目的在於消除
+網路擾動所造成的影響，而這段累積過
+程所需的時間稱為播放延遲。播放延遲
+越小對使用者而言自然越好，但播放延
+遲過小卻可能造成緩衝器下溢的頻率增
+加，所以兩參數間如何取得平衡，則為
+一取捨的問題。如何設計一個能同時降
+低播放延遲及緩衝器下溢機率的 AMP
+機制將是一極大的挑戰。
+3. 播放失真變異(VDoP)參數：多媒體視訊
+串流在進行服務時，除了播放畫面中斷
+會 造 成 感 受 品 質 (Quality of
+Experience，QoE)嚴重降低之外，播放
+速率的變化亦會影響到使用者的收視品
+質及 QoE。因此，為了計算播放失真對
+用戶收視的影響，我們利用文獻[21]所提
+出的播放失真函數(Distortion of Playout)
+概念，來計算每個經過 AMP調控後之視
+訊框的播放時間與原始播放時間之偏差
+量。同時我們亦把播放速率偏差量、緩
+衝器下溢及視訊框遺失這三個參數對視
+訊品質所造成的影響一併納入考量。因
+此，我們的 DoP定義如下
+
+
+
+
+
+
+
+
+
+
+otherwise.,
+lost,isitif,
+period,prerollaof
+frameplayed1sttheisitif,
+)(
+Ts
+T
+TsS
+nDoP
+n
+n
+(11)
+上式中 ns 為第 n個視訊框實際的播放持
+續時間。T 則為每個視訊框的正常播放
+持續時間。而 S為一個隨機變數，表示
+緩衝器發生下溢事件的瞬間到下一次開
+始播放的瞬間之時間間隔。值得注意的
+是，在此我們將遺失的視訊框之播放持
+續時間視為零。此外，經由(11)式所求
+得的播放失真，我們可進一步計算播放
+失真 DoP的期望值(Expectation)
+,
+)(
+1
+PK
+nDoP
+DoP
+PK
+n
+
+
+
+ (12)
+其中 K所代表的是視訊框遺失的個數，
+而 P則為總播放視訊框數。因此，在求
+得播放失真的期望值DoP後，我們便可
+經由變異數(Variance)的定義，計算出播
+放失真變異參數 VDoP，並表示如下
+.
+)( 21
+2
+DoP
+PK
+nDoP
+VDoP
+PK
+n 
+
+
+
+ (13)
+藉此 VDoP參數我們將可得知，調整播
+放速率對視訊品質的影響程度。
+4. 緩衝器滿溢參數：當緩衝器發生滿溢
+時，新抵達接收端的視訊框將會因為緩
+衝器滿溢而被丟棄，造成此視訊框遺
+失。而連續性的視訊框遺失可能會讓視
+訊在播放時出現馬賽克(Blocks)現象，嚴
+重影響收視品質。雖然緩衝器發生滿溢
+的機率可透過設置較大的緩衝器記憶體
+8算法及(10)式來運作，故其播放速率將
+如圖 2所示。
+5. APTA(r = 0.25)：與 DPTA+APTA(r =
+0.25)相同，除了在播放開始前，必須累
+積至 L個視訊框才可開始播放。
+6. APTA(r = 0)：與 APTA(r = 0.25)相同，
+但參數 r = 0。故其在安全區之播放速率
+固定為正常播放速率。
+上面所有播放機制之播放速率均限制在
+01)1( μr 至 02 )1( μr 之間，其中 1r = 2r =
+0.4。而在我們所提的 DPTA+ APTA(r =
+0.25)播放機制中，我們給定各個參數之設
+定值為 M = 50、a = 0.1、r = 0.25、c = 1.5。
+(二) 模擬結果與比較
+我們令視訊傳輸路徑上各段鏈路之背
+景資料流量分別從 1 Mbps至 9 Mbps，藉
+此產生各種不同的網路擾動。圖 4 為各播
+放機制之播放延遲，由於 DPTA+APTA(r
+= 0.25)機制使用動態播放臨界值 DPTA演
+算法，故能夠根據網路擾動去決定當時的
+啟動播放臨界值，由圖 4可知在網路負載
+較低的情況下，由 DPTA演算法所得到的
+啟動播放臨界值也越低，因而有較低的播
+放延遲。而在網路負載高的情況下，其啟
+動播放臨界值也越高，故可避免因太早播
+放而造成下溢的發生，因此我們所提之動
+態播放臨界值演算法能根據網路擾動狀
+況，動態地調整播放延遲，以讓使用者得
+到更好的視訊品質。
+為了評估不同的擾動對各種播放機制
+之影響，我們分別比較了各種播放機制的
+其他效能。首先，圖 5為在各種不同負載
+下，播放緩衝器發生下溢事件的次數。圖
+6 則為各機制發生緩衝器下溢的總時間比
+率。圖 7及圖 8則分別畫出了各播放機制
+緩衝器發生滿溢的機率及失真變異數
+VDoP 的值。由圖 5 至圖 8 中我們可清楚
+地觀察到，APTA (r = 0)機制在各項效能
+評估參數中其表現皆優於線性放慢及加快
+之 AMP 控制機制，此結果證明在警報區
+中使用二次函數的方式來加快或放慢播放
+速率會比採用線性播放速率方式之調控效
+能來的更為優異。同時，若在安全區中採
+用 APTA 演算法來調整播放速率，如
+DPTA+APTA(r = 0.25) 機制及 APTA(r =
+0.25)機制，藉此來追蹤視訊框抵達速率以
+做為播放速率調整的依據，則此兩種機制
+在圖 5至圖 8中各種網路負載下，其各項
+效 能 皆 為 最 佳 ， 至 於 未 經 調 控 的
+Nonadaptive機制，其各項效能皆是最差。
+證 明 本 計 畫 所 設 計 的 多 臨 界 值
+DPTA+APTA(r = 0.25) 之 AMP機制之優
+越性。
+此外，從圖 6及圖 7中我們觀察到一
+個有趣的問題，那就是在線性放慢(Linear
+Slowdown)與線性放慢及加快 (Linear
+Slowdown + Speedup)之 AMP播放機制中
+存在著一個取捨問題。即線性放慢機制的
+圖 4：各播放控制機制之播放延遲。
+圖 5：各播放控制機制發生下溢事件的次數。
+10
+Behavior in the Internet,” ACM SIGCOMM’‘93,
+pp. 289-298, San Francisco, Sept. 1993.
+[8] D. Sanghi, O. Gudmundsson and A. Agrawala,
+“Experimental Assessment of End-to-End
+Behavior on Internet,” IEEE INFOCOM’93, pp.
+867-874, San Franscisco, Apr. 1993.
+[9] M. Claypool and J. Tanner, “The Efects of Jiter 
+on the Perceptual Quality of Video,” ACM
+Multimedia’99, pp. 115-118 , Orlando, FL, 1999.
+[10] R. Ramjee, J. Kurose, D. Towsley, and H.
+Schularinne, “Adaptive Playout Mechanisms for 
+Packetized Audio Applications in Wide-Area
+Networks,” IEEE INFOCOM’94, Vil. 2, pp.
+680-688, Toronto, Canada, June, 1994.
+[11] K. Fujimoto, S. Ata, and M. Murata, “Playout 
+Control for Streaming Applications by Statistical
+Delay Analysis,” IEEE ICC’01 , Vol. 8, pp.
+2337-2342, Helsinki, 2001.
+[12] K. Fujimoto, S. Ata and M. Murata, “Adaptive 
+Playout Buffer Algorithm for Enhancing
+Perceived Quality of Streaming Applications,” 
+Telecommunication Systems, Vol. 25, No. 3, 4,
+pp. 259-271, 2004.
+[13] W. Tu and W. Jia, “APB: An Adaptive Playback 
+Buffer Scheme for Wireless Streaming Media,” 
+IEICE Trans. Commu., Vol. E88-B, No. 10, pp.
+4030-4039, Oct. 2005.
+[14] S. Deshpande, “Underflow Prevention for AV
+Streaming Media Under Varying Channel
+Conditions,”Proc. SPIE, Jan. 2007.
+[15] Y.-F. Su, Y.-H. Yang, M.-T. Lu, and H. H. Chen,
+“Smooth Control of Adaptive Media Playout for
+Video Streaming,”IEEE Trans. Multimedia, Vol.
+11, No. 7, pp. 1331-1339, Nov. 2009.
+[16] Y. C. Jung, and J. W. Atwood, “Dynamic 
+Adaptive Playout Algorithm Using Interarrival
+Jitter and Dual Use of ,” IEE Proc. Commun.,
+Vol. 153, No. 2, pp. 279-287, Apr. 2006.
+[17] B. Steyaert, K. Laevens, D De. Vleeschauwer,
+and H. Bruneel “Analysis and Design of a
+Playout Buffer for VBR Streaming Video,”
+Annals of Operations Reaserch, pp. 159-169,
+2008.
+[18] M. C. Yuang, S. T Liang, and Y. G. Chen,
+“Dynamic Video Playout Smoothing Method for 
+Multimedia Applications,” Multimedia Tools
+and Applications, pp. 47-60, 1998.
+[19] N. Laoutaris and I. Stavrakakis, “Adaptive 
+Playout Strategies for Packet Video Receivers
+with Finite Bufer Capacity,” IEEE ICC’01, pp.
+969-973, 2001.
+[20] M. Kalman, E. Steinbach, and B. Girod,
+“Rate-Distortion Optimized Video Streaming
+With Adaptive Playout,” IEEE ICIP’02, Vol. III,
+pp.189-192, 2002.
+[21] M. Kalman, E. Steinbach, and B. Girod,
+“Adaptive Media Playout for Low-Delay Video
+Streaming Over Error-Prone Channels,” IEEE
+Trans. on Circuit & Systems for Video
+Technology, Vol. 14, No. 6, pp. 841-851, 2004.
+[22] Y. C. Jung, and J. W. Atwood, “Dynamic 
+Adaptive Playout Algorithm Using Interarrival
+Jitter and Dual Use of ,” IEE Proc.
+Commun., Vol. 153, No. 2, pp. 279-287, Apr.
+2006.
+[23] Y. Li, A. Markopoulou, N Bambos, and J.
+Apostolopoulos, “Joint Power-Playout Control
+for Media Streaming Over Wireless Links,” 
+IEEE Trans. on Multimedia, Vol. 8, No. 4, pp.
+830-843, 2005.
+[24] M. Baba, H. Kurokawa, and Y. Kato,
+“Buffer-Based Low-Delay Playout Control
+Methods for IPTV Terminals,” IEEE
+GLOBECOM'09, pp. 1-6, 2009.
+[25] H.-C. Chuang, C. Y. Huang, T. Chiang,
+“Content-Aware Adaptive Media Playout
+Controls for Wireless Video Streaming,” IEEE
+Trans. Multimedia, Vol. 9, No. 6, pp. 1273-1283,
+2007.
+[26] Y. Li, A. Markopoulou, J. Apostolopoulos, and N.
+Bambos, “Content-Aware Playout and Packet
+Scheduling for Video Streaming Over Wireless
+Links,” IEEE Trans. Multimedia, Vol. 10, No. 5,
+pp. 885-895, 2008.
+[27] http://hpds.ee.ncku.edu.tw/~smallko/ns2/ns2.htm
+八、計劃成果自評
+本計畫所提出之 AMP 機制採用多臨
+界值設計，可在不同網路擾動條件下，動
+態調整播放延遲，相較於傳統的播放機制
+可具有較低的播放延遲，且同時可降低緩
+衝器滿溢與下溢的機率，故我們的 AMP
+之播放效能遠優於傳統的 AMP機制。我們
+的 AMP 機制將來可實現於網路電視之客
+戶端播放器，亦可實現在目前常用的
+YOUTUBE與 Window Media Player程式
+上，對於提升網路視訊串流服務品質有莫
+大貢獻。本計畫之成果完全符合預期，並
+且讓參與的學生學習到NS2模擬軟體的使
+用、數學分析與數值統計等相關技巧。本
+計畫之學術成果相當豐碩，共發表了二篇
+研討會論文，包括 2009年發表在葡萄牙舉
+辦的第二屆 IEEE/ACM Future Multimedia
+Networking研討會，以及 2010年發表在大
+陸舉辦的海峽兩岸信息科學與信息技術研
+討會。另外，本計劃之研究成果亦已投稿
+至 IEEE Trans. on Multimedia國際期刊，該
+論文目前也已完成了第一次的 Revise。
+緩衝器下溢(Buffer Underflow)，以致畫面暫停，此時
+必須再經過一段緩衝時間(Buffering Time)等待接收到
+新封包後，才能再繼續進行視訊串流的播放，這種斷
+斷續續地視訊播放，對收視者來說，是非常不舒服的，
+故如何解決此問題，對 IPTV業者來說是刻不容緩的
+事。 
+一般為了消除網路擾動，接收端緩衝器(Buffer)
+會等封包數量達到所設定之數目或延遲時間時，才會
+開始進行多媒體視訊之播放。有鑒於此，許多文獻開
+始著墨於擾動緩衝器(Jitter Buffer)管理機制的研究
+[6]-[9]。然而，這些文獻所提出的機制皆只靠調整封包
+的播放時間點來補償延遲擾動所造成的影響。這種方
+式在即時的語音應用上或許是有效的，但在網路視訊
+傳輸應用中，由於視訊傳輸的資料量遠遠高於語音應
+用，其所需的頻寬自然也比語音應用來的更大，相對
+地在網路上傳輸所遭遇的挑戰也更多。且此種適應性
+播放緩衝器機制，在網路延遲變動極大的環境中，便
+需要使用較大的緩衝器，因而造成較大的播放延遲。
+因而在多媒體視訊傳輸應用上，單靠調整接收端緩衝
+器大小值或是變更播放延遲來因應網路延遲變化是不
+足的。
+因此，動態調整播放速率的適應性媒體播放
+(Adaptive Media Playout，AMP)機制於是出現[10]-[13]。
+首先，在文獻 [10]中提出一個動態視訊播放速率
+(Dynamic Video Playout Rate)的機制，此機制在用戶端
+緩衝器的視訊封包數超過某一臨界值時會以正常播放
+速率來進行播放，但當緩衝器內的視訊封包數低於此
+臨界值時，則會依視訊封包數的多寡等比率的放慢播
+放速率。文獻[11]則是分析文獻[10]所提出的適應性媒體
+播放機制，其分析模型是採用M/G/1/K的排隊模型。
+文獻[11]的另一貢獻則是提出一個用來評估視訊播放品
+質的新參數，稱為 VDoP(Variance of Distortion of
+Playout)。文獻[12]的作者們則是提出一種串流傳輸新技
+術，此技術同時結合了伺服器端之最佳化封包傳輸速
+率調控與用戶端之適應性媒體播放方法。作者假設伺
+服器端與用戶端之封包傳輸與播放排程為相互獨立
+(Independent)，因此可個別根據某一成本函數來進行
+最佳化，以得出伺服器端之封包最佳傳送時程與用戶
+端之封包播放速率及播放時程。接著他們又在文獻[13]
+中，分析所提出之 AMP 機制在可發生錯誤與遺失的
+通道上之視訊播放效能。並藉由馬可夫鏈分析模型及
+實驗結果證實此 AMP 機制可在給定緩衝器下溢機率
+條件下有效地降低播放延遲。
+近年來，相關的文獻亦開始著墨於無線網路上多
+媒體串流服務的研究[14]-[16]。在文獻[14]中，作者針對無
+線多媒體傳輸系統提出一個結合功率控制與播放控制
+之機制，藉由同時在傳送端使用功率控制及在接收端
+使用播放排程的機制，進而在最小的傳輸功率耗損下
+達到最佳的多媒體播放品質。文獻[15]則設計了一個適
+用於行動裝置上的播放演算法，其提出一個以統計模
+型為基礎的可適性多媒體播放機制。此機制是使用一
+個統計模型來描述視訊封包的抵達(Arrival)及離開
+(Departure)程序，進而即時地決定緩衝器臨界值及播
+放速率的最佳調控方式。而在文獻[16]中，作者們提出
+一個新的播放機制，此機制主要是在傳送端使用封包
+排程機制，並在接收端使用一個以視訊內容為基礎
+(Scene-Based)的內容感知(Content-Aware)播放機制。
+此機制在傳送端會配合接收端將超過播放時間的封包
+加以丟棄，避免不必要的重傳，以降低頻寬的消耗。
+而在播放速率調控部份，則會針對每個畫面的動態強
+度(Motion Intensity)加以判斷，只針對影響感官視覺較
+輕微的低動態強度之視訊框才進行播放速率的調整，
+藉此降低視訊播放中斷事件的發生。
+根據上述各機制，我們發現尚無根據網路負載
+(Network Load)來動態調整視訊串流播放延遲的機
+制。因此，本文將提出一個具有擾動感知(Jitter Aware)
+之動態播放臨界值(Dynamic Playout Threshold)機制，
+並配合線性減慢播放(Linear Slowdown)機制來改善視
+訊串流的播放品質。我們的設計能夠根據當時的網路
+擾動去決定何時能夠開始播放。而在播放時，則會根
+據緩衝器內視訊框的數目動態調整播放速率。
+本論文其他章節如下，第 2 節說明我們所提出的
+擾動感知適應性媒體播放機制，第 3 節定義一些評估
+適應性媒體播放機制效能的參數，第 4 節則是我們的
+數值結果。最後，在第 5節中提出我們的結論。
+2 擾動感知適應性媒體播放機制
+圖 1 為我們所提出的媒體播放控制系統之架構
+圖，其中 N 為緩衝器的大小，為視訊框(Video Frame)
+的抵達速率(Arrival Rate)， L為播放速率調整(Playout
+Rate Adaption)的臨界值， nP 為動態播放臨界值，其大
+小是根據網路擾動來決定，當緩衝器內的視訊框數目
+達到 nP 時便可開始進行播放。而在播放過程中，播放
+速率是由播放控制器(Controller)來決定，其播放速率
+)(n 則是根據緩衝器內的視訊框數目 n來進行調整。
+2.1 擾動感知之動態播放臨界值機制
+
+
+
+
+ 
+
+lost.isframetheif,
+played,isframethif,
+played,isprerollcertainaofframe1stif,
+T
+n-Ts
+-TsS
+n
+n
+在使用者的收視感受上是最不能接受的，故下溢參
+數是 AMP機制效能評估中最重要的參數。所以如
+何消除或減少下溢事件發生的次數自然是最主要
+的考量。且除了計算下溢次數外，下溢所發生的時
+間長短或是比率也是需要考慮的，亦即下溢發生的
+總時間比率或每次下溢的平均時間，都必須做為評
+估 AMP機制效能的依據。
+2) 播放延遲參數：在媒體播放器開始播放前，緩衝器
+內封包數需累積到某個臨界值後才能開始進行播
+放，此目的在於消除網路擾動的影響，而這段累積
+過程所需的時間稱為播放延遲，此參數的重要性僅
+次於下溢參數。播放延遲越小對使用者而言自然越
+好，但播放延遲過小卻可能造成下溢事件的頻率增
+加，所以兩參數間如何取得平衡，則為一取捨
+(Trade-off)問題。故如何設計一個能同時降低播放
+延遲及下溢發生次數的 AMP控制機制將是一極大
+的挑戰。
+3) 播放失真變異(Variance of Distortion of Playout，
+VDoP)參數：視訊影片在進行串流服務時，除了播
+放畫面中斷會造成服務品值嚴重降低之外，播放速
+率的變化亦會影響到使用者的收視品質及感受。因
+此，為了計算播放失真對用戶收視的影響，我們利
+用文獻 [11]所提出的播放失真函數 (Distortion of
+Playout，DoP)的概念，來計算每個經過 AMP機制
+調控後之視訊框的播放時間與原始播放時間之間
+的時間偏移量。同時在本文中我們亦把播放速率偏
+移量、緩衝器下溢及封包遺失這三個參數對視訊造
+成的影響同時納入考量。因此，在本文中我們的
+DoP(n)定義如下：
+)(nDoP
+(4)
+上式中 ns 為第 n 個視訊框實際的播放持續時間。
+而 S 則為一個隨機變數，其表示緩衝器發生下溢
+的瞬間到下一次緩衝器可以開始播放的瞬間之時
+間間隔。
+此外，利用(4)式的結果，我們可進一步求得
+播放失真 DoP的期望值(Mean)為
+,
+)(
+1
+MK
+nDoP
+DoP
+MK
+n
+
+
+
+              (5)
+其中 K所代表的是視訊框遺失的個數，而 M則為
+總播放封包數。因此，在得到 DoP的期望值後，
+ 
+Figure 3. Network topology for simulations
+圖 3. 網路模擬架構圖
+我們便可推得播放失真變異參數 VDoP，並將之表
+示如下:
+21
+2 )(
+DoP
+MK
+nDoP
+VDoP
+MK
+n 
+
+
+
+ 。 (6)
+4 數值結果
+在本節中，我們將利用電腦模擬來驗證我們所提
+的 AMP 控制機制之優越性。首先，有關視訊框的抵
+達程序我們是利用NS2(Network Simulator 2)模擬軟體
+來產生，也就是說透過 NS2來模擬視訊資料流在網路
+傳送過程中所遭遇到的延遲擾動，其網路拓樸架構如
+圖 3 所示。其中的視訊資料流為可變位元速率
+VBR(Variable Bit Rate)，由視訊伺服器端(Node 0)經由
+五段鏈路傳送至接收端(Node 5)，其中每段鏈路的頻寬
+均為 10 Mbps。我們透過背景資料流產生器(Cross
+Traffic Generator)來產生背景資料流，並將之引入視訊
+流所經過的各段傳輸鏈路中，以讓視訊框產生擾動，
+藉此模擬現實網路環境的狀況。同時，當視訊串流的
+視訊框抵達接收端時，每個視訊框的抵達時間會被記
+錄在接收端的抵達程序檔中，以做為我們所設計的
+AMP控制機制之視訊框抵達程序之輸入。至於接收端
+的媒體播放器部分，我們則是利用 C++ 程式語言來實
+現本文所提出的 AMP機制。
+在所有的數值模擬中，我們均採用以MPEG-4壓
+縮的 Jurassic 影片[17]做為我們的傳送視訊流，其影片
+大小為 340 Mbytes，平均位元速率為 770 kbps，尖峰
+位元速率(Peak Bit Rate)為 3.3 Mbps，平均視訊框大小
+為 3.8 kbytes，最大視訊框為 16.745 kbytes，最小視訊
+訊框為 72 bytes，影片長度為一個小時，亦即傳送端
+會持續送出 3600秒的 VBR視訊資料流。背景資料流
+則採用 Pareto ON-OFF型態，其參數為(Burst Time, Idle
+Time) = (400ms, 600ms)。至於在接收端的緩衝器部
+分，我們設定緩衝器大小為 N = 10000，線性減慢機制
+(Linear Slowdown)之臨界值設定為 L = 100，最大播放
+Figure 8. VDoP performance versus traffic load under different
+playout control mechanisms
+圖 8. 不同的媒體播放機制之 VDoP效能 
+界值線性減慢機制展現出最佳的VDoP效能，此VDoP
+參數是結合了下溢事件與播放延遲兩種因子的綜合效
+能，這更加證明了本文所提出的擾動感知動態播放臨
+界值結合線性減慢的播放機制是一種優越的設計。
+5 結論
+在本論文中，我們提出一個嶄新的擾動感知之適
+應性媒體播放機制，此機制可以根據當時的網路擾動
+大小來決定何時可以開始進行視訊的播放，同時採用
+線性減慢機制來降低視訊播放中斷的頻率。數值結果
+證明了我們所提出的播放機制確實能有效降低播放延
+遲與下溢事件的發生，故我們所設計的擾動感知適應
+性媒體播放機制確實為一性能優越的播放控制機制。
+致謝
+我們在此要非常感謝國科會對本研究計畫
+NSC98-2221-E-182-026所提供之各項研究所需經費之
+補助，使本研究計畫能順利進行。
+References (参考文獻)
+[1] S. Park, S.-H. Jeong, and C. Hwang, Mobile IPTV Expanding
+the Value of IPTV,IEEE ICN’08, 2008, P296-301, 13-18 April.
+[2] J. Kim, T.-W. Um, W. Ryu, B. S. Lee, and M. Hahn,
+Heterogeneous Networks and Terminal-Aware
+QoS/QoE-Guaranteed Mobile IPTV Service, IEEE
+Communications Magazine, 2008, P110-117, May.
+[3] J. C. Bolot, End-to-End Packet Delay and Loss Behavior in the
+Internet, ACM SIGCOMM’93, 1993, P289-298, San Francisco,
+Sept.
+[4] D. Sanghi, O. Gudmundsson and A. Agrawala, Experimental
+Assessment of End-to-End Behavior on Internet, IEEE
+INFOCOM’93, 1993, P867-874, San Franscisco, April.
+[5] M. Claypool and J. Tanner, The Effects of Jitter on the
+Perceptual Quality of Video, ACM Multimedia’99, 1999,
+P115-118, Orlando, FL.
+[6] R. Ramjee, J. Kurose., D. Towsley, H. Schularinne, Adaptive
+Playout Mechanisms for Packetized Audio Applications in
+Wide-Area Networks, IEEE INFOCOM’94, 1994, 2, P680-688.
+Toronto, Canada.
+[7] K. Fujimoto, S. Ata, M. Murata, Playout Control for Streaming
+Applications by Statistical Delay Analysis, IEEE ICC’01, 2001,
+8, P 2337-2342, Helsinki.
+[8] K. Fujimoto, S. Ata, M. Murata, Adaptive Playout Buffer
+Algorithm for Enhancing Perceived Quality of Streaming
+Applications, Telecommunication Systems, 2004, 25(3,4),
+P259-271.
+[9] W. Tu, W. Jia, APB: An Adaptive Playback Buffer Scheme for
+Wireless Streaming Media,” IEICE Trans. Commu., 2005,
+88-B(10), P4030-4039.
+[10] M. C. Yuang, S. T. Liang, Y. G. Chen, Dynamic Video Playout
+Smoothing Method for Multimedia Applications, Multimedia
+Tools and Applications, 1998, 6, P47-60.
+[11] N. Laoutaris, I. Stavrakakis, Adaptive Playout Strategies for
+Packet Video Receivers with Finite Buffer Capacity, IEEE
+ICC’01, 2001, P969-973.
+[12] M. Kalman, E. Steinbach, B. Girod, Rate-Distortion Optimized
+Video Streaming With Adaptive Playout, IEEEICIP’02, 2002, 3,
+P189-192
+[13] M. Kalman, E. Steinbach, B. Girod, Adaptive Media Playout for
+Low-Delay Video Streaming Over Error-Prone Channels, IEEE
+Trans. on Circuit & Systems for Video Technology, 2004, 14(6),
+P841-851.
+[14] Y. Li, A. Markopoulou, N. Bambos, J. Apostolopoulos, Joint
+Power-Playout Control for Media Streaming Over Wireless
+Links, IEEE Trans. on Multimedia, 2005, 8(4), P830-843.
+[15] H.-C. Chuang, C. Y. Huang, T. Chiang, Content-Aware Adaptive
+Media Playout Controls for Wireless Video Streaming,.IEEE
+Trans. on Multimedia, 2007, 9(6), P1273-1283.
+[16] Y. Li, A. Markopoulou, J. Apostolopoulos, N. Bambos,
+Content-Aware Playout and Packet Scheduling for Video
+Streaming Over Wireless Links, IEEE Trans. on Multimedia,
+2008, 10(5), P885-895.
+[17] http://trace.eas.asu.edu/TRACE/pics/FrameStat/stat1dee.html
+8. 其他與電腦及資訊相關領域。
+本次研討會由大陸的燕山大學、北京交通大學與台灣的淡江大學共同舉辦，來自台灣的監察委員趙榮
+耀教授為大會榮譽主席，他本人也親自參與了這次盛會。本次研討會共收到 252篇論文，最後共錄用了 176
+篇論文，分成 Oral與 Poster兩類。與會者包括來自台灣的 25所、大陸 11所大專院校之老師與研究生，共
+計約 150人出席。
+由於沒有飛機到秦皇島，而從北京到秦皇島搭車要花四小時以上，故大會第一天全天為報到時間，並
+沒有排任何議程。而我在 7/9 從北京搭大巴士到秦皇島，足足花了快六小時，抵達燕山大學時已是晚上六
+點多了。整個研討會的議程全部安排在第二天，早上為開幕式及專題演講，下午則是論文發表，Oral跟 Poster
+同時分組進行。晚上 6 點則是乘遊覽車到北戴河舉行晚宴。第三天大會則是安排了山海關等景點的旅遊，
+自費自由參加。由於回北京搭車可能塞車，故我沒有參加旅遊行程，而是搭車回北京。
+二、 與會心得
+此次研討會接受的論文達 176 篇，但卻只花半天的時間來進行論文發表，本人認為非常不恰當，更不
+好的是 Poster 竟跟 Oral 場地一起，使得與會者無法去與 Poster 的論文作者進行研討，因為會影響到 Oral
+的報告，不知主辦單位是沒有辦過研討會還是因場地不足，才會做如此不當的安排。另外，由於邀稿的領
+域範圍不小，各式資訊與通訊相關的主題之論文都含概在內，而主辦單位對各被接受論文之歸屬與分類也
+不盡適當，許多與會者也有同我一般的感受。故經由參加這次的研討會所觀察到主辦單位的一些缺失，必
+可做為本系年底舉辦全國電信研討會之借鏡。
+最後，感謝國科會計畫的經費補助，讓我能順利參與這次的學術研討會。
+三、 考察參觀活動
+無
+四、建議
+建議本校將來也能找機會承辦海峽兩岸信息科學與信息技術學術交流會議，以提升本校之學術知名度。
+五、攜回資料
+此次研討會帶回會議論文集光碟一片，內含所有本次研討會被接受的論文，可提供本校有需要的教職員生
+利用。
+Poster論文發表
+無研發成果推廣資料 
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

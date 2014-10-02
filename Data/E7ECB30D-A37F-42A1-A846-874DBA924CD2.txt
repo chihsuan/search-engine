@@ -1,0 +1,362 @@
+ 2
+ 
+Channel codec 是另ㄧ個常用軟體的方式來實作的 codec，我們將仿照 speech 
+codec 的參考模型建立方式，經過「了解規格」、「了解原始碼的架構及運作方式」、
+「建立通訊軟體參考模型」以及「開發新功能」等四個步驟去建立 GSM channel 
+codec 的參考模型。 
+本計畫將實作產生 artifact 的介面，這些介面包括：使用案例介面、領域類
+別圖介面、系統循序圖介面、運作合約介面、系統事件循序圖介面、實作類別圖
+介面、測試案例介面以及原始碼介面，並且這些介面彼此之間可以互相快速切
+換，以協助使用者透過參考模型來了解系統。 
+ 
+四. 計畫成果 
+計畫成果發表在 2006 年國科會開放原始碼研討會，所使用的通訊軟體是
+AMR speech codec，其原始碼是使用 ETSI 提供的 GSM 06.73 [3]參考原始碼；它
+實作了 GSMAMR 編碼及解碼的規格[4]、偵測使用者說話的規格[8]，產生使用
+者背景噪音的規格[6]、可節省電池以及節省 frame 傳輸量的不連續傳輸規格
+[7] 、以及偵測及還原 frame 遺失的規格[6]。 
+ 
+4.1 了解規格 
+我們先閱讀 AMR speech codec 所實作的相關規格，並把這些規格的功能以
+使用案例的方式呈現。經由使用案例，可以為 AMR speech codec 畫出一個領域
+模型。這一步驟所產出的使用案例與領域模型是非常重要的文件；使用案例表達
+對規格內每個功能的使用方式以及使用範圍的了解，而領域模型圖則表達對這些
+規格彼此之間關連性的了解程度。  
+圖1是我們閱讀AMR Speech Codec 相關的規格後，以Context Diagram 的方
+式描述一個AMR Speech Codec 的系統範圍，它包括了三個部分：手機(Mobile 
+Station) 、基地台(Base Transmitter Station) 以及轉換單元(Transcoding and Rate 
+Adaptation Unit) 。手機主要的功能是用來傳送及接收移動式服務，基地台不僅
+被當作是一個單元(cell)裡用來管理手機移動式服務的管理者，也被當作是用來連
+接手機以及存取公眾交換電話網路的一個介面，而轉換單元則負責在兩個基地台
+之間傳送以及轉換傳送速率。 
+對系統範圍有概念了之後，我們開始撰寫使用案例(use-case)。使用案例盡量
+以情境的方式來撰寫，這樣可以將不同規格的功能以情境的方式連結在一起，讓
+每個規格之間的關連性更清楚。在AMR Speech Codec 的例子中，我們一共撰寫
+了四個使用案例，分別是：手機傳送、手機接收、基地台傳送，以及基地台接收。 
+ 
+ 4
+表1 「手機傳送」使用案例 
+ 
+ID  UC_MS_001  
+Use case name  Mobile Station (MS) Transmission  
+Summary  A mobile station sends a message to a base station  
+Primary Actor  Mobile Station (MS)  Secondary Actor  Base Station (BS)  
+Preconditions  AMR Speech Codec is working correctly.  
+Post Condition  A mobile station transmits message correctly.  
+Main Success Scenario  
+1. User is talking to a MS.  
+2. The MS enters a set of input signals to PCM module.  
+3. The PCM module transforms the input signals to a uniformed pulse code modulated (PCM) bits 
+sequence.  
+4. The PCM bits sequence is sent to speech encoder.  
+5. Speech encoder sends the PCM bits sequence to voice activity detector (VAD) and comfort noise 
+TX functions.  
+6. VAD sends a Boolean flag (VAD_flag) by computing the PCM bits sequence received from 
+speech encoder to discontinuous transmitter (DTX) to indicate whether user is talking or not.  
+7. Speech encoder generates an encoded speech frame to DTX.  
+8. Comfort noise TX functions module generates a silence description (SID) frame by computing the 
+PCM bits sequence received from speech encoder to DTX.  
+9. DTX decides whether a SID frame will be transmitted or not by VAD_flag.  
+10. DTX sends a frame type to a BS, the frame type indicates whether information bits are available 
+and if they are speech or SID information.  
+11. DTX sends information bits to a BS.  
+Repeat step 2-11 until talking is over.  
+Extensions  
+VAD_flag is true  
+6.1a. In step 5, a VAD_flag is true when user is talking.  
+9.1a. A SID frame will not be transmitted.  
+9.2a. An encoded speech frame in DTX will be transmitted directly. VAD_flag is false  
+6.1b. In step 5, a VAD_flag is false when talking is pause.  
+9.1b A SID frame in DTX will be combined with the encoded speech frame into a new frame when 
+DTX find first SID frame.  
+9.2b The new frame will be transmitted.  
+9.3b When DTX find second SID frame and third SID frame, neither SID frame nor encoded speech 
+frame will be transmitted.  
+9.4b After fourth SID frame, SID frame will be updated for a while time.  
+ 6
+表4 “transformVoice2Bits”運作合約
+Operation  transformVoice2Bits  
+Responsibility  Transforms voice source to bits sequence in a mobile station  
+Cross References  Use Case: UC_MS_001 Mobile Station (MS) Transmission  
+Preconditions   PCM module is working correctly.  
+ Speech Encoder is working correctly.  
+ VAD is working correctly.  
+ Comfort Noise TX Functions module is working correctly. DTX is 
+working correctly  
+Postconditions   User voice is transferred into 13-bit uniform PCM, 8000 samples/s  
+ A VAD_flag is created.  
+ An encoded speech frame is created. -A SID frame is created.  
+ A frame type is created.  
+ Associates encoded speech frame or SID frame with frame type to 
+information bits.  
+ Information bits delivered to a BS are created. 
+ 
+4.3 連結規格與原始碼 
+在了解規格以及原始碼以後，我們開始建立規格與原始碼之間的連結。我們
+以循序圖、實作類別圖以及測試案例建立連結。透過表達動態結構的循序圖，可
+以幫助開發人員更清楚了解規格上的每一個功能如何透過原始碼彼此之間的呼
+叫來完成；而表達靜態結構的實作類別圖，可以幫助開發人員了解原始碼之間的
+關聯。圖5為系統事件"transformVoice2Bits"的事件循序圖，測試案例則是一個更
+動態的表達方式，在開發人員追蹤原始碼的連結時，可以用測試案例記錄這些程
+式的使用方法。測試案例的撰寫，除了加深開發者對程式功能的了解，也使得日
+後其他的開發者閱讀測試案例時，可以透過程式碼知道這些程式的功能及使用方
+式。 
+ 
+ 
+圖5“transformVoice2Bits”事件循序圖 
+ 
+ 8
+圖 7 最下層實作類別圖 
+ 
+要做到收訊不良的效果，必須在傳送端或是在接收端做處理。因為這個功能
+是預期使用者下指令後，直接由手機在傳送時作處理，所以，我們把此功能建立
+在手機扮演傳送端角色的時候。對傳送端而言，完成此功能的時機，可以在聲音
+編碼的過程中做處理，也可以在frame 傳遞時做處理。考慮到能較深入的驗證參
+考模型的實用性，所以我們以功能較複雜的GSM 06.90 [4]為主，修改原本的AMR 
+Speech Codec 。 
+圖8、圖9與圖10到展示修改後的成果，圖8為輸入音訊的波形，圖9為正常解
+碼後的輸出音訊波形，圖10為透過新功能解碼之後音訊輸出波形。比較圖8與圖
+9，可以發現兩者略有差異，但是差異不大；比較圖8與圖10，則可以發現，聲音
+不連續的情形在圖10中很明顯，而在原本圖8中，使用者不說話的區間，則被塞
+入很明顯的雜訊，並且在這段區間之後，使用者的聲音也受到很明顯的干擾。 
+ 
+ 
+圖8 輸入的音訊波形圖八正常解碼後的輸出音訊波形 
++Speech_Encode_Frame()
+sp_enc
++Pre_Process()
+pre_proc
++Prm2bits()
+-Int2bin()
+prm2bits
+coder
++cod_amr()
+cod_amr
++subframePreProc()
+spreproc
++Copy()
+copy
+#filter_bank()
+-first_filter_stage()
+-filter5 ()
+-filter3  ()
+-level_calculation()
+#vad_decision()
+-complex_estimate_adapt()
+-complex_vad()
+-noise_estimate_update()
+-update_cntrl()
+-hangover_addition()
++vad_pitch_detection()
++vad_tone_detection_update()
++vad_tone_detection()
++vad_complex_detection_update()
+vad1
+#blocck_norm()
+#r_fft()
+#fn10Log10 ()
+vad2
+-c_fft()
+<<執行類別>>
+r_fft
++Log2()
++Log2_norm()
+log2
++Pow2()
+pow2
++lpc()
+lpc
++Autocorr()
+autocorr
++Lag_window()
+lag_wind
++Levinson()
+levinson
++lsp()
+lsp
++Az_lsp()
+-Chebps()
+az_lsp
++Q_plsf_5()
++Q_plsf_3()
++Lsp_lsf()
+q_plsf
++Lsp_lsf()
++Lsf_lsp()
+lsp_lsf
++Lsf_wt()
+lsfwt
+-Vq_subvec()
+-Vq_subvec_s()
+-Reorder_lsf()
+<<執行類別>>
+q_plsf_5
++Int_lpc_1and3_2()
++Int_lpc_1and3()
+int_lpc
++Lsp_az()
+-Get_lsp_pol()
+lsp_az
++Vq_subvec3()
++Vq_subvec4()
++Vq_subvec4()
+<<執行類別>>
+q_plsf_3
++tx_dtx_handler()
++dtx_buffer()
++dtx_enc()
+-Reorder_lsf()
+-Vq_subvec4()
+dtx_enc
++Set_zero()
+set_zero
++pre_big()
+pre_big
++Weight_Ai()
+weight_a
+-Residu()
+-Syn_filt()
+<<執行類別>>
+spreproc
++ol_ltp()
+ol_ltp
++Pitch_ol()
+pitch_ol
++Lag_max()
+<<執行類別>>
+pitch_ol
++Inv_sqrt()
+inv_sqrt
++comp_corr()
+calc_cor
++hp_max()
+hp_max
++Pitch_ol_wgh()
+p_ol_wgh
++gmed_n()
+gmed_n
++cl_ltp()
++cl_ltp_reset()
+cl_ltp
++Pitch_fr_reset()
++Pitch_fr()
+-getRange()
+-Norm_Corr()
+-searchFrac()
+pitch_fr
++Convolve()
+convolve
++Interpol_3or6()
+inter_36
++Enc_lag3()
+enc_lag3
++Enc_lag6()
+enc_lag6
++Pred_lt_3or6()
+pred_lt
++q_gain_pitch()
+q_gain_p
++update_gp_clipping()
+ton_stab
++cbsearch()
+cbsearch
++code_2i40_9bits()
+-search_2i40()
+-build_code()
+c2_9pf
++cor_h_x()
++cor_h()
+cor_h
++set_sign()
++set_sign12k2()
+set_sign
++code_2i40_11bits()
+-search_2i40()
+-build_code()
+c2_11pf
++code_3i40_14bits()
+-search_3i40()
+-build_code()
+c3_14pf
++code_4i40_17bits()
+-search_4i40()
+-build_code()
+c4_17pf
++code_8i40_31bits()
+-build_code()
+-compress_code()
+-compress10()
+c8_31pf
++search_10and8i40()
++c1035pf.h()
+-build_code()
+-q_p()
+c1035pf
++gainQuant()
++G_pitch()
+gain_q
++gc_pred_copy()
++gc_pred()
++gc_pred_update()
+gc_pred
++calc_filt_energies()
++calc_target_energy()
++calc_unfilt_energies()
+calc_en
++MR475_update_unq_pred()
++MR475_gain_quant()
+-MR475_quant_store_results()
+qgain475
++G_code()
+g_code
++q_gain_code()
+q_gain_c
++MR795_gain_quant()
+-MR795_gain_code_quant3()
+-MR795_gain_code_quant_mod()
+qgain795
++gain_adapt()
+g_adapt
++sqrt_l_exp()
+sqrt_l
++Qua_gain()
+qua_gain
+ 10
+channels (GSM 06.91 version 7.1.1 Release 1998), European: ETSI, 2000, pp.1-14. 
+[6] ETSI, Digital cellular telecommunications system (Phase 2+) (GSM); Comfort 
+noise aspects for Adaptive Multi-Rate (AMR) speech traffic channels (GSM 06.92 
+version 7.1.1 Release 1998), European: ETSI, 1999, pp.1-12 
+[7] ETSI, Digital cellular telecommunications system (Phase 2+) (GSM); 
+Discontinuous Transmission (DTX) for Adaptive Multi-Rate (AMR) speech traffic 
+channels (GSM 06.93 version 7.2.1 Release 1998), European: ETSI, 2000, pp.1-15. 
+[8] ETSI, Digital cellular telecommunications system (Phase 2+) (GSM); Voice 
+Activity Detection (VAD) for Adaptive Multi-Rate (AMR) speech traffic channels; 
+General description (GSM 06.94 version 7.1.1 Release 1998), European: ETSI, 1999, 
+pp.1-28. 
+[9] Graig Larman, Applying UML and Patterns: An Introduction to Object-Oriented 
+Analysis and Design and Iterative Development, 3/e, New Jersey: Pearson Education, 
+2005, pp.1-702. 
+[10] Ivar Jacobson, Grady Booch, James Rumbaugh, The Unified Software 
+Development Process, 3/e, U.S.A.: Addision-Wesley, 1996, pp.1-463. 
+[11] AmaterasUML, 
+http://amateras.sourceforge.jp/cgi-bin/fswiki_en/wiki.cgi?page=AmaterasUML  
+[12] Quickmark, http://dev.eclipse.org/newslists/news.eclipse.tools/msg36817.html  
+[13] Erich Gamma, Richard Helm, Ralph Johnson, John Vlissides, Design Pattern: 
+Elements of Reusable Object-Oriented Software, Indiana: Addison-Wesley, 1995. 
+[14] Jörg Eberspächer, Hans-Jörg Vögel, Christian Bettstetter, GSM: Switching, 
+Services and Protocol, 2/e, New York: John Wiley & Sons, 2001, pp.34-130. 
+[15] Martin Fowler, UML Distilled Third Edition: A Brief Guide To The Standard 
+Object Modeling Language, Boston: Pearson Education, 2004, pp.1-174. 
+[16] Eclipse, http://www.eclipse.org/  
+[17] Extend Eclipse's Java Development Tools, 
+http://www-128.ibm.com/developerworks/opensource/library/os-ecjdt/  
+[18] OSGi, http://www.osgi.com  
+[19] Eclipse Document, http://help.eclipse.org/help31/index.jsp  
+[20] Eclipse Graphical Editing Framework (GEF), http://www.eclipse.org/gef/  
+[21] Eclipse C/C++ Development Tooling (CDT), 
+http://wiki.eclipse.org/index.php/CDT  
+[22] Create an Eclipse-based application using the Graphical Editing Framework, 
+http://www-128.ibm.com/developerworks/opensource/library/os-gef/  
+[23] Siegmund M. Redl, Matthias K. Weber, Malcolm W. Oliphant, An Introduction 
+To GSM, Michigan: Artech House, 1995, pp.27-30. 
+[24] Siegmund M. Redl, Matthias K. Weber, Malcolm W. Oliphant, GSM And 

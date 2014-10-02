@@ -1,0 +1,396 @@
+2 
+行政院國家科學委員會專題研究計畫成果報告 
+應用於感應網路上嵌入式作業系統的設計與實作(I)  
+計畫編號：NSC 94-2218-E-005-021- 
+執行期限：94年8月1日至95年7月31日 
+主持人：張軒彬   國立中興大學資訊科學系 
+ 
+1. 中文摘要 
+ 
+本計畫設計與實作一個適用於無線感測
+器網路的嵌入式作業系統。我們根據過往研究
+的缺點，以及無線感測器網路的特點，設計一
+個具搶奪軟性即時嵌入式作業系統。kernel 採
+用允許搶奪的三層次優先權佇列排程方式，工
+作具備有三種型態，這樣的排程方式能讓即時
+性工作優先執行，也能夠節省記憶體的使用。
+Task synchronization 採用 semaphore，記憶管
+理採用固定分割動態分配的方式，工作之間的
+溝通透過 semaphore 與 shared memory。並且實
+做 HAL 與提供基本的週邊設備驅動程式，能方
+便讓系統移植到其他硬體平台。我們將系統移
+植在 Mica2 上，初步的記憶體的需求實驗結果
+為 kernel 程式碼大小約佔 6K Bytes，SRAM 使
+用為 600 bytes。  
+ 
+Abstract 
+ 
+All previous sensor network kernels can be classified 
+into two categories: event-driven and thread-driven. An 
+event-based kernel is excellent in its tiny code size but 
+fails to support time sensitive applications. In contrast, 
+thread-driven is superior in its flexible programming 
+construct but consumes more memory footprint. This 
+motivates us to develop a new embedded kernel named 
+SenCore.  
+SenCore provides flexible programming construct by 
+thread-driven architecture and achieves memory 
+efficiency by preemptive three-level FIFO scheduler. 
+Owing to our scheduling scheme, no matter how many 
+tasks exist, SenCore requires only three task stacks. In 
+contrast, previous thread-driven networked sensor 
+kernels require each task has its own stack. To be a 
+functional operating system, SenCore also provides IPC, 
+synchronization, timer and memory management. 
+Furthermore, to enable portability, all 
+hardware-dependent details are encapsulated in the 
+Hardware Abstraction Layer.  Finally, to address the 
+energy constraints in sensor networks, SenCore 
+scheduler sleeps microcontroller when there is no ready 
+task in the system.  
+ 
+1. 緒論 
+建立一個感測器節點上的嵌入式作業系統
+基本要具備有下列六項：工作的排程、工作管
+理、週邊裝置管理、外部中斷事件處理、記憶
+體管理以及時間管理。作為一般用途的嵌入式
+作業系統像是 VXWorks、Lynx 和 WinCE，這
+些系統通常價錢昂貴或是沒有開放原始碼，另
+外一方面每個感測器節點因為硬體平台的關
+係，所以電源、記憶體、運算能力以及傳輸距
+離受到很大限制。這類型的作業系統對於記憶
+體的消耗過於龐大並不適合於用於感測器節點
+上。所以通常設計 WSN 類型的嵌入式作業系
+統時，希望能達到輕巧、快速且具備可擴充性。
+關於這方面的研究國外已經有一些不錯的成
+果，像是美國的 TinyOS錯誤 ! 找不到參照來
+源。 ]錯誤 ! 找不到參照來源。 ]錯誤 ! 找不到
+參照來源。]、SOS錯誤 ! 找不到參照來源。]、
+MANTIS錯誤 ! 找不到參照來源。 ]、 Impala錯
+誤 ! 找不到參照來源。 ]錯誤 ! 找不到參照來
+源。 ]、歐洲方面的 Contiki錯誤 ! 找不到參照
+來源。]、PEEROS錯誤 ! 找不到參照來源。 ]、
+CORMOS錯誤 ! 找不到參照來源。 ]以及 KOS
+錯誤 ! 找不到參照來源。]錯誤 ! 找不到參照來
+源。 ]。  
+雖 然 已 有 一 些 嵌 入 式 作 業 系 統 適 合 用
+WSN，但是他們還是有各自的問題存在。例如， 
+TinyOS，是採用事件觸發 (Event-Driven)的系
+統，且工作管理採用先進先出排程的方法，沒
+有內容轉換 (context switch)，所以也不需要工
+作堆疊 (stack)。這樣的好處是可以減低 RAM 的
+使用量，縮小排程帶來的消耗。但也因為如此
+看 出 TinyOS 對 於 處 理 長 時 間 運 算 工 作
+(CPU-bound task)的不足與排程不具備有即時
+性，當有長時間運算類型工作需要執行的時
+候，就有可能發生 Bounded Buffer錯誤 ! 找不
+到參照來源。 ]的問題 (第 2 節會有詳細的介
+紹 )。其次是 TinyOS 使用一個 C 的延伸語言
+nesC，使用者還要再學習新語言，使得發展應
+用程式比較不容易。另一個 Mantis OS，它採
+用 preemptive multi threading 排程方法，但是
+系統需額外負擔 Context Switch 的負擔以及記
+憶體的消耗。提供容易使用的應用程式介面，
+讓使用者發展應用程式容易。  
+我們所設計感測器網路作業系統就根據以
+PDF created with FinePrint pdfFactory Pro trial version www.pdffactory.com
+4 
+時，資源的消耗就變的更多。我們主要與 MOS
+的差別在於同一優先權工作的執行順序，我們
+採用 FIFO，而 MOS 採用 RR。因為 RR 的排程
+方式較適用於相互作用 (interactive)的 Task，讓
+每個 Task 都感覺有同時在執行，但這並不適用
+於 WSN 中的 Application。我們採用 preemptive 
+three-level priority Queue 排程方式，一方面同
+一層的工作採用 FIFO 能夠節省記憶體的消
+耗，另一方面提供三種不同的優先權讓較高優
+先權的即時性工作在執行上，不會受到需低優
+先權長時間運算工作的影響。  
+ 
+3. 系統設計與實作 
+ 
+在這章我們將敘述整個系統的設計目標與
+實作，在 3.1 節會對整個系統概述，章節 3.2
+到 3.4 節介紹核心的各個部分，章節 3.5 是 HAL
+介紹與週邊驅動程式的介紹。  
+ 
+3.1. 系統概述 
+ 
+我們的作業系統核心是應用在 WSN 上，
+具 有 Soft Real Time 的 特 性 ， 所 採 用 的
+preemptive three level priority queues 排程方式
+盡可能的將具即時性工作優先執行。設計上需
+考慮到無線感測器節點上記憶體與微處理器資
+源的限制，並且根據以往的研究不足的部分去
+做設計。  
+圖 一是我們整個系統的架構圖。從圖中我
+們可以看出，OS 負責管理控制下面的硬體部
+分，應用程式使用核心的服務，並且執行在 OS
+之上。雖然整個系統包含很多部分，但是最重
+要的就是系統的核心，核心負責管理系統資源
+的分配 (像是 CPU time、memory 和 I/O 裝置 )。
+整個系統核心包含以下的元件：工作管理、  
+Semaphore、時間管理與記憶體管理。我們將硬
+體相關部分獨立出來成為一個層稱為 HAL，為
+了方便系統維護與及移植，這部分包括 CPU 
+Context 與週邊裝置相關部分。在接下來的章節
+我們將對於各個部分做介紹。  
+ 
+ 
+圖 一 系統架構圖 
+ 
+3.2. 工作管理  
+ 
+應用程式是由一個或是多個工作 (Task)所組
+合而成，每一個 Task 都負責應用程式的某一部
+份，並且 Task 都有自己的工作控制區 (Task 
+Control Block ; TCB)。TCB 包含有堆疊指標、
+優先權、工作狀態與 Task ID 等等，如圖二所
+示。核心排程方式採用具強奪性三層次優先權
+排 班 佇 列  (Preemptive three-level priority 
+queue)方式。  
+ 
+ 
+圖  二  工作控制區結構圖  
+ 
+我們根據 WSN 每個感測器節點中應用程式
+工作的類型，將 Task 分類為三種等級，且優先
+權由高至低分別是：高優先權工作 /deferred 
+ISRs、一般優先權工作與最低優先權工作，介
+紹如下： (1)高優先權工作 /deferred ISRs：這類
+型的工作是具有最高優先權。屬於週期性的工
+作，通常執行時間非常短，回應時間 (response 
+time)能夠掌握。主要動作通常都是利用 Timer 
+中斷，週期性的排工作進入 ready list。這類型
+的工作可以被外部事件中斷，但不允許被其他
+工作搶奪。例如：週期性固定一段時間去取得
+感測器資料 (燈光、溫度、磁力…等等 )。 (2)一
+般優先權工作：通常執行時間較久，但也不會
+佔住 CPU 太長執行時間。其優先權僅次於最高
+優先權之後。例如： sensor 資料整理比較、
+routing、 time synchronization、…等等。 (3)低
+優先權工作：此工作在系統當中是最低優先
+權。當應用程式有長時間運算工作時，可將其
+排入第三階層。其目的是希望長時間運算工
+作，不會影響到其它即時性工作的執行。例如：
+PDF created with FinePrint pdfFactory Pro trial version www.pdffactory.com
+6 
+中。  
+ 
+圖  六  Waiting List 
+ 
+3.4. IPC(inter-process communication) 
+ 
+IPC 方 面 我 們 採 用 Semaphore + shared 
+memory。Semaphore 普遍用於應用程式在控制
+共享資源的使用權，使兩個工作行為同步。
+Shared memory 我們利用 memory management
+提供固定分割動態分配的方式。  
+我們對記憶體主要使用分為兩部份，以系統
+與應用程式分為：(1)Code與 Data 節區 (2)Buffer  
+Space 節區。在我們記憶體管理部分主要是利
+用 Buffer  Space 採用固定分割動態分配的方
+式，提供使用者應用程式能動態的要求一塊記
+憶體使用。記憶體的對應圖，如圖  七所示。以
+下是對記憶體使用部分做介紹：  
+Code 與 Data 節區：執行的程式碼，程式常
+數是不變動的，儲存在微處理器的內部記憶體
+中。我們實作的感測器節點的微處理器為
+Atmega128L 記憶體分為三類， Flash ROM、
+EEPROM 與 SRAM。執行的程式碼 (.text)存在
+Flash ROM，共用變數與程式常數 (.bss 與 .data)
+存在 SRAM 中，Code 與 Data 是由 Linker 決定
+所放位置。EEPROM 可供使用者儲存資料，但
+目前還為對此做進一步的利用。  
+ 
+圖  七  記憶體對應圖  
+Buffer  Space：所有的工作與 ISR 都共用
+Buffer  Space，可用來做 shared memory。共用
+Buffer  Space 採用固定分割動態分配，記憶體裡
+每塊 block 的大小都一樣，這樣我們在分配 /回
+收記憶體所花的時間就很少。這方法的缺點就
+是因為不同的應用程式所需的 buffer  block 大
+小都不一樣，有的可能需要多個 buffer  block，
+有的一個 buffer  block 都過大，所以對於記憶體
+的利用沒效率。   
+ 
+3.5 Hardware Abstraction Layer (HAL) 
+ 
+HAL 是 Kernel 裡硬體相關部分的程式碼，
+我們可以藉由修改 HAL，達到容易移植系統至
+別的硬體平台。HAL 部分包括 (1)Kernel HAL
+主要提供的介面包括有工作堆疊的初始化、工
+作切換時儲存與恢復 CPU 狀態與暫存器函
+數、初始化系統時鐘函數與 Timer ISR(2)週邊
+驅動程式介面包括有 UART、Sensor Module、
+Timer 與 ADC。  
+ 
+4. 實驗 
+ 
+我們實作嵌入式作業系統在無線感測器節
+點 Mica2錯誤 ! 找不到參照來源。 ]上。在這章
+首先將會介紹我們的實驗平台，然後 4.2 測量
+我們作業系統在 Mica2 上的記憶體消耗，4.3
+節將測量核心函數執行時間，4.4 節是系統的延
+遲時間。  
+ 
+4.1: 硬體設備 
+ 
+Mica2是由 Crossbow公司所生產的無線感測
+器 節 點 。 Mica2 整 合 了 微 處 理 器
+(Atmega128L)、Flash ROM(512Kbytes)、無線裝
+置 (CC1000) 、 電 源 裝 置 與 可 外 接 sensor 
+board(MTS310)[3]，Mica2 詳盡的方塊圖功能，
+如圖  八所示。  
+ 
+ 
+圖  八  Mica2 Block Diagram 
+ 
+4.2: 程式碼分析 
+ 
+嵌入式作業系統對於記憶體的消耗，一定要
+很小，以留下足夠的空間供上層應用程式所使
+用。本節即描述核心與週邊驅動程式的程式碼
+大小，如表  一所示。Code Size 欄位列出編譯
+過可執行的 Object code(.text)大小，Data Size
+欄 位 列 出 Object code 所 使 用 的 data 
+PDF created with FinePrint pdfFactory Pro trial version www.pdffactory.com
+8 
+下分別做介紹：  (1)同一優先權工作切換延遲
+時間：當同一優先權切換工作時，代表目前工
+作執行完畢，自動放棄CPU控制權。在我們系
+統中需要呼叫 sys_task_exit()將自己由就緒列
+中移除，控制權交由 sys_scheduler()，它會尋找
+最高優先權之工作，如果最高優先權工作與目
+前工作優先權相同，呼叫S_Task_SW()做同一
+層的工作切換。(2)不同優先權工作切換延遲時
+間：不同優先權工作切換有兩種情況，一個是
+自動放棄CPU控制權，另一個是被更高優先權
+工作強奪控制權。第一個情況與同一優先權工
+作切換類似，但最後是呼叫D_Task_SW()。第
+二類情況是當 Timer 中斷發生，跳到特定的
+Timer ISR 處 理 ， Timer_ISR 會 呼 叫
+sys_time_tick()維持系統時間，當結束後呼叫
+sys_int_task_exit()，它會尋找最高優先權之工
+作，如果最高優先權工作與目前工作優先權不
+同，呼叫 sys_int_task_SW()做不同層的工作切
+換。  
+另外中斷延遲的時間分為二個部份，分別
+為 ： (1) 中 斷 回 應 時 間 (Interrupt Response 
+Time)：中斷回應時間包括開始處理這個中斷
+ISR前的全部花費。例如：中斷回應時間=中斷
+延遲 +儲存CPU內部暫存器時間。 (2)中斷恢復
+時間 (Interrupt Recovery Time)：中斷處理完
+畢，返回核心程式碼所花時間。例如：中斷回
+復時間=找出最高優先權工作+恢復CPU內部暫
+存器時間+執行中斷返回指令時間  
+ 
+4.4.2: 系統延遲時間結果 
+ 
+為了測量系統的延遲時間，我們實作一個簡
+單的測試範例。我們設定兩個最高優先權的工
+作都是每10ms執行一次。第二層工作是系統開
+始就排入就緒列，測量我們所定義的系統延遲
+時間，實驗範例如圖  九所示。第一部分我們測
+量Task間切換的延遲時間，同一優先權工作切
+換較不同優先權的切換延遲時間小，因為執行
+的 context switch的函數不同，如表三所列。最
+後是中斷延遲的時間測量，如表四所列。  
+ 
+Cost (Cycles) Time (u-sec) 
+同一優先權工作切換延遲時間 (1) 
+(sys_task_exit() + sys_scheduler() + 
+S_Task_SW()) 
+366 49.641 
+不同優先權工作切換延遲時間 (2-1) 
+(sys_task_exit() + sys_scheduler() + 
+D_Task_SW()) 
+422 57.237 
+不同優先權工作切換延遲時間 (2-2) 
+(Timer_ISR() + sys_time_tick() + 
+sys_int_task_exit()+sys_int_task_SW()) 
+714 96.842 
+表  三  工作切換延遲時間表  
+ 
+Function Cycles Time(u-sec
+) 
+Interrupt Latency(hw) 11 1.491 
+Time to save CPU context 97 13.156 
+sys_int_task_exit() 104 14.105 
+sys_int_task_SW 108 14.648 
+Function Cycles Time(u-sec
+) 
+Interrupt Response Time 108 14.647 
+Interrupt Recovery 212 28.754 
+表  四  中斷處理延遲時間表  
+ 
+5.  結論與未來工作 
+ 
+這論文主要目標是設計一個適合用於無線
+感測器網路的作業系統。系統核心將Task分成
+三種類型優先權高到低分別是：高優先權工作
+/deferred ISRs、一般優先權工作、低優先權工
+作。它提供了可強奪三層次排班佇列、時間管
+理、Semaphore、記憶體管理與HAL。系統各取
+Event-Driven與Thread-Driven的優點，能讓即時
+性工作優先排程， CPU-bound工作在背景執
+行，也能同時節省記憶體消耗。核心與週邊驅
+動程式的程式碼大小大約占13K bytes。中斷延
+遲時間在Atmega128上大約要花30us。對於系統
+函數執行的時間都很短，而且時間是可確定的。 
+根據測量出來的數據顯示，我們的作業系統適
+合於硬體受限制的感測器節點上，且可以執行
+多種應用程式。  
+目前我們所提供的作業系統，還有許多地方
+都尚未做的完善，我們列出以下幾點，希望在
+未來能夠使整個系統更加完善。(1)整合無線網
+路功能：WSN必備的功能，因為時間的關係，
+來不及撰寫驅動程式與通訊Stack，若能加入此
+功能將使得系統更加的完整。(2)容錯：如果系
+統加入容錯功能，可以避免因為硬體或是軟體
+的錯誤，導致系統不能正常的執行，容錯可以
+增加系統的穩定度。 (3)模組化：讓系統模組
+PDF created with FinePrint pdfFactory Pro trial version www.pdffactory.com
+10 
+可供推廣之研發成果資料表 
+□ 可申請專利  ■ 可技術移轉                                      日期：95年 8月 31日 
+國科會補助計畫 
+計畫名稱：應用於感應網路上嵌入式作業系統的設計與實作(I) 
+計畫主持人：張軒彬博士         
+計畫編號： 94-2218-E-005-021    學門領域：資訊學門 
+技術/創作名稱 設計與實作一個應用於感應網路的嵌入式作業系統 
+發明人/創作人 張軒彬 
+中文：根據無線感測器網路的特點，我們設計一個具搶奪的
+軟性即時嵌入式作業系統。我們的系統核心採用允許搶奪的
+三層次優先權佇列排程方式，不同優先權的工作可以互相搶
+奪，這樣的排程方式能讓即時性工作優先執行；而同一優先
+權工作執行方式為 FIFO，且優先權一樣的工作只需共用一
+塊堆疊，能夠節省記憶體的使用。我們也實作同步機制以及
+記憶管理。並且實做 HAL，使能方便讓系統移植到其他硬
+體平台。我們已將系統實作於在 Mica2 的感應網路節點上。 
+技術說明 
+英文：According to the characteristics of wireless sensor 
+networks, we design and implement an embedded operating 
+system that offers multi-threaded model with three Priority 
+Queues scheduling scheme. Tasks in different classes are 
+preemptive to provide prompt response to higher priority/time 
+critical tasks. In contrast, tasks in the same classes are 
+scheduled by FIFO to save memory space since tasks in the 
+same queue can share the same stack. We have also 
+implemented the task synchronization and memory 
+management in our kernel. We also have the HAL to facilitate 
+porting. Our kernel has been implemented and tested in the 
+Mica2 sensor node. 
+可利用之產業 
+及 
+可開發之產品 
+產業：通訊產業，嵌入式系統產業 
+產品：感應網路（包含感應節點、Gateway）、嵌入式系統 
+技術特點 
+1. 完整的系統核心，並採用 thread-driven 架構，方便程式撰寫。 
+2. 支援 preemptive three-level task queues，提供 soft 
+real-time特色。 
+3. 支援 FIFO scheduling in the same task queue，節省記憶體。 
+4. 實作 HAL (Hardware Abstraction Layer)，方便移植。 
+附件二 
+PDF created with FinePrint pdfFactory Pro trial version www.pdffactory.com

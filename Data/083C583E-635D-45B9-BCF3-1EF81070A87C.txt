@@ -1,0 +1,421 @@
+應用於感應網路上嵌入式作業系統的設計與實作(II)
+計畫編號：NSC 95-2221-E-005-028-
+執行期限：95年8月1日至96年7月31日
+主持人：張軒彬 國立中興大學資訊科學與工程學系
+摘要
+在本篇報告中，我們在無線感測網路上支援動
+態置換的能力，並且實作於 SOS 無線感測網路作業
+系統之上。透過動態置換的技術，系統能夠隨意的
+抽換更新模組並且不會造成模組狀態的遺失。我們
+克服動態置換所需的四項基本條件，並且同時支援
+應用程式模組和系統核心模組的置換。
+除了增加動態置換的功能之外，我們也針對
+SOS 的效能做了一些改進。首先，我們改進了 SOS
+在配置快閃記憶體空間的機制。接著，我們提升了
+SOS 內系統呼叫的呼叫速度。最後，我們將模組連
+結的動作，卸載到伺服端，而不是在感測節點上執
+行，如此一來，不僅可以減少節點上記憶體空間的
+使用，也能節省節點上的電源消耗。
+最後，為了評估我們的系統，我們設計了許多
+應用來驗證動態置換的功能性與正確性，並由實驗
+結果得知，我們對 SOS 的效能改善可以大幅提昇其
+執行速度、減少節點上的電源消耗並且延長快閃記
+憶體的使用壽命。
+關鍵詞：感測網路, 動態置換, 動態規劃, SOS
+1. 簡介
+無線感測網路 (Wireless Sensor Networks) 是
+由許多具有感測機制和無線通訊能力的微型嵌入
+式裝置所構成。這些感測節點通常被用來大量佈置
+於某些區域進行偵測，並週期性的回傳我們感興趣
+的資料。由於這樣的特性，當日後需要對無線感測
+網路進行更新，例如除錯、升級版本、或是加入新
+的功能時，我們無法利用既有的 ISP (In-System
+Programming) 的技術將所有的感測節點一一回
+收，然後重新規劃。換言之，我們必須針對無線感
+測網路的特色，提供一套有彈性且有效率的更新機
+制。
+在本篇報告中，我們在無線感測網路上提供動
+態置換的能力，並且實作於 SOS (Han, Kumar, Shea,
+Kohler, & Srivastava, 2005) 之上。相較於一般的網
+路更新機制，動態置換除了提供系統更新的能力之
+外，在系統更新完成之後不需重新開機啟動便能直
+接執行新的程式碼。此外，動態置換也保證在系統
+更新的過程中，執行狀態能夠被保留下來，並且轉
+移到新的程式上繼續使用。在實作上，我們不僅支
+援應用程式層次的動態置換，也同時支援核心層次
+的動態置換，如此一來，系統便能根據不同的應用
+型態提供多樣化且富有彈性的系統服務。
+除了讓 SOS 支援動態置換之外，我們也同時
+改進 SOS 的系統效能。首先，我們改進 SOS 配置
+快閃記憶體時的缺失。在 SOS 中，快閃記憶體的
+配置方式是採用線性搜尋的方式來尋找可用的記
+憶體空間，然而，這樣的作法會大大縮短快閃記憶
+體的使用壽命。我們修改原先的作法以隨機方式動
+態配置記憶體，平均分散快閃記憶體的讀寫次數，
+延長其使用壽命。此外，在 SOS 中，當應用程式模
+組呼叫核心服務時，必須透過 Jump table 以間接方
+式完成，我們修改為直接的方式，以提升系統服務
+的呼叫速度。最後，我們將模組連結的動作卸載到
+伺服端進行。在感測節點上執行模組的連結動作不
+僅需要花費額外的網路傳輸流量，也需要較大記憶
+體空間來存取額外的資訊，且在連結的過程中也會
+進行大量的快閃記憶體存取動作，這些過程都會消
+耗節點上的電源，縮短節點的存活壽命，因此，我
+們將模組的連結動作卸載到伺服端進行，以改進上
+述缺點。
+在第二章中，我們會介紹一些應用於無線感測
+網路上的更新機制，此外，我們也會在第二章中簡
+單的介紹 SOS 的系統架構和支援動態置換所需要
+的四個條件。第三章中會介紹我們的系統架構與實
+作細節。在第四章中，我們會介紹我們所做的實驗
+與結果。第五章則是結論。
+2. 相關研究
+2.1 網路更新的種類與方式
+目前已有許多的研究針對不同的系統提出相
+對應的網路更新機制。在本節中，我們將這些網路
+更新機制進行粗略的分類並加以介紹:
+ Full Image Replacement:
+此方式較著名的方法有 XNP (Jeong,
+Kim and, & Broad, 2003) 和 Deluge (Hui, &
+Culler, 2004)，這兩者都是專為 TinyOS (Hill, et
+al., 2000; Gay, et al., 2003) 而設計的更新方
+式。其特色是，每當系統需要更新時，伺服端
+會將整個新版本的系統核心，驅動程式，和所
+有的應用程式一次編譯成一個映像檔，然後發
+插入到系統時，系統會檢查這些資訊以協助模組間
+的連結動作。連結完成後的模組便可以對其它的模
+組進行直接的函式呼叫。此外，如果模組需要對核
+心的函式進行呼叫時，則需透過核心內的 jump table
+來完成。Jump table 裡記錄了核心內提供服務的函
+式位置。模組必須透過 jump table 以間接的方式對
+核心函式進行呼叫。
+圖 2：SOS 模組之間的溝通可以透過函式呼叫的方
+式或是訊息的方式來進行。模組進行核心函式呼叫
+時則需透過 jump table 來進行。
+圖 3 顯示 SOS 內部排程的方法，共包含三個
+佇列，每個佇列各有不同的優先權，分別為 high、
+system、和 low。SOS 會根據訊息的優先權分別將
+訊息置入相對應的佇列中。接著，SOS 會從最高優
+先權的佇列開始尋找訊息，並且以 FIFO 的方式一
+次處理一個訊息。然後，系統會根據訊息內的資
+訊，將訊息丟到對應的模組。每個模組內都有著自
+己的訊息處理函式，當收到訊息時，模組會根據訊
+息的型態做出相對應的動作。
+圖 3：SOS 的排程方式。enqueue 會根據訊息的優
+先權，將訊息丟到對應的佇列中。dequeue 會依照
+佇列的優先權，以 FIFO 的方式，依序從中取出訊
+息並且將訊息丟給對應的模組處理
+2.3 動態更新的條件
+根據 K42 (Soules, et al., 2003) 的作法，系統
+欲達到動態置換的能力必須實現底下四個條件:
+1. Component Boundaries:
+一個定義明確的模組可將相關的資料和函
+式封裝在模組內，並且盡可能的降低模組和模組
+之間的相依性。藉由清楚的定義模組，當置換發
+生時，系統才能正確決定應該置換的程式碼與變
+數有哪些。一般來說，模組的定義可以藉由物件
+導向語言的協助，或是自身系統的設計達成。
+2. Component State Transfer:
+在動態置換的過程中，舊有模組的執行狀
+態必須被轉移到新模組上繼續使用，不應因為模
+組的更新而遺失，以免造成模組上重要資訊的遺
+失，影響系統執行的正確性。
+3. Mutually Consistent States:
+當模組欲進行動態置換時，必須確保模組
+在置換前後是處於 “一致”的狀態。所謂一致的
+狀態是指模組在置換的過程中，不會有其它因素
+影響到模組內部狀態的穩定性，造成模組內部資
+料變的不可預測。這個問題類似傳統作業系統的
+race conditon。最簡單的解決方法就是確保模組
+在置換過程中是靜止的，除了置換程式，沒有其
+它程式會呼叫或是使用到將被置換的模組。例如
+K42 便是利用 generation count 的方式，來判斷
+模組是否處於靜止狀態(Soules, et al., 2003)。其
+它的作法有 reader-writer lock (Soules, et al.,
+2003)或是 stack trace (Lee, C& hang, 2006) 等。
+4. External references:
+當舊模組被置換後，新模組所使用的記憶
+體位置不一定會和舊模組的相同。因此，模組所
+提供的函式位置也會不相同，如此一來，外來的
+呼叫會找不到新的函式位置。因此，一個支援動
+態置換的系統必須提供適當的機制來重新連結
+這些呼叫到新模組上的函示。
+3. 設計與實作
+3.1 系統實作
+在我們的實作中，系統可以對應用程式模組或
+是核心模組進行動態置換。而在進行動態置換時，
+無論是對應用程式模組，或是對核心模組置換時，
+所需要的基本步驟如下:
+ 配置記憶體空間：
+們在 S 訊息進入排程之前先檢查佇列中是否有正要
+送給尚未進行狀態轉移的模組(例如：A 和 B)，如
+果有的話，便將狀態轉移用訊息(S)的優先權提升到
+最高，讓模組先行完成狀態轉移的工作，然後再處
+理陸續到來的其它訊息。
+除了模組的狀態轉移之外，我們的系統也會進
+行系統資源的轉移動作。舊模組在執行過程中所註
+冊使用的系統資源，如 timer 等，這些資源在模組
+進行動態置換時，我們的系統會一併將這些資源轉
+換到新模組上，讓新模組能夠直接使用，省去重新
+註冊並初使化系統資源的時間。
+圖 5：狀態轉移時可能的問題。A 訊息和 B 訊息會
+搶在狀態轉移訊息 S 之前先送到新模組上。
+3.1.3 External references:
+應用程式部份:
+在 SOS 中，每當模組使用到其它模組所提供
+的函式時，模組會事先留下待連結的指標，並且告
+知 SOS 有多少個指標需要被連結。SOS 會找到這些
+空指標，並且依照模組的要求一一將指標連結到正
+確的函式記憶體位置。因此，模組便能透過函式指
+標呼叫到其它模組所提供的服務。
+但是，當模組被置換時，模組之間的連結可能
+會變得無效。因此在新模組置換舊模組時，我們讓
+SOS 再做一次模組之間的連結動作。例如圖 6 中，
+APP_01 原本是使用 APP_02_old 內的服務，此時有
+個新的 APP_02_new 被安裝到系統中，那麼我們會
+將 APP_01 重新連結到 APP_02_new 中。
+圖 6：模組進行置換後，需要對函式呼叫進行重新
+連結。
+核心部份：我們分兩部份探討：
+(1)：解決核心模組與核心模組之間的參考:
+為了減少核心模組之間的相依性，我們將核心
+模組之間的關連以函式指標隔開。核心模組如果想
+使用核心內其它成員的函式時，則必須透過函式指
+標來進行。相對的，核心模組也能透過動態更改函
+式指標的值，來修正所提供服務的函式位置。例
+如：我們想置換核心函式 mq_enqueue，其原本的
+呼叫方式為
+mq_enqueue(&schedpq, m);
+我們要將它改寫成
+(*mq_enqueuePtr)(&schedpq, m);
+也就是透過函式指標的方式來呼叫核心函式。如圖
+7 所示，ker_module_01 模組利用函式指標來使用
+ker_module_02 模組內的資源。這樣的作法被廣泛
+使用在 Linux 的核心程式碼中。透過函式指標能夠
+降低模組之間的相依性。每當有新的核心模組被安
+裝時，新模組只要修改核心內函式指標的值，即可
+將呼叫轉移到新的函式。
+圖 7：核心模組間連結的方式。
+(2)：解決由 application 模組到 kernel 模組的參考:
+核心內的 jump table會記錄核心函式的記憶體
+位置，並且提供給應用程式模組在呼叫時查詢使
+用。如果提供服務的核心函式因為動態置換的關係
+而更換了記憶體位置，並且該函式又有輸出到 jump
+table 上的話，那麼 jump table 內的值也必須做對應
+的修正才行。
+3.1.4 Mutually Consistent States:
+要進行動態置換之前，我們必須先確定將被置
+換的模組，其上所有的服務都已結束。避免動態轉
+換的動作照成系統內的狀態不穩定。由於 SOS 採
+用 FIFO (First-In-First-Out)的方式排程，同時間一次
+只會有一個訊息被處理，而且只有在模組完成此一
+找的方式，以期讓 Flash 記憶體中每一個區塊的使
+用率平均。
+4. 實驗與結果
+4.1 實驗環境
+我們實作的硬體平台為 Mica2。Mica2 是
+Crossbow 公司專為無線感測網路所設計的感測節
+點，其中整合了微處理器(Atmega128) 、Flash ROM
+(512 Kbytes)、無線裝置…等等，並可外接感測器
+(MTS310)。Mica2 需配合 programming board 使用，
+才能將檔案從 PC 端透過序列埠經由 programming
+board 寫 入 到 感 測 節 點 上 。 我 們 所 使 用 的
+programming board 為 Mib510。軟體部份我們使用
+由 UCLA 發展的無線感測網路作業系統 SOS 1.7
+版。
+4.2 實驗結果
+4.2.1 核心大小比較
+表一顯示我們的系統與 SOS 的核心大小比
+較。由表 1 可以得知支援動態置換的系統只比原來
+的 SOS 核心多出約 1 Kbytes 左右的記憶體空間。
+表 1：核心大小比較(單位: bytes)
+kernel
+Program Data
+Original Version 38940 2829
+Modified Version 40056 2839
+4.2.2 安裝模組所需花費的時間比較
+表 2 和表 3 顯示動態置換和單插入一個 null
+應用程式模組與核心模組兩者之間的時間花費比
+較表(不包含狀態轉移的時間)，null 模組是一個空
+的模組，並不做任何的事情。動態置換在最後需進
+行移除舊模組的動作，這是單插入一個模組所沒有
+的，因此整體的時間花費會比單插入一個模組高一
+些。在表 3 中，如果插入的核心模組內有函式必須
+輸出到 jump table 時，那麼系統會在置換的過程中
+修改 jump table 的值，由於修正 jump table 必須執
+行快閃記憶體的寫入動作，因此會花費比較多的時
+間。
+此外，我們針對不同大小的模組分別測試置換
+模組的時間花費。圖 10 中，我們置換三個應用程
+式模組，分別為 null 模組(20 bytes)，surge 模組(688
+bytes)，和 tree_routing 模組(2608 bytes)。圖 11 中，
+我們測試三種我們所實作的核心模組，分別為變更
+核心排程用的模組 scheduler，變更核心快閃記憶體
+配置用的 flash 模組和一個不做任何事情的 ker_null
+模組。
+表 2：安裝應用程式模組所需花費的時間比較(單位:
+clock cycles)
+Application module
+Insert Hot-swap
+Check module list 17 15
+Register new module 47 45
+Remove old module 53
+表 3：安裝核心模組所需花費的時間比較(單位:
+clock cycles)
+Kernel module
+Hot-swap
+Check module list 13
+Register new module 46
+Remove old module 54
+Revise Jump Table 1202
+在模組註冊的過程中，我們會將系統原本用來
+管理舊模組時所使用的資料結構直接轉移給新模
+組使用，這樣的作法可以省去資料結構在釋放並且
+重新初使化所需花費的時間，因此在動態置換的過
+程中，註冊模組的時間花費會比原來單純插入模組
+時為少。
+圖 10：三個不同大小的應用程式模組在以插入和
+動態置換兩個動作上所需花費的時間比較。
+圖 11：三個不同大小的核心模組在以插入和動態置
+換兩個動作上所需花費的時間比較。
+圖 13:使用五個模組時，比較以線性的方式和隨機
+配置方式之間效率的不同。
+圖 14：使用十個模組時，比較以線性的方式和隨
+機配置方式之間效率的不同。
+圖 15：使用十五個模組時，比較以線性的方式和
+隨機配置方式之間效率的不同。
+4.2.7 模組狀態轉移實驗
+在這個實驗中，我們利用 surge 此一應用程式
+模組來驗證我們狀態轉移的正確性。Surge 應用程
+式模組每隔一段時間便會偵測周遭環境的光度，並
+且將其值(value)回傳，而每一個回傳的封包都會被
+標記一個流水號(seq_no)。我們修改 surge 應用程式
+模組，新增一個內部的狀態變數 average，記錄每一
+次讀取到的值的平均值。我們利用動態置換的方式
+置換原有的 surge 模組，以我們新的模組取代之。
+表 7 顯示實驗前後 surge 模組內部各個變數的
+變化情形。由表 7 可知，seq_no 有從舊模組最後的
+值銜接下來，這證明了舊模組內狀態有成功被轉換
+到新模組上。此外，在動態置換進行之前，average
+這個變數是不存在的，因此沒有數值。然而在進行
+動態置換之後，我們可以發現 average 開始有數值，
+也驗證了我們的系統可以在原本的模組狀態中新
+增新的狀態變數。
+表 7：動態置換後模組內狀態的變化
+1 2 3 4 5
+Value 0x21C 0x237 0x23F 0x21A 0x240
+Seq_no 0x5 0x6 0x7 0x8 0x9
+Average N/A N/A N/A N/A N/A
+6 7 8 9
+Value 0x213 0x22A 0x244 0x211
+Seq_no 0xA 0xB 0xC 0xD
+Average
+動 態
+置換 0x213 0x21E 0x231 0x221
+5. 結論
+動態置換在無線感測網路的開發及維護上，提
+供了一種極度彈性的方式。我們藉由修改 SOS，在
+SOS 上實作動態置換的功能，讓 SOS 能夠根據需
+求，自由地變更置換舊有系統上的應用程式模組，
+或是核心模組。此外，動態置換也能確保在模組更
+新的過程中，系統不需要重新啟動，而舊有模組的
+執行狀態能夠被轉移到新的模組上繼續執行工作。
+此外，我們也改善 SOS 的效能，如提升系統
+呼叫的速度、平均使用快閃記憶體的所有區塊、將
+核心模組的連結動作卸載到伺服端上等。由實驗結
+果顯示，這些機制能夠降低系統的負擔, 提升了系
+統整體之效能。
+參考文獻
+[1] A. Dunkels, B. Gronvall, and T. Voigt (2004).
+Contiki - a lightweight and flexible operating
+system for tiny networked sensors. In First IEEE
+Workshop on Embedded Networked Sensors.
+455-462.
+[2] Adam Dunkels, Niclas Finne, Joakim Eriksson,
+and Thiemo Voigt (2006). Run-time dynamic
+linking for reprogramming wireless sensor
+networks. In Proceedings of the ACM 4th
+international conference on Embedded networked
+sensor systems (Sensys), pages 15–28.
+[3] D. Gay, P. Levis, R. von Behren, M. Welsh, E.
+Brewer, and D. Culler (2003). The nesc language:
+A holistic approach to networked embedded
+systems. In ACM SIGPLAN Conference on
+Programming Language Design and
+Implementation.
+可供推廣之研發成果資料表
+■ 可申請專利 ■ 可技術移轉 日期：96 年 10 月 1 日
+國科會補助計畫
+計畫名稱：應用於感應網路上嵌入式作業系統的設計與實作(II)
+計畫主持人：張軒彬博士
+計畫編號：95-2221-E-005-028 學門領域：資訊學門
+技術/創作名稱 一個具備動態置換能力的無線感測網路作業系統
+發明人/創作人 張軒彬
+中文：我們在無線感測網路上支援動態置換的能力，並且實作於
+SOS 無線感測網路作業系統之上。透過動態置換的技術，系統能夠
+隨意的抽換更新模組並且不會造成模組狀態的遺失。我們克服動態
+置換所需的四項基本條件，並且同時支援應用程式模組和系統核心
+模組的置換。
+除了增加動態置換的功能之外，我們也針對 SOS 的效能做
+了一些改進。首先，我們改進了 SOS 在配置快閃記憶體空間的機
+制。接著，我們提升了 SOS 內系統呼叫的呼叫速度。最後，我們
+將模組連結的動作，卸載到伺服端，而不是在感測節點上執行，如
+此一來，不僅可以減少節點上記憶體空間的使用，也能節省節點上
+的電源消耗。
+技術說明
+英文：On the basis of SOS kernel, we design and implement a
+hotswappable operating system that allows a module to be replaced
+on-the-fly. In other words, the hotswapping procedure is an on-line
+process and has no impact on the normal operating of sensor nodes.
+Moreover, the execution state of the old module can be properly
+transferred to the new module so that the new module can pick up
+where the old module left off. Finally, not only application modules but
+also kernel modules is hotswapped in our system.
+In addition, due to the extensively energy and memory constraint
+in the sensor node, we offload the job of module-linking to the server
+side to eliminate the reprogramming cost. Finally, we also make some
+performance improvement to the SOS kernel. Firstly, in SOS, system
+calls are accomplished by the intervention of a jump table and thus
+incur an extra level of indirection. We eliminate this indirect call
+overhead while keeping the jump table intact. Secondly, SOS supports
+dynamic memory but uses FIFO as the memory allocation scheme. We
+replace the FIFO allocation scheme with a random scheme to balance
+the memory usage and achieve wear leveling.
+可利用之產業
+及
+可開發之產品
+產業：通訊產業，嵌入式系統產業
+產品：感應網路（包含感應節點、Gateway）、嵌入式系統
+出席國際學術會議心得報告
+計畫編號 NSC 95-2221-E-005-028-
+計畫名稱 應用於感應網路上嵌入式作業系統的設計與實作
+出國人員姓名
+服務機關及職稱
+張軒彬，國立中興大學資訊科學系助理教授
+會議時間地點 96.3.12 ~ 96.3.16 韓國首爾
+會議名稱
+(中文) ACM 應用計算國際研討會
+(英文) ACM Symposium of Applied Computing
+發表論文題目
+(中文) VA-TCP:支援垂直換手的 TCP 協定
+(英文) VA-TCP: A Vertical Handoff-Aware TCP
+一、參加會議經過
+本屆 ACM 應用計算國際研討會是於韓國首爾舉行，本人於 2007/3/12 號早上由國內出發，
+搭乘泰國航空直飛首爾，會議地點會於首爾的 COEX 國際會議中心，同時也是一個 shopping
+mall，首爾的地鐵非常發達，COEX 本身就有地鐵站，交通便利。
+本屆 ACM 應用計算國際研討會共有 42 個 technical tracks，個人投稿的 track 為 computer
+network, 共有 28 篇論文投稿，只選出 8 篇 regular papers 和一篇 poster paper。個人這次的論文就
+是這唯一一篇的 poster paper。
+所有的 poster papers 都被安排於會議第二天下午，從中午 1:00 到 5:00。我的論文題目
+為：VA-TCP:支援垂直換手的 TCP 協定(VA-TCP: A Vertical Handoff-Aware TCP)，我們提出一個
+解決在異質網路下，當發生垂直換手方法時，TCP 效能低落的方法，我們的方法為動態偵測新
+的網路特色，例如 bandwidth, round-trip time..等，然後動態調整 TCP 的參數與行為，以改善
+TCP 在垂直換手下的效能。整個 poster section 的過程順利，認識了一些學者，例如在芬蘭
+Nokia 擔任 research engineer 的楊博士(YAOJIN YAN)，雲林科技大學的黃胤傅教授以及其博士
+班學生，也遇到了以前實驗室的學姐姜博士。另外，一些學者也詢問我的研究內容，也在
+Management for Interactive Applications in Mobile Handheld Systems,”…等論文也都與我目前的研
+究相關。
+最後，在與會過程中也相當程度的增廣了自己的見聞，同時也和與會的他國學者交換意
+見，對於個人未來的研究有很大的幫助。也謝謝國科會的支持，使得本人有機會參與此次研討
+會，聆聽許多一流的研究成果，也認知到不同的研究觀點與研究精神，並從當中獲取到許多有
+用的資訊。相信對個人未來研究工作的進行有極大的幫助。

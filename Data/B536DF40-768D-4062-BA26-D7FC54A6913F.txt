@@ -1,0 +1,706 @@
+2 SUBMITTED TO IEEE TRANSACTIONS ON COMPUTER-AIDED DESIGN OF INTEGRATED CIRCUITS AND SYSTEMS, JULY 2009
+Simultaneous Layout Migration and Decomposition
+for Double Patterning Technology
+Chin-Hsiung Hsu, Yao-Wen Chang, and Sani Rechard Nassif
+Abstract— Double patterning technology (DPT) and layout
+migration are two closely related problems on design for manu-
+facturability in the nanometer era. DPT decomposes a layout into
+two masks and applies double exposure patterning to increase
+pitch size and thus printability. In this paper, we present the
+first algorithm in the literature for the simultaneous layout
+migration and decomposition (SMD) problem. Our algorithm
+first constructs a potential conflict graph and DPT-aware con-
+straint graphs, and then applies integer linear programming
+(ILP) corresponding to the graphs to obtain a decomposed and
+migrated layout. We further present an effective graph-based
+reduction technique to prune the ILP solution space, which
+maintains the same DPT conflicts. We also present a new DPT-
+aware objective for the SMD problem to minimize the difference
+between the original and migrated layouts while considering the
+DPT effects. In addition, we present an approach to generate
+DPT-aware standard cells by considering the DPT effects on the
+cell boundaries; this technique improves the layout printability
+and facilitates EDA tools to consider DPT. Experimental results
+show that our algorithms can effectively generate conflict-free
+migrated layouts with 14% smaller layout areas and 28% smaller
+layout changes, compared with the traditional method of layout
+decomposition followed by layout migration. In particular, our
+reduction technique reduces the ILP variables by 44.7%, the
+ILP constraints by 58.2%, and the DPT edges by 79.9% over
+the basic ILP formulation, leading to a substantial speedup. For
+example, it can reduce the runtimes for the test cases from more
+than one day to only seconds.
+I. INTRODUCTION
+In this paper, we develop the first algorithm in the literature
+for simultaneously handling the two closely related problems
+on design for manufacturability: double patterning technology
+(DPT) and layout migration (LM). Both are crucial technolo-
+gies for chip manufacturing in the nanometer era. Due to their
+interplay, it is necessary to consider the effects of the two
+technologies simultaneously to obtain a better design flow for
+manufacturability enhancement.
+As IC technology continues to advance, lithography process
+meets the bottleneck due to the difficulties in the current
+realization of extreme ultra-violet (EUV). To bridge EUV and
+current lithography technology, such as immersion lithography
+and low k1 ArF, DPT has recently gained much attention and is
+Preliminary version of this paper was presented at the 2009 IEEE/ACM
+International Conference on Computer Aided Design (ICCAD-09) [?].
+This work was partially supported by Synopsys Inc., TSMC, and National
+Science Council of Taiwan under Grant No’s. NSC 96-2752-E-002-008-PAE,
+NSC 96-2628-E-002-248-MY3, NSC 96-2628-E-002-249-MY3, and NSC 96-
+2221-E-002-245.
+Chin-Hsiung Hsu is with the Graduate Institute of Electronics Engineering,
+National Taiwan University, Taiwan.
+Yao-Wen Chang is with the Graduate Institute of Electronics Engineering
+and Department of Electrical Engineering, National Taiwan University, Tai-
+wan.
+Sani Rechard Nassif is with IBM, Austin, Texas, USA.
+viewed as the most practical solution for 32/22nm nodes [3],
+[9], [15]. However, layout decomposition (LD) and overlay
+control (OC) are two main challenges for DPT [3], [6], [8].
+DPT decomposes a single layout into two masks and applies
+double exposure patterning to increase pitch size and improve
+depth of focus (DOF) [17]. DPT also requires precise overlap
+control for production deployment [1].
+In addition to the challenges with smaller feature sizes,
+the design complexity of a chip has become much more
+complicated than ever. SOC design is a significant trend for
+IC designs. The complexity of SOC design can be tamed
+by IP-based design, and IP reuse can substantially boost the
+design productivity [20]. The IPs consist of soft IPs and hard
+IPs, such as a standard-cell library. Hard IPs depend on the
+process of layouts, and manufacturing is typically updated
+every 18 months, with a different set of design rules [20].
+To make things worse, as the process technology advances to
+the nanometer scale, the cell number of a standard-cell library
+keeps increasing quickly, from hundreds to thousands [2]. Re-
+developing a new standard-cell library for each process update
+is very time-consuming and costly. Layout migration (LM),
+which migrates layouts between processes and clears design
+rule violations, has been playing a crucial role in modern
+library development.
+DPT is urgently required for production deployment, but ex-
+isting library layouts are usually not compatible with DPT, i.e.,
+it is likely that the layouts cannot be decomposed completely.
+The previous work on DPT in [13] focuses on LD, but does
+not modify the layouts to handle unresolvable conflicts. On
+the other hand, traditional LM techniques do not consider the
+impacts of DPT; for example, a layout should be decomposed
+into two masks for DPT, and the design rules for DPT (e.g.,
+conditional spacing) depend on the mask to which the patterns
+belong. Therefore, it is desirable to consider simultaneous
+layout migration and decomposition (SMD) to help re-design
+DPT-aware standard-cell libraries and other hard IPs.
+A. Related Work
+Automatic LM was often called layout compaction, which
+compacts a layout to minimize the layout area based on
+the symbolic layout containing only lines and rectangles [5].
+Modern LM, however, is usually performed based on sim-
+plified layouts [18] or mask layouts directly [11], [20]. The
+original objective of LM is to minimize layout area. The works
+[11] and [20] propose the minimum perturbation (MP) and
+geometric closeness (GC) objectives, respectively, to minimize
+the difference between the original and migrated layouts.
+4 SUBMITTED TO IEEE TRANSACTIONS ON COMPUTER-AIDED DESIGN OF INTEGRATED CIRCUITS AND SYSTEMS, JULY 2009
+the runtimes for the test cases from more than one day to
+only seconds. In particular, this ILP reduction maintains
+the same DPT conflicts.
+• For the SMD problem, we extend the state-of-the-art
+geometric closeness (GC) metric for LM alone presented
+in [20] to minimize the difference between the original
+and migrated layouts while considering the DPT effects,
+called DPT-GC.
+• We also present an approach to generate DPT-aware
+standard cells by resolving the DPT conflicts on the cell
+boundaries while the cells are aligned. This technique
+improves the layout printability and increases the com-
+patibility between current EDA tools and DPT because
+DPT is urgent for poly, contact, and metal one layers
+which are mostly occupied by standard cells.
+The rest of this paper is organized as follows. Section II
+gives the problem formulation. Section III presents the algo-
+rithm for the SMD problem. Experimental results are reported
+in Section IV, and conclusions are given in Section V.
+II. PROBLEM FORMULATION
+We introduce some notations and formally define the SMD
+problem for DPT. An input layout can be captured by Ouster-
+hout’s corner-stitch data structure [14] which partitions the
+layout patterns into tiles (see Fig. 2(a)). A sub-pattern is
+referred to as a rectangular pattern with one or more tiles. A
+stitch is induced if two touching tiles of the same pattern are
+assigned to different masks. Let sd be the minimum double-
+patterning spacing; if the spacing between two tiles is smaller
+than sd, these two tiles need to be assigned to different masks.
+SMD can simultaneously adjust the spacing between tiles and
+assign tiles to masks; this feature is called dynamic spacing.
+There are three major objectives for our SMD problem,
+including the minimization of the DPT-aware geometric close-
+ness (DPT-GC), the resulting layout area, and the resulting
+stitch count. The weights among them should be controlled
+by the designers.
+Before presenting our DPT-GC objective, we introduce
+the existing geometry-closeness (GC) objective for layout
+migration [20]. The GC objective minimizes the differences
+between the original and migrated tiles. Fig. 2(b) shows an
+example of a sub-pattern before and after layout migration.
+The GC objective minimizes |hˆ1 − h1| + |hˆ2 − h2|, where
+h1(h2) is the height of the original tile and hˆ1(hˆ2) is the
+height of the migrated tile. However, this objective cannot
+correctly be applied to DPT because the overlap length of
+a stitch cannot be zero if a stitch is induced. Therefore, we
+model our DPT-GC objective on a sub-pattern, not on a tile
+because the overlap length should not be treated as a penalty
+for the objective. Consequently, for a sub-pattern Ps, its DPT-
+GC objective fgc(Ps) can be formulated as follows:
+fgc(Ps) =
+∣∣∣∣∣
+∑
+ti∈Ps
+wˆi − L
+x
+o(Ps)−
+∑
+ti∈Ps
+wi
+∣∣∣∣∣
++
+∣∣∣∣∣
+∑
+ti∈Ps
+hˆi − L
+y
+o(Ps)−
+∑
+ti∈Ps
+hi
+∣∣∣∣∣ ,
+where Lxo(Ps) and Lyo(Ps) are the required overlap lengths in
+the x- and y-directions for the sub-pattern, respectively. Taking
+Fig. 2(b) as an example, the sub-pattern shape change is given
+by
+fgc(Ps) = |(wˆ1 + wˆ2)− 0− (w1 + w2)|
++|(hˆ1 + hˆ2)−O12 − (h1 + h2)|,
+where O12 is the required overlap length in the y-direction.
+Note that only wˆi and hˆi are variables in this objective func-
+tion, and the required overlap lengths should be considered
+not only in a sub-pattern, but also between sub-patterns.
+Patterns on mask 1
+Patterns on mask 2
+Overlap length for DPT
+w^1
+^
+h1
+w1
+h1
+Ps
+Stitch
+w2 w^2
+h2 ^h2
+Tile
+O12
+Ps:   Sub-pattern
+(a) (b)
+Pattern on poly layer
+Tile
+Fig. 2. Examples for the DPT-GC objective. (a) A pattern partitioned
+into tiles. (b) An example of our DPT-GC objective.
+We formally define the SMD problem as follows:
+• The SMD Problem: Given the original layout L, the
+minimum double-patterning spacing sd, the minimum
+overlap length lo for splitting patterns, and design rules
+for the targeting technology node, find a decomposed
+and migrated layout L∗ so that the stitch number, the
+layout area, and the sub-pattern geometric closeness are
+minimized, subject to the design-rule constraints, the DPT
+design-rule constraints, and the minimum-overlap-length
+constraints.
+Figs. 3(a) and (b) show an example input layout and an
+example output layout for the SMD problem, respectively.
+(a) (b)
+Uncolored contact
+Contact on mask 1
+Contact on mask 2
+Uncolored poly
+Poly on mask 1
+Poly on mask 2
+Uncolored metal wire
+Metal wire on mask 1
+Metal wire on mask 2
+SMD
+Fig. 3. An example of simultaneous layout migration and decom-
+position for DPT. (a) Original layout. (b) Decomposed and migrated
+layout.
+6 SUBMITTED TO IEEE TRANSACTIONS ON COMPUTER-AIDED DESIGN OF INTEGRATED CIRCUITS AND SYSTEMS, JULY 2009
+and minimum spacing), and the DPT-aware minimum-overlap-
+length constraints (e.g., two tiles should overlap with each
+other for a certain length at the junction for a stitch).
+An optional edge between two tiles indicates that the two
+tiles can be separated along either the x- or y-direction and at
+least one separation constraint is satisfied. The optional edge
+is used to increase the flexibility in 2-D LM. For instance, as
+shown in Fig. 6(a), the constraint between the two tiles 4b and
+5 can be specified either horizontally or vertically, and thus
+we introduce an optional edge to model this type of relation.
+A DPT edge is used to increase the decomposability for
+DPT by utilizing the concept of dynamic spacing to handle the
+case with conditional spacing. If two tiles are connected by a
+DPT edge, their spacing needs be at least sd only if they are on
+the same mask. The DPT edge can handle unresolvable DPT
+conflicts (as the example shown in Fig. 5(f)). by increasing
+the spacing between the associated two tiles if they are on the
+same mask.
+Vertex
+1a
+2a
+5
+3
+4a
+4b
+4c
+1c
+1b
+1d 1e
+2b
+Optional edge General edge DPT edge
+1a
+2a
+5
+3
+4a
+4b
+4c
+1c
+1b
+1d 1e
+2b
+(a) (b)
+Fig. 6. Example DPT-aware horizontal constraint graphs. (a) Original
+DPT-aware constraint graph. (b) DPT-aware constraint graph with
+general edges (solid edges), optional edges (dashed edges), and DPT
+edges (dotted edges) after applying the switch-aware 2-colorable
+subgraph identification to be introduced in Section III-D.
+C. Basic ILP Formulation
+Now we are ready to present our basic ILP formulation. We
+use the following notations for the formulation:
+• ti: a tile.
+• V : set of nodes (tiles).
+• Ps: set of tiles in a sub-pattern.
+• P : set of all sub-patterns.
+• ei,j : an edge connecting the two tiles ti and tj .
+• A: set of the edges associated with adjacent tiles; ei,j ∈ A
+if the two tiles ti and tj are adjacent.
+• Tp: set of the edges associated with two touching tiles
+of the same pattern; ei,j ∈ Tp if the two tiles ti and tj
+belong to the same pattern and touch each other.
+• Gh = (V,Eh) (Gv = (V,Ev)): horizontal (vertical) con-
+straint graph, where Eh (Ev) is the set of the horizontal
+edges.
+• E
+dp
+h (Edpv ): set of the horizontal (vertical) DPT edges;
+ei,j ∈ E
+dp
+v if the two same-layer tiles ti and tj are con-
+strained in the horizontal (vertical) direction and belong
+to different patterns.
+• Ehv: set of optional edges; ei,j ∈ Ehv if the two same-
+layer tiles ti and tj can be constrained in the horizontal or
+the vertical direction, i.e., the two tiles can be considered
+horizontally or vertically related.
+• Cbl (Ctr): a constant denoting the bottom-left (top-right)
+corner of a tile.
+• C1(ei,j) (C2(ei,j)): a constant, which is specified by ei,j ,
+denoting the bottom-left or top-right corner of the tile ti
+(tj), where C1(ei,j) ∈ {Cbl , Ctr} (C2(ei,j) ∈ {Cbl , Ctr}).
+• d(ei,j): a constant that denotes the x-direction (y-
+direction) minimum distance between the specific corners
+of the two tiles ti and tj if ei,j ∈ Eh(Ev).
+The variables used in the ILP formulation are as follows:
+• hp: a variable that denotes the half perimeter of the
+migrated layout.
+• xi,Cb
+l
+(yi,Cb
+l
+): a variable that denotes the x-coordinate (y-
+coordinate) of the bottom-left corner of the tile ti.
+• xi,Ctr (yi,Ctr ): a variable that denotes the x-coordinate (y-
+coordinate) of the top-right corner of the tile ti.
+• bk: a variable that denotes the layout boundary, where k ∈
+{R,L, T,B}; bT , bR, bB , and bL denote the top, right,
+bottom, and left boundaries, respectively.
+• mi: a 0–1 integer variable that denotes to which mask
+the tile ti belongs; if ti is on mask 1, mi = 1; otherwise,
+mi = 0.
+• rhi,j(r
+v
+i,j): a 0-1 integer variable that denotes whether the
+two tiles ti and tj satisfy the x-direction (y-direction)
+constraint; if ti and tj satisfy the x-direction (y-direction)
+constraint, rhi,j = 1(rvi,j = 1); otherwise, rhi,j = 0(rvi,j =
+0).
+• ahi,j (a
+v
+i,j): a 0-1 integer variable that denotes whether the
+x-directional (y-directional) domains of two tiles ti and
+tj overlap; if [xi,Cb
+l
+− sd2 , xi,Ctr+
+sd
+2 ]∩[xj,Cbl
+, xj,Ctr ] 6= φ,
+ahi,j = 1; otherwise, ahi,j = 0. (avi,j is defined similarly.)
+• dhi,j (d
+v
+i,j): a 0-1 integer variable that denotes whether the
+x-direction (y-direction) distance between the two tiles ti
+and tj are smaller than sd; if their distance is smaller than
+sd, then dhi,j = 1(dvi,j = 1); otherwise, dhi,j = 0(dvi,j =
+0).
+• ci,j : a 0-1 integer variable that denotes whether the two
+tiles ti and tj are assigned to the same mask; if they are
+on the same mask, ci,j = 1; otherwise, ci,j = 0.
+• si,j : a 0-1 integer variable that denotes whether the two
+tiles ti and tj are assigned to different masks; if they are
+on different masks, si,j = 1; otherwise, si,j = 0.
+The SMD problem can be formulated as follows:
+Minimize α · hp + β
+∑
+Ps∈P
+fgc(Ps) + γ
+∑
+ei,j∈Tp
+si,j
+s. t. bL ≤ xi,u ≤ bR,∀ti ∈ V, u ∈ {C
+b
+l , C
+t
+r}, (1)
+bB ≤ yi,u ≤ bT ,∀ti ∈ V, u ∈ {C
+b
+l , C
+t
+r}, (2)
+hp = (bR − bL) + (bT − bB), (3)
+xj,C2(ei,j) − xi,C1(ei,j) ≥ d(ei,j),∀ei,j ∈ Eh, (4)
+yj,C2(ei,j) − yi,C1(ei,j) ≥ d(ei,j),∀ei,j ∈ Ev, (5)
+8 SUBMITTED TO IEEE TRANSACTIONS ON COMPUTER-AIDED DESIGN OF INTEGRATED CIRCUITS AND SYSTEMS, JULY 2009
+significantly increase the number of ILP constraints and thus
+the ILP runtime dramatically. For this problem, we present
+an approach to reduce the number of DPT edges in the
+following. The DPT edges are used to handle DPT conflicts,
+but such conflicts occur to only a relatively small subset of
+the edges. Therefore, we shall identify redundant components
+of the resulting potential DPT-conflict graph to prune the
+ILP problem size. To do so, we could extract 2-colorable
+subgraphs by assigning pseudo-colors to some tiles; i.e., we
+tentatively assign colors to the 2-colorable tiles to identify such
+2-colorable subgraphs. If a pseudo-colored subgraph does not
+cause any DPT conflicts and stitches, we transform the DPT
+edges of this subgraph into the general edges.
+As shown in Fig. 8, for instance, a 2-colorable subgraph
+can be extracted by first pseudo-coloring tile 1a. If a tile is
+connected and can be pseudo-colored with a different color
+without inducing a stitch, the tile and the connecting edge
+are included into the subgraph. If a tile would induce any
+stitch (like the tile 1d in Fig. 8), then the connecting edge and
+the tile cannot be added into the subgraph because it might
+cause non-removable stitches and worsen the solution quality.
+The induced 2-colorable subgraphs correspond to redundant
+subproblems for solving the DPT problem since these edges
+will not cause DPT conflicts. Note that we cannot pseudo-
+color a tile via the edges in an odd cycle which models DPT
+conflicts; therefore, these edges remained as DPT edges which
+represent some corresponding DPT conflicts. See Fig. 6 for
+an example of the identification of the subgraph, in which
+we only need to work on the remaining DPT edges shown in
+Fig. 6(b) to resolve the DPT conflicts during LM. As can be
+seen from this example, only two DPT edges and one optional
+edge remain out of the original ten edges, which gives a very
+significant reduction of the edges.
+1a
+2a
+5
+3
+4a
+4b
+4c
+1c
+1b
+1d 1e
+2b
+Vertex with pseudo-color 1
+Vertex with pseudo-color 2
+Edge connected to
+non-colorable vertex
+Edge connected to
+colorable vertex
+Edges of odd cycles
+(Unresolvable DPT-conflict)
+Vertex that cannot be
+pseudo-colored
+Fig. 8. An example of extracting stitch-aware 2-colorable subgraphs
+from a potential DPT-conflict graph.
+Let Esg be the set of (general) edges extracted in the
+resulting stitch-aware 2-colorable subgraphs. Since the edges
+in Esg will not cause any DPT conflicts, we shall prune them
+from our ILP formulation to reduce the problem size. As a
+result, we shall modify Constraints (8), (9), and (10) which
+handle the DPT edges, as follows:
+mi ⊕mj = 1− ci,j ,∀ei,j ∈ A,
+→ mi ⊕mj = 1− ci,j ,∀ei,j ∈ A \ Esg,
+ahi,j · d
+v
+i,j · ci,j = 0,∀ei,j ∈ E
+dp
+v
+→ ahi,j · d
+v
+i,j · ci,j = 0,∀ei,j ∈ E
+dp
+v \ Esg,
+avi,j · d
+h
+i,j · ci,j = 0,∀ei,j ∈ E
+dp
+h
+→ avi,j · d
+h
+i,j · ci,j = 0,∀ei,j ∈ E
+dp
+h \ Esg.
+The edges in Esg are transformed into general ones and do
+not keep the properties of the DPT edges; to guarantee the
+resulting layout to be decomposable, we need to add the
+following constraint:
+mi ⊕mj = 1,∀ei,j ∈ Esg. (11)
+Constraint (11) denotes that two tiles ti and tj should be on
+different masks if ei,j ∈ Esg . Since the extracted subgraphs
+are 2-colorable, these tiles can be assigned to different masks
+without inducing any DPT conflicts.
+We have the following two theorems:
+Theorem 1: The number of DPT conflicts remains the same
+after the ILP reduction with the 2-colorable subgraph tech-
+nique.
+Proof 1: In the worst case, each pair of adjacent tiles
+induces DPT conflicts. As a result, we enlarge the whole layout
+twice, but do not enlarge the tile widths. In the resulting layout,
+the distances among tiles become twice larger, and thus there
+is no DPT conflicts even though all tiles have the same color.
+Therefore, tiles with pseudo colors also do not induce any
+DPT conflict.
+Theorem 2: Given the constraint graph G = (V,E), the
+number of variables and the number of constraints for the ILP
+formulation are both O(V + E).
+Proof 2: Before applying our 2-colorable reduction tech-
+nique, the number of variables for the coordinates of all tiles is
+O(V ) and the number of variable ci,j is O(E). Constraint (1)
+requires O(V ) constraints, and Constraint (4) needs O(E)
+constraints. Consequently, the number of variables and the
+number of constraints for the ILP formulation before reduction
+are both O(V + E). After applying our reduction technique,
+the number of variables and the number of constraints are still
+O(V + E) due to ci,j and its corresponding constraints even
+if all DPT edges are reduced.
+Note that the 2-colorable subgraph reduction technique
+cannot further reduce the theoretical O(V +E) bounds for the
+numbers of variables and constraints, but it does substantially
+reduce the problem sizes (reduces the ILP variables by 44.7%,
+the ILP constraints by 58.2%, and the DPT edges by 79.9% on
+average) and thus the runtime for practical applications over
+the basic ILP formulation, as will be reported in Section IV.
+E. DPT-aware Standard Cells
+Since standard cells are placed in row and aligned with
+power and ground lines, the DPT effects on the vertical cell
+boundaries should be considered. If the DPT effects on the
+vertical cell boundaries are not considered during simultaneous
+layout migration and decomposition, DPT conflicts might
+occur on the cell boundaries. For example, as shown in Fig. 9,
+there are three standard cells, which are placed next to each
+other. Even though each standard cell is conflict-free, DPT
+10 SUBMITTED TO IEEE TRANSACTIONS ON COMPUTER-AIDED DESIGN OF INTEGRATED CIRCUITS AND SYSTEMS, JULY 2009
+where “Imp. (%)” denotes the reduction rate over the basic
+ILP formulation, and “Total” gives the final resulting number.
+“Without red.” in “CPU Time” denotes the CPU time without
+the reduction, and “With red.” denotes the CPU time with the
+reduction. As shown in the table, our reduction technique can
+effectively reduce the respective ILP variables, ILP constraints,
+and DPT edges by 44.7%, 58.2%, and 79.9% on average,
+over the basic ILP formulation. Note that the constraints,
+which are mostly pruned by our reduction technique, are very
+critical because these constraints consist of large numbers of
+constants, 0-1 integer variables, and integer variables. As a
+result, the runtimes of many cases can be reduced from more
+than one day to only seconds. The experimental results show
+the effectiveness of the reduction technique.
+TABLE II
+COMPARISON BETWEEN THE LAYOUT DECOMPOSITION IN [13]
+FOLLOWED BY THE LAYOUT MIGRATION IN [20] (LD+LM) AND
+OUR SIMULTANEOUS LAYOUT MIGRATION AND LAYOUT
+DECOMPOSITION (SMD).
+CPU Runtime (sec)# of conflicts # of stitches GC objective (nm )Area (e4nm2)
+LD+LM
+([13]+[20])
+SMD
+(Ours)
+LD+LM
+([13]+[20]
+SMD
+(Ours)
+LD+LM
+([13]+[20])
+SMD
+(Ours)
+LD+LM
+([13]+[20])
+SMD
+(Ours)
+LD+LM
+([13]+[20])
+SMD
+(Ours)
+AOI122X1 0 0 4 3 105.4 96.7 2063 1779 3 14
+OAI23XLP 0 0 8 3 112.2 99.2 2275 2067 5 26
+OR2X4 0 0 5 2 142 6 117 6 1729 1524 4 15
+Cells
+. .
+AO222X2 0 0 3 0 175.6 141.7 2319 1138 5 16
+OR4X3 0 0 9 4 245.6 177.6 5934 2758 14 61
+INVX16 0 0 3 7 265.2 251.9 1861 1772 8 60
+NR3X6 0 0 2 0 293.6 289.0 2684 2578 5 14
+ND3X6 0 0 4 5 305.4 301.8 2160 2561 9 19
+BUFX20 0 0 15 0 492.4 435.7 2956 1939 8 83
+MUXB4X3 0 0 14 6 583.8 526.4 6415 7019 24 121
+DFFX2 0 0 20 16 490.3 473.8 11691 11654 28 277
+Cell1 0 0 6 7 192 4 178 5 3128 2545 8 56. .
+Cell2 0 0 13 6 525.5 407.4 6825 4766 17 98
+Comp. 0 0 106 59 1.14 1.00 1.28 1.00 0.22 1.00
+In the second experiment, we explored the quality of our
+SMD algorithm. Since there is no existing work in the litera-
+ture for simultaneous layout migration and decomposition, we
+implemented a unified method of applying the layout decom-
+position presented in [13], followed by the layout migration
+presented in [20], for the comparative study. Both [13] and [20]
+formulate their problems as ILP problems. The results are
+listed in Table II. In the table, “# of conflicts” and “# of
+stitches” denote the numbers of DPT conflicts and stitches
+in the resulting layout, respectively, “Area” gives the resulting
+layout area, and “GC objective” gives the resulting geometric
+closeness (GC) objective value. The results show that our SMD
+can obtain conflict-free layouts for all the 13 cells. The average
+stitch number per cell is reduced from 106 for the counterpart
+to 59 for our algorithm because our reduction technique is
+stitch-aware while the layout decomposition of the counterpart
+may incur more stitches to resolve the DPT conflicts. Our
+layout area is 14% smaller than that of the counterpart, and
+our GC value is 28% better than that of the counterpart. (The
+layout area and the GC value are the first and the second
+metrics for this SMD work.) The results show the effectiveness
+of our SMD algorithm. Fig. 12 shows the original layout and
+the conflict-free, migrated layout for the cell Cell2.
+It should also be noted that multiplexors and flip-flips are
+generally considered “tough” cases for layout migration and
+decomposition in real industry designs. As can be seen from
+Tables I and II, MUXB4X3 (a multiplexor) and DFFX2 (a
+D-type flip-flip) incur more variables and constraints and thus
+require longer runtimes and more stitches for the processing.
+(a)
+(b)
+Fig. 12. Layout of Cell2. (a) The Original layout. (b) Decomposed
+and migrated layout without DPT-conflicts.
+V. CONCLUSIONS
+We have presented the ILP-based SMD algorithm with
+the stitch-aware reduction technique based on 2-colorable
+subgraphs. The reduction technique can substantially speed
+up the algorithm and still maintain the same number of DPT
+conflicts. We have also presented an approach to generate
+DPT-aware standard cells by considering the DPT effects
+along the cell boundaries. Experimental results show that our
+algorithm can obtain 100% conflict-free, migrated layouts,
+with smaller layout areas, smaller layout changes, and smaller
+numbers of stitches.
+REFERENCES
+[1] International Roadmap for Semiconductors.
+http://public.itrs.net.
+[2] UMC Free Library.
+http://freelibrary.faraday-tech.com/.
+[3] G. E. Bailey, A. Tritchkov, J.-W. Park, L. Hong, V. Wiaux, E. Hendrickx,
+S. Verhaegen, P. Xie, and J. Versluijs. Double pattern eda solutions for
+32nm hp and beyond. volume 6521, page 65211K. SPIE, 2007.
+[4] P. Berman, A. B. Kahng, D. Vidhani, H. Wang, and A. Zelikovsky.
+Optimal phase conflict removal for layout of dark field alternating phase
+shifting masks. In Proceedings of ISPD, pages 121–126, 1999.
+[5] D. G. Boyer. Symbolic layout compaction review. In Proceedings of
+DAC, pages 383–389, 1988.
+[6] M. Cho, Y. Ban, and D. Z. Pan. Double patterning technology friendly
+detailed routing. In Proceedings of ICCAD, pages 506–511, 2008.
+[7] Y. E. Cho, A. J. Kroenjak, and D. E. Stockton. Floss: an approach
+to automated layout for high-volume designs. In Proceedings of DAC,
+pages 138–141, 1977.
+[8] M. Drapeau, V. Wiaux, E. Hendrickx, S. Verhaegen, and T. Machida.
+Double patterning design split implementation and validation for the
+32nm node. volume 6521, page 652109. SPIE, 2007.
+ 
+ACM International Symposium on Physical Design (ISPD-2009) 
+張耀文 
+台灣大學電子工程學研究所 
+ 
+一､參加會議經過 
+ACM International Symposium on Physical Design (ISPD) is sponsored by ACM and 
+is a premier conference on VLSI physical design automation. It is a great honor for a 
+researcher to have a chance to present her/his work at this conference. This year’s 
+event was held in San Francisco, CA, U.S.A on April 2-4, 2009.  
+ 
+二､與會心得 
+This year we have one paper accepted by ISPD-2009. In particular, this paper was 
+nominated for the best paper award. The first paper is entitled “Post-Floorplanning 
+Power/Ground Ring Synthesis for Multiple-Supply-Voltage Designs” (joint work with 
+my student Wan-Ping Lee). The abstract is as follows: 
+ 
+The multiple-supply voltage (MSV) design style has been extensively applied to 
+mitigate dynamic-power consumption. The MSV design paradigm, however, 
+brings many crucial challenges, especially in the power-ring synthesis. Unlike 
+the previous works that form the power rings as the enclosing bounding boxes of 
+voltage islands, we enable power rings alignment to the outer boundaries of 
+voltage islands. With this new formulation, the power-ring estimation becomes 
+more accurate during floorplanning, and the power-ring synthesis is more 
+practical after floorplanning. In this paper, we first propose a linear-time 
+voltage-island power-ring search algorithm to identify the power rings of 
+voltage islands and then present a linear-time optimal power-ring 
+corner-patching algorithm to minimize the number of corners in the power rings 
+by using post-floorplanning whitespaces. Experimental results first demonstrate 
+that reducing corners in power rings significantly mitigates IR drop, and then 
+show that the proposed algorithm can reduce the number of corners by 33% on 
+average for the GSRC floorplan benchmarks. In particular, the total running 
+time for the 16 GSRC benchmarks is less than one second on an AMD-64 
+無研發成果推廣資料 
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+ACM ISPD Contest: 1st place in 2009, 3rd in 2010 
+ACM/IEEE ICCAD EC Member 
+IEEE/ACM ASP-DAC SC member 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

@@ -1,0 +1,468 @@
+ 
+ 2
+性服務平台(Service Platform)，它提供了一個
+可動態執行及佈署(Deployment)應用程式的
+環境。透過有效的生命週期管理與版本控
+制，OSGi 應用程式 (又稱 Bundles) 可動態
+被安裝、卸載、啟動以及停止。再結合標準
+化 的 服 務 導 向 架 構 (Service-Oriented 
+Architecture: SOA [2, 3])，進而提供了本地端
+裝置與遠端服務提供者 (Service Provider)
+間，應用程式佈署之統一解決方案。 
+隨著 OSGi 服務平台持續活耀於許多領
+域 (如：居家照護、保全系統、家庭娛樂) 並
+且應用在各種消費性電子裝置、手持式裝
+置、機上盒 (Set-top Box)以及家用閘道器...
+等 [4, 5, 11-13, 15-17]，OSGi平台上執行的
+應用程式(Bundles)數量以及應用程式規模與
+複雜度不斷增加，逐漸加重了 OSGi 平台運
+作上的負擔，特別是應用程式以及系統資源
+的分配與管理。相較於一般 PC，多數的消費
+性電子裝置上的資源其實相當有限 
+(Resource Constraints)，特別是計算能力(處理
+器)和記憶體資源 [6, 7]。因此，如何有效提
+昇 OSGi 平台上的資源可利用性，例如資源
+的有效配置與釋放，便成了一個相當重要的
+議題，而這正是此計劃的主要目標。 
+此研究將探討現有的 OSGi 資源管理方
+法所存在的問題，包括  Eager Resource 
+Allocation [8, 9]、Lazy Activation Policy [8]以
+及 Declarative Services [9, 10] (細節陳述於章
+節"文獻探討")，之後再提出對應的決方案 - 
+OSGi服務平台資源管理架構。 
+此研究提出之 OSGi 服務平台資源管理
+架構，目的在有效地解決 Service資源配置與
+釋放/回收的問題，進而提昇 OSGi 平台上的
+資源可利用性 (尤其針對資源受限的環境/裝
+置)，並且降低應用程式開發者手動管理資源
+配置與釋放的困難度 (由於資源的配置與釋
+放一般發生在 Service 的啟動與停用的過
+程，此計劃中會直接把 Service 的啟動/停用
+對應到資源的配置/釋放)。 
+此架構具備許多特性。首先，透過即時
+動態分析 Service 之間的相依性來判斷
+Services被使用的情況，進而達成自動啟動或
+停 用 Service 的 功 能 (Automatic Service 
+Activation and Deactivation)。此自動化的特性
+將大幅降低應用程式開發者以往需要手動管
+理資源配置與釋放的困難度 (不需要手動設
+定 XML 描述檔)。此外，為了增加使用上的
+彈性，此架構將允許應用程式開發者自行決
+定哪些 Services要納入此架構下(即：自動化
+Service管理)。再者，此架構基於既有的 OSGi
+程式設計模型，一來應用程式開發者不需要
+另外適應新的模型，二來可輕易應用於各種
+OSGi 相容之實作平台/產品。因此已存在的
+OSGi 程式可以很輕易地轉換成此架構下的
+程式。 
+最後，為了驗證此架構的效能及正確
+性，我們開發了一個效能評估方法，透過一
+系列的模擬實驗，來驗證此架構的可行性。 
+二、文獻探討 
+典型的 OSGi 服務平台對於資源配置
+(Resource Allocation) ， 採 用 的 是 Eager 
+Resource Allocation (ERA) 機制 [8, 9]，亦即
+OSGi 應用程式/服務(Service)會在一開始啟
+動時就盡可能完成所有相關資源的配置。這
+導致兩個主要缺點：(1) 較長的啟動時間
+(Startup Time) (2) 不必要的資源佔用情形。
+當 OSGi 平台上被啟動之服務越來越多，這
+些缺點將更為明顯。 
+對此，OSGi規格定義了一個可供改進的
+方法，稱為延遲啟動策略 (Lazy Activation 
+Policy [8] )，該方法允許應用程式開發者直接
+指定需要延遲取動的 Bundles，讓這些
+Bundles 只有在真正需要時才進行啟動 
+ 4
+Services來使用。 
+Bundle乃應用程式基本單位，以 JAR的
+壓縮形式被部署並執行在 OSGi平台。Bundle
+對應的 JAR檔包含了 Java類別檔、清單文件
+檔(Manifest 標頭)和相關的資源檔(如 HTML 
+網頁或圖檔等)。Bundle 都可以扮演 Service 
+Providers或是 Service Requesters的角色，而
+且可以實作並註冊多個 Services (通常以介面
+的形式來註冊)。 
+在 OSGi 平台中，Service 實體的本質乃
+一般的 Java物件，差別只在於該物件被註冊
+到 Service Registry中，並由 OSGi統一管理
+(如圖 1)。由於 OSGi並沒有特別規範 Service
+的 Resource管理機制，因此資源管理基本上
+是 Service 開發者的責任  (包括 Resource 
+Allocation 與 Deallocation); 而這也間接造成
+了 Services 所使用的資源難以被統一管理的
+問題。此外，資源的配置與釋放一般發生在
+Service的啟動與停用的過程，因此可以直接
+把 Service 的啟動/停用對應到資源的配置/釋
+放。 
+(二) 服務相依性之分析方法 
+ 服務相依性 (Services Dependencies)指
+Services 之間彼此的使用關係。假設有兩個
+Services分別為 S1與 S2，如果 S1有使用(呼
+叫)到 S2，就可以說 S1相依於 S2，在此表示
+為(S1, S2)。一旦合併所有這些 Services的相
+依關係，便可得到一個 Service Dependency 
+Graph (服務相依圖)。 
+在 OSGi平台中，已發佈的 Services會紀
+錄在 OSGi Service Registry，因此要使用某個
+Service 之前，必須先透過 OSGi Framework
+取得對應的 Service Reference。Bundles必須
+透過標準的 getService/ ungetService method
+來取得/釋回 Services。由此可推知，每次呼
+叫 getService/ungetService 就相當於一個
+Service Dependency的建立/移除。另外值得
+一提的是，在 OSGi現有的應用程式架構中，
+只要是 Bundle 範圍內的 Code (不管是不是
+Service)，都能向 OSGi Service Registry 發出
+Request Service 的要求，因此並無法確切得
+知 Service-to-Service 的相依關係，只能取得
+Bundle-to-Service的相依關係。 
+因此從某個時間點看 OSGi 平台中的
+Services相依性關係，可視為一個服務相依圖
+(Service Dependency Graph: SDG)，而這些相
+依關係正是OSGi平台用來判斷Services使用
+情況與自動化 Service啟動與 Service停用的
+重要依據。因此，動態分析 Services 相依性
+關係顯然是必要的需求，而我們對此提出一
+套可以有效即時收集、表達與分析相依性關
+係的方法。 
+ 動態維護服務相依圖(SDG)  
+要精確表達這些資訊並簡化分析上的負
+擔，我們採用 Graph Theory表示法。圖 2顯
+示一個簡單的 SDG 範例，此 SDG 由三個
+Bundles{B1, B2, B3}所組成，每個 Bundle可
+註冊 0到多個 Services (如 Bundle B2有兩個
+Services: S1及 S2)，此外，共有三個相依性
+關係分別表示為：(B1, s1), (B1, s3), (B3, s2)。
+特別是，由於 OSGi 架構上的設計，這裡的
+相依關係為 Bundle-to-Service的相依關係。 
+ 
+圖 2: 服務相依圖  
+要即時維護與修正 SDG，就必須因應相
+ 6
+REMOVE_DEPENDENCY 事件所對應的程
+式碼 (i.e. 調整 SDG 的行為); 而 activate 與
+deactivate這兩個抽象方法則分別提供開發者
+撰寫 Resource Allocation與Deallocation的地
+方。 
+在此架構下，開發者只要讓開發中的
+Service (i.e. 圖中的 My Service) 繼承
+M-Service，再補上 activate與 deactivate兩個
+方法的實作 (Service需要的資源配置)，便可
+輕易納入系統的自動化管理  (在此，
+M-Service隱含Managed Service的意思)，而
+且程式開發者並不需要自行呼叫 activate 與
+deactivate，系統會根據 SDG的資訊，來自動
+呼叫 Service的 activate或是 deactivate (因此
+這兩個方法在此定義為 Protected層級)。 
+(四) OSGi服務平台之自動化資源管理架構 
+要滿足上述自動化的需求，需要一個管
+理者的角色，此核心角色要負責各種相關事
+件的處理、SDG與相關狀態的維護、Services
+資 源 的 配 置 與 釋 回  (i.e. activate 與 
+deactivate)等。在設計上，我們把這個管理者
+的角色設計成一個標準的 OSGi Bundle，並常
+駐於 OSGi平台。 
+圖 4 是我們提出之 OSGi 平台自動化資
+源管理架構。架構中除了 Java VM、OSGi 
+Framework，還新增了 Service Resource 
+Manager (SRM)，也就是上述管理者的角色，
+不管是 SDG 或是自動化等相關演算法的實
+現，都是由 SRM來負責執行。 
+平台上有兩種  Services，一種是
+m-services，指納入 SRM管理之 Services (這
+些 Services 必須繼承圖 3 中的 M-Service 類
+別)，另一種則是不納入 SRM管理的 Services 
+(normal service)。程式開發者可自行選擇關鍵
+的 Services成為 m-services，因此增加了資源
+管理上的彈性。 
+圖 4: 自動化資源管理架構 
+(五) 自動啟動與停用 Service的演算法 
+基於上述的系統架構與 Service 類別架
+構，我們提出了自動化 Service 資源配置/釋
+回的演算法如圖 5。 
+ 
+圖 5: Service資源配置與釋回之演算法 
+此演算法主要的流程是依據 SRM 如何
+從 SDG最新的狀態來判斷 Services的啟用或
+停用(activation/ deactivation)。 
+舉例來說，圖 6 乃此架構下對 OSGi 平
+台要求 Service Reference 的流程，當中涉及
+多個角色 (SRM、SDG、Service Requester以
+及 m-service) 的互動及執行權的轉移。其中
+關鍵的部份在於 SRM，SRM負責接收
+ 8
+段。第一個階段(Phase I)主要用來產生事件序
+列 (Event Generator)，基於某個組態設定
+(configuration)所產生的事件序列會存成檔
+案。第二階段(Phase II)中的 Simulator則負責
+載入這些事件序列檔，同時自動驅動 SRM的
+運作並產出實驗結果。 
+事件序列檔由隨機產生的Bundle節點與
+Service 節點(類似圖 2 的關係)以及先前提過
+隨機產生的四個事件所構成。而事件序列的
+產生則由組態設定(configuration)中的許多參
+數所決定： 
+(1) Bundle數量 n：表示 SDG的 Size ，在此
+實驗中 n = 1000。 
+(2) 事件的總數 m：事件序列的 Size，在此實
+驗中m = 1000 (不包括產生Bundle節點的
+事件)。 
+(3) 每個 Bundle包含的 Service數目: 0 ~10。 
+(4) 實驗中，我們將涉及到停止服務的事件
+Deactivation events (STOP_BUNDLE 與
+REMOVE_DEPENDENCY)區分出來，這
+類事件所佔的比例以表示。 
+ 
+configurations
+Event Generator
+SRM
+results
+event sequence
+files
+SDG
+Phase I Phase II
+Simulator
+圖 7: 實驗架構 
+此外，為了模擬 Service啟動與停止對於
+系統資源的影響，每個 Service將被隨機指定
+一個整數值(1~10)，數值表示該 Service所占
+用的資源量(e.g. Memory)，例如，一旦某個
+資源量 8的 Service被停止，就表示系統此刻
+多了資源量 8。系統將根據這些數值來評估
+目前系統的資源使用量。 
+為了方便觀察與除錯，我們開發了一個
+視窗工具，用來觀測 SDG的即時狀態，如圖
+8所示。 
+ 
+圖 8: SDG即時狀態圖 
+(二) 實驗結果 
+ 圖 9 顯示了不同事件分佈對系統資源的
+影響，橫軸為事件/時間序列，縱軸則為採用
+SRM 與不採用 SRM 的資源總耗損比例，基
+本上，比例越低表示 SRM的節省資源效果越
+佳。此結果顯示了，當越高 (停止服務的
+事件比例越高)，SRM 的效果便越好，這是
+因為 SRM可以有更多機會釋放掉 Services所
+占用的資源。 
+圖 9: 事件分佈對系統資源的影響 
+為評估 SRM的運算負擔，我們基於相同
+設定對 SDG 的處理時間進行量測。如圖 10
+所示，可觀察到節點建立的時間 (node 
+creation)並不會隨而變動，因為節點建立的
+ 10
+Service Compendium, Release 4, section 
+112.  
+[10] H. Cervantes and R. S. Hall, 
+“Automating service dependency 
+management in a service-oriented 
+component model,” Proc. of the 6th 
+International Workshop on 
+Component-Based Software Engineering 
+(CBSE), pp. 91-96, 2003. 
+[11] A. Ibrahim and L. Zhao, “Supporting the 
+OSGi service platform with mobility and 
+service distribution in ubiquitous home 
+environments,” The Computer Journal, 
+vol. 52, no. 2, pp. 210-239, 2009.  
+[12] J. S. Rellermeyer, O. Riva, and G. 
+Alonso, “AlfredO: an architecture for 
+flexible interaction with electronic 
+devices,” Proc. of the 
+ACM/IFIP/USENIX 9th International 
+Middleware Conference, pp. 22-41, Dec. 
+2008. 
+[13] J.-E. Lim, O-H. Choi, and D.-K. Baik, 
+“An evaluation method for dynamic 
+combination among OSGi bundles based 
+on service gateway capability,” IEEE 
+Trans. Consumer Electron., vol. 54,  no. 
+4, pp. 1698-1704, 2008. 
+[14] Knopflerfish, 
+http://www.knopflerfish.org/ 
+[15] Cheng-Liang Lin, Pang-Chieh Wang and 
+Ting-Wei Hou, “A Wrapper and Broker 
+Model for Collaboration between a 
+Set-Top Box and Home Service 
+Gateway,” IEEE Transactions on 
+Consumer Electronics, Volume 54, Issue 
+3, Aug. 2008, pp. 1123-1129. 
+[16] Jung-Hsuan Wu, Chien-Chuan Kung, 
+Jhan-Hao Rao, Pang-Chieh Wang, 
+Cheng-Liang Lin and Ting-Wei Hou, 
+“Design of an In-Vehicle Anti-Theft 
+Component,” IEEE International 
+Conference on Intelligent Systems 
+Design and Applications, pp. 566-569, 
+Nov. 2008.  
+[17] Pang-Chieh Wang, Cheng-Liang Lin and 
+Ting-Wei Hou, “Resource-aware service 
+deployment for open service gateway in 
+home network,” IEEE Region 10 
+Conference, pp. 1- 4, Oct. 2007.   
+[18] Chin-Yang Lin, Tien-Yan Ma, Che-Wei 
+Hu, Ting-Wei Hou and Fuh-Gwo Chen, 
+“A DIY Approach to Creating Smart 
+Daily Services for Elders Living Alone,” 
+Proceedings of the 2nd International 
+Conference on Computer Science and 
+Automation Engineering (CSAE 2012), 
+pp. 163-167, May 25-27, 2012.  
+[19] Cheng-Liang Lin, “End-user 
+Orchestrated Service Composition and 
+Spontaneous Service Activation on 
+Service Platform,” Ph.D. Dissertation, 
+National Cheng Kung University, 2010. 
+[20] Kuo-Yi Chen, Chin-Yang Lin, Tien-Yan 
+Ma and Ting-Wei Hou, “A Power-saving 
+Technique for the OSGi Platform,” 
+IEICE Transactions on Information and 
+Systems, volume E95-D, No.5, pp. 
+1417-1426, May, 2012. (SCI) 
+[21] Tien-Yan Ma, Chin-Yang Lin, Shu-Wei 
+Hsu, Che-Wei Hu and Ting-Wei Hou, 
+“Automatic Brightness Control of the 
+Handheld Device Display with Low 
+Illumination,” Proceedings of the 2nd 
+International Conference on Computer 
+Science and Automation Engineering 
+(CSAE 2012), pp. 382-385, May 25-27, 
+2012.  
+ 
+ 
+ 2 
+  我所發表的論文是安排在 5/26 下午 15:00-17:50的場次，主題為：(1) A DIY Approach to 
+Creating Smart Daily Services for Elders Living Alone. 及 (2) Automatic Brightness Control of the 
+Handheld Device Display with Low Illumination .本次的發表讓我受益良多，一旁聆聽的學者們提供
+我許多技術及建議，像是如何提升數據的精準度及降低實驗成本的方法。然而我也看到了其他學
+者們所研究的新成果及技術，我也在議程結束後與他們互相討論及交換意見，幾天下來收穫非常
+豐富，使我滿心期待下一次的會議。 
+  唯一可惜的是主辦單位沒有依主題領域來安排場次，使得同性質的主題被分別在不同會議
+室發表，而沒辦法看到同領域學者所發表的結果，若往日能安排在一起，收穫一定會更多。 
+四、參加大會照片 
+  
+  
+五、攜回資料名稱及內容 
+ 1. 2012 IEEE Computer Science and Automation Engineering大會手冊。 
+ 2. 2012 IEEE Computer Science and Automation Engineering論文集。 
+ 3. 2012 IEEE Computer Science and Automation Engineering論文及電子檔。 
+ 
+ 
+ 
+100 年度專題研究計畫研究成果彙整表 
+計畫主持人：侯廷偉 計畫編號：100-2221-E-006-131- 
+計畫名稱：OSGi 服務平台之自動化資源管理架構 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 1 1 100% 國科會結案技術報告 
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 3 3 100%  
+博士生 1 1 100%  
+博士後研究員 1 1 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 1 1 100% 
+Kuo-Yi Chen, 
+Chin-Yang Lin, 
+Tien-Yan Ma and 
+Ting-Wei Hou, ’A 
+Power-saving 
+Technique for the 
+OSGi Platform,’ 
+IEICE 
+Transactions on 
+Information and 
+Systems, volume 
+E95-D, No.5, pp. 
+1417-1426, May, 
+2012. (SCI) 
+研究報告/技術報告 0 0 100%  
+國外 論文著作 
+研討會論文 3 1 100% 
+篇 
+Chin-Yang Lin, 
+Tien-Yan Ma, 
+Che-Wei Hu, 
+Ting-Wei Hou and 
+Fuh-Gwo Chen, ’A 
+DIY Approach to 
+Creating Smart 
+Daily Services
+International 
+Conference on 
+Parallel and 
+Distributed 
+Systems (ICPADS 
+2011), pp. 
+894-899, 
+December 7-9, 
+2011. (EI) 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

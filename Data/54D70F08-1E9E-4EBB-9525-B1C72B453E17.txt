@@ -1,0 +1,419 @@
+2 
+ 
+研究摘要： 
+ 
+本研究提出了一個使用樣板比對方式的交通標誌辨識系統，用以對台灣道路上的警告
+標誌--外形為紅色三角形，內部為白底黑色圖形；紅色禁制標誌--外形為紅色圓形，內部為
+白底黑色圖形；及藍色禁制標誌--外觀為藍色圓形，內部為藍底白色圖形等三種交通標誌進
+行偵測與辨識，並實現於工研院自行研發之 PAC Duo 嵌入式開發板上。系統之組成分為兩
+大子系統；第一部份為交通標誌偵測系統，其主要工作為由輸入之影像中偵測是否存在任
+何要檢測之交通標誌。方法是利用色彩切割方式，將影像中之紅色資訊與藍色資訊分別找
+出，並將這些切割下來之紅色資訊區域與藍色資訊區域經篩選的動作，例如去掉面積過大
+或過小的區域，以留下最具有可能是存在交通標誌的候選區域，接著將這些交通標誌的候
+選區域中之紅色資訊部份與警告標誌之樣板(三角形)及紅色禁制標誌之樣板(圓形)進行比
+對；並將候選區域中之藍色資訊部份與藍色禁制標誌之樣板(圓形)進行比對，以取得交通標
+誌偵測之結果。第二部份為交通標誌辨識系統，主要之工作是用以決定前述所檢測出來之
+交通標誌的內容，依交通標誌外型種類不同分別使用三角形樣板與圓形樣板對交通標誌內
+部之感興趣圖形產生特徵向量，並與資料庫中之特徵向量進行關聯性比對，以辨識被檢測
+出來之交通標誌的內容。交通標誌之內容是以一個具有五個分量之向量來表示之，它是將
+交通標誌正規化後的標誌內容區域分割成幾個小區域，並選其中對標誌內容有貢獻之五個
+小區域以產生五個分量，每一個分量為記錄該小區域內之像素元中佔有標誌內容之像素元
+的百分比。本研究中所處理之警告標誌有 42 種，紅色禁制標誌有 32 種，藍色禁制標誌有
+13 種，對每一種交通標誌均考慮五個不同之旋轉角度，以解決用不同角度對目標物取得影
+像之問題。特徵向量間之比對是採用計算兩向量間之絕對誤差和來求得兩向量間之關聯性
+的程度。PAC Duo 嵌入式系統上擁有一個 ARM 微處理器與兩個 DSP 處理器，它們之間是
+透過共享記憶體方式存取資料，ARM 微處理器與兩個 DSP 處理器間之溝通是透過 Mailbox
+方式通訊，另外，DSP 之本身所擁有之記憶體(local memory)空間太小，使得處理資料之速
+率無法達到理想。本系統測詴之動態影片的解析度為 320 x 240 像素元，拍攝環境有晴天與
+陰天，平均之辨識正確率為 83%。平均處理一個畫框之時間為 0.6 秒，系統之處理速率有
+待進一步提升，才能達即時之需求。 
+ 
+關鍵詞：交通標誌辨識、樣板比對、嵌入式系統 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+2 
+ 
+易受到光線的影響，如：逆光、夕陽照射、陰影等，加上交通標誌都設置在戶外，其色彩
+與明亮度容易受到環境與光線的影響，所以通常會轉換至其他較不容易受到光線影響的色
+彩空間，在參考文獻[1,2]的研究是將 RGB 色彩空間轉換至 HSI 色彩空間，再透過事先定義
+的閥值將紅色、藍色、黃色區域切割出來；將色彩空間轉換至 HSI 的優點為 HSI 色彩空間
+較不容易受到光照的影響，但缺點就是轉換至 HSI 色彩空間比起使用 RGB 色彩空間需增加
+處理時間。Le 等人的研究[3]提出了使用支援向量機(Support Vector Machine)的方式來切割
+交通標誌候選區域，首先將影像分割成 2×2 的區塊，將每個此種分割區塊中的 R,G,B 像素
+值視為一個特徵向量，即是一個具有 12 個分量之向量，將此特徵向量輸入至事先訓練好的
+紅色支援向量機及藍色支援向量機，紅色支援向量機輸出結果顯示該區塊是屬於紅色或非
+紅色，藍色支援向量機輸出結果顯示該區塊是屬於藍色或非藍色，該方法的效果與支援向
+量機的訓練過程有很大的關係。Aoyga 等人[4]與 Heath 等人[5]的研究分別了使用拉普拉斯
+濾波器(Lapla¬cian Filter)與 Canny 邊緣檢測法來切割標誌的候選區域，雖然使用邊緣檢測法
+不會像使用色彩空間的方式容易受到光照的影響，但是邊緣檢測法的結果容易受到影像本
+身的雜訊影響，因此使用邊緣檢測法切割的結果比起使用色彩空間的方式還差。 
+在取得交通標誌可能的候選區域後，通常會使用標誌之外觀的形狀的特性或是透過分 
+類器的方式來偵測標誌的所在位置。Qin 等人[6]在取得標誌的候選區域後，將各個候選區
+域正規化至相同大小，並使用[7]所提之 DtB(Distance to Border)的向量當成特徵，由候選區
+域的中心點往上、下、左、右四個方向取得四個特徵，將這些特徵輸入至已訓練好的支援
+向量機即可取得該候選區域屬於哪一種標誌。Hatzidimos 等人[8]提出使用霍夫轉換(Hough 
+Transform)來偵測外型形狀為三角形之警告標誌。Gil Jime n´ez 等人[9]利用離散傅立葉轉換
+(Discrete Fourier Transform)來偵測標誌。Lai 等人[10]使用樣板比對的方式來偵測紅色資訊
+的交通標誌，事先準備禁制標誌與警告標誌樣板存放於資料庫，將切割出來的標誌候選區
+域正規化至樣板相同大小，接著統計標誌候選區域在樣板中紅色區域像素點所佔的總數，
+若像素點所占總數大於該樣板事先給定之臨界值，則該樣板所屬之交通標誌種類即為標誌
+候選區域之交通標誌種類，但此方法在影像中具有紅色背景或其他紅色物體時會出現很大
+的誤判。 
+本研究也是基於 RGB 三色彩之檢測方式為之。手先，將輸入影像的 RGB 像素值做正
+規化的動作。考慮到交通標誌通常設置在道路上，非常容易受到光線的影響，將 RGB 像素
+值正規化至 0 到 1 之間，受到光線影響所增加或減少的像素值對於正規化後 RGB 像素值的
+影響也會為減少，因此將 RGB 正規化可以減少 RGB 像素值受到光線的影響。系統中所使
+用之 RGB 正規化轉換公式如下所示： 
+     r =
+𝑅
+𝑅 + 𝐺 + 𝐵
+  ;    g =
+𝐺
+𝑅 + 𝐺 + 𝐵
+  ;     b =
+𝐵
+𝑅 + 𝐺 + 𝐵
+                                        
+其中 R、G、B 代表彩色影像像素值的三個分量，其範圍為 0 至 255。r、g、b 分別代表正
+規化後彩色影像像素值的三個分量，且滿足條件 r+g+b=1。 
+系統要偵測的禁制標誌其外觀特徵可分為紅色圓形及藍色圓形；警告標誌的外觀特徵 
+為紅色三角形，因此在色彩切割時必須將影像中之紅色資訊與藍色資訊分別予以保留，再
+對影像中紅色及藍色的部分做偵測。在取得正規化後的 r、g、b 像素值，利用下列判斷式
+分別將紅色資訊與藍色資訊保留下來： 
+                                   𝐼𝑅 = {
+1    , 𝑖𝑓  𝑟 ≥ 0.4  𝑎𝑛𝑑  𝑔 ≤ 0.3
+0    , 𝑜𝑡𝑕𝑒𝑟𝑤𝑖𝑠𝑒                           
+                                       
+4 
+ 
+以減少測詴新樣本時所需的時間及記憶體，實驗結果顯示，他們的方法可以減少 50%至 70%
+的數目之所需支援向量，同時也可以提升正確率 3%至 5%。SOUKI[13]等人在 CYCLONE II 
+FPGA 開發板上實現交通辨識系統。在偵測到交通標誌後，將標誌正規化至 80×80 的大小，
+最後比較正規化之標誌與資料庫中之樣板之間的關聯性，擁有最高關聯性之樣板即為辨識
+結果。 
+本研究之做法如下：接收偵測階段的標誌影像後，接著要將標誌影像中感興趣的圖形
+擷取出來。因為之後進行特徵比對時，必須與交通標誌樣板進行比較，因此我們要先將接
+收的標誌影像大小正規化至 50×50，即為標誌樣板之大小。首先，從警告標誌與禁制標誌
+中擷取出黑色感興趣圖形，我們經過觀察發現，感興趣圖形像素值的紅色分量會小於交通
+標誌內紅色分量、綠色分量及藍色分量之平均值，利用這個關係，我們透過下式將警告標
+誌及紅色禁制標誌的感興趣圖形擷取出來。 
+𝐼𝑖𝑛𝑛𝑒𝑟_𝑝𝑎𝑟𝑡𝑅 = {
+1    , 𝑅(𝑖, 𝑗) ≤ 𝐴𝑣𝑔(𝑅, 𝐺, 𝐵)
+0    , 𝑅(𝑖, 𝑗) > 𝐴𝑣𝑔(𝑅, 𝐺, 𝐵)
+                                             
+其中𝐼𝑖𝑛𝑛𝑒𝑟_𝑝𝑎𝑟𝑡𝑅為警告標誌或紅色禁制標誌內的感興趣區域之二元影像，R(𝑖, 𝑗)為在座標位
+置(𝑖, 𝑗)時紅色分量的值，Avg(𝑅, 𝐺, 𝐵)為標誌影像內像素的平均值。藍色禁制標誌是由藍色
+圓形及白色內容圖形所組成，在交通標誌偵測階段，透過閥值取得藍色資訊之二元影像，
+二元影像中保留下來之藍色資訊為白色(像素質為 1)，其他非藍色資訊為黑色(像素值為 0)，
+因此藍色禁制標誌內的感興趣圖形為交通標誌偵測階段接收之二元影像中，白色圓形內之
+黑色區域。 
+本研究針對警告標誌、紅色禁制標誌及藍色禁制標誌進行辨識，依幾何形狀來區別可 
+分為三角形及圓形。因此在產生特徵向量時，我們分別對警告標誌以三角形樣板來取得感
+興趣圖形之特徵向量，如圖四(a)、(b)所示，在產生警告標誌內容之感興趣圖形的特徵向量
+時，分別統計感興趣圖形位於三角型樣板中 1 至 5 區域內之像素點總數，感興趣圖形在該
+區域內所佔之像素點總數為該區域之特徵值，5 個區域之特徵值即為警告標誌內部感興趣
+圖形之特徵向量。取得感興趣圖形的特徵向量後，接著比對取得之特徵向量與資料庫中樣
+板之特徵向量，擁有最低絕對誤差和之特徵向量，其所屬標誌內容種類即為辨識結果。 
+               
+(a) 三角形樣板之示意圖                (b) 圓形樣板之示意圖 
+圖四 產生特徵之樣板示意圖 
+三、 實驗結果與結論 
+本系統之驗證分為兩個階段進行，分別以靜態影像與動態影片做為系統的測詴資料。
+兩者都是使用 Canon G11 攝影機，由道路上實際拍攝取的，拍攝時之天氣情況含晴天、陰
+天及傍晚，靜態測詴影像為 JPEG 之檔案格式，動態影片使用 MPEG-2 編碼壓縮，兩者之
+6 
+ 
+間與辨識正確率之間必須有所取捨。 
+四、結論 
+本研究提出了一個使用樣板比對方式的交通標誌辨識系統，並實現於工研院自行研發
+之 PAC Duo 嵌入式開發板上。在交通標誌偵測階段，分別將色彩切割之紅色資訊標誌候選
+區域與警告標誌樣板及紅色禁制標誌樣板進行比對；藍色資訊之標誌候選區域則與藍色禁
+制標誌樣板進行比對以取得交通標誌偵測之結果。在交通標誌辨識階段，依交通標誌外型
+種類不同分別使用三角形樣板與圓形樣板對交通標誌內部之感興趣圖形產生特徵向量並與
+資料庫中之特徵向量進行關聯性比較，藉此提升系統執行之效率並維持一定之正確率。 
+五、參考文獻 
+[1] Y. Wang, L. Liu and Y. Zhao, "Traffic sign detection based on fixed color combination and 
+intensity restraint," International Symposium on Computer Network and Multimedia 
+Technology, Wuhan, pp. 1-5, 18-20 Jan.2009. 
+[2] S. Lafuente-Arroyo, P. García-Díaz, F.J. Acevedo-Rodríguez, P. Gil-Jiménez and S. 
+Maldonado- Bascón, " Traffic sign classification invariant to rotations using support vector 
+machines," ACIVS’04, Brussels, Belgium, August 2004. 
+[3] Tam T. Le, Son T. Tran, Seichii Mita and Thuc D. Nguyen, " Real time traffic sign detection 
+using color and shape-based features," ACIIDS'10 Proceedings of the Second international 
+conference on Intelligent information and database systems: Part II, Hue City, Vietnam, pp. 
+268-278, 24-26 March.2010. 
+[4] Y. Aoyagi and T. Asakura, " A study on traffic sign recognition in scene image using 
+genetic algorithms and neural networks," in Proc. 22nd IEEE Int. Conf. Ind. Electron., vol. 3, 
+Taipei, Taiwan, pp. 1838–1843, 5-10 Aug.1996. 
+[5] M. Heath, S. Sarkar, T. Sanocki, and K. Bowyer, " A robust visual method for assessing the 
+relative performance of edge-detection algorithms," IEEE J. Pattern Anal. Mach. Intell, vol. 
+19, no. 12, pp. 1338–1359, 1997. 
+[6] F. Qin, B. Fang and H. Zhao, " Traffic Sign Segmentation and Recognition in Scene 
+Images," Chinese Conference on Pattern Recognition, Chongqing, pp. 1-5, 21-23 Oct. 2010. 
+[7] S. Lafuente-Arroyo, P. Gil-Jimenez, R. Maldonado-Bascon, F. Lopez-Ferreras and S. 
+Maldonado-Bascon, " Traffic Sign Shape Classification Evaluation I: SVM using Distance 
+to Borders," Proceedings of IEEE Intelligent Vehicles Symposium, pp. 557-562, 6-8 June 
+2005. 
+[8] J. Hatzidimos, " Automatic traffic sign recognition in digital images," Proceedings of the 
+International Conference on Theory and Applications of Mathematics and Informatics, 
+Thessaloniki, Greece, pp. 174–184, 2004. 
+[9] P.G. Jime n´ez, S.M. Bascón, H.G. Moreno, S.L. Arroyo and F.L. Ferreras, " Traffic sign 
+shape classification and localization based on the normalized FFT of the signature of blobs 
+and 2D homographies ," Signal Processing, vol. 88, pp. 2943-2955, 2008. 
+[10] C.H. Lai and C.C. Yu, " An Efficient Real-Time Traffic Sign Recognition System for 
+Intelligent Vehicles with Smart Phones," International Conference on Technologies and 
+1 
+ 
+ 
+國科會補助參加國際學術研討會心得報告 
+報告人姓名 王明習 服務學校與單位 國立成功大學         
+工程科學系 副教授 
+會議名稱 出席第 3 屆 IEEE/ACM 電腦實體社會計算國際學術會議
+(CPSCom 2010)暨第 4屆亞太地區嵌入式系統教育與研究研討
+會(APESER 2010)與參訪報告 
+會議地點 大陸浙江省杭州市西湖邊之金溪山莊(Jinxi Hotel) 
+會議時間 2010 年 12 月 18 日至 20 日 
+發表論文題目 An Implementation of a Vehicular Digital Video Recorder 
+System 
+國科會計畫代碼 NSC 99-2220-E-006-011 
+國科會計畫名稱 在嵌入式系統上執行路標辨識系統之實現 
+ 
+ 
+ 
+ 
+ 
+3 
+ 
+參加會議經過 
+本人於民國 99 年 12 月 17 日清晨自高雄搭乘中華航空公司班機出發，
+經香港轉港龍航空公司班機前往中國大陸杭州市並於當日午後抵達(詳細
+行程請參閱附錄)。入住旅店後隨即前往本屆(第四屆)亞太地區嵌入式系統
+教育與研究研討會(APESER 2010)舉辦地點–杭州金溪山莊飯店辦理報到
+手續並領取本次研討會相關資料。 
+本次會議由六個國際學術研討會聯合舉辦，由 IEEE/ACM CPSCom 
+2010 與 IEEE/ACM GreenCom 2010 主辦，參與聯合舉辦之國際學術研討會
+包含：WiSARN、SocialNet 2010、UUMA 2010、APESER 2010 等。其聯合
+舉辦之方式為除了各研討會之分組論文發表議程獨立舉行之外，開幕式與
+專題演講(Keynote Speech)接合併聯合舉行。各研討會自行設定專題演講主
+題並自行邀請講者，但所有專題演講統一安排演講時間並開放所有與會者
+參加。此一聯合舉辦方式在感覺上很好，不僅因聯合舉辦可使資源整合並
+提高效率，避免資源浪費；更使研討會參加者能擴大參與面，並有機會參
+加性質相近，且關聯性高之不同領域或主題之學術研討。 
+第四屆亞太地區嵌入式系統教育與研究研討會(APESER 2010)於 12 月
+18 日開幕，會場地點設於杭州之西湖邊的金溪山莊飯店。APESER 之規模
+不算大，但由於本次會議是六個國際學術研討會聯合舉辦，共約 210 人參
+與，故整體場面頗為熱鬧。APESER 2010 有來自 13 個國家地區之論文投
+稿計39篇，獲選接受發表之論文計17篇，接受率約為43.5%。 APESER 2010
+議程依研究主題分為 4 場單軌議程進行論文發表與研討，因此，絕大多數
+參與會議者對每一場報告都會參加，參與報告研討都相當踴躍，並針對嵌
+入式系統產品開發與嵌入式系統教育與研發人才之培育等重要議題舉行 3
+場專業演講。本人發表之論文題目為：An Implementation of a Vehicular 
+Digital Video Recorder System。被安排在 12月 18日 16:45-18:00之 Session 
+的第二位報告(此 Session 有四篇報告)，Session 主席為來自新台幣之大會的
+議程主席(Program Chair)；並與現場之專家學者研討，回答問題並瞭解與會
+者不同之觀點與意見，由交流之互動切磋中獲益頗多；本論文成果亦獲得
+肯定，令人欣慰。會議於 12 月 20 日閉幕，主辦單位並於 12 月 19 日安排
+晚宴活動，邀請全體與會者參加。參與本次聯合舉行之六個國際學術研討
+會之所有人士與專題演講來賓齊聚一堂，於歡樂氣氛中聯誼交流，不僅增
+加與會者交流之機會並擴大交流層面。會議結束後，於 21 日前往臨近之浙
+江大學育泉校區參訪，於 12 月 22 日搭乘港龍航空公司班機由杭州取道香
+港轉搭中華航空公司班機返國，結束此次參與 APESER2010 國際學術會議
+與參訪之行程。 
+ 
+ 
+5 
+ 
+中心，也是 Intel 公司在全球與大學合作建立之八個技術研究中心中，
+唯一以嵌入式系統技術為面向之研究中心。主要研究方向為計算機體
+系結構，包含：多核系統結構、嵌入式微處理器設計、FPGA 可重構
+處理器、低功耗設計、硬體安全、軟體節能、依賴於體系結構之作業
+系統與編譯技術。該實驗室具備之技術能力有：應用客製化之處理器
+核心；加速核心設計，提高系統性能；伺服器底層調優；伺服器與嵌
+入式系統節能；嵌入式系統軟體最佳化。 
+(B) 浙江大學多核實驗室也是 Intel 公司為推動多核心處理器技術與大學
+合作而設立之實驗室主要目的為協助訓練大學生瞭解並具備新型處
+理器之軟體開發技術。此一實驗室由 Intel 公司提供專業知識、開發
+工具、訓練設備、教材、經費等資源，並與 Intel 公司合作以專案計
+畫方式進行多核心處理器軟體技術之研究。 
+(C) Google Android 實驗室是 Google 公司為推動其 Android 平台支手機軟
+體與中國大陸之多所大學合作設立之實驗室之一。此一實驗室與
+Google 公司之合作主要為教育訓練與推廣，提供訓練課程與教材，並
+提供師資培訓。浙江大學目前已規劃並實施首機軟體設計之專業課
+程。 
+由陳天洲教授之相關說明中，得知浙江大學對於研究發展較為注重並
+以多種方式鼓勵與獎勵該校教師爭取科研經費或業界之研發合作，學校對
+於此類經費之應用很有彈性；對於研究生也提供多種獎助或津貼，使研究
+生可專注於研究與自我培育。課程與學制方面則以彈性之制度減少傳統學
+制可能產生之僵化現象；例如：每一學年分為五個學期，每一學期為期約
+8 週；課程實施以完成總教學時數為原則而不必拘泥於每週必頇實施固定
+授課時數之規定。本人以為重研發可能產生輕教學之缺失，長久而言，亦
+對研發產生不良之影響；但若能以合理彈性之配套機制規範，應可避免過
+度重視研發之缺失。例如：將師資人才區分為研發人才與教學人才並以適
+當之彈性制度規範其工作之目標則可達成研發與教學並重之雙贏。 
+有關浙江大學之概況與對於研究生待遇之制度或有可供參考借鏡之
+處，故將陳天洲教授之介紹內容概略重點紀錄如下： 
+(1) 研究生視同指導教授聘用之研究人力，故指導教授要繳交人頭費給學
+校。基本上每位研究生都有足夠過生活之生活津貼可領。 
+(2) 目前與產業界合作狀況為：(A)Google 是用基金方式，一年約 10 萬
+元人民幣；(B)Intel 採用專案委託計畫方式；(C)AMD 是以合作開發
+方式。 
+(3) 浙江大學計算機學院有約 300 人教職員，其中約 100 人為處理黨政工
+作人員，另約 80 人為支援全校之電腦相關課程之講師(此講師為工作
+性質，非其職稱)，屬於科研類的約有 110 人。 
+(4) 教師分類：依主要工作性質可分為(1)科研與教學類；(2)科研類；(3)
+7 
+ 
+2. 會議地點照片(杭州金溪山莊)： 
+ 
+3. Tutorial 會場照片： 
+ 
+4. 參訪浙江大學時在與陳天洲教授留影： 
+ 
+  (右：本人，中：陳天洲教授，左：本校電機系陳 敬老師) 
+ 
+9 
+ 
+國科會補助參加國際學術研討會心得報告 
+報告人姓名 林建全 就讀學校系所及年級 國立成功大學工程科學系 
+博士班 七年級 
+會議名稱 The 15th IEEE International Symposium on Consumer 
+Electronics (ISCE2011) 
+會議地點 新加坡 
+會議時間 June 14-17, 2011 
+發表論文題目 Vehicle Speeding Early Warning Model Using Frame Feature 
+Detection and HMM 
+國科會計畫代碼 NSC 99-2220-E-006-011 
+國科會計畫名稱 在嵌入式系統上執行路標辨識系統之實現 
+ 
+11 
+ 
+ Teaching Aids and Smart Class Rooms  
+ Enabling Technologies and Others： 
+ Radio Frequency Interfaces and Applications (including RFID Techniques and 
+Communication Interfaces) 
+ Wireless and Mobile Communication 
+ Web Technologies and Home Networking  
+ Security and Rights Management including Steganography, Watermarking, all aspects of 
+Digital Rights Management, IP and Licensing etc) 
+ Open Source in CE Applications 
+ Cloud Computing and Smart Grid for CE 
+ Product Safety of Consumer Electronics 
+二、與會心得 
+    ISCE 2011 主要是探討消費性電子相關研究的議題，有很多不同領域的研究
+學者參加，讓我可以多了解其他相關領域的學者所做的研究，與論文撰寫、投稿
+的技巧及方法，擴大了我的研究視野，認識一些相關領域的朋友，對我的未來作
+研究有相當好的幫助。 
+    多年前到過新加坡，而這次到新加坡參加國際會議，發現新加坡進不了很
+多，有不少可以學習的地方。很感謝國科會的贊助，使我能夠有這次的行程。 
+ 
+三、攜回會議資料名稱與內容 
+ 會議議程。 
+ 會議論文集(USB 隨身碟一個)。 
+  
+     報到處                             本人 
+13 
+ 
+web-page for the registration details, which will be available from 1-April 2011).  
+ 
+Below contains the comments of the reviewers for your paper. Please do take their 
+comments and proposals into account to further improve the quality of your 
+camera-ready paper.  
+ 
+The Advance and Final programs of ISCE2011 will be announced on the conference 
+web-page soon.  
+ 
+We are looking forward to welcome you in June in Singapore.  
+ 
+Best regards  
+ISCE 2011 Technical Program Chairs  
+ 
+ 
+論文摘要 
+ABSTRACT 
+The techniques of digital image analysis, features detection, and Hidden Markov 
+Model are employed to develop a vehicle speed prediction system, which used to find 
+the trend of the speed changed. The proposed vehicle speed prediction model is used 
+to set up a vehicle speeding early warning model. The proposed vehicle speed early 
+warning system includes the vehicle speed computation and prediction model. All the 
+data source of this study is obtained by the special design vehicular digital video 
+recorder device that includes well defined driving data format. The data of digital 
+video recorder, which represented the driving state data of the vehicle the speed is 
+included, are analyzed to set up the speed computation and prediction model. The 
+proposed approaches can closely match the vehicle speed and its concurrent video 
+frame. The results of this study can also provide other vehicular computer vision 
+techniques to reduce the processing time along with vehicle’s speed. 
+ 
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：王明習 計畫編號：99-2220-E-006-011- 
+計畫名稱：在嵌入式系統上執行路標辨識系統之實現 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 1 100% 
+篇 
+在數位生活科技
+研討會發表 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 2 2 100% 兩位碩士班學生於 2011 年畢業 
+博士生 1 1 100% 尚在學中 
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 2 100% 
+篇 
+一篇在日本福岡
+之 國 際 會 議 發
+表。另一篇在嵌入
+式系統相關會議
+The APESER 2010
+發表，已放上 IEEE 
+Xplore 資料庫內。
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

@@ -1,0 +1,458 @@
+ 2
+ 4
+二、 英文摘要 
+Regular expression matching has been widely used in Network Intrusion Detection Systems due 
+to its strong expressive power and flexibility. To match multiple regular expression patterns 
+simultaneously, compiling multiple regular expressions into a composite DFA is an intuitive and 
+efficient way. However, traditional memory architecture suffers from the problem of memory 
+explosion for certain complex regular expressions which can be classified into two main types. One 
+is composed of wildcard and constraint repetitions. Another one is composed of multiple instances 
+of star-closure (“.*”). 
+In this project, we have proposed three techniques to reduce memory requirement of regular 
+expression patterns. First, we propose an efficient pattern matching algorithm which can reduce 
+memory requirement by sharing common sub-pattern. Second, we propose a hierarchical state 
+machine architecture for matching the complex regular patterns composed of multiple star-closures. 
+Finally, we propose a hybrid memory architecture which integrate logic and memory architecture 
+for complex regular expressions composed of wildcard and constraint repetitions. The experiments 
+demonstrate a significant reduction in memory for the complex regular expression patterns 
+commonly used in network intrusion detection systems. The research results have been accepted by 
+IEEE Transactions on Very Large Scale Integration (VLSI) Systems and have been published in the 
+ACM Great Lakes Symposium on VLSI (GLSVLSI 2009) and IEEE International Midwest 
+Symposium on Circuits and Systems (MWSCAS 2009), respectively. 
+ 
+Keywords: Regular Expression, Pattern Matching, Finite State Machine 
+ 
+ Figure 2: Simple memory architecture for pattern 
+matching 
+0   …   9   A    B   C    D   …  MV 
+0   …   0    1    0   0    0   …   0 
+0   …   0    1    2   0    0   …   0 
+2   …   2    2    2   3    2   …   0 
+2   …   2    2    2   3    4   …   0 
+0   …   0    1    0   0    0   …   1 
+Address. 
+register 
+Input  
+Character 
+Match Output 
+decoder 
+multiplexer
+Current 
+state 
+4
+3 
+D
+Next state 
+It’s well known that when m patterns are compiled into a single DFA, the matching time 
+complexity for matching m patterns against the input texts of length n is reduced from O(mn) to 
+O(n). Therefore, compiling multiple regular expression patterns into a single composite DFA is an 
+efficient way to match multiple regular expression patterns. However, there are specific regular 
+expression patterns which cause the composite DFA to grow exponentially. These complex regular 
+expressions can be classified into two main types. One is composed of meta-characters and 
+constraint repetitions. For example, the regular expression pattern for identifying the POP3 CAPA 
+overflow attempt, “.*CAPA\s[^\n]{10}”, and the pattern for identifying the POP3 TOP overflow 
+attempt, “.*TOP\s[^\n]{10}” contain 112 and 137 states, respectively. Compiling these two patterns 
+into a composite DFA will cause the number of state exponentially increasing to 649. Another 
+complex regular expression is composed of multiple instances of star-closure (“.*”). For example, 
+using Flex [18] for compilation, the two patterns in Linux L7-filter, “.* member- 
+name.*session.*player” and “.*rdpdr.*cliprdr.* rdpsnd” contain 47 and 43 states, respectively. 
+When compiling these two patterns into a composite DFA, the number of states is up to 232. 
+ 
+ 
+四、 研究方法 
+This project addresses the memory issue for regular expression pattern matching. Our major 
+tasks include the followings. (1) Efficient Pattern Matching Algorithm for Memory Architecture, (2) 
+Hierarchical State Machine Architecture for Regular Expression Pattern Matching, and (3) Hybrid 
+Memory Architecture for Regular Expression Matching. We describe individually the method of 
+each task as following. 
+1. Efficient Pattern Matching Algorithm for Memory Architecture  
+In the first part of this project, we reuse those memory spaces of traditional AC state machine 
+storing zero vectors {00} to store useful path information called pathVec. First, each bit of the 
+pathVec corresponds to a string pattern. Then, if there exists a path from the initial state to a final 
+state, which matches a string pattern, the corresponding bit of the pathVec of the states on the path 
+ 6
+Fig. 4. New State diagram of merg_FSM 
+0   1 26 37 4 
+5 8
+b
+p
+c
+c
+d f
+g10_0
+01_011_0 11_0 11_0 01_1
+10_1
+ 
+In addition, we need a register, called preReg, to trace the precedent pathVec in each state. 
+The width of preReg is equal to the width of pathVec. Each bit of the preReg also corresponds to a 
+string pattern. The preReg is updated in each state by performing a bitwise AND operation on the 
+pathVec of the next state and its current value. By tracing the precedent path entering into the 
+merged state, we can differentiate all merged states. When the final state is reached, the value of the 
+preReg indicates the match vector of the matched pattern. During the state traversal, if all the bits 
+of the preReg become 0, the machine will go to the failure mode and choose the failure transition as 
+in the AC algorithm. After any failure transition, all the bits of the preReg are reset to 1.  
+Consider an example in Fig. 5 where the string “pcdf” is applied. Initially, in state 0, the 
+preReg is initialized to {P2P1} = {11}. After taking the input character p, the merg_FSM goes to 
+state 5 and updates the preReg by performing a bitwise AND operation on the pathVec {10} of state 
+5 and the current preReg {11}. The resulting new value of the preReg will be {P2P1} = {10 AND 
+11} = {10}. Then, after taking the input character c, the merg_FSM goes to state 26 and updates the 
+preReg by performing a bitwise AND operation on the pathVec {11} of state 26 and the current 
+preReg {10}. The preReg remains {P2P1} = {11 AND 10} = {10}. Further, after taking the input 
+character d, the merg_FSM goes to state 37 and updates the preReg by performing a bitwise AND 
+operation on the pathVec {11} of state 37 and the current preReg {10}. The preReg remains {P2P1} 
+= {11 AND 10} = {10}. Finally, after taking the input character f, the merg_FSM goes to state 4. 
+After performing a bitwise AND operation on the pathVec {01} of state 4 and the current preReg 
+{10}, the preReg becomes {P2P1} = {01 AND 10} = {00}. According to our algorithm, during the 
+state traversal, if all the bits of the preReg become 0, the machine will go to the failure mode and 
+choose the failure transition as in the AC algorithm. Therefore, the machine takes the failure 
+transition to state 0 instead of state 4.  
+ 
+state        0    5   26    37    0    
+input char      p    c    d    f     f 
+pathVec  11   10   11   11   01    
+preReg      11   10   10   10   00    
+ifFinal       0    0    0    0    1     
+Fig. 5. State transitions of the input string “pcdf” 
+Similarly, consider another example in Fig. 6 where the string “pcdg” is applied. The process 
+of state traversal is similar to the previous example until the state machine reaches state 37 and the 
+input character is g. After taking the input character g, the merg_FSM goes to state 8 and the 
+preReg becomes {P2P1} = {10} by performing a bitwise AND operation on the pathVec {10} of 
+ 8
+identifying the correlation of the segmented sub-patterns, then we can efficiently reduce the 
+additional states. The reason is that the master state machine is in charge of matching segmented 
+sub-patterns, compiling m patterns of length ni (i=0…m) needs O( ) states. On the other hand, 
+because the slave is in charge of identifying the correlation of the segmented sub-patterns, 
+compiling m patterns with one “.*” in each pattern needs O( ) states. Therefore, for compiling m 
+patterns of length n
+)(
+0
+∑
+=
+m
+i
+in
+m2
+i (i=0…m) with one “.*” in each pattern, the total space is O( ) states. 
+Compared to traditional DFA, the space complexity is reduced from O( ) to O( ) 
+states. Furthermore, for compiling m patterns of length n
+mm
+i
+in 2)(
+0
++∑
+=
+mm
+i
+in 2)(
+0
+⋅∑
+=
+mm
+i
+in 2)(
+0
++∑
+=
+i (i=0…m) with x instances of “.*” in each 
+pattern, the space is reduced from O( ) to O( ) states. m
+m
+i
+i xmn )()(
+0
++⋅∑
+=
+mm
+i
+i xmn )()(
+0
+++∑
+=
+For m regular expressions, “.*R1.*R1’”, “.*R2.*R2’”,…, and “.*Rm.*Rm’”, Figure 8 shows the 
+hierarchical state machine architecture which are composed of two parallel state machines, master 
+and slave state machines. The master state machine is used to match input streams to the segmented 
+sub-patterns, such as R1, R1’, R2, R2’,…Rm and Rm’. Then, the matching results, α,β,γ,δ,…,ε, 
+andθ of the master state machine, called inter-result is fed to the slave state machine which is 
+used to identify the correlation of the segmented sub-patterns and to output final results, called 
+match vector.  
+Figure 8: Hierarchical State Machine Architecture
+R1
+R1’
+R2
+R2’
+Rm’
+input 
+streams 
+Master State Machine 
+inter- 
+result 
+Slaver State Machine
+α 
+β 
+γ 
+δ 
+ε 
+θ 
+α 
+β 
+γ δ ε 
+θ 
+match
+vector
+ 
+We now illustrate the hierarchical state machine architecture using an example. Considering 
+the following two patterns, “.*AB.*CD” and “.*MN.*PQ”, we first construct a master state 
+machine to match input characters to the segmented sub-patterns, “AB”, “CD”, “MN”, and “PQ”, 
+as shown in Figure 9(a) where partial edges are omitted for easy description. In Figure 9(a), the 
+outputs, called inter-results, of final states 2, 4, 6, and 8 are represented asα, β, γ, and δ, 
+respectively. Except for final states, the outputs are 0. Then, we construct a slave state machine to 
+match the inter-results to the new regular expression “.* α.* β” and “.* γ.* δ” as shown in 
+Figure 9(b).  
+ 10
+respectively. 
+ 
+Figure 11: Algorithm of Hierarchical State Machine 
+Architecture 
+master (T, g,  ) 
+1  nÅ length[T] 
+2  qÅ0 
+3  for i Å 1 to n 
+4   do q Åg(q, T[i]) 
+5     inter-result Å [q] 
+ 
+slave (inter-result, g’, ’) 
+1  q’Å0 
+2  do  q’ Å g’(q’, inter-result) 
+3      mv Å ’ (q’) 
+4      if mv <>0 
+5        print “pattern mv is matched.” 
+The algorithm shows that the computational complexity of the hierarchical state machine 
+architecture to match multiple complicated regular expression patterns on a text string of length n is 
+O(n). In addition, because the hierarchical state machine architecture is based on general memory 
+architecture, it can also be applied to process simple regular expression patterns, such as exact 
+string patterns. Compared to the traditional DFA, the hierarchical state machine architecture can 
+significantly reduce the number of states and therefore the memory size. Experimental results show 
+that the hierarchical state machine architecture achieves an average of 95% of state reduction and 
+97% of memory reduction for the complicated regular expression patterns in Snort, Bro, and 
+L7-filter systems. 
+ 
+3. Hybrid Memory Architecture for Regular Expression Matching 
+In the third part of this project, we propose a hybrid memory architecture which inserts 
+marginal logic elements to improve the ability of traditional memory architecture to deal with the 
+first type of complex regular expressions. The hybrid memory architecture allows for multiple 
+complex regular expression patterns to be merged and matched simultaneously without the problem 
+of memory explosion. The overall architecture is shown in Figure 12. The new architecture 
+contains two major elements: the memory element (as in the memory architecture) and the logic 
+element. Inserting logic elements into the memory architecture allows for efficiently dealing with 
+both simple and complex regular expression patterns. Similar to that in the memory architecture, 
+the memory element is used to match simple regular expression patterns, such as explicit string 
+patterns. We can observe that complex regular expressions also contain explicit string patterns. For 
+example, the regular expression “.*CAPA\s[^\n]{10}” contains the explicit string pattern “CAPA\s” 
+in its prefixes, which can be dealt with by the memory element. All the explicit string patterns are 
+converted to a DFA whose corresponding transition table is stored in the memory element. When 
+the memory element matches one of the prefix substrings, its outputs, called prefix-result activates 
+its subsequent logic elements to match suffix constraint repetitions.  
+ 12
+16 
+Memory Element 
+NS0  NS1     ……    NS255  MV
+Input 
+Address 
+reg. 
+Controller 
+Logic Element 
+Figure 14: Block Diagram of Hybrid Architecture 
+NFA block 
+FIFO
+NFA block 
+FIFO
+MV 
+Next State 
+ 
+The experimental results show the hybrid architecture achieves significant memory reduction 
+for the Snort regular expression patterns. In addition, we also integrate the bit-split algorithm [11] 
+to obtain additional 88% memory reduction. 
+ 
+五、 重要執行成果和價值 
+In this project, we have proposed three techniques to reduce memory requirement of regular 
+expression patterns. First, we propose an efficient pattern matching algorithm which can reduce 
+memory requirement by sharing common sub-pattern. Second, we propose a hierarchical state 
+machine architecture for matching the complex regular patterns composed of multiple star-closures. 
+Finally, we propose a hybrid memory architecture which integrate logic and memory architecture 
+for complex regular expressions composed of wildcard and constraint repetitions. All techniques 
+have been accepted and published in international conferences and journals. In the following, we 
+list the related papers of above techniques. 
+ 
+[1] Cheng-Hung Lin and Shih-Chieh Chang, "Efficient Pattern Matching Algorithm for Memory 
+Architecture" accepted by IEEE Transactions on Very Large Scale Integration (VLSI) 
+Systems.(SCI) 
+ 
+ 14
+ 16
+[7] R. Sidhu and V. K. Prasanna, “Fast regular expression matching using FPGAs,” in Proc. 9th 
+Ann. IEEE Symp. Field-Program. Custom Comput. Mach. (FCCM), 2001, pp. 227-238. 
+[8] B.L. Hutchings, R. Franklin, and D. Carver, “Assisting Network Intrusion Detection with 
+Reconfigurable Hardware,” in Proc.10th Ann. IEEE Symp. Field-Program. Custom Comput. 
+Mach. (FCCM), 2002, pp. 111-120. 
+[9] C. R. Clark and D. E. Schimmel, “Scalable Parallel Pattern Matching for High Speed 
+Networks,” in Proc. 12th Ann. IEEE Symp. Field-Program. Custom Comput. Mach. (FCCM), 
+2004, pp. 249-257 
+[10] Y. H. Cho, S. Navab, and W. H. Mangione-Smith, “Specialized Hardware for Deep Network 
+Packet Filtering,” in Proc. 10th Ann. ACM/SIGDA Int. Conf. Field-Program. Logic Appl. 
+(FPL), 2002, pp. 452-461 
+[11] Y. H. Cho and W. H. Mangione-Smith, “A Pattern Matching Co-processor for Network 
+Security,” in Proc. 42nd Des. Autom. Conf. (DAC), 2005, pp. 234-239 
+[12] M. Aldwairi*, T. Conte, and P. Franzon, “Configurable String Matching Hardware for 
+Speeding up Intrusion Detection,” in ACM SIGARCH Computer Architecture News, 2005, pp. 
+99–107 
+[13] S. Dharmapurikar and J. Lockwood, “Fast and Scalable Pattern Matching for Content 
+Filtering,” in Proc. of Symp. Architectures Netw. Commun. Syst. (ANCS), 2005, pp. 183-192 
+[14] L. Tan and T. Sherwood, “A high throughput string matching architecture for intrusion 
+detection and prevention,” in 32nd Ann. Int. Symp. on Comp. Architecture, (ISCA), 2005, pp. 
+112-122 
+[15] H. J. Jung, Z. K. Baker, and V. K. Prasanna, “Performance of FPGA Implementation of 
+Bit-split Architecture for Intrusion Detection Systems,” in 20th Int. Parallel and Distributed 
+Processing Symp. (IPDPS), 2006. 
+[16] F. Yu, Z. Chen, Y.Diao, T.V. Lakshman, and R.H. Katz, “Fast and Memory-Efficient Regular 
+Expression Matching for Deep packet Inspection,” in Proc. ACM/IEEE Symp. Architectures 
+Netw. Commun. Syst. (ANCS), 2006, pp. 93-102 
+[17] Z. K. Baker, H. J. Jung, and V. K. Prasanna, “Regular Expression Software Deceleration for 
+Intrusion Detection systems,” in Proc. International Conference on Field Programmable Logic 
+and Applications (FPL), 2006, pp. 1-8. 
+[18] A. V. Aho and M. J. Corasick. “Efficient String Matching: An Aid to Bibliographic Search,” in 
+Communications of the ACM, 18(6):333–340, 1975. 
+[19] I. Sourdis, J.Bispo, J. M.P. Cardoso, and S. Vassiliadis, “Regular expression matching for 
+reconfigurable packet inspection”, in Proc. IEEE International conference on Field 
+Programmable Technology (FPT), 2006, pp.119-126. 
+[20] B. Brodie, R. Cytron, D.Taylor, “A Scalable Architecture for High-throughput Regular 
+Expression Matching,” in Proc. 33rd Int’l Symposium on Computer Architecture (ISCA), 2006, 
+pp191-202. 
+出席國際學術會議心得報告 
+計畫名稱：正規表示法樣式比對之演算法與硬體架構設計 
+計畫編號：97-2218-E-003-002- 
+報告人：林政宏副教授 
+會議名稱：IEEE International Midwest Symposium on Circuits and Systems 
+(MWSCAS 2009) 
+會議地點：Cancun, Mexico 
+會議時間：August 2-5, 2009 
+出國目的：口頭發表論文 
+論文名稱：Hybrid Memory Architecture for Regular Expression Matching 
+與會心得： 
+It’s a really good experience to attend the the 52nd IEEE International Midwest 
+Symposium on Circuits and Systems (MWSCAS 2009) held on August 2-5, 2009, in 
+Cancún, México. The Midwest Symposium on Circuits and Systems (MWSCAS) is 
+the oldest Circuits and Systems symposia sponsored by the IEEE. My paper titled 
+“Hybrid Memory Architecture for Regular Expression Matching” was accepted as 
+oral presentation. Because many attendances work on relative researches, I obtained a 
+lot of positive feedback. After my presentation, many professors and students 
+discussed with me about my researches. In addition, I also listened several interesting 
+research topics including health care system, analog IC design tread, and so on. 
+Finally, I am very thankful for NSC supporting me to attend this conference. 
+2. Complex Regular Expression Patterns 
+In this paper, the complex regular expression pattern 
+denotes the regular expression patterns with the 
+characteristic of overlapping, such as the regular expression 
+pattern for the identifying POP3 CAPA overflow attempt, 
+“.*CAPA\s[^\n]{10}”, and the pattern for identifying POP3 
+TOP overflow attempt, “.*TOP\s[^\n]{10}”. As described 
+in the introduction, when compiling multiple complex 
+regular expression patterns into a composite DFA, the 
+overlapping characteristic causes the state machine to grow 
+exponentially. In this section, we discuss the reason why the 
+overlapping characteristic causes the composite DFA to 
+grow exponentially.  
+First, let us consider the following two regular 
+expression patterns, “.*CAPA\s[^\n]{10}” and 
+“.*TOP\s[^\n]{10}” . The pattern “.*CAPA\s[^\n]{10}” 
+means that whenever an input substring contains “CAPA\s”, 
+followed by ten of non-line-feed characters (^\n), the 
+regular expression pattern “.*CAPA\s[^\n]{10}” is matched. 
+The pattern “.*TOP\s[^\n]{10}” has the same behavior. The 
+state explosion comes from the fact that the prefixes 
+“CAPA\s” and “TOP\s” overlap with the suffixes 
+“[^\n]{10}”. Since any substring containing “CAPA\s” or 
+“TOP\s” simultaneously matches prefixes and suffixes of 
+these two patterns, the corresponding DFA needs much 
+more states to keep track of all possible occurrences of the 
+substrings “CAPA\s” or “TOP\s”. For example, consider 
+the composite NFA of these two regular expression patterns 
+in Figure 1. If the input contains a substring “CAPA\sC”, 
+the NFA will activate states 1 and 6 simultaneously. 
+Similarly, if the input string contains a sub-string 
+“CAPA\sTO”, the NFA will activate states 7 and 17 
+simultaneously. We can observe that the overlapping occurs 
+not only in each pattern, but also occurs in each other. 
+Therefore, when converting the NFA into a DFA, the state 
+number of the DFA will grow exponentially. 
+ 
+3. Hybrid Memory Architecture  
+In this section, we propose a hybrid memory 
+architecture to improve the ability of the traditional memory 
+architecture to deal with these memory-intensive regular 
+expressions. Because the overlapping characteristic of 
+complex regular expression patterns causes the 
+corresponding DFA having exponential number of states, 
+our basic idea is to split the complex regular expression into 
+two segments, the prefix exact string and the suffix 
+constraint repetitions, and then, insert marginal logic 
+elements into the memory architecture to handle the suffix 
+constraint repetitions, so as to mitigate the memory 
+explosion caused by the overlapping characteristic. 
+The overall architecture is shown in Figure 2. The 
+new architecture contains two major elements: the memory 
+element (as in the memory architecture) and the logic 
+element. Inserting logic elements into the memory 
+architecture allows for efficiently dealing with both simple 
+and complex regular expression patterns. Similar to that in 
+the memory architecture, the memory element is used to 
+match simple regular expression patterns, such as explicit 
+string patterns. We can observe that complex regular 
+expressions also contain explicit string patterns. For 
+example, the regular expression “.*CAPA\s[^\n]{10}” 
+contains the explicit string pattern “CAPA\s” in its prefixes, 
+which can be dealt with by the memory element. All the 
+explicit string patterns are converted to a DFA whose 
+corresponding transition table is stored in the memory 
+element. When the memory element matches one of the 
+prefix substrings, its outputs, called prefix-result activates 
+its subsequent logic elements to match suffix constraint 
+repetitions.  
+ 
+The logic element is based on the Nondeterministic 
+Finite Automaton (NFA) and employed to deal with suffix 
+constraint repetitions. Each character of a pattern is mapped 
+to a circuit module. Consider the regular expression pattern, 
+“.*CAPA\s[^\n]{10}”. We use the logic elements as shown 
+in Figure 3 to match the suffix constraint repetitions, 
+“[^\n]{10}”. The text input is broadcasted to each circuit 
+module which is used to match non-line-feed characters 
+(^\n). Ten circuit modules are concatenated to mach the 
+suffix pattern, “[^\n]{10}”. As shown in Figure 3, the size 
+of logic elements is proportional to the length of suffix 
+constraint repetitions. 
+ 
+As shown in figure 4, the hybrid memory architecture 
+composes of memory elements and logic elements. When 
+implementing logic elements, we can share common 
+constraint repetitions among regular expressions to reduce 
+area overhead. For example, the FTP rule set of Snort has 
+Figure 3: Logic elements for matching “[^\n]{10}”
+clk clk clk clk
+………  
+Text input  
+^\n ^\n ^\n ^\n 
+i o 
+Memory 
+element 
+Logic 
+element Input 
+streams 
+Figure 2: Hybrid Memory Architecture 
+prefix- 
+result Match output 
+Figure 1: NFA of “.*CAPA\s[^\n]{10}” and 
+“.*TOP\s[^\n]{10}” 
+C    A     P    A    \s    ^\n   ^\n     ^\n       ^\n
+Σ 
+T    O     P    \s    ^\n   ^\n    ^\n    ^\n       ^\n
+0    1    2    3    4    5    6    7        14  15
+16   17   18   19   20   21   22        23     24

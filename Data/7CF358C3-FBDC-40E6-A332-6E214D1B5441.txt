@@ -1,0 +1,1453 @@
+ II
+摘要 
+在系統晶片(SoC)的時代, 特殊應用多態串流處理單元是市場中重要的一環，在設計多
+態串流處理單元為了具有好的效能以及短時間上市(time to market). 我們需要模型化多態
+串流處理單元架構，立即性的探索和評估適合的多態串流處理單元架構。 
+定義一個最好的多態串流處理單元，設計者在探索廣泛的設計範圍，為了尋找適當的
+設計，設計者將會建構和使用模擬器，愈精簡的模型，建構時間愈短，可在短時間內，開
+發出較多的設計，可達到產品快速上市且可探索較多的設計空間。並允許研究者快速評估
+新的設計，有效評價設計的內容，在廣泛評估中發展出淺明易懂的多態串流處理單元微架
+構。 
+同步多執行緒多態串流處理單元相較於超純量架構有高效能，並用了指令層級和執行
+緒層級的平行化，提高了硬體資源的使用率。我們使用 Alpha 21164 指令集做為基礎，我們
+會將多態串流處理單元設計成 8 級管線的同步多執行緒多態串流處理架構。 
+ 
+關鍵字 : 單晶片網路、多態串流、軟硬體協同設計、平台 
+ 
+ABSTRACT 
+In the system on chip (SoC) the time, the application-specific processor unit is an important 
+port of the market. In order to have a good performance and shorten the time-to-market, we have 
+designed an efficient polymorphous stream processor.  
+To identify the processor designs, we have explored a vast design space by simulation. To 
+assess the quality of candidate designs, we have applied different mechanisms in the processor. 
+This leads to shorter product time-to-market and more thorough design-space exploration. This 
+also allows researchers to evaluate new design ideas faster, to efficiently evaluate ideas in the 
+context of many design options, and, perhaps, develop a more efficient micro-architecture due to 
+these broader evaluations. 
+The polymorphous stream processor comparing to the superscalar processors has higher 
+performance, and features the instruction level parallelism (ILP) and the thread (stream) level 
+parallelism (TLP). It also raises the resources utilization. We have used the Alpha21164 
+instruction set as a basis in the design, which has 8 stages of pipelines with polymorphous 
+streaming ability. 
+ 
+Keyword : NoC, polymorphous stream, HW/SW codesign, platform 
+ 1
+ 
+1. 前言 
+本研究最主要的動機，是去建立一個多態串流處理單元架構，經由我們評估過處理單
+元微架構的發展後，得知同時多執行緒 [2]是未來處理器設計的主流架構，因此，去設計並
+最佳化它的架構組態，是我們最主要的目的。我們設計出 Concurrent MT 為基本架構的多
+態串流處理單元架構，我們可測試不同組態的微架構設計，對於模擬效能的評估，有益於
+進一步選擇我們所需要的組態或架構設計。 
+我們採用Ａlpha 指令集架構設計的基礎，它具備了 8 級的管線多態串流處理單元架構，
+我們將擴充成具備 8 個執行緒的 Concurrent MT 的架構，指令集包括了 Alpha 原始的指令集
+(Instruction-Set)，以及針對 Concurrent MT 所發展的執行緒特殊指令集。 
+2. 研究目的 
+近年來所發表多媒體處理器之趨勢, 如圖 1-1，我們可以發現越來越多不同的處理器出
+現，由開始的指令層級平行(Instruction level parallelism, ILP), 發展至執行緒平行(thread level 
+parallelism, TLP)，並且持續朝著多晶片多緒(Multi-Thread and Multi-Core)處理器核心來設
+計，至目前，TLP 利用執行緒執行個別平行的負載運算，不論是在多媒體(Media Area)或是
+一般處理器(Gerenal Processor)上，在效能上的提升，皆有良好的效能提升，因而使得 TLP
+的概念越來越重視，在 TLP 的領域中，CMP(Chip multi-processor) [9][26][27] 與 Concurrent 
+MT[2][5][6]架構皆有 TLP 的概念。其中 Concurrent MT 架構最為被重視的特性是在有限面
+積達到效能的提升，Concurrent MT 架構可使多個執行緒(Thread)同時執行，卻可以共享硬
+體資源(Function Unit)以達增加硬體使用率，因此 Concurrent MT 架構必須針對執行緒複製
+部份的硬體資源(RF、Program counter、Status Register..)，且必須提供更為複雜的前端單元
+處理多個 thread 的指令排程，這些都可能將增加成本與功率消耗。因此我們在設計
+Concurrent MT 架構應用於多媒體或是一般用途處理器(general propose processor, GPP)時，
+如何組織 Concurrent MT 架構並使其享有高度平行執行，將可視應用範圍而制定。為了
+Time-to-Market 以及可更彈性設計，並探索不同的組織架構上，在演算 Concurrent MT 架構
+上，就必須達到設計時程的縮短，而設計 Concurrent MT 多態串流處理單元則具備了這些
+條件。 
+ CISC Machines 
+Instructions take variable times to complete 
+RISC Machines(microcode) 
+Simple instruction, optimized for speed. 
+RISC Machines(pipelined) 
+Same individual instruction latency 
+Greater throughput through instruction “overlap” 
+Superscalar Processors 
+Multiple instructions executing simultaneously 
+Multithreaded Processors 
+Additional HW resources (regs ,PC,SP) 
+Each context gets processor for x cycles 
+VLIW 
+“Superinstructions” grouped together 
+decreased HW control complexity 
+Single Chip Multiprocessors 
+Duplicate entire processors 
+(tech soon due to Moore’s Law) 
+SIMULTANEOUS MULTITHREADING 
+MULTIPLE HW contexts(regs ,PC,SP) 
+Each cycle, any context may execute 
+ 
+圖 3-1 微處理器架構趨勢 [8] 
+ 
+隨著半導體製程的進步，縮小了電晶體的寬度，因而愈來愈多的晶片面積可以使用，
+就納入更多的技術去改進微架構設計的效能在不同的方式。未來的 RSIC 處理器設計可包
+括以下[1] : 
+1. 藉由平行度以及複雜度去增加通用性 RSIC 處理器的效能。數種架構，例如超純
+量 (superscalar),超管線(super-pipeline)以及 VLIW-可以選擇。此類的每一個方法在
+單一執行緒的模式之下皆可達到多發射(Multiple-Issue)，可稱為多發射機器。 
+2. 利用基本的中斷在單一執行緒的模式之下，可以實用多的晶片空間，讓多個執行
+緒同時執行。而多執緒(MT)、多態串流處理單元將是一個選擇。 
+3. 放置數個處理器在單一晶片上(Chip Multiple Process,CMP) [9] [26] [27]。放入很多
+的處理器架構，包括了適用任何處理器架構的 RSIC，以及超純量和多執行緒。 
+以下部份將依上述方向在目前發展的介紹 : 
+3.1. 單執行緒多發射架構 
+現在重要的設計方向都有達成，多發射架構可得到較高的指令效能(instruction per 
+cycle,IPC)。多發射處理器會有以下二個基本的因素 :超純量處理器(Superscalar)以及長指令
+處理器(VLIW,Very Long Instruction Word)處理器。超純量(Superscalar)[3]處理器在每一時脈
+內發射不同數量的指令，無論是靜態排序(使用編譯器和依序執行)或是動態排序(使用
+Tomasullo’s 演算法和 out-of-order 執行)。VLIW 處理器，相對於發射固定數量的格式指令，
+ 3
+JPEG 
+program
+RGB2YUV
+2D -DCT 1D -DCT
+Program
+Process
+Thread 
+Thread 
+Process
+Process
+Thread
+Thread
+Thread
+Thread
+Sample 
+Partial sample 
+ 
+圖 3-2 程式、程序與執行緒之分別 
+ 
+在其他的文獻中，[2]作者指出程式的三個階層 :程式區段碼(code segment)，執行緒
+(Thread)以及指令(Instruction)。根據[7] :「程序是一段區段碼，不相依於其他程式，包括了
+在處理器上面執行的程式，區段碼包含了程序的狀態所有資訊 ,當多個程序分享了資料區段
+和指令碼區段，則常常稱之為執行緒。作者也指出 .即使當他們沒有共享位址空間，而執行
+在不同處理器上分配的方式，也通常稱為執行緒」。 
+執行緒平行(thread-level parallelism,TLP)正是指不相依的執行緒平行在執行。相對於
+ILP，指得是單一執行緒內部的指令平行.而 TLP 指的是執行緒間的平行。 
+單一執行緒多發射架構主要達到了 ILP，而多執行緒架構則是達到了 TLP 以及 ILP。
+執行緒(threads)由堆疊(Stack)、CPU 暫存器(register)的狀態和系統排程器(Scheduler)之執行
+清單裡的項目所組成。每一個執行緒共用程序(process)的所有資源(resource)。程序由一或
+多個執行緒和程式碼、資料以及程式在記憶體中的其他資源所組成。一般的程式資源是開
+啟檔案、號誌 (Semaphore) 和動態配置的記憶體。當系統排程器給與它的一個執行緒執行
+控制權，程式就會執行。系統排程器決定哪些執行緒要執行以及何時執行。優先權(priority)
+較低的執行緒可能必須等待較高優先權執行緒完成它們的工作。在多執行緒處理器的電腦
+上，排程器可以將各個執行緒移到不同的處理單元上來「平衡」CPU 的負載(Workload)。 
+在單一執行緒架構，處理器上的指令會處於此二種狀態 :記憶體狀態以及處理器狀態[1]. 
+處理器狀態可以進一步分成以下元件 : 
+1. 指令指標(PC)，下一個會被執行的指令位址 
+2. 堆疊指標(SP)，現行主動堆疊框架的位址 
+3. 暫存器內容集合(hardware context set)，管理指令間的立即值 
+ 
+由以上可得知，一個執行緒的內容(thread context)包括了執行緒主要的指定暫存器，相
+對的多執行緒架構的狀態則包含了以下 : 
+1. 記憶體狀態 :指令在記憶體之狀態 
+2. 處理器狀態 :通常包括了二個主要的儲存元件 
+I. 主執行緒的收集，包括了每一個執行緒的程式計數器(PC)以及堆疊(SP)暫存
+器。 
+II. 各執行緒暫存器內容(thread context)和共享的暫存器內容(free register) 
+為了去支援多個執行緒，處理器必須至少提供足夠的資源給不同的執行緒使用。內容
+交換(Context Switch)指的是從一個執行緒切換至另一執行緒。將會有有耗費 CPU 時脈的情
+況，例如，處理器交換從舊的執行緒至新的執行緒時，它第一必須存入舊的執行緒內容以
+ 5
+Multithread Multiple context, 
+multiple/single fetch/issue 
+Mainly TLP Horizontal 
+Concurrent MT Multiple context, multiple 
+fetch/issue 
+Both ILP and 
+TLP 
+Vertical 
+&Horizontal 
+ 
+ 
+先前在多發射一般多執行緒處理不能有效使用硬體資源。Tullsen [2]定義了二種處理器
+資源的浪費。如圖 2-3 所示，其定義如下: 
+水平(Horizontal) 浪費:當處理器在單一週期中並沒有發射任何指令。 
+垂直(Vertical)浪費:在單一週期中，發射指令數並未填滿其可發射單元數(issue slots)。 
+ 
+Full issue slot 
+Empty issue slot 
+Horizontal waste=8 slots 
+Vertical waste=12 slots 
+ 
+圖 3-3 發射欄位在垂直和水平的浪費 
+ 
+在現今的單一執行緒多發射處理器的效能，如超純量(Superscalar)，總是會被長延遲
+(Long latency)指令的相依性而限制了指令的平行度，且會造成水平(Horizontal)及垂直
+(Vertical)浪費。一般多執行緒(Multi-Thread)利用快速內容交換而減少了垂直的浪費，但無
+法減少水平浪費。這可以由[2]說明在 8-ISSUE 的超純量處理器，僅 19%的 CPU 時脈數被
+利用。像是記憶體衝突、長浮點數、短浮點數、分支預測錯誤等等，仍然會造成運算資源
+閒置住。在浪費的時脈數中，存在著 61%垂直及常數的水平浪費，傳統的多執行緒架構，
+僅能在減少垂直浪費。 
+同步多執行緒架構，相對而言， 「在垂直和水平浪費它皆可以克服 」。在[2]中，圖 3-4
+可以說明 Concurrent MT 的效果。 
+ 7
+[4]。 
+ 在每一個時脈，Fetch 級必須選擇多個程式計數器以及針對多態串流
+Concurrent MT 的 Fetch 機制。 
+ 對於每一個執行緒在預測副程式以及返回目的都必須是個別的堆疊區。 
+ 每一執行緒有自己的指令 retire，指令佇列刷新，以及追蹤(trap)的機制。 
+ 為了避免非定義的預測出現，每一個分支目的預測目標欄位中，必須記錄
+執行緒的編號(ID)。 
+ 必須具備較大的暫存器檔案，以支援所有執行緒的架構暫存器。且為了暫
+存器更名要多出額外的暫存器。 
+ 
+FP
+registers
+Fetch
+Unit
+Instruction Cache
+Decode RegisterRenaming
+PCPC
+PCPC FP
+registers
+integer
+registers
+Floating point 
+Instruction queue
+integer
+Instruction queue
+FP
+registers
+FP
+unit
+Data 
+Cache
+INT/LD-ST Unit
+8
+ 
+圖 4-1 Concurrent MT 的基本架構區塊圖 
+ 
+圖 4-1 表示 FETCH 單元使用某機制在單一時脈中選擇多個程式計數器。在每一個週期
+內，處理單元會由指令快取中捉取一段程式。在解碼這些指令之後，暫存器更名級會將邏
+輯暫存器映射至實體暫存器以便消除指令的假相依。指令會被分配至整數會是浮點數的指
+令佇列中，當指令運算元是可用的，指令會被從佇列中發射至可用的處理功能單元，最後
+將執行緒之指令依序 RETIRE。 
+多態串流處理單元整個硬體資源，如指令排序單元，指令/資料快取，指令佇列(IQ)以
+及分支預測架構等等，和一般超純量相同，這些資源是動態分享給所有執行緒。額外增加
+的硬體架構不會超過 10%，而得到穿遂率好處可以得到多出硬體資源的花費以上，這是一
+個在多態串流處理單元上主要吸引人的特徵之一。 
+每一個週期，FETCH 單位會捉取至多 8 道指令(假設在超純量的捉取單位有 8 道指令
+的寬度)，而指令會由不同執行緒的現行 PC 捉取得到。關於執行緒選擇影響穿遂率以及其
+方法會在之後詳細說明。藉由暫存器更名，各自執行緒中的指令假相依會被消除。等到指
+令運算元可用時，指令會從佇列中發射出去。 
+多態串流處理單元能夠藉由指令平行以及執行緒平行而改進穿遂率。同步多執行緒的
+方法也帶來了一些挑戰。如何在單一執行緒模式下沒有導致效能下降，要怎麼處理較大的
+暫存器檔案並管理多個內容。提供有效機制在指令捉取和指令發射等等。以下是數個多態
+串流處理單元設計上的問題。 
+4.1. 捉取單元中選擇執行緒 
+ 9
+PHT(Pattern History Table)模擬每一種分支預測在 Concurrent MT 架構上，G-share 具最高的
+預測準確性。G-select 次之。2-bit 則較差。因此。太小的分支表會由於多個執行緒競逐的
+情形，而使用率下降。[14] 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  圖 4-2 單一執行緒在 G-select 和 G-share 分支預測的不同 
+ 
+PC PC
+BHR
+BHR
+XOR
+PHT (pattern 
+history table)
+PHT (pattern 
+history table)
+m
+n
+n
+n
+m cat n
+4.3. 暫存器更名單元 
+暫存器更名在多態串流處理單元架構上是必須修改的。同步多執行緒多態串流處理單
+元架構會讓每一個執行緒有各自獨立的暫存器檔案對應表。去管理多個執行緒內容。每一
+個硬體內容(hardware context)有各自的實體暫存器(physical register)。暫存器更名單元會動
+態分配公用(free)的更名暫存器給需要的執行緒。 
+多態串流處理單元需要一個較大的暫存器檔案(register file)。但較大的硬體暫存器檔案
+會增加處理單元的複雜度而花費長時間的存取時間。所以，檔案暫存器在改善整體效能表
+現是一個重點。 
+Register File size = ( # architecture register ) × ( # threads ) ＋ ( # rename register )  
+在指令管線在 Concurrent MT 上並不要求調整。但是。由於大尺寸的暫存器檔案。為
+了使暫存器的讀寫速度加快，管線級數最好增加 
+4.4. 指令發射 
+由於在多態串流處理單元架構中，所有的執行緒共享其指令佇列，指令佇列包含了來
+自各執行緒的指令。因此，佇列指令來自不同的執行緒，它決定那一指令可以發射出去，
+此機制具有考量的價值。 
+一般而言,單一執行緒的處理器不需要非常大的指令佇列去處理發射指令的需求。但
+是，在多態串流處理單元中，這卻是必須的。因為它比單一執行緒超純量處理器擁有較大
+的效能,檢查發射頻寬(issue bandwidth)具有一定長度是很重要的關鍵，以避免發射欄位
+(issue slot)的浪費，使得執行單元有高度的使用率。 
+在[6]比較了以下數個發射指令的方法: 
+(1)OLDEST_FIRST:和超純量架構使用相同的方法，優先發射最早的指令。 
+(2)SPEC_ LAST：當完成發射所有其他的指令後，才進行發射推測性指令。 
+(3)BRANCH_FIRST：為了儘可能早一點確定分支指令發生 taken 或是 no taken, 優先發
+ 11
+ 13
+(parallel application) 一應用程式 處理單元硬體資源上有潛在的衝突 
+4.7. 執行緒之間的同步 
+絕大部份現有的同步機制是 SPIN LOCKS，像是 TEST-AND-SET。當 TEST-AND-SET
+改變了記憶體，最佳化允許快取記憶體的 Spinning 發生去限制匯流排的傳送。 
+Lock-free 同步化適用廣泛，包括了現代的指令集。像是 DEC ALPHA＇S 
+load-locked(LDL_L)和 Store-Conditional(STL_C)[11]。防止多個執行緒進入同一個重要區
+域，是必須切換的。Lock-Free 同步成功預防了多個執行緒同時間進入同一個重要區域，使
+得該區域可以成功的讀寫資料。 
+Tera[23]和 Alewife[10]機制必須依賴 FULL/EMPTY(F/E)位元在每一個記憶區塊標誌。
+F/E 位元允許指令在記憶體存取和上鎖的要求。若是 F/E 位元上鎖之後，鎖住成功則會回傳
+資料內容。 
+M-MACHINE，則是將 F/E 放至暫存器:執行緒在不叢集或是在同一叢集可以藉由設定
+暫存為空的而達到同步化的效果。之後設定為 FULL 時，則可以使另一個執行緒成功寫入。 
+以下列出一般多處理器和同步多執行緒在同步設計之不同點: 
+1、每一個在多態串流處理單元中的執行緒在同一時脈中，相互使用捉取和執行單元的
+硬體資源，若同步機制浪費共享資源使其他執執行緒以致於不能使用。 
+2、執行緒彼此之間資料共用是較靠近多態串流處理單元內部。例如:L1 快取，內部的
+執行緒的溝通是較快的。同步機制應降低對效能的影響而形成處理器的頻頸。 
+3、在多態串流處理單元硬體上是共享給執行緒各自的硬體內容。相較於在記憶體上的
+溝通以達到同步，多態串流處理單元共享硬體上使同步效果更好的企機。 
+由於 Concurrent MT 上設計上的特色，所以當設計多態串流處理單元同步機制必須考
+慮以下幾個因素: 
+1、高效能:高效能指得是低延遲和高度的指令穿遂率。 
+2、資源-保留性:必須在多執行緒處理單元上保留資源，暫停的執行緒必須無佔用處理
+單元硬體資源。 
+3、釋放死節: 多態串流處理單元內所有執行緒共享指令排程器，若中斷的執行緒阻塞
+在指令佇列中，就會發生死節的情形，必需從另一個執行緒中預防釋放的指令。 
+4、可調節性:在原本執行在同一處理單元或是在不同處理單元之間，應是不能夠達到
+執行緒同步的情形。 
+多態串流處理單元提出了新的機制能達到降低同步花費，在[20]在單一處理器內部的執
+行緒相互溝通，在[20]提出了允許在處理器內部具可調節且較便宜的同步機制。此機制會使
+得暫停的執行緒不佔用硬體資源。基本的方式暫停要求和釋放，讓傳統利用軟體同步變成
+硬體執行。執行方式是使用 Thread_shared 硬體 Lock_box，Lock_box 對於多態串流處理單
+元是有效率的 Fine-grain 同步，提供一定程度在執行緒平行上的同步。相較於傳統在共用記
+憶體的做同步，是較快速且有效率性的。 
+ 
+4.8. 多態串流處理單元架構設計 
+我們從超純量非序式處理器(superscalar processor)改成多態串流處理單元的基礎區塊
+圖，如圖 4-3 所示，分別為執行緒 PC、捉取單元、指令快取、解碼單元、更名單元，指令
+decoder
+mapping 
+table
+mapping 
+table
+mapping 
+table
+mapping 
+table
+mapping 
+table
+mapping 
+table
+mapping 
+table
+mapping 
+table
+mapping 
+table
+PC  
+PC  
+PC  
+PC  
+PC  
+PC  
+PC  
+PC  
+PC  
+Fetch Decode Rename Issue Regread Execute Regwrite Commit
+I-Cache
+D-Cache
+regfile
+regfile
+ROB
+issue 
+queue
+function 
+unit
+Free reg list
+Free reg list
+(a) Conventional  Superscalar processor
+(b) SMT processor
+In-order Out-of-order In-order
+ 
+圖 4-4 由超純量至同步多執行緒的硬體組態 
+ 
+ 多態串流處理單元架構如圖 4-5 所示，多態串流處理單元最多可執行 8 道執行緒，
+捉取單元在每一週期中動態推測(speculatively)從指令快取中捉取至多 8 道 32-bit 指令至非
+序執行的執行區，每一個週期，至多 9 道指令會被動態選擇從 64 個整數以及浮點數的指令
+佇列中發射出去。 
+如圖 4-5 所示，多態串流處理單元共分成 8 級管線化處理，包括下列幾級單元: 
+ 15
+ 17
+第三級(Rename,RN 級):由於是利用非序執行(out-of-order)架構，強化指令平行所使用的
+技巧，將執行緒之指令架構暫存器經由對映表解決 WAR/WAW 假相依指令，並利用 RAW
+回復器(recover)回復其 RAW 之關系。將更名過之指令傳至指令佇列級。 
+第四級(Instruction Issue,ISS 級):將傳入的指令，存入指令佇列中，利用 schedulor 和
+scorebard 將指令在佇列、暫存器讀取、執行級中指令回授之資訊，判別是否控制、資料、
+結構危障消失，並發射指令。 
+第五級(Register Read,RR 級):將該執行緒發射指令所需之暫存器準備好，並將配置至執
+行級所需之來源及目的暫存器,並回授暫存器狀態給 ISS 級。並在產生次執行緒時，進行複
+製執行緒內容的動作。 
+第六級(Execute,EXE 級):將其多指令包含的控制信號，以及資料來源加以分配並執行運
+算，經由寫回級寫回，其中包括了三個浮點數運算單元、六個整數單元(其中四個和存取單
+元共用)以及 Concurrent MT 所使用的 LOCK_BOX 供執行緒同步使用。 
+第七級(Write Back,WB 級):將運算之資料寫回暫存器中。 
+第八級(Commit,CMT 級):將運算完的指令利用 ROB 中指令順序依序完全指令動作，並
+釋放使用的實體暫存器，並將分支或同步錯誤之指令更正其映射表。 
+詳細的各級會在以下介紹。 
+4.9.1. 指令捉取級 
+藉由程式計數器(Program Counter, PC)，Fetch 級會進行指令由快取記憶體中取得指令。
+大部份的指令並不影響程式計數器(Program Counter, PC)，僅只有分支(Branch)指令會影響
+PC 值。 
+為了捉取下一個指令而不用等待分支指令執行完，捉取級會使用預測機制，預測每一
+個指令，若是分支指令會發生跳躍(taken)或是不發生(not taken)。指令分支的歷史記錄以及
+發生跳躍的 PC 值會記錄在檢查表(Branch target buffer, BTB)中。因此，預測只單純檢查表
+內，若是現行 PC 或是分支 PC 是符合的，則把發生預測結果的 PC 值當成下一個 PC 值。
+否則，則將現行 PC 值加 4-32 做為下一個 PC 值。 
+ Concurrent MT 中有二種方式去處理分支指令的預測，可以推測捉取該執行緒，分
+支預測器在 Concurrent MT 架構和超純量架構中，相較而言，使用相當簡單的技巧。Fetch
+級包含二種型態的分支預測器，一個是 BTB，另一個是 GHP(global branch predicator )，這
+二個分支預測器在 Concurrent MT 中是共享的。非控制性分支和跳躍(Jump)使用 BTB 強化
+效能，控制性分支(conditional predicate)則使用 BTB 以及 GHP 搭配去預測。 
+¾ 全域分支預測器(Global Branch Predictor) 
+在圖 4-5 中，表示在 Concurrent MT 中的全域分支預測器。在全域分支預測是二階可調
+式分支預測(Correlating Predicator)G-share,其中 G-share 是利用執行緒的 PC 的 12 至 2 位元
+和 GHR(Global history register)做 XOR 運算，做為 PHT(pattern history table)的索引值，其中
+GHR 是記錄了前 11 次分支預測的結果，Taken 或 not taken，每個執行緒共享的 PHT 則是
+利用經由 XOR 之後的 11 個位元做為 2K(2048)個 2-bit saturating 計數索引。 
+1 1 ......... 1 0
+1 0 ......... 0 1
+Shift left
+Shift left
+Current_tread1->Global history register
+Current_tread2->Global history register
+Current_tread1->PC
+11 0
+011
+Current_tread2->PC
+PC[12:2]
+PC[12:2]
+11
+11 PHT index2
+PHT index1
+Actual branch result2
+Actual branch result1
+Pattern 
+History Table
+Size=2K=2048 entries
+00…00
+00…01
+00…10
+11…10
+11…11
+Taken /not taken
+First level Second  level
+ 
+圖 4-7 全域分支預測器 
+ 
+如 4-8 圖，PHT 採用 2-bit saturating 計數，是利用全域分支預測器 PHT 預測出 taken
+或 not taken 來決定是何種狀態。包括＂00＂(strongly not taken)、＂01＂(weakly not 
+taken)、＂10(02)＂(weakly taken)、＂11(03)＂(strongly taken)。一開始的初使值，2-bit saturating 
+計數設定在＂10(02)＂的狀態。而執行緒 GHR 則會被設定為 0. 
+ 
+Predict 
+Taken
+Predict 
+Taken
+Predict 
+Not Taken
+Predict
+Not Taken
+Taken Not Taken
+Not TakenNot Taken
+Taken
+Taken
+Taken
+Not Taken
+01
+03 02
+00
+ 
+ 19
+Page offset
+Page offset
+Virtual page number
+Physical page numberValid
+13x2T51x2T
+51x2T
+Cache index
+6x2T offset
+Dirty Tag
+TLB hit
+Physical page number
+Physical address tag
+63 62 13 12 0
+Virtual Address
+Physical Address
+8kB/page
+TLB
+48 entries, 
+fully 
+associative
+Word/Byte
+9x2T
+(index&bank)39x2T
+To cache To cache To cache  
+圖 4-10 TLB : 虛擬記憶體轉實體記憶體 
+ 
+Virtual address =Virtual page number(51 位元) +page offset(13 位元) 
+Physical address=physical page number(51 位元)+page offset(13 位元) 
+=Cache tag(39 位元)+Cache index(6 位元)+Cache bank(3 位元)+word/byte offset(6 位元) 
+ 
+由 TLB 查表得知，若是 Hit,表示資料在主記憶體中，此時產生之實體位址就可經由
+Cache 至主憶體之間找尋資料。其產生之實體位址存取資料。在多態串流處理單元上具備
+2-WAY set associative 指令快取、資料快取、共用之 L2 快取和 L3 快取。指令快取，資料快
+取各自有分開的八個 BANK,每一個 line 如在 bank 為 16 個指令，每一指令為 4byte，即 64x8
+位元寬度，pc 位元 5~2 選擇指令的在每一 line/bank 中的偏移位置。 
+如圖 4-11 中所示，指令快取從中取在一個執行緒中最多取得八道指令，若是不滿八道，
+則選擇次高優先權之執行緒儘量滿足 8 道指令。 
+bank7
+63 62 ………………………………..……………1514………..…9 8…….6 5………..1 0
+Tag index bank Byte offsetTag index bank Word/Byte offset
+=
+MUX
+Hitx2T Datax2T
+6x2T
+index TagTIDV TagTIDV
+0
+1
+2
+64x8
+39x2T
+64x8 === =
+TID1
+TID2
+TID1
+TID2
+*1line=64x8bit=64B
+Data Data
+=
+61
+62
+63
+3x2T
+bank0
+Physical address
+ 
+圖 4-11 指令快取記憶體(64KB,8BANK,一行為 64byte) 
+ 
+如當使用 ICOUNT2.8,即為選擇 2 道執行緒中之 8 道指令進入解碼級，如圖 4-12 所示。 
+ 21
+¾ 運算指令格式(Operation format): 其中指令 31-26 位元為 opcode，運算來源暫存器
+為25-21及20-16位元架構暫存器RA及RB編號,位元 15-5為其運算選擇(function),
+位元 4-0 為目的暫存器編號。RC<-RA op RB.其中又以 12 位元區分為圖 4-14 以下
+指令格式,若為 0,位元 15-13 為 SBZ(shouble be zero)，則 RB 存在 RC<-RA op RB;
+若為 1，位元 20-13 為常數 LTI,則 RC<-RA op LTI。 
+Operation formatTID  opcode RA    RB   SBZ 0  Function        RC
+31 26 25 21 20 16 15 5 4
+Operation format
+ 13 12 11
+TID  opcode RA    LIT         1   Function        RC
+ 
+圖 4-14 運算指令之區別 
+主要解碼器分解出之後要使用的運算單元，以及資料暫存器的編碼和 CPU 其他級的控
+制信號, TID 是由處理單元指定 R[2]暫存器作為執行緒的編號，如圖 4-15 所示。在 Alpha
+指令集當中包括了 0-31 的整數架構暫存器，及編號 32-64 的浮點數暫存器。 
+ 
+Insts. 
+圖 4-15 指令經解碼器分解成控制信號 
+ 
+在指令解碼級，完成指令解碼成如圖 4-15 所示,其中分支解碼器功能是判別傳入指令是
+否包括了分支指令，將分支指令後之指令設為無效，若為第一次的分支指令，則進行 BTB
+欄位(BTB vector)的更新，八個解碼器，則是將指令解碼成 opcode、ra、rb/lit、rc、mem_disp、
+br_disp、pal_number、threadID、function 等信號，並將其信號包裝(packet)成一個指令所挾
+帶的資訊至後幾級所需使用信號。 
+在表 4-2 表示在 Alpha 指令碼的分類，以十六進制代表之，其中 FLTI*表示 IEEE 浮點
+指令運算碼，FLTL*表示浮點指令運算碼，FLTV*表示 VAX 浮點指令數運算碼, INTA*表示
+整數指令算數運算碼, INTL*表示整數指令邏輯運算碼,INTM*表示整數指令乘法運算
+碼,INTS*表示整數指令移位運算碼,JSR*表示跳躍指令運算碼,SEXT*表示符號延伸運算
+碼,PAL*以及 RES 則為 Alpha 保留之運算碼.例如:LDA 指令之 opcode 為 08h,INTA 指令之
+opcode 為 10h,BLT 指令 opcode 為 3Ah. 
+表 4-2 Alpha 的解碼運算指令列表 
+Offset 00 08 10 18 20 28 30 38 
+ 23
+ 25
+$16- $21 a0-a5 Integer arguments 
+$22- $25 t8-t11 Temporaries 
+$26 Ra Return address 
+$27 Pv Address of current procedure
+$27 t12 Temporary 
+$28 or AT Reserved for assembler 
+$29 or Gp Global pointer 
+$30 or Sp Stack pointer 
+$31 Zero Always 0 
+表 4-4 執行緒內容－Alpha 架構浮點數暫存器用途 
+Register Use 
+$f0 Returned value from floating point functions 
+$f1 Returned imaginary value from complex 
+$f2- $f9 Callee saved 
+$f10- Temporaries 
+$f16- Floating point arguments 
+$f22- Temporaries 
+One 
+context Active 
+frame Register 
+(floating part) 
+$f31 Always 0.0 
+ 
+4.9.3. 暫存器更名級(Rename stage ) 
+¾ 指令相依(Instruction Dependency) 
+指令中，有兩個相依，資料相依和控制相依，其中控制相依已經被預測推測捉取和回
+復機制解決了，而資料相依指的是在編譯器(Complier)靜態編譯出該指令的運算元依賴前一
+道指令的運算結果。資料相依的原因是暫存器編號是被使用成運算元，而非暫存器中的值。
+由於指令相依的關系，資料相依被分為 read-after-write (RAW), write-after-read (WAR) 以及 
+write-after-write (WAW). 
+例如在圖 4-16 (RAW)，指令(1)寫入 R3 暫存器，而指令(2)之後要讀，則它們之間的關
+係，稱為真實相依(true dependence);WAR 相依發生在指令(1)去讀而指令(2)之後去覆寫它,
+這稱為反相依(anti-dependence)。WAW 相依發生在指令(1)寫入而之後的指令(2)也覆寫入，
+它稱為輸出相依( output dependence)。如圖 4-16 所示。 
+包含 32 個實體暫存器以及共用的 100 個更名暫存器。共用的 100 個暫存器，則會動態分配
+給需要的執行緒。多態串流處理單元也採用了 out-of-order 處理方式，利用暫存器更名的技
+巧，就可以達到更多的指令平行度，允許 out-of-order 在指令處理 WAR 及 WAW 此類的假
+相依，此類的相依可利用對兩個目的暫存器指定不同的實體暫存器即可。它使用架構暫存
+器映射至實體暫存器暫存器解決了 WAR 及 WAW 此類的假相依，保留在推測指令執行程序
+上指令必須相依的部份，因此暫存器更名級消除了 write-after-write 和 write-after-read 暫存
+器相依。 
+ 
+srcA
+srcB
+Dest
+8
+8
+8
+8
+8
+Depend check
+srcA
+srcB
+Dest
+8
+8
+8
+8
+Free 
+R
+egister List
+Mapping 
+Table
+apping 
+Table
+Mapping 
+Table
+Mapping 
+Table
+Mapping 
+Table
+Mapping 
+Table
+Mapping 
+Table
+Context 1
+Mapping 
+Table 
+8TID
+TID 8
+8
+mapping 
+result
+Mapping
+override
+select bits
+srcA
+select bits 
+srcB
+register
+renaming
+result
+8
+RAW recover
+TID
+8
+From ROB
+INT Mapping
+Table X8T
+To Issue
+Form INT Real Mapping 
+TableX8T
+Form 
+Decode
+8
+ 
+圖 4-18 Concurrent MT 處理單元中的暫存器更名級 
+ 
+在多態串流處理單元中的暫存器更名級如圖 4-21,具有個自的架構-實體暫存器映射表
+和閒置的暫存器列表，每一個執行緒有私自的對映表，共用的閒置暫存器列表(Free register 
+list)。對應表處理現行推測邏輯給實體暫存器對應。他映射指令暫存器從架構至實體暫存器
+空間。閒置的暫存器列表處理實體暫存器並不在使用的列表。新的實體暫存器會從閒置的
+暫存器列表中，從目地暫存器儲存至對應表上，使兩者相同，而舊的目的暫存器先前的實
+體暫存器的對映值也會被儲存，以方便在指令完成時，釋放出先前的實體暫存器，進一步
+重新被使用。 
+例如，在圖 4-19，單一執行緒若是 WAW 相依是被消除的，指令(2)和(3)可以被執行在
+OUT-OF-ORDER 。 而 因 為 WAR 相 依 的 消 除 ， 指 令 (1) 和 (4) 也 可 以 被 執 行 在
+OUT-OF_ORDER。然而，由於 RAW 相依的關系，指令(4)必須在指令(3)完成之後才可以執
+行。所以在暫存器更名級，並不能消除 RAW 型式的相依，RAW 相依必需保留。為了這種
+情況，對應表的覆寫(Override)，他會檢查 8 道指令，去看他是否有 RAW 相依性存器，若
+有此種情況，則覆蓋之前被從新更名的情形. 
+ 27
+srcA
+srcB
+Dest
+8
+8
+8
+8
+8
+Depend check
+srcA
+srcB
+Dest
+8
+8
+8
+8
+Free 
+R
+egister List
+Mapping 
+Table
+apping 
+Table
+Mapping 
+Table
+Mapping 
+Table
+Mapping 
+Table
+Mapping 
+Table
+Mapping 
+Table
+Context 1
+Mapping 
+Table 
+8TID
+TID 8
+8
+mapping 
+result
+Mapping
+override
+select bits
+srcA
+select bits 
+srcB
+register
+renaming
+result
+8
+RAW recover
+TID
+8
+From ROB
+INT Mapping
+Table X8T
+To Issue
+Form INT Real Mapping 
+TableX8T
+Form 
+Decode
+8
+(inst1) 2. addq r0,   r8,    r2
+(inst2) 2. subq r1,   r4,    r3
+(inst3) 2. mull   r4,   r5,    r3
+(inst4) 2. addq r3,   r7,    r8
+(inst5) 1. subq r0,   r4,    r3
+(inst6) 1. addq r8,   r6,    r4
+TID      srcA srcB dest
+Mapping table (before)
+(inst1) 2. addq P30,  P68,   
+(inst2) 2. subq P26,  P2,    
+(inst3) 2. mull   P2,    P15,   
+(inst4) 2. addq P84,  P91,
+(inst5) 1. subq P0,    P6,
+(inst6) 1. addq P12,  P55,  
+TID          srcA srcB dest
+P15
+P34
+P31
+P201
+P29
+P99
+RAW lose!
+(inst1) 2. addq P30,  P68,   
+(inst2) 2. subq P26,  P2,    
+(inst3) 2. mull   P2,    P15,   
+(inst4) 2. addq 1,
+(inst5) 1. subq P0,    P6,
+(inst6) 1. addq P12,  P55,  
+TID          srcA srcB dest
+ 29
+P31,  P9
+P15
+P34
+P201
+P29
+P99
+P31
+RAW recover!
+ 
+圖 4-21 多態串流處理單元中發現 RAW 後 RECOVER 之情形 
+ 
+由於在之前我們已設定指令相關資訊，像是暫存器相依關係。因此，我們在暫存器更
+名這部份，我們實際的 map 目的暫存器至實體暫存器可用的數量上，因為更名與影響真實
+的指令相依關係，所以我們記錄實體暫存器使用情況與至最後 ROB 可以將真實的實體暫存
+表做對應。 
+4.9.4. Queue 
+在多態串流處理單元中的發射級如圖 4-22 所示，指令發射級分成整數和浮點數的部
+份，每一個指令佇列最多可以儲存 64 道指令。在多態串流處理單元架構上，指令佇列是被
+多個執行緒所共享的。指令佇列將會發射指令至相關的執行功能單元上。當指令運算元是
+可用的，他們就會發射至功能單元，而不用顧慮他們來自那一個執行緒。優先發射最早的
+指令。並不需要增加特別的硬體在發射級。最大指令發射的數目是 9 個，包括了 6 個整數
+指令，3 個浮點數指令，4 個 LOAD/STORE 指令 LOAD/STORE 是併在 6 個整數發射頻寬
+內。 
+在指令發射的機制上面，由於在有多個執行功能單元，為了增加指令平行度，避免執
+行單元被閒置住，必須克服的三大危障，即資料危障、控制危障以及結構危障，將三大危
+障都克服之後，則指令即可發射至下一級。 
+s b _ c o u n te rs s b _ a c t iv a te
+… …
+P 0
+P 1
+P 2
+.
+.
+.
+P 3 5 4
+P 3 5 5
+P h y s ic a l
+R e g is te rs b o a rd
+…
+S c o r e b o a rd  m o d u le R e g f ile m o d u le
+ 31
+o r
+S c h e d u le r
+R e g is te r  S ta tu s  T a b le
+3 5 6 3 5 6
+3 5 6
+1 -b it 1 -b it5 -b it
+P 0
+P 1
+P 2
+.
+.
+.
+P 3 5 4
+P 3 5 5
+(  R R  S ta g e  )(  Is s u e  S ta g e  )
+ 
+圖 4-23 Scoreboard 機制 
+Scheduler
+Instruction Status (Issue Queue) Register Result Status
+P0
+P1
+P2
+P355
+Read?Valid     Issue
+Inst0
+Inst1
+Inst63
+Head
+Tail
+ 
+圖 4-23 Scheduler 機制 
+¾ scheduler :佇列中的指令是否要求的暫存器資料。相依指令會在來自執行單元
+(execute unit)或是讀取記憶體(register read)的結果回授回來之後，儘可能的發射出
+去。 
+Scheduler 和 scoreboard 的配合關系如下，當 scheduler 中假設有 8 道指令來自不同執行
+緒，而其中 addq、ldl、br 指令可以發射，即將指令發射出去，並利用 scoreboard 
+Decoder
+Enable
+Mux
+alu1WtDate
+64
+alu1WtAddr 63
+6
+64
+11 1 1 1
+64 64 6464
+64
+64 64
+6
+Mux
+64
+R0     R1    R2      R3  ．． ． ． ．． ． ． ．． ． R354 R355
+Mux
+64
+alu1RegWrite
+Decoder
+Enable
+63
+6
+Decoder
+Enable
+alu6/lwWtaddr 63
+6
+alu6/lwrRegWrite
+...
+64 64
+... ...
+64
+64
+64
+alu2WtAddr
+alu2RegWrite
+6464
+Mux MuxMux
+..... 64 64 64
+alu2WtDate alu3/lwWtDate
+alu1/2_Date1:RA,br_RA
+alu1/2_data2:RB
+alu1Date1 alu2Date1
+alu1RdAddr1
+alu1RdAddr2
+... ... 6
+alu2Date2
+alu2RdAddr1
+alu2RdAddr2
+6
+write port: 6
+read port: 12
+64
+alu6/lwWtDate
+．． ．
+．．．．．．．．．．．．．．．．．．．．．．．．
+alu5Date2 alu6Date1 alu6Date2
+alu5RdAddr2
+alu6RdAddr1
+alu6RdAddr2
+alu3/4/5/6_Date1:RA,br_RA,ld/st_RA
+alu3/4/5/6_Date2:RB,ld/st_RB
+alu1Date2
+..... 
+.....
+reg_ready
+_vector R355
+ 
+圖 4-25 暫存器讀取和寫入 
+ 
+在暫存器讀取級中，由於是利用實體暫存器的關系，在多態串流處理單元中，由於
+master 執行緒在產生 slave 執行緒時，必須將執行緒暫存器內容(context)複製。在 Concurrent 
+MT_fork 指令的動作如下，在例如執行緒 0(master thread)在暫存器檔案中位於 1-31 位置的
+暫存器，有執行緒編號(context number)、該執行緒的架構暫存器編號(architecture register 
+number)、該執行緒使用的實體暫存器編號(physical register number)，將複製至執行緒 1(slave 
+thread)的內容之中，其中其實體暫存器編號使用 free register list 中的 32 個暫存器。 
+相同的，當執行緒終止時，只要將該執行緒的實體暫存器編號還給 free register list 即
+可。 
+ 33
+級之指令，為了保証改變處理單元的所屬執行緒的指令在動態排序的處理單元可以在程式
+依照順序的情況下退去，以確保該執行緒中的程式是依序執行的，會在 commit 此級依序檢
+查並可將配置的硬體資源的釋放、更新 pc 值等。 
+Ar Reg.N
+PHy Reg.N
+IRMTX8T
+Tail
+Head 8Tx8I
+From WB
+Commit
+X8T
+From Rename
+(In order in) 
+TID
+9I
+Thread’s Instruction dispatch
+FRMTX8T
+ROBX8T
+8Tx8I
+8Tx8I
+To FRT To IRT
+Ar Reg.N
+PHy Reg.N
+Ar Reg.N
+PHy Reg.N
+TID
+TID TID
+TID
+To Rename
+To Fetch 
+PCTaken/
+Not taken
+To PHR/GHR/BTB
+TID
+Ar Reg.N
+PHy Reg.N
+To FreeReglist
+Free PHy Reg.N
+ 
+圖 4-27 多態串流處理單元 Commit 級 
+ 
+在多態串流處理單元架構中，Commit 級如圖所示，每一個執行緒有各自的 ROB，ROB
+是實現在環形的 FIFO 佇列，藉由 HEAD 和 TAIL 指標指向頭和尾。ROB 內的項目是依照
+執行緒程式的指令順序進入的。依執行緒的不同(TID)，在更名級進入 ROB(re-order-buffer)
+之指令，各執行緒的 Commit 單元會在當發生中斷或是分支預測錯誤時，回復至執行緒精
+確的狀態(此時會更新執行緒的 pc 值給捉取級)。 
+每一 ROB 頭端的前 8 道指令，在單一週期內會被依序完成退役的動作，退役指令之更
+名暫存器(free Phy.reg.N)會被釋放出來至更名級的 freelist table，並且更新整數/浮點數真實
+映射表(IRMT/FRMT),若發生推測執行錯誤(prediction miss)，則更新其執行緒至該支分錯誤
+的 PC 值給捉取級，並把 IRMT/FRMT 至換至更名級的 RMT/FMT。無論是否預測正確，全
+域歷史變數暫存器(GHR)以及 pattern history table(PHT)會得到更新。 
+4.10. 執行緒指令與同步機制 
+¾ 執行緒指令 
+ 我們將Ａlpha 指令集未使用到的指令作為執行緒指令與同步指令，其同步指令可
+以利用Ｃ語言中安插組合語言函式 asm_()放入該指令中，同步指令和 Concurrent MT 指令
+如 表 所 例 ， Concurrent MT_FORK 行 為 在 產 生 一 個 新 的 執 行 緒 ，  Concurrent 
+MT_TERMINATE 指令僅將該執行緒的硬體 running 信號禁能，Concurrent MT_LOCK/ 
+Concurrent MT_RELEASE 被用來做為 Concurrent MT 的同步指令。 
+表 4-5 Concurrent MT 指令 
+Thread instructions Hex format Complier  Note 
+Concurrent 
+MT_FORK 
+0x47e0141f bis $31, 0, $31 產生一個執行
+緒,R[4]=TPC ,R[16]= TID 
+ 35
+ 37
+第三道 Concurrent MT 指令，則將主執行緒之暫存器內容存至該執行緒的暫存器中，
+接著從屬執行緒的 running 信號就可以致能並跳至該執行緒所要執行的程式區段，開始執
+行。如圖中所示,主執行緒 0 產生執行緒 7 之過程。  
+¾ Concurrent MT_TERMINATE  
+此指令即是終止該該執行緒之指令，它會將 Concurrent MT 處理單元中將該執行緒在
+禁能(disable)，並將該執行緒硬體資源釋放出來，以利下一執行緒的產生使用。 
+¾ 同步機制 
+在[13]中提出一個可調節的機制，它允許執行緒在處理單元內部在花費較少成本而達到
+同步的效果。藉由中斷執行緒時，也不會浪費處理單元資源。此方式稱為 LOCK-BOX，
+Concurrent MT 中即是利用此機制達到執行緒同步的效果。LOCK-BOX 使用硬體去支援執
+行緒中斷及上鎖。執行緒除了自己本身可以上鎖以及釋放所有資源外，其他執行緒使用時，
+則會失敗。 
+主要執行緒中所導至分支執行緒中斷時，當主執行緒會在釋放分支執行緒的上鎖信
+號，分支執行緒會重新執行。 
+達 到 此 同 步 機 制 主 要 是 由 二 道 指 令 達 成 : Concurrent MT_LOCK/Concurrent 
+MT_RELEASE 
+¾ Concurrent MT_LOCK: 
+Concurrent MT_LOCK 指令要求多工 memory-base 上鎖。若是沒有其他執行緒上鎖該
+位址，則可以上鎖成功。R[2]會先放入上鎖位址，Concurrent MT_LOCK 指令會寫＂1＂進
+入上鎖的記憶體位置。若是另一個執行緒剛好要上鎖此處，則會被設定成等待。Concurrent 
+MT_LOCK 指令直到上鎖位置是被釋放成功之後，才能執行完成。這表示所有屬於該執行
+緒在管線化中的指令是被壓搾的。則在捉取單元中，則會停止該捉取該執行緒指令進入處
+理單元管線化中。 
+¾ Concurrent MT_RELEASE: 
+Concurrent MT_RELEASE 指令會釋放上鎖位址，事先 R[2]會先放入上鎖位址，並會寫
+“０＂進入至釋放位址，這會叫醒正在等此位址的執行緒得以上鎖該位址，若是有多個執
+行緒剛好都在等待此位址，則將此位址的上鎖權交由最先要求上鎖的執行緒。若沒有其他
+執行緒等待上鎖，則此指令會寫＂0＂至記憶體位址。否則下一個執行緒則無法中斷和上
+鎖，記憶體位置也無法提供警示信號。 
+Thread 
+ID 
+Valid 
+Lock 
+address 
+Inst 
+ID 
+Time 
+Stamp 
+0 1 0x24511000 105 10350 
+1 0    
+2 0    
+3 1 0x10001068 21 9000 
+4 0    
+5 1 0x24511000 37 8010 
+6 0    
+7 0    
+      圖 4-29 lock-box 的結構 
+多態串流處理單元架構時所使用的軟硬體工具、交叉編譯器以及程式語言.  
+ 
+表 5-1 軟硬體工具、交叉編譯器以及程式語言 
+硬體配備 軟體工具 交叉編譯器 程式語言 
+CPU PM 3.0G Linux Red  
+hat 8.0 
+Linux-X86 platform C 
+RAM 2 GB  Alpha-linux-gcc C++ 
+  ¾ gcc-core-3.1.tar.gz  
+¾ binutils-2.12.tar.gz 
+¾ alpha-linux system files 
+ 
+ 
+我們使用了以下的技巧及步驟,如圖 5-1 所示，首先，我們經由程式寫出 C++程式的原
+始程式（Source program），經由交叉編譯器形成 Alpha 指令集的 ELF 格式之機器碼，放進
+多態串流處理單元架構的記憶體區段中。並開始執行模擬程式的動作。其中記憶體區段中，
+包括了各別執行緒之指令區段、資料區段和堆疊區段等等。
+圖 5-1 架構模擬順序 
+ 
+我們利用交叉編輯器中產生出我們所要的程式之後，將其指令區段以及資料區段中的
+資料重新配置至模擬器中的記憶體空間，由於 ELF64（Executable and Linking Format）是 
+object file 的檔案格式，其主要結構是以 section（節區）為主，所以我們會將各節區配置
+資料至多態串流處理單元架構上。 
+在此部份是當我們設計架構上的參數設定。在之前，我們以介紹了多態串流處理單元
+架構設計與應用。在此章節中，我們會在此多態串流處理單元架構參數下實驗。多態串流
+處理單元架構的主要參數和記憶體參數會在表 5-2 和 5-3 列表。 
+表 5-2 多態串流處理單元參數設定 
+CPU Parameters 
+Parameter  Value 
+……… 
+int a; 
+for{ 
+… 
+} 
+0101001
+1100001
+… 
+Alpha
+cross
+compiler
+ 
+Malloc 
+Thread’s 
+(text section) 
+(data section)
+(stack 
+section)…..
+CONCURRENT MTSIM
+S imulator 
+ 
+1254 cycle
+255 instr . 
+… 
+Performance
+Metrics  
+ELF
+LoaderBinary 
+ Object 
+Code 
+Application 
+Program
+(C language) 
+ 39
+ 41
+susan(corners) tiff2rgba (blowfish) stringsearch   
+susan(smoothing) tiff-data     
+ tiffdither     
+ tiffmedian     
+ typeset     
+ 
+各類測試程式之介紹： 
+Automotive and Industrial Control：此類 Benchmarks 主要應用於嵌入式控制系統中，典
+型的應用如 air bag (安全囊)controllers、引擎效能監視器(engine performance monitor)和感應
+系統(sensor systems)，其主要工作為基本數學運算、bit manipulation、data input/output 和 
+simple data organization。 
+Network：嵌入式處理器在網路設備如交換機(switches)、路由器中，其主要用作 shortest 
+path calculations、tree and table lookups 和 data 
+input/output。 
+Security：隨著網路的發展，資訊安全逐漸顯其重要性，在此種類 Benchmarks 裡包含
+數種常見的加解密演算法及 hash 演算法，如 Pretty Good Privacy(PGP)、 rijndael 
+encrypt/decrypt、blowfish encrypt/decrypt 等。 
+Comsumer：此類常見的設備為掃描機、數位相機、PDA，其需要作多媒體、影像編(解)
+碼(jpeg,tiff)、MP3 編(解)碼、html typesetting 等工作，因此選擇 jpegenc(dec)、lame、mad、
+tiff、typesetting 等演算法作為 Benchmark。 
+Office automation：此類常見的設備為印表機、傳真機及文書處理器，其主要作文書處
+理工作，因此選擇 ghost-script、string-search 等演算法作為 Benchmark。 
+Telecommunications：隨著網路之發展無線通訊技術多已整合於可攜性的消費性電子產
+品，因此此類之應用亦列為 Benchmarks，其主要包含聲音的編解碼、 
+frequency analysis 和 checksum 演算法，如 FFT、GSM、CRC32 等。 
+  
+多程式測試(multi-program testing) 
+ 在多程式之中，我們利用 Alpha-linux-gcc 交叉編譯器，參數設定為最佳化的-O2,並將
+單一程式以一個執行緒來進行測試程式的運算，並依照 small 以及 large 之程式大小執行。
+其不同執行緒的測試結果如下: 
+¾ 單一執行緒測試程式與模擬結果  
+Mibench 列出的 Benchmark 我們挑選每類一至二個程式進行測式，其測試之程式與程
+式模擬結果如下:  
+表 6-2 單一執行緒測試程式與模擬結果 
+Mibench Application Input data Cycle Instruction Floating point Integer Load/Store IPC 
+small 40080743 128432487 5032342  3 92% 77704113  60 50% 45696032  35 58% 2 75 Basicmath 
+large 1500195056 521495838 46052735  0 96% 35805904237  68 66% 1463219756  30 38% 2 829 
+small 16307298 54741130  0  0 00% 32780628  59 88% 21960502  40 12% 3 096 
+automotive 
+Qsort 
+large 289083894 1035261126  8086715  0 78%  736598369  71 15% 290576042  28 07% 3 362 
+ 43
+rijndael small(encoder) 12619871 73932839 71, 0.00% 56420170, 76.31% 17512598, 23.69% [ 3.058, 2.646,] = 5.704 
+Benchmark12 bitcount small 17305424 96871981 100, 0.00% 78840886, 81.39% 18030995, 18.61% [ 2.230, 3.133,] = 5.364 
+high Thread 
+IPC mixed 
+sha large 56054778 211227484  9349722, 4.43% 149383474, 70.72% 52494288, 24.85% [ 1.843, 1.453,] = 3.296 
+Benchmark13 
+crc32 small 52204668 201198163 9345061, 4.64% 141575137, 70.37% 50277965, 24.99%  [ 1.801, 1.560,] = 3.361 
+high Thread 
+IPC mixed 
+fft small 52540874 314034452 0, 0.00% 226287611, 72.06%  87746841, 27.94% [ 3.026, 2.914,] = 5.940 
+benchmark14 
+jpeg encoder 97802156 516856599  0, 0.00% 350321122, 67.78% 166535477, 32.22% [ 1.626, 3.639,] = 5.265 
+float point & 
+integer  
+patricia small 133317009 610883088  26887129, 4.40% 392422403, 64.24% 191573556, 31.36% [ 1.807, 2.173,] = 3.980 
+benchmark15 
+fft large(ifft) 139949816 638766814  26920984, 4.21%  410265770, 64.23% 201580060, 31.56% [ 1.721, 2.258,] = 3.980 
+float point & 
+integer  
+qsort large 396358044 1897438890 35111520, 1.85%  1369185365, 72.16% 493142005, 25.99% [ 2.452, 1.943,] = 4.396 
+Benchmark16 
+fft large 440176426 2012761879  35177213, 1.75% 1458393190, 72.46% 519191476, 25.79% [ 2.208, 1.993,] = 4.202 
+float point & 
+integer  
+ 
+¾ 四執行緒測試程式 
+四執行緒我們採用單一執行緒做混合，使其執行緒的數量為 4，進行處理單元效能的
+評估，但是由於不同執行緒的結束時間不一，故我們評量效能時，採用最後一個執行緒結
+束的週期數做為基準。其四執行緒，其測試程式如表 6-4 所示。 
+表 6-4 四執行緒測試程式與模擬結果 
+Mibench 4 threads Input data size end Cycle Instruction Floating point Integer Load/Store IPC note  
+stringsearch large 5171132 30805614 17, 0.00%  24323785, 78.96% 6481812, 21.04%  [ 1.367, 1.609, 1.501, 1.294,] = 5.771 
+sha small 8677443 51840006 30, 0.00%  40625617, 78.37%  11214359, 21.63% [ 0.814, 1.760, 1.703, 1.567,] = 5.845 
+rijndael small(encoder) 16774993 100137629  95, 0.00% 77313139, 77.21% 22824395, 22.79% [ 0.421, 0.911, 2.301, 2.248,] = 5.880 
+benchmark1 
+bitcount small 20565259 118485730  110, 0.00%  95525200, 80.62%  22960420, 19.38% [ 0.344, 0.743, 1.877, 2.637,] = 5.600 
+general 
+case 
+bitcount small 32916690 189484140  3716188, 1.96%  137307071, 72.46%  48460881, 25.58% [ 1.647, 1.332, 1.240, 1.325,] = 5.545 
+qsort small 36209790 208666155 3726718, 1.79% 149911971, 71.84%  55027466, 26.37%  [ 1.497, 1.395, 1.296, 1.365,] = 5.553 
+fft small(ifft) 45829648 259730531  3763454, 1.45% 184211617, 70.92% 71755460, 27.63% [ 1.183, 1.102, 1.605, 1.566,] = 5.456 
+Benchmark2 
+dijkstra small 48464024 269789521 3763454, 1.39%  191180662, 70.86% 74845405, 27.74%  [ 1.119, 1.042, 1.518, 1.679,] = 5.358 
+general 
+case 
+basicmath small 83948404 471936219 12182891, 2.58% 310041542, 65.70% 149711786, 31.72%  [ 1.313, 1.231, 0.970, 1.843,] = 5.357 
+fft small 76737632 431830621 11799402, 2.73%  284705560, 65.93% 135325659, 31.34% [ 1.226, 1.346, 1.061, 1.725,] = 5.359 
+jpeg encoder 76715891 431707055  11797615, 2.73% 284625608, 65.93% 135283832, 31.34%  [ 1.225, 1.346, 1.062, 1.725,] = 5.359 
+Benchmark3 
+crc32 small 128855931 673155292  12182891, 1.81% 433094721, 64.34% 227877680, 33.85% [ 0.855, 0.802, 0.632, 2.762,] = 5.051 
+general 
+case 
+jpeg encoder 68360731 383263283 6075444, 1.59% 253321560, 66.10% 123866279, 32.32% [ 1.192, 2.025, 0.549, 1.631,] = 5.395 
+crc32 small 141543429 782311824 6075444, 0.78% 512479844, 65.51%  263756536, 33.72% [ 0.575, 2.514, 0.265, 2.029,] = 5.384 
+rijndael large(decoer) 25909856 134182964 620, 0.00%  93579735, 69.74% 40602609, 30.26% [ 1.035, 1.380, 1.447, 1.227,] = 5.089 
+Benchmark4 
+dijkstra large 143327951 789199638 6075444, 0.77% 517253131, 65.54% 265871063, 33.69%  [ 0.568, 2.483, 0.262, 2.050,] = 5.363 
+general 
+case 
+dijkstra large 207729771 1219917489 25401917, 2.08% 818498580, 67.09% 376016992, 30.82% [ 1.414, 1.688, 1.160, 1.267,] = 5.530 
+rijndael large(encoder) 225840148 1322105162  25474510, 1.93% 885789072, 67.00%  410841580, 31.07% [ 1.301, 1.780, 1.067, 1.366,] = 5.513 
+patricia small 203828376 1197044859  25390817, 2.12% 803198485, 67.10% 368455557, 30.78%  [ 1.409, 1.681, 1.182, 1.256,] = 5.528 
+Benchmark5 
+fft large(ifft) 227759522 1330112783 25484253, 1.92%  890928122, 66.98% 413700408, 31.10% [ 1.290, 1.765, 1.058, 1.388,] = 5.500 
+general 
+case 
+rijndael small(encoder) 25450661 152522112  86, 0.00% 113507493, 74.42%  39014533, 25.58% [ 1.517, 1.455, 1.518, 1.457,] = 5.947 
+bitcount small 34605189 207422016 100, 0.00% 158010498, 76.18% 49411418, 23.82% [ 1.115, 1.567, 1.661, 1.589,] = 5.932 
+sha large 68064827 407411251 100, 0.00% 302182376, 74.17% 105228775, 25.83% [ 0.567, 0.797, 2.336, 2.236,] = 5.936 
+Benchmark6 
+crc32 small 113522669 611110195  100, 0.00% 426752102, 69.83%  184357993, 30.17%  [ 0.340, 0.478, 1.400, 3.135,] = 5.353 
+high 
+IPC 
+Benchmark7 qsort large 667868044 3243167222 54398962, 1.53% 2290649008, 70.63%  988577386, 27.83% [ 1.455, 1.140, 1.042, 1.219,] = 4.856 float 
+¾ 執行緒切割方式 
+通常切割執行緒的動作，是以資料區段來分別每一執行緒，也就是說，在各平行區塊
+運算的執行緒之間並無相關性，才能符合執行緒在硬體上平行執行之運算需求。其切割方
+式模式如下: 
+Original loop
+For (j=1;j<n;j++)
+For (i=0;i<m;i++)
+{Operations (i,j);…….. }
+Blocked parallelization
+For ( j=(n*thread id /thread number);
+(j<(n(thread id+1)/thread number);j++)
+For (i=0;i<m;i++)
+{Operations (i,j);…….. }
+ 45
+Thread 0
+Thread 1Thread 0
+Thread 3Thread 2
+3*n/thread 
+number=<j<4*n/thread 
+number;
+1*n/thread 
+number=<j<2*n/thread 
+number;
+ 
+圖 6-1 以 4 個執行緒同時完成一份工作 
+ 
+如圖，我們將原本只有單一執行緒所執行的程式，利用了資料區塊切割區塊平行
+(blocked parallelization)之執行緒，每一區塊的 index(j),依照切割區塊的範圍來做平行運算。
+再進行 operations(I,j)之運算。例如在圖中，執行緒 1 執行資料範圍在 1*N/Thread number
+至 2*N/Thread number 之運算。 
+¾ 執行緒同步方式 
+在執行同步的方式，我們使用的柵欄同步(Barrier synchronization),此方法是確保執行緒
+不會超越執行(outrun)其他執行緒的情況發生，當單一執行緒到達了柵欄，必須等待每一個
+平行的執行緒都到了柵欄時，才可以繼續執行。 
+在圖中，程式由循序(sequential)程式進入 thread number=4 之平行(parallel)的執行緒執
+行，再進入循序的狀態下，此處我們使用了二個函數 initial_Concurrent MT_barrier()、
+Concurrent MT_barrier()作執行緒起始和結束的同步，其步驟如下: 
+ 47
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+在平行程式測試我們採用累加器(Accumulator)、快速傅利葉轉換(FFT)以及 JPEG 做測
+試，其測試結果的切割程式之方式以四或八個執行緒為例,為了確保各執行緒在同時執行，
+我們會利用 barrier 同步方式 ,起始點用 Init_Concurrent MT_barrier()函式以及終點用
+Concurrent MT_barrier()函式同步執行緒的動作。 
+1 static void concurrent MT_barrier( ) { 
+2  int thread_conuter; 
+3  concurrent MT_lock(&barrier.entrylock); 
+4  thread_counter = ++barrier.entry_count; 
+5  if (thread_counter < thread number) { 
+6    concurrent MT_release(&barrier.entrylock); 
+7    concurrent 
+MT_lock(&barrier.waitlocks[thread_counter-1]); 
+8    concurrent 
+MT_release(&barrier.waitlocks[thread_counter]); } 
+9  else { 
+10    concurrent MT_release(&barrier.waitlocks[0]); 
+11    concurrent MT_lock(&barrier.waitlocks[thread 
+number-1]); 
+12    barrier.entry_count = 0; 
+13    concurrent MT_release(&barrier.entrylock); 
+14  } 
+15 }  
+¾ 累加器(Accumulator) 
+ 累加器之動作為 1 加至 10000，在單一程式之下，其程式如下 
+For (j=1;j<10000;j++){sum=sum+j}; 
+比如我們將其指令切成四個執行緒。其程式如下,將 par_sum_0 至 par_sum_3 各別利用
+一個執行緒完成，最後再利用執行緒 0 進行各部份和加總起來，將 par_sum_0=3126250、
+par_sum_1=9376250、par_sum_2=15626250、par_sum_3=21876250  
+If(thread_id=0) For (j=1;j<2501;j++){par_sum_0=par_sum_0+j}; 
+If(thread_id=1) For (j=2501;j<5001;j++){par_sum_1=par_sum_1+j}; 
+If(thread_id=2) For (j=5001;j<7501;j++){par_sum_2=par_sum_2+j}; 
+If(thread_id=3) For (j=7501;j<10001;j++){par_sum_3=par_sum_3+j}; 
+加總。其最後加總為 50005000。我們會以圖中 (1)init_Concurrent MT_barrier()及
+(2)Concurrent MT_barrier()作執行緒起始點與終點等待的同步動作。形成如圖所示。 
+ 
+ 
+ 
+ 
+X[0]
+X[1]
+X[2]
+X[3]
+X[4]
+X[5]
+X[6]
+X[7]
+X[8]
+X[9]
+X[10]
+X[11]
+X[12]
+X[13]
+X[14]
+X[15]
+X[0]
+X[8]
+X[4]
+X[12]
+X[2]
+X[10]
+X[6]
+X[14]
+X[1]
+X[9]
+X[5]
+X[13]
+X[3]
+X[11]
+X[7]
+X[15]
+thread0
+thread1
+thread2
+thread3
+thread4
+thread5
+thread6
+thread7
+(1) (1&2) (1&2) (1&2) (2)
+(1) init_smt_barrier() (2) smt_barrier()
+stage1 stage2 stage3 stage4
+ 
+圖 6-4 16 點 FFT 執行緒數量為 8運算之示意圖 
+ 
+相對而言，在 MIBENCH 中之 FFT，我們進行了 4096 點(輸入資料為 small 大小)之 FFT
+程式，進行了採用執行緒數量為 1/2/4/8 的 FFT 運算，其模擬結果如表 6-7 所示。 
+表 6-7 取樣 4092 點之 FFT 在執行緒數為 1/2/4/8 之模擬結果 
+Parallel program[ FFT_small-4092 point ] 
+Thread 
+number 
+Total 
+cycle 
+Instruction Integer  floating  load/store  syn IPC 
+1 548875 1870125 609576, 32.60% 974972, 52.13% 285577, 15.27% 0 3.395 
+2 490235 2255011 980854, 43.50% 478544, 21.22% 795328, 35.27% 285, 0.01%  4.579 
+4 491203 2257355 981855, 43.50% 478474, 21.20% 796705, 35.29% 321, 0.01%  4.576 
+8 496374 2264634 985759, 43.53% 478651, 21.14% 799649, 35.31% 575, 0.03%  4.539 
+¾ JPEG(Joint Photographic Experts Group) 
+JPEG是一種針對相片影像而廣泛使用的一種失真壓縮標準方法,首先會從Bmp檔案中
+取樣(sample)，接下來進行色彩空間轉換(RGB2YUV)，將RGB轉換為一種稱為YUV的不同色
+彩空間並使用4:2:0之downsampleing，接下來進行 8x8 的離散餘弦變換 
+ 49
+Multi_Thread IPC Result
+3.4
+4.8
+5.5 5.7
+2.8
+4.9 4.8 4.8
+3.4
+4.6 4.6 4.5
+1.8
+2.5
+3.3
+3.7
+0
+1
+2
+3
+4
+5
+6
+1 2 4 8 1 2 4 8 1 2 4 8 1 2 4 8threads
+JPEG encoderFFTAccumulatorMulti program
+IPC 
+ 
+圖 6-6 多程式及平行程式在執行緒數量 1/2/4/8 平均之 IPC 比較圖 
+¾ IPC 穿遂率 
+在表 5-9 以及圖 5-12 之中，我們可以得到多態串流處理單元架構，多執行緒在不同數
+量之下可以使得處理單元的加速指令的穿遂率，可得到 IPC 1.65~2.10 倍的提升。 
+表 5-9 執行緒數為 1/2/4/8 之 IPC 上升結果 
+Throughput Speed up 
+Parallel programmed Number of 
+threads 
+Multiprogrammed 
+[Benchmark IPCs avg.] Accumulator FFT JPEG 
+1 1.00 1.00 1.00 1.00 
+2 1.38 1.74 1.35 1.41 
+4 1.60 1.72 1.35 1.86 
+8 1.65 1.71 1.34 2.10 
+ 
+8Threads
+4Threads
+2Threads
+1Thread
+JPEGFFTACCMP
+2.5
+2
+1.5
+1
+0.5
+0
+圖 6-7 執行緒數為 1/2/4/8 之 IPC 加速結果 
+¾ 時間花費(Time cost) 
+ 51
+ 53
+在未來, Concurrent MT 和 CMP 在將來成為了二種具備 ILP 及 TLP 高效能處理單元。
+由架構上來看, Concurrent MT 架構靈活性超過 CMP 。特別是當 ILP 不足, CMP 可能有會
+有資源浪費的情況，多態串流處理單元架構可以克服這個問題，適用於嵌入式領域使用在
+較小面積的應用。因此，未來的處理器結構可能將是多態串流 Concurrent MT 和 CMP 的組
+合,以充份讓處理單元能具備多態串流 Concurrent MT 和 CMP 的特性,這是以後我們未來發
+展的方向。

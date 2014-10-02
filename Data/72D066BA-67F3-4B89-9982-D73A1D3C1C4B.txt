@@ -1,0 +1,809 @@
+2中文摘要
+本整合型計劃之目的在建立一之行動視訊會議系統, 為了達到車輛對車輛間在高速行駛下能夠有
+高品質的影音傳輸,本子計畫係根據 3GPP-LTE 的規格來設計開發多輸入輸出正交分頻多工行動通
+訊系統之下行接收機，我們提出了細胞分區識別(sector ID)偵測與細胞分群識別(cell group ID)偵測
+等演算法來進行蜂巢/細胞搜尋(cell search)，另外，考量系統所需支援高速行駛速率達 240Km/hr，
+我們開發了高速行駛下之同步追蹤與通道追蹤機制、子載波間干擾消除以及多輸入輸出訊號偵測等
+相關關鍵技術。在同步參數追蹤上，我們充分利用了 3GPP-LTE 的分散式領航訊號(scattered pilot)
+之幾何特性，降低時間軸上的取樣時間來得到較好的追蹤效果。在通道追蹤上，採用遞迴最小方差
+(recursive least squares, RLS)演算法搭配決策回授(decision feedback)來調整通道內插器之參數，為了
+避免錯誤決策造成的錯誤傳遞(error propagation)，我們根據錯誤決策影響的程度以及訊號的可靠度
+訂出適切的篩選機制。同時，在接收機的硬體架構設計上，採用了硬體共享的技術來整合細胞分區
+識別偵測、細胞分群識別偵測、整數部分載波頻率偏移偵測、訊框偵測等模組，有效的降低硬體複
+雜度，另外並利用分時多工與排程等相關技術完成遞迴最小方差演算法在多輸入輸出應用裡的設計
+以降低大量乘法器的需求，達到高硬體使用率與高傳輸率之接收機硬體設計之計劃目標。
+關鍵字: 多輸入輸出、正交分頻多工、3GPP-LTE、行動通訊、4G、子載波間干擾消除、蜂巢識別
+4目錄
+1. 前言…………………………………………………………………….….5
+2. 研究目的…………………………………………………………………..6
+3. 研究方法…………………………………………………………………..6
+4. 結果與討論……………………………………………………………….18
+5. 計劃成果自評…………………………………………………………….20
+6. 發表論文………………………………………………………………….22
+執行單位：國立中央大學電機工程學系
+61 提供了目前新一代的無線通訊系統標準的比較。本整合型計劃在構建ㄧ適用於高速行駛環境下之
+視訊會議系統，為了能夠有高品質的影音傳輸，本子計畫係根據 3GPP-LTE 的規格來設計開發高傳
+輸率無線通訊系統，同時，3GPP-LTE 系統具有多模(mode)的參數設定，其基準(baseline)設計即採
+用兩根天線的方式傳輸，因此本計畫將提供在高速行駛下之多輸入輸出正交分頻多工系統之通道追
+蹤等化、訊號偵測等相關關鍵技術。
+二、 研究目的
+本整合型計劃在構建ㄧ多輸入輸出正交分頻多工調變技術之平台且適用於車輛間行動視訊
+會議之系統，為了達到此一目的，本整合型計畫在基頻通訊系統規格上主要依循 3GPP-LTE 之系統
+參數，並發展高速行駛下之同步參數追蹤(tracking for synchronization parameters)、通道估測與追蹤
+(channel estimation and tracking)、子載波間干擾消除(inter-carrier interference cancellation)、多輸入輸
+出訊號偵測(MIMO signal detection)等相關演算法，除了性能的考量之外，也考慮硬體實作之複雜
+度與可行性，並進行基頻接收機系統架構設計與改良，最後以 FPGA 來驗證，完成車輛高速行駛
+下之高傳輸率無線通訊系統。
+三、 研究方法
+A. 系統規格
+根據車用行動視訊會議系統的需求，我們依據的 3GPP LTE系統的下行傳輸參數如表 2所列。
+系統頻寬為 10 MHz，子載波間距為 15 K Hz，每一個符元採用 1024 點的快速傅立葉轉換，其中 601
+點為傳送訊號之子載波，前置符元長度為 7.16CPT μs，共占 256 個取樣點，每一時槽(time-slot)
+有 0.5 ms 包含 6 個符元，每一訊框(frame)有 10 ms 可再細分為 10 個子訊框(sub-frame), 每個子訊
+框有兩個時槽，其訊框結構圖如圖一所示。
+表 2 系統參數規格
+Transmission BW 10 MHz
+Time slot duration 0.5 ms
+Sub-carrier spacing 15 KHz
+Sampling frequency 15.36 MHz
+FFT size (N) 1024
+Number of occupied
+sub-carriers (C)
+601
+Number of OFDM
+Symbols per sub
+frame
+(Short/Long CP)
+6
+CP length
+(μs/samples)
+(16.67/256)
+8模擬真實環境中的散射路徑形成的一些參數，如路徑能量(path power)、路徑延遲(path delay)與一些
+角度參數。
+圖三 戶外通道模型
+首先假設基地台(Base Station, BS)與手機(Mobile Station, MS)之間的通道模型如圖三所示。此圖
+是說明從發送端 BS 發送出的訊號途中經過散射物散射後，傳到接收端 MS 的路徑。第 n 個群集
+(cluster)散射出的路徑稱為第 n 條 path(n=1…N)，而這第 n 條 path 是由 M 條子路徑(sub-path)組成，
+並且根據 sum-of-sinusoids 方法[5]產生。其中，灰色線是第 n 個群集中第 m 條散射子路徑，在 3GPP
+SCM 中固定有 6 個 path，即(N=6)；每個路徑(path)中包含 20 子路徑，即(M=20)。這些 sub-path 都
+有其相關的角度參數，其中 angle of Departure(AoD)是群集平均發射角度；angle of Arrival(AoA)是
+群集平均到達角度。接下來，將第 n 個群集(cluster)中的 M 條子路徑拆成三組集合，每個子集合包
+含 M條子路徑，每個子集合形成一個中路徑(mid-path)與相對應的延遲時間(delay time)與能量
+(power)。
+表三 空間通道模型之分類
+Name Propagation scenario BS arrangement MS arrangement
+SCM-A Suburban macro 3-sector, 0.5λspacing Handset, talk position
+SCM-B Urban macro 6-sector, 0.5λspacing Handset, data position
+SCM-C Urban macro 3-sector, 4λspacing Laptop
+SCM-D Urban micro 6-sector, 4λspacing Laptop
+3GPP 空間通道模型考慮三種環境：
+(1)郊區巨細胞(Suburban macro cell) (基地台間距大約 3km)
+(2)都會區巨細胞(Urban macro cell) (基地台間距大約 3km)
+(3)都會區微細胞(Urban micro cell) (基地台間距小於 1km)
+(4)在都會區巨細胞(Urban macro cell)中又再分成兩種 case，表三[1]說明所有的 case 及其命名。
+時變通道矩陣則採用 Jake’s model [4]來模擬移動環境下，有都卜勒效應的通道係數。其數學表
+示為：
+  )cos()sin()cos(2)( 0
+10
+nn
+N
+n
+nnr tjN
+t   
+
+10
+道(Primary Synchronization Channel，P-SCH)來同時偵測整數部份的載波頻率偏移(Integer CFO，
+ICFO)和分區細胞索引(sector cell index) )2(IDN 。最後一個步驟則是利用次要同步通道(Secondary
+Synchronization Channel，S-SCH)偵測訊框時序(frame timing)和細胞分群識別碼(cell ID group) )1(IDN 。
+在同步化和cell search整個步驟結束之後，則進行持續對通道殘餘的非理想效應做追蹤的動作。
+圖六 接收機同步流程圖
+假設原本接收的訊號為z[n]，而在經過了載波頻率偏移和取樣時脈偏移的效應後，訊號可表示為如
+式(2)所示。
+NnnNNlj
+gnl
+ge
+nnNNlzz
+/])([2
+, ])([
+
+
+
+
+(2)
+其中 l 為 OFDM symbol 索引，n 代表次載波索引位置，N 為 FFT 點數大小，Ng 為 CP 長度，為取
+樣時脈偏移，為載波頻率偏移。之後將其經過 FFT 轉換至頻域上觀察其訊號表示為:
+NnkjnnNNlj
+N
+n
+g
+N
+n
+Nnkj
+nlkl
+ee
+nnNNlz
+ezZ
+g /2])([2
+1
+0
+1
+0
+/2
+,,
+)
+])([(
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+NnkjNnnNNlj
+N
+n
+NnnNNlkj
+N
+k
+kl
+ee
+eZ
+g
+g
+/2/])([2
+1
+0
+/])(['2
+1
+0'
+',
+) 
+
+
+
+
+
+
+
+
+
+(3)
+將上式整理成所要的訊號項，來自其它次載波之干擾項與雜訊項
+12
+NNNNNNl
+kNN
+kNNNl
+N
+ggg
+g
+gg
+/])(3))((
+))([(6
+)])3)(())(3[((
+2
+
+
+
+
+
+
+同理
+NNNNNNl
+kNN
+ZZ
+ggg
+g
+klkl
+/])(3))((
+))([(6
+)( * 3,3,
+
+
+
+
+ 
+(6)
+由於殘餘的和皆很小，故忽略其乘積項，觀察的影響，使每個次載波旋轉了 NNN g /)(6 
+的角度，而的影響和次載波索引呈線性關係，所以可以將引航碼(pilot)的相位差以線性方程式求出
+與和有關的斜率m以及截距d。除此之外再考慮通道頻率響應對資訊的可靠性的影響，加入了加
+權項，此項可近似為pilot的能量，又為了簡化起見，忽略ICI的效應，以最小平方誤差為條件，最
+後以加權最小方差(weighted least squares, WLS)可得出載波頻率偏移和取樣時脈偏移如下:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+21
+0
+1
+0
+2
+1
+0
+1
+0
+1
+0
+1
+0
+1
+0
+2
+6
+K
+k
+kk
+K
+k
+kk
+K
+k
+k
+T
+K
+k
+kkk
+K
+k
+kk
+K
+k
+kk
+K
+k
+kk
+xwxww
+N
+N
+xywxwywxw
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+21
+0
+1
+0
+2
+1
+0
+1
+0
+1
+0
+1
+0
+1
+0
+6
+K
+k
+kk
+K
+k
+kk
+K
+k
+k
+T
+K
+k
+kk
+K
+k
+kk
+K
+k
+kkk
+K
+k
+k
+xwxww
+N
+N
+ywxwxyww
+
+
+(7)
+其中
+(8)
+NT等於N+Ng，xk為次載波索引值參數，k為領航子載波索引，Hl,k為通道增益。將WLS與線性最小平
+方(Linear Least Square，LLS)誤差估測法比較，兩種方法的差別就是LLS並不對次載波作權重的分
+配，所以可能會將誤差較大的次載波資訊一併列入計算，造成估測效能的下降。由WLS估測出殘
+餘載波頻率偏移後，因為估測的結果會受到ICI或是雜訊的影響，且是使用閉迴路(closed loop)的方
+式進行補償，為了能夠穩定的用估測出來的值進行補償的動作，於是利用一個迴路濾波器(loop filter)
+為低通濾波器來增加補償的穩定度，減少雜訊或是干擾的影響，因為在3GPP LTE系統中使用WLS
+的估測方法是3個OFDM symbol才會估測一次，所以迴路濾波器的運作週期就是3個OFDM symbol
+的時間。圖八是載波頻率偏移補償追蹤收斂的結果，其中可以看到估測載波頻率偏移的誤差，在約
+14
+量的範數大小後取較大者，因為這代表在接收訊號中其有較高的訊雜比。因為OSIC提供偵測訊號
+的可靠度順序，所以我們的2x2空間多工MIMO架構也是利用這個資訊來避免決策導向之RLS通道
+追蹤在MIMO系統有許多干擾情況下，因錯誤偵測(error detection)造成error propagation導入，致使
+通道追蹤失敗。
+從圖二上觀察到，在有放領航訊號的子載波上我們才會做一次RLS的運算去調整內插器係數。
+要調整係數須先求出參考訊號，而我們參考訊號由決策導向產生，也就是將偵測出的發送訊號 )0(,ˆklX 、
+)1(
+,ˆklX 代回方程式，先忽略雜訊項的影響去求接近理想通道值
+)0,0(
+,klH 、
+)1,0(
+,klH 、
+)0,1(
+,klH 、
+)1,1(
+,klH 做為我們
+的參考訊號。我們定義接近理想通道響應的純化訊號(refined signal)：
+)0(
+,
+)1(
+,
+)0,0(
+,
+)0(
+,)0,0(
+, ˆ
+ˆˆ
+ˆ
+kl
+klklkl
+kl X
+XHZ
+G
+
+(9)
+接著我們將分析因為決策錯誤(decision error)對純化訊號的影響，以式(4.27)舉例，假設 )1(,ˆklX 做錯決
+策，並等於 )1(,
+)1(
+, klkl XX  ，則純化訊號變成：
+ 
+  
+klkl
+kl
+I
+kl
+kl
+kl
+U
+kl
+kl
+R
+klkl
+kl
+kl
+kl
+kl
+klklkl
+kl
+H
+X
+X
+X
+V
+HH
+X
+X
+H
+X
+XHZ
+G
+,,
+,
+)1,0(
+,)0(
+,
+)1(
+,
+)0(
+,
+)0(
+,
+)1(
+,
+)1,0(
+,)0(
+,
+)1(
+,)0,0(
+,
+)0(
+,
+)1(
+,
+)0,0(
+,
+)0(
+,)0,0(
+,
+ˆ
+)ˆ(
+ˆˆ
+ˆ
+
+
+
+(10)
+除了理想通道響應外，多了三個非裡想項Rl,k、Ul,k與Il,k。
+另一方面，若是 )0(,ˆklX 做錯決策，等於
+)0(
+,
+)0(
+, klkl XX  ，並根據泰勒展開定理(Taylor expansion)，純
+化訊號變成：
+)0(
+,
+)0(
+,
+)1(
+,
+)0,0(
+,
+)0(
+,)0,0(
+,
+ˆ
+ˆ
+klkl
+klklkl
+kl XX
+XHZ
+G
+
+ )..1(
+ˆ
+)0(
+,
+)0(
+,
+)0(
+,
+)1(
+,
+)0,0(
+,
+)0(
+, TOH
+X
+X
+X
+XHZ
+kl
+kl
+kl
+klklkl 
+klklklkl JURH ,,,
+)0,0(
+, 
+(11)
+由式子(10)與(11)的比較可以看出，(11)因為錯誤決策受到的干擾與雜訊量比(10)大。同理，其
+他純化訊號受錯誤決的影響也如上述所示，因此我們可以選擇較少汙染的純化訊號來調整其RLS
+內插器的係數，也就是當 )0(,ˆklX 的可靠度比
+)1(
+,ˆklX 高的時候，從
+)0,0(
+,ˆklG 、
+)1,0(
+,ˆklG 中選擇求
+)0,0(
+,ˆklG ；
+)0,1(
+,ˆklG 、
+)1,1(
+,ˆklG 中選擇求
+)0,1(
+,ˆklG ，反之亦然。所以在2x2 MIMO的四條傳輸通道只有兩條會啟動RLS機制調整
+其係數。OSIC偵測器會給可靠度的資訊來做出純化優先權的判斷(priority of refinement)。
+我們以下列幾個步驟來說明2x2 MIMO架構下的決策導向RLS通道追蹤演算法與我們提出的排
+序選擇性係數調整機制：
+16
+頻率為2G，取樣頻率(sampling frequency)為15.36 MHz，傳輸頻寬(transmission band)是10 MHz，FFT
+size是1024點，載波間距為15 kHz，保護區間(guard interval)比例為1/4。傳輸的通道模型採用3GPP[1]
+中 SCM-C，描述urban macro cells，其中包含18個延遲路徑與最大超越延遲(maximum excess
+delay)4650 ns。240 km/hr等效的都卜勒頻率為444 Hz。圖十一首先驗證在不同級數(tap)L之時域遞
+迴最小方差通道估測器與不同級數M之子載波間干擾消除器的效果，從複雜度的考量, 我們最後採
+行域遞迴最小方差通道估測器之級數為3, 子載波間干擾消除器之級數為6, 亦即左右共12個子載波
+的干擾會被移除。圖十二則顯示了同步追蹤迴路的能力, 在車行速度較低時, 同步誤差影響並不明
+顯, 而車行速度達240Km/hr則有些影響[9]。
+圖十二 同步誤差對整體接收機性能之影響
+F. 硬體架構設計
+圖十三 硬體分時共用之電路設計
+5 10 15 20 25 30 35 40
+10
+-3
+10
+-2
+10
+-1
+10
+0
+System performance
+SNR (dB)
+B
+E
+R
+Perfect Syn (Speed = 60 km/hr)
+Proposed (Speed = 60 km/hr)
+Perfect Syn (Speed = 120 km/hr)
+Proposed (Speed = 120 km/hr)
+Perfect Syn (Speed = 240 km/hr)
+Proposed(Speed = 240 km/hr)
+18
+訊框時序也就隨即得知了[8]。
+圖十四 RLS 疊代程序重新排程(rescheduling)
+圖十五 ICFO 和 sector cell index )2(IDN 偵測模擬結果
+圖十六 訊框時序與 cell ID group )1(IDN 偵測模擬結果
+四、 結論
+在本計劃中，我們設計並實現了一個植基於3GPP-LTE規格之2x2空間多工(Spatial Multiplexing)
+多輸入多輸出(MIMO)正交分頻多工(OFDM)系統。在演算法上，提出了同步與cell search的估測方
+式以及高速行駛下通道追蹤的改良。由模擬結果可以看到在高速移動的環境與在高訊雜比之環境下
+表現仍是比傳統方法來的有效率和有較低的蜂巢辨識偵測錯誤率。透過RLS演算法，以及子載波間
+干擾消除器， 在高速240Km/hr行駛下, 即使使用64-QAM之星座圖，仍能獲致不錯的位元錯誤率。
+20
+國科會補助專題研究計畫成果報告自評表
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估
+■ 達成目標
+□ 未達成目標（請說明，以 100 字為限）
+□ 實驗失敗
+□ 因故實驗中斷
+□ 其他原因
+說明：
+2. 研究成果在學術期刊發表或申請專利等情形：
+論文：■已發表 □未發表之文稿 □撰寫中 □無
+專利：□已獲得 □申請中 □無
+技轉：□已技轉 □洽談中 □無
+其他：（以 100 字為限）
+22
+發表論文
+期刊論文
+1. P. Y. Tsai and T. D. Chiueh,“Adaptive Raised-Cosine Channel Interpolation for Pilot-Aided
+OFDM Systems,”IEEE Transactions on Wireless Communications, vol. 8, pp. 1028~1037, Feb.
+2009.
+2. P. Y. Tsai and C. Y. Lin,“A Generalized Conflict-Free Memory Addressing Scheme for
+Continuous-Flow Parallel-Processing FFT Processors With Rescheduling,”accepted by IEEE
+Transactions on VLSI Systems.
+會議論文
+1. P. Y. Tsai, H. W. Chang, P. H. Hsieh, J. Y. Hou, and K. Y. Fan,“Baseband Receiver Design for
+3GPP Long Term Evolution Downlink OFDMA Systems under Fast-Fading Channels,”IEEE
+Asian Pacific Conference on Circuits and Systems, Dec. 2010.
+2. Z. Y. Huang and P. Y. Tsai, “High-Throughput QR Decomposition for MIMO Detection in
+OFDM Systems,”Proc. Of International Symposium on Circuits and Systems, May 2010, pp. 1-5.
+3. P. Y. Tsai, and H. W. Chang,“A New cell search scheme in 3GPP long term evolution downlink
+OFDMA systems,”Proc. of International Conference on Wireless Communications and Signal
+Processing, Nov. 2009, pp. 1-5.
+4. P. Y. Tsai, and P. H. Hsieh, “An RLS channel tracking algorithm with an ordered selection
+technique for MIMO-OFDM systems in time-selective fading channels,”Proc. of International
+Conference on Wireless Communications and Signal Processing, Nov. 2009. pp. 1-5.
+5. Z. Y. Huang, and P. Y. Tsai, “High-efficiency and high-throughput QR decomposition for MIMO
+detection,”Proc. of 20th VLSI Design/CAD Symposium, Hualien, Taiwan, Aug. 2009.
+6. P. Y. Tsai and X. C. Lin, “Improved K-best sphere decoder with a look-ahead technique for
+multiple-input multiple-output systems,” International Symposium on Intelligent Signal
+Processing and Communication Systems, Feb. 2009, pp. 1-4.
+內容應包括下列各項：
+一、參加會議經過
+此次出國主要目地是參加WCSP2009，並於該會議隸屬於Signal Processing for Communications
+公開發表所投稿的論文，也利用空檔參加會議中的幾場演講汲取新的資訊，該會議還有Digital
+Circuits & Systems in Wireless Communications以及Wireless Communications System Architectures
+and Applications的論文相關發表。本次會議除了有信號處理與通訊相關的論文發表以外，還有針
+對無線網路、視訊及訊號的處理、4G等十多個Session的論文發表與討論。讓學生看到了通訊技術
+的發展及實際應用於產品上的成果，令人不禁聯想關於自己所做的研究，在未來應用於產品上的
+遠景。
+本會議為期三天，第一天為會議報到，並且可以取得相關的論文及議程資訊，當天晚上有一
+場報到餐會，可讓我們藉著晚宴消彌第一天產生的陌生感。第二天和第三天就開始了各Session的
+發表，會議在第二天也提供了相當豐盛的晚餐和有特色的表演，會議最後在第三天於江蘇省會議
+中心畫下了句點。
+二、與會心得
+這是學生第一次參加國際會議論文的發表，這次會議中，學生發表的論文需要以英文發表二
+十分鐘並提供五分鐘的問答時間，第一次以英文報告，故在報告前相當的緊張並且不斷的練習，
+但是臨上場時還是不免忘了一部分已準備好的講稿。在學生研習相關的Session中，學生也不斷學
+習感受其他學校學生的演講方式，期望能增進自己的講演技巧也希望以後能在有一樣的機會去參
+加相關的會議以增加演講的信心。也因此看到了世界其他國家的研究生，各自對於研究所抱持的
+態度及其研究的方向，同時可以讓我們對當今國際上研究的趨勢、方法、進度、狀況都有基本的
+認識，這對我們的研究是大大的幫助。而各個相關主題的分類更可以使相同領域的學者們針對彼
+此不同的概念、想法做分享，以瞭解到自己的不足以及一些新的想法。
+三、建議
+參加了國際的會議之後，學生深感英文能力需要多多加強，尤其是聽與說的能力，因為目前
+在國際會議中發表paper所使用的語言就是英文，所以要能夠理解這些想法的最基本工具就是英
+文，故學校除了應鼓勵學生多多參與國際的會議以增進視野，才能了解更多人不同的想法以及有
+效率的新方法，才能提昇學校在國際舞台的地位，更應營造適當的全英語環境，讓在學的學生能
+自然的使用英語來做溝通。
+四、攜回資料名稱及內容
+1. WCSP2009 technical papers。內容記載了這次會議所有的論文、Keynote Speech 與議程時間表。
+2. CD of WCSP2009.
+五、其他
+1.WCSP2009 網站：http://www.ic-wcsp.org/
+內容應包括下列各項：
+一、參加會議經過
+此次會議為期四天。5月31日~6月2日這幾天一開始都會有Keynote Speakers。6月2日的Keynote
+Speakers請到Google公司的人員向大家報告該公司在power saving技術上的研究成果。每天的
+Keynote Speakers結束後，即開始Technical Session。Technical Session分成poster與oral兩種
+presentation方式。
+5月31日這一天，我選擇參加一場oral presentation - VLSI Implementation of a WiMAX/LTE
+Compliant Low-Complexity High-Throughput Soft-Output K-Best MIMO Detector，因為這個主題與
+我做的研究較有關聯，它主要在設計高產量(達2Gbps)的soft decision MIMO detector。
+6月1日這一天，我選擇參加兩場Wireless Communications Systems I Section的oral presentations
+- B1L-D.1及B1L-D.2。其中B1L-D.1是設計應用在WiMAX的FFT，B1L-D.2則是設計一高產量的
+QR decomposition ASIC。
+6月2日這一天，是我報告的日期，我報告的方式是poster。在報告的過程也有遇到我們論文
+中所cite的論文的作者。報告結束後，我就搭機回國。
+二、與會心得
+參與這次會議，我見識到一些當前知名企業(如：Google)所須要處理的問題。
+又這次參與會議，我是poster，不需要上台報告。但看別人在台上報告的情形，我得到一些
+心得。例如，報告者回答聽眾的提問是最不容易的部分。因為報告者事先不太能預料到聽眾會問
+什麼問題，所以有些問題沒有事先想清楚會答不太出來。又語言的溝通也是一個需要克服的問
+題，因為在台灣學的英文是較徧美式，但如果遇上非英美式的英語，如印度、日本、…，往往會
+造成很大的困擾。
+三、建議
+這是我第一次出國、到一個陌生環境，深覺得英文能力非常重要，舉凡食、住、行、…都少
+不了與外國人溝通的機會，英文能力不足往往會造成溝通的困難。英文的聽、說這兩項能力應該
+是在台灣較少訓練的部分，雖然這是環境的使然，但這兩項能力對於出國在外又特別重要。所以
+希望學校能推廣這兩項英文能力。
+四、攜回資料名稱及內容
+1. ISCAS 2010 CD。內容包涵發表在此會議的所有論文之PDF檔。
+五、其他
+1.ISCAS 2010 網站：http://www.iscas2010.org/
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：蔡佩芸 計畫編號：98-2220-E-008-004- 
+計畫名稱：植基於 DVB-T/H 規格之前瞻性車用無線視訊會議系統傳收機系統晶片之研製--子計畫四：
+整合多輸入輸出架構及子載波間干擾消除器並應用於 DVB-T/H 平台之晶片研製(2/2) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 6 6 100%  
+博士生 1 1 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 2 3 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 5 7 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 6 6 100%  
+博士生 1 1 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

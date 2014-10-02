@@ -1,0 +1,617 @@
+I 
+ 
+目錄 
+ 
+目錄................................................................................................................................. I 
+摘要................................................................................................................................ II 
+Abstract ......................................................................................................................... III 
+前言................................................................................................................................ 2 
+研究目的........................................................................................................................ 3 
+文獻探討........................................................................................................................ 5 
+研究方法........................................................................................................................ 8 
+結果與討論.................................................................................................................. 13 
+表一、Intra-cluster 測試環境............................................................................... 13 
+表二、Intra-cluster 測試用平行程式................................................................... 13 
+表三、Intra-cluster 測試用的各種 Host Workload............................................ 13 
+表四、Intra-cluster 測試環境............................................................................... 16 
+計畫成果自評.............................................................................................................. 19 
+參考文獻...................................................................................................................... 20 
+附錄.............................................................................................................................. 22 
+ 
+III 
+ 
+Abstract 
+ 
+Many studies have shown that a large number of computational powers could be 
+exploited in the Grid environment. However, there are two new problems needed to 
+be solved due to the characteristics of the Grid environment, which are the dynamicity 
+and the non-dedication of the Grids. These problems will cause the performance 
+slowdown of both Grid systems’ guest applications and Grid resources providers’ host 
+applications. For solving these problems, we present the multi-layer reconfiguration 
+framework for the Grids in this thesis. Our multi-layer reconfiguration framework 
+provides three incremental abilities, i.e. virtual processor reconfiguration, node 
+reconfiguration and cluster reconfiguration, to adapt diverse workload conditions of 
+the Grid resources. The proposed multi-layer reconfiguration framework is 
+implemented on Teamster-G, which is a transparent Grid-enabled distributed shared 
+memory system. According to our experiments, our multi-layer reconfiguration 
+framework can allow Teamster-G not only to fully utilize abundant CPU cycles 
+available in the Grid environment but also to minimize the resource contention with 
+Grid resource providers. More importantly, our work can also effectively prompt the 
+throughput of the whole Grid resources as well. 
+ 
+Keywords: Resource Reconfiguration, Nod-dedication, Grid Environment, 
+Distributed Shared Memory (DSM) System, Cluster Computing
+ 
+3 
+ 
+研究目的 
+ 
+本計劃將針對格網資源的動態性與非專屬性，設計與實現一個可以適應這
+些特性的系統重組機制，來兼顧資源擁有者與格網使用者雙方工作的效率，並
+提昇格網系統上資源的產能。 
+計算格網所有的資源中，最受重視的便是電腦處理器的使用狀況。我們知
+道格網中各個 site 的電腦處理器負載，隨時都會有所變動。而對於不同的負
+載，在設計重組機制時，我們應該要採取不同的策略。為了要對系統做最有效
+率的調整，我們把這些負載歸納成三類。第一類是高負載(Overloaded Load)
+狀態，即該 site 擁有者本身對電腦處理器使用程度要求極高，已經不允許他人
+再競爭捉襟見肘的電腦處理器資源。第二類稱做低負載(Normally Load)狀態，
+即該 site 擁有者的工作只使用部分的電腦處理器周期，但並不會全部佔用，故
+可以允許他人使用部份閒置的電腦處理器周期。而第三類則稱作突波負載
+(Pulse)，就是該 site 擁有者本身所執行之工作是一極短時間的負載，故其對
+電腦處理器的需求極為短暫。針對這三類不同特性之負載狀況，必須採取不同
+的格網系統重組策略，才能達到最好的資源產能。 
+綜合以上討論，本計劃將設計與實現一個「格網上漸進式多層次重組機制
+(Progressive Multilayer Reconfiguration on Grids)」，簡稱 PMR-G。首先，
+PMR-G 會定期偵測格網中個別 site 上的電腦處理器負載狀況。再動態地針對負
+載有變化的 site，個別進行重組的動作。此外，PMR-G 機制還具備有下列幾個
+特性： 
+1. 多層次 
+2. 漸進式 
+3. 兼顧資源擁有者與格網使用者雙方工作之效能 
+4. 著重提高格網上資源的產能 
+在多層次方面的特性，PMR-G 將針對不同的負載狀況，提供多層次的重組
+策略。PMR-G 的第一層重組機制是 processor level，用來專門針對低負載狀況。
+此時，PMR-G 會酌量歸還部分資源，讓擁有者的工作得以盡快完成。因此，PMR-G
+將選擇以調整格網工作所佔用的電腦處理器使用率之機制為主。不僅可以讓該
+site 的擁有者之工作可以得到足夠的電腦處理器周期全速執行，還可以讓格網
+使用者的工作對於剩餘下來、空閒的電腦處理器周期，加以充分利用。若是面
+臨高負載狀態，PMR-G 會啟動第二層的 node level 重組機制。這個時候，格網
+使用者的工作不宜持續停留在該 site 上，跟該 site 的擁有者工作來競爭使用
+電腦處理器。所以，PMR-G 會把格網工作搬移到同一 cluster 內其他 site 上繼
+續執行，讓該 site 的擁有者工作可以收回原本被格網工作所佔用的電腦處理器
+周期。除了針對個別 site 進行負載監控與重組之外，PMR-G 還會評估同屬一個
+5 
+ 
+文獻探討 
+ 
+對於如何有效的使用格網上潛在的計算資源，過去陸續有具參考價值的研
+究成果被提出探討。首先，我們來看英國 North East Regional e-Science 
+Centre 所發展的 GridSHED 計畫[26][27]。這個計畫的主要目標，是建立一個
+商業化的格網宿主環境 (Grid hosting environment)。他們把計畫的重點放在
+如何完成對格網宿主環境的塑模 (system modeling) 與中介層的設計 
+(middleware development) ； 其 中 他 們 也 討 論 到 了 有 關 dynamic 
+reconfiguration 的相關議題，在此我們針對這個部分做簡單的介紹。 
+GridSHED 計畫的研究人員，認為在格網的環境中有大量的計算資源可以用
+來服務各種不同的要求，但是，各種不同的服務請求其產生的時機變動相當大，
+幾乎是無法預測的；如果把可以用來配置的這些計算資源以固定數目來分組，
+那麼對於使用者需求變動劇烈的格網環境來說不是件好事。舉例來說，如此一
+來可能會在某段時間內，出現一種我們不樂見的情況就是，在該時間內因為要
+求 A 類型服務的工作量較大之故，所以專門用來服務 A 類型工作的計算伺服器
+將相當忙碌，而用來服務其他類型工作的計算伺服器則閒置無事。這些閒置的
+計算伺服器由於已在一開始就被各別指定服務其專門的工作，因此即使服務 A
+類型工作的計算伺服器已經過載 (overloading) 了，其他閒置伺服器也不會參
+與分攤服務，以求解緩服務 A 類型工作的計算伺服器的負載；另一方面，從提
+出 A服務要求之使用者的角度而言，因為自己所提交的工作一直被列隊 (queue) 
+在，使得工作的迴轉時間 (turnaround time) 變長，也會降低使用者使用格網
+資源的意願。可想而知這樣的作法將使得格網環境上的計算資源未能被充分利
+用。 
+為改善上述情形，GridSHED 計畫的研究人員，提出一種允許計算伺服器做
+dynamic reconfiguration 的架構，稱為 pool partitioning architecture，
+這個概念是假設所有的計算伺服器都被放在各個觀念上的計算資源池 
+(conceptual computational resource pools)，每一個計算資源池仍然是提供
+計算伺服器給各種不同的服務請求，但是這些計算資源池在觀念上卻是可以互
+通有無的；他們希望這樣的作法能共達到計算資源的真正共享。 
+Pool partitioning architecture 把一個實體叢集 (physical cluster) 
+的多部計算伺服器分別放入各個計算資源池，其中一個實體叢集會執行一個稱
+為 cluster manager 的模組，它會根據使用者對各種類型的服務要求之狀況做
+出系統重組的決策；當 cluster manager 決定把某個計算伺服器從一個計算資
+源池切換 (switch) 到另一個計算資源池時，它同時也負起協調者 
+(co-ordinator) 的責任，通知要被切換的計算伺服器之來源與目的計算資源
+池。每個計算資源池中也會有一個 pool manager，這個 pool manager 可以用
+7 
+ 
+供利用的共享資源，也有需要共享資源的任務，但兩者卻不能配成對。 
+為了避免上述問題，研究人員們在原來的 Min-Min Heuristic 上加入 QoS 
+的指導原則，並且在每一個 scheduling interval 用 QoS Guided Min-Min 
+Heuristic 來做計算資源的 reconfiguration。在此我們首先介紹原本的
+Min-Min Heuristic，一開始我們會把每一個使用者的計算任務（包括執行中的
+以及排隊中的）與每一台可用的計算資源做配對，代入一個工作完成時間期望
+值的方程式作估計，其中除去不符合使用者要求的計算資源外，每一個配對的
+結果都會有一個估計的期望工作完成時間；接下來將各個能在最短時間內完成
+工作的配對挑出來，如此一來我們會有每一個計算工作以及哪一個計算資源可
+以在最短時間完成它的資訊，再進一步從其中取出完成工作時間最短的配對，
+便據此做 reconfiguration 算是一個回合完畢，之後反覆以同樣方式為所有的
+計算工作都配置一個計算資源；這樣一來等於每一個 scheduling interval 都
+會評估一次是否對計算資源做 reconfiguration。QoS Guided Min-Min 
+Heuristic 則將上述的步驟在分為兩回合，依據各個計算任務的 QoS 要求，概
+略的分為兩個層級（在實作上可以對 QoS 的等級在作細分），先對具有較高 QoS
+要求的計算任務配置資源，後對 QoS 要求較低的計算任務配置資源，如此便可
+避免低 QoS 要求的計算任務佔用高 QoS 要求的計算任務所需資源；再加上每一
+個 Min-Min Heuristic 都是在做計算資源的 reconfiguration，對於系統的整
+體產能確有提升的效果。 
+可惜的是儘管[17]的研究人員已經意識到格網是非專屬的環境，但他們仍
+然只是針對格網使用者的角度去配置計算資源，而忽略了資源擁有者的自主性。 
+綜合以上所述，我們可以相信，PMR-G 可能將是格網上首見，以格網工作
+與資源擁有者工作雙贏為前提，足以讓格網系統產能大大提升的系統重組機
+制。其重要性，可見一般。 
+9 
+ 
+系統的核心，主宰著整個系統重組機制的運作。以下將針對 MM 如何取得負載資
+訊、負載的分類與漸進式多層次重組判斷流程三大部分，分別進行討論。 
+首先是負載資訊取得的部份。目前格網系統已經有若干研究
+[11][12][13][14]，可以監控格網上的各種狀況，當然也包括資源負載。MM 將
+嘗試利用這些機制，取得需要的資訊。然而，因為 Teamster-G 是建構於 Linux
+作業系統之上，所以我們也可以利用底層作業系統所提供的機制，諸如
+/proc/stat、get_load()系統呼叫等，來分別取得格網工作與 site 擁有者工作
+雙方面的負載資訊。MM 有興趣的，只有有關 site 擁有者負載資訊的部份。而
+site 擁有者工作的負載高低，將會被用來作為觸發重組機制的依據。至於取得
+負載資訊的週期，本計劃將研究以不影響系統效能、即時性與實作環境限制等
+為考量，找出最恰當之週期。同時，這些負載資訊也會定期地，由 MM 向 cluster
+內的 Coordinator 回報，以提供 node level 和 cluster level 系統重組工作與
+決策參考之用。 
+取得 site 擁有者工作的負載資訊後，MM 會用一個 upper bound 與 lower 
+bound 將負載歸類成三種不同的 state，以進行不同層次的系統重組。其中，這
+個 upper bound 與 lower bound 在初期可以採用人工設定的方式，可由 site
+擁有者依照自己的需求，以參數的方式設定。當然，本計劃也將研究出適用格
+網環境的模型，來得出較佳的 bounds 設定。以下就針對負載可能所屬的三個
+state，分別進行定義與描述。 
+z Overloaded state: 取得的 site 擁有者工作負載，高於所設定的 upper 
+bound。 
+z Normally loaded state: 取得的 site 擁有者工作負載，介於所設定的
+upper bound 與 lower bound 之間。 
+z Under-loaded state: 取得的 site 擁有者工作負載，低於所設定的
+lower bound。 
+知道了負載所屬的 state 後，便可以進行判斷決定要觸發何種機制。正如
+前面所提到的，MM 只負責 intra-cluster 的 processor level 與 node level
+兩種系統重組之決策判斷。這個部分，我們以下列的狀態轉移圖，進行說明。 
+ 
+Initial
+> lower Delete
+Processors
+> upper Delete
+Node
+Monitored
+State
+Add
+Processors
+Add
+Node
+≒0
+≒0
+Not idle
+Processor Level Node Level   
+圖二、PMR-G 系統架構圖 
+11 
+ 
+總數，計算出所要搬移出去的工作數目，以及通知搬移目的 site 上 TMM 將會有
+多少工作將會被搬移過去。而搬移格網工作到目的 site 之後，目的 site 上的
+TMM 必須做兩件事。第一個是把自己本身的工作總數加上被搬移過來的工作
+數。而在搬移工作的同時，除了要維護工作本身的資訊正確之外，TMM 對於用
+來維持資料一致性的物件 Lock、Barrier，是必須要特別注意的。這是很重要
+的部份，因為這些同步所需的物件，一旦處理失當，將會導致系統整體執行產
+生嚴重的錯誤。所以 TMM 在搬移工作時必須判斷這些工作是否跟 Lock、Barrier
+有關。一旦有關聯，就必須把與這些物件有關的工作，一起加以處理，以維持
+資料的一致性跟完整性。所以 TMM 所負責的就是除了格網工作的搬移外，還包
+括搬移之後，所有處理資料一致性的問題。 
+4. Node Reconfiguration Manger (NRM) 
+當系統負載第二次到達 overloaded state 時，MM 將會通知 NRM 啟動 node 
+level 進行系統重組。NRM 就會開始通知 root node 自己所處的 site 將要被刪
+除這個消息。而 root node 接到這個訊息後，Coordinator 會挑選一個適合收
+容格網工作的目的地 site，並廣播通知其它 site，那一個 site 即將被刪除，
+且被刪除之 site 上的格網工作以及同步的物件將被搬移至何目的 site 等。使
+得 cluster 中所有的 site information 都一致，不會因為一個 site 的刪除而
+錯亂。而待 NRM 通知完 root node 後，就開始處理自己這個 site 要被刪除所必
+須做的事情了。一開始必須先讓出大部份的處理器資源，只留下處理刪除 site
+所需的處理資源就可以了。接下來則是要啟動 TMM，將與同步有關的物件跟資
+訊逐一檢視與分析，然後把這些資料送往收容格網工作的目的 site，而最後才
+把所有的格網工作搬移到目的 site。這時做完所有的有關刪除 site 的動作之
+後，NRM 就可以把整個節點都讓出來給 site 擁有者工作。所以 NRM 的工作，通
+常都是需要各 site 間互相配合才有辦法完成，故相形成本花費較多。所以我們
+採用漸近式多層次重組機制以避免無謂的增刪 site，也是起因於此。 
+5. Coordinator 
+Coordinator 在 PMR-G 中，只存在各個 cluster 內的 root node 上，其目
+的是用來維護 cluster 內整體的資訊，記錄各個 site 的負載狀況，並且由負責
+告知各 site 那些資訊有變化，或是幫忙各 site 得到最正確的資料，使得
+cluster information 的一致性跟準確性可以維持。所以一旦 PMR-G 必須處理
+與 node level 系統重組有關的資訊時，都由 Coordinator 負責來處理，例如增
+刪 site 時，site 數目的變化，就必需由 Coordinator 告知其它 site 目前 site
+總數是增加或減少，是那個 site 被刪除了或是增加。而當 cluster 內有任何
+site 欲進行 node level 的系統重組時，Coordinator 會負責依照其所掌握的資
+訊，在同個 cluster 中挑選足以收容遷移的格網工作的目的 site，並將此資訊
+通知給欲刪除site上的NRM，使其可以將格網工作遷出。除此之外，Coordinator
+還要負責 cluster level 的重組工作。因為 Teamster-G 是個與生俱來就支援分
+散式平行處理格網工作的計算格網，因此一個平行處理的格網工作可能會在好
+13 
+ 
+結果與討論 
+ 
+在過去一年我們除了完成了 PMR-G 的設計與實做之外，也分別針對
+intra-cluster 和 inter-cluster 的格網計算場景設計了幾個實驗來評估 PMR-G
+的成效。 
+在 intra-cluster 的部分，我們在如表一的測試環境下，分別測試如表二所
+示的三種各具代表性的平行程式，如何借助 PMR-G 對資源重組的能力，而適應如
+表三所示的三種不同 host workload 狀態。 
+ 
+表一、Intra-cluster 測試環境 
+  Node {0, 1, 2, 3} 
+CPU  Dual Core AMD 2.4 GHz / 1 MB cache 
+Main Memory  4 GB 
+Network  Gigabit Ethernet 
+Operating System  Linux Fedora Core 5 (2.6.20‐1.2300.fc5smp) 
+ 
+表二、Intra-cluster 測試用平行程式 
+  Problem Size  Sharing Type 
+Turn‐around Time   
+(4 Dedicated Nodes) 
+N‐Body 
+80000  particles 
+100 iterations 
+Full Sharing  2376.568 sec. 
+SOR 
+8192 × 8192 
+9000 iterations 
+Neighborhood  2018.334 sec. 
+MM 
+560 × 560 
+Repeat: 100 times 
+Non‐sharing  1816.637 sec. 
+ 
+表三、Intra-cluster 測試用的各種 Host Workload 
+Workload State  CPU Demand 
+Turn‐around Time   
+(A Dedicated Node) 
+Overloaded  100%  4600.244 sec. 
+Normally loaded  33%~60%  603.542 sec. 
+Pulse  33%~60%  59.954 sec. 
+15 
+ 
+圖四、Normally loaded host job 所受到的干擾 
+ 
+另一方面，我們也藉由圖五到七來觀察在不同的 Host Workload 情況下，採
+取 PMR-G 來做資源重組是否可以達到較好的整體系統產出。實驗結果顯示，雖然
+PMR-G 在 overloaded 的情況下無法立即減緩對 Host AP 的干擾，但是 PMR-G 採
+取漸進式的方式來完成資源的重組，使得 PMR-G 能夠有效過濾出 Pulse Workload
+降低不必要的重組負擔，同時提升系統整體產出。 
+ 
+圖五、在 Overloaded 情況下的整體系統產出 
+ 
+圖六、在 Normally loaded 情況下的整體系統產出 
+17 
+ 
+在這個實驗當中，我們執行一個 N-Body 的平行程式來代表一個格網應用程
+式，一開始這個程式被執行在 cluster 1 和 cluster 2。接著我們在 cluster 2
+注入代表 overloaded 的格網資源擁有者之 Host Workload。這使得 cluster 2
+不再適於借出給格網應用程式執行。於是 PMR-G 採取 cluster reconfiguration
+的機制，將原先分配到 cluster 2 的格網應用程式工作量搬移到 cluster 3。圖
+八和九分別顯示出，PMR-G 的 cluster reconfiguration 能夠有效控制格網應用
+程式和格網資源擁有者的 Workload 之完成時間。 
+ 
+圖八、在 Inter-cluster 環境下，格網應用程式的執行時間 
+ 
+19 
+ 
+計畫成果自評 
+ 
+一、 研究內容與原計畫相符程度 
+ 
+完全與原訂計畫內容相符。唯一稍有出入之部分為，以數學分析之方式
+來代替原擬定的系統模擬，並用以取得格網資源負載的定義方式。然而
+我們相信兩種不同的方式只是研究手段的不同，對於原訂計畫的整體目
+標並無影響，甚至更佳具有科學上的準確性。 
+ 
+二、 達成預期目標情況 
+ 
+我們在大約半年左右的時間就已完成了系統之雛形，這個部分相較之預
+期的進度算是超前，並且也根據雛形系統的實驗結果發表了會議論文
+（請參見附錄）。然而較為遺憾的是，原本預期開放給格網使用者測試
+使用的部分，由於牽涉到較為複雜的系統部署議題，目前跨網域測試的
+部分只在成功大學謝錫堃老師實驗室，高雄應用科技大學梁廷宇老師實
+驗室及本人任職立德管理學院之實驗室做過測試。未來希望能進一步跟
+有興趣合作的研究單位例如台灣格網學會的各個會員接洽。 
+ 
+三、 研究成果之學術或應用價值 
+ 
+研究成果具學術價值，且已發表於國際會議論文（請參見附錄）。 
+另一方面，格網上的資源重組機制直接影響到格網資源擁有者捐獻其資
+源的意願，同時也涉及是否能夠吸引格網使用者採取格網計算為其運算
+環境的一個重要因素，因此本研究亦深具應用價值。 
+ 
+四、 是否適合在學術期刊發表或申請專利 
+ 
+是，本研究相當適合做進一步的延伸，並且在學術期刊發表。 
+ 
+ 
+21 
+ 
+Journal of Future Generation computing Systems, 1999, 15 (5~6): 757~768  
+[13] B. Gaidioz, R. Wolski and B. Tourancheau. Synchronizing Network Probes to 
+avoid Measurement Intrusiveness with the Network Weather Service. 
+Proceedings of 9th IEEE High-performance Distributed Computing Conference, 
+August, 2000, pp. 147~154  
+[14] http://ganglia.sourceforge.net/   
+[15] H. Casanova, G. Obertelli, F. Berman, R. Wolski, “The AppLeS Parameter Sweep 
+Template: User-Level Middleware for the Grid”, Proceedings of Super 
+Computing 00, 2000.  
+[16] David Abramson, Rajkumar Buyya, and Jonathan Giddy, “A Computational 
+Economy for Grid Computing and its Implementation in the Nimrod-G Resource 
+Broker”, Future Generation Computer Systems (FGCS) Journal, Volume 18, 
+Issue 8, pp.1061-1074, 2002.  
+[17] Xiaoshan He, Xianhe Sun, Gregor von Laszewski: QoS Guided Min-Min 
+Heuristic for Grid Task Scheduling. J. Comput. Sci. Technol. 18(4): 442-451 
+(2003) 
+[18] L. He, S. A. Jarvis, D. P. Spooner, X. Chen, and G. R. Nudd. Dynamic 
+Scheduling of Parallel Jobs with QoS Demands in Multiclusters and Grids, 
+Pittsburgh, USA. In 5th IEEE/ACM International Workshop on Grid Computing 
+(Grid2004), 2004. 
+[19] Sun Xian-He, Wu Ming, GHS: A performance prediction and task scheduling 
+system for Gridcomputing. In Proc. of 2003 IEEE International Parallel and 
+Distributed Processing Symposium(IPDPS 2003), Nice, France, April, 2003.  
+[20] Jyh-Biau Chang, Tyng-Yeu Liang, Ce-kuen Shieh. Progressive Multilayer 
+Reconfiguration for Software DSM System in Non-dedicated Clusters. 
+Proceedings of INA2005, March, 2005, Volume 2, p. 367-370. 
+[21] Taiwan uniGrid Project, http://uniGrid.nchc.org.tw/ 
+[22] Chao-Tung Yang, Chuan-Lin Lai, Po-Chi Shih and Kuan-Ching Li, “A Resource 
+Broker for Computing Nodes Selection in Grid Computing Environments”, 
+Lecture Notes in Computer Science, Springer-Verlag Heidelberg, Volume 3251, 
+September 2004, pp. 931-934. 
+[23] Ruay-Shiung Chang, Chih-Min Wang and Po-Hung Chen, “Replica Selection on 
+Co-Allocation Data Grids”, Proceedings of Second International Symposium on 
+Parallel and Distributed Processing and Applications (ISPA'2004), Hong Kong, 
+China, December 2004. 
+[24] Kuan-Ching Li, Hsun-Chang Chang, Chung-Yuan Yang, Li-Jen Chang, “On 
+Construction of a MPI Parallel Program Visualization Toolkit for Cluster and 
+Grid Environments”, Proceedings of The First Workshop on Grid Technologies 
+23 
+ 
+附錄 
+ 
+本計畫成果已在 2006 年底發表於舉辦在澳洲墨爾本的國際研討會 MGC2006
+中。相關參考資料如下： 
+論文名稱：A multi‐layer resource reconfiguration framework for grid computing 
+論文集名稱：Proceedings of the 4th international Workshop on Middleware for 
+Grid Computing 
+ 
+Chen, P., Chang, J., Liang, T., Shieh, C., and Zhuang, Y. 2006. “A multi‐layer resource 
+reconfiguration  framework  for  grid  computing”  In  Proceedings  of  the  4th 
+international Workshop on Middleware  for Grid Computing  (Melbourne, Australia, 
+November 27 ‐ December 01, 2006). MCG '06, vol. 194. ACM Press, New York, NY, 13. 
+DOI= http://doi.acm.org/10.1145/1186675.1186689 
+ 
+反倒是來自各國的留學生（特別是亞洲國家）佔了將近五成之譜，這個現象使得平均每位研
+究生可以得到的研究資源較為密集，一個大學的某某實驗室隨隨便便都是十幾二十個專職的
+研究人員（有博士後的，也有碩士級的專職研究人員），跟我國剛好相反，除了醫學和其他基
+礎科學領域有較多博士後研究外，工程領域的畢業生幾乎都立刻投入業界領股票增產報國去
+了；學生必須再次重申自己的見識尚淺，或許是自己以管窺天又劃地自限，但是我不得不說
+密集的研究資源跟人力或許才是爭 SCI 論文數量的致勝關鍵。 
+ 
+ that a user job is distributed across multiple clusters for parallel 
+execution becomes common. Therefore, inter-cluster resource 
+reconfiguration is necessary while it has not received enough 
+attention. 
+As above discussed, we propose a multiple-layer resource 
+reconfiguration framework (MRF) for grid computing. As named, 
+this framework provides three different-layer resource 
+reconfigurations, i.e., virtual processor, node and cluster. 
+Furthermore, the owner workload is classified info four different 
+state, i.e., light-loaded, medium-loaded, heavy-loaded and pulse-
+loaded. Different-layer resource reconfiguration is applied for 
+different workload states, respectively.  We have implemented the 
+proposed framework on a grid-enabled software DSM system 
+called Teamster-G [5-6]. Our experimental results show that MRF 
+can allow Teamster-G not only to fully utilize available CPU 
+cycles but also to minimize the interference to owner jobs. As a 
+result, the job throughput of Teamster-G can be effectively 
+improved. 
+The rest of this paper is organized as follows. Section 2 introduce 
+our experimental environment i.e., Teamster-G. Section 3 details 
+the proposed resource reconfiguration framework. Section 4 
+discusses our experimental results. Finally, Section 5 gives a short 
+conclusion for this paper and our future work. 
+2. Experimental Environment 
+ 
+ 
+Figure 1. The system architecture of Teamster-G 
+ 
+Teamster-G is a grid-enabled software distributed shared memory 
+(DSM) system [8] [11] [13]. This system is developed by 
+extending Teamster [4] to exploit the services of Globus toolkit 
+[21]. With the support of Teamster-G, users can make use of 
+shared variables to write parallel programs in computational grids. 
+Teamster-G adopts a two-level update protocol for maintaining 
+inter-cluster data consistency in order to minimizing the cost of 
+data communication. As shown in Figure 1, each cluster consists 
+of a portal node and a set of normal nodes. When the normal 
+nodes arrive at synchronization points such as lock release or 
+barrier arrival, they will propagate their updates only to the other 
+normal nodes and the portal node in the same cluster. Moreover, 
+the portal node will propagate the updates made by the local nodes 
+to the other clusters only when all of the local nodes arrive at a 
+barrier or the ownership of a lock is migrated from one of the 
+local nodes to another cluster. When a portal node receives the 
+update from the other portal nodes, it will propagate the update 
+data within the local cluster for maintaining data consistency. 
+Since the data updates made by the normal nodes are accumulated, 
+the amount of inter-cluster data communication can be effectively 
+reduced. 
+On the other hand, Teamster-G adopts a two-level thread 
+architecture for parallelizing user programs. This thread 
+architecture consists of the kernel-level and the user-level. The 
+mapping of the user-level threads to the kernel-level threads is 
+many to many. Basically, a kernel-level thread is regarded as a 
+virtual processor which is a unit to share CPU cycles. Therefore, 
+we adjust the number of virtual processors used for a program to 
+change the percentage of CPU cycles distributed to the program. 
+Moreover, Teamster-G support user-level thread migration. This 
+mechanism is useful for node reconfiguration and cluster 
+reconfiguration in the proposed framework. 
+3. Multi-layer Reconfiguration Framework 
+According to our observations, the resource workload of a node, 
+which is defined as the executing jobs of resource owner, 
+randomly varies from time to time. We can generally divide the 
+resources workload info four different state. They are light-loaded, 
+medium-loaded, heavy-loaded and pulse-loaded. When the 
+resource owners execute light-loaded applications on the certain 
+nodes, it means the resource owners only need a small quantity of 
+computational ability of these nodes. The workload of this 
+condition is too small to be worth a single glance; therefore, it is 
+not necessary to take any action of resource adjustment. 
+In another case, if the resource owners execute medium-loaded 
+applications, it means the resource owners need a certain degree 
+of computational ability of these nodes. However, the workload in 
+this condition still remains some idle CPU cycles could be stolen. 
+Consequently, if allowing the guest jobs of the grid systems linger 
+on these nodes, the entire system throughput can be improved. In 
+our MRF, we provide the virtual processor reconfiguration which 
+can be adopted in this situation by deleting virtual processors and 
+reducing their CPU utilization ratio. After the host jobs of owners 
+finish their execution, the virtual processor reconfiguration can be 
+adopted again to add back deleted virtual processors for increasing 
+the CPU utilization. 
+In the heavy workload situation, the resource owners have to 
+execute some heavy-loaded applications. It means they would like 
+to retrieve more computational power, and therefore considering 
+about the autonomies of the resource owners, the grid systems can 
+not but necessarily remove the guest jobs from the overloaded 
+nodes to others. Therefore, our MRF provides node 
+reconfiguration ability to hand off the overloaded nodes. 
+Occasionally, the workloads of the resource owners are so heavy 
+and result in that the whole cluster lies in heavy-loaded state. To 
+reason by analogy, the grid systems compulsorily withdraw the 
+guest jobs from the over-loaded cluster and our MRF provide 
+cluster reconfiguration to remove the overloaded cluster. 
+Finally, if the resource owners execute heavy-loaded applications 
+in a very short period of time, this kind of workload is called 
+pulse-loaded. Actually, this resource condition has almost no 
+effect upon the guest jobs of the grid systems. Taking any 
+reconfiguration action under this situation will induce unnecessary 
+ping-pong effect that could be harmful to the performance of the 
+ 
+ 5. Experimental Results 
+This section consists of two parts. The first part is the performance 
+evaluation of intra-cluster reconfiguration with our work. In this 
+part, we adopt our multi-layer reconfiguration strategy in three 
+real applications and compare the performance of our method with 
+that of other reconfiguration strategies. And another part is that we 
+present a living example to observer the performance of inter-
+cluster reconfiguration with our work. 
+5.1 The Intra-cluster Reconfiguration 
+In this part, we have implemented a set of application including 
+MM (Matrix Multiplication), N-Body and SOR (Successive Over-
+Relation) for evaluating the effectiveness of MRF. Our 
+experimental environment consists of four SMP nodes, each node 
+having four Intel Pentium III Xeon 500 MHz CPUs, and 512 MB 
+main memory. These nodes are connected by a 100 Mbps Fast 
+Ethernet and the operating system of these nodes is Linux Fedora 
+Core2 for x86. 
+The scenario of the intra-cluster reconfiguration is described as 
+follow. In the beginning, we ran a test program, i.e., guest 
+application, on Teamster-G with 4 nodes in one cluster. At the 
+same time, we also ran a host application into one of the four test 
+nodes. We adjust the problem size of the host application to 
+induce different workload states, and then applied different 
+resource reconfiguration, respectively. The experimental results 
+are shown in Figure 3, 4, and 5. In these figures, WTM denotes 
+that a half amount of work is migrated to another resource as long 
+as the host application started to run. ND is to immediately move 
+the guest application to another resource when the host application 
+is executed. Finally, MRF is our method. Our method adapts to 
+different host applications by applying different combinations of 
+several reconfiguration mechanisms. No matter what kinds of host 
+applications, we cut down a half of virtual processors which are 
+occupied by guest application. When the workload states of host 
+applications are recognized as heavy load, we remove the 
+overloaded node from the Teamster-G cluster. Otherwise, we do 
+not remove the overloaded node if the workload states of host 
+applications are medium load or just pulse load. After host 
+applications are finished, we will also add removed node and 
+virtual processors back. 
+We use throughput to be a metric of performance evaluation. The 
+system throughput is defined as 2 / (the time spent on completing 
+both of guest job and host job) .The system throughput of each 
+method is normalized by comparing with that of MRF. 
+(Heavy Workload)  System Throughput
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+MM N-Body SOR
+No Reconfiguration
+ND
+WTM
+MRF
+ 
+Figure 3. Experimental result in the heavy workload 
+Figure 3 indicates the experimental result in the heavy host 
+workload. ND has the least interference for the host application 
+since the guest application is immediately moved to another node. 
+Nevertheless, our MRF strategy can achieve the highest system 
+throughput because the MRF strategy reconfigures resource 
+progressively. In addition, the WTM strategy neither regulates the 
+number of virtual processors nor releases the overloaded node. A 
+half of working threads of the guest application still compete the 
+computational power against the host application after 
+reconfiguration. As a result, WTM is the worst for the case of the 
+heavy workload state. 
+Figure 4 shows the experimental result in the case of the medium 
+host workload. In this case, our MRF strategy decreases a half of 
+virtual processors which are employed by the guest application 
+but does not immediately. Basically, the experimental result in 
+this case is similar to the result in the case of the heavy host 
+workload. However, MRF can improve about 25% system 
+throughput compared to ND, if the experimental guest application 
+is also part of medium loaded jobs, such as MM. the reason is that 
+our MRF strategy can steal more available CPU cycles than ND 
+strategy. Besides, as our anticipation WTM strategy can not 
+perfume well. 
+(Medium Workload)  System Throughput
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+MM N-Body SOR
+No Reconfiguration
+ND
+WTM
+MRF
+ 
+Figure 4. Experimental result in the medium workload 
+ 
+(Pulse Workload)  System Throughput
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+MM N-Body SOR
+No Reconfiguration
+ND
+WTM
+MRF
+ 
+Figure 5. Experimental result in the pulse workload 
+ 
+Figure 5 shows that doing nothing is the best for the case of the 
+pulse workload. Unfortunately, we can not recognize the burst 
+workload unless we observe the workload state for a period of 
+time. However, MRF is progressive in resource reconfiguration. It 
+always applies virtual processor reconfiguration and then node 
+reconfiguration. Therefore, after the burst workload is over, MRF 
+ 

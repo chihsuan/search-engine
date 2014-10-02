@@ -1,0 +1,516 @@
+的元件都不需要重新規畫，甚至遇到轉供的情形，也只
+要對 OMS資料庫的內容做更改即可。 
+對於故障搜尋的方法，本文主要是將網絡上各個設
+備分出其階層性，利用此特性來作為故障搜尋的原則；
+每個設備都有兩個連結點(N1、N2)來判斷設備之間連
+結的情形，依照資料庫上設定每一個設備之方向性，決
+定設備與設備之間的層級關係，並作為故障搜尋時，往
+上或往下搜尋的依據。當變壓器送出停電訊息，也就是
+下層設備得到觸發訊號，即往上層搜尋此變壓器所屬的
+保護開關(上層設備)，再判斷此保護開關所有的下層設
+備是否全部擁有停電訊息，若全部擁有停電訊息，則繼
+續往上搜尋，若無，則此時所推論的結果即為推論後確
+定的故障設備。 
+本文著重於配電級變壓器之停電檢測器及圖資工
+作站與停電檢測主控電腦的交互運作，也就是配電級變
+壓器停電檢測器與停電資訊處理系統的系統研製。對於
+本文所做研究的問題描述可分為三個部份：第一個部
+份，是在第二節介紹的變壓器停電檢測硬體架構，主要
+是在說明變壓器停電檢測器(TOD)和 GSM 的通訊協
+定；第二部份是第三節介紹之停電資訊處理系統，說明
+控制中心之主要架構；第三部份，則是介紹本文如何設
+計 OMS資料庫的重點欄位，以及網路上的元件之間需
+要具備的關聯性以及本文所使用的搜尋法則，對於控制
+中心收到變壓器傳來的停電簡訊後，如何推論出最有可
+能的故障點，將在本文第四節說明。最後在本文的第五
+節是實驗結果及第六節結論。 
+ 
+II. 停電檢測硬體架構 
+本文所提到整個系統的系統架構如圖 1所示，控制
+中心端包含了原有台電的圖資工作站，配合著一個
+Oracle 資 料 庫 ， 執 行 運 轉 圖 資 系 統 (Operation 
+Management System, OMS)。我們將裝置一台停電檢測
+主控電腦，配合著相同的 Oracle 資料庫，執行停電資
+訊處理系統 (Outage Information Processing System, 
+OIPS)，主控電腦透過開放資料庫聯接(Open Data Base 
+Connectivity, ODBC)與台電之OMS資料庫與OIPS資料
+庫聯結，但實際上通訊的介面是藉由通訊網路來互相傳
+遞資料。其中 OMS 的資料庫必需設定為伺服器
+(Server)，開放資料庫客戶端(Client)透過網路存取的權
+限；而停電資訊處理系統中開啟一個 OMS資料庫的客
+戶端，使得停電資訊處理系統在程式上僅以 ODBC 就
+可以連線到 OMS資料庫 Server。 
+ 
+ 
+圖 1 系統架構圖 
+ 
+為檢測配電變壓器是否停電，本研究開發變壓器停
+電檢測器(Transformers Outage Detector, TOD)，此檢測
+器安裝於架空或地下配電系統用之配電變壓器二次
+側，主要功能為檢測變壓器二次側是否持續供電，一旦
+有停電狀況產生，此檢測器將送出一停電警訊，以行動
+電話簡訊方式經由 GSM無線行動通訊系統傳送至控制
+中心之停電檢測主控電腦。當然，一旦停電後，此停電
+檢測器之電源將中斷，故停電檢測器轉而使用蓄電池提
+供之電能，將停電警訊傳回。一旦配電變壓器復電後，
+此檢測器亦會將復電訊息回傳至控制中心之停電檢測
+主控電腦，以便控制中心掌握復電情形。 
+ 
+ 
+ 
+圖 2  變壓器停電檢測器硬體架構 
+ 
+停電檢測器之硬體架構設計如圖 2所示，茲將各硬
+體模組設計之功能說明如下： 
+ 停電偵測方法： 
+（A） 變壓器二次測為110V 
+（1）變壓器之二次測電壓為110V，經突波保護後連
+接到一顆稽納二極體，因配電變壓器單純之電
+壓變動不會低於80V，所以其連接的稽納二極
+體之截斷電壓設在75V，表示變壓器二次測電
+壓若低於75V，即會切斷連接至DS1232之交流
+訊號。 
+（2）若TOD之IC DS1232未接收到交流訊號，600msec
+之後即會送出停電訊息，其安裝TOD方式如圖4
+所示。 
+ 
+圖4 變壓器二次測為110V之安裝示意圖 
+ 
+（B） 變壓器二次測為220V 
+（1）變壓器之二次測電壓為220V，經突波保護後連
+接到一顆稽納二極體，因配電變壓器單純之電
+壓變動不會低於190V，且如圖5所示之變壓器
+二次測，若只有單一線圈損壞(如線圈2或線圈
+3)，將會讓電壓降至110V，所以其連接的稽納
+二極體之截斷電壓設在180V，即可針對所有狀
+況作偵測。  
+（2）其安裝TOD方式如圖5所示。 
+ 
+ 
+圖5 變壓器二次測為220V之安裝示意圖 
+ 
+（C） 變壓器二次測為220V 
+（1）當二只變壓器二次測使用燈力併供時，如圖7
+所示，若只有TR1變壓器損壞，二次測仍有電
+壓，但會只剩下110V，所以將稽納二極體之截
+斷電壓設在180V即可檢測。 
+（2）若只有TR2變壓器損壞，則TR2二次測之電壓會
+降為0V，但因其二次側電壓原為220V，所以稽
+納二極體之截斷電壓也可設在180V。 
+（3）若兩只變壓器皆損壞，或是一次側皆無電壓，
+則兩變壓器之二次側電壓皆會降為0V。 
+（3）由此可知，將稽納二極體之截斷電壓設在180V
+即可量測二只變壓器二次測使用燈力併供時，
+任何可能之停電情形，其安裝方式如圖6所示。 
+ 
+ 
+圖6 二只變壓器二次測採燈力併供之安裝示意圖 
+ 
+（D） 硬體擷取電路內部變壓器停電訊息 
+（1）電源供應模組需要由外部的220V或110V來轉
+換成15V的交流電，再利用IC和電路將電壓從
+AC 15V轉換成DC 12V和DC 5V，所以需要一
+只內部變壓器，而此變壓器故障也會造成停
+電檢測器檢測為停電，所以必須再接一個
+DS1232來檢測。 
+（2）當內部變壓器故障時，DS1232將其輸出腳位
+由高電位改變成輸出高低電位的方波訊號送
+至中央處理模組，且與外部變壓器所送至中
+央處理模組之輸入腳位不同。 
+（E） 軟體停電偵測 
+（1）當DS1232偵測為停電，送出高低電位時，即
+可確認為停電。 
+（2）中央處理模組收到停電訊息後，先判斷是外
+部變壓器故障或是內部變壓器故障，然後將
+故障訊息包含變壓器之故障功能碼、台電設
+備代號和設備編號。如表2所示。 
+ 
+表 2 變壓器發送簡訊內容之編碼格式 
+功能 
+起始
+碼 
+功能碼 
+資料 1 
+(FSC) 
+資料 2 
+(UFID) 
+結束
+碼 
+Heartbeat  
+回應 
+＊ 5 
+(變壓器台
+電代號) 
+(變壓器台
+電編號) 
+# 
+外部變壓器 
+停電訊息 
+＊ 6 
+(變壓器台
+電代號) 
+(變壓器台
+電編號) 
+# 
+內部變壓器 
+停電訊息 
+* 7 
+(變壓器台
+電代號) 
+(變壓器台
+電編號) 
+# 
+復歸訊息 ＊ 8 
+(變壓器台
+電代號) 
+(變壓器台
+電編號) 
+# 
+ 
+由 AT指令、表 2及表 3得知，當控制中心要進行
+heartbeat 時，需透過 RS-232 對 GSM 模組發送
+「AT+CMGF=1\r」、「AT+CMGS=”09xxyyyzzz”\r」及
+「*4#\r\n」這三行命令，其中”09xxyyyzzz”是從 OIPS
+資料中得到的變壓器電話號碼。當變壓器停電檢測器的
+中央處理單元收到「AT+CNMI=”SM”,1」時，表示有新
+訊息出現在第一封簡訊，利用「AT+CMGR=1」讀取簡
+訊內容，可以得到「*4#」，此時中央處理單元同樣過
+RS-232對 GSM 模組發送內容為「*5#」的訊息，則完
+成 heartbeat 測試程序，控制中心也得知該變壓器是停
+電檢測服務正常運作。 
+(C) 停電檢測模組 
+當 GSM 發射/接收模組收到某一簡訊，此模組將
+檢查其內容是否包含了停電訊息、停電時間、發送訊息
+之手機電話號碼及變壓器之台電編號。若訊息內容正確
+無誤，將利用 OMS資料庫中的配電系統連接資料，自
+動找出造成變壓器產生停電訊息的故障點，之後再透過
+區域網路傳遞事故訊息給 OMS；而如何自動找出變壓
+器產生停電訊息的故障點，在本文第四節有詳細的介
+紹。 
+(D) 停電記錄模組 
+將每一台變壓器的歷史停電記錄於 OIPS 資料庫
+中，也將每次搜尋到的停電訊息故障點記錄於 OIPS資
+料庫。 
+(E) 變壓器診斷模組 
+控制中心為了得知配電系統中的變壓器之停電檢
+測器是否正常運作，需設計心跳 (heartbeat)機制。
+Heartbeat 機制如同在網路上執行 ping 指令，控制中心
+於固定時間內發送一個簡訊至每個變壓器，若變壓器為
+正常運作時，控制中心稍後就會接收到該變壓器的回應
+簡訊，因此，控制中心可確保整體的停電檢測系統是正
+常運作。 
+ 
+IV. 停電資訊處理系統介紹 
+由第二節圖 1之架構圖可知，當配電變壓器停電檢
+測器送出停電訊息後，經由電信公司行動通訊網將簡訊
+傳送到控制中心，控制中心利用 GSM模組接收簡訊，
+再將得到之變壓器資訊送至控制中心的主控電腦，並且
+由停電資訊處理系統(OPIS)來推論出可能造成停電的
+故障點，所以當 OPIS在推論故障點時，最重要的依據
+就是運轉圖資系統(OMS)的資料庫。因此，運轉圖資系
+統資料庫的設計就相對的重要，必須要擁有一定關聯性
+和資訊互相配合。接下來將介紹對於本文所使用之資料
+庫其設計的重點和其包含的意義，以及本文所使用之推
+論故障點的法則。 
+A. OMS資料庫設計 
+OMS 資料庫為了記錄配電系統中，安裝在現場設
+備之詳細資料以及設備之間的連接性等資料，需要由多
+個表格來表示。OMS 資料庫中存放相關內容的表格，
+共區分為六大類，包含了客戶資料、電號資料、連接性
+資料、饋線屬性資料、土木設備屬性資料及電氣設備屬
+性資料，如圖 8所示。在本文的研究中，主要收集變壓
+器發出的停電訊息，來做為搜尋及推論出最有可能的故
+障點。因此，在推論過程中，設備的連接資訊會不斷地
+被查詢。其連接資訊位於 OMS中 CONNECTIVITY資
+料表，其邏輯與實體圖如圖 9所示。 
+ 
+ 
+ 
+圖 8 OMS中表格屬性分類 
+ 
+ 
+ 
+圖 9 OMS中 CONNECTIVITY資料表邏輯與實體圖 
+ 
+為了要運用此表格進行故障點推論，配電網絡上的
+任何一個設備 F，都有其所屬之設備代號(FSC)、設備
+編號(UFID)、饋線代號(FDR)、方向性(Dir)、兩個連結
+點 N1、N2…等有關設備連結的資訊。而主要的連結表
+示是依據每個設備之兩個連結點來看，若兩個設備是連
+F1T 2T nT  
+圖 14 簡易階層表示圖 
+利用得到之變壓器設備連結資訊往上層搜尋，找到
+所屬的保護開關設備 F，再由此保護開關往下層搜尋，
+找出連接在此保護開關下所有的變壓器設備 T，即表示
+連接在此保護開關下的所有變壓器都是其下層設備，如
+圖 14所示。圖中得知，此保護開關 F為 Ti, i=1..n的上
+層設備，令 P為保護開關 F下層設備之集合，因此， 
+ 
+{ | 1.. }P T i ni= = 。 (1) 
+ 
+(C)故障點自動搜尋法則 
+控制中心收到之變壓器停電訊息後，先得到變壓器
+T相關資訊，也將此變壓器的資訊儲存，並搜尋其所屬
+的保護開關 F，而此保護開關最多會收到|P|個因故障而
+產生的停電訊息。令 {0,1}siT Î ，第 i 個變壓的停電狀
+態，1表示為停電、0表示為正常供電，若收到停電訊
+息個數與|P|相同時，令 pS 為 P的狀態， { }0,1pS Î  
+1
+1,   | |
+0,
+n s
+p ii
+p
+S if P T
+S otherwise
+=
+= = å
+=
+ìï
+í
+ïî
+ (2) 
+表示此保護開關所屬的下層設備已全部停電，所以判斷
+為不是變壓器故障所引起的停電，應是此保護開關故障
+或是保護開關上層的設備故障造成的停電，因此將此保
+護開關的停電狀態設為 1，表示停電。雖然發現不是變
+壓器單獨的故障，而是保護開關無送電而影響到停電檢
+測器發出訊號，但是也可能是更上層的保護開關所引起
+的停電，所以，再利用此保護開關繼續往上層搜尋。保
+護開關往上層搜尋之後，即會遇到其下層所屬的設備是
+另一保護開關 P 的情形，而當下層的設備是保護開關
+時，則不往此設備的下層作搜尋。因為若遇到保護開關
+時，只須等到這個保護開關的停電狀態 pS 由 0變成 1，
+也就是第 j 個保護開關的停電狀態從正常供電變為停
+電，即可確定此保護開關所屬的設備是否已有停電訊息
+往上層傳送。令 Q 為一個保護開關，其下層有連接 n
+個變壓器及 m個保護開關， 
+ 
+{ | 1.. } { | 1.. }j i kQ T i n P k m= = È = ， (3) 
+ 
+若 Qj要標示為停電時，下層的停電狀態需要皆為 1，因
+此，令 QS 為 Q的狀態， { }0,1QS Î  
+1 1
+1,   | |
+0,
+j
+j
+n ms s
+Q kii k
+Q
+S if P T Pj
+S otherwise
+= =
+= = +å å
+=
+ì
+ï
+í
+ïî
+。 (4) 
+由圖 15所示。P1收到 T3、T4及 T5的停電訊息後，P1
+則被標示為停電狀態，
+1
+1PS = 。在往上搜尋時，發現
+了 Q1，而 Q1的下層共有四個設備，分別為 P1、P2、T1
+及 T2，其中 P1已經知道有停電，因此需要等其餘三個
+設備之停電訊息，當 Q1收到的停電訊息數量為| Q1| = 4
+時則表示，Q1也是呈現停電狀態，
+1
+1QS = 。如此運用
+遞回方式，不斷地往上偵測，直到停電訊息不再增加為
+止，則故障點即被標示出來。 
+ 
+ 
+ 
+1P
+3T 4T 5T
+2P
+6T 7T 8T
+1T
+2T
+1Q
+ 
+圖 15 故障點往上層搜尋表示圖 
+ 
+當每次有簡訊傳送到控制中心後，就會觸發一次搜
+尋故障點的程式，程式被停電簡訊自動觸發後，先從簡
+訊內容中得到停電設備之設備代號(FSC)和設備編號
+(UFID)，將此設備列為故障設備，然後利用此設備經由
+本文所提出的方法搜尋其所屬的保護開關，但因此保護
+開關尚未經過確認是否故障，所以先列為懷疑的保護開
+關，若之前已有變壓器屬於此保護開關即表示已被列為
+懷疑的保護開關，就不須再列一次。 
+由公式(4)可知，要確認懷疑的保護開關是否故障
+就要確認其所屬的下層設備是否已全部傳回停電訊
+息，所以再利用此保護開關往下層搜尋所有的設備。但
+若往下搜尋遇到的設備是開關時，即停止往此開關之下
+層繼續搜尋，因當下層設備為開關時，即表示其下層仍
+有須要等待回傳簡訊的變壓器或高壓用戶，所以只要等
+到此開關之狀態由 0變成 1時，就可以確定其所屬的所
+有設備已全部停電，不須將所有的下層設備全數確認一
+次，就可避免越上層的設備，須要確認的設備就越多的
+情況。 
+搜尋完所有的下層設備後，即開始比對已被列為故
+障的設備，若未完全符合，表示保護開關下層還有未停
+ 圖 18 北北區 OMS部份網絡單線圖(One-line diagram) 
+ 
+Case1：單一變壓器故障 
+控制中心接收到由變壓器傳送的停電訊息，取得變
+壓器之設備代號(FSC)和設備編號(UFID)，利用此變壓
+器往上搜尋，列出懷疑的保護設備，若在計時器時間終
+止前無其他變壓器之故障訊息傳入控制中心，即確定故
+障設備並跳出警告訊息，以及故障設備之所在位置。控
+制中心接收到 FSC 為 115(變壓器設備代號)，UFID 為
+16060611 的變壓器停電訊息，待計時器時間終止未有
+其他停電訊息傳入，即顯示最後結果，並列出故障設備
+所在位置，如圖 19 所示，此變壓器之連接單線圖如圖
+20所示。 
+ 
+ 
+圖 19 控制中心顯示確定故障設備並列出其所在位置 
+ 
+ 
+圖 20 FSC=115，UFID=16060611之設備連接圖 
+ 
+Case2：單一保護開關故障 
+若保護開關所屬的設備皆停電，即表示保護開關故
+障。控制中心接收到的停電訊息為三個 FSC=115，UFID
+分別為 16336380、16336381和 16336382，由圖 21可
+知，保護開關 16336740所屬之設備皆表示停電，因此
+應為此保護開關故障，如圖 22所示。 
+ 
+ 
+圖 21 保護開關 16336740之下層設備連接圖 
+ 
+號，但是部份的亭置式變壓器是放置於某些大樓的配電
+室內。位於大樓的配電室幾乎都設置在地下室，若非人
+口聚集的地方，大樓地下室常是行動電話訊號的死角。
+雖然可以裝設漏波電纜，但是會增加太多成本。未來亭
+置式變壓器與控制中心的通訊介面除了 GSM之外，還
+要發展無振鈴檢測停電檢測器。此無振鈴檢測停電檢測
+器利用現有的電話線，在不影響用戶使用電話下就可以
+達成停電訊息通知及 heartbeat 功能。在行動電話訊號
+不良的地區，其實還是可以回歸用戶端的發送停電警
+訊，但是也應該要由被動轉為主動。因此，未來需要發
+展用戶端的利用電話線的無振鈴檢測停電檢測器，補強
+配電系統停電檢測的範圍。 
+ 
+參考文獻 
+[1]. 顏榮良等，”終端用電設備負載調查模組與故障點
+偵測模組開發”，台灣電力公司研究計畫完成報
+告，6月 2002年。 
+[2]. 姚立德，”配電級變壓器之監測與診斷系統”，台灣
+電力公司研究計畫完成報告，4月 2006年。 
+[3]. 陳敬元，”配電變壓器負載監測及診斷系統之研
+製”， 碩士論文，國立台北科技大學電機工程學
+系，7月 2006年。 
+[4]. Y. Liu, R. A. Discher and N.N. Schulz, “Distribution 
+system outage and restoration analysis using a 
+wireless AMR system, ” In proc. IEEE Power 
+Engineering Society Winter Meeting, vol. 2, 
+pp.871-875, 27-31 Jan. 2002. 
+[5]. Glenn. C. Lampley, “Fault detection and location on 
+electrical distribution system, ” In proc. IEEE Rural 
+Electric Power conference, pp. B1-B1_5, 5-7 May 
+2002. 
+[6]. H. J. Chuang, C. H. Lin, C. S. Chen, C. C. Yun, C. Y. 
+Ho and C. S. Li, “Design of A Knowledge Based 
+Trouble Call System with Colored Petri Net 
+Models, ” In proc. IEEE/PES Transmission and 
+Distribution Conference and Exhibition: Asia and 
+Pacific , pp. 1-6, 15-18 Aug. 2005. 
+[7]. K. Sridharan, N. N. Schulz, “Outage management 
+through AMR systems using an intelligent data 
+filter, ” IEEE Trans. on Power Delivery, vol. 16, no. 4, 
+pp. 669-675, Oct. 2002. 
+[8]. Y. Liu, and N.N. Schulz, “Intelligent system 
+applications in distribution outage management, ” In 
+proc. IEEE Power Engineering Society Winter 
+Meeting, vol. 2, pp.833-837, 27-31 Jan. 2002.  
+[9]. C. S. Chen, C. H. Lin, and H. Y. Tsai, “A rule-based 
+expert system with colored Petri net models for 
+distribution system service restoration, ” IEEE Trans. 
+on Power System, vol. 17, no. 4, pp.1073-1080, Nov. 
+2002. 
+[10]. W. H. E. Liu and W. Zhong, “A fuzzy set method for 
+fault location identification in power distribution 
+systems, ” In proc. Proceedings of the 35th IEEE 
+Decision and Control, vol.2, pp. 2002-2208, Dec. 
+1996. 
+[11]. C.L. Yang, A. Yokoyama, et al., "Fault section 
+estimation of power system using color time petri 
+nets, " Proc. of Expert System Application to Power 
+Systems, pp. 321-326, 1993. 
+[12]. Jaw-Shyang Wu, Chen-Ching Liu, Kan-Lee Liou, 
+and Ron F. Chu, “A petri net algorithm for scheduling 
+of generic restoration actions, “ IEEE Trans. on 
+Power Syst., vol. 12, no. 1, pp. 69-75, Feb. 1997. 
+[13]. Jaw-Shyang Wu, “A petri-net algorithm for multiple 
+contingencies of distribution system operation, 
+“ IEEE Trans. on Power Syst., vol. 13, no. 3, pp. 
+1164-1171, Aug. 1998. 
+[14]. F. Wang and J. Tang, "Modeling of a Transmission 
+Line Protection Relaying Scheme Using Petri Nets," 
+96 WM 022-4 PWRD, IEEE/PES Winter Meeting, 
+Jan. 21-25, 1996 Baltimore, Maryland, USA. 
+[15]. K. Jensen, "Colored Petri Nets-Basic Concepts, 
+Analysis Methods and Practice Use," Berlin, 
+Germany: Springer-Verlag, 1992, vol. 1. 
+[16]. Y. L. Ke, C. S. Chen, M. S. Kang, J. S. Wu, and T. E. 
+Lee, “Power distribution system switching operation 
+scheduling for load balancing by using colored Petri 
+nets, ” IEEE Trans. on Power System, vol. 19, no. 1, 
+pp.629-635, Feb. 2004. 
+[17]. J.S. Wu, K.L. Tomsovic, C. S. Chen, "A Heuristic 
+Search Approach to Feeder Switching Operations for 
+Overload, Fault, Unbalance Flow and Maintenance," 
+91 WM 10-8 PWRD. 
+[18]. J.S. Wu, C.R. Lee, K.L. Tomsovic, C.S. Chen, "A 
+Comparison of Two Heuristic Approaches for 
+Distribution Feeder Switching Contingencies," 3rd 
+Symposium on Expert Systems Application to Power 
+System, ESAP’91, Tokyo/Kobe, Japan, April 1991. 
+[19]. T. Taylor, D. Lubkeman, "Implementation of 
+Heuristic Strategies for Distribution Feeder 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 NSC95-2221-E-027-128 
+計畫名稱 自動圖資系統為基礎之配電系統分析、規畫與運轉策略－子計畫二：以GPRS行動通訊系統加強配電自動化系統功能之研究(2/3) 
+出國人員姓名 
+服務機關及職稱 
+姚立德  國立台北科技大學電機系教授 
+會議時間地點 15-17 April, 2007 
+會議名稱 2007 IEEE International Conference on Networking, Sensing and Control 
+發表論文題目 
+1.  Tze Yang and L. Yao, “A fuzzy classifier with adaptive learning of norm 
+inducing matrix,” in Proc. 2007 IEEE Int. Conf. Networking, Sensing and 
+Control, London, U.K., pp. 362-367, Apr. 15-17, 2007. 
+2.  L. Yao, Tsong-Hai Hsu, Chin-Chin Lin and Chen-Han Lin, “A block 
+deepening genetic programming for scheduling of direct load control,” in 
+Proc. 2007 IEEE Int. Conf. Networking, Sensing and Control, London, 
+U.K., pp. 821-827, Apr. 15-17, 2007. 
+ 
+一、參加會議經過 
+由於本研究計畫探討經由無線網路進行配電系統控制相關之研究主題，故本計畫於
+2007年之國外論文研討會鎖定在 IEEE主辦之 2007 IEEE International Conference on 
+Networking, Sensing and Control，此研討會主要探討各種網路控制相關之重要研究主題，
+為該領域中最重要論文研討會之一。此次研討會輪由英國 Brunel University主辦，會議
+地點就設在該校校園，會議時間是 2007年 4月 15-17日，此時英國正值春天花開，會議
+之便順道造訪英國 Brunel University所在之倫敦，春天繽紛花開中的倫敦實在是美不勝
+收。筆者於 4月 14日下午到達倫敦，下塌於倫敦市區之 Holliday Inn飯店，雖然離 Brunel 
+University約有一小時地下鐵之車程，但是距離倫敦市區較近，就近可感受倫敦的繁華與
+美景。隔日乘地下鐵至 Brunel University參加該會議的歡迎會議，此次會議共有 210篇
+論文投稿，共錄取 162篇論文，來自世界各國在網路控制相關領域的專家齊聚一堂，共
+同討論所學，實為一大樂事。筆者在三天的會議時間，每天均前往會場參加會議，此次
+會議筆者共發表兩篇論文，分別在 4月 16及 17日二天各發表一篇論文，4月 16日當天
+與發表之論文題目-A block deepening genetic programming for scheduling of direct load 
+control獲得廣大迴響，與美國及印度來的學者在會議中及會議後討論甚久，互相交換在
+此領域中的心得甚多，下午休息時間，並與二位教授至 Brunel University的學校咖啡廳
+繼續討論約 1小時後，才打道回飯店。會議結束後，在倫敦多停留二日，至 Imperial College
+訪問一日，拜訪該校物理系教授 Dr. Johnson，並仔細參觀該校物理系多個實驗室，由於
+該校係全英國前五名之著名大學，該校之百年建築及新穎設備交陳，至今給筆者留下深
+刻印象。另一日則至大英博物館(British Museum)欣賞館藏，於 4月 20日搭機返台。 
+ 
+ 
+ 

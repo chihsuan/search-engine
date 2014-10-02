@@ -1,0 +1,190 @@
+overshoot.
+Holes in Tables: The holes in tables problem is caused by the absence of some object instances in a
+row entry. The 'holes' in rows may result in a response message containing a set of object instances
+located in different rows. A considerable effort will be taken to align those object instances for
+further processing.
+Table Consistency: The table consistency problem is the possible inconsistency of object states
+caused by the long latency taken to retrieve a large MIB table.
+GetBulk Overshoot: GetBulk overshoot is a particular trouble in using GetBulk. It is caused by the
+difficulty of specifying a proper value of max-repetitions in a GetBulk request. A small
+max-repetitions will result in a number of GetBulk iterations required to retrieve an MIB table. On
+the other hand, if a larger value of max-repetitions is used, a large number of unwanted data beyond
+the MIB table will also be retrieved. [7,8] GetBulk overshoot thus takes place.
+2. Project Goal
+In this project, we propose a possible enhancement over SNMP to provide a more effective
+way to access object instances. A new service, called GetFilter, is proposed to improve the GetBulk
+service in retrieving objects from MIB tables. Using GetFilter, a management application can
+specify criteria, called filter, for evaluating rows of an MIB table. Upon receiving a GetFilter request,
+an SNMP agent will find the rows that satisfy the given filter specification, and then only return
+those object instances in the selected rows. As a consequence, only moderate bandwidth will be
+consumed for the transmission of those selected objects. In addition, it is not necessary anymore for
+management applications to filter out irrelevant objects from the responses sent by the agent. The
+GetFilter service will be designed to adhere to the simplicity property of SNMP. The protocol data
+unit (PDU) of GetFilter follows the same structure as the GetBulk PDU. Therefore, current SNMP
+implementations can be easily modified to provide the GetFilter service. The GetFilter service is
+also designed to minimize the possible processing overheads introduced in SNMP agents. By
+limiting the complexity of filter specifications, the GetFilter service supports simple but practical
+filters, by which SNMP agents can efficiently extract desired rows of MIB tables. Therefore, it is
+feasible to implement agents with the GetFilter service in a variety of network elements.
+In summary, the proposed GetFilter service is designed to achieve the following merits:
+ Less Communication Overhead: Only part of table objects will be selected and sent to the
+manager. Thus, less bandwidth will be consumed for sending selected objects.
+ Lower Latency: Only one or a few GetFilter interactions are required to retrieve objects. Thus,
+lower latency between the manager and the agent can be achieved.
+ Less Processing Overhead in Manger: The selection of objects is delegated to the agent.
+Therefore, it is not required for the manager to take effort to filter out irrelevant objects.
+ Minimized Processing Overhead in Agent: The GetFilter service will be designed not to
+introduce much overhead in the agent. Thus, GetFilter can be easily implemented in a variety
+of network devices.
+ SNMP Simplicity: The GetFilter service follows the simplicity principle of SNMP. Thus,
+current SNMP implementations can be modified without much effort.
+In this project, we describe the protocol details of GetFilter, implement the GetFilter service,
+design a MIB browser with the support of GetFilter, and develop several efficient management
+applications by using the GetFilter service. Via a proxy agent implementation, we also compare
+GetFilter with GetNext and GetBulk in number of requests, responses, total octets transmitted, and
+latency.
+3. Related Work
+Several improvements have been proposed to address the above issues. The end-to-end latency
+can be reduced by using a pipeline retrieval algorithm [10] or using SNMP over TCP [7]. The
+network overhead introduced by BER encoding can be shortened by using more effective encoding
+schemes. In addition, several new SNMP services have been proposed to provide a more effective
+way to retrieve bulk of objects.
+expression of conditions that defines the matching criteria to select rows of an MIB table. In
+principle, one can specify any logical expression of conditions to build a filter construct. However,
+to support object selection, the agent in a network element should be implemented with considerable
+effort such that any form of filter constructs can be interpreted and processed properly. This is a
+challenge for an agent implementation under limited resource in a network element. In fact, a
+practical logical expression is usually not too complicated. Therefore, we propose the use of
+simplified logical expressions in filter constructs. A simplified logical expression of conditions can
+be a single condition, a disjunctive form of conditions, or a conjunctive form of conditions. A
+condition is represented by a relational expression (objName OP objValue), where objName
+indicates a columnar object in an MIB table, OP is a comparison operator, and objValue is a possible
+value of the columnar object. A disjunctive (conjunctive) form of conditions is a set of conditions
+joined by logical operator OR (AND). Figure 2shows several examples of filter construct. For
+example, a management application is developed to find abnormal network interfaces from the
+ifTable table in MIB II. The ifAdminStatus and ifOperStatus objects of ifTable indicate the
+administrative and operational statuses of an interface respectively. An abnormal interface will be
+one with ifAdminStatus = 1 but ifOperStatus = 2, where 1 denotes ‘up’ and 2 denotes ‘down’. Thus, 
+the filter construct for the management application can be set to a conjunctive form of conditions:
+(ifAdminStatus = 1) AND (ifOperStatus = 2). In spite of the limitation in representing
+complicated logical expressions, the plain and flat form of filter constructs will facilitate the design
+the GetFilter service and simplify the implementation of agents to support object selection.
+Single condition
+(ifDesc = “NCNU-to-Hinet-ADSL-1”)
+(ifOutErrors 0)
+Disjunctive form
+(ifSpeed  1250000) OR (ifPhysAddress = “0090CC08B5DE”)
+(ifType = 5) OR (ifType = 6) OR (ifType = 22)
+Conjunctive form
+(ifAdminStatus = 1) AND (ifOperStatus = 2)
+(ifIndex 1) AND (ifIndex 16) AND (ifLastChange > 60000)
+Figure 2. Filter construct examples
+3.2. Design of GetFilter PDUs
+The simplicity characteristic of SNMP has brought the wide employment of SNMP-enabled
+devices. One of the simplicity features of SNMP is the simple and common PDU structure for use
+within SNMP. To follow the same philosophy of SNMP, we aim to develop a new SNMP service,
+called GetFilter, without the introduction of new PDU structures in SNMP. Thus, current SNMP
+implementations can be easily adapted to provide the new GetFilter service. The GetFilter service is
+performed by a GetFilter request issued by the manager and one or more GetFilter responses
+returned by the agent. The manager specifies a filter construct with other parameters in a GetFilter
+request. The GetFilter request is then sent to the agent. The agent selects rows of an MIB table
+according to the given filter construct in a GetFilter request. Then, the requested columnar objects in
+the selected rows are sent to the manager via one of more GetFilter responses. We define a simple
+PDU structure FilterPDU for GetFilter requests. The Response-PDU, defined in SNMP
+previously, is used for GetFilter responses. Figure 3 shows the modified definition of SNMP PDUs
+in ASN.1 notations. FilterPDU follows the same PDU structure of GetBulk PDU (BulkPDU).
+Both PDUs consist of three integer fields and a variable binding list. FilterPDU is composed by
+four fields: request-id, cond-and-logic, max-return-rows, and
+variable-bindings, as shown in Figure 4 and Figure 5. The PDU structure of Response-PDU,
+called PDU, is shown in Figure 6. Two additional errors are defined in PDU especially for the
+GetFilter service. The detailed description of SNMP PDUs can be found in RFC 3416.
+(1). GetFilter Request PDU
+The major purpose of FilterPDU is to carry a filter construct in a GetFilter request. A filter
+construct is usually composed by several ANDed or ORed conditions. We assume that the number of
+conditions in a filter construct will not be greater than 127. Since MIB tables are usually composed
+by several columns. The number of conditions in a filter construct will be usually small. On the
+The max-return-rows field of FilterPDU is to denote the maximum number of rows to
+be returned by the agent. Suppose the value of max-return-rows is m. Then, the agent will
+return the requested columnar objects within at most the first m rows that satisfy the criteria
+specified by a filter construct. If the value of max-return-rows is set to 0, the agent will return
+all the requested columnar objects within the rows satisfying the criteria. The
+variable-bindings field in FilterPDU is used to specify both conditions and requested
+columns. Suppose there are n conditions in a filter construct and r columns of objects to be retrieved.
+There will be n+r VarBind’s in the variable-bindings field. The first n VarBind’s are 
+conditions, and the remaining r VarBind’s indicate requested columns. Like GetNext and GetBulk,
+when used to specify a requested column, each VarBind will be a (name, NULL) pair, where name
+is the OID of a requested columnar object. Since GetFilter is designed to retrieve objects from an
+MIB table, the r columnar objects should be within the same MIB table. In addition, GetFilter
+allows the search of objects started from a certain row of an MIB table. The row can be specified by
+using the instance identifier of a columnar object. To reduce the length of FilterPDU, we mandate
+the use of an instance identifier only in the first one of the r VarBind’s. Accordingly, the agent will
+first find the next existing row after the instance identifier and the then start object selection using
+the given filter construct.
+FilterPDU ::=
+SEQUENCE {
+request-id INTEGER (-214783648..214783647),
+cond-and-logic INTEGER (0..max-bindings),
+-- 0..127: conjunctive form of conditions
+-- 128..255: disjunctive form of conditions
+-- If cond-and-logic is greater than 127,
+-- the number of conditions is cond-and-logic – 128.
+max-return-rows INTEGER (0..max-bindings),
+variable-bindings VarBindList
+}
+VarBindList ::= SEQUENCE (SIZE (0..max-bindings)) OF VarBind
+VarBind ::=
+SEQUENCE {
+name ObjectName,
+-- When used as part of a condition in a GetFilter request:
+-- {ObjectName 0}: ObjectName with an equal-to operator(=)
+-- {ObjectName 1}: ObjectName with a less-than operator(<)
+-- {ObjectName 2}: ObjectName with a greater-than operator(>)
+-- {ObjectName 3}: ObjectName with a less-than-or-equal-to
+-- operator(<=)
+-- {ObjectName 4}: ObjectName with a greater-than-or-equal-to
+-- operator(>=)
+-- {ObjectName 5}: ObjectName with a not-equal-to operator(!=)
+-- {ObjectName 6}: ObjectName with a contain operator(?)
+CHOICE {
+value ObjectSyntax,
+-- in responses or
+-- in conditions of a GetFilter request
+unSpecified NULL, -- in retrieval requests
+-- exceptions in responses
+noSuchObject [0] IMPLICIT NULL,
+noSuchInstance [1] IMPLICIT NULL,
+endOfMibView [2] IMPLICIT NULL,
+endOfTable [3] IMPLICIT NULL
+}
+}
+Figure 4. ASN.1 definition of FilterPDU
+For comparison, the cond-and-logic field of FilterPDU corresponds to the
+non-repeaters field of BulkPDU, used by GetBulk. The non-repeaters field in BulkPDU
+manager via GetFilter responses.
+Figure 6. The proxy architecture of the GetFilter implementation
+We implement the proposed GetFilter service using AdventNet Java SNMP API [17], which is
+a comprehensive toolkit for rapid development of SNMP-based management applications.
+Developers can leverage AdventNet SNMP library to build standalone and web-based network
+management applications, embedded software components, and distributed EJB, CORBA, and RMI
+applications. The GetFilter implementation is realized in three Java packages: SnmpAgent,
+SnmpManager, and SnmpHelper. SnmpAgent is a Java package used in the agent side to provide the
+facility for building an agent or a proxy agent capable of handling GetFilter requests. SnmpManager
+is a Java package used in the manager side to provide a GetFilter API for issuing a GetFilter request.
+A MIB browser implementation is also included in this package. The SnmpHelper package provides
+common codes used by SnmpManager and SnmpHelper.
+Figure 7. MIB Browser supporting GetFilter.
+SnmpAgent is the main package of our GetFilter implementation. Three classes are defined
+in the package: AgentServerSocket, GetBulkLowLevel, and GetFilter.
+AgentServerSocket is the main program in the agent to start a UDP socket listening to port
+161 for receiving BER-encoded SNMP requests. While a GetFilter datagram is received, a
+SnmpMessage instance is created with a parameter containing the received SNMP message. The
+SnmpMessage instance is then decoded, and an SnmpPDU instance is obtained. Both
+SnmpMessage and SnmpPDU are objects of the AdventNet SNMP package. We can check the tag
+of the SnmpPDU to determine whether it is a GetFilter PDU. If it is, an SnmpGetFilterPDU
+instance is created. Then, all the parameters of a GetFilter request are available in the attributes of
+the SnmpGetFilterPDU instance. After a GetFilter PDU is obtained and decoded properly, a
+GetFilter instance is created to perform GetFilter operations. The GetFilter class is the core
+program of the GetFilter process for decoding a GetFilter request, accessing an MIB table, filtering
+objects, and creating responses.
+SnmpManager is a package for use in managers. The GetFilterRequest class defined
+in this package provides for users to issue a GetFilter request by giving GetFilter PDU elements. In

@@ -1,0 +1,459 @@
+模擬最佳化之多目標演化式演算法
+隨著資訊科技的進步，系統模擬已經成為廣泛使用的分析工具，傳統的看法認為模擬適用於績
+效評估，可以比較數個系統的優劣，但是難以像數學規劃一樣成為最佳化的利器。近年來，不
+少學者倡議結合模擬與最佳化演算法，根據先前的模擬結果進行參數調整，以追求單項績效指
+標的最佳化，但是少有研究探討應用模擬求解多目標的最佳化問題。雖然已有豐富文獻針對確
+定性(deterministic)問題發展多目標最佳化演算法，但是模擬最佳化需要的是穩定且快速收斂的
+演算法，這是因為目標函數值必須經由模擬實驗來估算，模擬過程本身就耗費大量的運算時間，
+很難再進行成千上萬個回合的搜尋或演化。另一個問題導因於模擬實驗的結果具有隨機誤差，
+同時比較多個績效指標，更容易造成評比的困難，甚至影響求解的品質與效率，這是確定性的
+多目標最佳化問題不會遭遇的問題。
+本研究發展適合模擬實驗的多目標演算法，鑑於演化式演算法(evolutionary algorithm)同時建構
+多個解，並可一次獲得多個非凌駕解(pareto-optimal solutions)，因此成為本研究的主要架構。演
+算法參考數種多目標演化式演算法(VEGA, NSGA-II)的優點，試圖簡化運算步驟，同時達成快速
+收歛。演算法並採用scatter search的交配方式以保持解的多元性，判定非凌駕解與比較各個解的
+優劣時，也考慮到模擬結果的隨機誤差。測試範例顯示，本研究所提出之多目標演算法可以迅
+速逼近最佳化問題的Pareto-optimal front，與已知的最佳演算法差距不大。庫存管理的模擬程式
+測試顯示，演算法可以在10個遞迴內，求得分布相當良好的非凌駕解。研究並進一步分析演算
+法整體表現，以及各個步驟的效益，主要的成果為：
+1.以LHS建構的起始解集合相較於隨機取樣並未顯著影響收斂的速度與穩定性。
+2.採用scatter search的觀念方式進行交配，佐以隨機產生子代的方式，可有效加速演算法的收斂。
+3.當模擬結果為可信賴區間時，提出如何比較優劣、或篩選較適解的策略。
+4.以具有代表性的數學範例與模擬程式進行測試，確認演算法的收斂速度與穩定性。
+關鍵詞：多目標最佳化，系統模擬，演化式演算法，非凌駕解集合
+1. INTRODUCTION
+Optimization problems often involve conflicting objective functions. Trade-off among key
+performance measures may be necessary for decision-making. Many algorithms for deterministic
+problems have been suggested in the literature. They can be classified in to two approaches. The first
+approach is to combine all performance measures of interest into one single objective function or try to
+minimize a surrogate objective function such as the total deviations from the targets. Then apply single
+objective optimization procedures to solve the surrogate problem. This approach includes weighted
+sum method, constraint programming, and goal programming. An alternative is to develop
+multi-objective optimization procedures to search for Pareto-optimal solutions, defined as solutions not
+dominated by other solutions in terms of each objective function. The user does not assume any
+information about the relative importance of objective functions. This research adapts this approach to
+solve for simulation optimization problems.
+However, few algorithms deal with problems in which the objective functions must be evaluated via
+simulation runs. Optimization via simulation is challenging because it requires balancing the tradeoff
+between the simulation time used in estimating the objective function and the computational effort used
+for searching new solutions. If too much effort is spent on long simulation runs, the algorithm may
+evaluate only a few solutions in the time available and may fail to identify an optimal solution, or even a
+good solution. On the other hand, if we cannot control variability in the simulation experiment, the
+search can be misled or fail to recognize good solutions when they are encountered. Recent development
+by Boesel et al.(2003a) and April et al.(2004) combine random search and knowledge of the response
+surface and appear to be very promising. Some of these ideas have been implemented into the software
+packages such as Optquest. But the application is restricted to single objective optimization problems.
+There is a strong need to extend the research to multi-objective simulation optimization.
+This research proposes an evolutionary algorithm to identify as many Pareto-optimal solutions as
+possible for multi-objective simulation experiments. It generates a mating pool for each objective and
+uses interpolation and extrapolation operators to create the offspring population. It also provides an
+effective way to compare, select, or eliminate solutions based on stochastic simulation results. The
+research focus is fast convergence, uniform spread, and robustness to simulation variability.
+2. LITERATURE REVIEW
+The following subsections review basic concepts and recent development in simulation optimization,
+multi-objective optimization, and evolutionary algorithms, respectively.
+2.1 Simulation optimization
+Many believe that simulation is mainly a function that numerically evaluates configurations of the
+system of interest. Law and Kelton(2000) state that the traditional viewpoint is that simulation provides
+no concrete solutions to problems, but only possible ones. In order to find a good solution to the
+problem, the user would need the evaluation of a set of solutions sufficiently wide and representative of
+all the feasible solutions. In recent years, researchers began to transform methods designed for
+deterministic problems into optimization procedures for simulation that search for a combination of
+inputs to a simulation program that will optimize certain output performance. Rosen and
+Harmonosky(2005) classify simulation optimization techniques as gradient-based search methods (most
+notably stochastic optimization and response surface methodology), sample path optimization, random
+search heuristics, simplex search methods, and statistical methods.
+Simulation software vendors have also integrated optimum-seeking capability into their software.
+The interactions between an optimization package and the simulation model are shown in Figure 1. The
+optimization package first instructs the simulation model to simulate one or more system configurations.
+The results from these simulations are fed back into the optimization package, which then uses its
+built-in search algorithm to decide on additional configurations to simulate. This process is continued
+until the optimization package’s stopping rule has been satisfied. However, no software package is
+capable of handling multi-objective problems
+evolutionary algorithm to solve the problem. Gupta and Sivakumar (2002) study a multi-objective
+production scheduling problem for the semiconductor industry. At each decision instant in simulated
+time, the authors apply various techniques such as weighted aggregation approach, global criterion
+method, minimum deviation method, and compromise programming to find a non-dominated solution.
+Joines et al.(2002) try to optimize sourcing decisions within a supply chain. They develop a
+multi-objective genetic algorithm to estimate the Pareto-optimal frontier of the problem. But they fail to
+account for random errors in the simulation experiment.
+2.3 Evolutionary algorithm
+A class of algorithms which are widely used to solve the optimization problem is the Evolutionary
+Algorithm (EA). The algorithm initializes its population randomly and then evolves from generation to
+generation by operations of selection, crossover, and mutation. It mimics nature’s evolutionary
+principles to drive its search toward optimal solutions. Common features of evolutionary algorithms are:
+1. EAs use a population of solutions simultaneously, instead of a single solution.
+2. EAs use selection operation to preserve the better solutions in the mating pool and crossover or
+mutation operations to create new solutions by exchanging decision variable space.
+3. EAs use the fitness value to evaluate solutions and decide who survives in the population.
+Deb(2001) believes that the first feature gives EAs a distinctive advantage for its use in solving
+multi-objective optimization problem. Many multi-objective EAs are modifications of single-objective
+algorithms. An early development is vector evaluated GA (VEGA) by Schaffer(1984) which has been a
+strong point of reference up to now. The population at any generation is divided into equal divisions.
+Fitness values of individual solutions in each division are determined based on the corresponding
+objective function. After the selection process creates mating pools, crossover and mutation operators
+are applied to create the next generation. The VEGA algorithm is simple and usually works efficiently
+for some generations but in some cases suffers from its bias towards individual objective champions.
+Deb et al.(2002) propose the well-known NSGA-II algorithm which combines the parent and the
+offspring population together and ranks the individuals based on dominance. Then the algorithm creates
+the next generation using the crowding distance selection, crossover, and mutation operators. Although
+requiring more computation, the advantages of NSGA-II include a global non-dominance check at each
+generation and the diversity introduced by the crowding distance selection. NSGA-II has been used in
+the simulation study by Joines et al.(2002). Recently Nebro et al.(2005) adapts a scatter search template
+for single objective optimization to the multi-objective problems. Their experiment indicates that the
+performance of scatter search is quite well against NSGA-II.
+Some researchers focus on the speed of the algorithms. Salami and Hendtlass (2003) suggest that
+EAs are popular and robust for solving optimization problems but may require huge computation power
+for solving real problems. They introduce a fast evolutionary algorithm that does not evaluate all new
+solutions, thus operating faster. Each new solution is assigned a reliability value and is only evaluated
+using the true fitness function if the reliability value is below a threshold. Knowles (2005) concerns
+multi-objective optimization where each solution evaluation is financially and/or temporally expensive.
+His ParEGO algorithm uses a design-of-experiments inspired initialization procedure and learns a
+Gaussian processes model of the search landscape, which is updated after every function evaluation.
+Test results suggest that ParEGO outperforms NSGA-II after just 100 and 250 function evaluations.
+Another important issue is how to maintain both diversity and proximity during the evolutionary
+process. Bosman and Thierens (2003) point out that an MOEA must approximate the Pareto optimal
+frontier such that solutions in the approximation set are close to Pareto optimal solutions and are as
+diverse as possible. They suggest the use of elitism to achieve exploitation of proximity, exploitation of
+diversity, exploration of proximity, and exploration of diversity. Prudius and Andradóttir (2004)
+develop an algorithm which conducts global search for promising solutions within the entire feasible
+region (exploration) and local search of promising regions (exploitation). The algorithm switches
+between local search and global search based on most recent search results.
+3.1 Construction of the initial population
+We consider two different approaches to generate the initial population. Let the size of the initial
+population to be n. The first approach is to select system configurations arbitrarily or those tested during
+the validation process and pilot runs. The second approach is to perform Latin hypercube sampling to
+select a set of system configurations to be initial population. We divide the range of each variable into n1
+subintervals of equal size, where n1=n/k for some integer k. We then perform n1 selections in which each
+subinterval is selected exactly once. The sampling scheme is to choose a number randomly from the
+selected subinterval for each variable. The process is repeated k times. The following figure illustrates
+the case with two variables and n1=n=4.
+Figure 3. Latin Hypercube Sampling Scheme
+3.2 Construction of Reference Sets
+After simulating all systems in the current population, the next step of the algorithm constructs several
+reference sets (mating pools) in order to produce the offspring population. We develop the following
+approach by combining ideas from VEGA and scatter search. The algorithm constructs two types of
+reference sets from the current population set, as illustrated in Figure 4. The high-quality reference sets
+consist of solutions with the best performance in at least one of the objective functions. Zitzler et
+al.(2000) show that elitism is an important factor for improving evolutionary multi-objective search.
+The diversity set consists of solutions far away from the current non-dominance set.
+Figure 4. Construction of high quality reference sets and the diversity set.
+The definition of the distance for the diversity set is
+22
+2
+222
+1
+11
+max )*
+*)(
+()
+*
+*)(
+()
+*
+*)(
+()(
+m
+mm
+f
+fxf
+f
+fxf
+f
+fxf
+xd
+  (1)
+3.3 Crossover Operations
+The crossover operations we propose are linear combinations of members from different reference sets.
+Let (x1, x2,…, xm) and (y1, y2,…, ym) be the chromosome representation of the configurations selected.
+The first type of crossover operation chooses random numbers w from [-1, 2] and create the offspring as
+Population Set
+Based on
+objective f1
+Based on
+objective f2
+Based on
+objective fm
+………
+Classify
+Based on
+distance dmax
+High-quality reference sets
+Diversity set
+X2
+X1
+
+
+
+
+3.4 Comparing and Selecting Solutions
+After generating the offspring population, the algorithm evaluates each solution via simulation runs and
+compares with members of the non-dominance set. We implement common random number in the
+simulation model and perform pair-wise t-test to obtain sharper comparison. Updating the
+non-dominance set iteratively can speed up the convergence of the algorithm to the Pareto-optimal front.
+Since solutions are evaluated and compared via simulation experiment, the algorithm must be able
+to accommodate simulation errors. Assume without loss of generality that the optimization problem is
+to maximize f1 and minimize f2. Let [d11, d12] and [d21, d22] be confidence intervals of pair-wise
+difference between A and B for f1 and f2, respectively. Then A dominates B if either (1) d11>0 and d21<0
+or (2) d12>0 and d22<0. Conversely, B dominates A if either (3) d12<0 and d22>0 or (4) d11<0 and d21>0.
+Other situations indicate no significant difference exists between A and B. Such type of comparison
+may be less efficient if simulation errors are significant. Therefore, we propose using the crowding
+distance metric developed by NSGA-II which calculates the distance to the nearest solution in the
+current non-dominance set. We prefer the solution with the largest crowding distance because it is
+located in a lesser crowded region.
+3.5 Performance Measures of the Algorithm
+Several metrics have been proposed for evaluating the performance of multi-objective optimization
+algorithms. Assuming the true Pareto-optimal set is known or can be estimated, the following measure
+convergence to the actual Pareto-optimal set and diversity in solutions produced by the algorithm.
+1. Distance metric measures the extent of convergence to the actual Pareto-optimal set. Define |||| as
+the Euclidean distance between any two solutions. We use the following metric *1M proposed by
+Zitzler et al. (2000).
+
+
+
+''
+*
+1 }*;||'min{|||'|
+1
+Yd
+Yddd
+Y
+M (4)
+where Y is the set of all Pareto-optimal solutions, Y is the set of solutions that approximates
+Y, and Y' is the set of solutions found by the algorithm. Ideally, this metric should be zero.
+2. Diversity metric measures the extent of spread achieved among the obtained solutions. Assuming
+that there are N solutions in Y', the following metric is defined in NSGA-II:
+dNdd
+dddd
+lf
+N
+i
+ilf
+)1(
+||
+1
+1
+
+
+
+
+
+ (5)
+where df and dl are Euclidean distances between extreme solutions of Y and boundary solutions of
+Y', di is the distance between adjacent solutions in Y', and d is the average of di.
+The stopping criteria of the algorithm is either the number of generations has reached the specified
+value or the above metrics has not improved for a specified number of generations.
+4. EXPERIMENTAL RESULTS
+For the initial tests, we use only partial features of the algorithm. We first consider the following
+two-objective maximization problem Min_Ex constructed by Deb(2001).
+50
+11.0subject to
+1
+60)(Maximize
+1.1)(Maximize
+2
+1
+1
+2
+2
+11
+
+
+
+
+x
+x
+x
+x
+f
+xf
+X
+X
+(6)
+Since no simulation is required to evaluate the objective function, this problem allows us to
+perform a quick evaluation of the proposed algorithm. Pareto-optimal solutions are 0.1≤x1≤1 and x2=0.
+The second example is the following problem with n=3.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ni
+xtosubject
+n
+xxfMinimize
+n
+xxfMinimize
+Fon
+i
+n
+i
+i
+n
+i
+i
+,,2,1
+and,44
+),)
+1
+(exp(1)(
+),)
+1
+(exp(1)(
+: 2
+1
+2
+2
+1
+1
+
+(7)
+Pareto-optimal solutions are ]3/1,3/1[321  xxx . Figure 9 indicates that the third
+combination using three-point crossover operation has the fastest convergence performance. Figure 10
+also suggests that two-point crossover is most effective in finding non-dominated solutions, followed by
+three-point crossover. Random selection has very little effect for this problem.
+Convergence after 100 generations by crossover combination with 36 populations
+(Fon)
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0 10 20 30 40 50 60 70 80 90 100
+Combination#1_36point_w=[-0.5,1.5]
+Combination#1_36point_w=[-0.1,1.1]
+Combination#2_36point_w=[-0.5,1.5]
+Combination#2_36point_w=[-0.1,1.1]
+Combination#3_36point_w=[-0.5,1.5]
+Combination#3_36point_w=[-0.1,1.1]
+Figure 9: Comparing convergence performance based on the first 100 generations. (Fon)
+% of corssover method by crossover combination #1 in the 1000th non-
+dominated set (Fon)
+0%
+10%
+20%
+30%
+40%
+50%
+60%
+70%
+80%
+90%
+100%
+mutation twopoint threepoint random
+combination #1_18point_w=[-0.5,1.5]
+combination #1_36point_w=[-0.5,1.5]
+combination #1_18point_w=[-0.1,1.1]
+combination #1_36point_w=[-0.1,1.1]
+Figure 10: Contribution of different operations on non-dominated solutions. (Fon)
+Total cost = ordering cost + holding cost + shortage cost + review cost (9)
+Fill Rate = 1-(number of lost sales/total demand) (10)
+The multi-objective optimization problem is to minimize Total Cost“and”maximize Fill Rate.
+The simulation model is constructed using ARENA. The run length and the number of replications
+are chosen so that random errors are less than 1% of the estimated values in all cases. We use OptQuest
+with a linear combination of the two objective functions to obtain the“estimated”Pareto-optimal set Y .
+Each solution in the“estimated”Pareto-optimal set corresponds to a different linear combination and is
+obtained after searching over hundreds of possible configurations. The evolutionary procedure is still
+based on MATLAB and begins with ten solutions arbitrarily chosen for the initial population. Seven of
+them are identified as non-dominant solutions and form the initial non-dominance set S0. The initial
+population is then divided into two subsets, one containing solutions with higher fill rate while the other
+containing solutions with lower cost. Crossover operations based on interpolation and extrapolation
+generate the offspring population. After pair-wise comparison, only six members of S0 remain in the
+new non-dominance set S1. The following figures show that the non-dominance set expands toward
+both ends after the first generation.
+Avg Fill Rate
+To
+ta
+lC
+o
+st
+1.000.990.980.970.960.950.94
+17000
+16000
+15000
+14000
+13000
+12000
+Objective
+OptQuest
+Set 0
+Figure 12. Pareto-optimal solutions of the inventory control after the initial generation.
+Avg Fill Rate
+To
+ta
+lC
+o
+st
+1.000.990.980.970.960.950.940.93
+17000
+16000
+15000
+14000
+13000
+12000
+Objective
+Set 1
+OptQuest
+Set 0
+Figure 13: Pareto-optimal solutions of the inventory control after the first generation.
+2. April, J., Glover, F., Kelly, J.P., and Laguna, M. (2003). Practical Introduction to Simulation Optimization.
+Proceeding of the 2003 Winter Simulation Conference, S. Chick, P.J. Sánchez, D. Ferrin, and D.J. Morrice,
+eds.
+3. April, J., Better, M., Glover, F., and Kelly, J. (2004). New Advances and Applications for Marrying
+Simulation and Optimization. Proceeding of the 2004 Winter Simulation Conference, R.G. Ingalls, M.D.
+Rossetti, J.S. Smith, and B.A. Peters, eds, pp. 80-86.
+4. Boesel, J., Nelson B. L., and Ishii, N. (2003a). A Framework for Simulation Optimization Software. IIE
+Transaction, 35:221-229.
+5. Boesel, J., Nelson B. L., and Kim, S. H. (2003b).Using Ranking and Selection to ‘Clean Up’After Simulation
+Optimization. Operations Research, 51, no.5.
+6. Bosman, P. A. N. and Thierens, D.(2003), The Balance Between Proximity and Diversity in Multi-objective
+Evolutionary Algorithms, IEEE Transactions on Evolutionary Computation, Vol. 7, no. 2, pp.174
+7. Deb, K. (2001). Multi-Objective Optimization Using Evolutionary Algorithms. John Wiley & Sons, Ltd.,
+England.
+8. Deb, K., Pratap, A., Agarwal S., and Meyarivan, T. (2002), A Fast and Elitist Multiobjective Genetic
+Algorithm: NSGA-II, IEEE Transactions on Evolutionary Computation, Vol. 6, no. 2, pp.182-197.
+9. Glover, F., Laguna, M., and Marti R. (2000). Fundamentals of Scatter Search and path Relinking, Control and
+Cybernetics, 29, no.3, 653-684.
+10. Gupta, A.K., and Sivakumar, A.I. (2002). Simulation Based Multiobjective Schedule Optimization in
+Semiconductor Manufacturing. Proceeding of the 2002 Winter Simulation Conference, E. Yücesan, C.-H.
+Chen, J.L. Snowdon, and J.M. Charnes, eds, pp.1862-1870.
+11. Joines, J.A., Gupta,D. Gokce, M.A., King, R.E. and Kay, M.G. (2002). Supply Chain Multiobjective
+Simulation Optimization. Proceeding of the 2002 Winter Simulation Conference, E. Yücesan, C.-H. Chen,
+J.L., Snowdon, and J.M. Charnes, eds, pp. 1306-1314.
+12. Jones, D.R., Schonlau, M., and Welch, W.J. (1998), Efficient Global Optimization of Expensive Black-Box
+Functions, Journal of Global Optimization 13: 455–492.
+13. Law, A.M. and Kelton W.D. (2000). Simulation Modeling and Analysis, Third Edition, McGraw-Hill, New
+York.
+14. Knowles, J.(2005), ParEGO: A Hybrid Algorithm with On-Line Landscape Approximation for Expensive
+Multiobjective Optimization Problems, IEEE Transactions on Evolutionary Computation, vol. 10, no. 1
+15. Nebro, A. J., Luna, F., and Alba, E. (2005), New Ideas in Applying Scatter Search to Multiobjective
+Optimization, Proceedings of Evolutionary Multi-Criterion Optimization: Third International Conference
+(Eds: Coello et al.), pp.443-458, Springer-Verlag, Berlin.
+16. Pichitlamken, J. and Nelson, B. L. (2002), A Combined Procedure for Optimization via Simulation.
+Proceeding of the 2002 Winter Simulation Conference, E. Yücesan, C.-H. Chen, J.L., Snowdon, and J.M.
+Charnes, eds, pp. 292-300.
+17. Prudius, Andrei A. and Andradóttir, S.(2004), Simulation Optimization Using Balanced Explorative and
+Exploitative Search, Proceedings of the 2004 Winter Simulation Conference, R. G. Ingalls, M. D. Rossetti, J.
+S. Smith, and B. A. Peters, eds., p.545
+18. Rosen, S. L. and Harmonosky, C. M. (2005) An improved simulated annealing simulation optimization
+method for discrete parameter stochastic systems, Computers & Operations Research, 32, 343–358.
+19. Salami, M. and Hendtlass, T. (2003), A Fast Evaluation Strategy for Evolutionary Algorithms, Applied Soft
+Computing 2/3F, 156–173.
+20. Tekin, E., and Sabuncuoglu, I. (2004), Simulation Optimization: A Comprehensive Review on Theory and
+Applications. IIE Transactions, 36, pp.1067-1081.
+21. Zitzler, E., Deb, K., Thiele, L. (2000), Comparison of Multiobjective Evolutionary Algorithms: Empirical
+Results, Evolutionary Computation 8(2): pp. 173-195

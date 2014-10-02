@@ -1,0 +1,649 @@
+A Flash Translation Layer for Huge-Capacity Flash Memory
+Storage Systems
+Abstract— The capacity of flash-memory storage systems grows at a
+speed similar to many other storage systems. In order to properly manage
+the product cost, vendors face serious challenges in system designs. In this
+paper, an efficient flash translation layer is proposed with low memory
+requirements. The objective of the design is to provide efficient address
+mapping with low garbage collection overhead, provided that memory
+space requirement for the flash translation layer is properly managed.
+The capability of the design is evaluated over realistic workloads.
+I. INTRODUCTION
+Flash memory has become a popular alternative in storage system
+implementations, due to its characteristics in non-volatility, shock-
+resistance, and low power consumption. Because of recent technol-
+ogy breakthroughs, flash-memory storage systems are much more
+affordable than ever. Similar to other storage media, the capacity
+of flash memory chips is doubled every two years. Because of the
+cost management issues, vendors face tremendous challenges in the
+design and implementation of block-device emulation software in
+flash management. In particular, the amount of main memory in flash-
+memory management must be under control so that related products
+remain competitive in the markets.
+Flash memory consists of a number of blocks, and each block
+is of a fixed number of pages (e.g., 32 pages). A page contains a
+user area and a spare area, where the user area is for the storage
+of a logical block, and the spare area stores ECC and other house-
+keeping information (i.e., LBA). The typical sizes of the user area
+and spare area of a page are 512B and 16B, respectively. Reads
+and writes are in the unit of a page. Because of the very distinct
+characteristics of flash memory, the management of flash memory is
+significantly different from those based on disks. In particular, flash
+memory is write-once such that updates to existing data on a page
+are only possible after an erase operation is done over the residing
+block. Data must be written to free space, and the old versions of
+data are invalidated. Therefore, free space on flash memory could
+become low after a number of writes, and garbage collection in the
+recycling of available space on flash memory will start. In order to
+resolve the write-once and the garbage collection problems for data
+on flash memory, a flash translation layer is proposed to emulate
+flash memory as block devices such that many existing file systems,
+e.g., FAT/DOS, EXT/EXT2, and NTFS, could be built over flash
+memory without any modification. A flash translation layer usually
+has a RAM-resident translation table, where each entry of the table
+(indexed by LBA’s) contains the PBA of the corresponding LBA, as
+shown in Figure 1. Note that LBA’s are addresses of pages mentioned
+by the operating system, but each PBA has two parts: The residing
+block number and the page number in the block.
+In particular, the NAND Flash Translation Layer (NFTL) is pro-
+posed and popularly adopted for the flash-memory management of
+large-scale flash-memory storage systems [5], [2]. It provides coarse-
+grained address translation to map each given logical block address
+(LBA) of an access to a physical address on flash memory, where
+the unit in reads and writes is a page, and the mapping is done
+at the block level (to be explained in a late section). Although
+User
+data
+.
+.
+.
+Logical Block
+Address
+(array index)
+Physical Block
+Address
+(block,page)
+Physical Block Address
+(block,page)
+Access LBA = 3
+Address Translation Table
+(in main-memory)
+Flash memory
+0,0
+0,1
+0,2
+0,3
+0,4
+0,5
+0,6
+0,7
+1,0
+1,1
+1,2
+1,3
+(0,3)
+(0,1)
+(0,6)
+(0,4)
+(4,7)
+(1,0)
+(2,1)
+(1,2)
+(1,3)
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+.
+.
+.
+Spare
+data
+Spare data
+LBA=3;
+ECC=. . .;
+Status=. . .;
+Fig. 1. A RAM-resident Translation Table
+NFTL-like coarse-grained mapping designs are fine with current
+products, they soon become improper in the near future. It is because
+the rapid growing of the storage-system capacity results in the
+significant increasing of the main memory needs in flash-memory
+management. Such an observation motivates this research. In this
+paper, we propose an efficient design of a flash translation layer for
+huge-capacity flash-memory storage systems. An address-mapping
+mechanism that consists of a coarse-grained translation table (CGTT)
+and a fine-grained translation table (FGTT) is proposed. CGTT aims
+at the efficient handling of address mapping for large chunks of
+data accesses, and FGTT is to provide fast address mapping and
+a swapping mechanism. A garbage collection mechanism is then
+proposed to better manage the overhead.
+The rest of this paper is organized as follows: Section II is
+the related work and the research motivation. Section III presents
+the to-be-proposed flash translation layer. Section IV provides the
+performance evaluation. Section V is the conclusion.
+II. RELATED WORK AND MOTIVATION
+A. A NAND Flash Translation Layer
+In recent years, issues on flash-memory management had drawn a
+lot of attention. Excellent research results and implementations have
+been reported on performance enhancement, especially on garbage
+collection and system architecture designs [5], [8], [11], [12], [13],
+[14], [15], [16]. In particular, the NAND Flash Translation Layer
+(NFTL) is proposed and popularly adopted for the flash-memory
+management of large-scale flash-memory storage systems [5], [2] so
+that some NFTL-like flash translation layers [6], [7], [16] are also
+proposed. NFTL provides coarse-grained address translation to map
+each given logical block address (LBA) of an access to a physical
+address on flash memory, where the unit in reads and writes is a
+page, and the mapping is done at the block level.
+NFTL represents a typical coarse-grained design of a flash transla-
+tion layer [5], [2]. An LBA under NFTL is divided into a virtual block
+address and a block offset, where the virtual block address (VBA)
+1
+
+	
+	
+	
+	
+
+
+
+			
+
+	
+	
+
+	
+		 
+	  		
+	
+		 
+	 		
+	
+ !
+! =
+	
+
+ =!
+
+
+ !
+ !
+Fig. 4. A Coarse-Grained Slot
+is true, it denotes that all corresponding logical addresses of all
+consecutive written pages in the segment SEG are in sequential
+order. Note that cg lba2, cg free2, cg pba2, and cg seq2 have the
+same meaning to describe the other (replacement) segment if needed.
+The fine-grained translation table consists of fine-grained slots, and
+each fine-grained slot is defined as a tuple (fg lba, fg pba, size),
+where fg lba and size denote the starting logical address and the size
+of the range of a logical address space, respectively. Since sequential
+updates of a write request could be stored in a continuous space in
+flash memory, fg pba denotes the starting physical address in flash
+memory (i.e., the physical page address in flash memory) to store the
+write request.
+2) Address Mapping with CGTT: When a write request (LBA=α)
+is issued, the corresponding coarse-grained slot slotcg can be re-
+trieved by quickly index-searching CGTT:
+• If slotcg.cg pba1 and slotcg.cg pba2 are nullified, then HFTL
+should create a new segment, and slotcg.cg pba1 should reflect
+the new segment address. Then the write request writes data to
+the first page of the segment and slotcg.cg free1 is set as 1 to
+indicate that the second page is a free page.
+• If slotcg.cg pba2 is nullified, then the write request writes
+data to the free page whose address is slotcg.cg free1, and
+slotcg.cg free1 is then increased. If all of the free pages of the
+segment (slotcg.cg pba1) are used, then HFTL should create
+a new replacement segment, and slotcg.cg pba2 should reflect
+the new replacement segment address.
+• If slotcg.cg pba2 is not nullified, then the write request writes
+data to the free page whose address is slotcg.cg free2, and
+slotcg.cg free2 is then increased. If all of the free pages of the
+segment (slotcg.cg pba2) are used, then HFTL should invoke
+garbage collection, as shown in Section III-C.
+3) Address Mapping with FGTT: After the write request with
+LBA=α is processed by CGTT, a fine-grained slot would be created
+and inserted into FGTT. However, if the write request (LBA=α)
+writes data to the segment such that all logical addresses (including
+α) of the written pages are in a continuous and sequential order,
+then HFTL does not create a fine-grained slot, and the corresponding
+slotcg.cg seq1 or slotcg.cg seq2 is set as true. As a result, CGTT
+adopts slotcg.cg seq1 and slotcg.cg seq2 to reflect the distribution of
+LBA’s in the primary and replacement segments. On the other hand,
+if the write request (LBA=α) breaks the continuous and sequential
+order, then two fine-grained slots should be created and inserted into
+FGTT. One is for the description of the write request (LBA=α), and
+the other is for the description of the segment before the the write
+request (LBA=α).
+Because CGTT adopts the address mapping for large address
+chunks, the performance of read requests could be deteriorated, due to
+linear searches of large address chunks. However, fine-grained slots in
+FGTT can provide fast address mapping such that the performance
+of read requests can be improved. For example, consider the case
+when a read request with LBA=β is issued. Suppose that one fine-
+grained slot Slotfg can be retrieved from FGTT, where β is in the
+range [Slotfg.fg lba,Slotfg.fg lba+Slotfg.size). Then, the data
+in physical address (Slotfg.fg pba+β-Slotfg.fg lba) can be read
+directly. Because the number of fine-grained slots is limited, FGTT
+must reduce the number of invalid fine-grained slots as much as
+possible. Similar objective and methods can be found in the paper
+[14], [16].
+4) Main Memory Requirements: The number of coarse-grained
+slots in CGTT can be calculated based on the size of each segment
+and the size of flash memory. Suppose that each segment is of
+4MB, and the flash memory capacity is 20GB. The number of
+coarse-grained slots is (20*1024/4)=5120. If each coarse-grained
+slot is of 10B, then the required memory size of CGTT is 50K.
+CGTT is a necessary data structure, and its memory size must be
+reserved by HFTL. The number of fine-grained slots in FGTT is
+a pre-determined as needed. It is to limit the total memory space
+requirements for HFTL. In the experiments, we shall show different
+system performance with different memory space consumption for
+HFTL.
+When the number of fine-grained slots is over a pre-determined
+parameter, we propose to swap some fine-grained slots to the flash
+memory. When the swapped fine-grained slots are needed, HFTL
+reloads the fine-grained slots from flash memory to CGTT. Obviously,
+the executions of swap operations is an overhead to HFTL. The
+swapped fine-grained slots are written to the corresponding segment,
+and cg swap1 or cg swap2 of the segment are updated accordingly.
+Here cg swap1 and cg swap2 denote the last free page addresses
+of the primary segment and the replacement segment, respectively.
+As shown in Figure 5, the swapped fine-grained slots are written
+to the primary segment upwardly from cg swap1. When free pages
+of the primary segment are used up, the swapped fine-grained slots
+are written to the corresponding replacement segment upwardly from
+cg swap2. If all of the free pages of the primary segment and
+the replacement segment are used up, garbage collection must be
+executed to recycle the invalid pages (Please see Section III-C).
+Special swap tags must be written to the spare areas of the (swap
+area) pages to indicate that the pages contain swapped fine-grained
+slots. The space needed for the swap tag can be allocated in the spare
+area, and there are undefined regions in the area for such usages. The
+purpose of the swap tags is to locate fine-grained slots, especially
+when reload operations or system initialization is invoked.
+C. A Garbage Collection Mechanism
+When all of the pages of a primary segment and the corresponding
+replacement segment are used up, garbage collection should be
+executed to recycle invalid pages. Let the coarse-grained slot slotcg
+describe the mapping information of the primary segment and the
+replacement segment. There are 4 cases ordered by their priorities as
+follows:
+• (Case 1) If slotcg.cg seq2 is true, then all logical addresses
+of the pages in the replacement segment are in a continuous
+and sequential order. In other words, all of the pages in the
+replacement segment are alive, and all of the pages in the pri-
+mary segment are invalid. As a result, the replacement segment
+should be changed to the new primary segment, and the old
+primary segment is recycled. The corresponding elements in
+slotcg should be modified accordingly. In the case, garbage
+3
+A Primary Segment
+A Replacement
+Segment
+: Live Pages : Invalid Pages: Free Pages
+Be chosen as the next pre-allocated segment
+The next pre-allocated
+segment
+A NewPrimary
+Segment
+Copy the live pages to the
+new primary segment
+After Garbage
+Collection
+Fig. 9. Case 4
+TABLE I
+TRACE CHARACTERISTICS
+CPU Intel Celeron 750 MHz
+RAM 320 MB
+Operating System Windows XP
+File System NTFS
+Storage Capacity 20GB
+Applications Web Applications, E-mail Clients,
+MP3 Player, MSN Messenger,
+Media Player, Programming, and
+Virtual Memory Activities
+Duration 1 week
+Total Write/ 13,198,805 / 2,797,996 sectors
+Read Requests
+Different LBA’s 1,669,228
+an 20GB NAND flash memory. The block size, the page size, and
+the size of the spare area of each page were 16KB, 512B, and 16B,
+respectively, where there were 32 pages per block. The segment size
+was controlled by a parameter SS. The larger the SS was, the less
+the number of coarse-grained slots, and the less the memory space
+to store the coarse-grained translation table (CGTT). Each coarse-
+grained slot occupied about 28B. The maximum number of fine-
+grained slots was controlled by a parameter MFS. The larger the
+MFS value was, the more the memory space to store the fine-grained
+slots (i.e., the fine-grained translation table). Each fine-grained slot
+occupied 20B. In the experiments, MFS ranged from 1,024 to 4,096.
+B. Main Memory Requirements
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+
+
+	
+
+
+
+
+
+
+	
+
+
+	
+
+
+
+
+
+
+	
+
+
+	
+
+
+
+
+
+
+	
+
+
+	
+
+
+
+
+
+
+	
+
+
+	
+
+
+
+
+
+
+	
+
+
+	
+
+
+
+
+
+
+	
+
+
+	
+
+
+
+
+
+
+	
+
+
+	
+
+
+
+
+
+
+	
+
+
+	
+
+
+
+
+
+
+	
+
+
+	
+
+
+
+
+
+
+	
+
+
+	
+
+
+
+
+
+
+	
+
+
+	
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+!
+"##
+$"##
+Fig. 10. Memory Space Requirements
+When NFTL (i.e., a block-level address mechanism) was adopted,
+10MB of main memory was needed to do address translation for the
+20GB flash memory. In the experiments, HFTL just required only
+100KB main memory for address translation, and the main memory
+requirement was adjustable, as shown in Figure 10. When MFS
+was large, the memory space requirements increased. It was because
+the size of FGTT increased. When SS was large, the memory space
+requirements decreased. It was because the number of coarse-grained
+slots became smaller such that CGTT had a small size. The main
+memory space requirements were mainly dominated by the size of
+CGTT, where FGTT was under control with a restricted size. The
+system performance remains good, compared to NFTL, even when
+the main memory space requirement was about 100KB.
+C. Address Mapping
+
+
+
+
+
+
+
+
+
+
+
+	
+
+
+
+	
+
+
+
+
+	
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ !
+
+
+ !
+"
+
+
+ !
+
+
+
+#
+
+
+
+
+
+$%
+
+
+Fig. 11. The Number of Pages Read for Address Mapping
+1) The Number of Pages Read: The number of pages read was
+measured for address mapping. As shown in Figure 11, the number of
+pages read for address mapping of HFTL was less than that of NFTL
+in most cases. It was because FGTT could provide efficient address
+mapping, and swapped fine-grained slots could be found in the swap
+area when needed. When SS was large, the number of pages read of
+HFTL increased. It was because a large segment could accumulate
+more swapped fine-grained slots stored in the swap area such that
+the number of pages read for address mapping could increase. When
+MFS was large, more address mapping would be satisfied through
+FGTT such that the number of pages read for address mapping can
+decrease.
+
+
+
+
+
+
+
+
+	
+
+
+   	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+!
+!
+
+
+"
+
+#
+
+
+
+$
+
+
+%
+
+"
+"	
+"
+
+Fig. 12. The Number of Live Pages Written in Swapping Fine-grained Slots
+5
+ 計畫成果自評 
+ 
+在這個計畫目標裡，我們想要提出一個針對大容量快閃記憶體
+的有效率快閃記憶體轉換層。一個位置對應的機制包括一個大區塊
+位置轉換表以及一個分頁位置轉換表，大區塊位置轉換表是針對大
+區塊的資料存取，目的是希望可以大幅減少主記憶體使用量；分頁
+位置轉換表是提供快速的位置轉換以及一個置換的機制。一個有效
+率的垃圾回收機制也會被提出來。此外有效率的毀損復原方法被提
+出來針對大容量快閃記憶體儲存系統。最後偵測毀損的方法被提出
+來用來避免不適當的系統初始化。 預計完成三個項目，分別是(1) 
+Low main-memory requirements (2) A garbage collection 
+mechanism (3) System initialization and crash recovery。前
+面兩項目標的結果已發表在國際會議論文上，而第三個目標在計畫
+結束時，也已完成，並結合前面兩項目標的結果將論文投稿至國際
+期刊上，目前還在審稿中，因此本計畫報告是以之前發表在國際會
+議論文為主。 
+     
+ 7

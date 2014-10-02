@@ -1,0 +1,481 @@
+ 2
+(二)中、英文摘要及關鍵詞 (keywords)。 
+ 
+ 
+本計畫乃針對 SIP 通訊協定中 NAT 穿越問題作一研究與實作, 尤其是 Symmetric NAT, 雖然國際
+標準組織 IETF 所提出之 STUN(RFC-3489)方法完全無法解決問題, 但是本計畫將研究出一套方法
+C2CU(Client to Client UDP), 它可以完全穿越 Symmetric NAT, 綜合本計畫所提出之研究內容, 其
+優點如下 
+一: 完全相容於 SIP, 完全遵循 SIP 協定 
+二: 完全由兩個通訊點直接互通, 不需借助 RTP-Relay 
+三: 可幾乎 100%成功穿越 Symmetric NAT 
+四: 可大量降低 RTP-Relay 伺服器之建置與營運成本 
+ 
+最本計畫並完成系統實作以及技術移轉廠商之目標。此外並獲得美國專利，因此未來可以加強與
+本土晶片廠商合作，推出軟硬體 Total Solution，嘉惠國內網通終端產業。 
+ 
+ 
+The NAT traversal on symmetric NAT is researched and implemented in this project. 
+Although the STUN algorithm proposed by IETF is unavailable for the symmetric NAT, the 
+C2CU(Client to Client UDP) algorithm proposed in this project will be exactly worked on the 
+symmetric NAT. Some advantages of C2CU algorithm can be founded and listed as below: 
+ 
+1. Fully compatible to SIP 
+2. Direct transmission RTP packet between two SIP UACs 
+3. The successful rate of Symmetric NAT traversal is almost 100% 
+4. The cost of RTP-Relay is dramatically reduced. 
+ 
+The symmetric NAT method is completed in this project. This core technology is also 
+transferred to IP-telecom enterprise. The US patent about symmetric NAT traversal is also 
+obtained. 
+  
+ 4
+本計畫提出之方法擬解決 Video Streaming over IP (VSoIP)，因為在實務案例中，一條 VGA(640*480)
+影像畫面，使用 MPEG4 壓縮，每秒 30 張 Frame，其 Bit-Rate 高達 2M bps，若遇到 NAT 阻擋，必需使
+用 RTP-Relay，2M bps 頻寬每個月必須要 NT$20,000 之必要成本，若能將 NAT 打通，將省下可觀之局
+端頻寬費用，使得 Video Streaming over IP 相關產業有機會蓬勃發展。 
+ 
+ 
+三:文獻探討 
+ 
+在過去, 眾多研究致力於改進 SIP 使用於 NAT 虛擬 IP 環境下, 而這些 NAT Traversal 方法列表
+說明如下: 
+ 
+NAT 穿越方法 優點 缺點 重點結論 
+TURN 
+RFC-5766 
+100%穿越 透過 Server交換轉送封包,每台
+Server僅能同時容納100~200人
+語音通話或是 10~15人影音通話
+Server 容量過小,
+不是個好的解决方
+案 
+RTP-Relay 100%穿越 透過 Server交換轉送封包,每台
+Server僅能同時容納100~200人
+語音通話或是 10~15人影音通話
+Server 容量過小,
+不是個好的解决方
+案 
+SuperNode(P2P) 
+Skype 
+接近 100%穿越 
+伺服器成本轉嫁
+至 User 
+透過 SuperNode 交換轉送封包,
+竊佔 User 頻寬,真實 IP 用戶頻
+寬將受到重創 
+竊佔 User 頻寬,不
+是個穩定與合法之
+解決方案 
+STUN 
+RFC-3489 
+Client 雙方直接
+互傳封包 
+穿越成功率約 55%,無法穿越
+Symmetric NAT(約佔 45%) 
+成功率僅 55%,不是
+個能被市場接受之
+解決方案 
+uPNP 
+RFC-3581 
+ 必須特定 NAT 廠牌支援 僅限部分 NAT 廠牌
+能用,不是個普及之
+解決方案 
+ICE 
+RFC-5245 
+ 必須與 STUN 或 TURN 搭配使用 與 STUN/TURN 相同 
+ALG 
+RFC-3235 
+ 必須特定 NAT 廠牌支援 僅限部分 NAT 廠牌
+能用,不是個普及之
+解決方案 
+C2CU(Client to 
+Client UDP) 
+本計畫研究之方
+法 
+Client 雙方直接
+互傳封包 
+超過99%成功穿越
+NAT, 包 括
+Symmetric NAT,
+若穿越失敗,仍有
+RTP-Relay 作 後
+援,通訊無慮 
+ 不使用 RTP-Relay,
+可穿越 Symmetric 
+NAT,成功率約 95% 
+ 6
+ 
+ 
+上圖為一般 SIP 撥打電話程序, 共分四大 Session, 說明如下: 
+ 
+a: Login Session: 使用者向 SIP Proxy 註冊並保持不斷連線, 以利後續通訊 
+b: CallSetup Session: 電腦 4撥電話給電腦 5之訊令圖 
+c: Media Session: 電腦 4與電腦 5聲音 RTP 封包互通圖 
+d: Cancel Session: 電腦 5主動掛斷電話圖 
+ 8
+其中測試 Source Port 工作必須能夠準確預測出下一次 NAT 即將使用之 Source Port, 因此必須使用
+REGISTER 指令作多次測試, 而每次 REGISTER 指令都使用不同之 Session, 才能測得 Source Port 之變
+化值, 而 SIP Proxy 則使用 received 與 rport 參數於 Via 欄位內回應終端設備之測試需求, 格式如下
+圖所示: 
+ 
+ 
+ 
+b: Call-Setup Session:  
+此部分為撥打電話之程序, 其中電腦 4 所發出之 INVITE 指令中, SDP 欄位將填入在 Testing 
+Session 所測得 NAT 之 IP 位址與預測 NAT 之下一個 Source Port, SDP 之部分參數內容中 c=IN IP4 
+140.124.123.100 , 所測得 NAT 之 IP 位址即等於 140.124.123.100, SDP 之部分參數內容中 m=audio 
+10079 RTP/AVP 0 8 4 18 101 , 所預測 NAT 下一個即將配置之 Source Port 值等於 10079, 
+再者電腦 4 所傳來之 INVITE 指令, SIP Proxy Server 會做適度修正並多增加 c=IN IP4 
+140.124.123.123 以及 m=audio 12000 RTP/AVP 0 8 4 18 101 等兩個欄位, 所增加之兩個欄位主要
+乃用於導通 RTP-Relay, 然後再將 INVITE 指令轉送給電腦 5, 電腦 5 做完 Testing Session 後, 回傳
+180 Ringing 與 200 OK 等兩道指令, 其中 200 OK 指令後包含 SDP 資料, 而 SDP 資料之處理方式與 
+INVITE 指令相同 
+ 
+ 10
+ 
+Î: 完全相容於 SIP 協定 
+Î: NAT 用戶之 RTP 完全直接互通, 不需浪費 RTP-Relay 資源 
+Î: 適用所有 NAT, 包括 Symmetric NAT, 且 NAT 穿越成功率高達 98%以上(下面章節將實驗說
+明之) 
+ 
+所以預計本計畫研究成果將對 SIP 協定有重大貢獻 
+ 
+ 
+2: C2CU(Client to Client UDP)穿越協定 
+ 
+再者本計畫內容對NAT穿越之成功率完全依賴Testing Session是否能準確預測出NAT之Source 
+Port 值, 而 NAT 之 IP 位址則非常容易取得, 所以關鍵在於預測 NAT Source Port, 詳細分析如下圖所
+示: 
+ 
+ 
+ 
+上圖之 Step #3~#6 中 IPA 即使用 REGISTER 測試 NAT-1 之 Source Port 變化, 並將預測值告知
+IPB, 同樣地 Step #9~#12 中 IPB 即使用 REGISTER 測試 NAT-2 之 Source Port 變化, 並將預測值告知
+IPA, 然後在 Step #15~#16 中雙方同時發出之 RTP 封包完全對稱, 因此可成功穿越對方之 NAT, 達成
+ 12
+表二 各市廠牌 NAT 穿透實驗結果. 
+Called 
+Party 
+ 
+Caller 
+Party 
+3C
+O
+M
+ 
+(3C
+RW
+ER
+100-7
+5) 
+A
+boC
+om
+ 
+(FSM
+410) 
+A
+SU
+S 
+(R
+x3041) 
+B
+uffalo 
+(B
+B
+R
+-4H
+G
+) 
+C
+orega(C
+G
+-W
+L
+B
+A
+R
+B
+V
+2) 
+D
+-Link 
+(D
+I-604) 
+D
+-Link 
+(D
+I-LB
+604) 
+D
+rayTek 
+(vigor2104) 
+G
+igaB
+yte 
+(G
+N
+-B
+R
+02G
+) 
+Lem
+el 
+(LM
+-IS6400B
+) 
+Level-O
+ne 
+(W
+B
+R
+-3405TX
+) 
+PC
+I 
+(B
+R
+L-04M
+) 
+TP-Link 
+(TL-R
+402M
+) 
+VoIP 
+G
+W
+/octtle 
+sp4220 
+Zonet 
+(ZSR
+0104B
+) 
+Zyxel 
+ (P-330W
+) 
+SM
+C
+ 
+(W
+B
+R
+14-G
+2) 
+3COM 
+(3CRWER100-75)  X X               
+AboCom 
+(FSM410) X X X X   X X X X      X  
+ASUS 
+(Rx3041) X X X X   X X X X      X  
+Buffalo 
+(BBR-4HG)  X X               
+Corega 
+(CG-WLBARBV2)                  
+D-Link 
+(DI-604)                  
+D-Link 
+(DI-LB604)  X X               
+DrayTek 
+(vigor2104)  X X               
+GigaByte 
+(GN-BR02G)  X X               
+Lemel 
+(LM-IS6400B)  X X               
+Level-One 
+(WBR-3405TX)                  
+PCI 
+(BRL-04M)                  
+TP-Link 
+(TL-R402M)                  
+VoIP Gateway 
+octtle sp4220                  
+Zonet 
+(ZSR0104B)                  
+Zyxel 
+(P-330W)  X X               
+SMC 
+(WBR14-G2)                  
+ 
+由上述兩實驗表格得知，本計畫所提出之 SIP-Based NAT Traversal Method 成功率達 90%
+以上，此方法對於 Video Streaming over IP 將有重大貢獻，對於 IP-Camera、Video-Phone、…等產
+品有重大之貢獻，將可取代國際標準組織所提出之 RTSP 與 DDNS 方法。 
+ 
+  
+ 14
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以
+500 字為限） 
+ 
+a. Video Streaming over IP 在頻寬需求上極為龐大，本計畫提出極佳解決
+方案 
+b. 本計畫成果可取代國際標準 RTSP+DDNS 等方法 
+c. 本計畫並已做專利佈署與技術移轉，未來將對視訊產業有極大助益 
+d. 本計畫未來可結合本土晶片廠商如:旺玖、智原、…等做軟硬體 Total 
+Solution，提供本土網通終端廠商一次購足技術。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 16
+ 
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+                                     日期：   年   月   日 
+一、 參加會議經過 
+我們於 7/11 到達 Las Vegas 的 Monte Carlo 飯店, 我們以 Poster 的方式呈現我們的研究, 
+展出時間在 7/12 05:20 – 06:00 pm, 在 7/12 當天我們在參與 09:45 – 10:40 am 的一場
+演講 Search for Life in the Universe, 演講者 Dr. Firouz Naderi 是 NASA 的資深工作
+者, 演說主要在探討外星生物的存在. 在 4:00 pm 左右我們的回到 poster 會場準備, 並在
+現場參觀其他的研究展現, 在 5:20 後陸陸續續有外國人對我們研究有一些興趣, 並提出一
+些疑問與我們進行討論, 
+ 
+二、 與會心得 
+不過大部分外國人對我們的研究領域不慎了解沒有太多的共鳴, 但仍然從中獲得了很多的
+收穫與經驗. 因為我們研究的主題為 NAT Traverse for VoIP, 主要乃解決網路電話無法彼
+計畫編號 NSC 98－2221－E－027－047 
+計畫名稱 NAT 穿越法於 SIP 之研究與實作 
+出國人員
+姓名 張舜傑、陳冠霖 
+服務機構
+及職稱 台北科技大學電機系 
+會議時間 99年 7月 12日至 99 年 7 月 15 日 會議地點 美國拉斯維加斯 
+會議名稱 
+(中文) 
+(英文) ICOMP'10 - The 2010 International Conference on Internet Computing
+Monte Carlo Resort, Las Vegas, Nevada, USA 
+July 12-15, 2010 
+發表論文
+題目 
+Title: The Symmetric NAT and its traversal method 
+Author: Shun-Chieh Chang(張舜傑,博士生), Shaw-Hwa Hwang(黃紹華,計劃主持人)
+ 
+Title: The Symmetric NAT Traversal Method for Session Initial Protocol (SIP)
+Author: Kuan-Lin Chen(陳冠霖,博士生), and Shaw-Hwa Hwang(黃紹華,計劃主持
+人) 
+附件四 
+ 18
+ 
+ 
+國科會補助專題研究計畫項下赴國外(或大陸地區)出差或研習心得報告 
+                                     日期：   年   月   日 
+一、國外(大陸)研究過程 
+二、研究成果 
+三、建議 
+四、其他 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+計畫編號 NSC  －    －  －    －    － 
+計畫名稱  
+出國人員
+姓名  
+服務機構
+及職稱  
+出國時間  年 月 日至  年 月 日 出國地點  
+附件五 
+行政院國家科學委員會補助專題研究計畫■出國報告   □期中進度報告 
+ 
+NAT 穿越法於 SIP 之研究與實作 
+ 
+計畫類別：■個別型計畫   □整合型計畫 
+計畫編號：NSC 98－2221－E－027－047－ 
+執行期間：98 年 8 月 1 日 至 99 年 7 月 31 日 
+ 
+執行機構及系所： 台北科技大學 電機系 
+ 
+計畫主持人： 黃紹華 
+共同主持人：  
+計畫參與人員： 
+ 
+ 
+ 
+成果報告類型(依經費核定清單規定繳交)：■精簡報告  □完整報告 
+ 
+本計畫除繳交成果報告外，另須繳交以下出國心得報告： 
+□赴國外出差或研習心得報告 
+□赴大陸地區出差或研習心得報告 
+■出席國際學術會議心得報告 
+□國際合作研究計畫國外研究報告 
+ 
+ 
+處理方式：除列管計畫及下列情形者外，得立即公開查詢 
+            □涉及專利或其他智慧財產權，□一年□二年後可公開查詢 
+ 
+ 
+   
+研究領域不慎了解沒有太多的共鳴, 但仍然從中獲得了很多的收穫與經驗. 因為我們研究的主題為
+NAT Traverse for VoIP, 主要乃解決網路電話無法彼此直接互通之問題, 此問題預計未來 3~5 年內
+將逐漸獲得重視, 並將有重大之商機, 因此除了論文外, 我們亦在專利以及技轉,產學合作等方面著
+墨與佈局不少, 稍晚我們參加了主辦單位所辦的晚宴, 並結束整個行程. 
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：黃紹華 計畫編號：98-2221-E-027-047- 
+計畫名稱：NAT 穿越法於 SIP 之研究與實作 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 3 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 1 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 1 0 100% 件  
+技術移轉 
+權利金 1000 0 100% 千元  
+碩士生 3 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 1 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 3 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 1 0 100%  專利 已獲得件數 1 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

@@ -1,0 +1,936 @@
+extended VMC with the ability of data-level modeling, 
+which coupled with the original control models, can 
+be used by a user for the efficient allocation of 
+resources by exploiting the potential data 
+parallelism in user｀s applications. 
+英文關鍵詞： Automatic code generation, Parallel system monitor, 
+Data modeling, Data parallelism 
+ 
+前言與研究目的 
+多核心微處理器架構目前已成為計算系統的主流設計，提升運算能力的同時也加速軟體執行。
+然而要達到較高效能，軟體的平行化及多核心硬體架構的配合需考量的細節甚多，從硬體的特性到
+軟體的特性包括了：核心數量、快取記憶體的架構設計及大小、主記憶體大小、軟體平行化程度、
+平行化資料存取模式、執行緒設計等。多核心軟體設計所需考量的因素遠比過去單核心架構複雜，
+因此在多核心軟體設計過程或是執行期間，當我們需要監控系統並擷取可用的資訊時，監控系統的
+設計也相對複雜。因此我們設計了一套針對多核心架構的可調式效能監控系統，名為 Adaptive 
+Performance Monitor (APM)，此架構以監控系統的即時性及精確性為主要目標，並以可調式的方式
+達到減少監控系統對於應用本身的影響。 
+本團隊另外針對現在通用圖形處理器(General Purpose Graphic Processing Unit, GPGPU)的普遍
+使用及原先 VMC 框架中對於資料描述的缺乏，以 Array Oriented Language (Array-OL)為根據加強
+了框架中資料塑模(Data Modeling)的能力。使用者將可依本框架設計的資料描述介面，對於應用表
+達資料量及資料相依程度，而使框架利用這些資訊進一步擬訂異質多核心平台的程式碼生成策略。 
+ 
+研究方法 
+監控系統已經被用在許多不同的領域裡，像是網路應用領域中的安全防衛監控、可靠度監控，
+或是在多媒體應用中的服務品質監控。針對不同的應用領域及目標，監控系統的設計上大致可粗分
+為二種方式：(1)純軟體設計，(2)整合軟體及硬體設計。從純軟體設計設計來看，最常見的方法是
+「程式碼置入式」的設計方式。眾所周知的工具有 Purify [1]及 TaintCheck [2]。然而，額外在應用
+軟體本身的程式碼置入太多的監控程式碼容易造成過高的額外效應，以致擾亂了應用軟體原有的行
+為，易造成對於控監資訊的解讀不正確或不精確。 
+為解決上述問題，另有研究從硬體方面著手改善純軟體設計的監控系統造成的問題。透過特定
+的硬體設計來最佳化監控系統的效能或是減少監控系統的通訊(communication)所造成的負擔。相關
+的研究有[3-7]。然而整合軟/硬體的設計方式並非沒有問題，此種設計方式往往鎖定在特定的監控
+功能、硬體平台及軟體支援環境(例如:編譯器(compiler)或指令集(Instruction Set Architecture))，缺乏
+應用的彈性。 
+上述對於監控系統的研究皆非針對多核心架構的議題。然而近幾年來，亦不乏針對多核心架構
+的監控系統設計，例如「分散式設計(dispatch-based)」或是「蒸餾式設計(distill-based)」。以分散式
+設計為基礎的研究有Log-Based Architecture[8,9]，而以「蒸餾式設計(distill-based)」的研究有[10-12]。
+此二種方式的主要概念如下：將監控系統及應用軟體本身分散於不同的執行緒(thread)來執行，並
+讓這些執行緒執行在數個多核心架構下的處理器(processor)。而這些研究則是偏重於監控系統及被
+監控軟體的「通訊(communication)」議題上。 
+從架構設計的角度來看，我們所提出的 APM 與上述過去的研究不同處列於下方四點： 
+1. APM 支援多核心環境中、軟/硬體資訊搜集，提供多核心軟體在設計階段或執行期的效能及耗
+能分析。 
+2. 有別於其它以執行緒觀點 (thread level)的設計，APM 是輕量監控軟體嵌入 (light weight 
+monitoring code instrumentation)，並且以「工作基礎(task-based)」的觀點來設計監控所需之功
+能，達到彈性支援多核心架構的監控工作。 
+1. 
+2. 
+3. 
+4. 
+5. 
+ 
+示
+協
+執
+附
+概
+到
+ma
+一
+身
+RE
+「
+結
+生成監控
+指派監控
+維護監控
+動態指派
+控工作(s
+協同執行
+如圖一所
+監控執行緒
+同執行緒所
+行緒指派監
+屬一「事件
+念來設計的
+相對應的運
+為達到 t
+chine diagr
+種是由監控
+所發出的事
+SUME、H
+停滯狀態(I
+狀態(TERM
+當監控執
+執行緒並
+執行緒至
+執行緒的
+「監控工
+oftware mo
+緒支援三
+示，在 A
+，黑色實心
+指派的監
+控工作至
+佇列(even
+APM，其
+算核心，
+ask-based 設
+am 來說明
+執行緒自
+件有TASK
+ALT、MIG
+DLE)」、「監
+INATION
+行緒在 IN
+管理監控執
+特定運算核
+執行狀態
+作(monitor
+nitoring ta
+種監控執行
+圖
+PM kernel 
+孤線則為
+控工作而定
+工作佇列，
+t queue)」，
+優勢在於當
+而不需要移
+計概念，
+監控執行緒
+身所發出的
+、COMPLE
+RATE 以及
+控狀態(M
+)」。 
+IT 狀態時
+行緒。 
+心，一個
+，監控執行
+ing task)」
+sk)和硬體監
+緒配置：
+一、針對多
+level 中，淡
+硬體監控執
+。每一個
+用以指定監
+用來設定事
+目標軟體
+動監控執
+協同執行緒
+的執行期
+事件，另一
+TION以及
+TERMINA
+ONITORI
+，需等待 B
+運算核心最
+緒之狀態會
+給監控執行
+控工作(h
+one-to-one
+核心架構
+ 
+藍色實心
+行緒。監
+監控執行緒
+控工作或
+件並控制
+執行緒在多
+行緒。 
+需維護監
+狀態轉換。
+種則是由
+ ITERATIO
+TE。而狀態
+NG)」、「暫
+ARRIER 事
+少一個。
+在後面小
+緒。moni
+ardware mo
+, one-to-ma
+之 APM 設
+孤線表示協
+控執行緒是
+被配置一
+轉換監控
+監控執行
+核心間移
+控執行緒的
+監控執行緒
+協同執行緒
+N。由協同
+包括「初
+停狀態(HA
+件才能進
+ 
+節詳述。 
+toring task
+nitoring ta
+ny, and mix
+計 
+同執行緒
+否為軟體
+個「工作佇
+執行緒狀態
+緒之行為及
+動時，AP
+狀態，以
+基本上會
+所發出的
+執行緒所發
+始狀態(IN
+LT)」、「停
+入 IDLE 狀
+又可分為二
+sk) 
+ed solution
+ 
+，而淡藍色
+監控或硬體
+列(task q
+。另外，監
+狀態。以
+M 只需要重
+下我們將以
+收到二種事
+事件。由監
+出的事件
+IT)」以黑色
+止狀態(ST
+態。此事件
+種：軟體
+。 
+點狀弧線
+監控，則
+ueue)」，協
+控執行緒
+task-based
+新指派工
+UML st
+件(event)
+控執行緒
+包含STOP
+圓點表示
+OP)」及「
+之設計是
+監
+表
+視
+同
+也
+的
+作
+ate 
+，
+自
+、 
+、
+終
+用
+在 APM 的架構中，我們分析了數個可調整的參數，提供 APM 在動態執行期可調整這些參數，
+以減少對於應用程式的衝擊，並達到監控的功能。 
+1. 監控工作的配置: 使用者可以在軟體設計階段決定監控工作的配置或交由 APM 在動態執行期
+配置。配置方式可分為 one-to-one、one-to-many 及 mixed solution。One-to-one 的方式會隨著監
+控工作量變多使得監控執行緒也變多，造成較多的執行緒 context switch，然而對於監控工作
+而言，其即時性(immediacy)會比較好。對於 one-to-many 而言，監控工作的即時性會變差，但
+可減少執行緒的 context switch。 
+2. 歷史資訊佇列的大小：此參數對於 APM 之影響在於資訊分析的精確性(accuracy)。當佇列容量
+越大，監控工作所能支援的週期就能越小，加上有充足的資料可進行分析，使得資訊的精確性
+及正確性都能有所提昇。 
+3. 監控週期：監控週期會受制於歷史資訊佇列的大小，而對於系統之影響包括：週期越短所耗計
+算能量(computing power)越多，對於歷史資訊的更新頻率越快。可能達到較好之資料即時性及
+精確性。 
+ 
+APM 目前實作於三個多核心平台： 
+(a) Intel Core2 Duo SU7300 at clock frequency 800 MHz, with 4 GB DDR3 SDRAM, Linux 2.6.35 
+(b) Intel Core i7-980X at clock frequency 3.33 GHz, with 18 GB DDR3 SDRAM and Linux 2.6.38 
+(c) ARM 11 MPCore at clock frequency 200 MHz, with 512 MB SDRAM, 128MB NOR Flash, and 
+embedded Linux 2.6.38 
+我們將在此平台上探討 APM 各項議題及實驗結果。 
+ 
+監控執行緒的配置 
+在此實驗之中，我們針對二種類型之軟體工作來進行實驗。此二種軟體工作為：I/O-bound 及
+CPU-bound。CPU-bound 的工作主要是計算二個 256*256 矩陣乘法，並由監控工作計算矩陣乘法的
+次數。I/O-bound 工作則是讀寫一個數字到檔案中。我們首先在(a)平台上進行實驗，先針對
+CPU-bound 及 I/O-bound 的工作進行執行時間(execution time)剖析。然後我們再加入監控工作，並
+測試 one-to-one 及 one-to-many 的實驗，共可分為四種監控配置方式如下所列： 
+1. 1T1M Apart: 一個應用執行緒對應一個監控執行緒，並分別執行在不同的運算核心。 
+2. 1T1M together: 一個應用執行緒對應一個監控執行緒，並執行在同一個運算核心。 
+3. 2T1M: 二個應用執行緒對應一個監控執行緒，其中二個應用執行緒執行於不同的運算核心
+上。 
+4. 2T2M: 成對的應用執行緒及監控執行緒，共有二對分別執行於不同的運算核心。 
+ 
+面小節中的 256*256 矩陣乘法。本實驗則於平台(b)中進行。此平台包含二個 on-chip processors，每
+個 processor 則具有 6 個運算核心。運算核心編號 0~5 在同一個 processor 內，運算核心編號 6~11，
+而 processor 則分別編號為 0 與 1。而且該平台具有三層的快取記憶體，level 3 的快取則是被 6 個
+運算核心所共享。 
+ 此實驗是從影像擷取速率(frame per second, fps)的觀點來觀察，擷取速率在此實驗中分為二種，
+一種是平均速率，另一種是瞬時速率。我們首先針對 1T1M apart 的配置來看。DVR 的擷取影像工
+作被配置在 processor 0，而監控平均速率及瞬時速率的工作則配置在 processor 1。我們針對 5 個監
+控時間區間來進行實驗，分別為：10, 000 us, 1, 000 us, 100 us, 10 us 及 1 us。我們發現隨著時間區
+間的縮減，監控工作並不影響影像擷取工作的效能，有監控工作的狀態下平均擷取時間為 33, 280 us 
+至 33, 317 us，而沒有監控工作的狀況下則為(33, 313 us)，差異不大。 
+ 另外精確性來看，監控時間區間為 1, 000 us, 100 us, 10 us 及 1 us 時，所偵測到的影像擷取速
+率分別為 100, 000 fps, 10, 000 fps, 1, 000 fps 及 100 fps。這與偵測到的平均速率 29 fps 相差太多，
+精確性不合理。但時間區間為 10, 000 us 時，可偵測到瞬間擷取速率為 30 fps，並偶爾會出現 40 fps
+的不合理現像，而其錯誤率為 0.2%。在此的結論為監控時間區間為 10, 000 fps 為合理的設定值。 
+接下來我們針對 1T1M Together 配置來實驗。與 1T1M apart 一樣的狀況，監控區間為 1, 000 us, 100 
+us, 10 us 及 1 us時，所偵測到的影像擷取速率分別為100, 000 fps, 10, 000 fps, 1, 000 fps及100 fps，
+精確性依然不合理。因此我們針對設定為 1 秒的時間區間來實驗。我們發現影像擷取時間為 33, 318 
+us，與 1T1M apart 結果相似影響不大。但是從運算核心的使用率來看，1T1M apart 為 12.20%而 1T1M 
+together 為 2.60%。從耗能的角度來看 1T1M together 要比 1T1M apart 的配置來得好。 
+ 精確性來看，監控時間區間為 1, 000 us, 100 us, 10 us 及 1 us 時，所偵測到的影像擷取速率分
+別為 100, 000 fps, 10, 000 fps, 1, 000 fps 及 100 fps。這與偵測到的平均速率 29 fps 相差太多，精確
+性不合理。但時間區間為 10, 000 us 時，可偵測到瞬間擷取速率為 30 fps，並偶爾會出現 40 fps 的
+不合理現像，而其錯誤率為 0.2%。在此的結論為監控時間區間為 10, 000 fps 為合理的設定值。 
+接下來我們針對 1T1M Together 配置來實驗。與 1T1M apart 一樣的狀況，監控區間為 1, 000 us, 
+100 us, 10 us 及 1 us 時，所偵測到的影像擷取速率分別為 100, 000 fps, 10, 000 fps, 1, 000 fps 及 100 
+fps，精確性依然不合理。因此我們針對設定為 1 秒的時間區間來實驗。我們發現影像擷取時間為
+33, 318 us，與 1T1M apart 結果相似影響不大。但是從運算核心的使用率來看，1T1M apart 為 12.20%
+而 1T1M together 為 2.60%。從耗能的角度來看 1T1M together 要比 1T1M apart 的配置來得好。 
+接下來我們針對 1T1M Apart 的配置來進行實驗，並且將監控時間週期定為 1 sec。小於 1 sec
+之時間週期不被接受的原因跟上述的實驗原因一樣，偵測到的處理速率值大於 30 fps，錯誤率達 
+100%。1T1M Apart 的配置中，我們得到平均處理速率為 29 fps，而瞬時處理速度為 29 fps, 30 fps, 31 
+fps。得到 31 fps 的錯誤率為 7.69%。平均 DCT 的處理時間為 33,310 us 至 33,319us，處理時間與在
+沒有監控程式下的處理時間差異甚小，幾乎可省略。但再深入仔細觀察可以發現，有監控工作的干
+擾下，瞬時處理速率的錯誤率大大的從 2.5%提升至 7.69%。精確度降低了，但仍然是可接受的狀
+態。 
+承續上述 1T1M Apart 實驗，我們將配置改為 1T1M Together 配置。在此實驗中我們發現監控
+程式對於 DCT 的處理時間影響不大幾乎可省略。平均處理速率依然唯持在 29 fps，但錯誤率(偵測
+到 31 fps)為 12.5%。錯誤率比 1T1M Apart 的配置多約 5%。 
+來
+六
+者
+fitt
+pa
+XM
+設計的 dec
+所示。以下
+如圖七所
+根據迴旋碼
+ing matrix
+ttern)。最後
+L 碼中每
+ 
+ision gener
+我們再用
+示，現在
+的等式透
+(F)、origin
+如圖八所
+個 Input til
+ator，用以
+一個例子深
+以設計迴旋
+過 Array-O
+ point(o)及
+示，根據使
+er 裡有包含
+圖六、
+圖七
+再做工作量
+入說明。
+碼(convol
+L 來描述出
+paving 
+用者描述
+data depe
+使用者應用
+、以 Arra
+切割(wor
+ 
+utional cod
+其行為。
+matrix(P)來
+出來的 di
+ndency ma
+程式需求
+y-OL 設計
+kload partit
+e)生成器為
+接著，在
+描述參與
+agram 產生
+trix(F, o, P
+的資料塑模
+迴旋碼產生
+ion)、工作
+例。在 P
+Input tiler
+計算的資料
+出對應的
+)。 
+流程 
+器 
+排程等的決
+tolemy 的環
+的內部設定
+存取樣式
+XML 檔
+ 
+策，即如
+境下，使
+上述提到
+(data acc
+。特別注意
+ 
+圖
+用
+的
+ess 
+到
+本年度重點在於 Adaptive Performance Monitor 的設計，已發表一篇會議論文[20]，另外有兩篇期刊
+論文目前是接受而需修改的階段。 
+ 
+結論與建議 
+本年度計畫主要是將先前設計 VMC 嵌入式多核心軟體設計框架做擴充，考量到監控系統能將
+程式行為做分析來用以優化程式碼，且基於平性系統監控(Parallel System Monitor, PSM)的原則下，
+我們提出了可調式效能監控(Adaptive Performance Monitor, APM)。APM 能減少監控應用本身的效
+能和平行處理所帶來的代價，而進一步達到即時性、準確性及減少監控系統對於應用本身的影響，
+這也是此項技術的優越性。 
+另外，針對於先前 VMC 框架中對於資料層級塑模的不足，我們使用 Array-OL 當成框架中對
+於應用中資料相依描述的語言，並且整合到本框架中，以利框架中進一步分析更精確的資料平行度
+(data parallelism)來做出未來計畫中的異質多核心軟體程式碼生成策略，像是工作量分割、排程等。
+ 
+參考文獻 
+1. R. Hastings and B. Joyce, Purify: Fast detection of memory leaks and access errors, in Proceedings of the Winter 1992 
+USENIX Conference, pp. 125-138, 1991. 
+2. J. Newsome and D. X. Song, Dynamic taint analysis for automatic detection, analysis, and signature generation of 
+exploits on commodity software, in Proceedings of the 12th Network and Distributed System Security Symposium, 2005. 
+3. D. Arora, S. Ravi, A. Raghunathan, and N. K. Jha, Hardware-assisted run-time monitoring for secure program execution 
+on embedded processors, IEEE Transactions on Very Large Scale Integration (VLSI) Systems, vol. 14, no. 12, pp. 
+1295-1308, December 2006. 
+4. G. Venkataramani, B. Roemer, Y. Solihin, and M. Prvulovic, Memtracker: Efficient and programmable support for 
+memory access monitoring and debugging, in Proceedings of the 13th International Symposium on High-Performance 
+Computer Architecture, pp. 273-284, February 2007. 
+5. P. Zhou, F. Qin,W. Liu, Y. Zhou, and J. Torrellas, iWatcher: simple, general architectural support for software 
+debugging, Journal of Micro, IEEE, vol. 24, pp. 50-56, 2004. 
+6. R. Shetty, M. Kharbutli, Y. Solihin, and M. Prvulovic, Heapmon: a helper-thread approach to programmable, automatic, 
+and low-overhead memory bug detection, Journal of Research and Development, IBM, vol. 50, no. 2/3, pp. 261-275, 
+March 2006. 
+7. Y. Guo, Z. Chen, and X. Chen, A lightweight dynamic performance monitoring framework for embedded systems, in 
+Proceedings of the International Conference on Embedded Software and Systems, pp. 256-262, May 2009. 
+8. S. Chen, B. Falsafi, P. B. Gibbons, M. Kozuch, T. Mowry, et al., Log-based architectures for general-purpose monitoring 
+of deployed code, in Proceedings of the 1st Workshop on Architectural and System Support for Improving Software 
+Dependability, ACM, pp. 63-65, 2006. 
+9. S. Chen, M. Kozuch, T. Strigkos, B. Falsafi, P. B. Gibbons, T. Mowry, et al., Flexible hardware acceleration for 
+instruction-grain program monitoring, in Proceedings of the 35th Annual International Symposium on Computer 
+Architecture (ISCA), pp. 377-388, June 2008. 
+10. G. He and A. Zhai, Improving the performance of program monitors with compiler support in multi-core environment, in 
+Proceedings of the IEEE International Symposium on Parallel & Distributed Processing (IPDPS), pp. 1-12, April 2010. 
+Adaptive Performance Monitoring for  
+Embedded Multicore Systems 
+Chun-Yi Shih*, Ming-Chih Li*, Chao-Sheng Lin*, Pao-Ann Hsiung*+, Chih-Hung Chang@,  
+William C. Chu†, Nien-Lin Hsueh‡,  Chihhsiong Shih†, Chao-Tung Yang†, and Chorng-Shiuh Koong$ 
+*National Chung Cheng University, @Hsiuping Institute of Technology, †Tunghai University,  
+‡Fengchia University, $National Taichung University, Taiwan.   E-mail: +pahsiung@cs.ccu.edu.tw 
+ 
+Abstract — With the advent of multicore processors, the 
+performance of software has been elevated to new unforeseen 
+heights via parallelization. However, this has not been achieved 
+without new problems cropping up due to parallelization. One 
+serious issue is the performance bottleneck due to cache misses or 
+resource starvation, which is hard to detect in application 
+software especially when the software has dynamically changing 
+behavior. Performance monitors are usually employed for such 
+purposes. Nevertheless, monitors have introduced their own 
+computation and communication overheads, especially in 
+embedded multicore systems. In this work, we try to estimate the 
+effects of monitor overheads on different types of applications, 
+such as CPU-bound and IO-bound tasks. Further, we give 
+suggestions on the number and type of monitors to use for such 
+embedded multicore applications. Besides trying to reduce 
+monitor overheads, we also aim for the accuracy and the 
+immediacy of the monitored information. Through a real-world 
+example, namely digital video recording system, we demonstrate 
+how different monitoring periods affect the tradeoff between 
+accuracy and immediacy of the monitored information. 
+Keywords: embedded multicore system, monitor overhead, 
+IO/CPU-bound task, monitor accuracy, monitor immediacy 
+I.  INTRODUCTION  
+Multicore processors have invaded not only the desktop 
+computing infrastructure, but have also crept into the 
+embedded computing paradigm. New mobile phones are now 
+equipped with a mobile chip called Tegra 2 from Nvidia, 
+consisting of a dual-core ARM Cortex 9 CPU and an 8-core 
+GeForce GPU. With this progress, embedded systems can now 
+run applications with high performance due to inherent 
+parallelism in the computing infrastructure. However, true 
+parallelization has also made multi-threaded embedded 
+software more difficult to design and verify. Some well-known 
+issues include resource sharing problems such cache conflicts 
+and I/O device usage, inter-core communication, non-uniform 
+memory access, unbalanced workload, data sharing, high 
+power consumption, and performance bottlenecks. A variety of 
+solutions exists for solving these problems. For detecting 
+performance bottleneck at runtime, monitors are designed into 
+the embedded software. This work focuses on how to design 
+performance monitors for embedded multicore systems. 
+Monitors can be designed either by instrumenting an 
+application software code with specific monitoring code or as 
+an independent thread. Instrumentation is widely employed for 
+testing and monitoring at design time, without embedding the 
+monitoring code into final production applications. For 
+embedded runtime monitoring, separate monitors are more 
+preferable because they are more amenable to future 
+management due to a clear distinction between application 
+code and monitoring code. However, runtime monitors do not 
+come for free. They create issues of their own. For example, 
+monitors directly impact the computational performance of 
+their monitoring target applications and introduce 
+communication overheads across cores that affect the overall 
+system performance. The latter issue on communication has 
+been addressed in some related work. However, the former 
+computational overhead issue has not been addressed in-depth. 
+This work will look into this issue from several perspectives as 
+described in the following. 
+We propose an adaptive performance monitoring (APM) 
+scheme that tries to reduce the impact of the monitor on the 
+application, without sacrificing accuracy or immediacy of the 
+monitored information. We will define these terms later in 
+Section III. More specifically, in APM, we will be discussing 
+monitor design in terms of three different viewpoints. First, 
+from the application viewpoint, we will be distinguishing 
+between CPU-bound and IO-bound tasks and how monitors 
+affect different types of tasks. Second, from the system 
+viewpoint, we will be comparing the effects of the monitors for 
+systems with different computational power. Lastly, from the 
+monitor design viewpoint, we will be discussing the type of 
+monitors to be used, the number of monitors to be implemented, 
+and the effects of the monitoring time period on the computing 
+overhead, the information accuracy, and the information 
+immediacy. 
+As a motivational example, consider two different types of 
+monitor deployments as depicted in Figure 1, including one-to-
+all and one-to-one. In the one-to-all deployment, there is only 
+one monitor thread in the whole system, which monitors all 
+application threads. Due to its low requirement on core 
+utilization, its impact on application threads can be minimized. 
+However, with increasing monitor workload, the accuracy and 
+immediacy of the monitored information will decrease. In other 
+words, a busy monitor will be unable to collect and provide 
+accurate information in real-time. If this information is 
+feedback to the application for runtime adaptation, then the 
+one-to-all monitor will degrade the performance of the adaptive 
+applications. Another issue is the possibly large 
+communication overhead incurred by the single monitor due to 
+the continuous exchange of monitoring information between 
+the target threads and the single monitor thread. At the other 
+extreme is the one-to-one deployment, where each application 
+thread has a devoted monitor thread. In this scheme, monitor 
+2011 International Conference on Parallel Processing Workshops
+1530-2016/11 $26.00 © 2011 IEEE
+DOI 10.1109/ICPPW.2011.27
+2242
+considered invalid and ignored. The immediacy value for a 
+monitor is defined as the latency allowed between the change 
+of a data and the detection of the data change. For example, a 5 
+μs immediacy value for video encoding rate means any change 
+in video encoding rate should be detected in that time interval. 
+The target problem in this work is defined as follows. 
+Given an application consisting of a set of tasks and executing 
+in an embedded multicore system, we need to design a set of 
+non-functional performance monitors {Mi | Mi = i, Ai, pi, qi, ri} 
+such that the total overhead of monitoring is minimized while 
+all accuracy requirements qi and immediacy requirements ri are 
+satisfied. The main parameter to be determined for each 
+monitor is its time period pi, which will affect the satisfaction 
+of both qi and ri. The total overhead is affected by all the 
+periods pi and also by the allocation of the monitors and the 
+application tasks to the different cores in the processor. Here, 
+for simplicity, the overhead of a monitor is defined as the 
+percentage of increase in the execution time of a task due to 
+monitoring. In the future, we will consider other formulations 
+of monitor overhead such as the effect on throughput, latency, 
+and power consumption due to monitoring. 
+To solve the above problem, we devised a novel 
+architecture for performance monitoring as illustrated in Fig. 2, 
+which consists of three parts, namely the dispatchers, the 
+monitoring tasks, and the worker pool. The motivation behind 
+adopting such an architecture is as follows. The binding or 
+association between a monitor and its set of monitored tasks 
+could be either synchronous or asynchronous. A synchronous 
+association means the computations and the communications 
+required for monitoring are all performed synchronously by the 
+monitor thread itself. An asynchronous association means the 
+computations are delegated to other worker threads, while the 
+communications are performed by the monitor thread. The 
+proposed performance monitoring architecture implements an 
+asynchronous association. The dispatchers are monitor threads 
+that are responsible for communication with the application 
+tasks. The monitoring tasks are implemented as a prioritized 
+work pile, which consists of the tasks that are delegated by the 
+dispatchers. There are basically two types of monitoring tasks 
+including application-specific tasks such as the video encoding 
+rate and the platform-specific tasks such as the core utilization. 
+The worker pool consists of a pool of threads that play different 
+roles such as the displaying, logging, and checking of the 
+monitored information. There are several parameters to be 
+determined for this architecture, including the number of 
+monitor threads, the size of the prioritized work pile, the 
+number of priority levels, and the number of worker threads. 
+Using such architecture, in order to solve the target problem, 
+we will answer the following questions in the next section. 
+ How must the monitor threads be allocated to the processor 
+cores so that we have low monitoring overheads? 
+ How many monitor threads must be designed so that 
+monitoring overhead is reduced? 
+ How to determine the monitor periods such that overhead is 
+reduced while accuracy and immediacy requirements are all 
+satisfied? 
+IV. EXPERIMENTAL RESULTS 
+The proposed adaptive performance monitor architecture 
+was implemented on two different platforms: (a) Intel Core2 
+Duo SU7300, with 4GB DDR3 SDRAM, Linux 2.6.35-25, and 
+(b) ARM 11 MPCore, embedded Linux 2.6.35, 512MB 
+SDRAM, and 128MB NOR Flash. We used the GNU gcc 
+version 4.4.5 to compile our experiment programs without 
+using any compiler optimizations. 
+A. Monitor Thread Allocation to Cores 
+To answer the first two questions posed in the previous 
+section on the number of monitor threads and their core 
+allocations, we created two types of application tasks, namely 
+IO-bound task and CPU-bound task. The IO-bound tasks 
+performed a large amount of file operations such as reading 
+and writing data. Each task starts by reading a large number of 
+integers from a file. The integers are incremented and then the 
+results are written to another file. The CPU-bound task mainly 
+performed the computation-intensive job of multiplication of 
+two floating point matrices. Each task maintains its own 
+counter on the number of operations performed. Here, an 
+operation is defined as the reading and writing of one number 
+in the IO-bound task, and as the completion of one matrix 
+multiplication in the CPU-bound task. The monitors must 
+check the counters of the IO-bound and CPU-bound tasks 
+periodically. Semaphores are used to protect the counters. 
+Prioritized Work Pile
+ 
+ 
+ 
+ 
+ 
+ 
+Application-
+specificʳ
+(e.g. capture 
+rates, encoding 
+rates)
+Platform-specific
+(e.g. core 
+utilizations)
+ 
+Monitoring Tasks
+Worker Threadsʳ
+ 
+    
+Worker Poolʳ
+Displayerʳ Checker, Logger, …ʳ
+ 
+ 
+Dispatchersʳ
+Monitor Threadsʳ
+ 
+dispatchʳ get tasks to run
+Fig.  2. Adaptive Performance Monitoring Architecture 
+2264
+B. Number of Monitor Threads 
+Let us delve specifically into the case
+threads, including 2T1M and 2T2M. From F
+we can observe that the two devoted monito
+lower overhead than the single monitor (
+monitoring period is large. In the case of CP
+long as the monitoring period is larger tha
+devoted monitors incur smaller overheads. 
+1000us period, 2T1M incurs 1.67% overh
+incurs 0.97% overhead. In the case of IO-bo
+as the monitoring period is larger than 4000u
+monitors incur smaller overheads. For exam
+period, 2T1M incurs 0.49% overhead, wh
+0.15% overhead.  
+The above analysis can be used to an
+question: “How many monitor threads must b
+monitoring overhead is reduced?” The answ
+monitoring period. As concluded from Figur
+bound tasks, if there is a need to monitor them
+100μs, then it is suggested to use two moni
+Otherwise, a single monitor is preferred
+monitoring overhead. From Figure 4b, we ca
+same question for IO-bound tasks, if there is 
+the IO-bound tasks at most once per 40
+suggested to use two monitors, one per t
+single monitor is preferred. For a different 
+different number of monitors might be r
+thorough analysis is desired, which will be
+One more issue to be discussed here is the 
+difference between when to switch between s
+monitors for the CPU-bound (100μs) and
+(4000μs). The intuitive reason is that devot
+computation overheads. Since IO-bound ta
+computation and thus even small amounts of 
+devoted monitors, for example once per 1
+overheads comparably larger than a single 
+monitor is thus preferred. In contrast, this
+(a)  Monitored CPU-bound tas
+Fig. 4. D
+s of two worker 
+igures 4a and 4b, 
+rs (2T2M) incur a 
+2T1M) when the 
+U-bound tasks, as 
+n 100us, the two 
+For example, for 
+ead, while 2T2M 
+und tasks, as long 
+s, the two devoted 
+ple, for 10000us 
+ile 2T2M incurs 
+swer the second 
+e designed so that 
+er depends on the 
+e 4a, for the CPU-
+ at most once per 
+tors, one per task. 
+ due to smaller 
+n also answer the 
+a need to monitor 
+00μs, then it is 
+ask. Otherwise, a 
+number of tasks, 
+equired. A more 
+ our future focus. 
+reason for a large 
+ingle and multiple 
+ IO-bound tasks 
+ed monitors incur 
+sks perform little 
+interruptions from 
+000μs, results in 
+monitor. A single 
+ effect is not so 
+pronounced at the same monito
+bound tasks, thus devoted moni
+C. Accuracy and Immediacy of 
+In the following, we go on
+tradeoff between the accuracy a
+information in embedded mult
+adaptive performance monitorin
+(DVR) system [14], which is a 
+online and on-demand video st
+and multiple client connection
+DVR consists of parallel tasks f
+parallel data for block-based 
+(DCT) of each video frame, an
+encoding sequence consisting
+Huffman encoding. DVR was 
+the VERTAF/Multi-Core (VM
+development of multi-core 
+automatically generated the par
+Quantum Platform (QP) [15
+Building Block (TBB) [16]. H
+DVR did not consist of an o
+performance bottlenecks were 
+also found that it was difficul
+monitored information. Thus, t
+we designed a monitor suitable
+focus on how information accur
+In DVR, we designed a 
+monitored the video frame cap
+measure the variance in overh
+experimented with different m
+0.5, 0.1, and 0.01 seconds. T
+different monitoring periods a
+compared in Figure 6. Gene
+monitored task (the parallel vi
+with a decrease in the mon
+monitoring frequency and over
+degradation is observed for the
+ 
+ks (b)  Monitored IO
+ecision on the number of monitors for two tasks
+ring period of 1000μs for CPU-
+tors are preferred. 
+f Monitored Information 
+e step further to investigate the 
+nd the immediacy of monitored 
+icore systems. We applied our 
+g to a Digital Video Recording 
+real-time multimedia system for 
+reaming, with multiple cameras 
+s. As illustrated in Figure 5, 
+or supporting multiple cameras, 
+discrete cosine transformation 
+d parallel pipeline for the video 
+ of quantization, DCT, and 
+used to illustrate the benefits of 
+C) framework [14] for the 
+embedded software. VMC 
+allel code for DVR based on the 
+] and the Intel’s Threading 
+owever, the code generated for 
+ptimized monitor and thus the 
+difficult to detect. Further, we 
+t to check the accuracy of the 
+hrough the results of this work, 
+ for DVR. In the following, we 
+acy is affected by the monitor. 
+monitor for the buffers and 
+ture rate and encoding rate. To 
+eads incurred by monitors, we 
+onitoring periods, including 1, 
+he average encoding rates for 
+s provided by our monitor are 
+rally, the performance of the 
+deo encoder, here) is degraded 
+itoring period due to higher 
+head. This trend in performance 
+ monitoring periods of 1, 0.5,  
+-bound tasks 
+2286
+[3] I. Mas, J. Brage, and G. Karlsson, “Lightweight 
+monitoring of edge-based admission control,” in Procs. of 
+the International Zurich Seminar on 
+Communications,  July 2006, pp. 50-53. 
+[4] D. Arora, S. Ravi, A. Raghunathan, and N. K. Jha, 
+“Hardware-assisted run-time monitoring for secure 
+program execution on embedded processors,” IEEE 
+Transactions on  Very Large Scale Integration (VLSI) 
+Systems, January 2007. 
+[5] G. Venkataramani, B. Roemer, Y. Solihin, and M. 
+Prvulovic, “Memtracker: Efficient and programmable 
+support for memory access monitoring and debugging,” 
+in Procs. of the 13th International Symposium on High-
+Performance Computer Architecture, February 2007. 
+[6] P. Zhou, F. Qin, W. Liu, Y. Zhou, and J. Torrellas, 
+“iwatcher: Simple, general architectural support for 
+software debugging,ϙ in Procs. of the 31st Annual 
+International Symposium on Computer Architecture, 2004. 
+[7] R. Shetty, M. Kharbutli, Y. Solihin, and M. Prvulovic, 
+“Heapmon: a helper-thread approach to programmable, 
+automatic, and low-overhead memory bug detection,” 
+IBM J. Res. Dev., vol. 50, no. 2/3, pp. 261–275, 2006. 
+[8] Y. Guo, Z. Chen, and X. Chen, “A lightweight dynamic 
+performance monitoring framework for embedded 
+systems,” in Procs. of the International Conference on 
+Embedded Software and Systems, May 2009, pp. 256-262. 
+[9] S. Chen, B. Falsafi, P. B. Gibbons, M. Kozuch, T. Mowry, 
+and et al., “Log-based architectures for general-purpose 
+monitoring of deployed code,” in Procs. of the 1st 
+Workshop on Architectural and System Support for 
+Improving Software Dependability, ACM, 2006, pp. 63–
+65. 
+[10] S. Chen, M. Kozuch, T. Strigkos, B. Falsafi, P. B. 
+Gibbons, T. Mowry, and et al., “Flexible hardware 
+acceleration for instruction-grain program monitoring,” in 
+Procs. of the 34th Annual International Symposium on 
+Computer Architecture, June 2008. 
+[11] G. He and A. Zhai, “Improving the performance of 
+program monitors with compiler support in multi-core 
+environment,” in Procs. of the IEEE International 
+Symposium on Parallel & Distributed Processing, May 
+2010. 
+[12] G. He, A. Zhai, and P.-C. Yew, “Ex-mons: An 
+architectural framework for dynamic program monitoring 
+on multicore processors,” in Procs. of the 12th Workshop 
+on Interaction between Compilers and Computer 
+Architectures, 2008. 
+[13] G. He and A. Zhai, “Efficient Dynamic Program 
+Monitoring on Multi-Core Systems,” Journal of Systems 
+Architecture, Vol. 57, pp. 121-133, 2011. 
+[14] C.-S. Lin, C.-H. Lu, Y.-R. Chen, S.-W. Lin, and P.-A. 
+Hsiung, “VMC: A Model-Driven Framework for Multi-
+Core Embedded Software Development,” Journal of 
+Computer Science and Technology, 2011. 
+[15] Quantum Leaps, What is QPTM? Quantum Leaps®, 
+LLC. Retrieved May 10, 2010, from 
+http://www.state-machine.com/products/. 
+[16] J. Reinders, Intel Threading Building Blocks: 
+Outfitting C++ for Multi-core Processor 
+Parallelism, O'Reilly Media, Inc., 2007. 
+ 
+ 
+23028
+100年度專題研究計畫研究成果彙整表 
+計畫主持人：熊博安 計畫編號：100-2221-E-194-030- 
+計畫名稱：具可調式平行度控制之多核心嵌入式軟體開發 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 2 2 100%  
+博士生 1 1 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 2 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 1 100% 
+篇 
+ 
+論文著作 
+專書 2 0 100% 章/本 2 chapters 
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

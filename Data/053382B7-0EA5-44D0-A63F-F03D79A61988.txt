@@ -1,0 +1,1453 @@
+2 
+ 
+ 
+ 
+摘要 
+ 
+在傳統語音辨認方法中，通常只使用語音的頻譜參數作辨認。但是在新世代
+自動語音辨識技術中，將結合語音與語言學知識，以多種語音屬性（attribution）
+與語音事件（event）偵測器群，盡可能從語音信號中擷取各種聲學、韻律及語
+言相關的訊息，在交與後級『語音事件及相關知識整合』及『語音證據確認』單
+元，做語音辨認甚至於語意瞭解，以期突破傳統隱藏式馬可夫模型（hidden 
+Markov model, HMM）方式的困境。本計畫中即擬進行國語語音之各種語音屬性、
+音節邊界、基頻軌跡、韻律資訊之偵測研究，以做為新世代自動語音辨識系統之
+前端處理器。研究重點如下： 
+1. 中文語音屬性（attribution）與各種語音事件（event），包括偵測發音方法
+(articulation manner) ，發音部位(articulation position)與其他語音特徵參數
+（distinctive feature）。 
+2. 中文音節界標（boundary landmark）偵測器，提供後級正確時序訊號。 
+3. 中文基頻軌跡偵測器，包括新的求取方法與軌跡特徵。 
+4. 中文音調與韻律訊息偵測器。 
+關鍵詞：新世代自動語音辨識系統，語音屬性偵測，語音事件偵測，基頻特徵偵
+測。 
+ 
+Abstract 
+ 
+In this project, various speech attribution-, speech event-, syllable boundary-, pitch 
+contour- and prosodic information -detectors will be studied and act as the front-end 
+of the next-generation automatic speech recognizer. The focuses of the research 
+include: 
+(1) Mandarin speech attribution, event and other distinctive feature detectors 
+including articulation manner and articulation position 
+(2) Mandarin syllable boundary detector to provide syllable timing information 
+(3) Mandarin pitch contour extraction and feature 
+(4) prosodic information detection and tone recognizer 
+Keywords:  next generation ASR, speech attribution detection, speech event 
+detection, pitch contour feature 
+  
+4 
+ 
+ 
+ 
+一、 緣由與目的 
+ 
+回顧現今自動語音辨識技術，大詞彙的連續語音辨識 (large vocabulary 
+continuous speech recognition, LVCSR)技術被開發出來，所依賴的就是大量的語
+音資料與語言資料。各個國家都針對其所用的語言進行大量語音與語言資料的收
+集，就特定的一些應用領域發展語音辨識系統，例如聽寫機(voice dictation 
+machine)、交談系統 (conversational system)、口語文件擷取 (spoken document 
+retrieval)、口語翻譯(spoken language translation)等。但大家發現現有的這些技術
+還是不夠好，仍無法與人類辨識語音的能力相比，而現有技術的進步空間有限，
+為了將來語音辨識技術的發展，近年國際上已不斷有學者主張，應該回頭將語音
+與語言的知識帶進來，建立一個以知識為基礎(knowledge-based)加上資料驅動的
+(data-driven)模式，開放測詴平台，共享一個合作的設計與評量機制，將自動語
+音辨認推向新一代的技術[Lee, 2004]。在[Lee, 2004]中，為新一代自動語音辨識
+技術建立之平台及架構圖如圖 1-1 所示。 
+ 
+ 
+圖 1-1:新世代自動語音辨識技術架構圖。 
+ 
+在本子計畫中，我們將致力研究新世代自動語音辨識技術架構(圖)中之語音
+屬性與事件之偵測器。在語音屬性與事件之偵測器中對於語音訊號，不只是抽取
+語音特徵，而且要偵測某一時段中語音的屬性。因此除了傳統的聲學特徵參數，
+還要依據語音學或語言學的知識，抽取韻律相關的訊息與發音方式的訊息，協助
+區辨容易混淆的聲音。利用語音的特徵與屬性的發生，描述一段語音事件(event)
+的發生，而從事件序列來做語音辨識的決策。也就是以事件序列，判斷是否有某
+一段語音的發生。抽取不同的語音特徵與屬性，可以偵測出若干個事件序列，將
+6 
+ 
+ 
+二、 以高斯混合模型為架構的語音屬性偵測器 
+ 
+因為製作 NG-ASR 的語音屬性偵測器必須要有一個語料庫具有 phone-level 
+transcription 資料。在國語語料中缺乏這樣的語料庫，所以計畫中先從英文語料
+庫進行研究。本節內容為介紹使用英文語料庫 TIMIT Corpus，以及使用
+HTK(Hidden Markov Model Toolkit)，建立 GMM-Based 的英文語音屬性之偵測
+器，其中語音屬性包含發音方法（Articulation manner）與發音位置(Articulation 
+position)。且這兩類偵測器輸出將會有每個音框(frame)是屬於何種類別(class)的
+機率值，以提供 NG-ASR 的第二級作事件的整合。 
+ 
+ 
+1. 語音資料庫 
+ 
+首先由於我們要製作英文語音屬性的偵測器，因此我們採用的語料庫為
+TIMIT Corpus，語料內容為 2342 句平衡語料，由分佈在美國八個不同方言的地
+區共 630 位語者，每人錄製 10 句，共有 6300 句語音，其中 438 位男性、192 位
+女性。並以其中 4620 句、語料長度總和約為 3 小時 49 分 10 秒的語音訊號作為
+訓練語料，另外 1680 句、語料長度總和約為 1 小時 23 分 51 秒的語音，作為測
+詴語料。語料的音訊格式為 PCM，取樣頻率為 16 kHz，位元解析度為 16 bits，
+檔頭為 1024 bytes (original : 12 bytes)。 
+ 
+TIMIT Corpus [Garofolo, 1993]已經有 manual phonetic transcription，所以可
+以由 transcription 取得 phone 及語音屬性的參考答案。而其 transcription 的起始以
+及終止時間的單位為取樣的點數，因此在下面的實驗中會將 manual transcription
+轉換成以 100ns 為單位的時間資訊的 labeling 資訊。 
+ 
+在英文發音方法部份，TIMIT 附有英文發音方法的分類表，因此我們將
+TIMIT 原有的 61 個 phonemes 依照其分類表分成七類發音方法。 
+ 
+表 2-1: TIMIT Corpus 發音方法及部位分類表。 
+ Bilabial 
+Lab- 
+dent 
+Dental Alveolar Velar Glottal Rhotic Front Central back 
+Stop b, p   d, t, dx g, k q     
+Nasal m, em   n, en, nx ng, eng      
+Fricative  f, v th, dh s, z sh, zh      
+8 
+ 
+下來的實驗中，我們假設共變異矩陣為一對角矩陣(Diagonal Matrix)。 
+ 
+ 
+4. 高斯混合模型的發音方法、發音位置偵測器之效能  
+ 
+由於我們已把每一個發音方法、發音位置偵測器的兩種 model 的 mixture 數
+均升至 256，與 128，因此我們將看看對於測詴語料，各種偵測器的偵測效果。 
+在此每一個發音方法、發音位置偵測器皆將利用最大事後機率法則
+(Maximum a Posteriori, Criterion)，去對測詴語料每一個 frame 偵測是否為所要偵
+測的種類。下式為 MAP Criterion： 
+ 
+ˆp( | ) p( )
+ =       ,     
+ˆ p( )p( | )
+x
+x
+x
+ 
+ 
+
+                          (2.7) 
+And, where ˆp( ) + p( ) = 1  。 
+其中 為 target model，而 ˆ 為 anti-model， x 為每一個 frame 的特徵參數向
+量， 為 threshold。若(2.7)式成立，則將此 frame 判定為 target，反之則否。 
+首先  ( )p  與 ˆ( )p  為各個 class 的 targe 與 anti-target 的事先機率，而在
+threshold 這個值的選定，我們利用 TIMIT 訓練語料中，每個 class 的 target 與
+anti-target的出現音框總數當作其事先機率，兩者相除便得到一個 threshold的值，
+再利用其值，對 TIMIT 的測詴語料作偵測，可以得到 False Alarm 以及 False Reject
+的值，而後再行調整 Theshold，使其可以得到 False Alarm 以及 False Reject 的其
+它值，最後可將所有值畫出一個 FA-FR 的曲線圖。並且可以得到 FA Rate 等於
+FR Rate 時的 EER(Equal Error Rate)。 
+ 
+以下為 FA、FR、Frame Error Rate 的定義 ： 
+ 
+FA Rate = # of FAs / total # of non-target      (2.8) 
+FR Rate = # of FRs / total # of targets        (2.9) 
+Frame Error Rate = ( # of FAs + # of FRs )/ total # of labels   (2.10) 
+ 
+其中 FA=False Alarm，FR=False Reject 
+ 
+下兩表為 TIMIT Corpus 相關統計資料： 
+ 
+10 
+ 
+5. 高斯混合模型的發音方法之效能 
+ 
+下表為GMM-Based發音方法偵測器國外學者用不同偵測器架構所做出來的
+性能[Lee, 2005]作比較。 
+ 
+表 2-4: GMM-Based mixture256 與其它偵測架構的發音方法偵測效能比較。 
+Equal ErrorRate(%)  Baseline(GMM) ANN* HMM SEG_MCE 
+Vowel 12.3 9.0 1.7 1.8 
+Fricative 10.0 11.3 6.4 3.6 
+Stop 16.7 14.5 9.9 5.4 
+Nasal 8.7 12.2 11.2 5.4 
+Glide (Approximant) 16.3 15.9 8.0 6.1 
+Sil 9.7 3.7 2.1 0.8 
+Affricate 7.2    
+ 
+ 
+在表 2-4 的 ANN 部份的作法，各個偵測器其網路輸入部分有 9 個 frame，每
+個 frame 有 13 維的特徵向量(12MFCCs+energy)，因此共有 117 個輸入節點(input 
+nodes)，而 frame rate 為 10ms。且有一個隱藏層其中有 100 個節點。輸出部份僅
+有一個節點。偵測器輸出的 threshold 值為 0.5。 
+ 
+由表 2-4 可以看出，以 GMM-Based 的 Fricative 與 Nasal 偵測器，其效能
+較佳於 ANN，尤其是 Nasal 偵測器改善了約 3%，其他的偵測器均較 ANN 差，
+尤其是 silence 偵測器差了 6%。另外由表 2-4 可以看出，以 HMM Segment-Based
+做發音方法偵測器普遍比 GMM 以及 ANN 架構好，這提供了我們未來在做其他
+偵測器一個參考的依據。 
+ 
+ 
+6. 高斯混合模型的發音位置偵測器之效能 
+ 
+在發音位置的效能部分，由於我們將 target model 與 anti-model 的 mixture
+數目皆訓練至 128，在此我們隨便挑一個發音位置偵測器來觀察其在 mixture 64
+與 mixture128 的 FA-FR chart 的差異。 
+12 
+ 
+ 
+由表 2-5 可以看出幾乎全部的發音位置偵測器的 EER 均大於 10%以上、除
+了 Rhotic 偵測器、但也很接近 10%。其中以 Glottal、Central、Back 偵測器錯誤
+率皆大於 17%以上為最差。 
+ 
+ 
+7. 高斯混合模型的發音方法與發音位置偵測器混合之效能 
+ 
+在 NG-ASR 第一級的各個偵測器，其輸出為語音屬性或者事件的機率值，
+因此，由於我們現在已訓練出各個發音方法與發音位置偵測器的 target model 以
+及 anti-model，我們將可以求出每一個 frame 是否為 target 的機率。  
+( | ) ( )
+(  |  )    
+( )
+( | ) ( )
+               
+ˆ ˆ( ) ( | )  ( ) ( | )
+( | )
+               
+ˆ( | )   ( | )
+p x p
+p x
+p x
+p x p
+p p x p p x
+p x
+p x p x
+ 
+
+ 
+   
+
+  
+
+
+
+
+
+           (2.11) 
+其中 ( | )p x  、 ˆ( | )p x  皆為已知，如此便能得到每一個 frame 為 target 的機率。 
+ 
+由於我們欲將發音方法偵測器與發音位置偵測器的結果結合起來，因此我們
+將利用發音方法與發音位置獨立的特性，藉由機率得到合在一起的結果。 
+(   |  )  (  |  ) (  |  ) p manner position x p manner x p position x    (2.12) 
+其中 (  |  )p class x  為這個 frame 屬於這一個 class 的機率值 
+ 
+而由 TIMIT 語料發音方法與發音位置分類，可以得知六種發音方法與 10 種
+positions 共有 21 種組合。而發音方法偵測器其 target model 與 anti target model
+皆為 256 而發音位置偵測器其 target model 與 anti target model 皆為 64。 
+ 
+而觀察所有的發音方法結合發音位置的 FA-FR 曲線圖，可以得出 Stop + 
+Velar、Nasal+ Bilabial、Fricative+ Alveolar、Fricative + Velar、Glide + Central、
+Glide + Back 共六種的發音方法與發音位置的組合，其 EER 比其原先結合的兩種
+較佳，而 Stop + Glottal、Fricative + Lab-dental、Fricative + Dental、Glide + Glottal、
+Vowel + Rhotic、Vowel + Front、Vowel +Central、Vowel +Back 共八種的發音方
+法與發音位置的組合其 EER 比其原先結合的兩種較差，而其餘的七種組合則其
+結合的 EER 則介於其原先結合的兩種之間。 
+ 
+ 
+14 
+ 
+affricate 0.87 % 32.15 % 9.96 % 0.22 % 0.89 % 3.89 % 52.01 % 
+ 
+ 
+由表 2-6 可知以發音方法偵測器對 TIMIT 測詴語料所作的辨識，其 frame 
+error rate 為 24.533%，另外可以看出除了 Affricate 辨識錯誤率最低以外，nasal
+的辨識錯誤率是次低，因為可由先前的偵測器的效能看出，而辨識錯誤率最高的
+是 vowel 與 glide，vowel 錯誤率高的其中一個原因可能是由於其資料量龐大所造
+成。另外由 confusion matrix 可以看出 vowel 與 glide 互為容易辨識錯誤的一對。 
+ 
+ 
+9. 高斯混合模型的發音位置偵測器之辨認 
+ 
+下表為發音方法偵測器對 TIMIT 測詴語料所做的發音方法辨識,，其各別發
+音方法的統計資料。 
+ 
+表 2-8: 發音位置偵測器所做的發音方法辨識，其各別發音方法的統計資料。 
+TIMIT Testing Data 
+Total frame error rate = 35.779% 
+positions FA rate FR rate error_rate 
+bilabial 65.01 % 40.29 % 4.56 % 
+labdent 64.60 % 44.02 % 3.88 % 
+dental 83.12 % 54.37 % 3.46 % 
+alveolar 22.81 % 37.73 % 8.20 % 
+velar 52.69 % 40.55 % 4.89 % 
+glottal 76.36 % 53.10 % 4.25 % 
+rhotic 31.83 % 27.19 % 4.39 % 
+front 21.99 % 30.73 % 11.18 % 
+central 51.88 % 51.47 % 9.10 % 
+back 42.58 % 49.02 % 9.29 % 
+Silence 13.32 % 24.86 % 8.35 % 
+ 
+ 
+ 
+由表 2-8 可以看出 front、central、back 的辨識錯誤率相當的高，而這三個發
+音位置的 phonemes 大部分亦是屬於發音方法 vowel，且 vowel 偵測器的錯誤率
+與辨識錯誤率亦是相當的高。 
+16 
+ 
+ 
+三、 國語語音 Phone-Based HMM 以及 TIMIT GMM 語
+音屬性偵測器進行音素切割之效能比較 
+ 
+ 
+因為現有之國語語料庫都沒有人工音素切割資訊，而在 NG-ASR 架構中之
+語音屬性偵測性又是 frame-based 的偵測性，與傳統的 HMM 語音辨認器以音素
+單元作辨認結果有很大的差異。所以傳統的 HMM force-alignment 所獲得的切割
+位置的精確性將首先在此被檢驗。在此我們將探討使用人工切割位置所訓練之英
+文語音屬性偵測器架構的辨識效能與傳統以 HMM-Based 的辨識效能作比較，觀
+察其差異。 
+ 
+而本節主要重點放在發音方法上的比較，因此僅考慮發音方法。 
+ 
+一、 國語語音資料庫之預處理 
+ 
+我們對國語語料庫 TCC-300 [TCC, 2008]作以下之預處理： 
+ 
+(1). 使用中文語料庫 TCC300，訓練以 Phone-Based 為架構的 HMMs ,，而其
+每個phone model皆設為 3 state的HMM，且取 38維MFCC參數，window 
+size為 32ms ， frame shift 為 10ms，以 flat start開始訓練 HMMs， HMMs
+的 mixture 數時，會依照該 model 在語料庫的資料量作調整，而在此我
+們利用此一功能藉由 iteration 12 次將每一個 model 的每一個 state 平均
+升至 mixture 128 個。接著我們將訓練好的 HMMs 拿來對 TCC300 的訓
+練語料作 Forced Alignment，因此我們可以得到一個有粗略位置資訊的
+phone-level 的 labeling file，最後我們可以利用中文發音方法的分類表，
+將 phone-level 的 labeling file 轉為 manner-level 的 TCC300 的訓練語料
+的 labeling file。 
+ 
+(2). 在這個實驗中，我們將利用前一節所作的以英文(TIMIT)語料庫所作的
+英文發音方法偵測器，在此我們將其已訓練到 mixture256 的七種 Target 
+models 拿來對中文語料庫 TCC300 的訓練語料作 Forced Alignment ， 
+因此可得到另一種切割方式的 manner-level 的 TCC300 訓練語料的 
+labeling file。 
+ 
+18 
+ 
+Silence 350316 1456902 0 4.16 2313 
+Affricate 75889 781293 3 10.30 47 
+ 
+ 
+ 
+下表為上述所講的第二項當參考的 labeling 檔，其相對的 HMM 切割位置差
+異量的統計，其中負值表示使用英文偵測器之切割位置相對較為前面。(單位為
+frame) 
+ 
+表 3-3: 以 HMM 作切割相對於以 TIMIT Manner GMMs 作切割的前後切割位置
+統計資料。 
+manners front_min front_avg front_max back_mix back_avg back_max 
+Vowel -190 -3.52 241 -206 -2.50 249 
+Fricative -208 -3.72 219 -190 -0.68 224 
+Stop -183 -5.35 220 -179 -1.20 225 
+Nasal -174 0.54 249 -173 -0.59 249 
+Liquid -169 -2.08 246 -170 -2.74 228 
+Silence -2312 -1.67 249 -2312 -5.42 246 
+Affricate -195 -6.74 227 -183 -0.28 241 
+ 
+ 
+下表為這兩種切割的 Confusion Matrix 
+ 
+表 3-4: 以 TIMIT Manner GMMs 作 forced alignment 當參考答案與以 HMM 作切
+割的 Confusion Matrix。 
+recognize 
+ref 
+vowel fricative stop nasal liquid silence affricate 
+vowel 89.10 % 3.69 % 1.19 % 2.62 % 1.31 % 0.22 % 1.87 % 
+fricative 14.27 % 78.90 % 0.58 % 0.28 % 0.07 % 0.87 % 5.03 % 
+stop 32.57 % 2.22 % 61.24 % 0.27 % 0.36 % 0.58 % 2.76 % 
+nasal 29.94 % 2.18 % 1.75 % 61.71 % 1.28 % 0.42 % 2.71 % 
+liquid 72.74 % 3.82 % 1.57 % 1.67 % 19.29 % 0.33 % 0.58 % 
+silence 8.92 % 6.58 % 13.54 % 2.93 % 0.68 % 51.88 % 15.47 % 
+affricate 21.04 % 2.10 % 0.26 % 0.19 % 0.05 % 0.22 % 76.14 % 
+ 
+ 
+ 
+20 
+ 
+affricate 1.83 % 39.33 % 19.48 % 0.99 % 1.61 % 3.46 % 33.29 % 
+ 
+ 
+尤以上結果可以知道傳統 HMM 所獲得之切割位置的精確度對用來標示
+frame-based 語音屬性偵測器的訓練語料而言仍然不足。 
+ 
+ 
+附錄 1、Phone-Based HMM 以及 TIMIT GMM  
+語音屬性偵測器進行音素切割之效能比較範例 
+ 
+ 表 3-3 資訊之分佈圖，也就是使用語音屬性偵測器進行音素切割之位置當參
+考的 labeling 檔，其相對的 HMM 切割位置差異量的統計圖。 
+ 
+22 
+ 
+ 
+ 
+  
+24 
+ 
+接下來我們首先訓練音節的 HMM 模型進行強迫切割取得音節的切割位置，
+然後以音節切割位置開始訓練狀態數為 3 的音素的 HMM 模型，同時訓練 short 
+pause (sp) 與 silence 模型並且將 non-speech signal(如 breath , noise…等)模型隱藏
+在 short pause 以及 silence 的 HMM 狀態當中，允許狀態跳躍來切出更合理的非
+語音段，下圖 4.1 為非語音模型當中的狀態轉移示意圖: 
+圖 4.1：非語音段模型狀態轉移圖。 
+有了音素的 HMM 模型之後緊接著便對語料庫進行強迫切割，雖然把呼吸
+聲切割出來能夠切出比較乾淨的 short pause 以及 silence，然而以切割的角度來看
+HMM 的切割位置仍舊不夠精準，底下是一個簡單的例子: 
+ 
+ 
+ 
+ 
+ 
+語者呼吸聲 
+short pause 切不
+出來或是切的太
+短 
+子音與母音邊界
+切的不好 
+Final Pause Breathe Pause Initial
+26 
+ 
+的分段序列，重新將樣本點的資料分類，因此我們將這方法應用來對我們音節之
+間的 sp 以及子音母音的邊界進行切割位置調整。首先我們固定呼吸聲的切割位
+置，假設 Observation sequence O  = (
+1 2... No o o ) 用來代表由一音節之 final 起始
+點至下一音節 initial 之終止點間語音信號參數，並且使用 HMM 之音節切割位置
+並且將之分成 I = 3 段落 (final， short pause， initial)， observation vector oj 由
+13 維 MFCC 參數組成，而 i th (1 ≦ i ≦ I) segment；
+iS ；的音框訓練一個高斯模
+型 ( , )i i iN    ，其中 i 為 mean-vector， i 為 covariance matrix，這些參數都
+可由第 i th 段落當中 in  個音框求得： 
+1
+1
+ˆ
+in
+k
+ki
+o
+n
+
+
+                                                   (4.1) 
+1
+1ˆ ˆ ˆ( ) ( )
+in
+t
+i k i k i
+ki
+o o
+n
+ 
+
+                                      (4.2) 
+而在調整音節間 short pause 切割位置的步驟當中，likelihood 方程式可以寫成： 
+1
+1/ 2
+1 1 ˆˆ ˆ( | ) exp ( ) ( )
+ˆ 22 | |i
+t
+j S j i i j i
+S i
+p o o o 
+
+       
+            (4.3) 
+使用 maximum likelihood 的要求利用 Viterbi search 來找到最佳之切割位置 S。 
+我們針對每個句子，收集該句當中較可靠的 short pause，silence，breath 音
+框(該非語音段落長度至少長於 5 ms)，用 VQ 將這些資料依據 energy 大小分為兩
+群，能量較大的一群定為"non-speech signal"，能量較低的一群定為"silence"，將
+能量較低的一群抽取 13維的MFCC參數拿來訓練Gaussian模型當做該句中 short 
+pause 模型，之後從句子的開頭開始循序往後處理每個音節之間的 short pause，
+處理的方式如下：拿 sp 之前的 final 音段當中所有的音框拿來訓練一個 13 維
+MFCC 的 final 高斯模型，同時拿 short pause 之後的 initial 音段當中較可靠的音
+框(一般來說是所有音框，但是針對某些音的特性而有些限制，比如說爆破音當
+中ㄅ，ㄉ，ㄍ這三個音特別的短，因此僅取該音結束點往前的 3 個音框)拿來訓
+練 13 維 MFCC 的 initial 模型，然後從 short pause 前的 final 起始點開始往後逐個
+音框對於 final， short pause，non-speech signal， initial 這幾個模型如下圖 4.3
+進行 Viterbi Search 的比對，不過比對結束之後決定每個 state 的區段位置時必須
+保留呼吸聲保留原始的切割位置，因此實際上調整的有兩部分 : final 與 short 
+pause 之間的切割位置以及 initial 與 short pause 之間的切割位置。 
+28 
+ 
+ 
+圖 4.4：取得音素切割位置的流程 
+ 
+舉個例子來觀察經過調整之後的切割位置更趨近於人工標記的切割位置: 
+ 
+ 
+圖 4.6：音素切割位置調整前後之比較。 
+ 
+由上圖我們可以觀察到不管是音節與音節之間的 sp 或者是子音與母音之間
+經過調整
+的切割位
+置 
+未經調整
+的切割位
+置 
+30 
+ 
+ 
+圖 4.7：Stop 音改善切割位置的比較統計。 
+ 
+我們可以看到藉由抽樣觀察 100 個 stop 音事件當中，未經過調整的 stop 音
+切割位置幾乎前三個音框實際上都是 sp，而經過自動調整之後的切割位置大幅
+度的將 stop 音起始的頭三個音框(實際上是 sp)還原為 sp 音框。接下來為了分析
+調整子音與母音之後切割位置的改進，同樣取來自不同語者的 10 個音檔，其中
+每一句平均取若干個 initial 的事件來做統計，用直條圖來表示經過調整前後切割
+位置與實際人工標記比較的改進情況: 
+Total 樣本: 100 samples: fricative，affricate 
+    50 samples: stop，nasal 
+    40 samples: liquid 
+ 
+Stop音起始位置頭三個音框實際上為sp音框之分布圖
+96 96
+87
+57
+22
+13
+0
+20
+40
+60
+80
+100
+120
+1 2 3
+標記起始位置開始第N個音框
+實
+際
+上
+為
+sp
+的
+音
+框
+數
+未經過sp_refine
+經過sp_refine
+32 
+ 
+表 4.7：中文發音方法分類表。 
+1 爆破音（Stop） ㄅ (p) ㄆ (b) ㄉ (t) ㄊ (g) ㄍ(k) ㄎ (k) 
+2 鼻音  （Nasal） ㄇ (m) ㄋ (n) n_n , ng    
+3 摩擦音（Fricative） ㄈ (f) ㄙ (s) ㄒ (x) ㄏ (h) ㄕ (sh)  
+4 塞擦音（Affricate） ㄓ (zh) ㄔ (ch) ㄑ (q) ㄐ (t) ㄘ（z） ㄗ（s） 
+5 流音  （Liquid） ㄌ (l) ㄖ (r)     
+6 母音  （Vowel） others      
+n_n , ng 為ㄤㄣㄢㄥ的鼻音韻尾 
+ 
+而此訓練語料的發音方法切割位置便作為我們在製作中文發音方法高斯混
+合模型貝氏偵測器的切割位置，最後再將製作出來的中文發音方法偵測器對測詴
+語料作偵測求取偵測效能。 
+我們從音節切割位置起始著手訓練音素的馬可夫模型後，對語料庫作切割的
+方法，同時切出非語音的呼吸聲，接著再半自動的調整音素切割位置，而我們也
+將以此較可靠的切割位置當作是中文 TCC300 訓練語料的切割位置，訓練各個發
+音方法的高斯混合模型偵測器，以下將用此結果與使用音素 HMM 對語料進行強
+迫切割的切割位置所訓練的高斯模型製作的偵測器偵測效能做比較。 
+ 
+1. 以 HMM 強迫切割的音素切割位置訓練的高斯模型製作偵測器。 
+2. 以 HMM 強迫切割之後的音素切割位置再經過自動調整的切割位置訓練
+的高斯模型偵測器。 
+ 
+表 4.8：以調整前後的切割位置訓練高斯混合模型偵測器偵測實驗。 
+        訓練語料切割 
+          位      置 
+ 
+發音方法偵測 
+HMM 強迫切割位置 
+(EER%) 
+HMM 強迫切割經過調整後的
+切割位置(EER%) 
+Stop 12.17 11.12 
+Nasal 11.90 11.57 
+Vowel 12.33 11.05 
+Affricate 11.91 10.98 
+Fricative 12.47 11.38 
+Liquid 9.73 9.16 
+Silence 11.98 7.25 
+ 
+上表顯示出經過調整切割位置之後的切割位置訓練偵測器，各種發音方法的
+34 
+ 
+ 
+五、  使用類神經網路的國語語音屬性偵測器 
+ 
+我們取得了相當可靠的 TCC300 國語語料庫的音素切割位置之後，接著建
+立最基礎的 frame-based 高斯模型中文發音方法偵測器。由於非線性的類神經網
+路架構已經證明在資料類別分類上有優於線性高斯混合模型的效能，因此在本節
+當中首先建立屬於類神經網路的多層感知機 (Multi-layer perceptrons, MLP)模型
+為基礎的中文發音方法偵測器。然而在連續語音的語音屬性偵測當中單純的只考
+慮每個音框本身的資訊其實是不大合理的，因為即使是以音框為偵測的基本單元，
+每個音框仍舊會受到前後音框以及一些語言特性的影響，因此本章接著會加入類
+似以音段為基礎(segment-based)的概念，在原本的 MLP 模型為基礎的偵測器上
+加入 target 與 anti-model 這兩個狀態轉換的機率(transition probability)分數改善偵
+測器的效能，最後我們將由 MLP 發音方法偵測器為基礎建立階層式的語音屬性
+信任度量測(Confidence Measure)，如此一來便能夠評量偵測器偵測結果的可靠性，
+提供給自動語音辨識架構後級辨識器更可靠的語音資訊。 
+ 
+1. 以 MLP 模型為基礎發音方法貝氏偵測器之製作 
+ 
+我們採用的發音方法 MLP 模型分為三層如圖 5.1，包含一個輸入層、一個
+隱藏層、一個輸出層，根據我們輸入每個音框的 38 維 MFCC 參數因此輸入層點
+數設定為 38，而隱藏層點數設定為 50，而輸出層由於我們同樣要訓練 target model
+以及 anti model 因此設定點數為 2。 
+MLP 網路是一種正向饋入(feed-forward)網路，每一個第 i 層神經元的輸出
+( )i
+kO  都是第 i-1 層輸出加權總合的非線性函數，其數學式如下: 
+( ) ( ) ( ) ( )
+1
+( )
+N
+l l l
+k ki i k
+i
+O f w O 
+
+
+
+                                        (5.1) 
+其中 
+1.0
+( )
+1 x
+f x
+e
+
+
+                                                (5.2) 
+為 sigmoid function， N 為第層的神經元數目，
+( )l
+k 為 bias，而符號
+( )l
+kiw 則表示
+由層的第 i 個神經元到 l 層的第 k 個神經元的加權值。 
+36 
+ 
+的效能有顯著的提升。 
+在得到了 frame-based MLP 中文發音方法偵測器的結果之後，我們將以
+segment 的角度來觀察 frame-based 的 MLP 偵測器的偵測錯誤情形類別做分析，
+首先是錯誤拒絕的部份: 
+ 
+ 
+圖 5.2：偵測的結果稍微向內縮。 
+ 
+這類型的錯誤多半是因為邊界附近的聲學特徵還不是很穩定因此發生錯誤
+拒絕的偵測錯誤，但是以 segment的角度來看這類型偵測錯誤的情形並不算嚴重，
+而這類型的錯誤對於 frame-based 偵測器的偵測錯誤影響我們將在後面的章節再
+作較深入的分析。 
+ 
+ 
+圖 5.3：偵測的結果有一個 false-reject 的 jitter。 
+ 
+這類型的錯誤非常常見但是實際上這些短暫的 jitter 是造成偵測錯誤的主要
+來源之一，並且也不能提供後級的辨識器可靠的資訊，如果能夠加入一些 segment
+概念的資訊應該就能夠有效抑制這類型的錯誤，因此在下一節當中我們將會加入
+target 與 anti-model 這兩種狀態轉移的機率分數來詴圖克服此類型的偵測錯誤。 
+ 
+參考 
+答案 
+ 
+偵測 
+結果 
+參考 
+答案 
+ 
+偵測 
+結果 
+38 
+ 
+ 
+圖 3.6：false-alarm jitter。 
+ 
+同偵測錯誤拒絕當中的第 b 類型錯誤，事實上除了一部分 Stop 音以及
+Silence 以外其他類發音方法幾乎不可能單獨出現這麼短的 target segment(1~2 個
+音框)，因此這類十分明類的錯誤便是我們下一節當中提出狀態轉移機率概念最
+主要要解決的偵測錯誤類型。 
+ 
+ 
+圖 5.7：一長段連續 false-alarm。 
+ 
+這類型的錯誤通常發生在該種發音方法與某種聲學特徵相近的發音方法之
+間互相混淆情形非常嚴重時，最明顯的情形就是如上圖當中的例子，該音素ㄘ(c)
+是屬於 Affricate，但是由於 Affricate 與 Fricative 混淆的情形十分嚴重因此整段被
+Fricative偵測為錯誤警戒的錯誤，同樣的錯誤類型也常見於聲學特徵類似的Nasal
+與 Liquid 之間以及 Nasal 與 Vowel 之間。 
+參考 
+答案 
+ 
+偵測 
+結果 
+參考 
+答案 
+ 
+偵測 
+結果 
+40 
+ 
+其中 S =1、2 ; O為 observation；當 t=1 的時候，若偵測的 target 為 silence，則 1S
+為 2，若偵測的 target 為其餘發音方法，則
+1S 為 1，因此原式可寫成: 
+*
+1
+1 2
+( , ) ( , )
+N N
+MLP t t A t t
+t t
+Q Q S O Q S S 
+ 
+                                (5.4) 
+而 ( , )MLP t tQ S O 即為原本 frame-based偵測器輸出每個音框在 target model上的分數
+取對數，而狀態轉移分數
+1( , )A t tQ S S  為狀態轉移機率取對數，也就是
+log(
+1( | )t tP S S  )，狀態轉移機率用訓練語料當中 target-segment，anti-model segment
+的平均長度求得，假設 target-segment 平均長度為 L2,anti_segment 平均長度為 L1
+則狀態轉移機率為: 
+target anti
+1/L2
+1-1/L2
+1/L1
+1-1/L1
+ 
+圖 5.9：發音方法音長模型狀態轉移圖。 
+ 
+以下我們將加入狀態轉移機率分數之後的偵測結果與之前 frame-based 的
+MLP 偵測器之偵測結果比較: 
+ 
+表 5.2：加入音長模型之後的錯誤率統計。 
+ MLP MLP + duration model 
+manner EER(%) 
+False alarm 
+rate(%) 
+False reject 
+rate(%) 
+Frame error 
+rate(%) 
+Vowel 8.29 8.71 7.05 7.92 
+Stop 9.98 6.99 10.53 7.13 
+Fricative 10.06 7.08 9.68 7.31 
+Affricate 9.17 7.74 8.47 7.80 
+42 
+ 
+從上面的例子可以看到，雖然一整個音段聲學特徵都非常類似 Nasal 而造成
+的整段偵測錯誤警戒(如紅色虛線所示)這類型的偵測錯誤沒有明顯改善，但是在
+frame-based 偵測錯誤當中十分常見的 jitter 偵測錯誤類型(綠色虛線標示)的偵測
+錯誤幾乎都被排除了，代表說加入狀態轉移機率分數確實能夠有效的排除不合理
+的 jitter 類型偵測錯誤。 
+接著圖 5.11~5.17 我們統計出原本各發音方法音長段落的分布、frame-based 
+MLP 偵測結果段落長度分布以及加入狀態轉移機率的偵測結果段落長度分布: 
+ 
+ 
+圖 5.11：Vowel 段落音長分佈比較(藍色為參考答案音長分布，綠色為 frame-based
+偵測結果，紅色為加上轉移機率的偵測結果) 。 
+ 
+圖 5.12：Stop 段落音長分佈比較(藍色為參考答案音長分布，綠色為 frame-based
+偵測結果，紅色為加上轉移機率的偵測結果) 。 
+44 
+ 
+ 
+圖 5.16：Liquid 段落音長分佈比較(藍色為參考答案音長分布，綠色為 frame-based
+偵測結果，紅色為加上轉移機率的偵測結果) 。 
+ 
+圖 5.17：Silence 段落音長分佈比較(藍色為參考答案音長分布，綠色為 frame-based
+偵測結果，紅色為加上轉移機率的偵測結果) 。 
+由各種發音方法偵測結果音長分布的統計我們可以清楚的看到，原始的
+MLP 偵測結果偵測出太多 jitter 型態的段落，造成了音長分布大多偏向音長很短
+的段落，而加入狀態轉移機率之後的偵測結果，等於說是加入各種發音方法在
+segment 音段長度的資訊，使得偵測的結果 segment 長度分佈明顯較趨近於實際
+上的音長分佈。 
+不過一般來說偵測器的效能仍舊是以求得等錯誤率來評斷，因為等錯誤率
+考量到 target 資料量與 anti 資料量不一定相當的問題，因此接下來我們將導入以
+下的數學式加入一個可以調整的權重值，取得偵測器錯誤拒絕率與錯誤警戒率相
+等的等錯誤率。 
+46 
+ 
+ 
+圖 5.18：調整成等錯誤率前後的偵測結果實例(I) 。 
+ 
+由這個例子可以看到偵測結果其實沒有什麼差異，同樣保留了去除 jitter 類
+型錯誤的優點，底下我們再找另外一個差異較明顯的例子: 
+ 
+圖 5.19：調整成等錯誤率前後的偵測結果實例(II) 。 
+ 
+由圖 5.18、圖 5.19 觀察得知，調整成等錯誤率雖然會稍微增加一部分的錯
+waveform 
+label 
+ 
+參考答案 
+ 
+frame-based 的
+偵測結果 
+frame-based + 
+transition 
+probability 
+frame-based + 
+transition 
+probability 
+等錯誤率的情
+況下偵測結果 
+  
+waveform 
+label 
+參考答案 
+ 
+frame-based 的
+偵測結果 
+ 
+target model        
+上的分數 
+ 
+frame-based + 
+transition 
+probability 
+ 
+frame-based + 
+transition 
+probability 
+等錯誤率的情
+況下偵測結果 
+48 
+ 
+ 
+圖 5.20：階層式的屬性偵測器信任度量測架構圖。 
+ 
+為了計算屬性偵測結果的信任度，首先將八類偵測器的偵測結果 normalize
+使其總和值為 1: 
+1
+N
+total i
+i
+AP AP
+
+                   N=8                          (5.7) 
+i
+i
+total
+AP
+AP
+AP
+                     1≦i≦8                       (5.8) 
+iAP為各種偵測器在 target model 上的分數，接著將上式 normalized 後的結果 iAP
+運算每個音框偵測結果的亂度(entropy) [Mengusoglu, 2001]: 
+1
+1
+log( )
+N
+i
+i i
+H AP
+AP
+
+
+                  N=8                      (5.9) 
+計算出亂度 H 之後便將 H 代入 sigmoid function 得到信任度 R，亂度 H 若是越低
+會得到較高的 R 值，也就是說該音框的偵測結果較為可信: 
+1
+1 exp( ( ))
+R
+H 
+
+ 
+                                        (5.10) 
+其中、 的值目前調整為適當的值使得 R 值的分布在 0~1 之間。得到信任度之
+後我們將信任度必須超過一個門檻值的音框偵測結果才認定為可靠的資訊。 
+以下是對於各個階層以不同的信任度門檻值分別求得的可靠資訊正確率: 
+50 
+ 
+將響音(sonorant)包含 Vowel、Nasal、Liquid 合併，並且將非響音包含 Fricative、
+Affricate、Stop 合併，由統計的結果看來此一合併的信任度量測結果由於多種發
+音方法的個別偵測錯誤加成在一起，因此在較低的門檻值下信任度量測的效能會
+大幅的降低。而最上層的語音(speech)與非語音(non-speech)的信任度量測同樣有
+與第三層類似的問題，在較低的門檻值下錯誤率升高的很快，不過整體來說錯誤
+率要比第三層為低。綜合圖 5.21 以及表 5.4 的結果，我們將在不同門檻值下整體
+信任度量測正確資料量的比例做統計: 
+表 5.5：各門檻值下信任度量測整體正確率。 
+    門檻值 
+ 0.8 0.85 0.9 0.95 
+涵蓋率 100% 91.6% 84.4% 78.0% 
+信任度量測 
+整體正確率 
+90.1% 95.4% 97.3% 98.3% 
+由上表的統計可以看到隨著門檻值越來越高，信任度量測的涵蓋率便隨之
+降低，但是即使將門檻值提高到 0.9以上，信任度量測的涵蓋率依然有大約 85%，
+同時信任度的正確率達到 97%以上，不過值得注意的是，每個階層的分類不同，
+因此各個階層不一定要用相同的門檻值，由統計中可以看出，即使在門檻值為
+0.8 時涵蓋率僅有 28.6%，代表說在最底層其實將很多的資料認定為”不可靠”而
+進行更上層的信任度量測。有了信任度量測結果的統計之後接著在下圖當中我們
+對於信任度量測的結果以最底層的信任度量測結果與各偵測器的偵測結果之間
+的關係做初步的分析: 
+52 
+ 
+ 
+六、 語者調適之 HMM 自動切割與使用 CRF 之語
+音屬性整合 
+ 
+ 
+1. 語者調適之 HMM 自動切割 
+ 
+傳統 HMM 的 training criterion 本來就不是 optimal segmentation position，我
+們檢視傳統的 HMM 語音辨認架構在做音節切割時的精確度，根據文獻記載，在
+±20 msec (也就是視傳統的 HMM 的 2 個 frame)的誤差下，精確度也僅能達到 90%
+上下[Grande, 2003] [Kotropoulos, 2008]。。雖然，王新明博士提出了 minimum 
+segmentation error 的 HMM 訓練方法[Kuo, 2006]，但是是一個 supervised training 
+algorithm，也就是需要有人工正確切割語料庫來訓練模型。在計畫中我們使用了
+一套以語者調適訓練的 HMM 模型來對不特定語者作切割的機制，根據言厭結果
+發現可獲得精確度較高之切割資訊。如圖 6.1 所示，在不特定語者 HMM 
+phone-like unit model training 後，我們再使用做 speaker adaptation training(SAT) 
+[Makhoul, 1996]；SAT 就是使用 constraint MLLR(CMLLR)對不同語者做做語音
+參數的轉換；使用經語者轉換(CMLLR)後之語音參數再重新訓練新的 HMM 模型
+將可獲得較佳之 speaker-dependent HMM 模型。做完 SAT 後，我們再做 HMM 做
+model adaptation，使用 MLLR 技術來調適 HMM 模型[Gales, 1996] [Gales, 1998]，
+它和 SAT 會又加成性的效果。如此就可以獲得較佳的 HMM 模型來做 force 
+alignment，作為語料庫 syllable boundaries 的啟始切割位置。 
+ 
+54 
+ 
+方法偵測器，其效能如圖 6.2 所示。 
+ 
+ 
+ 
+圖 6.2：使用語者調適 HMM 模型後之自動標示資訊，重新訓練之 MLP 為
+基礎的發音方法偵測器之效能(EER in %)。 
+ 
+偵測器之效能明顯較先前的結果好。因為使用語者調適 HMM 模型做自動
+標示及語音屬性偵測器是以音框為單位；所以切割位置誤差在一個音框以下可認
+為是容許誤差，所以在圖 6.2 也標示出考慮切割位置正負一個音框之容許誤差後
+之發音位置偵測器之效能。最後因 TCC 語料中有一些背景雜訊存在，若將自動
+切割時標示為非語音或靜音信號之音框其偵測結果後，偵測器之效能會進一步提
+升；由途中也可以看出非語音信號常會被偵測為 stop。 
+ 
+重新訓練之MLP為基礎的發音位置偵測器之效能則如圖 6.3所示。由圖 6.2、
+6.3 所示，以自動標示之語料及音框為單位的語音屬性偵測器而言，這樣的效能
+可以說是相當的好了。 
+ 
+ 
+ 
+0.00 
+2.00 
+4.00 
+6.00 
+8.00 
+10.00 
+original
+remove [B-1,B]
+remove non-speech
+56 
+ 
+ 
+圖 6.4：frame-based MLP 發音方法偵測器之辨認結果之信任度量測。 
+ 
+ 
+4. 語音屬性偵測器之錯誤分析 
+ 
+我們將本章所製作之利用 MLP-based 發音方法偵測器之錯誤列於表 6.2。例
+如第一行第二列是說 54%的/h/音素會使得 stop 發音方法偵測器有輸出，第二行
+第四列是說 17%的/e-ng/音素會使得 nasal 發音方法偵測器 miss detected。 
+ 
+我們將表 6.2 所得到的結果與語言學知識做比對可以發現一些在語言學家看
+到的現象( linguistics knowledge) [謝國平, 1998]，如： 
+ Backward nasal assimilation – 國語語音中鼻音韻尾的同化現象； 
+ Vowel unvoicing –韻母的非韻母化現象； 
+ denasalization – 去鼻音化現象，通常是因為進入鼻腔的空氣量減少
+所造成； 
+ 
+所以由圖 6.5可以發現鼻音發生整個 phone missing detection的比例
+事實上還算較高的。 
+ 
+ 
+ 
+0.9 0.8 0.7 0.6 0.5 0.4 0.3 0.2 0.1 0.0 
+Inclusion rate 0.2708 0.3972 0.5094 0.5903 0.6594 0.7265 0.8023 0.8751 0.9504 1
+Recogniton rate 0.9933 0.9775 0.9493 0.9325 0.9183 0.9043 0.8843 0.865 0.8429 0.8234
+0.0 
+0.1 
+0.2 
+0.3 
+0.4 
+0.5 
+0.6 
+0.7 
+0.8 
+0.9 
+1.0 
+Entropy
+Inclusion rate
+Recogniton rate
+58 
+ 
+ 
+我們將表 6.3 所得到的結果與語言學知識做比對可以發現下列現象
+( linguistics knowledge)，如： 
+ Confusion set in Mandarin : 如國語語音中捲舌與不捲舌聲母之混
+淆現象；  
+ Confusion set in Mandarin : ㄥ、ㄣ韻尾鼻音的混淆現象；  
+ Labial Assimilation : 唇 音 同 化 現 象 n_n -> m /_{labial, 
+labial-dental}； 
+ 
+由上述錯誤觀察可以發現一些 linguistics knowledge 可以解釋語音與性在連
+續語音中有一些現象是過去的語音辨認器中尚未或因系統架構複雜而難以考慮
+的。而在 NG-ASR 的架構中則因將這些 linguistics knowledge 加入。 
+ 
+ 
+5. 使用 CRF 之語音屬性整合 
+ 
+我們將 frame-based 發音方法偵測器之輸出當作一個 CRF (Conditional 
+Random Field，其示意圖如圖 6.5)的輸入
+iX ，而 CRF detector 之輸出為某個發音
+方法之 detection 輸出，在 CRF 中我們可以將 conditional probability 表示為 
+( | , , ) ( | , , )v W v WP Y X Y w v P Y X Y w v          (6.1) 
+其中，v 是 CRF graph 中與 w 相鄰的 vertices。 
+ 
+ 
+圖 6.5：CRF 示意圖。 
+ 
+我們可將 conditional probability 寫成 
+1( | ) exp ( , , , ) ( , , )j j i i k k i
+j k
+P Y X t y y x i s y x i 
+ 
+  
+ 
+       (6.2) 
+60 
+ 
+ 
+七、 Tone Nucleus Model 及其在聲調辨認的應用 
+ 
+ 
+在計畫中，我們也對中文音調與韻律訊息偵測器進行研究，在這部分我們是
+與日本東京大學 Keikichi Hirose 教授進行合作，進行國語語音 tone neuclues 之搜
+取及 tone neuclues 在國語語音之聲調辨認上之應用研究。 
+ 
+Tone neuclus 是由東京大學的 Keikichi Hirose 教授及現在在北京语言大学信
+息科学学院任教的張勁松教授所提出；tone neuclus 是指國語音基週軌跡中之穩
+定部分，如圖 7-1 所示[Zhang, 2004]。如此將可將國語聲調以基週軌跡之平均值
+及斜率來描述。在圖 7-2 中則是 tone neuclues 抽取之演算法則，我們假設 pitch 
+contour 可分為三段－onset(C1), nuclei(C2)及 offset(C3)，並分別使用直線來模擬
+機週軌跡，所以我們將 onset, nuclei 及 offset 的基週軌跡之平均值及斜率用高司
+分佈來描述，再使用 Viterbi search 來尋找最佳之分界點並取出 pitch contour 之
+tone nuclei 部分。tone neuclues 能將 pitch 參數抽取不穩定部分去除，例如：voiced
+及 unvoiced boundaries 附近。在有環境雜訊時，使用 tone neuclues 做國語語音之
+聲調辨認也可獲得較佳之效能。 
+ 
+其實 tone neuclus 很像語言學家對非聲調語言的基週軌跡的 stylization - 使
+用一些直線來描述基週軌跡，也就是 piecewise linear model。但是 tone nuclus 
+model 則是 syllable-based，因為 syllable boundaries 對聲調是一個重要的信息。 
+ 
+ 
+ 
+圖 7-1、國語 tone neucleus 之示意圖。 
+62 
+ 
+ 
+圖 7-2、tone anchor 常用參數示意圖。 
+ 
+ 在本計畫中，所使用的基週軌跡參數分別為： 
+ 
+1) tone neuclues 中 onset (C1), nuclei (C2)及 offset (C3)的能量、log-F0 平均值及
+log-F0 斜率，各段起點之 log-F0 平均值; 
+2) 基週軌跡長度; 
+3) 前一音節 offset(C3)段的能量、log-F0 平均值及 log-F0 斜率, 後一音節 onset 
+(C1)段的能量、log-F0 平均值及 log-F0 斜率; 
+4) 四個 tone anchor 參數，如圖 7-2 所示; 
+5) Syllable 前後 unvoiced 長度; 
+6) 兩個 indicator 來標示有無前一 syllable 及後一 syllable; 
+共 27 為的特徵向量。 
+ 
+ 在實驗中，我們使用香港大學之 HKU96 國語語料庫進行 MLP-base 的中文
+語音聲調辨認研究[7]。我們所使用的訓練語料有 500 句，6,419 個音節；測詴語
+料有 200 句，2,567 個音節。在實驗中，我們做三種聲調辨認器並比較其結果：
+(1) Baseline 1 - 使用 MLP 聲調辨認器，其輸入特徵參數為前述 1), 2), 3), 5), 6)，
+也就是不使用四個 tone anchor 參數；(2) Baseline 2 - 張勁松教授先前所提出之
+HMM 聲調辨認器，詳見[Zhang, 2005] ；(3) 所提出之系統 - 使用 MLP 聲調辨
+認器，其輸入特徵參數除 baseline 1系統所用，還加入前述 4)之 tone anchor 參數。 
+ 
+上述三系統所獲得之結果如所示圖 7-3。而所提出之系統之 confusion table
+則如表 7-1 所示。 
+ 
+ 
+64 
+ 
+  
+八、 語音屬性偵測器之應用 - 利用屬性偵測概念
+做環境匹配調適 
+ 
+ 
+我們將語音屬性偵測器的概念運用於雜訊環境下之語音辨認效能之改進，只
+不過我們將原來偵測器所使用的輸入參數 frame-based 的頻譜相關參數的觀念使
+用到語音的 eigen-voice [Kuhn, 1998]上。在雜訊環境下之語音辨認時，我們可以
+將語音信號由原頻譜相關參數空間轉換至 eigen-voice 空間，然後我們在
+eigen-voice 空間做一個語音特性偵測器，使用 eigen-voice 空間上之語音特性偵測
+器之資訊隊員語音辨認分數作重新計算分數(rescore)的工作；其系統架構圖如圖
+8-1 所示。 
+ 
+ 
+ 
+ 
+圖 8-1、利用屬性偵測概念做環境匹配調適辨認。 
+ 
+ 
+在圖 8-1 中，我們在訓練時首先將訓練語料用 HMM 做 force alignment，然
+後將求每一個 state 的 MFCC 參數之平均向量後，將每個字個個 state 的 MFCC
+66 
+ 
+      ˆ1i i iL LR O LLR x            (8.4) 
+ 
+其中是 MLP 類神經網路語音群組偵測器的輸出所獲得的 LLR 分數的加權值。 
+ 
+ 接著我們對 Aurora 2 語料庫做利用屬性偵測概念做環境匹配調適之辨
+認系統之實驗，其中之參數設定依據 Aurora 2 語料庫之標準設定。在實驗中我們
+將英文數字串中會出現的 12 個字各自視為一群。 
+ 
+首先，我們可以觀察我們求得 eigen-space 中的前兩維，如圖 8-2 所示，在圖
+中我們可以看到它們是與語者及環境雜訊種類有關的。 
+ 
+ 
+圖 8-2、在 Aurora 2 multi-condition 語料中所獲得 eigenvoice 中前兩維參數對
+不同訊雜訊比時之改變。 
+ 
+(a) Word – “one” 
+ 
+-1000 -800 -600 -400 -200 0 200 400 600 800 1000
+-500
+-400
+-300
+-200
+-100
+0
+100
+200
+300
+400
+500
+Dimension 1
+D
+im
+e
+n
+s
+io
+n
+ 2
+ 
+ 
+clean
+20dB
+15dB
+10dB
+5dB
+0dB
+-5dB
+68 
+ 
+Average 2.39 2.11 1.73 
+ 
+ 
+接著我們來看利用屬性偵測概念做環境匹配調適後之語音辨認器的辨認效
+能與其他已知方法的比較，如圖 8-3 所示。其中我們用來比較的方法有(1) 標準
+multi-condition 訓練之辨認器  (2)使用  ETSI 前級之辨認器 , (3) 使用 HEQ 
+(histogram equalization) 之辨認器, (4) 使用這裡所提出 WCFN 參數之辨認器及 
+(5) 使用我們先前所提出 RMW (Reference Model Weighting) [Liao, 2007]參數之
+辨認器；其結果如圖 8-3 所示。由圖圖 8-3(a)中顯示使用 WCFN 參數之辨認器之
+WER 為 7.45% 較方法(1)-(3)為佳。雖然低於 RMW，但 RMW 事實上是使用對
+環境雜訊的先驗知識；而 WCFN 則不需要。 
+ 
+ 
+ 
+  
+70 
+ 
+ 
+九、 結論及計畫成果自評 
+ 
+ 
+ 本計畫在三年期間，建立了基本的國語語音屬性偵測器，可以提供國內相關
+研究的基本系統效能評比之用。在計畫進行中，我們發現對國內甚至國際上現有
+之國語語音資料中，缺乏一套像英語 TIMIT 語料庫一樣，有語音學家做到
+phone-level 標示(transcript)且標示精確度到 sample 的語料庫。這對做 NG-ASR 架
+構語音辨認系統之研究事實分重要的資料，尤其是第一級的語音屬性偵測器。所
+以現在看到的一些 NG-ASR 研究多是以 TIMIT 語料庫作研究對象。所以本計畫
+中花了許多資源在使用工程方法整理 TCC-300 國語語料庫，希望成為一套國內
+相關研究人員在做相關研究時可以使用的語音資料庫。 
+ 
+ 在本計畫中完成下列工作並可提供國內相關研究人員在做相關研究時之基
+本資料庫 
+ 
+(1) TCC-300 國語語料庫之整理； 
+(2) TCC-300 國語語料庫 phone-like unit 自動切割位置之建立； 
+(3) 國語發音位置及發音方法偵測器之建立； 
+(4) 語言學知識( linguistics knowledge)之驗證； 
+- 如一些 phone assimilation 現象，在第二期的計畫中自動切割時考慮
+這些現象會是一個研究重點。 
+(5) 利用 tone neuclus 這項基週相關語音屬性做國語語音聲調辨認； 
+(6) 將語音屬性偵測器的觀念應用於傳統語音辨認器以改善其效能。 
+ 
+並發表下列與語音屬性偵測性相關之論文 
+ 
+1. Xiao-Dong Wang, Jin-Song Zhang, Keikichi Hirose, Nobuaki Minematsu, 
+Chen-Yu Chiang, Yih-Ru Wang, Yuan-Fu Liao, “ Tone Recognition of 
+Continuous Mandarin Speech Based on Tone Nucleus Model and MLP Nucleus 
+Network, ”, IEICE technical report. Speech, Nagoya, Japan, Vol. 106, No. 443, pp. 
+107-112, SP2006-103, Dec., 2006. 
+2. Yuan-Fu Liao, Chi-Hui Hsu, Chi-Min Yang, Jeng-Shien Lin and Sen-Chia Chang, 
+“ Within-Class Feature Normalization For Robust Speech Recognition “, 
+Interspeech 2008. 
+ 
+ 
+72 
+ 
+compact model for speaker-adaptive training, “, ICSLP-96, pp. 1137-1140, 1996. 
+[Mengusoglu, 2001] Erhan Mengusoglu, Christophe Ris,” Use of Acoustic Prior 
+Information for Confidence Measure in ASR application ”,TCT Lab , Mons , 
+Belgium , Eurospeech 2001-Scandinavia. 
+[TCC, 2008] Speech Database in The Association for Computational Linguistics and 
+Chinese Language Processing, http://www.aclclp.org.tw/corp_c.php. 
+[Zhang, 2004] J.-S. Zhang and K. Hirose, “Tone Nucleus Modeling for Chinese 
+Lexical Tone Recognition”, Speech Communication, vol. 42, no. 4, pp. 447-466, 
+2004. 
+[Zhang, 2005] J.-S. Zhang, S. Nakamura, and K. Hirose, “Tone Nucleus-based 
+Multi-level Robust Acoustic Tonal Modeling of Sentential F0 Variations for 
+Chinese Continuous Speech Tone Recognition”, Speech Communication, vol. 46, 
+no. 4, pp. 440-454, 2005. 
+[謝國平, 1998] 謝國平，《語言學概論》（增訂新版）。臺北：三民書局。 
+ 
+ 
+dialogue 
+systems I 
+training 
+16:00 TuD.O1 
+Speaker verification & identification I 
+18:00 
+ 
+TuD.O2 
+Spoken data 
+retrieval I 
+TuD.O3 
+Accent and 
+language 
+identification II 
+TuD.P1 
+Speech 
+perception I 
+TuD.P2a 
+Prosody: 
+prosodic 
+structure 
+ 
+TuD.P2b 
+Prosodic 
+modeling I 
+TuD.P3a 
+Speech 
+analysis 
+ 
+TuD.P3b 
+Spectral 
+analysis, 
+formants 
+and vocal 
+tract 
+models 
+TuD.SS 
+Speech and 
+audio 
+processing 
+for intelligent 
+environments 
+ 
+Wednesday, August 29 
+ 
+Elisabeth Darwin Marble Foyer Alpaerts Keurvels Astrid Scala 1 
+08:3
+0 
+Plenary Session (Elisabeth Hall) 
+Sophie Scott: "The Neural Basis of Speech Perception – a view from functional imaging" 
+10:0
+0 
+WeB.O1 
+Language 
+modelling I 
+WeB.O2 
+Prosody 
+productio
+n and 
+perceptio
+n 
+WeB.O3 
+Multimodal 
+speech 
+recognition 
+WeB.P1a 
+Speech and 
+other 
+modalities 
+ 
+WeB.P1b 
+Multimodal 
+/ 
+multimedia 
+signal 
+processing 
+WeB.P2 
+Speaker 
+verification & 
+identification 
+II 
+WeB.P3 
+Speech 
+enhanceme
+nt 
+WeB.SS 
+Structure-base
+d and 
+template-base
+d automatic 
+speech 
+recognition 
+13:3
+0 
+WeC.O1 
+Robust ASR 
+against noise 
+and 
+reverberation 
+WeC.O2 
+Language 
+resources 
+and tools 
+WeC.O3 
+Single-chann
+el speech 
+enhancement 
+WeC.P1 
+Phonetics 
+and 
+phonology 
+WeC.P2 
+Robust ASR II 
+WeC.P3 
+Features for 
+ASR 
+WeC.SS 
+Objective 
+assessment of 
+voice and 
+speech quality 
+16:0 WeD.O1 WeD.O2 WeD.O3 WeD.P1 WeD.P2 WeD.P3 WeD.SS 
+LVCSR and 
+rich 
+transcription
+ I 
+learning 
+and 
+assessment 
+interaction: 
+analysis and 
+technology 
+ 
+ThD.P1b 
+Speakers: 
+expression, 
+emotion and 
+personality 
+recognition 
+language, 
+second 
+language, 
+cross-languag
+e 
+modelling II 
+ 
+ThD.P3b 
+Spoken data 
+retrieval II 
+techniques 
+for the NATO 
+non-native 
+air-traffic 
+control and 
+HIWIRE 
+cockpit 
+databases 
+ 
+Friday, August 31 
+ 
+Elisabeth Darwin Marble Foyer Alpaerts Keurvels 
+Astrid 
+Scala 1 
+08:30 Plenary Session (Elisabeth Hall) 
+Pierre-Yves Oudeyer: "Self-Organization in the Evolution of Shared Systems of Speech Sounds: a 
+Computational Study" 
+10:00 
+FrB.O1 
+Systems for 
+spoken 
+language 
+translation I 
+FrB.O2 
+Articulatory 
+features 
+FrB.O3 
+Wideband 
+speech 
+processing 
+FrB.P1a 
+Accessibility 
+issues 
+ 
+FrB.P1b 
+New 
+application 
+areas 
+FrB.P2a 
+Story 
+segmentation 
+ 
+FrB.P2b 
+Systems for 
+LVCSR and 
+rich 
+transcription II 
+FrB.P3a 
+Prosody: 
+production 
+ 
+FrB.P3b 
+Prosody: 
+perception 
+FrB.SS 
+Machine 
+learning 
+for spoken 
+dialogue 
+systems 
+13:30 
+FrC.O1 
+Spoken 
+dialogue 
+systems II 
+FrC.O2 
+Phonetics  
+FrC.O3 
+Pitch 
+extraction II 
+FrC.P1a 
+Spoken 
+language 
+understanding 
+and 
+summarization 
+ 
+FrC.P1b 
+Systems for 
+spoken 
+language 
+translation II 
+FrC.P2 
+Speech 
+synthesis II 
+FrC.P3 
+Voice 
+activity 
+detection 
+and sound 
+classification 
+ 
+15:30 Closing Ceremony 

@@ -1,0 +1,1181 @@
+Also, we combine the concept of multi-thread 
+speculation with the transactional memory into a new 
+model and all the dynamic data can be managed by the 
+DRDM. The DRDM can detect incorrect data access 
+immediately and resolve them to keep data consistent 
+among threads and ensure the threads do not violate 
+the data dependences during execution dynamically. We 
+have demonstrated that the DRDM can manage data and 
+resolve incorrect data access among threads 
+efficiently, so that the performance of parallel 
+applications running with the DRDM can be 
+significantly faster (e.g., 1.4x) than those running 
+in sequential. 
+英文關鍵詞： Transactional Memory 
+ 
+- 1 - 
+ 
+目  錄 
+ 
+中文摘要 ...................................................................................................................1 
+英文摘要 ...................................................................................................................1 
+一、 計畫緣由與目的 ….......................................................................................2 
+二、 背景知識與相關研究 ...................................................................................4 
+2.1 快取一致性 ............................................................................................4 
+2.2 Transactional Memory  …………………………….…………………...4 
+         2.2.1 衝突偵測機制 ................................................................................5 
+         2.2.2 版本管理機制.................................................................................5 
+     2.3 預測式平行執行 ......................................................................................6 
+  2.4 動態資料管控器 ......................................................................................6 
+     2.5 動態平行執行架構 ..................................................................................7 
+三、 研究方法與成果 ………………………….………………………………...7 
+3.1 分散式動態資料管控器設計 .....................................................................8 
+      3.1.1 中央動態資料管控器 .......................................................................9 
+      3.1.2  衝突偵測單元 ..................................................................................13 
+      3.1.3  局部動態資料管控器........................................................................14 
+      3.1.4  版本管理機制 ..................................................................................16 
+ 3.2快取與 Transaction一致性協議之實現 ....................................................17 
+      3.2.1 快取一致性協議 ..............................................................................17 
+      3.2.2 Transaction 一致性協議之實現 ......................................................18 
+3.3 平行執行緒執行模型 ................................................................................20 
+      3.3.1  Transaction 的平行執行方式 ..........................................................20 
+      3.3.2  預測式 transaction平行執行 ...........................................................22 
+ - 1 - 
+ 
+用於多核多執行緒並行執行之執行期動態資料管控器 
+周哲民 
+國立成功大學 電機工程學系（所） 
+中文摘要 
+ 多核心系統可以平行執行多個執行緒，
+以及提前執行順序較後的執行緒，即預測式
+平行執行，進而提升執行速度。然而，平行
+執行並非容易，原因為執行緒在平行執行時
+會因為彼此競爭共用資料而產生衝突，以及
+提前執行順序較後的執行緒則可能會違反資
+料相依，若處理不當，則可能導致資料不一
+致，而使得執行結果產生錯誤。因此，資料
+的動態一致與相依對程式的平行執行是相當
+重要的，而平行系統如何有效率地處理動態
+資料的一致與相依，則成為多核心系統平行
+程式效能優劣的關鍵。 
+ 本計畫以預測式平行執行概念為基礎，
+提出一個分散式動態資料一致與相依管控
+器，用以主動管控預測式平行執行緒之各資
+料，其功能包含資料動態衝突與相依之偵測
+及資料版本之管理，也因此提高程式的平行
+執行效能，以及降低使用者設計平行程式的
+複雜度。本管控器設計上採用分離式的架
+構，使得不需大幅更動原來處理器與平行系
+統之架構，便能輕易套用本分散式動態資料
+一致與相依管控器，進而提高模組性與可擴
+充性，對於未來要擴展處理器數目而言是相
+當有幫助的。根據實驗結果，本分散式動態
+資料一致與相依管控器可以有效且快速處理
+平行執行緒之共用資料，無論是預測式多執
+行緒的平行程式，或是一般的平行程式，皆
+能獲得明顯的效能提升。 
+ 
+關鍵詞：資料管控器、多核心系統、並行執
+行、預測式平行執行 
+ 
+Abstract 
+ The parallel execution of programs has 
+become an important approach to improve the 
+performance of modern multi-core systems. 
+However, the multi-thread parallel execution is 
+more difficult and complex since threads 
+executing in parallel may compete for shared 
+data and generate data dependencies with each 
+other dynamically which are not able to be 
+detected and resolved before execution by the 
+system and the compiler in advance. To ensure 
+ - 3 - 
+ 
+預測式多執行緒平行執行為另一種提升
+平行度的程式平行執行方法[5, 6]，其概念是
+將原程式中不確定能否平行執行的部分直接
+平行執行，通常是將順序較後的部分提前執
+行。預測式多執行緒在平行執行時可能產生
+動態的資料相依，為了避免順序較後者過早
+讀/寫了順序較前者也會讀/寫的資料，即違
+反資料相依，因此也需要同步。基本上，這
+類系統需具備偵測違反資料相依的機制及還
+原預測失敗者至初始狀態的能力。當預測失
+敗時，系統便能利用這些機制將過早讀/寫的
+部分進行還原。一旦預測成功，便能提升效
+能。 
+為了解決上述之議題，以及提高系統的
+平行度與簡化平行程式的撰寫複雜性，本計
+畫導入和整合預測式多執行緒平行執行與
+Transactional Memory(TM) [7]的平行執行概
+念，設計與實現出分散式動態資料管控器
+(Run-Time Dynamic Data Manager, RDM)，用
+以管控快取一致性與同步平行執行緒。該分
+散式動態資料管控器由中央動態資料管控器
+(Global Run-Time Dynamic Data Manager, 
+GRDM) 與局部動態資料管控器 (Local 
+Run-Time Dynamic Data Manager, LRDM)組
+成。中央動態資料管控器集中管控平行執行
+緒於執行時存取過的共用資料，並且以此資
+訊來偵測平行執行緒動態產生的衝突。局部
+動態資料管控器設計於各處理器中，其記錄
+該處理器最近執行之執行緒取得的共用資料
+存取權限，可以避免重覆請求中央動態資料
+管控器執行衝突偵測，加速了平行執行緒的
+執行速度。針對快取一致性，中央動態資料
+管控器負責管控 L2 快取。本分散式動態資
+料管控器的另一大特點是採分離式的
+(decoupling)設計方式，即本分散式動態資料
+管控器獨立於多核心系統平行系統的架構，
+因此，我們不需大幅修改原本多核心系統架
+構，便能輕易將它套用至現有或未來的平行
+系統上。 
+由 於 結 合 預 測 式 與 Transactional 
+Memory 的多執行緒動態平行執行的概念，
+採用分散式與分離式的設計方式，本動態資
+料管控器將使多核心系統獲得較佳的平行執
+行效能，及系統可擴充性(Scalability)與模組
+性(Modularity)。 
+ 本報告共分為七節，除本節外，其它章
+節內容概述如下： 
+ 第 2 節：探討多核心系統與平行執
+行緒相關議題與背景知識。 
+ 第 3 節：說明動態資料管控器的設
+計。 
+ 第 4 節：說明如何運用動態資料管
+控器與 TM 系統的平行執行概念來
+設計動態平行執行架構。 
+ - 5 - 
+ 
+題，故稱為 Hardware Transactional Memory 
+(HTM)。由於本計畫是以硬體主動同步平行
+執行緒，因此屬於 HTM。 
+Transaction 由一列系的指令組成，並且
+滿足不可分割性 (Atomicity) 與孤立性
+(isolation)。不可分割性指的是 Transaction 裡
+的所有指令必須全部成功執行完畢，最後執
+行交付(commit)，完成交付的 Transaction 才
+算是執行成功；否則，transaction 必須被中
+止(abort)，並且執行過程中更改過的任何資
+料皆被放棄，並且還原到 transaction 執行前
+的狀態，就像沒有執行過一樣。孤立性指的
+是 Transaction 平行執行時彼此不互相干擾，
+即執行過程中不會影響其它也在執行中的
+transaction 的運算結果，也觀察不到它們如
+何使用共用資料。 
+ 
+2.2.1 衝突偵測機制 
+在 TM 系統中，Transaction 執行過程所
+存取過的共用資料皆需被記錄下來，並分別
+儲存於讀集合(read set)與寫集合(write set)
+中： 
+ 讀集合：用來記錄 transaction 執行
+時，讀取過的共用資料之位址。 
+ 寫集合：用來記錄 transaction 執行
+時，寫入過的共用資料之位址。 
+衝突偵測機制透過讀 /寫集合來偵測
+transaction 平行執行時所動態產生的衝突，
+而衝突發生於以下兩種情形，： 
+ Transaction 寫 到 已 被 其 它
+transaction 讀取過的共用資料。 
+ Transaction 寫 / 讀 到 已 被 其 它
+transaction 寫過的共用資料。 
+發生以上情形時，表示共用資料已被不
+正確的使用，程式的執行結果將會是錯誤
+的，即 transaction 彼此間為不同步。因此，
+衝突偵測機制在偵測到衝突後，需決定出衝
+突者(conflicting transaction)，並中止執行衝
+突者，而讓無衝突的 Transaction 能夠繼續執
+行，藉以達成同步。 
+ 
+2.2.2 版本管控機制  
+版本管控是用來備份Transaction寫過之
+共用資料的舊值。版本管控也分為積極型
+(eager)與懶惰型(lazy)。積極型版本管控的做
+法是允許 transaction 直接更改資料，但舊值
+必須被保留起來，例如：LogTM [15]中使用
+Log 來備份舊值，同時位址也需要一起備
+份，一旦 transaction 被偵測出衝突而被中止
+時，便可以利用 Log 來進行還原，如此就不
+會讓其它 transaction 使用到不正確的資料。 
+懶惰型版本管控的做法是配置一個空間
+ - 7 - 
+ 
+Filter 及 Read/Write Signature，以分別處理衝
+突及記錄讀/寫集合。當處理器數量增加時，
+這些硬體結構將呈線性成長，是相當巨大的
+負擔。因此，上述兩者的設計方式皆無法有
+效提升可擴充性與模組性，對於未來處理器
+數量的提升無疑是一個瓶頸。有鑑於此，本
+計畫的分散式動態資料一致與相依管控器將
+分為兩個部分，一個是中央動態資料一致與
+相依管控器，其管理所有平行執行緒所存取
+過的資料，以及偵測衝突，並加以解決；另
+一個是每個處理器都有的局部動態資料一致
+與相依管控器，其暫存執行緒最近成功存取
+過的資料。此外，考慮到快取的管控與執行
+緒資料存取的同步，在許多動作上是相當雷
+同的，因此我們可以使用類似於 Smart 
+Memory 中 Protocol Controller 的設計概念，
+將這兩類功能整合起來，以減少額外且不必
+要的硬體資源浪費，甚至是未來可以整合更
+多相似的新功能。 
+ 
+2.5 動態平行執行架構 
+ 本計畫所提出之分散式動態資料管控器
+的目的是提供主動同步平行執行緒及管控快
+取一致性的功能，除能提升平行程式的效能
+外，還具備較高的可擴充性與模組性，利於
+設計較大型的平行系統。分散式動態資料管
+控器的一個實作範例就是動態平行執行架構
+(Dynamic parallel Execution Architecture with 
+Log based recovery mechanism, DEAL)，如圖 
+1 所示。由於分散式動態資料管控器採用的
+是分離式的設計，因此不需大幅更動原有處
+理器的架構，使得有較高的模組性。LRDM
+的設計較為單純，只管控該處理器最近使用
+過的共用資料，並且儲存於 L1 TSC 
+(Transaction Signature Cache)中，因此不會像
+FaNTM 中各處理器的 Filter 那樣複雜。
+GRDM集中管控所有 transaction平行執行時
+使用過的共用資料，並且利用這些資訊進行
+衝突偵測，而不像 TCC 與 FaNTM，處理器
+需要各自儲存這些資料，減少了額外的硬體
+結構，自然也提高了可擴充性。分散式設計
+方式使得GRDM只有在 LRDM發生 L1 TSC
+失誤時，才需要進行衝突偵測，因此 LRDM
+除了加速 Transaction 的執行速度外，也降低
+了 GRDM 的負擔，進而提升整體系統的平行
+執行效能。此外，為避免 GRDM 被集中且頻
+繁使用，Multi-Bank 化的 GRDM 則可以舒緩
+此情形。 
+三、 研究方法與成果 
+ 
+ 
+ - 10 - 
+ 
+是可快速確認平行執行緒是否之前有成功讀
+寫過共用資料，讓處理器可以減少請求中央
+資料一致與相依管控器進行衝突偵測。 
+ 
+L2 Cache
+L2 TSC
+TID Vector
+Memory
+Controller
+Main Memory
+TCD
+……
+R
+S
+RD
+RA
+MSHR
+CDU
+SMU M
+G
+U
+GRDM
+DAU
+MsgQRQ
+L1 
+Instruction
+Cache
+L1 Data 
+Cache
+ITQ
+LRDM
+L1 TSC
+Instruction
+Fetch Load/Store Unit
+Processor
+Processor Core
+Data 
+Access 
+Controller
+Interconnection Network
+Control Processor
+Task
+Queue
+TID Manager
+Order Table
+Processor Interface
+ 
+圖 2 分散式動態資料管控器系統架構。 
+ 
+3.1.1 中央動態資料管控器 
+圖 3 為中央動態資料管控器(GRDM)的
+架構，其由以下單元組成： 
+ 請求佇列(Request Queue, RQ)：儲存來
+自處理器(P0~P3)與記憶體控制器的請
+求。 
+ 請求仲裁器(Request Arbiter, RA)：從
+RQ 中選出將被處理的請求。 
+ MSHR(Miss Status Holding register)：
+無法單次被 GRDM 處理的請求將被儲
+存於此，如：因 L2 快取失誤或因 L2 TSC
+發生失誤無法進行衝突偵測的請求，可
+避免重覆發生快取失誤。當 GRDM 所需
+的資料由主記憶體讀出後，這些請求才
+會從 MSHR 中移除。 
+ 請求解碼器(Request Decoder, RD)：解
+碼請求。RD 解碼請求時會查看 MSHR
+是否已有存取相同位址的請求，若有則
+表示此請求再執行下去一定會發生快取
+失誤，因此暫時將請求儲存至 MSHR。 
+ 請求排程器(Request Scheduler, RS)：安
+排請求至後續單元，以完成請求。 
+ Transaction 編號向量(TID Vector)：記
+錄執行中 Transaction 的編號(TID)，由
+ - 11 - 
+ 
+  
+R
+eq
+ue
+st
+S
+ch
+ed
+ul
+er
+Request
+Decoder
+Request
+Arbiter
+MSHR
+Conflict
+Detection
+Unit
+State
+Management
+Unit
+Message
+Generation
+Unit
+GRDM
+Data
+Access
+Unit
+Requests from P0~P3 or Memory Controller
+MsgQ
+L2 Cache
+Tag Array
+L2 Cache
+Data Array
+L2 TSC
+Reply/Request to P0~P3 or Memory Controller
+TID Vector
+Miss_Req
+RQ
+ 
+圖 3 動態資料管控器架構圖 
+Requests form 
+Processors
+Cache 
+Coherence
+Transaction Coherence:
+Conflict Detection
+Request Arbiter: 
+Arbitrate Requests
+Requests form 
+Memory
+State Management Unit/
+Data Access Unit: 
+Lookup/update state of data and 
+read/write data
+Conflict Detection Unit: 
+1. Lookup L2 TSC and TID Vector
+2. Detect conflicts
+Message Generation Unit: 
+Generate Request or Reply Message
+To Processors
+Request completes in node
+Request requires more operations
+(e.g. PCache miss)
+Request Decoder: 
+Decode Requests
+Request Scheduler: 
+Dispatch Decoded 
+Requests
+To Memory
+ 
+圖 4 中央動態資料管控器之請求處理流程 
+ 
+圖 4 為中央動態資料管控器的請求處
+理流程，RA 接收如器，或給記憶體控制器。 
+ 
+ 
+ 
+ 
+ 
+ - 13 - 
+ 
+出請求給記憶體控制器，以更新 TCD 
+TXAbort 
+Processor 
+GRDM 完成衝突偵測後，必須將執行同一節點內且有衝突
+的 transaction 中止掉 
+TRD_ACK 
+GRDM 完成衝突偵測後，確認 transaction 有讀取的權限，
+故傳送 TRD_ACK 訊息給處理器 
+TWT_ACK 
+GRDM 完成衝突偵測後，確認 transaction 有寫入的權限，
+故傳送 TWT_ACK 訊息給處理器 
+Cache 
+Coherence 
+Read 
+Memory 
+Controller 
+節點內處理器皆發生 cache read miss，且 GRDM 查看 L2 
+unified cache 後也發生 miss，故發出請求到記憶體控制器 
+ 
+WriteBack  GRDM 將 L2 unified cache 的 dirty 資料寫回主記憶體 
+DataReply Processor GRDM 傳送處理器所需的資料 
+ 
+3.1.2 衝突偵測單元 
+中央動態資料管控器中的衝突偵測單元
+是用來偵測Transaction平行執行時因存取共
+資料而產生的衝突，由於我們採用分離式的
+設計方式，目的是不大幅更改系統架構，因
+此選擇積極型的衝突偵測機制，並且需要 L2 
+TSC、TCD 及 TID Vendor 等單元記錄的資
+訊，才有辦法進行衝突偵測。每當 Transaction
+需要存取共用資料時，處理器就會發出
+Transaction 讀取/寫入確認請求(TRD/TWT 
+Check Request)給分散式動態資料管控器，若
+中央動態資料管控器接收到這類的請求，則
+衝突偵測單元會存取 L2 TSC中的項目(entry)
+來進行衝突偵測。L2 TSC 為 TCD 的快取，
+儲存最近衝突偵測單元使用過的 TCD 項
+目。錯誤! 找不到參照來源。為 TCD 的結
+構，其由數個 TCD 項目組成，每個項目皆有
+三個欄位，分別為位址(Addr)、狀態(State)
+及共用者名單(Transaction Sharer List)。位址
+為 Transaction 存取的共用資料之位址。狀態
+用來表示此資料是被讀取，或是被更改過，
+狀態 R 表示資料只被讀取過，狀態 W 表示
+資料被更改過。共用者名單用來記錄共用資
+料被哪些 Transaction 共用，每個 sharer 皆有
+V 位元，用來表示 sharer 是否有效，以及 TID 
+(Transaction ID)。當狀態為 R 時，可以有一
+個以上的 sharer。而當狀態為 W 時，表示共
+用資料被某一個 transaction 更改過，並且不
+允許被共用，唯一存取過此共用資料的
+transaction 稱為擁有者(可讀也可寫)，其 TID
+被記錄於 sharer0。L2 TSC 的結構如 
+圖 5 所示。與 TCD 項目不同的是，L2 
+TSC 項目的 sharer 欄位多了 P 位元與 PID。P
+位元用來表示共用資料是否被處理器存取
+  
+ 
+- 15 - 
+TSC 失誤，而去存取 TCD，情況又會變得更
+糟。因此，我們便採用類似於 L1 快取的概
+念，在每處理器與 L2 TSC 之間加入 L1 
+TSC，如圖 8 所示，並且透過分散式動態資
+料管控器中的局部動態資料管控器來
+(LRDM)來管控 L1 TSC。圖 7 為局部動態資
+料管控器的架構，其與中央動態資料管控器
+相似，由於只管控與檢查 L1 TSC，因此架構
+較為簡潔。其中較為不同的是存取權限過濾
+單元(Access Permission Filtering Unit)，它主
+要管理 L1 TSC，以及在處理器發出的
+transaction 讀/寫確認請求後，檢查 transaction
+是否已取得讀/寫權限，若有則直接回傳認可
+(ACK)訊息給處理器。否則，需透過中央動
+態資料管控器進行衝突偵測，若結果為認可
+則將讀/寫權限儲存至 L1 TSC。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Decode Unit
+Access 
+Permission 
+Filtering Unit 
+Message 
+Generation 
+Unit
+MSHR
+Processor
+L1 TSC
+LRDM
+Request/Reply from Processor or GRDM
+Request/Reply to GRDM
+ 
+圖 7 局部動態資料管控器 
+Addr TID
+L1 TSC
+State
+X      1 R
+ 
+圖 8 L1 TSC 結構 
+  
+ 
+- 17 - 
+TRD_CHK 
+GRDM L1 TSC Miss，請求 GRDM 進行衝突偵測 
+TWT_CHK 
+Reject 
+Processor 
+與其它 transaction 產生衝突，存取遭拒絕 
+TRD_ACK Transaction 的 TRD 請求被認可 
+TWT_ACK Transaction 的 TWT 請求被認可 
+ 
+3.1.4 版本管控機制 
+ 當 transaction 因發生衝突而被中止時，
+為了讓執行緒之間維持同步，我們必須將
+transaction 中止之前所有更改過的資料還原
+到執行之前的值，讓 transaction 好像沒執行
+過一樣，即保持不可分割性。資料還原完成
+後，處理器會將架構狀態(Architectural State)
+也一併還原到執行之前的狀態，此動作稱為
+還原(rollback)，接著再重新執行一次，稱為
+重新執行(restart)。 
+ 處理器的架構狀態可以很輕易地在
+transaction 執行前先做 Checkpoint，但資料的
+備份與還原問題較為複雜些。針對此，我們
+使用類似於 LogTM [15]的概念，以 Log 來備
+份舊的資料，並由處理器來主導版本管控機
+制。當 transaction 取得寫入權限後並在更改
+共用資料之前，處理器會先將共用資料的舊
+值備份到 Log 中。我們稱 Log 裡的資料為舊
+的版本，而 transaction 執行中更改過的資料
+為新的版本。當 transaction 發生衝突時，便
+可以利用 Log裡存放的舊版本資料來進行還
+原，其它 transaction 就不會存取到不正確的
+資料版本，如此一來 transaction 之間就能保
+持同步。只有第一次被 transaction 更改過的
+共用資料，其舊值才需要被備份，因此為了
+避免重覆備份，我們利用 Log Filter 來記錄
+已備份過之資料的位址，一旦 tranasaction 獲
+得寫入權限，處理器便可以透過 Log Filter
+來查看資料是否已被備份。 
+版本管控機制所需的結構與運作方式如
+圖 9 所示。我們將 Log Filter 設計在處理器
+中，用來記錄 transaction 已寫過的共用資料
+之位址，而舊版本資料則儲存於程式配置的
+記憶體空間中，即 Log。此外，我們利用 Log 
+Base 來儲存 Log 於主記憶體中的起始位址，
+以及利用Log Pointer來指向目前Log的可用
+空間位址，如同堆疊(stack)，舊資料被備份
+至 Log 後，Log Pointer 便會遞增。 
+  
+ 
+- 17 - 
+讀取，則資料的狀態會是 R，並且允許有至
+少一個以上的共用者。 
+ 
+圖 11 與圖 12 為錯誤! 找不到參照來
+源。的詳細版本，描述了 transaction 讀寫共
+用資料時，從發出確認請求到衝突偵測結
+束，整個過程中所經過的硬體單元，以及說
+明各單元所對應的動作。 
+ 
+ 
+ 
+ 
+ 
+ 
+SP-TX Read with any order
+Transactional Read/Write by Owner
+Transactional Read
+Transactional Read
+Transactional Write
+Uncached Written
+Read
+SP-TX Write with
+higher order
+SP-TX Read/Write with higher order
+SP-TX Read with any order
+圖 10 Transaction 一致性協議之狀態轉換圖 
+ 
+  
+ 
+- 17 - 
+器的衝突偵測單元中，以及提供新指令讓
+transaction 能依照順序交付，便能支援預測
+式平行執行。 
+ 
+3.3.1Transaction的平行執行方式 
+ Transaction 開 始 執 行 時 會 先 設 定
+Transaction ID，簡稱 TID，然後才開始以
+transaction 方式執行接下來的程式碼。假設
+有一個 Transaction，TID 為 1，簡稱為 TX1，
+執行在處理器 P0。當 TX1 欲讀取 X 時，處
+理器會發出 Transaction 讀取確認請求
+(TRD_CHK Request)給 LRDM，但發生 L1 
+TSC Miss，因此需將此請求傳給 GRDM。
+GRDM的 CDU(衝突偵測單元)，CDU利用 X
+作為 L2 TSC 的索引，取出對應的項目
+(entry)。假設之前未有 transaction 存取過 X，
+即 TX1 是第一個存取 X 的 transaction，因此
+L2 TSC 並沒有對應的 entry，而且 GRDM 去
+請求主記憶體中的 TCD 之後，也會找不到對
+應的 entry。在這種情形之下，TX1 被 GRDM
+判斷為沒有衝突，GRDM 會在 L2 TSC 配置
+新的項目來記錄 X，同時也更新 TCD，完成
+後 GRDM 回傳 TRD_CHK ACK 給 TX1。處
+理器會在 L1 TSC 中配置一個項目來記錄
+TX1 取得的讀取權限，然後 transaction 便可
+讀取資料，其過程如圖 13 所示。此時，若
+TX1 又想讀取 X，則 LRDM 會發現到 TSC
+已記錄了 TX1 擁有 X 的讀取權限，因此直
+接回傳 TRD ACK 訊息。 
+ 
+Transaction Sharer List
+Sharer0 Sharer1 Sharer2 Sharer3 ……
+Addr State V TID V TID V TID V TID ……
+TCD
+GRDM
+TID Vector
+1
+2
+9
+Transaction Sharer List
+Sharer0 Sharer1 ……
+Addr State V P TIDPID V P TIDPID ……
+L2 TSC
+X R 1 1 - - - - - -
+X R 1 1 1 0 - - - -
+4
+TRD_CHK Req
+TRD_CHK ACK
+CDU
+Addr TID
+L1 TSC
+State LRDM
+Processor0: TX1
+10
+X      1 R
+AddrTID
+L1 TSC
+StateLRDM
+Processor1: TX2
+Lookup TSC
+TSC Miss
+3
+6
+7
+8
+5
+Miss
+ 
+圖 13 TX1 執行 TRD_CHK Req X 的流程 
+如果有另一個 transaction，TX2，也是要
+讀取 X，則 P1 發出 TRD_CHK Req。由於
+LRDM 並未檢查到 L1 TSC 有對應的讀取權
+限，因此再把請求傳給 GRDM。GRDM 的
+CDU 檢查到 L2 TSC 有對應於 X 的項目。由
+於狀態為 R，所以 TX2 沒有衝突，於是 CDU
+將 TX2 記錄於 X 的 Transaction Sharer List
+中，V 及 P 位元設為 1，TID 及 PID 分別設
+定為 2 及 1。 
+若 TX1 寫入 X，則流程如圖 14 所示。
+首先，P0發出TWT_CHK Req，但發現LRDM
+的 L1 TSC 中未有對應的寫入權限，因此需
+再將請求傳給 GRDM。GRDM 的 CDU 讀出
+  
+ 
+- 19 - 
+用 TID Vector 來檢查，並移除無效的 sharer。 
+ 
+3.3.2預測式 transaction平行執行 
+ 在動態平行執行架構中，我們將無法確
+定能否平行執行的程式碼部分以 transaction
+包裝起來，並且利用上述的衝突偵測機制與
+版本管控機制來支援其平行執行，實現預測
+式 transaction 平行執行。與一般的 transaction
+平行執行不同的地方是，以預測方式執行的
+transaction，彼此是有順序性的，意即可能具
+有資料相依關係。衝突偵測機制只需加入額
+外判斷 transaction 順序的功能即能偵測出資
+料相依，此時就不是 writer win 了，而是擁
+有較高優先權(即順序在前)的 transaction 能
+優先取得資料的存取權限。版本管控機制完
+全不需更改，在衝突者被中止時，也是一樣
+將 transaction 還原至初始狀態，即可避免不
+同步的問題。針對 transaction 的順序，我們
+將記錄在 TID Vendor 的 Order Table 中。 
+ 
+四、 研究結果與數據分析 
+ 在本章中，我們將說明我們的實驗環
+境，然後對動態資料管控器與動態平行執行
+架構進行效能量測，最後針對實驗數據進行
+分析。 
+ 
+4.1 實驗方法 
+ 我們使用QEMU模擬器[20]來建立採用
+動態資料管控器之多核且多緒系統與 DEAL
+系統，並且完成全系統的模擬與驗證。QEMU
+為一個開放原始碼的全系統模擬器
+(emulator)，而且為跨平台，其有兩個模擬模
+式，一者是使用者模式，只模擬處理器高階
+行為，可直接執行單一的程式。另一者為全
+系統模式，其模擬了市面上各種常見的系統
+平台，例如：x86 個人電腦、SPARC 及 ARM
+開發板等等，除了模擬處理器的行為，還模
+擬了系統上的週邊硬體，像是模擬 x86 平台
+時，可以模擬 PCI 匯流排與 DMA。而模擬
+ARM 平台時，例如：Versatile Express，可模
+擬 bootloader、中斷控制器、PS/2 控制器與
+LCD 控制器等等，我們也可以製作開發板使
+用的作業系統。在模擬時可進行開機，然後
+會跳出一個類似於終端機的 QEMU Monitor
+的視窗，讓使用者操作這個被模擬的作業系
+統。因為這些優點，所以我們可以快速利用
+QEMU 來建立我們的系統，然後進行全系統
+的模擬與驗證。 
+ 在我們的實驗中，我們以 ARM 處理器
+  
+ 
+- 21 - 
+Kernel 
+QEMU version 1.0.1 
+CPU 
+Intel Core-i5 760 2.8GHz 
+x86/x64 Quad-Core Processor 
+RAM 2GB 
+Guest 
+System 
+Versatile Express Development 
+Board 
+CPU 
+ARM Cortex-A9 Quad-Core 
+Processor 
+RAM 1GB 
+OS Linux 2.6.38 Embedded 
+Tool 
+Chain 
+gcc-4.5.2 for ARM 
+ 
+4.1.2 在 QEMU 上量測執行時間的方
+法 
+ QEMU 是一個不考量精準時間(timing)
+的模擬器，主要原因是要維持快速且跨平台
+的特性，因此其著重於模擬對象行為的正確
+性。為了能夠在 QEMU 中量測我們動態平行
+執行架構及動態資料管控器的執行時間，我
+們需要加入額外的計時功能。 
+ 圖 16所示為我們在QEMU中量測執行
+時間的方法，並假設模擬 4 個處理器的情
+形。我們為每個處理器都設置一個私有的計
+時器，QEMU 中多處理器的模擬方式是藉由
+切換處理器來達成，而且是以 TB (translation 
+block)為最小的執行單位，如圖所示。QEMU
+有一個共用的 clock 計時器，叫做 vm_clock，
+在 QEMU 時便開始進行計時，直到 QEMU
+被暫停或是被關閉。因此我們在 TB 執行之
+前，先取出 vm_clock，在 TB 執行完畢後，
+再取出 vm_clock，然後兩者相減並累加到處
+理器私有的 clock 計時器，如圖中的 C0: start
+與 C0: end，表示 clock0 只有在 CPU0 執行時
+才會被計算，而當處理器由 CPU0 切換至
+CPU1 時，就會使用 CPU1 私有的 clock1 進
+行計時，以此類推。我們便以此方法來量測
+系統的效能，而不是使用不精準的
+vm_clock。 
+ 
+TB1
+CPU0:
+Thread1/TX1
+Time
+TB2
+TB3
+TB4
+TB1
+TB5
+TB3
+Switch to next_cpu
+CPU1:
+Thread2/TX2
+CPU2:
+Thread3/TX3
+CPU3: 
+Thread4/TX4
+TB4
+C0: start
+C0: end
+C0: start
+C0: end
+C1: start
+C1: end
+C1: start
+C1: end
+C2: start
+C2: end
+C2: start
+C2: end
+C3: start
+C3: end
+C3: start
+C3: end  
+圖 16 QEMU 中量測執行時間的方法 
+ 
+4.1.3 測試程式 
+ 在我們的實驗中，我們將以自行撰寫的
+Histogram 測試程式及 STAMP 測試程式(專
+門開發給 TM 系統進行效能評測的程式
+集)[21]來對本系統進行效能的評測與功能的
+  
+ 
+- 23 - 
+intruder high 同上，但每資料流增加為 8 個封包 
+ssca2 low 輸入資料為一個含有 213個節點的
+圖，最長路徑為 3，每個節點同時
+最多的邊為 3 
+ssca2 high 輸入資料為一個含有 214個節點的
+圖，最長路徑為 9，每個節點同時
+最多的邊為 9 
+ 
+ 圖 17 為所有測試程式的執行效能比較
+圖。我們可以看到，大部分的測試程式顯著
+的效能提升，其中 linked list 提升的效能是最
+多的。此外，我們注意到 histogram 與 ssca2
+測試參數為 high 時，效能無明顯的提升，反
+而都在兩個執行緒時有明顯的效能下降，更
+糟的是 histogam high在四執行緒的測試結果
+反而沒有 ssca2 hign 那樣還略微提升。這些
+情形都與動態平行執行架構及動態資料管控
+器有關，我們將於下一節進行更詳細的討論。 
+ 
+ 
+圖 17 所有測試程式的效能比較圖 
+ 
+4.2.2 執行緒與資料同步情形之分析 
+ 
+為各測試程式執行時動態資料管控器與執行
+緒同步有關行為的數據統計，其測量的項目
+包含： 
+ Log 使用量：執行緒執行 transaction
+時，最大的 Log 使用量。每當
+transaction 開始執行時，就會開始
+計算，結束時就會清空，期間只有
+第一次被 transaction 寫入的資料之
+位址會被記錄在 Log。 
+ TCD 使用量：整個測試程式會使用
+到的最大 TCD 項目數量。當動態資
+料管控器進行偵測時，會更新 TCD
+項目，或加入新的項目。 
+ 總 Abort 數：transaction 中止的次
+數。 
+ 平均 TX 執行次數：平均一個執行
+緒 執 行 transaction 次 數 。 當
+transaction 被 中 止 時 ， 會 使
+transaction 重新執行，也同時增加
+transaction 執行次數。 
+ 單一執行緒的最大 abort 數：整個
+測試程式中單一執行緒發生最多次
+  
+ 
+- 28 - 
+ssca2 low t2 2 55390 7464.2 27361.6 3960.2 0.616539911 58.34% 
+ssca2 low t4 2 55395.2 24001.8 17817.5 6487.6 0.370155646 53.51% 
+ssca2 high t2 2 109940 32059 62873 16670.2 1.746973521 59.55% 
+ssca2 high t4 2 109945.8 105133 49707.3 27565 1.191493573 54.55% 
+ 
+ 圖 18 所示為各測試程式中 transaction
+執行時間所佔的比例，由圖便可瞭解各測試
+程式執行時，transaction 區域的程式碼執行
+所花費時間的多寡。圖 19 所示為各測試程
+中 transaction 中止次數佔總 transaction 執行
+次數的比例，transaction 會因為衝突而被動
+態資料管控器中止(abort)，使得 transaction
+會重新執行，transaction 的執行次數也會因
+此而遞增，也會使 transaction 區域的程式碼
+執行所花費時間遞增。 
+ 
+ 
+ 
+圖 18 TX 區域佔總執行時間的比較圖 
+ 
+ 
+圖 19 Transaction 中止次數所佔比例 
+表  8 所述為各測試程式執行時，
+transaction 區域的資料存取情形統計，從該
+表，我們可以觀察到每個 transaction 存取資
+料的次數，以及資料被 transaction 共用的情
+  
+ 
+- 17 - 
+histogram no t4 2 2 2 8 0 0 0 8 0 0 0 
+histogram low t2 1369.2 1361.5 1361.5 2431 146 0 0 2431 146 0 0 
+histogram low t4 761.3 747.75 747.75 2420 28 1 128 2420 28 1 128 
+histogram high t2 11714.4 11598.5 11598.5 19045 2076 0 0 19045 2076 0 0 
+histogram high t4 6394.6 6148 6148 18087 2726 179 129 18087 2726 179 129 
+linked list t2 4224.8 4098.2 4096 2687.6 1388.4 0 0 2748.8 1385.4 0 0 
+linked list t4 2211.4 2050.35 2048 2271.8 1183 488.6 97.2 2272.6 1183.4 488 96.6 
+labyrinth low t2 206 1014.4 786 1568.4 6 0 0 1504.8 2.6 0 0 
+labyrinth low t4 266.35 510.8 394 1569 1.2 0.6 5.2 1505 1.6 0.6 1.2 
+labyrinth high t2 650.9 1569.8 1341.5 2679.6 6 0 0 2616.2 2.4 0 0 
+labyrinth high t4 968.5 788.5 671.75 2680 1 0.4 5.4 2616.4 1.6 0.2 1.4 
+intruder low t2 10948.2 100728.3 17655.3 10056 5632.8 0 0 5834.4 4241.8 0 0 
+intruder low t4 12331.37 50428.46 8843.5 8632.2 3965.6 1724.2 1367 4637.2 3416.4 1442.4 579.8 
+intruder high t2 21741.2 161755 24324.8 13960 8897.4 0 0 7954.4 6025.6 0 0 
+intruder high t4 24586.11 80875.7 12160.65 12153 5209.8 3055.8 2439.2 6374.4 4487.4 2218.6 899.6 
+ssca2 low t2 27361.6 23629.5 47257 1002 7133 0 0 54257 7133 0 0 
+ssca2 low t4 17817.5 11817.05 23632.1 476.8 1523.8 3329.8 2804.6 47137 1523.8 3329.8 2804.6 
+ssca2 high t2 62873 46843.5 93685 1973 14284 0 0 95656 14284 0 0 
+ssca2 high t4 49707.3 23424.05 46846.1 893.6 3162 7280 5582 88582 3162 6620 5582 
+ 
+我們將資料被同時存取的情形整理為較
+好觀察的圖示，如圖 20 與圖 21，便可以清 
+ 
+楚掌握各測試程式於執行時存取資料的情
+形，以及資料競爭的問題。 
+ 
+ 
+圖 20 資料被 Transaction 讀取的情形 
+ 
+  
+ 
+- 18 - 
+不少，此情形由圖 18 就能發現。但是
+其效能仍然有提升，主要是因為其同時
+競爭的資料非常少，如圖 20 與圖 21
+所示。此外，當 transaction 發生衝突時，
+就立刻放棄現在走的迷宮路徑，並於
+transaction 重新執行時，走一條新的路
+徑，因此不會有相同路徑被繞徑多次的
+情形，以致執行速度仍比一條一條繞徑
+的循序版本快。 
+intruder：與 labyrinth 相比，intruder 的
+transaction 區域較小，但是執行緒彼此競爭
+資料的情形經常發生，由圖 20 與圖 21 便可
+以發現。以兩個執行緒的執行情形來說，有
+40%左右的資料同時被兩個執行緒存取，而
+對四個執行緒的執行情形來說，有 50%左右
+的資料同時被兩個以上的執行緒存取。因
+此，我們便可以由
+ 與圖 19 觀察出此程式的中止次數非常
+高，再由圖 18 證明 transaction 因重新
+執行次數變多，而使 transaction 佔總執
+行時間的比例增加。但整體來說，這些
+額外的負擔被多個執行緒分攤掉了，使
+得效能還是有成長，但仍不如 histogram
+的無衝突與低衝突及 linked list 來得好。 
+ssca2：從 STAMP 的文獻中，相較於 labyrinth
+與 intruder，ssca2 測試程式的 transaction 區
+域較短，單一 transaction 的資料存取較少，
+但是競爭的資料量多，所以 transaction 的執
+行次數很高，也使得 transaction 佔了不少總
+執行時間，如圖 18 所示。雖然從
+ 知道 ssca2 測試程式的中止次數很多，
+所幸 transaction 區域很小，所以不會造
+成太大的負面效果，以致於效能有不錯
+的提升。與 histogram 的高衝突比較，兩
+者 transaction 所佔執行時間比例接近，
+但由於 histogram 的運算部分是固定
+的，所以 transaction 執行愈多次效能會
+愈差。而 ssca2 則會因當時發生衝突的
+情形而決定接來如何對圖形做運算，因
+此不會有固定量的非 transaction 程式碼
+片段。 
+  
+五、 結論 
+ 在本計畫中，我們提出動態資料管控
+器，並將它運用在動態平行執行架構上。在
+設計的過程中，我們分析了各種多核心系統
+上會遭遇到的議題，包含平行執行緒的同步
+及快取一致性。針對多核心平行系統的可擴
+  
+ 
+- 32 - 
+循序版本高出兩倍的效能。 
+ 雖然我們提出的動態資料管控器，在大
+部分的情況下，有明顯的效能提升。但是遇
+到衝突量較多的情形時，例如：histogram 測
+試程式的輸入為高衝突類型及 labyrinth的配
+置為較高衝突的參數，反而無法明顯提升效
+能，甚至是比原來循序版本還要糟。主要原
+因是我們採用積極型的衝突偵測，當
+transaction 被動態資料管控器認定為衝突者
+時，會立刻中止執行，然後重新執行。但是
+重新執行並不是很簡單的動作，在重新執行
+之前，其必須先利用 Log 將之前更改過資料
+還原到執行前的版本，讓 transaction 像是沒
+有執行過一樣。若一直出現衝突，則必須花
+費更多時間在復原上。此外，重新執行，會
+再重新執行一遍上次執行過的程式碼片段，
+若中止次數愈多且 transaction 區域愈大時，
+會使得動態資料管控器執行衝突偵測的次數
+及重覆執行的程式碼片段增加，反而產生過
+多不必要的負擔。針對上述問題，我們將需
+要對衝突偵測機制進行調整，以期降低整體
+的衝突次數，以及避免單一 transaction 因衝
+突而一直重新執行。 
+ 目前我們並沒有對編譯器與作業系統進
+行修改，而只是新增額外的指令給平行程式
+使用。但這樣的做法較無彈性，也因為作業
+系統無法察覺處理器系統已新增了額外的架
+構狀態及硬體單元(如：動態資料管控器、存
+取權限過濾器...等)，使得無法或難以直接在
+程式中取得動態資料管控器同步時的相關資
+訊與新增的架構狀態。我們將來也需要透過
+編譯器及作業系統來優化衝突偵測，以期減
+少衝突次數，並且達到更佳的效能。 
+ 
+六、 結果與自評 
+自評結果如下： 
+(1) 成果報告內容與原計畫相符程度 
+   本計畫執行成果與原計劃相符、 
+(2) 預期目標達成情況 
+本計畫有達成原計劃書所規劃之預期目標。 
+(3) 研究成果之學術或應用價值 
+本計畫之研究成果在學術面以及應用面之價
+值，由我們研究項目與學術論文產出結果可
+見。 
+(4) 學術期刊或專利之發表情形 
+本計畫之研究成果已在 ICS, ISAS 發表。請
+參考發表論文之產出結果。 
+ 
+七、發表論文 
+[1] J.H. Liao, J.M. Jou, "Hardware 
+  
+ 
+- 34 - 
+[14] J. H. Kelm, M. R. Johnson, S. S. Lumettta, 
+and S. J. Patel, "WAYPOINT: scaling 
+coherence to thousand-core 
+architectures," presented at the 
+Proceedings of the 19th international 
+conference on Parallel architectures and 
+compilation techniques, Vienna, Austria, 
+2010. 
+[15] K. E. Moore, J. Bobba, M. J. Moravan, M. 
+D. Hill, and D. A. Wood, "LogTM: 
+log-based transactional memory," in 
+High-Performance Computer 
+Architecture, 2006. The Twelfth 
+International Symposium on, 2006, pp. 
+254-265. 
+[16] L. Hammond, V. Wong, M. Chen, B. D. 
+Carlstrom, J. D. Davis, B. Hertzberg, M. 
+K. Prabhu, H. Wijaya, C. Kozyrakis, and 
+K. Olukotun, "Transactional Memory 
+Coherence and Consistency," presented at 
+the Proceedings of the 31st annual 
+international symposium on Computer 
+architecture, M\&\#252;nchen, Germany, 
+2004. 
+[17] W. Baek, N. Bronson, C. Kozyrakis, and 
+K. Olukotun, "Making nested parallel 
+transactions practical using lightweight 
+hardware support," presented at the 
+Proceedings of the 24th ACM 
+International Conference on 
+Supercomputing, Tsukuba, Ibaraki, Japan, 
+2010. 
+[18] K. Mai, T. Paaske, N. Jayasena, R. Ho, W. 
+J. Dally, and M. Horowitz, "Smart 
+Memories: a modular reconfigurable 
+architecture," SIGARCH Comput. Archit. 
+News, vol. 28, pp. 161-171, 2000. 
+[19] L. Yen, J. Bobba, M. R. Marty, K. E. 
+Moore, H. Volos, M. D. Hill, M. M. Swift, 
+and D. A. Wood, "LogTM-SE: 
+Decoupling Hardware Transactional 
+Memory from Caches," in High 
+Performance Computer Architecture, 
+2007. HPCA 2007. IEEE 13th 
+International Symposium on, 2007, pp. 
+261-272. 
+[20] F. Bellard, "QEMU, a fast and portable 
+dynamic translator," presented at the 
+Proceedings of the annual conference on 
+USENIX Annual Technical Conference, 
+Anaheim, CA, 2005. 
+[21] M. Chi Cao, C. JaeWoong, C. Kozyrakis, 
+and K. Olukotun, "STAMP: Stanford 
+Transactional Applications for 
+Multi-Processing," in Workload 
+Characterization, 2008. IISWC 2008. 
+IEEE International Symposium on, 2008, 
+pp. 35-46.
+ 
+- 38 - 
+ 
+得同一時間只有一個執行緒能夠存取共用資料。但柵欄同步機制的缺點是其它也會存取共用資
+料的執行緒需要等待，浪費了處理核心的運算資源，因而使得效能及並行度受到限制。然而，
+有些執行緒間的運算資料及控制資料相關情形只在多執行緒並行執行時才會產生，是屬於動態
+的且難以在事先就察覺到，而靜態的多執行緒並行執行同步方式無法滿足此般需求，不僅使並
+行程式的撰寫不具彈性，更無法有效提升效能。未來，多執行緒動態並行執行將是研究主流。 
+ 
+三、 建議 
+感謝國科會所給予的補助，對於個人研究與發展有極大助益。另外由此次大陸之參訪了解
+對岸進步之神速，與做某些事之用心(因為有利可圖)及彈性(當然這是極權之故)，值得我們深
+思並要加大努力才行。建議國內多到對岸參訪，除了官式行程之外，應多看多聽知己知彼，才
+可能適當反應以期百戰百勝。另應積極爭取承辦國際會議的機會，以增加我國之國際學術的能
+見度，促進與他國學者之深入交流與合作，也可藉由會議期間與本地工商資源結合，做整體規
+劃，以促進國家未來之發展。 
+ 
+四、 攜回資料名稱及內容 
+1. 論文光碟一片 
+2. 大會手冊一本 
+3. International Conference on Automatic Control and Artificial Intelligence 2012 Call for Papers 一
+張 
+ 
+100年度專題研究計畫研究成果彙整表 
+計畫主持人：周哲民 計畫編號：100-2221-E-006-179- 
+計畫名稱：用於多核多執行緒並行執行之執行期動態資料管控器(I) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 3 3 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

@@ -1,0 +1,349 @@
+2 
+離散元素法可適當地將材料分開為不同的元素，故僅需仔細描述元素的微觀行為及彼
+此間的相互作用，便可模擬出材料破裂等較複雜的行為，但同時對計算之需求量亦隨之增
+加，其主要原因有下列兩點： 
+(1) 離散元素法的分析是以求解各元素間的力學交互作用來達成，模擬結果是否能逼近真
+實物理世界之行為，自然取決於元素數量之多寡。假設系統含有 n 個元素，元素間的
+力學交互作用便為 2nC 組，2,000 個元素便需要處理近 62 10× 組交互作用；當元素數增加
+至 5 倍(10,000 顆)時，交互作用之組數便擴增為 25 倍，而實際系統模擬時所需之元素
+數往往不僅於此，故其計算量之需求必然常十分龐大。 
+(2) 離散元素法屬於顯式之數值方法，每一時步(time step)之系統狀態均由上一時步驟所推
+得。相較於隱式數值方法，顯式法因穩定度(stability)之需求所需切割之歷時間距 tΔ 便
+小得許多，往往在 10-5 秒以下。是故進行長時間分析時，離散元素法之模擬方式自然
+需要多且大量之時步。 
+ 
+是故離散元素法之數值分析模式雖已相當完備，但龐大之計算量實為其不可避免之瓶
+頸，早年離散元素法相關之研究均在具備高速計算能力之實驗室進行也是肇因於此，致使
+其應用推動較緩。本研究小組過去數年來積極投入離散元素法演算法之基本發展與改良，
+之前曾向國科會提出「離散元素法運動機制簡化與適用性之探討研究」之計畫(編號
+NSC91-2211-E-002-097) (謝尚賢等, 2003)，該計畫中本研究小組自行開發出一套可彈性擴充
+新式幾何形狀離散物件或運動機制的三維離散元素模擬軟體架構，名為 VEDO (VErsatile 
+Discrete Object simulation system) (謝尚賢等, 2003; Yang and Hsieh, 2004; Yang, 2004)。VEDO
+的設計與開發應用了最新的物件導向技術，主要目的在建立一高度彈性之系統架構，以處
+理各類不同幾何形狀的元素及其間各類可能的複雜交互作用。此外，VEDO 也遵循 XML
+標準發展出一套可定義離散物件模擬問題與結果的描述語言，名為 dosXML (Yang, et al., 
+2004)，以利模擬資料之交流與共享，並利於相關軟體之開發。本研究團隊已在 VEDO 的軟
+體架構上發展出一套名為 Knight&Anne 的離散物件模擬應用軟體(Yang, 2004)，及一視覺化
+程式 Venus Painter (陳詩華, 2003)，可將 Knight&Anne 的模擬結果以圖像或影片的方式呈
+現，大幅增加了 Knight&Anne 在使用上的便利性。在實作上，Knight&Anne 目前已能處理
+的離散物件形狀有圓球、圓柱、板及多面體等，可處理的離散物件間的力學機制，有彈簧、
+阻尼、摩擦力與凝聚力(binding force)等之組合。 
+基於之前的成果，本研究進一步引進平行計算技術於既有之離散元素模擬架構中，在
+不影響原 VEDO 架構之高度彈性及可擴充性下，提出一套良好的平行策略來提升離散元素
+模擬之效能。至於在效能檢測方面，則擬以自充填混凝土之行為模擬為應用案例(Hsieh, et al., 
+2004)，利用數項平行計算效能評估之指標(例如 speedup、efficiency 等)(Grama, et al., 2003)，
+評估平行計算所能帶來之效益，並據以驗證所發展出之平行策略之有效性(effectiveness)。 
+ 
+3.2 文獻探討 
+基於穩定性與精確度之需求，DEM 常使用微小的時間步幅與大量的元素數目，伴隨而
+來的龐大計算量便限制其應用性，部份學者(Bonet and Peraire, 1991; Oldenburg and Nilsson, 
+1994)曾於演算法層面進行改良，適度地降低元素數目增加時所帶來的影響，但以離散元素
+法模擬實際工程問題之計算量仍然相當可觀。其後，開始有學者思考以平行計算來加速離
+散元素模擬之可能性，Tang 和 Zurawski (1993)提出兩種主從式(master-worker)平行策略，利
+用分區(partition)及元素(element)為單位來分配工作量，然而卻受限於主從處理器間過於頻
+繁且大量的訊息交換，當問題規模變大時，其平行效率反而隨之遞減；其他學者則多以元
+素量之負載平衡(load balance)為目標來發展平行離散元素演算法，針對特定之軟體(例如
+NURBM3DP) (Dowding, et al., 1999)或硬體(例如 Field Programmable Gate Array，FPGA) 
+(Quigley and Chan, 2004)來發展平行離散元素法，但其普遍應用性則受到相當之限制。本研
+究團隊則於 2005 年提出共享式記憶體(shared-memory)架構之平行離散元素模擬策略(林立
+4 
+3.3.2 平行策略 
+為使平行程式能保持一定之效率(efficiency)，必須採用適當之平行策略以達到動態負載
+平衡(dynamic load balance)。本研究發展出兩種平行策略，分別為幾何分割法(geometric 
+partitioning)與圖分割法(graph partitioning)。 
+ 
+幾何分割法 
+幾何分割法的概念在於「於幾何空間中均勻分配互動物件」(Lin, 2005)。其分配流程為：
+先以一卡式座標系下的虛擬六面體「圍束區域」(bounding box)涵蓋各互動物件，該六面體
+的各邊均平行於座標軸，然後選則最長向做為「切割向」(cutting dimension)，即判定是 x、
+y、z 向之其一，隨即延此「切割向」進行互動物件的分配(分配時也包含互動物件所連結的
+離散元素)，期使各處理器分配之互動物件數目儘量相同，之後便以此分配的結果進行計
+算。由於離散元素模擬的時步較小，可假設短時間內元素及互動物件之幾何分佈變化極微，
+因之幾何分割可每間隔一時段後再行使用，以維持良好的動態負載平衡。幾何分割的步驟
+如下： 
+(a) 設定各離散元素的初始空間位置、速度、加速度、所受場力等資訊。 
+(b) 若兩元素間可能發生碰撞，便建立互動物件以容納此碰撞元素對(contact element pair)。 
+(c) 依據幾何分割平行策略，將元素及互動物件分配至各處理器負責。 
+(d) 各處理器依據碰撞檢測法、衝量計算法來分析所負責元素的碰撞行為。 
+(e) 對於不同處理器所共有的離散元素，處理器間須交換衝量資訊以便對使該元素之衝量
+計算正確。 
+(f) 更新各元素的狀態資訊。 
+(g) 返回步驟(d)進行迭代，直到元素及互動物件需要重新分配為止。(本研究建議每 1,000
+次迭代可進行一次重新分配。) 
+(h) 若須重分配，則將所有元素資訊傳回處理器 P0，然後返回步驟(b)。 
+ 
+圖分割法 
+圖分割法的概念在於「於圖空間中分配，以求切割後截斷的邊最少，減少訊息傳遞」
+(Lin, 2005)。其分配流程為： 將離散元素定義為「點」(vertex)，其對應的互動物件定義為
+邊(edge)，並定義各「點」的「權重」(weight)為其相連互動的數目(如圖 2 所示)。使用上述
+的對應關係將幾何空間的分佈狀況轉換至圖空間中，便可利用圖分割的技術劃分為數個子
+圖(sub-graph)，使各子圖中「點」的權重和儘量相近，同時亦使截斷的「邊」最短。各子圖
+所對應的元素及互動物件便由各處理器負責計算。同之前幾何分割所述，圖分割亦可每間
+隔一時段後再行使用，以維持良好的動態負載平衡。在各子圖邊界上的互動物件應予以適
+當的分配，以避免增加訊息傳遞量，本研究建議分配策略如下： 
+(a) 定義符號 B(i)代表元素 ei 所分配到的處理器，I(i,j)代表元素 ei 和 ej 間的互動物件，而
+L(i,B(j))代表元素 ei和處理器 B(j)間的互動物件數。 
+(b) 若 ( ) ( )B i B j≠ ，代表元素 ei和 ej 分配於不同的處理器。若 ( , ( )) ( , ( ))L i B j L j B i≤ ，則互
+動物件 I(i,j)被分配至處理器 B(i)，否則便分配至 B(j)。如圖 2(b)所示的情況，則所有的
+互動均由處理器 P2 所有，如此處理器 P1 和 P2 僅需交換元素 e1 之資訊即可。 
+ 
+對於邊界上的碰撞元素對，由於考慮交換互動物件可能造成的負載不均，當不均狀況
+發生時，便須反覆進行重新切割子圖，其權重每重切割一次便增加 1，藉由調整權重來驅
+動子圖反覆重分割的動作： 
+(a) 定義處理器間的「不均度指數」U 為： 
+maxW WU
+W
+−= ,   其中 max max( )iiW W=    
+iWW
+NP
+= ∑    (1) 
+上式中 Wi 代表處理器 Pi 中各「點」的權重總和，NP 代表子圖數目(即處理器數目)。
+Wi值愈大便代表工作量愈重。當 U 值愈大時，代表負載不均度愈高。 
+6 
+ 
+3.4 結果與討論(含結論與建議) 
+過去已有學者採用離散元素法對自充填混凝土之流動行為進行模擬(劉誼曦, 2002; 林
+立欣, 2005)，本研究根據過往之研究訂定數個模擬案例，用以測試自有離散元素模擬系統
+之效能。 
+ 
+案例 A：直徑 5 mm 砂漿元素之 V 漏斗流動性試驗 
+為求驗證自充填混凝土砂漿之流動性，劉誼曦(2002)設計一砂漿 V 漏斗試驗(如圖 3a
+所示)。本案例使用此 V 漏斗試驗之縮尺模型如圖 3b 所示。 
+模擬時使用之離散元素參數則如表 1 所示，各參數之意義請參考文獻(林立欣, 2005)。
+本模擬使用自行開發之軟體 Iris 於國家高速網路與計算中心 (National Center for 
+High-Performance Computing，NCHC)之 Formosa PC Cluster 系統完成，該系統之硬體參數
+如表 2 所示。幾何分割策略與圖分割策略之結果如表 3～4 及圖 5～7 所示，以單一處理器
+模擬需時 44.98 小時完成，4 顆處理器即可縮短計算時間至 11.95 小時，使用 8 顆或 16 顆處
+理器時亦可得到持續的加速。本研究乃依據下列公式計算模擬之加速(speed-up)及效能
+(efficiency)： 
+ Speed-Up 1
+N
+TS
+T
+=  (2a) 
+ Efficiency SE
+N
+=  (2b) 
+式中 N 為處理器數目，T1 代表單一處理器所需時間，TN代表 N 顆處理器所需時間。 
+ 
+ 
+ 
+ 
+ 
+(a) 試驗用模具 (b) 離散元素法縮尺模型 
+圖 3 自充填混凝土 V 漏斗流動性試驗 
+ 
+表 1 案例 A 之自充填混凝土之離散元素模擬參數 
+參數 模擬數值 參數 模擬數值 
+顆粒勁度(stiffness) 103 N/m 阻尼比 0.02 
+接觸鍵(binding force) 5 x 10-3 N 時間步幅(time step) 2 x 10-6 second 
+摩擦係數(friction coefficient) 模具-砂漿：0.1砂漿-砂漿：0.2 總元素數 10,823 
+顆粒粒徑(diameter) 5.0 mm 模擬時間 3.3 second 
+ 
+ 
+ 
+ 
+8 
+ 
+3.76
+6.59
+9.16
+3.77
+6.10
+7.66
+1.00
+2.00
+3.00
+4.00
+5.00
+6.00
+7.00
+8.00
+9.00
+10.00
+11.00
+12.00
+13.00
+14.00
+15.00
+16.00
+1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
+number of processors
+sp
+ee
+d-
+up
+geometric partitioning graph partitioning linear speed-up
+ 
+圖 5 案例 A 之加速值(speed-up) 
+ 
+94.09%
+82.33%
+57.24%
+94.14%
+76.24%
+47.91%
+0.40
+0.50
+0.60
+0.70
+0.80
+0.90
+1.00
+3 4 5 6 7 8 9 10 11 12 13 14 15 16 17
+number of processors
+ef
+fic
+ie
+nc
+y
+geometric partitioning graph partitioning
+ 
+圖 6 案例 A 之效率(efficiency) 
+ 
+ 
+ 
+(a) 試驗用模具 (b) 離散元素法縮尺模型 
+圖 7 自充填混凝土 L 形箱流動性試驗 
+ 
+ 
+10 
+3.60
+6.24
+8.25
+3.39
+5.73
+6.76
+1.00
+2.00
+3.00
+4.00
+5.00
+6.00
+7.00
+8.00
+9.00
+10.00
+11.00
+12.00
+13.00
+14.00
+15.00
+16.00
+1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
+number of processors
+sp
+ee
+d-
+up
+geometric partitioning graph partitioning linear speed-up  
+圖 9 案例 B 之加速值(speed-up) 
+ 
+90.09%
+78.05%
+51.55%
+84.73%
+71.61%
+42.27%
+0.30
+0.40
+0.50
+0.60
+0.70
+0.80
+0.90
+1.00
+3 4 5 6 7 8 9 10 11 12 13 14 15 16 17
+number of processors
+ef
+fic
+ie
+nc
+y
+geometric partitioning graph partitioning
+ 
+圖 10 案例 B 之效率(efficiency) 
+ 
+表 8 案例 B 之自充填混凝土之離散元素模擬參數 
+參數 模擬數值 參數 模擬數值 
+顆粒勁度(stiffness) 103 N/m 阻尼比 0.02 
+接觸鍵(binding force) 1 x 10-2 N 時間步幅(time step) 2 x 10-6 second 
+摩擦係數(friction coefficient) 模具-砂漿：0.1砂漿-砂漿：0.1 總元素數 46,680 
+顆粒粒徑(diameter) 3.0 mm 模擬時間 1.6 second 
+ 
+結論與建議 
+經由以上三個自充填混凝土數值案例之測試，證明本計畫所發展之平行離散元素模擬
+系統 Iris 確可在分散式記憶體架構之硬體上進行模擬，且可利用提出的平行策略(幾何分割
+策略及圖分割策略)來實現負載平衡之目標。 
+一般案例(如案例 A 及 B)使用 4 顆處理器時，結果已相當接近線性加速(linear speed-up)
+的理想值(如圖 5 及圖 9 所示)，而使用 8 顆處理器時之平行效率亦可達到 70%以上(如圖 6
+及圖 10 所示)；雖然 16 顆處理器時因隨訊息傳遞之大量增加而使平行效率降低至 60%以
+下，但其 speed-up 仍在上升中，對於實際之工程計算依然有實用價值。此外，由表 3、4、
+6、7 數據可知，當處理器數目增多時訊息傳遞及閒置所佔之比例亦隨之上升，為造成平行
+12 
+1.001.82
+3.92
+8.15
+12.44
+17.77
+20.74 21.20
+0.00
+4.00
+8.00
+12.00
+16.00
+20.00
+24.00
+28.00
+32.00
+0 8 16 24 32 40 48 56 64 72 80 88 96 104 112 120 128
+number of processors
+sp
+ee
+d-
+up
+geometric partitioning linear speed-up
+ 
+圖 12 案例 C 之加速值(speed-up) 
+ 
+100.00%
+90.93%
+98.00%
+101.93% 103.67%
+111.06%
+86.42%
+66.26%
+60.00%
+70.00%
+80.00%
+90.00%
+100.00%
+110.00%
+120.00%
+0 8 16 24 32 40 48 56 64 72 80 88 96 104 112 120 128
+number of processors
+ef
+fic
+ie
+nc
+y
+ 
+圖 13 案例 C 之效率(efficiency) 
+ 
+（四）參考文獻 
+Bonet, J., and Peraire, J. (1991). “An Alternating Digital Tree (ADT) Algorithm for 3D 
+Geometric Searching and Intersection Problems,” International Journal for Numerical 
+Methods in Engineering, Vol. 31, pp. 1-17. 
+Chan, Y.W., and Liu, Y.S. (2003). “Parameter Study of Discrete Element Method in 
+Self-Compacting Concrete Simulation,” Proceedings of the 15th KKCNN Symposium on Civil 
+Engineering, December 19-20, Singapore, pp. S291-S296. 
+Cundall, P.A. (1971). “A Computer Model for Simulating Progressive, Large Scale Movement in 
+Blocky Rock System,” Proceedings of the ISRM Symposium on Rock Fracture, Nancy, Fance, 
+pp. 129-136. 
+Dowding, C. H., Dmytryshyn, O., and Belytschko, T. B. (1999). “Parallel Processing for a 
+Discrete Element Program,” Computers and Geotechnics, Vol. 25, No. 4, pp. 281-285. 
+Iwashita, K., and Oda, M. (1998). “Rolling Resistance AT Contacts in Simulation of Shear Band 
+Development By DEM,” Journal of Engineering Mechanics, Vol. 124, No. 3, pp. 285-292. 
+Karypis, G., Schloegel, K., and Kumar, V. (1998). ParMETIS2.0: Parallel Graph Partitioning 
+and Sparse Matrix Ordering Library, Technical Report, Department of Computer Science, 
+University of Minnesota, Minneapolis, MN. (available at 

@@ -1,0 +1,448 @@
+I摘要
+中文：
+網路電信技術與系統能提供更方便與更符合成本的語音與視訊等多媒體服務，但因為網際網
+路具有隱密性，網路電話之發話端又常常為匿名之代號、IP 地址或由網路電信系統業者任意
+提供之號碼，因此若有心人士利用網路電話進行恐嚇、詐財、非法交易、商業間諜、與叛國
+等等犯罪時，若無法即時察覺或追蹤到可能的犯罪行為進行，將成為新興科技發明的濫用，
+因此必須有能對於網路電話進行截聽與側錄功能，藉以防範此種利用網路科技之犯罪於未
+然。在本計畫中，將提出截聽與側錄功能嵌入於 SIP 網路電話伺服器系統之方法，其中主要
+包含 SIP 響訊封包之解析與截聽，以及重導 RTP 語音封包於儲存設備或手持式裝置之側錄機
+制。SIP 網路電話伺服器並將以 WEB SERVER 方式讓檢調人員於區域網路裡方便瀏覽可疑
+之響訊，以利檢調人員將可以使用手持式截聽與側錄設備（一般如 Notebook 或是 PDA）進
+行播放等等工作
+關鍵字：網路電信、網路犯罪鑑識、SIP 網路電話通信協定、截聽與側錄
+III
+目 錄
+第一章 動機及目的  ─ 4
+第二章 系統原理及分析   ─ 6
+2.1 SIP 協定    ─ 6  
+2.2 RTP 協定  ─ 12
+第三章 系統架構及實作   ─ 16 
+3.1 開發環境及工具  ─ 16
+3.2 專題製作的分工   ─ 18
+3.3 整體系統架構說明   ─ 18
+3.3.1 轉送型監聽系統  ─ 18
+3.3.2 分散式同步截收型監聽系統  ─ 20
+3.4 SIP Server 架構及實作 ─ 24
+3.5 SIP UA 架構及實作 ─ 30
+3.6 截聽側錄架構及實作  ─ 35 
+第四章 專題結果  ─ 37    
+4.1 實驗模擬與測試   ─ 37
+4.2 遭遇困難與解決方法   ─ 43
+第五章 結論與未來展望   ─ 45
+參考文獻  ─ 47
+V表目錄
+表 1 SIP Request 的六種方法 ─ 9
+表 2 SIP 的狀態碼說明  ─ 10                  
+表 3 Socket 函式表   ─ 25
+圖目錄
+圖 1 SIP 呼叫流程      ─ 11
+圖 2 RTP protocol stack  ─ 12 
+圖 3 轉送型監聽系統架構圖  ─ 18
+圖 4 分散式同步截收型監聽系統架構圖  ─ 20
+圖 5 SIP Server 工作流程圖   ─ 26
+圖 6 SIP Server 程式架構圖  ─ 28
+圖 7 SIP UA 流程圖                                   ─ 30
+圖 8 SIP UA 程式架構圖   ─ 32
+圖 9 cclRTP library 架構關係圖   ─ 34
+圖 10 監聽程式流程圖   ─ 35
+圖 11 Server 啟動執行畫面  ─ 37
+圖 12 Client 軟體註冊畫面  ─ 37
+圖 13 Client 軟體成功註冊畫面   ─ 38
+1第一章 動機及目的
+由於資訊與通訊科技不斷的進步，以及網際網路的盛行，網路電信（Internet Telephony）
+已成為資訊與通訊科技（Information and Communication Technology）裡最具爆發力的當
+紅炸子雞。網際網路的使用以及基於網際網路各項服務爆炸性的成長使的在網路電信或是網
+路電話（Voice Over IP，VoIP）的研究日益增多。網路電話（VoIP）主要是利用網際網路
+通訊協定（Internet Protocol）來傳輸語音通訊，而網路電信（Internet Telephony）則是網
+路電話的具體系統實現。相對於傳統的電信使用者與網路服務提供者而言，因為網路電信能
+夠提供各種嶄新的整合性語音與資訊之傳遞功能在 IP 網路上，而且此種整合語音與資訊於
+一身的 IP 網路比起語音和資料網路分離的傳統網路系統，更可以降低資訊與語音系統之建
+置與維護成本。網路電話之使用因為只佔了資訊網路中極小的頻寬（約為 5~15kbps），而
+且一旦只要有網際網路之基礎建設與服務後，網路電話使用費用幾乎是免費的。此外網路電
+話除了提供基本的語音，更能提供其他的附加價值服務功能，如視訊與音訊會議、整合視訊
+與音訊簡訊與資料傳輸與傳真等等，上述的誘因使的一般用戶、企業公司與網路服務提供者
+願意去嘗試使用此種新的網路電信科技。
+雖然，網路電信技術與系統能提供更方便與更符合成本的語音與視訊等多媒體服務，但
+因為網際網路具有隱密性，網路電話之發話端又常常為匿名之代號、IP 地址或由網路電信系
+統業者任意提供之號碼，因此若有心人士利用網路電話進行恐嚇、詐財、非法交易、商業間
+3第二章 系統的原理及分析
+2.1 SIP〈Session Initial Protocol〉協定簡介及原理
+SIP 協定是由 IETF〈Internet Engineering TaskForce〉在 1999 年所制訂，基本上為
+一規範建立、定義、終結多媒體連線的通訊協定，且 SIP 只負責將連線建立起來，之後看個
+人的需求去實作需要的連線內容。又因為 SIP 僅搭建需要的多媒體連線，並沒有定義後續的
+媒體傳輸，故 SIP 可以支援網際網路多媒體、多方會談、電話、訊息傳遞亦或遊戲等服務。
+SIP 為網際網路應用層控制信號的通訊協定，SIP 信號控制的功能強大且非常的多樣化，但
+大致上可分為請求〈request〉與回應〈response〉這兩大類信號。其目是在兩端電腦或相
+容的通訊設備間協助完成多媒體 Session 的建立、調整及終止的共通語言。目前常用於 VoIP
+的方面，透過 SIP 可以達成與傳統撥接式電話相近的操作情境。SIP 的通訊網路佈局建制在
+現有的網路架構上，各主機或通訊設備依其在實體網路中的層次、角色，植入適當的 SIP 功
+能或服務。有下列三種基本的佈局模型：
+1. 點對點 〈end-to-end〉；
+2. 同層級區域網路 〈local LAN〉；
+3. 跨層級網路 〈intranet or internet or WAN〉
+依據這三種實體網路架構 SIP 定義出下列五種服務：
+5server， global failure〉。
+SIP 中主要的定址方式也類似於 Email address〈username@hostname〉，在 SIP 中
+稱之為 SIP URI 〈Uniform Resource Indicators〉，在某些標頭參數中也會使用。SIP 的信
+息〈message〉，由起始列〈start-line〉與若干標頭〈message-header〉及信息主體
+〈message-body〉組成，起始列在請求的方法時為請求列 〈request-line〉；在回應訊息
+時為狀態列 〈status-line〉。標頭列由標頭名稱、屬性、參數名稱、參數值所組成。信息主
+體則依內容型態標頭的屬性決定其格式。常用的標頭有：Call-ID、Contact、Content-Type、
+Cseq、Expires、From、Max-Forward、MIME-Version、Record-Route、Reply-to、Retry-After、
+Route、Subject、To、Via。尚未列在其中的標頭為極少用或設計者可自行定義運用，有幾
+個標頭是 SIP 信息必備的：To、From、Cseq、Call-ID、Max-Forward、Via 等六列。
+在話務封包資料的傳遞上，SIP 使用 RTP〈Transport Protocol for Real-Time
+Application〉 通訊協定來互動傳送，RTP 適合用於點對點的即時多媒體資料的傳輸，軟體
+部份是屬於第五層之應用層，但在邏輯上是介於第四層與第五層之間也就是架構在 UDP/IP
+之上。在 SIP Server 完成兩端收、發話者之信號控制後，即將話務封包資料交由收、發話
+者利用 RTP 傳遞，而不需經過建置的 SIP Server。
+Request 類型中包含了六種方法〈method〉，其用途如表 1 所示。
+INVITE 發起一個 session
+7法理解的訊息
+5xx 伺服器端失敗的回應〈Server Error〉代表訊息正確但伺服器端無法處
+理，請找別台伺服器
+6xx 完全失敗的回應〈Global Error〉代表任何伺服器都無法處理此訊息
+表 2 SIP 的狀態碼說明
+圖 1 SIP 呼叫流程
+ㄧ個基本的 SIP 呼叫流程如圖 1 所示：
+首先，主叫 SIP 用戶獲得被叫用戶的地址，其形式為用戶資源識別(URI)字串，然後通過 DNS
+過程將被叫用戶地址轉化為 IP 地址。
+9UDP
+IP
+圖 2 RTP protocol stack
+現以用 RTP 傳輸聲音為例來說明它的工作過程。假設音源的聲音是 64 kb/s 的 PCM 編
+碼聲音，並假設應用程式取 20 毫秒的編碼資料為一個資料塊(chunk)，即在一個資料塊中有
+160 個位元組的聲音資料。應用程式需要為這塊聲音資料添加 RTP 標頭生成 RTP 資訊封
+包，這個標頭包括聲音資料的類型、序列號碼和時間戳。然後 RTP 資訊包被送到 UDP 套接
+介面，在那裏再被封裝在 UDP 資訊包中。在接收端，應用程式從套接介面處接收 RTP 資訊
+包，並從 RTP 資訊包中抽出聲音資料塊，然後使用 RTP 資訊封包的標頭中的資訊正確地解
+碼和播放聲音。
+RTP 本身不提供任何機制來確保把資料及時遞送到接收端或者確保其他的服務品質，
+它也不擔保在遞送過程中不丟失資訊包或者防止資訊包的次序不被打亂。的確，RTP 的封裝
+只是在系統端才能看到，中間的路由器並不區分那個 IP 資料報是運載 RTP 資訊包的。
+RTP 允許給每個媒體源分配一個單獨的 RTP 資訊封包流，例如，攝像機或者麥克風。
+例如，有兩個團體參與的電視會議，這就可能打開 4 個資訊包流：兩台攝像機傳送電視流和
+兩個麥克風傳送聲音流。然而，許多流行的編碼技術，包括 MPEG-1 和 MPEG-2 在編碼過
+11
+RTCP〉便因應而生。RTCP 是相伴著 RTP 的協定，只有在 RTP 連線開啟之後才能使用。
+且 RTCP 於連線的用戶端間負責提供例如封包遺失率、延遲等網路效能之相關資訊。所以
+RTCP 提供的資訊可讓使用者適性地調整影音壓縮的比率，或其它可以符合目前通訊網路
+QoS 需求的設定。RTCP 在使用上應控制在整體連線頻寬的一小部分，因為過多的 RTCP
+封包反而會佔據原本資料傳輸所使用的頻寬，但相對地也不應太少而導致不足以進行即時的
+QoS 控制。
+其他主要的 Header 內容還有：
+有效載荷類型〈Payload Type〉
+RTP 資訊包中的 Payload Type Field 長度為 7 位，因此 RTP 可支持 128 種不同的有效載荷
+類型。對於聲音流，這個域用來指示聲音使用的編碼類型，例如 PCM、自適應增量調製或
+線性預測編碼等等。如果發送端在會話或者廣播的中途決定改變編碼方法，發送端可通過這
+個域來通知接收端。
+同步源識別字 (Synchronization Source Identifier，SSRC)
+它用來標識 RTP 資訊包流的起源，在 RTP 會話或者期間的每個資訊包流都有一個清楚的
+SSRC。SSRC 不是發送端的 IP 位址，而是在新的資訊包流開始時源端隨機分配的一個號
+碼。
+13
+3.2 專題製作的分工
+徐超明 計畫規劃、設計、執行
+何偉碩 SIP 網路電話系統規劃與網路程式設計
+曾俊龍
+陳敬中
+Client 軟體設計
+Server INVITE 功能
+截聽側錄架構設計
+各種實務操作
+專題報告製作
+蔡建邦
+王壽年
+Server REGISTER 功能
+Server 200 OK 功能
+截聽側錄架構設計
+各種實務操作
+專題報告製作
+3.3 整體架構說明
+當我們在構思如何實現此「具截聽與側錄功能之SIP網路電話伺服系統」時，考慮為了
+符合實做性及合理性及何教授討論的結果，我們想出了兩種架構：
+15
+此架構的優點在於：
+① ㄧ般交談者而言是無法察覺自己正處於被監聽的狀態。原因是因為雙方進行通話時 (設 1
+to 2 ) 在網路監控程式（如 Ethereal、Sniffer）下：
+使用者 Source Destination
+Client 1 Client 1 IP RTP Server IP
+Client 2 RTP Server IP Client 2 IP
+所以 RTP Server 將成功地達成偽裝及攔截功能。
+②只適用於監聽語音內容，沒有無關者被連帶監聽的問題，爭議會較少
+但是此架構也有盲點：
+① RTP Server 負載量會過大：當使用者一多，所有的語音封包都將經由這台
+RTP Server 來 forwarding，將大大加重 Server 的負荷。
+② 對專業程度高的被監聽對象，由於建立連線的目的 IP 位址不同，會查察覺
+出自己已被監聽，或是因延遲時間(Delay time)的加長而影響被監聽者語音
+品質，暴露出監聽的工作。
+3.3.2 分散式同步截收型監聽系統
+17
+Multicast是指網路所拷貝的單一封包，傳送至特定子網路位址。這些位址被標示在目的地位
+址欄位。
+Promiscuous則是通常說的混雜模式，是指對封包中的目的地位址不加任何檢查，全部接收
+的工作模式。
+許多公司或組織在內部區域網路(LAN)上已經有執行網路電話的小規模監聽經驗，現行
+的區域網路主要係指乙太網路(Ethernet)而言，它具有多重投送(Multi-Drop)的共用拓撲結
+構，也就是HUB會將接收到的所有封包向HUB上的每個port轉發，也就是說當主機根據Mac
+位址進行封包發送時，儘管發送端主機告知了目的主機的位址每一筆發送的資料封包，但這
+並不意味著在一個網路內的其他主機聽不到發送端和接收端之間的通訊，只是在正常狀況下
+其他主機會忽略這些資料封包而已﹗因此理論上網路上所有的第三者機器都可以「傾聽」所
+有通過的封包訊息，但對不屬於自己的封包則不予接收及回應。
+「但是如果區域網路介面處於混雜(Promiscuous)模式，而且這些主機又不願
+意忽略這些封包而接收的話，那麼它就可以在完全不介入原有網路傳輸的情
+形下「截收」所有的封包資訊」 (宮一鳴，2002)。
+而我們的想法就是源自於此並把希望擴大實行在廣域網路(WAN)上：
+在進行網路電話的對話時，所傳送的 RTP 封包必定會透過網路經由 Router
+傳送到收話者的位址，而現今的 Router 設計至少包含有 Unicast，Broadcast 及 Multicast
+的傳送型態功能，因此將若監聽主機確實的架設在“必經的The last Router”上的子網路，即
+19
+Forwarding package 的功能，使其扮演兼具 SIP Registrar
+Server 及 SIP Proxy Server 的角色。
+- Client 端
+接收與發送正規的 SIP 封包，使其不但能向 SIP Server 註冊，
+還可與聯絡人進行 RTP 語音對話。
+二、 如何實現分散式同步截收型監聽系統的截聽側錄功能
+- 為了模擬網路中“The last Router”的環境，我們的監聽主機(程式)必需
+在架構在ㄧ個具有 Broadcast 功能的 Hub 所屬 LAN 下，以確保我們的
+主機能夠透過 Broadcast 供能接收不屬於自己的 RTP 封包來達成監聽
+之目的。
+以下我們將針對這兩個重點做主要說明：
+3.4 SIP Server 架構及實作
+SIP 使用 UDP 來傳送控制訊號之訊息（Message），訊息封包(packet)的是由標頭
+(header)及資料主體(entity body)所組成。在此探討以 UDP 來由應用層傳送資料至網路線上
+的流程。UDP 的標頭僅 8Bytes，製作和解析相對的比 TCP 容易很多，並且沒有繁雜的連線
+過程，不會有多的封包產生來佔用線路資源且傳輸速度快，很適合作高速的大量的可容許少
+部份錯誤的資料傳送。然而 UDP 的缺點為不保証封包的送達、沒有流量控制、為不可靠的
+傳輸協定、接收者並不會有次序的接收、無重傳機制，而使用 RTP/RTCP 為專門用來與 UDP
+21
+表 3 Socket 函式表
+圖 5 SIP Server 工作流程圖
+圖 5 為 SIP Server 的工作流程圖。當程式執行時，會先初始化 UDP Socket，若初始化完
+成即進入主程式。在主程式中先初始 User information database 將其讀入結構陣列中以備查
+用，此時程式持續等待接收請求。所接收的請求 method 我們將其分為三種：
+REGISTER、SIP/2.0、INVITE。
+23
+圖 6 SIPServer 程式架構圖
+圖 6 為 SIPServer 程式的架構圖。在主程式開始前要先宣告整個 SIPServer 架構所需用到
+的 Header 並加以結構化
+整個程式架構是由 4 個主要的副程式所組成：
+ Packetparse( ) ： 解析並處理各個 method 的封包內容，
+將資訊存入正確的欄位中。
+ Response_generater( )：產生回應封包。
+25
+6. 確定進行交談後軟體會產生 RTP 的接收傳輸畫面〈Tx、Rx〉蹦開始進行對話，否則軟
+體返回至詢問畫面
+7. 交談結束，關閉程式重新返回至詢問畫面
+圖 7 SIP UA 流程圖
+我們在撰寫此 SIPUA 的同時，考量到將來方便與 SIPServer 作系統測試及可靠度，因此將
+整個軟體模組化共分成 10 大模組，其名稱及功能如下：
+27
+ TargetListModel 用以串接所有 Target
+ Tx 傳輸 RTP 的使用者介面
+ Rx 接收 RTP 的使用者介面
+詳細 SIP UA subroutine 內容如附錄 2 所示。
+為了測試軟體的共通性，在 SIP UA 程式中語音編碼及傳輸部份，我們也將引用由工研院電
+通所使用 Visual C++開發的 cclRTP library 來跟我們的 Java SIP UA 作為測試，其函式庫主
+要分成三個部份，
+一、處理 RTP 的傳送及接收(cclRtp.h cclRtp.c rtp.h rtp.c)、
+二、處理語音的輸入及輸出，處理聲音的輸出入(WavInOut.h WavInOut.c)、
+三、將 RTP 協定標頭與聲音的輸出入做結合，並透過(SimRTPDlg.h SimRTPDlg.c)等函式
+與對方建立 RTP 的連線。
+下圖圖 9 為 cclRTP library 的架構關係圖：
+29
+3.6 截聽側錄架構及實作
+我們在《 3.2.2 分散式同步截收型監聽系統》中提到，要完成這個截聽側錄的架構重點
+在於實現的環境上，也就是說我們的監聽程式必須架設在“具有 Broadcast 功能的最後一個
+必經的 Router 下”，為此我們設計了幾個實驗：
+②Client 1、Client 2 及監聽程式皆在同一個 Hub 下執行，即三支程式同屬同一個 LAN。
+②承 1，將 Java SIPUA 改成 SimRTP 及 JMF，以測試共通性。
+②Client 1、Client 2 分屬不同 LAN，監聽程式在其中一個 LAN 中執行。
+②承 3，將 Java SIPUA 改成 SimRTP 及 JMF，以測試共通性。
+( 上述 LAN 皆在一個具 Broadcast 的 Hub、Router 或 IP 分享器下)
+圖 10 監聽程式流程圖
+31
+第四章 專題結果
+4.1 實驗模擬與測試
+Step 1 ：
+啟動 Server 程式，這時 Server 從註冊資料檔案〈sip_registrar.ini〉中擷取並列表目前留有
+資訊的 user data。如圖 11
+圖 11 Server 啟動執行畫面
+Step 2 ：
+啟動 Client 軟體，輸入使用者的名稱。
+此以 blueway@sip.csie.ncyu.edu.tw 為例。如圖 12
+輸入完成後按下 Connect 鍵即出現成功註冊畫面。如圖 13
+圖 12 Client 軟體註冊畫面
+33
+圖 15 200 OK 封包
+同理，另ㄧ位 user：gyd@sip.csie.ncyu.edu.tw 也是依此步驟完成註冊動作。當線上存在 2
+位 users 以上即可開始進行 INVITE 要求。
+Step 3：
+請求畫面中，輸入欲通話的使用者名稱
+〈此以 blueway@sip.csie.ncyu.edu.tw 向 gyd@sip.csie.ncyu.edu.tw 邀請為例〉。輸入完成
+後按下 撥出。如圖 16
+Server 會依據受邀者的名稱在 sip_registrar.ini 中找到其註冊時所儲存的 IP 位址，接著將整
+個 INVITE 封包 forwarding 給受邀者。
+如圖 17、圖 18 所示
+圖 16 Client 軟體請求畫面
+35
+圖 19 受邀者畫面
+Send to SIP Server
+SIP/2.0 200 OK
+Via: SIP/2.0/UDP 140.130.174.124:10000
+From: <sip:blueway@sip.csie.ncyu.edu.tw>
+To: <sip:gyd@sip.csie.ncyu.edu.tw>
+Call-ID: blueway@sip.csie.ncyu.edu.tw
+CSeq: 1 INVITE
+Contact: <sip:blueway@140.130.175.2>
+Expires: 7200
+Content-Length: 0
+圖 20 gyd@sip.csie.ncyu.edu.tw 回傳的 200 OK 封包
+Receive from SIP Server
+SIP/2.0 200 OK
+Via: SIP/2.0/UDP 140.130.174.124:10000
+From: <sip:blueway@sip.csie.ncyu.edu.tw>
+To: <sip:gyd@sip.csie.ncyu.edu.tw>
+Call-ID: blueway@sip.csie.ncyu.edu.tw
+CSeq: 1 INVITE
+Contact: <sip:blueway@140.130.175.2>
+Expires: 7200
+Content-Length: 0
+37
+4.2 遭遇困難與解決方法
+在這次專題實驗剛起步時，我們對於 SIP 的了解並不算多因此有好長的一段時間我們是花在
+研讀 Paper 上面，但是卻一心想要快點動手進行。後來開始動手實作時，卻發現許多的問題
+瓶頸慢慢浮現。我們把它紀錄如下：
+封包解析 ：
+這個部份是我們花最多時間去研究及實驗的。剛開始為了要設計一個能夠解析 SIP 封包
+的 Server 程式時，我們採用 Windows Messenger 5.1 這個支援 SIP 通訊的軟體來測試。在
+測試的過程中我們也嘗試用 Ethereal 這個封包監控程式來協助，但是始終無法通過 Server
+的 packageparse( )副程式，後來研究的結果發現問題出在Messenger的封包上面。Windows
+Messenger 事實上使用的是“自訂的”SIP規格，意思就是它雖然可以與一般的 SIP 通訊軟體
+互相溝通，但是它在封包上面增加了幾個不影響通話的訊息欄位，如 epid、tag 等，這使得
+我們根據 RFC 2543 所撰寫設計的 Server 程式無法解析出這額外的欄位。瞭解這個癥結後，
+我們又再度的修改 Server 程式使其額外再解析這幾個欄位才完成這個最主要的功能。
+NAT ：
+因為我們 Server 程式主機並非架設在身邊，因此每次測試時皆需要採用遠端連線的模
+式，這產生了虛擬 IP 無法穿透 NAT 的問題。而這個穿透 NAT 問題並不在我們這次的研究
+範圍中，因此我們就盡量使用具實體 IP 的機器來做測試。
+Client 端連結 RTP ：
+39
+第五章 結論與未來展望
+這次的專題實做整合了 VOIP、SIP Server 的各項優點及功能，實現了
+②設計模擬定位資料服務（Location Server）功能。
+②設計模擬註冊位置服務（Registration Server）功能。
+②設計模擬路徑重導向服務（Redirect Server）功能。
+②設計 SIP 響訊封包之解析與複製、重導（Proxy）與儲存方法。
+②設計 RTP 語音封包即時之重導（Proxy）功能。
+②開發檢調單位人員之截聽與側錄設備的交談式（或交錯式）RTP 語音封包播放
+機制。
+②完成 SIP 伺服器軟硬體平台與截聽與側錄機制之整合與測試。
+②模擬在 WAN 中實現監聽側錄的功能。
+並發開使用者容易上手的使用者介面，讓除了發發者以外的使用者皆能輕易的利用這套網路
+電話伺服系統來進行語音交談。
+在未來，我們將會朝著強化這套監聽伺服系統的想法邁進。基於目前的系統監聽者必須
+透過向 Server 取得可疑人物的資料列表( List )然後根據資料來決定監聽的對象，這樣的作法
+除了是對 Server 產生一種額外的負擔外，對於監聽者而言也不太容易上手。因此
+②建立網頁伺服器於 SIP 網路電話伺服器以提供檢調單位以 HTTP 方式進行監測。
+②設計互動網頁機制以提供 SIP 響訊及 RTP 語音封包即時傳送與重導。
+41
+參考文獻
+[1] J. Roseberg, SIP: Session Initiation Protocol, RFC 3261, June 2002.
+[2] R. Fielding, HTTP/1.1: Hypertext Transfer Protocol, RFC 2616, June 1999.
+[3] Audio-Video Transport Working Group, RTP: A Transport Protocol for Real-Time Application,
+RFC 1889, Jan 1996.
+[4] M. Handley, SDP: Session Description Protocol, RFC 2327, Apr 1998.
+[5] Jon Crowcroft, Siptrex, CS of UCL, Sep 2001.
+[6] SAMSUNG, S3C4510B Hardware Specification, Mar 2004
+[7] R. u. Rehman, The Linux Development Platform, Prentice Hall PTR, Sep 2002.
+[8] Sean Walton, Linux Socket Programming, SAMS Publishing, 2001.
+[9] James F. Kurose, Computer Networking second edition, Addison Wesley, July 2002.
+[10] Daniel Collins, Carrier Grade Voice Over IP, The McGraw-Hill Companies Inc, 2003.
+[11] 賈文康，“網路電話合法監聽架構之設計”， 2003
+[12] 宫一鸣，”网络监听技术概览”，2002 年 4 月
+[13] 李傳亮, TCP/IP 網路實驗程式設計, 全華科技圖書股份有限公司.
+[14] 賈蓉生, C 語言入門與網路程式設計第二版, 文魁資訊股份有限公司, Dec
+2003
+[15] 江義華, JAVA 完美經典,金禾資訊股份有限公司, 2003
+43
+附錄
+附錄一 SIPServer subroutines 規格說明
+副程式名 response_generater( )
+參數數量 3
+參數型態 int, int, int
+輸入參數 chkcmdno、chklocfind、chklocfind2
+參數作用 1. check command number
+2. check location find by To
+3. check location find by From
+回傳值型態 int
+回傳值名稱 chkresgen
+回傳值作用 check response generater
+檔案職責 產生 SIP 封包
+副程式名 location_find( )
+參數數量 0
+參數型態 int
+參數名稱 none
+45
+參數名稱 none
+參數職責 none
+回傳值型態 int
+檔案職責 初始化 sip_register.ini 檔
+檔名 sip_registrar.ini
+欄位 1 使用者名稱
+欄位 2 使用者 IP
+欄位 3 使用之 port
+欄位 4 使用者所在網域的 Domain Name
+欄位 5 Expire 時間
+檔案職責 記錄使用者名稱及使用者所在網域的 Domain
+Name 和時間
+檔名 callsetup.ini
+欄位 1 通話日期時間
+欄位 2 邀請者名稱
+欄位 3 受邀者名稱
+檔案職責 記錄使用者的通話時間及對象
+47
+6. SIP Server IP(備用參數)
+7. SIP Server Port(備用參數)
+回傳值型態 none
+回傳值名稱 none
+檔案職責 負責封包建立及傳遞，呼叫建立 Phone
+副程式名 Target
+參數數量 3
+參數名稱 localPort、ip、port
+參數職責 1. Rtp 使用之 Local port
+2. Rtp 之目的 IP
+3. Rtp 之目的 Port
+回傳值型態 none
+回傳值名稱 none
+檔案職責 記錄傳遞 RTP 的目標資料
+副程式名 AVReceiver
+參數數量 2
+參數名稱 rx、targets
+49
+參數職責 1.目標 User
+2.本地之使用 Port
+3.目標 IP
+4.目標 Port
+5.目前 TargetList(供 AVT 及 AVR 使用)
+6.目前 Targets
+7.移除鍵主體
+回傳型態 none
+回傳值名稱 none
+檔案職責 加入新 Target 時，負責即時更新目前傳送清單
+副程式名 Phone
+參數數量 1
+參數名稱 conSocket
+參數職責 已建立之 ConnectSocket 主體
+回傳值型態 none
+回傳值名稱 none
+檔案職責 電話介面，包含一個通話鈕及一受話者帳號欄
+位
+51
+參數名稱 none
+參數職責 none
+回傳值型態 none
+回傳值名稱 none
+檔案職責 接收 RTP 的使用者介面
+附錄三 SIP 架構 Source Code 附件於光碟。

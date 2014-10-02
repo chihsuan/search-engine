@@ -1,0 +1,1613 @@
+ii 
+ 
+ 
+中文摘要 
+ 
+ 
+    多視角視訊壓縮(Multiview Video Coding, MVC)於 2006 年 7 月開始被列入 JVT (Joint Video 
+Team) H.264 延伸計畫中，於 2007 年 10 月多視角視訊亦被加入 ITU 網路電視(IPTV)服務選項，而
+標準制定則正在進行中，由此可見多視角系統在現今的重要性。由於 H.264 MVC 系統不僅採用
+H.264 編碼且包含了視角上的參考，以提高了壓縮效率，卻也大幅地提升編碼複雜度，因此有效地
+降低 MVC 計算複雜度為重要的研究議題。然而先前文獻上有關多視角視訊編碼的運算量化簡演算
+法，較少針對多視角視訊軟體中的編碼工具：運動跳躍模式(Motion Skip Mode, MS)開啟下，利用快
+速區塊模式決策進行編碼。因此本計畫提出在運動跳躍模式開啟之下，編碼非錨圖框(Non-Anchor 
+Picture)時，利用區塊的運動向量決策是否進行 MS 模式並與傳統區塊模式進行區塊模式決策加速。
+實驗結果證明本計畫所提出之方法對於大部分的視訊序列於非錨圖框編碼中能節省運算複雜度且
+維持 R-D 效能。 
+ 
+關鍵詞：多視角視訊壓縮、運動向量跳躍模式、非錨圖框、區塊模式決策 
+ 
+ 
+英文摘要 
+ 
+ 
+In July 2006 the Joint Video Team (JVT) started working on the multiview video coding (MVC) 
+extension for H.264 video. In Oct. 2007 multiview video has also been added as an option in ITU Internet 
+protocol TV (IPTV) service. And they are also standardizing MVC now. So it shows that multiview video 
+system is getting more attention in recent years. The H.264 MVC extension achieves excellent coding 
+efficiency by not only inheriting from H.264 video standard but also incorporating new tools for inter-view 
+prediction. As a result, a huge amount of computational complexity is involved, and how to reduce the 
+complexity of encoding process becomes an important issue. In previous work, few of researches considered 
+the fast mode decision in MVC coding tools: Motion Skip mode enabled. In this project, we speed up the 
+MVC inter-view coding by proposing a fast block mode decision for the MVC Non-anchor pictures with 
+motion skip (MS) mode enabled. Experimental results show that our proposed method can reduce the 
+complexity while keeping R-D performances in some sequences for MVC non-anchor picture encoding.  
+ 
+Keywords: Multiview video coding (MVC), Motion skip mode, Non-Anchor picture, Mode decision 
+ 
+ 
+2 
+ 
+ 
+三、 文獻回顧 
+ 
+隨著電腦視覺理論的進步，接近人類視覺的影像處理技術已漸漸出現在目前的多媒體應用中。而
+傳統單一攝影機的二維畫面更加上時間之資訊擴展到多個攝影機的二維畫面資訊、時間與空間之多視
+角資訊，如圖 3.1，Tanimoto [1]說明了視訊系統演進流程，從標準數位化電視提高像素為高畫質數位
+電視；而未來則增加視角，由單隻攝影機提升到多隻攝影機共同拍攝、描述場景，如此將提供自由(多)
+視角之視訊內容，或是符合人類視覺之三維立體影像畫面。多視角視訊而基於此類影像的發展，ISO/IEC 
+MPEG 和 ITU-T VCEG 特別成立了一個聯合視訊組織(Joint Video Team)藉以共同開發一個可供使用者
+任意選擇觀看視角之多視角視訊編解碼技術，而多視角視訊的開發則建構於 MPEG-4 AVC/H.264 標準
+之上，多視角視訊草案仍有許多需要改進的地方，故其標準正由 JVT 制定中[2]。 
+ 
+ 
+圖 3.1 數位視訊系統之演進 
+ 
+More image-based More geometry-based
+Ray-space/
+Light-field
+rendering
+Lumigraph
+Layered-
+Depth 
+images
+Sprites
+View-dep. 
+Texture.
+View-dep. 
+Geometry
+Static 
+Texture. 
+View-dep. 
+Geometry
+View-dep. 
+Texture. 
+Single 
+Geometry
+Static 
+Texture 
+Single 
+Geometry
+Incarnations of 3D model
+WarpingInterploation Conventional graphics pipeline
+ 
+圖 3.2 場景描繪與壓縮演算法之分佈圖 
+ 
+由於多視角系統為多個影像擷取設備對同一場景拍，故依照場景壓縮方式之演算法可大致區分為
+兩大類[3]，如圖 3.2。第一類以幾何基底之電腦 3D 圖學壓縮演算法，目的在將物件模組化，其需要在
+二維平面中將物件擷取出，並將資料建立在三維矩陣中，但實做物件擷取演算法時，如何辦定物件或
+是背景，及所屬物件需要擷取到多細微資訊並不容易，故多僅適用在背景簡單、運動物件較少之場景，
+然而 3D 圖學卻可提供較進階的應用，例如全角度觀看與背景及物件的重繪和修改等；第二類為單純利
+用畫面資訊以影像基底進行場景壓縮方式，適用於背景較為複雜、物件較繁多的場景。在文獻上，此
+類以影像基底壓縮方式又可分成使用傳統視訊壓縮方式，如 MPEG 或 H.26x 系列之壓縮標準，或是將
+多視角畫面經由轉換到 Ray space 而進行壓縮。故以下文獻將針對 MPEG 或 H.264 壓縮標準實作多視
+角視訊壓縮系統作討論。 
+ 
+4 
+ 
+ 
+    
+(a)KS_IPP                               (b)KS_PIP 
+    
+          (c)KS_IBP                   (d) Hierarchical B Picture (HBP) 
+ 
+(e) Hierarchical B Picture modified (HBP modified) 
+圖 3.5  常見之多視角壓縮結構 
+ 
+6 
+ 
+此資訊判別以何種模式進行編碼或是否能達到快速跳出(Early Skip)；以上的方法對於多視角視訊的編
+碼速度雖能大大的提升，但對於錨圖框與非錨圖框的區別卻沒有詳細的敘述。Yu[13]將錨圖框與非錨
+圖框分開敘述，錨圖框利用原始的演算法求出 GDV 資訊後非錨圖框可利用此資訊再利用所對應的參考
+圖框中鄰近的八個區塊的相關性做為區塊模式決策的依據；而 Peng[19]更將多視角視訊結構區分為四
+個區域 1C 、 2C 、 3C 、 4C 如圖 3.7， 1C 為基底視角中錨圖框沒有任何參考畫面的畫面， 2C 為基底視角
+中非錨圖框的畫面， 3C 為錨圖框中除了 1C 部分的其他畫面， 4C 為非錨圖框中除了 4C 的其他畫面，而
+此篇中作者較著重於非錨圖框 2C 與 4C 之研究，在 2C 中，也就是傳統的 H.264 編碼，作者統計了所有模
+式 R-D cost 的分佈，再利用此分佈所得的平均值與現今畫面同一模式之 R-D cost 做比較，以達到快速
+跳出；而在 4C 中利用參考區塊鄰近區塊各模式的成本函數做為比較的依據，進而達到快速跳出。以上
+的多視角視訊快速區塊模式決策機制，雖具有達到減少運算量的效果，但都未考慮運用編碼工具中的
+MS 模式演算法之概念，以減少區塊模式與 MS 模式決策之運算複雜度並維持視訊效能。 
+ 
+I0 B3 B2 B3 B1 B3 B2 B3
+B1 b4 B3 B2
+P0 B3 B2 B1
+B1 b4 B3 B2
+P0 B3 B2 B1
+B1 b4 B3 B2
+P0 B3 B2 B1
+P0 B3 B2 B1
+Time
+V
+ie
+w 0T 1T 2T 3T 4T 6T 7T5T
+0S
+1S
+2S
+3S
+4S
+6S
+5S
+7S
+I0
+B1
+P0
+B1
+P0
+B1
+P0
+P0
+8T
+b4
+B3
+b4
+B3
+b4
+B3
+B3
+b4 B3
+B3 B2
+b4 B3
+B3 B2
+b4 B3
+B3 B2
+B3 B2
+b4
+B3
+b4
+B3
+b4
+B3
+B3
+1C
+2C
+3C
+4C
+ 
+圖 3.7 多視角視訊結構分區 
+ 
+3.2.3 亮度與彩度補償 
+每台攝影機的特性不同，例如光圈與焦距造成景深問題，且感光元件也不盡相同，因此不同攝影
+機對同一場景拍攝畫面，感光度會有些微的差異；或是攝影機的擺設位置受到其他光源反射、散射或
+是繞射的影響。為了消除光源不均造成區塊位移匹配上冗餘值提高，故 Joaqin[20]提出以區塊大小為基
+準的亮度補償模式，將不均勻光源所造成資料量上升的影響，利用計算區塊內平均差值、標準差估測
+不均勻光源的影響並將其消除，但每編碼區塊需獨立計算，雖增加運算量，但也提高壓縮效率。在國
+際電信聯盟(ITU-T)與 MPEG 開會中[21]提出在錨圖框中利用參考區塊的亮度平均值與現今畫面的亮度
+平均值做相減，此即為亮度的變化(DVIC)，編碼的同時將每個區塊中的 DVIC 補償回來，以達到亮度
+補償的效果並增加壓縮效率，而此編碼工具更在同年開會將其納入參考程式中[22]；而在彩度補償方面，
+國際電信聯盟(ITU-T)與 MPEG 開會中雖提出亮度補償的考量，但在彩度方面因人眼視覺對於色彩具有
+高度的敏銳度，故國際電信聯盟(ITU-T)與 MPEG 開會[23]提出在錨圖框中利用現今畫面的鄰近區塊做
+預測以找出適合的參考補償區塊，以達到高品質的壓縮效率，但其可補償的區塊僅限於錨圖框中 P 畫
+面包含 SKIP 與 16x16 編碼模式之區塊。 
+ 
+8 
+ 
+3.5 多視角視訊之應用研究 
+多視角視訊的應用相當廣泛，在影像處理辨識應用上，不僅可利用時間上的運動資訊及二維影像
+之色彩、形狀、大小和邊緣訊息，進而可加上深度的測量與視角等訊息，如此可應用在 3DTV[35]、網
+路電視[36]服務選項中 FVV (Free Viewpoint Video)之功能及場景監測與物體 3D 追蹤等。在 3DTV 應用
+如圖 3.9 中，首先由多部攝影機擷取畫面，經由編解碼，在接收端利用解碼後的影像產生如左右眼的
+3D 影像而播放在 3D 播放器中；以 FVV 應用來說，是首先由名古屋大學 Masayuk Tanimoto 教授在 2002
+年發表[37]相關的系統架構，其實驗的環境如圖 3.10，右側平臺上排列成弧形的元件為攝影機，左側
+魚缸為拍攝的場景。功能如圖 3.11 所示，觀看者可自由的選取視角，並且可隨意的放大、縮小，達成
+更人性化的觀看效果。另外 Microsoft 也開發出了多視角觀看系統[38]，包含了更友善的使用者介面與
+具彈性的觀看模式。而 Xu[39]將多視角監測運用在球場上，如此一來可彌補裁判因個人視角的侷限而
+產生的人為過失，並且可配合場地特徵點之擷取，將各球員於球場上相對位置描繪出，並紀錄球員移
+動軌跡，以利之後戰術分析，其成果如圖 3.12。 
+ 
+圖 3.9  3DTV 流程圖 
+ 
+圖 3.10  FTV 實驗系統  圖 3.11  FTV 建造之虛擬視角影像  
+ 
+圖 3.12  場景監測之畫面 
+10 
+ 
+× × ×
+× × ×
+× × ×
+The inter-view reference 
+picture
+×
+× × × ×
+×
+×
+×
+×
+×
+×
+× × ×× ×
+× × × ××
+× × × ××
+× × × ××
+× × × ××
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+×
+16 pixel   
+圖 4.2 MS 模式細搜範圍 
+ 
+對於 MS 模式的必要性，我們也針對三個視訊序列中每個視角前五個 GOP(一個 GOP 為八張影像)
+作程式運算，對於開啟 MS 模式與關閉 MS 模式做 R-D Cost 的統計如表 3.1~3.3，我們可以知如開啟
+MS 模式則 PSNR 最多可上升 0.39dB，更可下降至多 15%的 Bit rate，由此可知，MS 模式可有效提升
+編碼效率，故我們將於 MS 模式開啟下模擬我們所提出之方法，並達到快速決策 MS 模式為目的。 
+表 4.1 (a) Ballroom 視訊序列 QP20 MS 模式開啟與關閉比較 
+Ballrooom(QP20) View1 View2 View3 View4 View5 View6 View7 
+MS 
+Enabled 
+PSNR(dB) 40.26 40.59 40.60 40.52 41.12 39.99 40.47 
+Bitrate(kbits) 2331.53 2416.20 2226.04 2634.04 2058.18 2868.63 2699.50 
+MS 
+Disabled 
+PSNR(dB) 40.23 40.58 40.58 40.50 41.08 39.98 40.44 
+Bitrate(kbits) 2359.75 2437.00 2242.07 2653.22 2080.42 2909.87 2709.86 
+Gain PSNR(dB) 0.03 0.01 0.02 0.02 0.04 0.01 0.03 
+Bitrate(%) -1.2 -0.8 -0.7 -0.7 -1.0 -1.4 -0.4 
+(b) Ballroom 視訊序列 QP36 MS 模式開啟與關閉比較 
+Ballrooom(QP36) View1 View2 View3 View4 View5 View6 View7 
+MS 
+Enabled 
+PSNR(dB) 32.74 32.92 32.49 32.29 33.08 32.63 31.94 
+Bitrate(kbits) 220.65 277.21 212.68 298.90 224.92 294.26 293.51 
+MS 
+Disabled 
+PSNR(dB) 32.73 32.93 32.48 32.28 33.09 32.63 31.93 
+Bitrate(kbits) 236.24 288.00 224.91 313.29 243.88 311.86 304.73 
+Gain PSNR(dB) 0.01 -0.01 0.01 0.01 -0.01 0 0.01 Bitrate(%) -7.0 -3.9 -4.8 -4.8 -7.9 -4.9 -3.8 
+ 
+表 4.2(a) Exit 視訊序列 QP20 MS 模式開啟與關閉比較 
+Exit(QP20) View1 View2 View3 View4 View5 View6 View7 
+MS 
+Enabled 
+PSNR(dB) 40.97 41.17 41.21 41.00 41.01 40.56 40.99 
+Bitrate(kbits) 1434.91 1491.34 1374.68 1684.89 1682.15 2269.60 1937.07 
+MS 
+Disabled 
+PSNR(dB) 40.94 41.15 41.17 40.97 40.98 40.54 40.96 
+Bitrate(kbits) 1457.13 1512.54 1392.30 1706.69 1714.98 2298.99 1964.63 
+Gain 
+PSNR(dB) 0.03 0.02 0.04 0.03 0.03 0.02 0.03 
+Bitrate(%) -1.5 -1.4 -1.2 -1.2 -2.0 -1.2 -1.4 
+(b) Exit 視訊序列 QP36 MS 模式開啟與關閉比較 
+Exit(QP36) View1 View2 View3 View4 View5 View6 View7 
+MS 
+Enabled 
+PSNR(dB) 34.46 34.50 34.33 34.95 34.11 34.34 34.35 
+Bitrate(kbits) 94.45 120.20 110.84 147.39 130.62 193.71 164.03 
+MS 
+Disabled 
+PSNR(dB) 34.41 34.48 34.28 34.94 34.04 34.33 34.30 
+Bitrate(kbits) 101.07 124.42 118.58 152.87 139.88 199.13 172.54 
+Gain PSNR(dB) 0.05 0.02 0.05 0001 0.07 0.01 0.05 Bitrate(%) -4.9 -3.5 -6.9 -3.7 -7.0 -2.8 -4.2 
+12 
+ 
+ 
+ 
+(a) Ballroom QP20 區塊模式分佈   (b) Ballroom QP36 區塊模式分佈 
+圖 4.3 Ballroom 視訊序列在不同 QP 下之區塊模式分佈 
+ 
+ 
+(a) Exit QP20 區塊模式分佈      (b) Exit QP36 區塊模式分佈 
+圖 4.4 Exit 視訊序列在不同 QP 下之區塊模式分佈 
+ 
+ 
+(b) Race1 QP20 區塊模式分佈      (b) Race1 QP36 區塊模式分佈 
+圖 4.5 Race1 視訊序列在不同 QP 下之區塊模式分佈
+Ballroom sequence QP20 mode distribution
+0
+100
+200
+300
+400
+500
+600
+700
+M
+OT
+IO
+NS
+KI
+P
+SK
+IP
+IN
+TE
+R1
+6x
+16
+IN
+TE
+R1
+6x
+8
+IN
+TE
+R8
+x1
+6
+IN
+TE
+R8
+x8
+IN
+TR
+A
+Mode
+N
+u
+m
+b
+er
+s
+S1T4
+S2T4
+S1T2
+S2T2
+Ballroom sequence QP36 mode distribution
+0
+200
+400
+600
+800
+1000
+1200
+M
+OT
+IO
+NS
+KI
+P
+SK
+IP
+IN
+TE
+R1
+6x
+16
+IN
+TE
+R1
+6x
+8
+IN
+TE
+R8
+x1
+6
+IN
+TE
+R8
+x8
+IN
+TR
+A
+Mode
+N
+u
+m
+b
+er
+s
+S1T4
+S2T4
+S1T2
+S2T2
+Exit sequence QP20 mode distribution
+0
+100
+200
+300
+400
+500
+600
+700
+M
+OT
+IO
+NS
+KI
+P
+SK
+IP
+IN
+TE
+R1
+6x
+16
+IN
+TE
+R1
+6x
+8
+IN
+TE
+R8
+x1
+6
+IN
+TE
+R8
+x8
+IN
+TR
+A
+Mode
+N
+u
+m
+b
+er
+s
+S1T4
+S2T4
+S1T2
+S2T2
+Exit sequence QP36 mode distribution
+0
+200
+400
+600
+800
+1000
+1200
+M
+OT
+IO
+NS
+KI
+P
+SK
+IP
+IN
+TE
+R1
+6x
+16
+IN
+TE
+R1
+6x
+8
+IN
+TE
+R8
+x1
+6
+IN
+TE
+R8
+x8
+IN
+TR
+A
+Mode
+N
+u
+m
+b
+er
+s
+S1T4
+S2T4
+S1T2
+S2T2
+Race1 sequence QP20 mode distribution
+0
+100
+200
+300
+400
+500
+600
+700
+800
+M
+OT
+IO
+NS
+KI
+P
+SK
+IP
+IN
+TE
+R1
+6x
+16
+IN
+TE
+R1
+6x
+8
+IN
+TE
+R8
+x1
+6
+IN
+TE
+R8
+x8
+IN
+TR
+A
+Mode
+N
+u
+m
+b
+er
+s
+S1T4
+S2T4
+S1T2
+S2T2
+Race1 sequence QP36 mode distribution
+0
+100
+200
+300
+400
+500
+600
+700
+800
+900
+1000
+M
+OT
+IO
+NS
+KI
+P
+SK
+IP
+IN
+TE
+R1
+6x
+16
+IN
+TE
+R1
+6x
+8
+IN
+TE
+R8
+x1
+6
+IN
+TE
+R8
+x8
+IN
+TR
+A
+Mode
+N
+u
+m
+b
+er
+s
+S1T4
+S2T4
+S1T2
+S2T2
+14 
+ 
+  
+(c) Race1 QP28 成本函數分佈        (d) Race1 QP32 成本函數分佈 
+ 
+(e) Race1 QP36 成本函數分佈 
+圖 4.7 Race1 視訊序列不同 QP 下成本函數分佈 
+ 
+如統計可知，SKIP 與 MS 模式在相同的 QP 值下保有一定的分佈，故我們利用 SKIP 模式與 MS
+模式 R-D cost 分佈平均和 QP 值的關係並利用回歸線的方式如圖 5.8-4.9，並統計每個變動 QP 下所對應
+之 R-D cost 並創造出回歸線(4.1)式與(4.2)式，利用(4.1)式與(4.2)式定義我們所需決策的 SKIP 模式門檻
+值 Th1 與 MS 模式門檻值 Th2，其每個 QP 所對應值門檻值結果為表 3.4。 
+ 
+ 
+圖 4.8 SKIP 成本函數統計曲線 
+ 
+Race1 QP28 SKIP MS RD-cost distribution
+0
+2000
+4000
+6000
+8000
+10000
+12000
+14000
+16000
+4 2 1 3 6 5 7
+Temp
+R
+D
+ c
+o
+st
+SKIP v1
+SKIP v2
+MS v1
+MS v2
+Race1 QP32 SKIP MS RD-cost distribution
+0
+5000
+10000
+15000
+20000
+25000
+30000
+35000
+40000
+45000
+4 2 1 3 6 5 7
+Temp
+R
+D
+ c
+o
+st
+SKIP v1
+SKIP v2
+MS v1
+MS v2
+Race1 QP36 SKIP MS RD-cost distribution
+0
+10000
+20000
+30000
+40000
+50000
+60000
+70000
+80000
+4 2 1 3 6 5 7
+Temp
+R
+D
+ c
+o
+st
+SKIP v1
+SKIP v2
+MS v1
+MS v2
+SKIP回歸線統計
+0
+2000
+4000
+6000
+8000
+10000
+12000
+14000
+0 10 20 30 40 50
+QP
+R
+-
+D
+ 
+c
+o
+s
+t
+16 
+ 
+4.2.2 區塊編碼模式決策加速 
+從先前的統計得知，SKIP 模式所佔比例極高，故我們以決策如何達到快速跳出為主，其次 MS 模
+式會因 QP 值的升降影響而增減，故我們也將以如何能夠靈活運用 MS 模式決策，以達到減少編碼複雜
+度。我們將流程分為兩個部份，一為利用 16x16 編碼模式判別之第一階段 MS 模式決策；而 8x8 模式
+在影像中佔了不少比例，故第二階段為利用 8x8 編碼模式判別之 MS 模式決策，事先決策是否進行 MS
+模式或是繼續進行較小區塊模式的運算。第一階段中，開頭先利用 SKIP 模式的成本函數與門檻值 TH1
+比較，如小於門檻值，則達到快速跳出；接著我們做 16x16 模式，並計算出 16x16 模式對於時間軸與
+視角上的 R-D cost Costtemp 和 Costview 與運動向量 MV16x16temp 和位移向量 DV16x16view，分別比較 R-D 
+cost 與運動向量之大小，如 Costtemp 大於 Costview或者 MV16x16temp大於 DV16x16view與 GDV 之差值
+時則利用 MS 模式繼續編碼，反之則略過 MS 模式而利用 8x8 模式編碼，而在 MS 模式中，如 R-D cost
+小於一門檻值 TH2，則快速跳出決策最佳模式，否則則繼續以 8x8 模式編碼，做完 8x8 編碼模式後，
+我們將從時間軸上得到四個運動向量 mv0、mv1、mv2、mv3(如圖 4.10)與時間軸與視角上的兩個 R-D cost 
+Cost8x8temp 和 Cost8x8view，而此時則準備執行下一階段。 
+在第二階段中，我們先比較 8x8 所求出之兩個 R-D cost，如視角上的 R-D cost 較小，則利用 MS
+模式做編碼，反之則再利用 16x16 的 R-D cost 與 8x8 的 R-D cost 比較，如 16x16 較大則決策做 16x8、
+8x16 反之則做 sub 8x8，而 MS 模式也與門檻值 TH2 比較，如較小則直接快速跳出，否則則繼續執行
+16x8、8x16 或是 sub 8x8，而對於 16x8 與 8x16，我們則利用 8x8 中所求得之運動向量，並利用(4.3)式
+與(4.4)式得到 MVrow 與 MVcol，將兩值做比較如 MVrow 較大則執行 16x8，反之則執行 8x16；最後則利
+用 SKIP 模式與 16x16 編碼模式間的關係，比較是否要執行框內編碼，而圖 4.11 為此編碼流程圖。 
+ 
+(mv0x,mv0y) (mv1x,mv1y)
+(mv2x,mv2y) (mv3x,mv3y)
+ 
+圖 4.10 8x8 編碼模式運動向量 
+ 
+0 1 2 3
+0 1 2 3
+0 2 1 3
+0 2 1 3
+( ) ( )
+( ) ( )
+( ) ( )
+( ) ( )
+rowx x x x x
+rowy y y y y
+colx x x x x
+coly y y y y
+MV abs mv mv abs mv mv
+MV abs mv mv abs mv mv
+MV abs mv mv abs mv mv
+MV abs mv mv abs mv mv
+= − + −
+= − + −
+= − + −
+= − + −
+，           (4.3) 
+row rowx rowy
+col colx coly
+MV MV MV
+MV MV MV
+= +
+= +
+。                    (4.4) 
+ 
+  
+18 
+ 
+ 
+五、 結果與討論 
+ 
+本實驗針對包含 MS 模式之非錨圖框執行區塊模式決策加速，我們將討論演算法對壓縮效能的影
+響。區塊模式決策加速主要在於影響於非錨圖框之編碼效能，故我們將描繪出整個視訊序列之位元率-
+失真曲線(Rate-Distortion Curve, R-D Curve)，以顯示演算法壓縮效能與適用之條件，並將決策時間統計
+出來並與 JMVM 做比較。 
+ 
+5.1 實驗環境與參數設定 
+在實驗的模擬環境上，我們於 Intel Core 2 Duo CPU 2.66GHz、2GB RAM、作業系統為 Microsoft 
+Windows XP 環境下，以 Visual Studio .NET 2003 編譯 JMVM 8.1 程式。圖 5.1 為本計畫所測試的視訊
+序列樣本圖，依序為 Ballroom 與 Exit 由三菱電子研究室(Mitsubishi electric research laboratories,MERL)
+製作；Flamenco2 和 Race1 由日本電信公司 KDDI 錄製；Uli 由德國 HHI(Heinrich-Hertz-Institute)研究
+所拍攝，其各自屬性如表 4.1。各視訊序列之屬性與編碼參數設定如表 4.2。 
+ 
+         
+(a)                 (b)                  (c) 
+     
+(d)                  (e) 
+圖 5.1 各測試視訊序列視角 0 第 0 張樣本圖 
+表 5.1 多視角測試視訊序列屬性 
+Data Set  Sequences Total  Frame Image Property Camera Arrangement 
+MERL Ballroom, Exit 250 
+640×480, 25fps 
+(rectified) 
+8 cameras with 20cm spacing; 
+1D/parallel 
+HHI Uli 250 1024×768, 25fps (non-rectified) 
+8 cameras with 20cm spacing; 
+1D/parallel convergent 
+KDDI Race1 300 640×480, 30fps  (non-rectified) 
+8 cameras with 20cm spacing; 
+1D/parallel (Panning Camera) 
+KDDI Flamenco2 300 640×480, 30fps  (non-rectified) 
+5 cameras with 20cm spacing; 
+2D/parallel (Cross) 
+表 5.2 編碼參數設定 
+IntraPeriod 8 
+GOPSize 8 
+SearchRange 64 
+Frame to be encoded Total frames 
+Coding structure 圖 5.2-5.3 
+MotionSkipMode Enable 
+ICMode Disable 
+20 
+ 
+flamenco2 與會旋轉攝影機的 Race1 其差異量較大。而與 Peng[17]比較可以發現我們所提出之演算法較
+優於 Peng 所提出之方法，原因在於其所提出之方法未分析包含 MS 模式 RD-cost 之統計，該法對於
+MVC 系統在 MS 模式開啟時，可能因無法判斷執行 MS 模式與否，而提早於 SKIP 模式決策中快速跳
+出，故其編碼效率較為不理想。 
+ 
+(a)view1                         (b)view2 
+ 
+(c)view3                         (d)view4 
+ 
+(e)view5                         (f)view6 
+ 
+(g)view7 
+圖 5.4 Ballroom 視訊序列 Proposed method、Peng[17]與 JMVM 之 R-D 曲線比較 
+0 500 1000 1500 2000 2500
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+Ballroom sequence of View1 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+0 500 1000 1500 2000 2500
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+Ballroom sequence of View2 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+0 500 1000 1500 2000 2500
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+Ballroom sequence of View3 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+0 500 1000 1500 2000 2500
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+Ballroom sequence of View4 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+0 200 400 600 800 1000 1200 1400 1600 1800 2000
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+Ballroom sequence of View5 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+0 500 1000 1500 2000 2500 3000
+32
+33
+34
+35
+36
+37
+38
+39
+40
+Ballroom sequence of View6 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+0 500 1000 1500 2000 2500 3000
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+Ballroom sequence of View7 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+22 
+ 
+ 
+(a)view1                         (b)view2 
+ 
+(c)view3                         (d)view4 
+圖 5.6 Flamenco2 視訊序列 Proposed method、Peng[17]與 JMVM 之 R-D 曲線比較
+200 400 600 800 1000 1200 1400 1600 1800 2000
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+Flamenco2 sequence of View1 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+0 500 1000 1500 2000 2500
+32
+34
+36
+38
+40
+42
+44
+Flamenco2 sequence of View2 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+0 500 1000 1500 2000 2500
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+Flamenco2 sequence of View3 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+0 500 1000 1500 2000 2500
+32
+34
+36
+38
+40
+42
+44
+Flamenco2 sequence of View4 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+24 
+ 
+ 
+(a)view1                         (b)view2 
+ 
+(c)view3                         (d)view4 
+ 
+(e)view5                         (f)view6 
+ 
+(g)view7 
+圖 5.8 Race1 視訊序列 Proposed method、Peng[17]與 JMVM 之 R-D 曲線比較 
+0 200 400 600 800 1000 1200 1400 1600 1800 2000
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+Race1 sequence of View1 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+0 500 1000 1500 2000 2500
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+Race1 sequence of View2 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+0 200 400 600 800 1000 1200 1400 1600 1800
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+Race1 sequence of View3 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+200 400 600 800 1000 1200 1400 1600 1800 2000
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+Race1 sequence of View4 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+0 500 1000 1500
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+Race1 sequence of View5 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+0 500 1000 1500 2000 2500 3000
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+Race1 sequence of View6 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+0 500 1000 1500 2000 2500
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+Race1 sequence of View7 RD curve
+kbps
+P
+S
+N
+R
+ 
+ 
+JMVM
+Proposed
+Peng[17]
+26 
+ 
+表 5.5 Flamenco2 視訊序列 Proposed method 減 Peng[17]/JMVM 之 PSNR 與 BR 
+Sequence QP Gain View1 View2 View3 View4 Average 
+Flamenco2 
+20 
+PSNR(dB) -0.09/-0.19  -0.05/-0.14 -0.06/-0.15 -0.06/-0.16 0.08/-0.16 
+BR(%) -0.01/2.89 -0.01/2.37 -0.01/2.32 0.00/2.35 -0.06/2.49 
+24 
+PSNR(dB) -0.05/-0.16 -0.03/-0.12 -0.03/-0.12 -0.03/-0.12 -0.03/-0.13 
+BR(%) -0.01/3.53 -0.01/3.17 -0.01/3.13 0.00/3.20 -0.01/3.25 
+28 
+PSNR(dB) -0.01/-0.14 -0.01/-0.1 0.01/-0.11 0.00/-0.1 0.00/-0.11 
+BR(%) -0.02/4.29 -0.01/4.11 -0.01/4.03 0.00/4.36 -0.01/4.19 
+32 
+PSNR(dB) 0.02/-0.14 0.04/-0.10 0.05/-0.09 0.04/-0.11 0.04/-0.11 
+BR(%) -0.04/4.73 -0.02/4.94 -0.02/4.94 0.00/4.07 -0.02/4.92 
+36 
+PSNR(dB) 0.08/-0.13 0.10/-0.09 0.12/-0.09 0.12/-0.1 0.11/-0.1 
+BR(%) -0.06/4.34 -0.04/4.05 -0.03/4.05 0.01/4.57 -0.04/4.00 
+ 
+表 5.6 Uli 視訊序列 Proposed method 減 Peng[17]/JMVM 之 PSNR 與 BR 
+Sequence QP Gain View1 View2 View3 View4 View5 View6 View7 Average 
+Uli 
+20 
+PSNR(dB) 0.06/-0.05 0.02/-0.04 0.04/-0.04 0.02/-0.06 0.04/-0.05 0.02/-0.04 0.03/-0.04 0.03/-0.05 
+BR(%) -0.02/1.85 -0.01/1.59 -0.02/1.88 -0.01/-1.44 -0.03/2.10 -0.01/1.59 -0.011.44 -0.01/1.70 
+24 
+PSNR(dB) 0.06/-0.06 0.02/-0.06 0.04/-0.05 0.02/-0.06 0.04/-0.07 0.02/-0.05 0.05/-0.04 0.04/-0.06 
+BR(%) -0.02/2.07 -0.01/1.56 -0.02/2.05 -0.01/1.55 -0.03/2.54 -0.01/1.60 -0.02/1.87 -0.02/1.89 
+28 
+PSNR(dB) 0.08/-0.07 0.04/-0.07 0.07/-0.06 0.06/-0.07 0.07/-0.09 0.05/-0.06 0.08/-0.05 0.06/-0.07 
+BR(%) -0.02/2.46 -0.01/1.75 -0.02/2.54 -0.02/1.89 -0.04/2.98 -0.01/1.90 -0.02/2.35 -0.02/2.27 
+32 
+PSNR(dB) 0.11/-0.07 0.06/-0.07 0.11/-0.07 0.11/-0.07 0.14/-0.11 0.10/-0.07 0.14/-0.05 0.11/-0.07 
+BR(%) -0.02/2.68 -0.02/1.84 -0.02/2.75 -0.03/1.64 -0.05/2.99 -0.02/1.82 -0.02/2.55 -0.03/2.32 
+36 
+PSNR(dB) 0.12/-0.08 0.12/-0.08 0.17/-0.09 0.18/-0.09 0.24/-0.11 0.17/-0.06 0.22/-0.07 0.17/-0.09 
+BR(%) -0.03/2.71 -0.03/1.50 -0.03/2.78 -0.05/1.43 -0.06/2.58 -0.03/1.50 -0.03/2.44 -0.04/2.14 
+ 
+表 5.7 Race1 視訊序列 Proposed method 減 Peng[17]/JMVM 之 PSNR 與 BR 
+Sequence QP Gain View1 View2 View3 View4 View5 View6 View7 Average 
+Race1 
+20 
+PSNR(dB) -0.1/-0.19 -0.07/-0.15 -0.08/-0.19 -0.13/-0.23 -0.13/-0.28 -0.04/-0.12 -0.07/-0.18 -0.09/-0.18 
+BR(%) -1.89/1.79 -1.64/1.64 -2.36/2.23 -1.02/2.57 -2.53/1.85 -0.89/2.22 -1.58/2.50 -1.70/2.06 
+24 
+PSNR(dB) -0.02/-0.13 0.00/-0.11 0.01/-0.15 -0.06/-0.18 -0.07/-0.25 0.01/-0.09 0.00/-0.14 -0.02/-0.14 
+BR(%) -2.42/1.53 -2.05/1.65 -2.65/2.18 -1.70/2.08 -3.03/1.64 -0.97/2.38 -1.99/2.05 -2.12/1.93 
+28 
+PSNR(dB) 0.01/-0.10 0.05/-0.08 0.06/-0.10 0.00/-0.14 0.03/-0.16 0.04/-0.07 0.05/-0.10 0.03/-0.11 
+BR(%) -2.98/1.77 -3.27/1.68 -3.03/2.58 -2.55/2.29 -4.63/1.64 -1.46/2.41 -2.73/2.11 -2.95/2.07 
+32 
+PSNR(dB) 0.09/-0.07 0.09/-0.07 0.08/-0.09 0.12-0.08 0.11/-0.12 0.08/-0.06 0.11/-0.09 0.09/-0.08 
+BR(%) -3.60/2.65 -4.96/1.99 -3.88/2.99 -4.66/2.76 -4.771/2.6 -2.89/2.59 -4.63/2.28 -4.34/2.55 
+36 
+PSNR(dB) 0.13/-0.07 0.14/-0.06 0.11/-0.06 0.18/-0.14 0.17/-0.11 0.13/-0.05 0.20/-0.07 0.15/-0.08 
+BR(%) -4.72/3.03 -7.67/2.35 -4.51/4.12 -8.01/3.70 -6.39/3.79 -4.66/2.69 -6.31/2.49 -6.04/3.17 
+ 
+28 
+ 
+表 5.9 Ballroom 視訊序列 Proposed method、Peng[17]與 JMVM 之區塊模式決策時間比較 
+Ballroom View1 View2 View3 View4 View5 View6 View7 Average 
+QP20 
+JMVM(ms) 31483 22280 30325 21461 30327 22527 21102 25644 
+Peng (ms) 11399 8598 11482 8688 11828 9451 8595 10006 
+Proposed(ms) 12405 8686 11954 8743 10969 9459 8966 10169 
+Time Saving (JMVM) 60.60% 61.01% 60.58% 59.26% 63.83% 58.01% 57.51% 60.11% 
+Time Saving (Peng) -8.83% -1.01% -4.11% -0.63% 7.27% -0.08% -4.32% -1.67% 
+QP24 
+JMVM(ms) 27394 19736 26957 19381 27494 19876 19298 22876 
+Peng (ms) 10713 8261 10487 8071 11262 8504 8135 9348 
+Proposed(ms) 10266 7041 10015 7257 9014 8046 7493 8447 
+Time Saving (JMVM) 62.52% 64.32% 62.85% 62.56% 67.21% 59.52% 61.17% 62.88% 
+Time Saving (Peng) 4.17% 14.77% 4.49% 10.09% 19.95% 5.40% 7.90% 9.54% 
+QP28 
+JMVM(ms) 27046 19650 26884 19128 27598 19576 19597 22783 
+Peng (ms) 10653 8022 10413 7863 11049 8230 7877 9158 
+Proposed(ms) 8732 6040 9112 6502 8237 6742 6762 7447 
+Time Saving (JMVM) 62.52% 64.32% 62.85% 62.56% 67.21% 59.52% 61.17% 62.88% 
+Time Saving (Peng) 18.03% 24.71% 12.49% 17.30% 25.45% 18.08% 14.15% 18.60% 
+QP32 
+JMVM(ms) 24553 18388 24223 17640 24817 17937 17493 20722 
+Peng (ms) 10206 7638 9998 7508 10482 7805 7492 8733 
+Proposed(ms) 8183 5630 8700 6113 7890 6114 6490 7017 
+Time Saving (JMVM) 62.52% 64.32% 62.85% 62.56% 67.21% 59.52% 61.17% 62.88% 
+Time Saving (Peng) 19.82% 26.28% 12.98% 18.58% 24.72% 21.66% 13.37% 19.63% 
+Qp36 
+JMVM(ms) 22908 16942 24092 17315 23984 17613 17239 20013 
+Peng (ms) 9405 7144 9243 7004 9601 7325 6946 8095 
+Proposed(ms) 7859 5400 8244 5789 7848 5866 6336 6763 
+Time Saving (JMVM) 62.52% 64.32% 62.85% 62.56% 67.21% 59.52% 61.17% 62.88% 
+Time Saving (Peng) 16.43% 24.41% 10.81% 17.38% 18.26% 19.92% 8.78% 16.57% 
+30 
+ 
+表 5.11 Flamenco2 視訊序列 Proposed method、Peng[17]與 JMVM 之區塊模式決策時間比較 
+Flamenco2 View1 View2 View3 View4 Average 
+QP20 
+JMVM(ms) 20083 19804 20082 20756 20181 
+Peng (ms) 9443 9423 9337 9643 9462 
+Proposed(ms) 5388 5984 5693 5950 5753 
+Time Saving (JMVM) 73.17% 69.78% 71.64% 71.33% 71.48% 
+Time Saving (Peng) 42.94% 36.49% 39.03% 38.30% 39.19% 
+QP24 
+JMVM(ms) 19510 19286 19522 20036 19588 
+Peng (ms) 8727 8693 8662 8900 8746 
+Proposed(ms) 4860 5298 5149 5278 5146 
+Time Saving (JMVM) 74.08% 74.52% 73.62% 73.65% 74.47% 
+Time Saving (Peng) 44.30% 39.04% 40.55% 40.69% 41.45% 
+QP28 
+JMVM(ms) 18672 18443 18540 18935 18647 
+Peng (ms) 8086 8075 8089 8265 8128 
+Proposed(ms) 4518 4765 4579 4726 4647 
+Time Saving (JMVM) 74.80% 74.16% 74.30% 74.04% 74.08% 
+Time Saving (Peng) 44.12% 40.99% 43.39% 42.82% 42.83% 
+QP32 
+JMVM(ms) 17518 17650 17746 18102 17754 
+Peng (ms) 7678 7788 7777 7982 7806 
+Proposed(ms) 4154 4436 4257 4371 4304 
+Time Saving (JMVM) 76.29% 74.87% 76.01% 74.85% 74.76% 
+Time Saving (Peng) 45.89% 43.04% 45.26% 45.24% 44.86% 
+Qp36 
+JMVM(ms) 17548 18003 17523 17820 17723 
+Peng (ms) 7419 7812 7619 7635 7621 
+Proposed(ms) 4017 4221 4086 4167 4122 
+Time Saving (JMVM) 77.11% 76.55% 76.68% 76.61% 76.74% 
+Time Saving (Peng) 45.84% 45.97% 46.37% 45.42% 45.90% 
+32 
+ 
+表 5.13 Race1 視訊序列 Proposed method、Peng[17]與 JMVM 之區塊模式決策時間比較 
+Race1 View1 View2 View3 View4 View5 View6 View7 Average 
+QP20 
+JMVM(ms) 29485 21326 29907 21626 30040 21168 19558 24730 
+Peng (ms) 11511 8410 11526 8546 12253 8234 8044 9789 
+Proposed(ms) 7179 5314 7067 4298 5817 5817 4842 5762 
+Time Saving (JMVM) 75.65% 75.08% 76.36% 80.12% 80.63% 72.51% 75.24% 76.52% 
+Time Saving (Peng) 37.64% 36.82% 38.68% 49.70% 52.52% 29.35% 39.81% 40.64% 
+QP24 
+JMVM(ms) 28566 20421 28977 21499 29084 20374 18716 23948 
+Peng (ms) 10630 8004 10754 7876 10990 7677 7208 9020 
+Proposed(ms) 7062 5233 6718 4303 5482 5461 4577 5548 
+Time Saving (JMVM) 75.28% 74.37% 76.81% 79.98% 81.15% 73.20% 75.54% 76.62% 
+Time Saving (Peng) 33.57% 34.62% 37.53% 45.36% 50.12% 28.87% 36.49% 38.08% 
+QP28 
+JMVM(ms) 27045 19605 27676 20001 27861 19402 17702 22756 
+Peng (ms) 10085 7415 10318 7519 10443 7328 6776 8555 
+Proposed(ms) 7036 4966 6897 4110 5420 5380 4587 5485 
+Time Saving (JMVM) 73.98% 74.67% 75.08% 79.45% 80.54% 72.27% 74.08% 75.73% 
+Time Saving (Peng) 30.24% 33.03% 33.16% 45.33% 48.10% 26.58% 32.30% 35.53% 
+QP32 
+JMVM(ms) 26886 19711 27463 20013 27549 19424 16615 22523 
+Peng (ms) 9729 7133 9904 7263 10082 6966 6445 8217 
+Proposed(ms) 6939 4886 6848 4026 5584 5335 4591 5458 
+Time Saving (JMVM) 74.19% 75.21% 75.06% 79.88% 79.73% 72.53% 72.37% 75.57% 
+Time Saving (Peng) 28.68% 31.50% 30.85% 44.56% 44.61% 23.41% 28.76% 33.20% 
+Qp36 
+JMVM(ms) 24172 17666 24605 17902 24944 17225 16142 20379 
+Peng (ms) 9296 6930 9588 7075 9735 6787 6214 7946 
+Proposed(ms) 6647 4720 6661 3945 5801 5072 4444 5327 
+Time Saving (JMVM) 62.52% 64.32% 62.85% 62.56% 67.21% 59.52% 61.17% 62.88% 
+Time Saving (Peng) 28.50% 31.88% 30.52% 44.24% 40.41% 25.27% 28.49% 32.76% 
+ 
+5.2.3 決策MS模式編碼驗證 
+我們為了驗證所提出之決策 MS 模式是否能節省區塊模式決策時間，故本節統計我們的方法與
+JMVM 位於非錨圖框編碼時決策執行 MS 模式所需之時間，說明複雜度化簡比例；利用 QP20、36 對
+所有測試視訊序列進行編碼統計執行 MS 模式所需之時間。於包含 MS 模式之非錨圖框視角區塊中，
+針對執行 MS 模式運算時間在我們所提出之決策方法與 JMVM 所需之執行 MS 模式編碼時間之間的時
+間差異量做比較，可得表 4.14-4.18，JMVM、Proposed 為 JMVM 與本計畫提出之 MS 模式編碼決策方
+式，在非錨圖框中，執行 MS 模式編碼所需之平均時間；Time Savings 為採用 MS 模式編碼決策與 JMVM
+中 MS 模式開啟之節省時間比例。 
+ 
+34 
+ 
+表 5.18 Race1 視訊序列 MS 模式時間減少量 
+Race1 View1 View2 View3 View4 View5 View6 View7 AVG 
+QP20 
+JMVM(ms) 6756 3638 6745 3623 6681 3675 3423 4935 
+Proposed (ms) 4107 1480 3367 974 2393 1653 1614 2227 
+Time Saving 39.21% 59.30% 50.07% 73.11% 64.17% 54.02% 52.83% 56.25% 
+Qp36 
+JMVM(ms) 5336 2724 5148 2594 5686 2862 2530 3840 
+Proposed (ms) 3391 1277 3166 823 2106 1351 1510 1946 
+Time Saving 36.44% 53.11% 38.50% 68.27% 62.95% 52.79% 40.31% 50.34% 
+ 
+觀察表 4.14-4.18，從先前區塊模式決策時間平均如表 4.9-4.13 與執行 MS 模式時間中可發現執行
+MS 模式佔了總運算複雜度大約 5%到 30%，故當 MS 模式開啟時，會因運算過程而增加了不少運算時
+間；而在我們所提出的方法中，當 MS 模式開啟時，能將此 MS 模式所增加的時間大幅度的減少。從
+表中可知，當運用我們所提出之決策 MS 模式機制時，在任何視訊序列中皆能減少非必要之 MS 模式
+運算大約 40%到 80%之間，故我們所提出之決策 MS 模式機制能有效的節省運算複雜度。 
+ 
+5.3 結論與建議 
+本計畫提出當 MS 模式開啟下，於包含 MS 模式下之非錨圖框區塊編碼模式決策加速。而此編碼
+模式對於是否進行 MS 模式決策節省了約 4 成至 8 成的運算量；並與 JMVM 相比之區塊模式決策加速
+約 60%至 80%；與 Peng[17]相比加速約 4%至 50%，而對於平行且固定之攝影機之視訊序列較能維持
+R-D 曲線。 
+本計畫所提出之區塊模式決策，對於較為特別擺設方式的攝影機如 Flamenco2 與 Race1 雖能有效
+的減少編碼端複雜度，但對於維持良好的壓縮效率較不穩定。因此在快速區塊模式的選擇上，未來可
+分析區塊模式時間與空間之相關性，並且利用分析結果設計一個考慮多維度資訊之區塊模式決策加速
+機制，並且盡可能地維持畫面品質。 
+ 
+ 36 
+ 
+pp.1081-1084 
+[18] Mei Yu, Zongju Peng, Weiyue Liu, Feng Shao, Gangyi Jiang, Yong-Deak Kim, ” Fast Macroblock 
+Selection Algorithm for Multiview Video Coding Based on Inter-view Global Disparity,” 
+Proceedings of the 2008 Congress on Image and Signal Processing, Vol. 1 - Volume 01, 2008 
+pp.575-578   
+[19] Zongju Peng, Gangyi Jiang, Mei Yu, Qionghai Dai, “Fast Macroblock Mode Selection Algorithm 
+for Multiview Video Coding,” EURASIP Journal on Image and Video Processing, Volume 2008 
+[20] J. L´opez, J. H. Kim, A. Ortega and G. Chen “Block-based Illumination Compensation and Search 
+Techniques for Multiview Video Coding,”  Available: 
+http://www.ece.ucdavis.edu/PCS2004/pdf/ID114_pcs2004_114.pdf. 
+[21] Yung-Lyul Lee, “Illumination Compensation,”JVT 21st Meeting, October, 2006, Hangzhou, China, 
+20-27, JVT-U052.doc 
+[22] A. Vetro, “Joint Multiview Video Model (JMVM) 2.0,”JVT 21st Meeting, October, 2006, 
+Hangzhou, China, 20-27, JVT-U207.doc 
+[23] Jung-Hye Min, Min-Woo Park, “Chrominance Compensation for MVC,” JVT 27th Meeting, April, 
+2008, Geneva, CH, 23-29, JVT-AA208.doc 
+[24] Masaki Kiahara, Hideaki Kimata, Shinya Shimizu, Kazuto Kamikura, Yoshiyuki Yashima, Kenji 
+Yamamoto, Tomohiro Yendo, Toshiaki Fujii, Masayuki Tanimoto, “Multi-view Video coding 
+using viewInterpolation and Reference Picture Selection,” Multimedia and Expo, 2006 IEEE 
+International Conference, 9-12 July 2006, pp.97-100 
+[25] Yamamoto, K., Kitahara, M., Kimata, H., Yendo, T., Fujii, T., Tanimoto, M., Shimizu, S., 
+Kamikura, K., Yashima, Y, “Multiview Video Coding Using View Interpolation and Color 
+Correction,” Circuits and Systems for Video Technology, IEEE Transactions, Volume 17, Issue 
+11,  Nov. 2007, pp.1436-1449 
+[26] Cheon Lee, Kwan-Jung Oh, Seung-Hwan Kim, Yo-Sung Ho, ”An Efficient View Interpolation 
+Scheme and Coding Method for Multi-view Video Coding,” Systems, Signals and Image 
+Processing, 2007 and 6th EURASIP Conference focused on Speech and Image Processing, 
+Multimedia Communications and Services. 14th International Workshop, 27-30 June 2007, 
+pp.102 – 105 
+[27] K. Yamanaka, T. Yendo, T. Fujii and M. Tanimoto, “Multiview interpolation for ray-space coding,” 
+Proc. of SPIE, vol. 6016, Nov. 15 2005, pp. 1-10. 
+[28] M. Budagavi, “Video Compression using Blur Compensation,” Proc. IEEE Int. Conf. on Image 
+Processing, vol. 2, Sept. 2005, pp. 882-884. 
+[29] Yongtae Kim, Jiyoung Kim, Kwanghoon Sohn, “Fast Disparity and Motion Estimation for 
+Multi-view Video Coding” Consumer Electronics, IEEE Transactions ,Vol 53,  Issue 2,  May 
+2007, pp.712-719 
+[30] Youngsoo Park, Hur, N., “A Fast Computation Algorithm of Binocular Energy Model” 3DTV 
+Conference: The True Vision - Capture, Transmission and Display of 3D Video, May 2008, 
+pp.401-404   
+[31] Tien-Ying Kuo, Chin-Kun Yeh, Hung-Yang Tsai, “A Novel Method for Global Disparity Vector 
+Estimation in Multiview Video Coding,” Circuits and Systems, 2009. ISCAS 2009. IEEE 
+International Symposium, May 2009, pp.864-867 
+[32]  Xiaozhong Xu, Yun He, “Fast Disparity Motion Estimation In MVC Based on Range Prediction,” 
+Image Processing, 2008. ICIP 2008. 15th IEEE International Conference,12-15 Oct. 2008, 
+pp.2000-2003 
+表 Y04 
+行政院國家科學委員會補助國內專家學者出席國際學術會議報告 
+                                                          99年   8月   18日 
+報告人姓名  
+郭 天 穎 
+ 
+服務機構 
+及職稱 
+ 
+國立台北科技大學副教授 
+ 
+     時間 
+會議 
+     地點 
+自 99年 7月 19日至 7月 23
+日 
+新加坡 
+本會核定 
+補助文號 
+NSC98-2221-E-027-050-MY2 
+ 
+會議 
+名稱 
+2010 IEEE International Conference on Multimedia & Expo 
+發表 
+論文 
+題目 
+A Novel Image Binarization Method Using Hybrid Thresholding 
+一、參加會議經過 
+ 
+ICME2010會議於 7月 19日至 7月 23日在新加坡 Suntec Singapore International 
+Convention & Exhibition Centre 舉行五天，本人於 19日出發至新加坡，下午隨即向大
+會報到並參加會議，並於 21日下午的 Poster session - Multimedia Segmentation and 
+Learning 議程上主持會議與張貼個人論文壁報及回答與會人士所提之問題。期間參加
+了大會午餐，並認識了許多相同領域的研究學者。本次會議期間，本人聆聽了許多有
+興趣的研究論文發表，以了解他國研究情況及最新的研究情形。 
+ 
+二、與會心得 
+ 
+ICME自2000年開始受到4個 IEEE 協會贊助舉辦國際性研討會 ( IEEE Circuits and 
+Systems  Society, Communications  Society, Computer  Society, Signal Processing 
+Society ) ，是一個標竿型的國際會議。ICME會議是個多媒體研討會，主要是讓研究單
+位與產業互相交流新科技的開發心得。包含聲音(speech, audio)、影像(image, video)的各
+種處理與應用，例如辨識、整合、立體化、使用者介面、安全性、通信、傳輸、系統、
+標準、品質等等。此次與會者有許多是全世界在這個領域具有權威性的先驅，例如：
+keynote speech請來了微軟亞洲執行長 Hsiao-Wuen Hon討論 The Future of Multimedia, 
+Multimodal Interaction, and Multi-Disciplinary Innovation；南洋理工大學教授 Nadia 
+Magnenat-Thalmann討論 Interacting with Virtual Characters and Social Robots: 
+What is Missing? What is Next?； 惠普公司雲端服務首席技術總監 Susie Wee 討論
+Experiences, Devices, Services, and the Cloud。除此之外此會議冠蓋雲集來了全世界相同
+領域的人，聚集在一起互相交流討論交換意見，藉此學習到許多當前最新且最熱門的研
+究概況。 
+ 
+本次會議有很多最新的研究報告發表，在 3D and Multiview Video的研究，Vasudevan
+等人提出 Real-time Stereo-vision System for 3D Teleimmersive Collaboration 建構一個即
+時的虛擬 3D環境系統，在真實世界的人物可以透過自己肢體影像控制系統中的虛擬 3D
+物件，並且還可以跟遠端的其他人在系統中互動。Silva 等人提出 Just Noticeable 
+Difference In Depth Model For Stereoscopic 3d Displays分析人眼對深度的感知，並利用主 
+附件三
+ 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/08/26
+國科會補助計畫
+計畫名稱: 多視角視訊壓縮技術之研究
+計畫主持人: 郭天穎
+計畫編號: 98-2221-E-027-050-MY2 學門領域: 訊號處理
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

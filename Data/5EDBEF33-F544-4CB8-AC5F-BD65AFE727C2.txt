@@ -1,0 +1,442 @@
+The rest of the report is organized as follows. Section 2 
+gives the explanation of how to build SystemC and FPGA 
+links to QEMU. An example about a user program in 
+QEMU can send data to FPGA is given. Section 3 explains 
+how ModelSim facilitates co-simulation of HDL models and 
+SystemC models. Then, the mechanism about how to build 
+connection between ModelSim and FPGA is presented. 
+Section 4 is about the heterogeneous simulation 
+environment of OpenESL. Section 5 gives the progressive 
+development flow mentioned above. Conclusion is in 
+Section 6. 
+ 
+2. CO-OPERATION OF QEMU AND VIRTUAL 
+HARDWARE DEVICE IN C AND THEIR 
+COMMUNICATION 
+ 
+According to the SystemC-QEMU [10] project, QEMU is 
+able to employ memory mapping mechanism for new 
+devices. This can be applied to the co-simulation of models 
+running outside of QEMU. In the “hw” directory of their 
+source code, there are many hardware devices described. 
+Traditionally, the behavior of a hardware device of standard 
+QEMU is implemented as part of QEMU project. Here, we 
+use the Windows® shared memory [11] as IPC mechanism 
+to forward the device memory read/write signals to this 
+specific shared memory. Therefore, any programs working 
+inside or outside of QEMU are able to get the signals in this 
+Windows® shared memory. Thus we named a program 
+running outside of QEMU as virtual hardware device. The 
+virtual hardware device, usually written in C++ or even 
+SysetmC, uses the Windows® shared memory to 
+communicate with its Linux device driver operating in 
+QEMU. Therefore, application programs can access the 
+device through its driver. 
+ 
+ 
+Fig.1. Co-Simulation of Qemu and Virtual Hardware device 
+in C++/SystemC. 
+In Fig.1, the co-simulation scenario is shown. The code of 
+the memory mapping device is shown like that in Fig.2. The 
+virtual hardware device uses the memory address 
+0xff020000 and the new hardware device is implemented in 
+the function “sc_arm_init” shown in Fig.3 [10]. The initial, 
+read and write methods of the device model allow CPU for 
+its access. In this code, both sc_arm_read and sc_arm_write 
+are the static function points specifying the functions that 
+handle read/write signals from CPU side. Since only parts of 
+the functions are fully implemented, we complete those 
+functions to access a specified Windows® shared memory 
+shown in the middle of Fig.1. Then, another program is 
+implemented to handle this Windows® shared memory so 
+that its access can be provided and no data conflict will 
+occur. Finally, the simulation model in C++/SystemC, 
+acting as the hardware device, checks the signals from 
+Qemu and updates the data, all in the shared memory 
+through the access policy provided. Then Qemu can retrieve 
+the data through the Windows® shared memory by 
+checking the status. This program can be written in simple C 
+language. 
+ 
+Fig.2. Qemu uses memory mapping to a device [10]. 
+ 
+ 
+Fig.3. Qemu uses memory mapping to a device [10]. 
+In the Fig.4, an example is shown. The platform developed 
+by QEMU goldfish project is applied [10]. The left-hand 
+side is the QEMU based Android emulator for a mobile 
+smart phone. Since one hardware device is added, its device 
+driver in the Android system has to be completed first. Then, 
+a Java application program can access the virtual device 
+static CPUReadMemoryFunc *sc_link_arm_readfn[] = { 
+   sc_arm_read8, 
+   sc_arm_read16, 
+   sc_arm_read32 
+}; 
+ 
+static CPUWriteMemoryFunc *sc_link_arm_writefn[] = { 
+   sc_arm_write8, 
+   sc_arm_write16, 
+   sc_arm_write32 
+}; 
+ 
+void sc_arm_init(uint32_t base, void *pic, int irq) 
+{ 
+    int iomemtype; 
+#ifdef QEMU_9LATER 
+    iomemtype = cpu_register_io_memory(0, sc_link_arm_readfn, 
+                                       sc_link_arm_writefn, NULL); 
+#else //QEMU_8BEFORE 
+    iomemtype = cpu_register_io_memory(sc_link_arm_readfn, 
+                                       sc_link_arm_writefn, NULL); 
+#endif 
+    // mapping only 64x2 bytes = 0x80 
+    cpu_register_physical_memory(base, 0x00000080, iomemtype);  
+    base_addr = base; 
+    // creates the area to be shared 
+    CreateSharedMemoryArea(); 
+   goldfish_device_init(goldfish_pic, 0xff010000, 0x7f0000, 10, 22); 
+ 
+    goldfish_device_bus_init(0xff001000, 1); 
+ 
+    goldfish_timer_and_rtc_init(0xff003000, 3); 
+ 
+  /*Virtual Hardware Memory Mapping */ 
+    sc_arm_init(0xff020000);        // 0xff020000 
+ 
+    goldfish_tty_add(serial_hds[0], 0, 0xff002000, 4); 
+Windows® 
+Shared 
+ Memory 
+Qemu Virtual  
+Hardware  
+ 
+Written in  
+C++/SystemC 
+Memory 
+Mapping 
+Windows Platform 
+SMIMS [14] provides a PC based FPGA development 
+environment. Their FPGA uses USB to connect to PC and 
+works with the C program which includes the provided 
+SMIMS VeriSDK API as the communication interface of 
+the two sides. The SMIMS VeriSDK is a C/C++/SystemC 
+development API (SDK) which allows users to develop 
+software applications, test programs, and so on when a 
+hardware device running on FPGA is involved. Since FPGA 
+operates under much faster frequency than most software 
+simulation models, it is advantageous when simulation 
+speed up is concerned. Furthermore, if an  hardware IP is 
+available in FPGA form, one can test the compatibility and 
+functionality of the IP in a greater speed. In Fig.7, by 
+extending the virtual hardware device described in section 2, 
+the C program in the right-hand side has to include the 
+SMIMS VeriSDK API to send the read/write signal back 
+and forth between FPGA and QEMU platform. It is worth 
+mentioning that this operation mode can be much faster than 
+the operation mode in section 3 because RTL model running 
+in ModelSim is fairly slow. That is to say that the co-
+simulation of QEMU and ModelSim in higher abstraction 
+level is not convincing because the fast QEMU can be 
+slowed down by the RTL simulator. However, when the 
+RTL model is replaced by the circuit operating in FPGA, the 
+overall simulation can be much faster. In the later case, 
+simulation speed of tens of million instructions per second 
+or more can be expected. Figure 8 shows an example 
+wrapper C program which employs SMIMS VeriSDK API. 
+ 
+ 
+Fig.7. Qemu and SMIMS FPGA Device Communication 
+Diagram 
+ 
+5. HETEROGENEOUS SIMULATION OVER 
+OPENESL 
+ 
+The basic architecture of the updated OpenESL is shown in 
+Fig.9. The blue blocks of Fig. 9 are the newly added 
+functions in the currently released version. They are 
+explained in the following. 
+ 
+Fig.8. Qemu and SMIMS FPGA Device Wrapper in C code 
+ 
+Based on [8], a TLM 2.0 bus model is provided. Therefore, 
+correspondent wizards and code generation are provided to 
+help users to generate TLM2.0 interfaces as well as the 
+TLM2.0 bus model automatically. 
+int main() 
+{ 
+   …. 
+ shm_init(); //initial Windows Shared Memory 
+   While(shm_update()) 
+  { 
+     …. 
+      //Check if Qemu write data to FPGA 
+     writeFPGA(write_count, addr, wdata); 
+     …. 
+      //Check if Qemu read data from FPGA 
+     rdata = readFPGA(count, addr); 
+     …. 
+  } 
+} 
+WORD* readFPGA(int read_count, int addr) 
+{ 
+… 
+   //Prepare the Read command packet   
+   WriteBuffer[ 0 ] = READ_CMD; 
+   WriteBuffer[ 1 ] = read_count-1; //data count 
+   WriteBuffer[ 2 ] = addr; //Start address 
+   //Send Data to Output FIFO 
+   bRet = SMIMS_AppFIFOWriteData(NOW_USE_BOARD, 
+WriteBuffer, 3); 
+   //Receive Data from Input FIFO 
+   bRet = SMIMS_AppFIFOReadData(NOW_USE_BOARD, 
+ReadBuffer, read_count); 
+   if ( !bRet ) 
+   { 
+      PrintMsg("error: SMIMS_AppFIFOReadData."); 
+   } 
+   return ReadBuffer; 
+} 
+ 
+void writeFPGA(int write_count, int addr, WORD* data) 
+{ 
+… 
+   memset(WriteBuffer, 0, DATA_RUN_COUNT * sizeof(WORD)); 
+   i=0; 
+      //Prepare the Write command packet 
+   WriteBuffer[ 0 ] = WRITE_CMD; 
+   WriteBuffer[ 1 ] = write_count-1; //data count 
+   WriteBuffer[ 2 ] = addr;           //Start address 
+   for(i=0;i<write_count;i++) 
+         WriteBuffer[ 3 + i ] = data[i]; 
+ 
+   //Send Data to Output FIFO 
+   bRet = SMIMS_AppFIFOWriteData(NOW_USE_BOARD, 
+WriteBuffer, write_count + 3); 
+ 
+   if ( !bRet ) 
+   { 
+      PrintMsg("error: WriteData failed!"); 
+   } 
+      return; 
+} 
+Windows Platform 
+Qemu 
+Memory 
+Mapping 
+Window
+s 
+Shared 
+ Memory 
+Wrapper 
+Written in  
+C language with 
+SMIMS SDK 
+API 
+Real Hardware 
+FPGA  
+HDL Code 
+SMIMS  
+Engine 
+SMIMS FPGA Device 
+USB 
+  
+Fig.13. Portal running on FPGA using SMIMS® APIs. 
+6. PROGRESSIVE DEVELOPMENT USING QEMU, 
+SYSTEMC, FPGA AND ARM9 (2440) EMBEDDED 
+SYSTEM BOARD 
+Hardware/Software co-development is the major topic in SoC 
+design. ESL design flow is employed such that the simulator can 
+be fast enough such that software programmers can develop 
+applications over the simulator. However, most simulators in 
+SystemC are not fast enough for programmers because they usually 
+run at clock frequency only around 10 MHz. Though ESL models 
+are usually closer to the final system specification than most 
+instruction set simulators (ISS), such details may not be necessary 
+in the early design stage. 
+QEMU provides a fast enough operation speed with less 
+implementation details and is suitable for early stage software 
+development. In addition, Android has now become a popular 
+system platform for mobile devices. In section 2, the SystemC-
+QEMU [10] project simulator, also called the Goldfish Emulator 
+Platform, has been used in the co-simulation with C++/SystemC 
+modules. In section 4, FPGA is even used with the Goldfish 
+platform. Hence, once the host platform is selected, one can use the 
+tools described in the above sections to build a target 
+hardware/software co-development environment. In this report, we 
+choose a low-cost Samsung2440 (ARM920T compatible) 
+embedded platform, called FriednlyARM as our target host 
+platform, shown in Fig. 14.  
+ 
+Fig.14. Mini2440 (ARM920T) evaluation board. 
+There are a few works to do in order to provide the complete 
+environment for progressive hardware/software co-development as 
+follows. 
+1. Use EBI (Extended Bus Interface) of Mini2440 to 
+accept FPGA module. 
+2. Modify Goldfish Emulator such that it is compatible 
+to the target Mini2440 platform, especially 
+Mini2440 EBI. 
+3. Generate device driver for FPGA module 
+4. Porting Android 1.5 or up to Mini2440 target board. 
+5. Develop various wrappers for different stages of 
+development. 
+The SCREAM Goldfish platform is shown in Fig.4. In the first 
+stage, QEMU platform works with an ASIC SystemC model. This 
+is shown in Fig15. 
+ 
+Fig.15. Co-Simulation of SCREAM Goldfish platform 
+with SystemC Model of an ASIC 
+ 
+It is more convenient and faster for engineers to develop 
+applications in a simulator. With such an all-virtual 
+environment, one can also test if the simulation model of the 
+ASIC can be fully functional with the host platform. Then, 
+this SystemC model can work as the specification for the 
+next stage development. Once the simulation in the all-
+virtual stage is completed, one can move on to the so-called 
+hybrid environment to test the ASIC design running in 
+Module::Module() 
+{ 
+pSMIMSEngineManage = new TSMIMSENGINEManage(); 
+ pSMIMSEngineManage->Initial(); 
+SMIMSEngineModuleInfo.ModuleCount = 0; 
+pSMIMSEngineManage-> 
+GetSMIMSEngineModuleInfo(SMIMSEngineModuleInfo); 
+for (int i = 0;i < SMIMSEngineModuleInfo.ModuleCount;i ++) 
+{ 
+hCheckInitial = pSMIMSEngineManage->InitialModule(i); 
+hLocalHandle = pSMIMSEngineManage-> 
+InitialSMIMSEngine(i, 0); 
+} 
+//get share memory 
+if ((shmid = shmget(key, SHMSZ, 0666)) < 0) { 
+     perror("shmget"); 
+     exit(1); 
+ } 
+if ((shm = shmat(shmid, NULL, 0)) == -1) { 
+     perror("shmat"); 
+     exit(1); 
+ } 
+//Add your initial code here 
+} 
+ 
+void Module::read() 
+{ 
+//Add read code here 
+} 
+ 
+void Module::write() 
+{ 
+//Add write code here 
+} 
+……… 
+[2] Fabrice Bellard, “QEMU, a Fast and Portable Dynamic 
+Translator” USENIX 2005 Annual Technical Conference, 
+FREENIX Track, pp. 41-46. 
+ 
+[3] “Complete QEMU platform using SystemC modules”, at 
+http://www.greensocs.com/en/Projects/QEMUSystemC 
+ 
+[4] Yu-Chang Hsu, “A Heterogeneous Framework for Fast Co-
+Simulation Using SystemC TLM and User-Mode QEMU”, Master 
+Thesis, NCKU, 2009. 
+ 
+[5] “Platform Architect”, available at 
+http://www.synopsys.com/Tools/SLD/VirtualPrototyping/Pages/Pl
+atformArchitect.aspx 
+ 
+[6] “OpenESL”, available at 
+http://screamlabopensource.blogspot.com/2009/07/openesl.html 
+ 
+[7] Tsung-Yin Shih, Wei-Shiang Liao, Wei-Yuan Fu, Shaw-Fan 
+Dai, and Alvin W. Y. Su, “An Integrated Electronic System Level 
+Design and Simulation Environment”, 2009 VLSI Design/CAD 
+Symposium, Kentin, 8/2009. 
+ 
+[8] TLM 2.0. Available: 
+http://www.systemc.org/downloads/standards/tlm20/ 
+ 
+[9] GTKWave.  Available: http://gtkwave.sourceforge.net/ 
+ 
+ 
+[10] Hardware-Software Prototypes and Solutions Lab 2010 
+webpage, Available 
+http://cephis.uab.es/proj/public/qemu/index.xhtml 
+ 
+[11] Creating Named Shared Memory. 2010 msdn webpage, 
+Available 
+ http://msdn.microsoft.com/en-us/library/aa366551(v=VS.85).aspx 
+ 
+[12] ModelSim – Advanced Simulation and Debugging. 2010 
+webpage, Available http://model.com 
+ 
+[13] SystemC - The Language for System-Level Modeling, Design 
+and Verification. 2010 webpage, Available 
+http://www.systemc.org/home/ 
+ 
+[14] SMIMS Technology Corp. 2010 webpage, Available 
+http://smims.com/en/index.php/the-news/47-smimsfpgaproduct 
+ 
+ 
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：蘇文鈺 計畫編號：98-2622-E-006-036-CC2 
+計畫名稱：應用 FPGA 於協助電路設計驗證除錯之自動化工具組 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

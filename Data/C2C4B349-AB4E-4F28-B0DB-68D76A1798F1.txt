@@ -1,0 +1,726 @@
+2XML data is a core operation in XML query evaluation. This operation can be expensive since it
+involves navigation through the tree structure of XML data. As a result, the research efforts [6-11]
+have been focused on the efficient evaluation of tree paths in XML queries.
+The researches [6-11] of improving XML query performance can be generally classified into
+automata-based [6, 8, 11] and sequence-based [9, 10] approaches. The automata-based approaches
+integrate path patterns into a non-deterministic finite automaton (NFA) to check if the received
+XML data contains elements that match patterns. The sequence-based approaches, on the other hand,
+transfer XML data and a twig pattern into sequences and then perform sequence matching between
+the two sequences to obtain query results. The automata-based approaches are inefficient in case
+twig patterns are cut into path patterns, while the sequence-based approaches still have an extra cost
+of confirming the intermediate path results sharing the common branch element.
+Another approach [12-14] of improving XML query performance is to discover frequent XML
+query patterns and to design an index mechanism or cache the results of these patterns. [12-14]
+design a transaction summary data structure (i.e., the global tree [13]) to merge all of XML user
+query patterns. At the global tree, the XML candidate query subtrees are generated and their
+frequencies are thus counted by executing the tree join process or database scans. As a result, the
+frequent XML query patterns are efficiently discovered on the processed global tree. In addition, in
+order to reduce the number of XML candidate query subtrees, [12, 14] use the minimum support
+constraint to prune the infrequent XML query patterns on the global tree.
+4applications is frequent, the candidate subtrees generated from it must be frequent and cannot to be
+tested. This will greatly reduce the effort of exploring the search space and computing time.
+The rest of this paper is organized as follows. Section 2 discusses the previous works related to
+XML query pattern mining. Section 3 formalizes the XML frequent query pattern mining problem
+in this paper. Section 4 describes the details of our ebXMiner algorithm. Section 5 compares our
+ebXMiner with other existing XML query pattern mining algorithms. Section 6 shows the results of
+the performance study, and Section 7 illustrates the conclusion and further work in this paper.
+2. Related work
+In this section, we shall review some related works, including the papers [12-18] on frequent
+XML query pattern mining.
+The algorithms [15, 17, 19] of frequent XML query pattern mining can be classified into
+Apriori-based and FP-growth-based. Apriori-based algorithms [20, 21] generate candidate item sets
+of length k from item sets of length k-1. Then it prunes the candidates which have an infrequent sub
+pattern. On the other hand, FP-growth-based algorithms [22] use an extended prefix-tree (FP-tree)
+structure to store the database in a compressed form and mine the frequent item sets. Thus, to find
+out the frequent XML query patterns, [15, 17, 19] propose their approaches by extending
+Apriori-based and FP-growth-based algorithms respectively. [15] extends Apriori-based algorithms
+to propose XQPMiner and XQPMinerTID algorithms, while [17, 19] extend FP-tree to represent
+XML queries into the compressed form. Since FP-growth-based algorithms record the transaction
+6the minimum support value are enumerated. Thus, in [14], before generating the candidate subtrees,
+the infrequent nodes in the CGTG tree are pruned. Also, in [14], the nodes in the CGTG tree are
+joined with their ancestor nodes which have the same IDs. Therefore, they generate candidate
+subtrees directly from the CGTG tree without scanning the database. In sum, [12, 14] discover the
+frequent XML query patterns on the processed CGTG tree.
+[12-15] still follow the traditional idea of generate-and-test paradigm to mine the frequent XML
+query patterns and thus have the following drawbacks for ebXML applications. First, they employ
+the rightmost expansion technique to enumerate all of XML candidate query subtrees. This
+approach is likely to produce the infrequent candidate subtrees, incurring unacceptable costs of tree
+join process or database scan during the mining process. Second, a great deal of system space is
+used to process XML query trees in these algorithms and degrades their mining performance.
+Unlike [13, 15], [12, 14] accumulate the frequencies of XML candidate query subtrees directly from
+the CGTG tree. Therefore, [12, 14] are more efficient than [13, 15]. However, [12, 14] still cost a
+lot of system time to execute the tree join process for generating frequent XML query patterns on
+the CGTG tree.
+3. Problem description
+In this section, we firstly state the problems to be solved in this paper. We begin by defining the
+XML query trees, their rooted subtrees, XML query tree databases, and the problem in this paper.
+8an edge “/”indicates a pair of nodes which has the parent-child relationship. In this paper, all of
+XML query trees we consider are unordered, labeled, and rooted trees.
+Definition 2 A query tree t(r’, V’, L’, E’) is a rooted subtree of a query tree T(r, V, L, E) iff (1) V’⊆
+V; (2) E’⊆E; (3) L’⊆L and L’(v) = L(v); (4) r’= r. A rooted subtree t of T can be obtained by
+repeatedly removing leaf nodes if its removal does not create a forest in T. Also, the rooted subtree t
+has the same root node with T.
+book
+title
+XML
+john
+author
+allauthor
+T:
+book
+title
+XML author
+allauthor
+t2: book
+title
+XML
+allauthor
+t3: book
+title
+author
+allauthor
+t4:
+book
+title allauthor
+t5:
+book
+title
+author
+allauthor
+t1:
+john
+book
+title
+XML
+t6: book
+author
+allauthor
+t7:
+book
+title
+t8:
+book
+allauthor
+t9:
+Fig. 2 The rooted subtrees (t1, t2, t3, t4, t5, t6, t7, t8, t9) of tree T
+An XML query tree has a set of rooted subtrees. A rooted subtree is a subtree where the
+parent-child relationships and the root node must be the same with those in the original tree. In this
+article, the term“k-subtree”refers to a subtree that consists of k nodes. For example in Fig. 2, t1, t2,
+10
+book
+title
+XML author
+allauthor
+T1:
+book
+title allauthor
+T3:
+book
+title
+XML
+T5: book
+title
+XML
+t1:
+book
+title
+XML author
+allauthor
+T2:
+book
+title
+T4:
+book
+title
+XML
+allauthor
+T6:
+book
+allauthor
+t2:
+Fig. 3 The transactions T1, T2, T3, T4, and T5 in a database D with the rooted subtree t1 and t2
+The following example illustrates the definition of the support used in this paper. In Fig. 3, there
+are six transactions T1, T2, T3, T4, T5 and T6. According to Definition 5, the support of subtree t1 is
+equal to 4 as t1 is supported by T1, T2, T5, and T6 but not T3 and T4, that is t1≺T1, t1≺T2, t1≺T5, and t1
+≺T6. The support of subtree t2 is also equal to 4 as t2 is supported by T1, T2, T3, and T6 but not T4 and
+T5, that is t1≺T1, t1≺T2, t1≺T3, and t1≺T6.
+Definition 6 Given an XML query tree database D and a minimum supportσ. An XML query tree
+is frequent if its support is no less than that of the minimum supportσ.
+Definition 7 Given an XML query tree database D and a minimum supportσ. The mining problem
+of frequent XML query pattern is to find out all of the rooted subtrees those occur at leastσtimes in
+database D.
+12
+by showing that s2≧s1. According to Definition 2, the nodes and edges of a subtree t are contained
+in those of query tree T. Also, support s1 is the number of occurrences of query tree T in database D.
+Therefore, support s2 is equal to s1. Moreover, since subtree t may be the same with other XML
+query trees in D, it is possible that support s2 is greater than s1. As a result, support s2≧s1. We thus
+prove this lemma. 
+Theorem 1 If an XML query tree T is frequent in the database D, then all of its subtrees t are
+frequent in D.
+Proof: Let s1 and s2 be the supports of T and all of its subtrees t respectively in database D. Also let
+σbe the minimum support. Since the query tree T is frequent, the relationship of s1≧σcan be
+established. Moreover, according to Lemma 1, s2≧s1. Thus, the relationship of s2≧s1≧σis now
+established. As a result, the subtrees t are frequent. The theorem is thus proved. 
+Theorem 1 shows all of the subtrees t of a frequent query tree T must be frequent. Therefore, by
+maintaining a frequent query tree T, all of its subtrees t cannot be enumerated to test, since these
+subtrees t must be frequent. For example in Fig. 4, there are ten XML query trees in the XML
+query tree database D. The query tree T1 is equivalent to T3, T4 is equivalent to T8, and T5 is
+equivalent to T7 and T10. Suppose the minimum support σis equal to 2 in the database D, then the
+query tree T1 is frequent since it is equivalent with T3 and results in its support is 2. Thus, all of the
+subtrees t generated from T1 and T3 are frequent and do not need to be enumerated from T1 and T3
+to compute their occurrences.
+14
+collected query trees are sorted by the number of nodes in a descending order. Therefore, as a query
+tree is read, the minimum support constraint can be used to conduct with the frequent and
+infrequent ones. In this way, a few XML query trees and their candidate subtrees are generated for
+testing purposes. Therefore, the system time and space are surely reduced.
+Based on the observations as mentioned above, our ebXMiner focuses on the characteristic of
+ebXML applications and thus considers the equivalent query trees in database D. If the support of T
+is bigger than the minimum supportσ, all of its subtrees are not generated to test. On the other hand,
+if its support is smaller than the valueσ, its subtrees are enumerated to be tested since they may be
+frequent as they are the same with other query trees.
+4.2 ebXMiner algorithm
+This subsection illustrates our ebXMiner algorithm as shown in Fig. 5. In Fig. 5, Lines 1-3 call
+the procedure ConstructTList to collect the equivalent XML query trees in the database D, compute
+the occurrence of query trees, sort them by the number of nodes in a descending order, and store
+them in a data structure TList. For each query tree Ti in TList, Lines 6-8 record the query tree Ti in a
+set F-trees, delete Ti from TList, and calls the procedure removeSubtrees to remove all of Ti’s
+subtrees in a set C-subtrees. Lines 10-12 call the procedure genSubtrees to generate query tree Ti’s
+(k-1)-subtrees (Note that, we suppose that the query tree Ti has k nodes). Then the (k-1)-subtrees of
+Ti are stored in set C-subtrees. Line 13 adds the value of Ti’s support to the supports of its
+(k-1)-subtrees in set C-subtrees. Finally, Lines 17-22 check the variable freq of each query subtree
+16
+occurrence of Ti in database D. The algorithm of procedure ConstructTList is shown in Fig. 6. Line
+1 reads an XML query tree from database D. Line 3 stores the first query tree in TList, Line 5
+compares Ti with other query trees Tj which are stored in TList. If query tree Ti is equivalent with Tj,
+Line 6 adds the value 1 to Ti’s variable freq; otherwise, Line 10 inserts Ti before Tj in TList if the
+number of nodes in Ti is less than those in Tj.
+Algorithm ConstructTList(D)
+Input: A set of query trees in database D
+Output: A set of query trees in TList
+1 for each Ti in D
+2 if TList is empty then
+3 record the tree Ti in TList
+4 else
+5 compare Ti with other query trees Tj in TList
+6 if Ti is equivalent with Tj then
+7 the occurrence of Tj +1;
+8 else
+9 if the number of nodes in Ti is less than those in Tj then
+10 insert Ti before Tj in TList
+11 end if
+12 end if
+13 end for
+Fig. 6 Algorithm ConstructTList
+For example in Fig. 4, in the ConstructTList algorithm, query tree T1 is read and stored in TList
+by Lines 1-3 since the data structure TList is empty. Then, T2 is read and stored after T1 in TList by
+Lines 5-11 since it is different from T1 and the number of T2’s nodes is more than that of T1. Also,
+T3 is read and the value of T1’s freq is added by 1 since T3 is equivalent with T1. And so on, after
+reading all of XML query trees in Fig. 4, the query trees in TList are shown in Fig. 6. In Fig. 6(a),
+the query trees T1 is equivalent with T3, T4 is equivalent with T8, and T5 is equivalent with T7 and
+18
+1-3 of the ebXMiner algorithm, the equivalent query trees are collected in TList and will be
+executed by Lines 4-16 of the ebXMiner algorithm. Lines 4-9 store the query tree Ti in set F-trees
+if its support is bigger than the minimum supportσand then remove Ti’s subtrees in set C-subtrees.
+In addition, Lines 11-14 store the (k-1)-subtrees of the query tree Ti in set C-subtrees and then add
+the value of Ti’s support to the supports of Ti’s (k-1)-subtrees if Ti’s support is smaller than the
+minimum support σ. For example in Fig. 6(b), we suppose the minimum support σis equal to 2.
+Line 4 firstly reads the query trees T2 and T6. Line 12 calls the procedure genSubtree to generate T2
+and T6’s (k-1)-subtrees and store them in the set C-subtrees. This is because the supports of T2 and
+T6 are smaller than the minimum support σ. Then, query trees T1, T4, and T5 are read and stored in
+set F-trees since their supports are bigger than the minimum supportσ. Also, all of T1, T4, and T5’s
+subtrees are deleted from set C-subtrees. Finally, query tree T9 is read and all of its (k-1)-subtrees
+are generated by the procedure genSubtree to store in set C-subtrees. Therefore, Fig. 7 shows the
+contents of sets F-trees and C-subtrees after executing the ebXMiner algorithm.
+A
+T1:2
+B D
+D E
+A
+T4:3
+B E
+D C
+A
+T5: 3
+B
+ED
+A
+B C
+E B
+t1:1 A
+B E
+D E
+A
+B E
+C E
+t3:1 t4:1
+(a) F-trees (b) C-subtrees
+Fig. 7 The contents of sets F-trees and C-subtrees
+20
+shown in Fig. 5, Lines 7-8 execute the removeTree(TList, Ti) and removeSubtrees(Ti) functions
+respectively, and Line 11 executes the genSubtrees(Ti) function. Function removeTree(TList, Ti)
+deletes Ti from TList. Since the query trees in TList are sequential read from TList, Ti is the first
+query tree in TList. Therefore, the complexity of removeTree(TList, Ti) which is executed in Line 7
+of ebXMiner is O(1). Function removeSubtrees(Ti) removes all of Ti’s subtrees from set C-subtrees.
+Since Ti’s subtrees are compared with the subtrees in C-subtrees, the complexity of
+removeSubtrees(Ti) which is executed in Line 8 is O(n*m*m), where (n*m) is the maximum
+number of subtrees in C-subtrees and m is the number of subtrees of Ti. On the other hand, function
+genSubtrees(Ti) generates the subtrees of Ti and its complexity is O(m).
+In sum, by the steps in ebXMiner algorithm, the complexity of Line 3 is O(n) which is
+mentioned in Subsection 4.3.1, that of Lines 4-15 including the functions removeTree(TList, Ti),
+removeSubtrees(Ti), and genSubtrees(Ti) is O(n2*m2), and that of Lines 16-20 is O(n*m). As a
+result, the complexity of eXMiner is O(n2*m2).
+5. Comparisons
+In this section, we compare our ebXMiner with other algorithms, including the VBUXMiner
+[12, 14], XQPMiner, XQPMinerTID, and 2PXMiner [13] algorithms.
+5.1 Compared with VBUXMiner
+Two reasons assure that ebXMiner is more suitable for ebXML applications in e-commerce
+than the VBUXMiner algorithm [12, 14]. First, most of XML queries in ebXML applications have
+22
+generated to be tested. This is because the frequent query trees are shown in Fig. 6(b) and their
+subtrees cannot to be generated.
+[1, 2, 3, 4, 5, 6,
+7, 8, 9, 10]
+B D
+D E[1, 3, 4, 5, 6
+7, 8, 10]
+[1, 3, 9]
+[1, 3]E
+[1, 2, 5, 7, 10]
+C
+B
+F
+[2]
+A
+[2]
+[2]
+E
+C
+[4, 6, 8 ]
+[4, 6, 8]
+E
+[4, 6]
+Fig. 8 the CGTG tree of the query trees in database D in Fig. 4
+5.2 Compared with XQPMiner, XQPMinerTID, and 2PXMiner
+One reason confirms that ebXMiner may outperform XQPMiner, XQPMinerTID, and
+2PXMiner. XQPMiner, XQPMinerTID, and 2PXMiner construct the T-GQPT tree to summary all
+of query trees in database D and then generate all of single branch candidate subtrees from the
+T-GQPT tree. Through tree join process (i.e., constructing data structure ECTree), the single
+branch candidate subtrees are merged to produce the frequent query trees. Therefore, for ebXML
+applications, more XML query trees are processed on the T-GQPT tree and thus cost a lot of time
+to produce frequent XML query trees. In contrast, ebXMiner collects the XML equivalent query
+trees and results in a few candidate subtrees are generated to be tested. Therefore, the mining
+performance is enhanced.
+6. Performance study
+This section illustrates our simulation study on the performance of ebXMiner and VBUXMiner
+24
+6.2 Comparative experiments
+Two experiments are performed to illustrate the performance under the ebXMiner and
+VBUXMiner algorithms. Parameters and their settings in the simulation are listed in Table 2. The
+parameter n denotes the number of XML query trees in the database D, while the parameter s
+represents the value of minimum support in the system.
+Table 2 Simulation parameters and settings
+Parameters Descriptions Settings
+n Number of XML query trees 10000 ~ 90000
+s Minimum supports 1%~10%
+The first experiment, with results shown in Fig. 9(a) and Fig. 9(b), observes the execution time
+and number of enumerated candidate subtrees (Y-axis) of these algorithms under different number
+of XML query trees (X-axis). The specified minimum support s is set to 5%. In Fig. 9(a), ebXMiner
+outperforms VBUXMiner on the execution time. Both curves for VBUXMiner and ebXMiner
+increase as the number of XML query trees increases. Specifically, when the number of XML query
+trees is more than 30000, the improvement of ebXMiner is also more obvious. One reason may
+lead to the high efficiency of our ebXMiner. VBUXMiner does not consider the equivalent query
+trees in database D and results in more execution time are used for generating frequent query trees.
+This is consistency with our experimental result in Fig. 9(b). In Fig. 9(b), the candidate subtrees
+generated from ebXMiner are more than those from VBUXMind except n=30000 and n=50000. A
+possible reason is that VBUXMiner devotes to decrease the enumerated candidate subtrees and thus
+26
+time and number of enumerated subtrees (Y-axis) of ebXMiner and VBUXMiner under different
+minimum supports (X-axis). The specified number of XML query trees is set to 50000. Fig. 10(a)
+shows ebXMiner outperforms VBUXMiner on the execution time. However, Fig. 10(b) shows
+VBUXMiner outperforms ebXMiner on the enumerated candidate subtrees when the minimum
+support s>3%. In Fig. 10(a), both curves for VBUXMiner and ebXMiner decrease as the specified
+minimum support increases. A possible reason is that when the specified minimum support increase,
+less candidate subtrees are produced to be tested whether they are frequent or not. In Fig. 10(b),
+when the minimum support s<=3%, the candidate subtrees generated from VBUXMiner are more
+than those from eXMiner. A possible reason is that less query trees are pruned by VBUXMiner
+since the specified minimum supports are small. On the other hand, when the minimum support
+s>3%, the candidate subtrees generated from VBUXMiner are less than those from ebXMiner. The
+reason is that VBUXMiner cost a lot of execution time to produce frequent query trees, although it
+produces less candidate subtrees. Also, the candidate subtrees generated from VBUXMiner and
+ebXMiner change slightly as the specified minimum supports increase. A possible reason is that
+when the minimum support s>3%, most of query trees are pruned by VBUXMiner and ebXMiner
+and result in the stable number of enumerated candidate subtrees.
+The two experiments as mentioned above show that ebXMiner has higher mining performance
+than VBUXMiner. This is because by considering the characteristic of ebXML applications, the
+equivalent query trees are firstly collected and result in less query trees are processed in ebXMiner.
+28
+In this paper, we present an efficient mining algorithm ebXMiner to discover the frequent
+XML query patterns in ebXML applications. Unlike the existing algorithms, we propose a new idea
+by collecting the equivalent XML queries and thus enumerating the candidate subtrees from
+infrequent XML queries, in our ebXMiner. With this idea, it became obvious that ebXMiner is not
+capable of maintaining all of the user queries and thus takes less execution time to produce frequent
+query patterns. Our future work includes expanding XML query patterns with repeating-siblings,
+since ebXMiner cannot mine the frequent XML query patterns with sibling repetitions.
+Reference
+1. XML. Available from: http://www.w3.org/XML.
+2. ebXML. Available from: http://www.ebxml.org/.
+3. OASIS Available from: http://www.oasis-open.org.
+4. XML Path Language (XPath) 2.0. Available from:
+http://www.w3.org/TR/2007/REC-xpath20-20070123/
+5. XQuery. Available from: http://www.w3.org/XML/Query.
+6. Diao Y., et al., (2003). Path Sharing and Predicate Evaluation for High-Performance XML
+Filtering. ACM Transactions on Database Systems (TODS). 28(4), 467-516.
+7. Wang, H. (2003). ViST: A Dynamic Index Method for Querying XML Data by Tree
+Structures. In Proceedings of the ACM SIGMOD International Conference on Management
+of Data.
+8. Kwon J., et al. (2005). FiST: Scalable XML Document Filtering by Sequencing Twig
+Patterns. Proceedings of the 31st international conference on Very large data bases.
+9. Mirella M.M., Bakalov P., & T. V.J. (2007). Early Profile Pruning on XML-aware
+Publish-Subscribe Systems. Proceedings of the 33rd international conference on Very Large
+Data Bases (VLDB).
+10. Raj A. & K. P.S. (2007). Branch Sequencing Based XML Message Broker Architecture.
+IEEE 23rd International Conference on Data Engineering (ICDE).
+11. Kwon J., et al., (2008). Value-based Predicate Filtering of XML Documents. Data &
+Knowledge Engineering. 67(1), 51-73.
+12. Bei Yi-jun, et al., (2008). Buttom-up Mining of XML Query Patterns to Improve XML
+Querying. Journal of Zhejiang University. 9(6), 744-757.
+出席國際學術會議心得報告 
+ 
+計劃編號 NSC 98-2218-E-275-001 
+計劃名稱 以資料探勘技術提昇XML圖構文件查詢效能研究 
+出國人員姓名 
+服務機關及職稱 
+張翠蘋 
+嶺東科技大學資訊科技系助理教授 
+會議時間地點 March 19-21,2010, Bali, Indonesia 
+會議名稱 
+2010 Second International Conference on Computer 
+Engineering and Applications 
+發表論文題目 
+A Novel Top-Down Algorithm of Frequent XML Query Pattern 
+Mining 
+ 
+一、參加會議經過 
+本次研討會於2010年3月19-21日，在印尼的巴厘島舉行。這次會議總共有110 篇來自世界各
+國的論文，分11個Session 發表，我的論文報告安排在第一天下午。 
+二、與會心得 
+本研討會是較大型的國際會議，主辦單位特別邀請幾位知名的學者作主題演講(Keynote 
+Lecture)以及多場的專題演講 (Tutorials)，這些演講都讓我受益良多。我報告論文後，也引起
+蠻熱烈的討論，成果受到與會者的肯定。本人對於能出席這次會議並發表論文，並和來自不同國
+家的學者交換意見，深覺獲益良多。所發表之論文附錄如下： 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+nodes. Therefore, many infrequent k-node trees are not 
+enumerated if their (k-1)-node subtrees are infrequent. 
+Therefore, to compute the frequency of each candidate query 
+subtree, [11, 13, 14] scans database only when the candidate 
+is a single branch tree. Among these algorithms, FastXMiner 
+[13] is the most efficient since the frequency of a non-single 
+branch tree can be computed by joining the ID list of its 
+proper rooted subtrees. On the other hand, 2PXMiner [14] 
+extends FastXMiner [13] to discover frequent XML query 
+patterns involving that contain sibling repetitions. In order to 
+speed up the mining performance, 2PXMiner computes the 
+upper bound frequencies of XML candidate query subtrees 
+and use the minimum support constraint to early prune the 
+infrequent query subtrees.  
+[11, 13, 14] still follow the traditional idea of 
+generate-and-test paradigm to mine frequent XML query 
+patterns and thus have the following drawbacks. First, they 
+employ the rightmost expansion technique to enumerate all 
+of XML candidate query subtrees. This approach is likely to 
+produce many infrequent candidate subtrees, incurring 
+unacceptable costs of database scanning during the mining 
+process. Second, a great deal of system space is used in these 
+mining algorithms. All of these algorithms employ a global 
+tree to record all of user queries in the system, and then 
+generate a log of XML candidate subtrees on the global tree. 
+As a result, in these algorithms, mining frequent XML query 
+patterns over a great amount of user queries may result in 
+low mining performance.   
+[10, 12] also maintain a tree-like data structure, the 
+CGTG tree, to merge all of user queries to discover the 
+frequent XML query patterns. In [10], all of XML candidate 
+query subtrees are enumerated based on the CGTG tree, and 
+in [12], the candidates whose frequencies are bigger than the 
+minimum support value are enumerated. Therefore, in [12], 
+before generating the candidate subtrees, the infrequent 
+nodes in the CGTG tree are pruned. Also, in [10, 12], the 
+nodes in the CGTG tree are joined with their ancestor nodes 
+which have the same IDs. Therefore, they generate candidate 
+subtrees directly from the CGTG tree without scanning the 
+database. In sum, [10, 12] discover the frequent XML query 
+patterns on the processed CGTG tree. 
+Unlike [11, 13, 14], [10, 12] accumulate the frequencies 
+of XML candidate query subtrees directly from the CGTG 
+tree. Therefore, they are more efficient than [11, 13, 14]. 
+However, [10, 12] still cost a lot of system space and time to 
+construct and process the CGTG tree. As a result, to discover 
+the frequent XML query patterns over a great amount user 
+queries in [10, 12], the mining performance of these 
+algorithms is still degraded. 
+III. PROBLEM STATEMENT 
+XML queries can be represented as trees. For example in 
+Figure 1, the XPath expression: book//author[. = „john‟] 
+matches author elements that (i) have the string value “john”, 
+and (ii) are descendants of book elements that have a child 
+title element whose value is “XML”. Therefore, the XPath 
+expression can be represented as shown in Figure 1(b), 
+where the nodes indicate the three XML elements (i.e., book, 
+title, and author), and the two string values “XML” and 
+“john”. Also, an edge “/” indicates a pair of nodes which has 
+the parent-child relationship, and an edge “//” shows a pair of 
+nodes which has the ancestor-descendant relationship. 
+<book> 
+<title> XML </title> 
+    <author>jane</author> 
+    <author> john 
+</author> 
+     <year> 2000 </year> 
+    <chapter> 
+       <head> Origins 
+</head> 
+        <section> 
+                
+<head>…..</head>      
+         </section> 
+    </chapter> 
+    </book> 
+book
+title
+XML john
+author
+ 
+(a) (b) 
+Figure 1. An XML document and its XML query tree. 
+Definition 1 (XML query tree, XQTi) An XML query can be 
+modeled as a query tree XQTi = <Ni, Ei>, where Ni is the 
+node set, and Ei is the edge set. Nodes n Ni represent the 
+elements, attributes, and string values in XML queries, 
+whereas edges eEi represents the parent-child and 
+ancestor-descendant relationships as denoted by “/” and “//” 
+respectively. 
+An XML query tree XQTi has a set of XML subtrees, 
+namely SXQTij, which is the j
+th
+ subtree of XQTi. Since XML 
+queries can be modeled as trees, the frequent XML query 
+pattern mining problem is converted to the problem of 
+finding a set of subtrees that occur frequently over a set of 
+XML query trees [10-12]. Since the subtrees SXQTij of an 
+XQTi may be equivalent to other XQTk, we could seek the 
+frequent XQTi by considering the subtrees as the frequent 
+query trees. Figure 2 shows a subtree SXQTij of the XQTi in 
+Figure 1(b). 
+book
+title author
+XML jane
+(SXQTij )
+book
+title author
+XML
+(XQTi )  
+Figure 2. An XML query tree XQTi and its 
+subtrees SXQTij. 
+Definition 2 (XML query subtree, SXQTij) Given an XML 
+query tree XQTi = <Ni, Ei> and an XML subtree SXQTij = 
+since its sup(XQT2) = 2/6 > 0.2. Thus, all of the subtrees (i.e., 
+the subtrees SXQT21 and SXQT22 in Figure 4) are frequent 
+since XQT2 is frequent. As a result, the subtrees in Figure 4 
+do not need to be enumerated from XQT2 and thus cannot be 
+computed for their occurrences by scanning the database D. 
+Second, the existing algorithms [10-14] may be 
+inefficient to mine the frequent subtrees SXQTij. First, the 
+database D is scanned to construct a data structure that 
+records all of user query trees and uses the minimum support 
+constraint to prune the infrequent ones on the tree. And then, 
+the candidate subtrees are enumerated from the global tree 
+and the database is scanned again to compute the frequency 
+of each candidate. Therefore, these algorithms occupy a lot 
+of system space to conduct with all of user query trees. Also, 
+they waste a lot of system time to scan database for 
+determining whether a candidate subtree is frequent or not. 
+As a result, the algorithm without the need of maintaining all 
+of user queries and scanning databases for computation of 
+the frequency of each SXQTij may be more efficient than the 
+extant algorithm. Suppose in the database, the total 
+occurrence of each query tree is computed and all of theses 
+query trees are sorted by the number of their edges in a 
+descending order. Thus, as a query tree is scanned from the 
+database, the minimum support constraint can be used to 
+conduct with the frequent and infrequent ones. In this way, a 
+few candidate subtrees are generated for testing purposes. 
+Therefore, the system time and space are surely reduced. 
+Based on the observations as mentioned above, our 
+TXMiner considers the total occurrences of XML query trees 
+and sorts them by the number of edges in the database.  If 
+the value of freq(XQTi) is bigger than the minimum support 
+value m, all of its subtrees SXQTij are not enumerated for 
+maintaining and testing. On the other hand, if the value of 
+freq(XQTi) is smaller than value m, the subtrees SXQTij of 
+XQTi are enumerated since they  may be frequent as they 
+are the same with other query trees XQTk or their subtrees 
+SXQTkj. 
+B. TXMiner algorithm 
+This subsection illustrates our TXMiner algorithm. In 
+Figure 5, Line 1 calls the function genFreq(D) to combine 
+the same query trees and accumulate the frequencies of them. 
+Also, these query trees are sorted by the number of edges in 
+a descending order. Line 2 reads each query tree XQTi from 
+the database D. Lines 3-5 record the query tree XQTi and 
+then mask it as frequent. Lines 6-7 call the function 
+removeSXQTij(XQTi) to remove all of the subtrees SXQTij in 
+the system. Lines 9-11 call the function genSXQTij(XQTi) to 
+decompose the XQTi to generate the subtrees SXQTij and 
+record them in the system, and finally, Line 12 adds the 
+value of freq(XQTi) to the values of freq(SXQTij). 
+Algorithm TXMiner(D, m) 
+Input: A set of query trees XQTi in D; specified minimum 
+support m 
+Output: A set of frequent query subtrees F-SXQT 
+1  genFreq(D)   //generate the frequency of XQTi  
+2  for each XQTi in D 
+3   if freq(XQTi) > m then  
+4     record the XQTi 
+5     mask the XQTi is frequent 
+6     // remove all of subtrees SXQTij from the system 
+7     removeSXQTij(XQTi) 
+8   else  
+9     //generate SXQTij from XQTi 
+10    genSXQTij(XQTi)     
+11    add SXQTij in F-SXQT 
+12    add freq(XQTi) to all of freq(SXQTij) 
+13   end if 
+14 end for 
+Figure 5. Algorithm TXMiner. 
+For example in Figure 3, we assume the minimum 
+support value m is 0.2. In TXMiner, Line 1 firstly generates 
+the frequencies of XQTi, sorts them by the number of edges, 
+and thus results in Figure 6(a) in the system. In Figure 6(a), 
+XQT1:1, XQT2:2, XQT3:1, XQT4:1, and XQT5:1 represent 
+their frequencies 1, 2, 1, 1, 1 respectively. Line 2 reads the 
+query tree XQT1. Since sup(XQT1) = freq(XQT1) / |D| = 1/6 < 
+0.2, Lines 7-9 are performed and resulted in Figure 6(b). 
+Figure 6(b) shows the subtrees SXQT11, SXQT12, SXQT13, 
+SXQT14, SXQT15, SXQT16, and SXQT17 with the frequency 
+value “1”. Then Line 2 reads the query tree XQT2. Since its 
+sup(XQT2) = freq(XQT2) / |D| = 2/6 > 0.2, Lines 3-5 are 
+performed and resulted in Figure 6(c). In Figure 6(c), 
+freq(SXQT12) = freq(SXQT12) + freq(XQT2) = 1 + 2 = 3. 
+Therefore, the SXQT12 is masked as a frequent one. Also, the 
+SXQT13 is removed since it is the same with the subtree of 
+XQT2. As a result, when all of the query trees in database D 
+as shown in Figure 3 are processed by the TXMiner, Figure 
+6(d) shows the frequent trees (i.e., SXQT12 and SXQT17) in D. 
+book
+title author
+XML jane
+(XQT1:1)
+book
+title
+XML
+(XQT2:2)
+book
+title author
+(XQT3:1)
+book
+chapter
+book
+author
+(XQT4:1) (XQT5:1)
+(a)  
+book
+title author
+XML
+book
+title
+XML
+book
+title
+book
+title author
+jane
+book
+author
+jane
+book
+author
+book
+title author
+(SXQT11 : 1) (SXQT12 : 1)(SXQT13 : 1) (SXQT14 : 1) (SXQT15 : 1) (SXQT16 : 1) (SXQT17 : 1)
+(b)  
+book
+title author
+XML
+book
+title
+XML
+book
+title
+book
+title author
+jane
+book
+author
+jane
+book
+author
+book
+title author
+(SXQT11 : 1) (SXQT12 : 3)(SXQT13 : 1) (SXQT14 : 1) (SXQT15 : 1) (SXQT16 : 1) (SXQT17 : 1)
+frequent (c)  
+[9]. Kwon J., et al., Value-based Predicate Filtering of XML 
+Documents. Data & Knowledge Engineering, 2008. 67(1): 
+p. 51-73. 
+[10].Bei Yi-jun, et al., Buttom-up Mining of XML Query 
+Patterns to Improve XML Querying. Journal of Zhejiang 
+University, 2008. 9(6): p. 744-757. 
+[11].L.H. Yang, et al., Efficient Mining of Frequent XML 
+Query Patterns with Repeating-siblings. Information and 
+Software Technology, 2008. 50: p. 375-389. 
+[12].Y. Bei, et al., Buttom-up Discovery of Frequent Rooted 
+Unordered Subtrees. Information Sciences, 2009. 179: p. 
+70-88. 
+[13].L.H. Yang, M.L. Lee, and W. Hsu, Efficient Mining of 
+XML Query Patterns for Caching. VLDB, 2003: p. 
+69-80. 
+[14].L.H. Yang, et al., 2PXMiner: an Efficient Two Pass 
+Mining of Frequent XML Query Patterns. ACM 
+SIGMOD, 2004: p. 731-736. 
+無衍生研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

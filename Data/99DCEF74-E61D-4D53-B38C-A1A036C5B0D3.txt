@@ -1,0 +1,879 @@
+基於影音串流分割片段之動態雙層快取機制
+計畫編號：NSC 99-2221-E-152-002
+執行期限：99 年 08 月 01 日至 100 年 10 月 31 日
+主持人：游象甫 國立台北教育大學資訊科學系
+共同主持人：王堯天 弘光科技大學資訊工程系
+計畫參與人員：梁凱鈞 國立台北教育大學資訊科學系
+摘要
+隨著網路頻寬與電腦硬體設備的技術發展日
+新月異, 隨選視訊服務已經相當普遍。為能穏定而
+持續提供多媒體串流服務, 一種有效的策略是利
+用快取機制, 當使用者想觀看影片時, 會先連線至
+快取伺服器, 快取伺服器會檢查影片是否存在, 若
+是則回傳所需資料; 否則, 快取伺服器會連線至影
+片內容伺服器取得所需影片, 暫存後再傳送給使
+用者。本計畫研究提出基於影音串流分割片段之動
+態雙層式快取策略用以提高快取擊中率, 先將影
+片切割成多個片段儲存於快取伺服器, 其中快取
+分為兩個快取空間並動態改變其大小, 分別使用
+LRU 與 LRU-2 兩種置換法; 本策略並使用允入
+控制 (Admission Control) 決定是否快取請求的影
+片片段, 同時考慮正在觀看的影片, 使得快取伺服
+器能夠保留更能持續提供快取擊中率的影片片段;
+本計畫也處理使用者觀看影片時快轉及中斷的行
+為, 並提出對應的策略。最後撰寫模擬程式在不同
+的快取空間、影片熱門程度、影片請求到達率及使
+用者快轉或中斷機率的環境下進行效能評估, 與
+先前的研究相比大都能取得較佳的快取擊中率。
+關鍵字: 隨選視訊服務、多媒體串流服務、快取機
+制、兩層式架構、LRU
+1 緒論
+隨選視訊 (Video on Demand, VoD) 是透過
+網路觀看影片的一種服務, 由於網路科技的進步,
+YouTube 的興起, 正代表類似服務會成為網際網
+路上新的趨勢。一般來說, 多媒體串流物件大小遠
+超過一般的網頁, 且需滿足低等待時間和即時連
+續播放的特性, 所以影片內容伺服器對磁碟的負
+載及網路頻寬的需求也遠高於一般網頁伺服器 ,
+因此當點播影片的請求較多時, 影片內容伺服器
+容易因過載而降低服務品質, 造成影片播放不順
+暢, 甚而停止服務。為能穏定而持續提供多媒體串
+流服務, 其中一個有效的策略是利用快取機制, 建
+置多部快取伺服器, 分散影片內容伺服器的磁碟
+負載及網路頻寬需求。快取伺服器通常安裝於靠近
+客戶端的地點, 點播影片的請求會先從客戶端傳
+送至快取伺服器, 快取伺服器會檢查所需之多媒
+體物件是否已被快取, 若是, 則會從磁碟中讀取物
+件資料, 然後回傳至客戶端; 否則快取伺服器會連
+線至內容伺服器存取所需的多媒體物件, 儲存至
+快取中並傳輸給客戶端。網頁快取伺服器的快取物
+件大都以一個完整網頁為單位, 然而一般的串流
+物件其大小遠大於網頁, 若直接快取完整的串流
+物件會造成快取中儲存的物件數目大幅減少, 導
+致擊中率下降; 同時大快取物件的頻繁置換也會
+造成快取可用空間劇烈波動, 進一步降低快取效
+能, 因此目前主要的串流快取系統均將其中串流
+物件分割成多個片段, 個別快取。
+如前所述, 由於串流物件大小遠比一般網頁
+為大, 因此將每個串流物件視為單一快取物件, 容
+易造成快取的位元組擊中率大幅變動, 同時使得
+快取中可同時存放的串流物件變少, 所以客戶等
+待時間也會加大。為了解決上述問題, 常見的作法
+是將影片分割成較小的片段, 只快取部分影片片
+段, 而非整個影片。為了降低客戶等待時間, 其中
+一種方法是將影片分割成開頭及後面兩部分
+[3][4], 只快取開頭的片段, 因為開頭片段較小, 所
+以可以迅速的傳送給客戶, 改善客戶等待時間。另
+外也有研究探討如何分割影片片段提高快取擊中
+率, 例如 [2][5] 提出將影片以指數分割, 每一片
+段皆為前一個片段倍數大小, 當快取空間不足時,
+表 1. 符號定義
+符號 意義
+21 LLC  快取伺服器的總空間
+sizecurrentLC __1 目前快取 L1 的空間
+sizecurrentLC __2 目前快取 L2 的空間
+sizenewLC __1
+快取 L1 將改變的大
+小
+sizenewLC __2
+快取 L2 將改變的大
+小
+viewingC
+播放中影片片段的大
+小
+max1 __ RatioCacheL
+快取 L1 最大允許比
+例值
+viewingRatio
+快取 L1 將改變的比
+例值
+If( 21__1 / LLsizecurrentLviewing CCRatio  ) {
+#如果快取 L1 太小
+While( sizenewLsizecurrentL CC __1__1  ) {
+選出快取 L2 內最近使用片段移至快取 L1 底端
+並更新快取 L1 和 L2 的大小}
+}
+Elsif( 21__1 / LLsizecurrentLviewing CCRatio  ) {
+#如果快取 L1 太大
+While( sizenewLsizecurrentL CC __1__1  ) {
+選出快取 L1 內最少存取的犧牲者移至快取 L2 頂端
+並更新快取 L1 和 L2 的大小}
+}
+圖 3. 動態調整片段移動演算法
+21/ LLviewingviewing CCRatio 
+# 目前正被觀看影片佔總快取的比例
+If( max1 __ RatioCacheLRatioviewing  ) {
+# 檢查該比例是否超過快取 L1 所允許上限
+max121__1 __ RatioCacheLCC LLsizenewL  
+# 若是, 則將快取 L1 的大小比例
+# 設為該上限值
+sizenewLLLsizenewL CCC __121__2   }
+Else {
+21__1 LLviewingsizenewL CRatioC 
+# 否則, 將快取 L1 的大小比例設為目前
+# 正在觀看影片的比例
+sizenewLLLsizenewL CCC __121__2  
+}
+圖 2. 快取 L1 與 L2 動態調整大小的方法
+2.1 片段切割法
+串流快取機制的切割法採用固定大小片段切
+割法, 每個片段大小按其播放時間等分割, 設定適
+當長度。理論上影片片段的分割愈小, 若快取 L1
+為固定大小, 則可儲存的播放中影片片段會愈多,
+快取 L1 會得到較穩定的快取擊中率, 同時保證
+正在被存取的影片片段被確實擊中。然而片段過小
+可能會導致影片不能連續播放, 原因是如果片段
+過小則客戶端會很快播放完畢, 此時若接續片段
+尚未被快取, 而且快取下載此片段的速度比客戶
+播放速度慢, 就會造成影片資料耗盡而播放中斷,
+所以必須依照影片伺服器頻寬及客戶播放速度適
+當設定片段大小。
+2.2 動態快取調整
+快取 L1 及 L2 的大小每隔一段時間會隨
+著使用者正在存取的影片片段大小與快取空間大
+小的比例而動態調整, 當目前影片被使用者所存
+取的比例較小時, 快取 L1 的大小會變小, 而快
+取 L2 將變大。相反地, 若目前影片有龐大使用者
+在存取時 , 快取 L1 將變大 , 而快取 L2 將變
+小。一開始快取 L1 及 L2 的大小先由管理者設定,
+接著系統會自動調整快取 L1 及 L2 的大小。
+為避免誤判影片目前存取的比例, 造成快取
+L1 及 L2 的大小不斷變動, 引發震盪, 所以每隔
+一段時間系統會進行上述的檢查, 調整快取 L1
+及 L2 的大小。考慮到客戶端請求的變異, 冷門時
+段時來自客戶端的請求量較少, 為了不浪費快取
+的空間, 根據目前播放中影片的片段大小調整快
+取 L1 的空間。熱門時段時來自客戶端的請求量
+較多, 為了避免快取 L2 大小趨近於零, 快取 L1
+會設定最大比例值, 動態調整的方法如圖 2, 其符
+號定義如表 1。
+當快取空間發生改變時, 圖 3 說明影片片
+段如何在兩個快取間移動, 快取 L1 由小變大
+時, 將快取 L2 存取時間較近的影片片段移至
+快取 L1, 減少移動片段不被置換的可能性; 快
+取 L1 由大變小時, 將快取 L1 存取時間較早
+的影片片段移至快取 L2。
+2.3 快取 L1 的快取置換策略
+L2 快取
+5
+1
+8
+7
+5
+1
+8
+7
+5
+1
+8
+7
+5
+4
+4
+4
+4
+3
+3
+3
+3
+2
+2
+2
+2
+1
+K = 1 K = 2
+219
+113
+175
+165
+159
+88
+115
+105
+99
+57
+55
+45
+39
+圖 8. LRU-2 影片片段第一次存取情形
+L2 快取
+5
+1
+8
+7
+5
+1
+8
+7
+5
+1
+8
+7
+5
+4
+4
+4
+4
+3
+3
+3
+3
+2
+2
+2
+2
+1
+K = 1 K = 2
+747
+735
+752
+707
+687
+692
+675
+647
+627
+632
+615
+587
+567
+219
+113
+175
+165
+159
+88
+115
+105
+99
+57
+55
+45
+39
+圖 9. LRU-2 影片片段第二次存取情形
+L1 快取
+1
+4
+3
+2
+1
+2
+1
+3
+2
+2
+2
+2
+1
+1
+L1 底端
+L1 頂端
+播放中
+播放中
+播放中
+播放中
+播放中
+播放中
+播放中
+優先置換片段
+3 1
+4 1
+圖 7. 快取 L1 存滿播放中影片的置換說明
+空間足夠。
+2.4 快取 L2 的快取置換策略
+快取 L1 保留當前使用者所存取的影片片段
+以避免當前影片存取擊中率的損失。然而隨著時間
+的變化以及使用者的喜好變化, 影片被存取的可
+能性也會動態改變, 要如何隨影片熱門程度改變
+快取的影片片段也很重要。本研究對快取 L2 的
+置換法為 LRU-K [1], 如上述章節所述, 快取 L2
+所快取的影片片段為快取 L1 中停止播放的影片
+片段, 而影片片段被使用者存取的時間也會有較
+早晚之分。LRU 能將影片片段存取時間的早晚區
+別出來 , 但只限於最近期存取的影片片段。而
+LRU-K 將 LRU 加上 K 次存取時間的歷史紀錄,
+也就是根據過去第 K 次被存取的時間來決定未
+來要被置換的片段。LRU-K 採用參考密集性作為
+置換所考量的因素, 遇到要進行置換的行為時, 會
+根據每個片段前 K 次被存取的時間來作比較, 時
+間最早的片段將會被置換。當 K 較小時, LRU-K
+可以迅速地將快取中較不常使用的片段置換。如果
+超過一個片段還未有倒數第 K 次存取, 則可以依
+照 LRU 選擇要被替換的片段。
+以 LRU-1 為例, 紀錄每個片段最近一次被
+存取的時間, 也就是每個片段上一次被存取的時
+間; 以此類推, LRU-2 紀錄每個片段最近兩次被
+存取的時間, 也就是每個片段上一次與前二次被
+存取的時間。如圖 8 所示, K = 1 紀錄的時間為上
+一次被存取的時間, K = 2 紀錄的時間為前二次被
+存取的時間, 根據兩種紀錄的歷史時間可比較出
+非熱門影片片段被存取的時間間隔較長, 而熱門
+影片片段相對較短, 快取 L2 所置放的影片片段
+客戶端請求
+由於客戶端中斷或
+快轉而無請求
+原請求之片段於
+快取 L1 或 L2 ?
+將片段移出快取
+L1,釋放片段大小
+給快取 L2
+片段於快取L2
+片段於快取L1
+將片段置放於快取
+L2 頂端
+將片段移至快取
+L2 底端
+結束
+圖 12. 快取伺服器處理播放中斷的影片
+片段流程
+客戶端請求
+快取伺服器處
+理已快取之請
+求片段
+片段快取於快取
+L1 或 L2 ?
+使用 LRU 將片
+段位置更新
+擊中快取 L1
+是
+請求結束
+判斷快取 L1 空
+間是否足夠?
+將擊中片段移
+至快取 L1
+擊中快取 L2
+否
+是
+否
+將尋找片段移
+至快取 L2
+尋找快取 L1 無
+人收看的片段
+尋找快取 L1
+存取時間最早
+的片段
+圖 13. 快取伺服器 Hit 客戶端請求影片
+片段的流程
+39, 快取 L2 所選出比較之對象為影片 5 片段 1
+而此片段所紀錄之 K = 2 的時間也為 39, 因此將
+比對兩者 K = 1 與 K = 2 之時間差, 由於請求片
+段之時間差為 508 小於選出對象之時間差為 528,
+因此將會快取並移除影片 5 片段 1。反之, 則不
+快取。最後, 第三種情形也不快取。
+2.6 播放中斷處理
+若由於快轉或中斷影片播放, 會根據被放棄
+播放片段所置放之快取而處理。如圖 12 所示, 原
+本客戶端應請求下一個片段, 但由於中斷或快轉
+而不需此片段, 如果片段於快取 L1, 考慮到此影
+片可能較無人收看, 先將片段移至快取 L2, 此時
+必須考慮快取 L2 空間是否足夠, 將快取 L2 根
+據紀錄之時間最久沒存取的片段移出快取空間並
+將片段移至快取 L2; 如果片段於快取 L2 則移出
+快取空間。
+2.7 快取運作流程
+此節將說明當客戶端發出請求給快取伺服器
+時, 快取伺服器處理客戶端請求所發生之可能情
+境, 例如 Hit 與 Miss。Hit 意味著客戶端請求的
+影片片段已快取
+於快取伺服器, 表示快取伺服器擊中客戶端所請
+求的影片片段; Miss 意味著客戶端請求的影片片
+段未快取於快取伺服器, 表示快取伺服器沒有擊
+中客戶端所請求的影片片段。
+如圖 13 所示, 快取伺服器擊中客戶端請求
+的影片片段時, 此片段可能置放於快取 L1 或快
+取 L2 中。如果置放於快取 L1, 則根據 LRU 將
+片段位置更新, 回應並傳送給客戶端; 如果置放於
+快取 L2, 表示此片段原本已無人收看, 由於再次
+被客戶端請求的關係, 將此片段移至快取 L1, 但
+前提是快取 L1 空間必須足夠, 因此快取 L1 空
+間不足時, 將快取 L1 中已無人收看的影片片段
+移至快取 L2, 如果快取 L1 空間仍然不足, 最早
+被存取的影片片段移至快取 L2, 依此方法回應並
+傳送給客戶端。
+如圖 14 所示, 快取伺服器沒有擊中客戶端
+請求的影片片段時, 快取伺服器必須向影片伺服
+器取得請求的影片片段, 並傳送給客戶端。由於快
+取 L1 主要置放收看中的影片片段, 快取 L1 空
+間足夠時, 則快取於 L1, 回應並傳送給客戶端;
+快取 L1 空間不足時 , 則經由快取 L2 來判斷 ,
+如果快取 L2 仍有空間, 則快取 L1 中已無人收
+看的影片片段移至快取 L2, 如果快取 L1 空間仍
+然不足, 將最早被存取的影片片段移至快取 L2,
+20
+30
+40
+50
+60
+70
+0.1 0.2 0.5 0.9
+Forward/stop rate
+B
+yt
+e-
+hi
+tr
+at
+io
+(%
+)
+LRU 片段快取
+LRU 整部影片快取
+Two-tiered cache
+提出的方法
+圖 18. 各方法在不同的使用者快轉或中斷行為可
+能性的快取擊中率表現
+30
+35
+40
+45
+50
+55
+60
+65
+3 6 9 12
+Arrival rate
+B
+yt
+e-
+hi
+tr
+at
+io
+(%
+)
+LRU 片段快取
+LRU 整部影片快取
+Two-tiered cache
+提出的方法
+圖 17. 各方法在不同的請求到達率的快取擊中率表
+0
+10
+20
+30
+40
+50
+60
+70
+0.2 0.4 0.6 0.8
+Skew factor
+B
+yt
+e-
+hi
+tr
+at
+io
+(%
+)
+LRU 片段快取
+LRU 整部影片快取
+Two-tiered cache
+提出的方法
+圖 16. 各方法在不同影片的熱門程度下的快取擊中
+率表現
+間為 0.1、0.2、0.3、0.4 與 0.5 時, 本計畫提出之
+快取策略表現均較佳。相較於 Two-Tiered Caching
+在快取空間 0.1 以及 0.2 時, 本法的快取擊中率提
+升約 8%-11%。與片段快取及整部快取演算法相比,
+本法提高快取擊中率提高約 17%-26%。當快取空
+間越大時, 能容納的影片會愈多, 於是本方法與其
+他方法在快取擊中率的表現會趨於一致。
+3.3 影片熱門程度
+本模擬討論影片熱門程度對快取擊中率的影
+響。圖 16 顯示本方法在較常態分佈的影片熱門程
+度情況下快取擊中率較不出色, 由於本方法特別
+針對熱門影片片段設計置換機制, 所以在影片常
+態分佈下無法表現出其優點。然而考慮一般實際運
+作情況下, 多數影片請求仍傾向集中於少數影片,
+而本方法相較於其他方法對於熱門影片能取得較
+好的表現。例如本方法在 skew factor 為 0.2 和 0.4
+時表現的快取擊中率與 Two-Tiered Caching 相比
+提高約 7%-8%, 與片段快取和整部快取相比也都
+高出約 17%-25%。
+3.4 影片請求到達率
+接下來討論客戶端進入系統的請求到達率對
+系統效能的影響。圖 17 顯示本方法在請求到達率
+每分鐘 3 部、6 部、9 部以及 12 部時的快取擊中率
+與 Two-Tiered Caching 相比提高約 3%-11%, 而與
+片段快取和整部快取的快取擊中率相比高出約
+11%-13%。根據模擬結果, 本方法不論在冷門或尖
+峰的情況下, 與其他方法相比在快取擊中率都能
+取得更穩定且較好的表現。
+3.5 使用者快轉或中斷之行為
+接下來討論客戶端可能由於喜好因素而快轉
+或中斷時對於快取擊中率的影響, 如圖 18 所示,
+這裡所提到的快轉或中斷的行為由機率表示為
+0.1、0.2、0.5 和 0.9。快轉或中斷機率為 0.1 時, 表
+示客戶端請求 10 部影片時, 就有可能會有 1 部
+影片發生快轉或中斷不看的可能性, 以此類推。若
+快轉或中斷機率越高, 對熱門影片雖然較無影響,
+但不熱門影片若佔據被頻繁存取的熱門影片的位
+置, 可能導致快取擊中率下降。本方法在快轉或中
+斷機率為 0.1、0.2、0.5 以及 0.9 表現的快取擊中
+率與 Two-Tiered Caching 相比提高約 8 % ~ 9 %,
+與片段快取和整部快取相比也都提高約 13 % ~
+17 %, 由於本研究考慮了使用者快轉或中斷的可
+能性, 並加以處理, 相較於其他方法可得到較好的
+快取擊中率。
+4 結論
+本計畫成果提出 Segment-Based Two-Layer
+Caching Approach, 將快取空間分為快取 L1 與快
+[13] J. Z.Wang and P. S. Yu, “Fragmental proxy caching for 
+streaming multimedia objects,” IEEE Transactions on
+Multimedia, Vol. 9, No. 1, pp. 147-156, January 2007.
+[14] Wei Tu, E. Steinbach, M. Muhammad, Xiaoling Li,“Proxy 
+Caching for Video-on-Demand Using Flexible Starting
+Point Selection,”IEEE Transactions on Multimedia, Vol.
+11, No. 4, pp. 716-729, June 2009.
+[15] L. Shen, W. Tu, and E. Steinbach, “A flexible starting point
+based partial caching algorithm for video on demand,” in 
+Proceedings of IEEE International Conference on
+Multimedia and Expo (ICME’07), Beijing, China, July
+2007.
+[16] L. Breslau, P. Cao, L. Fan, G. Phillips, and S. Shenker,
+“Web Caching and Zipf-like Distributions: Evidence and
+Implications,”INFOCOM’99, pp. 126-134, 1999.
+參加研討會的學者來自多國, 不過亞洲較多, 研究領域也
+相當廣泛, 雖然沒有直接與發表論文相關的研究, 不過仍
+然得到相當啟發, 認識許多朋友。
+三、 考察參觀活動
+自費於星期六及日, 參觀新加坡當地著名景點, 包含魚尾
+獅公園及聖陶沙, 發現新加坡的確非常進步且國際化, 惟
+覺得稍稍欠缺文化特色。
+四、 攜回資料名稱及內容
+研討會論文集及其光碟片。
+五、 其他
+以下為發表論文資料:
+Kai-Chun Liang, Yao-Tien Wang, Hsiang-Fu Yu, “Segment-based Streaming
+Cache of Two Layers,”2011 International Conference on Communication
+Systems and Computer Networks (ICCSCN2011), Singapore, September 2011.
+(EI) (全文見下一頁)
+IDC
+Cache L1 Cache L2
+Cache server
+10 1
+9 1
+5
+1
+1
+15
+iMac
+Video server
+15 1
+9 1
+10 1
+5 1
+11 35
+56 25
+14 65
+26 45
+Video No Segment No
+iMac
+iMac
+iMac
+Video request
+Client
+Fig. 2 The proposed streaming cache
+TABLE I
+TERMS USED BY THE ALGORITHM TO DETERMINE THE
+CACHE SIZE
+Term Definition
+21 LLC  Entire cache size
+sizenewLC __1 New size of Cache L1
+sizenewLC __2 New size of Cache L2
+viewingC Size of playing segments
+max1 __ RatioCacheL
+Maximum ratio of size of
+Cache L1 to entire cache size
+viewingRatio
+Ratio of playing segments to
+entire cache size
+21/ LLviewingviewing CCRatio 
+If( max1 __ RatioCacheLRatioviewing  ) {
+max121__1 __ RatioCacheLCC LLsizenewL  
+sizecurrentLLLsizenewL CCC __121__2   }
+Else {
+21__1 LLviewingsizenewL CRatioC 
+sizenewLLLsizenewL CCC __121__2  
+}
+Fig. 3 The algorithm to determine the sizes of Caches L1 and
+L2
+Segment hit
+Which cache?
+Reorder
+segments in
+Cache L1 by
+LRU
+Cache L1
+Y
+End
+Cache L1 has
+enough space?
+Save the hit
+segment in Cache
+L1
+Cache L2
+N
+Y
+N
+Move the
+segment to Cache
+L2
+Search Cache L1
+for a played
+segment
+Select the
+segment earliest
+accessed from
+Cache L1
+Fig. 4 The algorithm to process the segment hit
+simulation to evaluate the proposed cache under various
+cache size, video popularity, request arrival rate, and
+playback interrupt rate. In comparison with the
+segment-based LRU, the video-based LRU, and the
+two-tiered cache proposed by [4], our approach mostly
+yields better hit ratio.
+The rest of this paper is organized as follows. Section
+2 presents the proposed cache. The experimental results and
+comparisons are shown in Section 3. Brief conclusions are
+drawn in Section 4.
+II. THE PROPOSED CACHE
+The work devises a segment-based two-layer caching
+approach to increase byte-hit ratio. Suppose that the
+bandwidth between a video server and a cache server is
+unlimited and the bandwidth between the cache server and
+a client is larger than playback rate. Each video is
+partitioned into multiple fixed-length segments. The
+proposed approach divides the cache into two layers: L1
+and L2, which use different replacement algorithms. Cache
+L1 mainly stores the video data that are playing currently.
+Once the space of Cache L1 is not enough, Cache L1 uses
+LRU to choose a victim, which is then moved to Cache L2.
+If Cache L2 also has not enough space, Cache L2 first
+swaps out a selected segment according to LRU-K, and
+saves the segment coming from Cache L1.
+The proposed approach periodically adjusts the sizes
+of Caches L1 and L2 according to the size of segments
+accessed. With the decreasing of the number of the
+segments currently played, the proposed approach reduces
+the size of Cache L1 and enlarges the size of Cache L2, and
+vice versa. In order to avoid frequent size adjustment, the
+adjustment is executed periodically, rather than when a
+segment request arrives. Table I lists the parameters to
+determine the sizes of Caches L1 and L2. Figure 3 shows
+the detail algorithm. The size of Cache L1 has an upper
+bound to avoid the size of Cache L2 being zero when many
+video requests arrive.
+Besides LRU, The replacement of Cache L1 is also
+based on the observation that a video is played
+continuously. If a video is played currently, its segments
+not played yet are very possibly accessed later. Accordingly,
+Cache L1 avoids swapping out these segments. It is well
+48
+50
+52
+54
+56
+58
+60
+62
+64
+0.1 0.2 0.5 0.9
+Forward/stop rate
+B
+yt
+e-
+hi
+tr
+at
+io
+(%
+) Segment-
+based LRU
+Video-based
+LRU
+Two-tiered
+cache
+The proposed
+Fig. 9 The impact of forward/stop playback on byte-hit ratio
+0
+10
+20
+30
+40
+50
+60
+70
+0.2 0.4 0.6 0.8
+Skew factor
+B
+yt
+e-
+hi
+tr
+at
+io
+(%
+)
+Segment-based
+LRU
+Video-based
+LRU
+Two-tiered
+cache
+The proposed
+Fig. 7 The impact of skew in video popularity on byte-hit
+ratio
+48
+50
+52
+54
+56
+58
+60
+62
+64
+3 6 9 12
+Arrival rate
+B
+yt
+e-
+hi
+tr
+at
+io
+(%
+) Segment-
+based LRU
+Video-based
+LRU
+Two-tiered
+cache
+The proposed
+Fig. 8 The influence of request arrival rate on byte-hit ratio
+approaches. The advantage in byte-hit ratio of our approach
+is more significant for a smaller cache size. For instance,
+the hit ratio of our approach is 11% higher than that of the
+two-tiered cache at the cache size of 0.1; while, 26% better
+than those of the video-based LRU and the segment-based
+LRU. With the growth of the cache size, all the schemes
+can cache most videos, and thus their performance is
+similar.
+We next examine the impact of the skew in video
+popularity on the byte-hit ratio, as indicated in Fig. 7. The
+proposed approach has the higher byte-hit ratio under
+skewed video popularity. When the video popularity
+becomes normal distribution, our scheme performs less
+effectively. For example, the hit ratio of the proposed
+scheme is 7% better than that of the two-tiered cache at the
+skew factor of 0.2. The scheme also outperforms the
+video-based LRU and the segment-based LRU. However,
+when the skew factor is larger than 0.6, the two-tiered
+cache performs better than the proposed.
+Figure 8 shows the impact of the request arrival rate
+on the byte-hit ratio. For a wide range of the arrival rate,
+the proposed approach outperforms other schemes. In
+comparison with the two-tiered cache, our approach yields
+3%-11% higher hit ratio. The hit ratio of the approach is
+also 11%-13% larger than those of the video-based LRU
+and the segment-based LRU. The results reflect that the
+proposed cache performs steadily under various request
+arrival rates.
+Figure 9 depicts the impact of the rate of the
+forward/stop playback on the byte-hit ratio. The rate
+indicates the probability that a user performs forward/stop
+playback during watching a video. The rate of 0.1
+represents that one of ten videos happen forward/stop
+playback. The figure shows that the proposed cache yields
+8%-9% larger hit ratio than the two-tiered cache. In
+comparison with the video-based LRU and the
+segment-based LRU, the approach also achieves 13%-17%
+better.
+IV. CONCLUSIONS
+With the advanced network and computer
+technologies, VoD services become very popular, and are
+expected to be next-generation killer applications on
+Internet. To alleviate the limits of computing load and
+bandwidth requirements to VoD services, this paper
+proposes a two-layer segment-based cache for streaming
+objects. The cache server divides the cache storage into
+Caches L1 and L2, and dynamically adjusts their sizes
+according to video popularity. The replacement algorithm
+of Cache L1 is LRU, and that of Cache L2 is LRU-K. To
+enlarge the hit ratio, this study also presents an admission
+control to determine which accessed segments should be
+cached. The proposed cache further considers the situations
+that clients may suddenly perform forward/stop playback.
+This work conducts a comprehensive simulation to evaluate
+the proposed cache under different cache size, video
+popularity, request arrival rate, and playback interrupt rate.
+In comparison with the segment-based LRU, the
+video-based LRU, and the two-tiered cache, our approach
+mostly yields better byte-hit ratio under various parameters.
+REFERENCES
+[1] S. Sen, J. Rexford, and D. Towsley, “Proxy prefix caching for
+multimedia streams,” IEEE INFOCOM’99, New York, 1999.
+[2] S. H. Park, E. J. Lim, and K. D. Chung, “Popularity-based partial
+caching for VoD systems using a proxy server,” in Proceedings of
+IEEE International Parallel and Distributed Processing
+Symposium (IPDPS’01), San Francisco, CA, 2001.
+[3] K. L. Wu, P. S. Yu, and J. L. Wolf, “Segment-based proxy
+caching of multimedia streams,” in Proceedings of International
+Conference on World Wide Web (WWW’01), Hongkong, China,
+May 2001.
+[4] K. L. Wu, P. S. Yu, and J. L. Wolf, “Segmentation of multimedia 
+streams for proxy caching,” IEEE Transactions on Multimedia,
+Vol. 6, No. 5, pp. 770-780, 2004.
+[5] S. Chen, H. Wang, X. Zhang, B. Shen, and S. Wee,
+“Segment-based proxy caching for Internet streaming media
+delivery,” IEEE Multimedia, Vol. 12, No. 3, pp. 59-67, July 2005.
+[6] S. Chen, B. Shen, S. Wee, and X. Zhang, “SProxy: A caching 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/11/26
+國科會補助計畫
+計畫名稱: 影音串流片段分割快取機制研究
+計畫主持人: 游象甫
+計畫編號: 99-2221-E-152-002- 學門領域: 計算機網路與網際網路
+無研發成果推廣資料
+已獲得件數 0 0 100%  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+其他成果 
+(無法以量化表達之
+成果如辦理學術活
+動、獲得獎項、重要
+國際合作、研究成果
+國際影響力及其他協
+助產業技術發展之具
+體效益事項等，請以
+文字敘述填列。) 
+擔任由 Hindawi Publishing Corporation 發行的 International Journal of 
+Digital Multimedia Broadcasting 其中 IPTV: Technology, Practice, and 
+Service 的 Special Issue 的 Lead Guest Editor. 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

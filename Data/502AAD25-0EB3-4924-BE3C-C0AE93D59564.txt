@@ -1,0 +1,252 @@
+ 1
+摘要 
+物件儲存裝置是目前漸受網路儲存工業
+所重視的技術，與以 SAN 和 NAS 為基礎的
+儲存系統相較之下，物件儲存系統可以提供
+更高的擴充性與資料共享能力。國外已有越
+來越多的廠商投入研究，除了目前較有名的
+Lustre[1]外，Intel 及 IBM 也已經開發了實驗
+性質的 OSD 系統。 
+本計劃之研究主題是 OSD Client、MDS
+及 OSD 子系統的規劃以及實作，以及如何
+利用 Object-based 儲存技術，提供在網路上
+具備智慧型功能之儲存及管理服務，以符合
+未來資訊產業具有前瞻性且重要的技術。本
+結案報告包含了三件主要的工作與其成
+果；一為實際架設三個不同的子系統並整合
+在一起工作，二是將 OSD 子系統嵌入式
+化，運行在 ARM 為基礎的目標板上，三則
+開發一個低階的 FAT+檔案系統，期許能夠
+更適應嵌入式系統之應用。 
+關鍵字： 物件儲存裝置、檔案系統、FAT 
+ 
+Abstract 
+The object-based storage device (OSD) has 
+gained highly attention in the network storage 
+industry. The technology potentially offers 
+better system scalability and data sharing 
+capacity in comparison with traditional 
+solutions such as SAN or NAS. There are 
+more and more companies get involve in 
+researches to object storage systems. Besides 
+the well-known Luster system, Intel and IBM 
+had shown their interest and had built their 
+prototypes. 
+The subjects of this project are to layout 
+and implement the OSD Client, MDS and 
+OSD subsystems, and to utilize object-based 
+storage techniques on a more intelligent 
+storage as well as easier management services. 
+We expect the techniques meet the future 
+requirements of information industry. The 
+main jobs and outcomes of this proposal are 
+described in 3 folds. First, we setup the 3 
+subsystems which work each other together. 
+Second, we port the OSD subsystem to an 
+ARM-based target board. Third, we 
+development a low level file system driver, 
+named FAT+, which is FAT compatible, and 
+hopefully it is more adaptive to embedded 
+system applications. 
+Key words: Object Storage System, File 
+System, FAT 
+ 
+一、前言 
+本申請計劃的目標即在實現一 Intelligent 
+Object-based storage system [2]，其特點可以
+由儲存裝置(storage device)及儲存系統的架
+構 (architecture)兩方面來說明：如圖一所
+示，Object storage device(OSD)是一以物件
+為儲存單位的裝置，以功能方面來說它與目
+前儲存裝置最大的差異是操作資料時是以
+Object 為單位而不是以 Block 為單位，而且
+是一具備智慧的儲存裝置，以硬體觀來看此
+裝置具備 CPU、RAM、網路介面等重要元
+件。儲存系統架構指的是物件操作的機制及
+程序，例如物件操作流程、物件安全管理、
+物件分享、OSD 裝置管理…等。 
+ 
+ 
+ 3
+料當成一般檔案寫入現有的分割區裡面。 
+ 
+圖三：Intel iSCSI/OSD 軟體架構 
+Object Storage Device 的部分，則是在 
+client 端加入兩個 kernel module，一個負責
+提供 osd 專用的 filesystem，把 read/write
+命令轉換為 osd 的命令，另一個則是負責提
+供  SCSI upper layer 的功能，將 OSD 
+message 包裝為 SCSI message。Target 則有
+一支程式程式利用現有的分割區存放 
+object，它的方法是將 object 分為 metadata 
+及 content 兩個檔案儲存起來。 
+ 
+圖四：Client 資料儲存反應在 Target 端的資料
+儲存狀態 
+圖四說明在 object storage 裡面，object 
+儲存的情況以及所對應的  client 目錄結
+構。 
+其中在 OSD Target 端，系統會建立一個 
+base directory /mnt/iscsi_osd，並根據執行參
+數的不同，產生與 lun 數量相同的目錄，
+名稱為 lun_0、lun_1…。假設執行時只有一
+個 lun，則只會有 lun_0 這個目錄產生，而
+目錄底下便是存放 object 的地方，此時沒
+有任何檔案。當 client 執行 mount 命令，將
+object storage 掛載到 Client 端的目錄(假設
+為 /mnt)，OSD Target 端會執行自動偵測 
+client 是否有指定 root directory group object 
+id 及 root directory user object id，如果沒有
+則自動在/tmp/iscsi_osd/lun_0 目錄底下產生
+一個目錄，名稱為 0xabcd1235 ，其中
+abcd1235 便是 root directory group object 
+id。接著在該目錄底下產生檔案 0x00000001
+及 0x00000001.1234bc，其中 00000001 為
+root directory user object id，而 0x00000001 
+這個檔案將會儲存 client 端/mnt 那一層目錄
+下的檔案或目錄名稱及 inode number；
+0x00000001.1234bc 則 是 儲 存  client 端 
+/mnt 那一層目錄的 metadata。 
+如果我們以  object storage 的角度來
+看，這兩個檔案便可以代表一個 object，也
+就是在這邊的 root directory object。到此結
+束 mount 動作，client 那邊已經將  OSD 
+掛載到 /mnt 底下。接著 client 編輯檔案 
+abc，內容為 Test1，儲存之後 client 理所當
+然可以看到 abc 這個檔案，而在 OSD 那端，
+則會在 0xabcd1235 目錄裡面，產生兩個檔
+案 ， 分 別 為 0x00000002 及
+0x00000002.5678ab，0x00000002 的內容就
+是 abc 的內容：Tes1，而 0x00000002.5678ab 
+則是儲存檔案 abc 的 metadata：建立時間、
+檔案大小、inode number…等等。 
+OSD 也會更改 0x00000001 的內容，加
+上  2 及  abc 這兩行，分別代表  abc 的 
+inode number 以及檔案名稱。我們不難發
+現，在 OSD 裡面 object id 其實就是 client 
+ 5
+ 
+int sys_open (const cahr *name , int flags ,int mode) 
+{ 
+        int fd=get_unused_fd(); 
+        struct file *f =filp_open(name,flags,mode); 
+        fd_install(fd,f); 
+        return fd; 
+} 
+ 
+ 
+圖七：sys_open 函數執行流程 
+filp_open: 此函數最重要的功能是經由
+open_nami 函數，在 dentry hash list 找出
+cache 中的 dentry (inode)如果沒找到的話就
+到硬碟去讀出 inode，並加入 dentry。這部份
+最關鍵的原始碼條列如下： 
+ 
+struct file *filp_open (const char *name , int flags, 
+int mode) { 
+struct nameidata nd; 
+open_namei(filename,namei_flags,mode,&nd); 
+return dentry_open(nd.dentry, nd.mnt,flags); 
+} 
+dentry_open: 此函數最主要的功能是建立
+一新的 file 結構並填入相關資訊，然後執行
+OSD Filesystem 實作的 open 函數，由此達
+到 open 一個新物件的功能，而 read 的物件
+的方式也類似此操作流程。 
+mount OSD device 的核心技術： 
+Linux 的檔案系統一般會被 mount 在
+Block Device之上作為使用者操作Device的
+介面，Intel OSD 檔案系統也是類似的技術
+將 OSD(osdfs)檔案系統 mount OSD 裝置上
+(/dev/so0)，經過研究 OSD 在 mounting 檔案
+系統時的關鍵技術可以由圖八來說明，一般
+為經過幾個步驟例如下面的例子，圖中最關
+鍵的地方是在 read_super 除讀入 OSD 裝置
+的硬體資訊外，並且會載入 OSD 裝置中 root
+目錄的資訊存入新的 inode 中。 
+$ mount –t osdfs /dev/so0 /mnt/so0 
+ 
+圖八：mount 命令執行流程 
+圖九是另一個重要的程式流程，圖中表現
+root dentry(inode)或其它已存在的父 inode
+結構取得其它子 inode 時，資料結構間互相
+參考最後呼叫 OSD 檔案系統實作的
+read_inode函數，以取得OSD裝置中檔案(物
+件)的 inode 程序。 
+ 7
+六、結果二 
+嵌入式系統必須對所服務的工作做最佳
+化的微調，因此設計一個可適應型(adaptive)
+的系統模組，藉由參數的修改得以產出最佳
+效能是此系統設計的導向，FAT+ 的配置方
+法也不例外，例如在圖十四中的 Physical 
+layer 部分，藍色的區塊部份是為了儲存大
+資料而設立的，每一個藍色區塊只可能屬於
+某一個物件，一個大的物件只會由藍色區塊
+組成。而小的綠色區塊則是為了儲存小的資
+料物件，綠色區塊可能由幾個小區塊組成，
+至於是由多少個小區塊才是最佳化設計則
+是由應用層所決定。在嵌入式的應用世界
+中，這種應用層的特定性與單一性尤其顯
+著，有許多嵌入式系統只做單一工作，即使
+不是特地的嵌入式應用，人為的工作職場也
+是決定儲存內容的重要因素，例如工業用
+PC 所儲存的資料性質大小變化不大，醫學
+儀器所得資料(如 CT 圖，X 光片等)在醫院
+內大量產生，其資料物件的大小並非亂數，
+有其固定的 pattern 可循，圖十四說明了此
+種可變性，必須使用前審慎評估，一經設
+定，此檔案系統在使用中是不能更改的。圖
+十五更進一步說明小資料區塊可以是介於 0
+與 1 之間，亦即幾個大區塊之後才出現一個
+小區塊，當小區塊數量為 0 時，此檔案系統
+只存在大區塊；例如某一個平台只做編碼與
+錄影動作，則它可能根本不需要小區塊。 
+ 
+圖十四：可選用的區塊參數設定 
+ 
+圖十五：綠色區塊數量可以小於 1 
+ 
+ 
+ 
+ 
+七、結論 
+引用 didyouknow 影片[13]說明，我們生
+長在一個十倍速爆炸成長的時代，紐約時報
+一周所包含的資訊量，比十八世紀一個人一
+生可能接觸到的資訊量還多，雖然目前超過
+10 年的科技很難被估計，但可以確定的是，
+大量資訊的儲存與管理技術之重要性，將會
+與日俱增，OSD 的未來是可預見的，它很
+有可能帶起下一波儲存技術的潮流，而
+Lustre 及 Intel iSCSI/OSD 系統是 OSD 研究
+的先趨，其中 Intel 的系統遵從了 T10 標準
+更是值得研究及比較的系統在本階段我們
+的研究重心及成果，我們的研究重心在於： 
+- 建構  OSD 實驗平台：利用 Intel 
+iSCSI/OSD Project 所 提 供 之 Open 
+Source 分析如何利用 Object Storage 之技
+術建立 OSD 檔案系統測試環境、iSCSI
+規格，並取得建立 OSD 系統必備的核心
+技術。 
+- 分析 OSD 系統模組及軟體架構： 
+．分析 Intel iSCSI/OSD Project 的 Object 
+Storage 架構。 
+．分析 Intel iSCSI/OSD Project 的開放原始
+碼。 
+．探討 Intel iSCSI/OSD Object Storage 架構。 
+．Intel iSCSI/OSD Cleint 研究。 
+．Intel iSCSI/OSD Target 研究。 
+- 探討及研究 OSD 相關技術： 
+．研究 Intel iSCSI/OSD 如何透過 VFS 與
+Linux 間銜接的運作原理。 
+．探討 Intel iSCSI/OSD 軟體模組的運作原
+理及實作內容。 
+．了解 Intel iSCSI/OSD 在 Linux 下的檔案系
+統運作原理及實作。 
+．Lustre 效率分析及評估。 
+ 
+ 
+ 
+ 
+ 

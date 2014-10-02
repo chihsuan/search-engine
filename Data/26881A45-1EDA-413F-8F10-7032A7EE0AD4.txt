@@ -1,0 +1,840 @@
+I 
+中文摘要 
+為了在大量的資料中有效率地搜尋，資訊檢索系統採用已壓縮的轉置檔案來迅速地找到使
+用者所需要的資料。在轉置檔案中，每一個字彙都有一個相對應的文件編號串列(稱為轉置
+串列)來指示那一個文件包含這個字彙。大型資訊檢索系統的查詢處理時間大多花在讀取與
+解壓縮各個出現在查詢中的字彙所對應到的轉置串列。由於每新增一個文件就會使得出現
+在文件中的字彙所對應的轉置串列長度增加，因此轉置串列的長度與文件數目呈現正比關
+係。這意味著查詢處理時間與文件數目亦呈現正比關係。所以，發展有效率的演算法來降
+低轉置串列的處理(讀取、解壓縮、與合併)時間就成了設計大型資訊檢索系統的成功關鍵。 
+ 
+本研究計畫探討下列的研究議題： 
+(1) 發展一個有效率的編碼方法來縮減轉置檔案所佔用的空間 
+(2) 發展雙層可跳躍式解碼之轉置檔案來除去多餘的解碼 
+(3) 利用文件編號來使得轉置檔案最佳化 
+(4) 發展平行資訊檢索系統上的轉置檔案切割方法 
+ 
+本研究計畫的成果包括： 
+• 在縮減轉置檔案所佔用的空間方面，我們所提出的編碼方法除了可提供優越的壓縮效果
+外，在查詢處理速度上也比目前最常使用的Golomb coding還快了大約30%。 
+• 在除去多餘的解碼方面，我們所提出的雙層可跳躍式轉置檔案比起目前的單層可跳躍式
+轉置檔案在連接式布林查詢的處理速度上最高可提升16%，而在排名查詢的處理速度上
+最高可提升44%。 
+• 在轉置檔案最佳化方面，我們所提出的PBDIA演算法可以在數秒的時間內為1GB大小的
+文件集產生合適的文件編號並使得查詢處理速度最高可提升25%。 
+• 在平行資訊檢索方面，我們所提出轉置檔案切割步驟可以改善只使用交錯式切割方案的
+平行查詢處理速度達14%到17%，無論一個叢集有多少台工作站。 
+ 
+關鍵字：轉置索引, 轉置檔案壓縮, 可跳躍式轉置檔案, 文件編號指派, 平行資訊檢索 
+ 
+III 
+目錄 
+中文摘要...........................................................................................................................................I 
+英文摘要......................................................................................................................................... II 
+目錄................................................................................................................................................ III 
+報告內容.......................................................................................................................................... 1 
+1. Introduction .......................................................................................................................... 1 
+1.1 Background: IRS Runs on Cluster of Workstations................................................... 1 
+1.2 Objective: Inverted File Design for Large-Scale IRS ................................................ 3 
+1.3 Research Topics.......................................................................................................... 4 
+1.4 Project Report Organization....................................................................................... 6 
+2. Inverted File Size Reduction................................................................................................ 7 
+2.1 Proposed Method: Unique-Order Interpolative Coding............................................. 8 
+2.2 Summary Remarks ..................................................................................................... 9 
+3. Redundant Decoding Elimination ...................................................................................... 11 
+3.1 Proposed Two-level Skipped Inverted Files............................................................. 11 
+3.2 Summary Remarks ................................................................................................... 15 
+4. Inverted File Optimization ................................................................................................. 16 
+4.1 Partition-based Document Identifier Assignment Algorithm................................... 16 
+4.2 Summary Remarks ................................................................................................... 21 
+5. Parallel IR........................................................................................................................... 23 
+5.1 Proposed Approach .................................................................................................. 23 
+5.2 Summary Remarks ................................................................................................... 26 
+6. Conclusions ........................................................................................................................ 27 
+6.1 Project Report Summary .......................................................................................... 27 
+6.2 Contribution and Suggested Work ........................................................................... 29 
+7. References .......................................................................................................................... 30 
+計畫成果自評................................................................................................................................ 34 
+ 
+2 
+……… 
+architecture 
+computer 
+index file 
+1, 2, 5, 10, 12 …
+1, 3, 7, 10, 12 …
+terms pointer 
+252
+355
+ft posting lists
+inverted file
+ 
+…computer… 
+…architecture…
+…architecture…
+… … … … … 
+… … … … … 
+… computer … 
+… … … … … 
+… … … … … 
+doc. identifier=1 
+doc. identifier=2 
+doc. identifier=3 
+doc. identifier=4 
+document collection
+answer list of "computer" <and> "architecture": 1,10,12,…
+answer list of "computer" <or>  "architecture": 1,2,3,5,7,…
+……………… 
+……… ……………… …
+……… ……………… …
+…………… 
+…
+Figure 1.2 Inverted index and document collection. 
+ A specific data structure, called “inverted index”, is consulted to find answers for a query (cf. 
+Figure 1.2). An inverted index consists of an index file and an inverted file. An index file is a set 
+of records, each containing a keyword term t and a pointer to the posting list for term t. An 
+inverted file contains, for each distinct term t in the collection, a posting list of the form  
+PLt =<id1, id2, …, idft>, 
+where idi is the identifier of the document that contains t, and frequency ft is the number of 
+documents in which t appears. The document identifiers are within the range 1...N, where N is the 
+number of documents in the indexed collection. For ranking evaluation, each idi may be stored 
+with a within-document frequency fqi to indicate term t appears in the document idi a total of fqi 
+times. In a large document collection, posting lists are usually compressed, and decompression of 
+posting lists is hence required during query processing. 
+ 
+ 
+In a typical IRS, a few frequently used query terms constitute a large portion of all term 
+occurrences in queries (Jansen et al., 1997). This suggests that it is advisable to store the index 
+records for frequently used query terms in RAM to greatly reduce index search time. Hence, the 
+significant portion of query processing time is to read and decompress the compressed posting list 
+for each query term. This report restricts attention to inverted file side only and investigates the 
+efficient approaches to reduce space and time needed to store and operate on the inverted file and 
+improve the overall IR performance. 
+The major challenges imposed by very large scale IR (particularly on World Wide Web) are: 
+1. For a large-scale IRS, the access time and storage space of an inverted file become 
+considerably large (Rillof & Hollaar, 1996; Baeza-Yates & Ribeiro-Neto, 1999). The 
+challenge is how to improve IR performance while reducing storage requirements for a large 
+inverted file. 
+2. As a document collection grows, the number of occurrences of common terms is likely to 
+increase in proportion. This means that posting lists for common terms will be longer and 
+4 
+that can support small blocks with very little storage overhead should be developed. 
+● Inverted file optimization 
+The query processing time in a large-scale IRS is dominated by the time needed to read and 
+decompress the posting lists for the terms involved in the query (Moffat & Zobel 1996), and 
+we observe that the query processing time grows with the total encoded size of the 
+corresponding posting lists. This is because the disk transfer rate is near constant, and the 
+decoding processes of most encoding methods used for compressing inverted files are on a 
+bit-by-bit basis. If we can reduce the total encoded size of the corresponding posting lists 
+without increasing decompression times, a shorter query processing time can be obtained. A 
+document identifier assignment (DIA) can make the document identifiers in the posting lists 
+evenly distributed, or clustered. Clustered document identifiers generally can improve the 
+compression efficiency without increasing the complexity of decoding process, hence reduce 
+the query processing time. The key to this issue is developing a fast algorithm to finding a 
+near-optimal DIA that reduces the average query processing time in an IRS when the 
+probability distribution of query terms is given. 
+● Parallel IR 
+To process the ever-increasing volume of data while still providing acceptable response times, 
+parallel processing algorithms specifically for IR were developed. The key to this issue is to 
+partition the inverted file into sub-files each for one workstation such that, during query 
+processing, all workstations have to consult their own sub-files in parallel and query processing 
+time can be reduced. To achieve high parallel efficiency, a partitioned inverted file to be 
+distributed on the set of workstations should: (1) eliminate the communication overhead of 
+transferring postings between workstations during query processing, (2) balance amount of 
+postings to be processed during parallel query processing, and (3) keep compression efficiency 
+in the partitioned compressed inverted file. 
+1.3 Research Topics 
+This project report proceeds by dealing with the following research topics: 
+(1) Efficient coding method for inverted file size reduction, 
+(2) Two-level skipped inverted file for redundant decoding elimination, 
+(3) Document identifier assignment algorithm design for inverted file optimization, and 
+(4) Inverted file partitioning for parallel IR. 
+The first topic is to propose a novel size reduction method for compressing inverted files. 
+Compressing an inverted file can greatly improve query performance by reducing disk I/Os, but 
+this adds to the decompression time required. The objective of this topic is to develop a method 
+that has both the advantages of compression ratio and fast decompression. Our approach is as 
+follows. The foundation is interpolative coding, which compresses the document identifiers with 
+a recursive process taking care of clustering property and yields superior compression. However, 
+interpolative coding is computationally expensive due to a stack required in its implementation. 
+The key idea of our proposed method is to facilitate coding and decoding processes for 
+interpolative coding by using recursion elimination and loop unwinding. Experimental results 
+show that our method provides fast decoding speed and excellent compression. 
+6 
+ 
+ 
+1.4 Project Report Organization 
+The remainder of this project report is organized as follows. Chapter 2 presents a novel size 
+reduction method, which has both the advantages of compression ratio and fast decompression, 
+for compressing inverted files. Chapter 3 presents the proposed two-level skipped inverted file, in 
+which a two-level skipped index is created on each compressed posting list, to reduce 
+decompression time. Chapter 4 presents the proposed DIA algorithm for fast query evaluation. 
+Chapter 5 presents a novel inverted file partitioning approach for parallel IR. Chapter 6 presents 
+the conclusion. 
+Topic 1: 
+Inverted file 
+size reduction
+Topic 2:
+Redundant
+decoding 
+elimination
+Topic 3: 
+DIA-based 
+inverted file 
+optimization 
+Topic 4:
+Parallel IR
+load time           + + +      −    + 
+decompression time    −          + + +      +
+merge time        no change     + + +     no change 
+Notation: “+”: advantage, and “−”: disadvantage.
+Posting list 
+processing 
++ + +
+(parallelized)
++ + +
+(parallelized)
++ + +
+(parallelized)
+Table 1.1  The overview of the research 
+Inverted File Design
+Topic 1: Inverted File Size Reduction Topic 2: Redundant Decoding Elimination
+Topic 3: Inverted File Optimization
+Topic 4: 
+Parallel IR 
+Interleaving partitioning scheme
+ 
+No
+ 
+YesNo 
+end
+good scalability
+Figure 1.3 Recommended inverted file design flowchart. 
+skipping mechanisms? 
+cluster computing? 
+8 
+2.1 Proposed Method: Unique-Order Interpolative Coding 
+The recursive process makes the decoding of interpolative coding slow. We develop a new 
+method called unique-order interpolative coding that can facilitate coding and decoding processes 
+for interpolative coding using recursion elimination and loop unwinding. 
+2.1.1 Coding method 
+This subsection presents the details of our proposed coding method. Two key decisions are 
+to be made in the coding method. 
+A. Decomposition of a posting list into blocks to take advantage of interpolative coding 
+In a posting list PLt=<id1, id2, …, idft > of ft document identifiers, where idk<idk+1 and all 
+document identifiers are within the range 1…N. A group size g is first determined. Then PLt is 
+divided into ⎥⎥
+⎤⎢⎢
+⎡=
+g
+fm t  blocks, each having g document identifiers except possibly the last block. 
+We define the first document identifier in each block to be a boundary pointer, the document 
+identifiers between boundary pointers to be inner pointers, and those in the last block except the 
+boundary pointer to be residual pointers. The PLt can then be compressed as follows. The 
+boundary pointers and their subsequent residual pointers together can be regarded as a 
+sub-posting list, and a suitable d-gap compression scheme with high decoding speed can be used 
+for compression. The inner pointers in each block are compressed via interpolative coding. With 
+this new method (see Figure 2.1), each inner block contains a constant number (g-1) of inner 
+pointers, enabling the use of one I_Triple in coding and decoding. Compared with interpolative 
+coding, this new method allows document identifiers to be stored in a fixed order, hence the name 
+unique-order interpolative coding. When gft ≤  or m=1 or g=1, no inner pointers are present, 
+and we apply only a d-gap compression scheme. 
+PLt = < id1, id2, …, idft >          : boundary pointer 
+Group size g, and m= ⎥⎥
+⎤⎢⎢
+⎡
+g
+ft  blocks                      : block 
+ 
+ 
+ 
+id1  id2 …… idg   idg+1  idg+2 …… id2g    id2g+1  ……  id(m-1)g+1  ……idft 
+ 
+ 
+ 
+ 
+ 
+Figure 2.1 The illustration of unique-order interpolative coding. 
+B. Choice of a suitable coding method for boundary and residual pointers 
+Compared with the d-gaps of a traditional d-gap compression scheme, the d-gaps of 
+The inner pointers 
+encoded using 
+interpolative coding 
+The inner pointers 
+encoded using 
+interpolative coding 
+The residual pointers 
+encoded with d-gap 
+technique 
+d-gap d-gap d-gap d-gap d-gap d-gap 
+10 
+compressing inverted files in IRSs. This method is much easier to implement than interpolative 
+coding. Furthermore, it is custom designed to suit the clustering property of document identifiers, 
+a property that has been observed in real-world document collections. Experiments show that this 
+method yields superior performance in both fast querying and space-efficient indexing. This work 
+shows a feasible way in building a responsive and storage-economical IRS. 
+12 
+as follows: 
+The first-level index: One of the skipping mechanisms proposed by Moffat et al. (1995) and 
+Moffat & Zobel (1996) is first used to create the first-level index on each compressed posting list 
+by dividing the posting list into large blocks and adding auxiliary information into each block to 
+skip over unnecessary portions of the list. 
+The second-level index: A novel skipping mechanism is then proposed to create the second-level 
+index on each large block by dividing the block into sub-blocks and adding auxiliary information 
+into each sub-block to skip over unnecessary portions of the block. 
+3.1.2 Proposed skipping mechanism for the second-level index 
+We first describe the proposed skipping mechanism based on maximum required bits (MRB) 
+calculation. Then we present the recommended coding method and its MRB function for the 
+document identifiers and the within-document frequencies within a sub-block. Finally, we present 
+the implementation optimization technique. 
+The design 
+In this sub-section, we propose a novel skipping mechanism based on maximum required 
+bits (MRB) calculation (cf. Fig. 3.1) to efficiently create a second-level index on each block for 
+the first level of skipping. Consider a given block containing n postings 
+(id1,fq1), (id2,fq2), (id3,fq3), …, (idn,fqn) 
+where idi<idi+1. We first replace the within-document frequency fqi with the Fi, where ∑
+=
+=
+i
+j
+ji fqF
+1
+ 
+is referred to as the cumulative within-document frequency. Next a sub-block size g is determined. 
+The block is then divided into ⎡ ⎤gnm =  sub-blocks, each having g postings except possibly the 
+last block. We define the first posting in each sub-block to be a critical pair consisting of a 
+document identifier and a cumulative within-document frequency, the postings between critical 
+pairs to be inner postings, and those in the last sub-block except the critical pair to be the residual 
+postings. The critical pairs and their subsequent residual postings together can be regarded as a 
+sub- posting list, on which the document identifiers can be encoded in Golomb coding with the 
+d-gap technique and the cumulative within-document frequencies can be encoded in γ coding also 
+with the d-gap technique. For the inner postings within a sub-block, the document identifiers and 
+the cumulative within-document frequencies are stored separately (cf. Fig. 3.1). Assume that the 
+document identifiers in the inner postings are to be compressed with compression method C1, 
+and the cumulative within-document frequencies are with compression method C2. We want to 
+find two functions MRBC1(DIi,g) and MRBC2(DFi,g) to precisely calculate the maximum required 
+bits that need to be allocated to store the document identifiers compressed with method C1 and 
+the cumulative within-document frequencies compressed with method C2, respectively, in the 
+inner postings within the ith sub-block, where DIi=ICi−ICi+1−1 and ICi is the document identifier 
+for the ith critical pair, and DFi=FCi−FCi+1−1 and FCi is the cumulative within-document 
+frequency for the ith critical pair. Since the maximum number of bits for the document identifiers 
+and the cumulative within-document frequencies in the inner postings within a sub-block is 
+known, those identifiers and frequencies that are useless in set operations during query processing 
+14 
+⎪⎪
+⎪⎪
+⎪⎪
+⎪⎪
+⎪⎪
+⎪
+⎩
+⎪⎪
+⎪⎪
+⎪⎪
+⎪⎪
+⎪⎪
+⎪
+⎨
+⎧
+≤+×++
++×<≤+×++
++×<≤+×++
++×<≤+×++
++×<≤+×++
++×<≤+×++
++×<≤+×++
++×<<++
+=
+=
+=
+=
+=
+=
+=
+=
+==
+                      15215   22115
+1521515214  21115
+1521415213 19115
+1521315212 18115
+1521215211  15115
+1521115210    14115
+ 152101529    12115
+               152922       11115
+                       22                  22
+                       21                  20
+                       20                  17
+                       19                  15
+                       18                11
+                      17             8
+                     16              4
+                      15              0
+)16,(
+D  if    )(h
+D      if )(h
+D       if)(h
+D       if)(h
+D   if   )(h
+D  if  )(h
+D   if )(h
+D if  )(h
+Dif
+Dif
+Dif
+Dif
+Dif  
+ D if    
+  D   if 
+D  if    
+gDMRB
+h
+hh
+hh
+hh
+hh
+hh
+hh
+hinterp
+  
+   323     213
+3234     113   
+         4              2
+         3              0
+)4,(
+⎪⎪⎩
+⎪⎪⎨
+⎧
+≤+×++
++×<<++
+=
+=
+==
+Dif)(h
+Dif)(h
+Dif
+Dif
+gDMRB
+h
+hinterp
+              (3.1) 
+where )1( −−= + jgj xxD  and ⎡ ⎤ 2)2(log2 −−= Dh .  
+With interpolative coding, to allow different values of g, one can easily show that 
+⎡ ⎤ )4,()4,()6(log)8,( 2 qMRBpMRBDgDMRB interpinterpinterp ++−==  
+and this can be converted to 
+       
+⎪⎪
+⎪⎪
+⎪
+⎩
+⎪⎪
+⎪⎪
+⎪
+⎨
+⎧
+≤+×++
++×<≤+×++
++×<≤+×++
++×<<++
+=
+=
+=
+=
+==
+                  727    817
+727726     717 
+726725     517 
+            72510    417 
+                     10         8
+                      9          6
+                      8          3
+                      7           0
+)8,(
+Dif )(h
+Dif)(h
+Dif )(h
+D if)(h
+ if  D 
+ if   D
+ if   D
+if   D
+gDMRB
+h
+hh
+hh
+hinterp
+           (3.2) 
+where )1( −−= + jgj xxD , 22
+)6(log2 −⎥⎥
+⎤⎢⎢
+⎡ −= Dh , and p, q are two positive integers and 
+p+q=D-1. 
+Applying the same approach, we have 
+⎡ ⎤ )8,()8,()14(log)16,( 2 qMRBpMRBDgDMRB interpinterpinterp ++−==  
+and this can be converted to 
+ 
+ 
+ 
+ 
+ 
+(3.3)   
+ 
+ 
+16 
+4. Inverted File Optimization 
+A document identifier assignment (DIA) can make the document identifiers in the posting 
+lists evenly distributed, or clustered. Clustered document identifiers generally result in better 
+compression efficiency of the coding methods used for compressing inverted files without 
+increasing the complexity of decoding process, hence reduce the query processing time. In this 
+chapter, we consider the problem of finding an optimal DIA for the inverted file to minimize the 
+average query processing time when the probability distribution of query terms is given. The DIA 
+problem, that is known to be NP-complete via a reduction to the rectilinear traveling salesman 
+problem (TSP), is a generalization of the problems solved by Olken & Rotem (1986), Shieh et al. 
+(2003), and Gelbukh et al. (2003). Their research results showed that this kind of optimization 
+problem can be effectively solved by the well-known TSP heuristic algorithms. The greedy 
+nearest neighbor (Greedy-NN) algorithm performs the best on average, but its high complexity 
+discourages its use in modern large-scale IRSs. 
+In this chapter, we propose a fast heuristic, called partition-based document identifier 
+assignment (PBDIA) algorithm, to find a good DIA that can make the document identifiers in the 
+posting lists for frequently used query terms more clustered. This can greatly improve the 
+compression efficiency of the posting lists for frequently used query terms. Where the probability 
+distribution of query terms is skewed, as is the typical case in a real-world IRS, the experimental 
+results show that the PBDIA algorithm can yield a competitive performance versus the 
+Greedy-NN for the DIA problem. The experimental results also show that the DIA problem has 
+significant advantages for both long queries. 
+4.1 Partition-based Document Identifier Assignment Algorithm 
+Since the DIA problem is an NP-complete problem, the effort in search for an effective 
+low-complexity method is needed. Although the Greedy-NN algorithm can be used to solve the 
+DIA problem, its complexity is too high. In this section, we first present an optimal DIA 
+algorithm for a single query term, and then propose an efficient partition-based document 
+identifier assignment (PBDIA) algorithm for the DIA problem. 
+4.1.1 Generating an optimal DIA for a single query term 
+Consider a posting list PLt for term t with ft document identifiers in a collection of N 
+documents. Using the d-gap technique, we can obtain ft d-gap values: d-gap1, d-gap2,…, d-gapft. 
+Assume a coding method C which requires C(x) bits to encode a d-gap x. We want to know which 
+d-gap probability distribution can minimize the size of posting list PLt after compression using 
+method C. That is, we want to know which d-gap probability distribution can minimize 
+∑
+=
+tf
+i
+id-gapC
+1
+)(                                                       (4.1) 
+subject to 
+kd-gapf
+tf
+i
+it ≤≤ ∑
+=1
+ and                                              (4.2) 
+kd-gapi ≤≤1  for all i, ki ≤≤1                                       (4.3) 
+18 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Figure 4.1 The flowchart for the PBDIA algorithm 
+ 
+queried term be assigned rank 1, the second most frequently queried term rank 2, and so on. We 
+use trank i to represent the ith ranked query term. The partitioning and ordering procedures of the 
+PBDIA algorithm should proceed by considering trank 1 first, then trank 2, and so on. 
+Both the PBDIA partitioning and ordering procedures are invoked once per iteration. The 
+PBDIA partitioning procedure first divides each partition generated in the previous iteration into 
+two partitions using the SPBDIA partitioning procedure. The PBDIA ordering procedure then 
+assigns each newly generated partition a partition order. Each partition P in the PBDIA algorithm 
+1,0P
+partitioning procedure
+{ })'( , )( 1rank 1,01rank 1,0 tPtP
+ordering procedure
+2,11rank 1,01,11rank 1,0 )'( , )( PtPPtP →→
+partitioning procedure
+{ } { })'( , )( , )'( , )( 2rank 2,12rank 2,12rank 1,12rank 1,1 tPtPtPtP
+ordering procedure
+4,22rank 2,13,22rank 2,12,22rank 1,11,22rank 1,1 )'( , )( , )( , )'( PtPPtPPtPPtP →→→→
+partitioning procedure
+ordering procedure
+knnnn PPPP ,3,2,1,  ,  ,  ,  , L
+document identifier assignment procedure 
+trank 2 
+trank 1 
+trank 3 
+A document identifier assignment π for the DIA problem 
+Requires 
+a total of  
+n iterations, 
+where n is  
+the number 
+of query 
+t
+2nd iteration 
+1st iteration 
+3rd iteration 
+nth iteration 
+20 
+There exist two subcases. 
+SubCase1.a: Pi,s+1 is used to denote Pi-1,j+1(trank i) 
+The ordering procedure assigns s to Pi-1,j(trank i), and s-1 to Pi-1,j(t'rank i). Pi-1,j(trank i) is hereafter 
+denoted as Pi,s, and Pi-1,j(t'rank i) as Pi,s-1. 
+SubCase1.b: Pi,s+1 is used to denote Pi-1,j+1(t'rank i) 
+The ordering procedure assigns s to Pi-1,j(t'rank i), and s-1 to Pi-1,j(trank i). Pi-1,j(t'rank i) is 
+hereafter denoted as Pi,s, and Pi-1,j(trank i) as Pi,s-1. 
+Case 2: Pi-1,j(trank i) is empty, and Pi-1,j(t'rank i) is nonempty 
+The ordering procedure assigns s to Pi-1,j(t'rank i), and ignores Pi-1,j(trank i). Pi-1,j(t'rank i) is hereafter 
+denoted as Pi,s. 
+Case 3: Pi-1,j(trank i) is nonempty, and Pi-1,j(t'rank i) is empty 
+The ordering procedure assigns s to Pi-1,j(trank i), and ignores Pi-1,j(t'rank i). Pi-1,j(trank i) is hereafter 
+denoted as Pi,s. 
+PBDIA document identifier assignment procedure 
+The document identifier assignment procedure, the last step of PBDIA algorithm, is 
+straightforward. Let Pn,1, Pn,2, …, and Pn,k be the generated ordered partitions of the iteration n. 
+This procedure assigns consecutive document identifiers to documents in the same partition, and 
+consecutive identifier groups to consecutive ordered partitions. The first (smallest) document 
+identifier is assigned to a document in the first ordered partition (Pn,1). And the ordering of 
+documents in a partition is irrelevant and can be arbitrary. 
+To obtain a good DIA, the partitions must be properly ordered. We explain why the PBDIA 
+ordering procedure is proper: Note that the PBDIA ordering procedure always assigns 
+consecutive partition orders to two nonempty partitions of a partition pair. This makes documents 
+in the same partition in iteration i remain in the same or neighboring partitions in iteration i+1. 
+According to the PBDIA document identifier assignment procedure, documents in the same 
+partition in iteration i will eventually be assigned consecutive or at least adjacent document 
+identifiers. That is, once the order of partitions is generated at the end of iteration i, the 
+compression performance for the posting list of trank i is determined. Hence, the posting list of trank 1 
+has the best compression, then that of trank2, and so on. This is because the PBDIA algorithm 
+considers the trank 1 first, then trank 2, and so on, in its iterations. 
+The PBDIA algorithm is given in Figure 4.2. A doubly linked list is used to store the 
+partitions, and the two links of a partition maintain the ordering among these partitions. Given a 
+collection of N documents and n distinct query terms, the number of comparisons for assigning 
+documents to partitions in each iteration is O(N). Since the PBDIA algorithm iterates for n times, 
+the total number of comparisons for the PBDIA algorithm is O(N×n). Compared with the 
+Greedy-NN algorithm, this complexity of PBDIA algorithm is distinctively low. This advantage 
+brings the PBDIA algorithm a dark side, of course. Although the PBDIA algorithm targets on 
+improving the compression efficiency for the frequently used query terms, it unavoidably 
+decreases that for the other query terms. In reality, it is often the case that the popularities of the 
+assorted query terms are very unbalanced. And this imbalance nature makes the PBDIA algorithm 
+achieve very good query performance. In Section 4.2, we compare the search performance of the 
+22 
+The PBDIA algorithm can efficiently assign consecutive document identifiers to the documents 
+containing frequently used query terms. This makes the d-gaps of posting lists for frequently used 
+query terms very small, and results in better compression for popular coding methods without 
+increasing the complexity of decoding processes. This can result in reduced query processing 
+time. For the fastest unique-order interpolative coding, experimental results show that the PBDIA 
+algorithm can reduce the average query processing time by up to 20%. We also point out that the 
+DIA problem has vital effects on the performance of long queries. Compared with the 
+well-known Greedy-NN algorithm, the PBDIA algorithm is much faster and yields very 
+competitive performance for the DIA problem. This fact should make the PBDIA algorithm 
+viable for use in modern large-scale inverted file-based IRSs. 
+24 
+ 
+To keep compression efficiency, each workstation represents documents using local 
+document identifiers. The mapping rule Aintlv increases the gap between document identifiers after 
+partitioning. The gap between document identifiers in a local posting list is at least M. And 
+compression methods can not work well on the local inverted file if documents are presented with 
+the original document identifiers. We notice that, for a workstation WSk, the local document 
+identifier for a document identifier i mapped to WSk can be obtained as following rule. 
+Rule 2 In the partitioned inverted file generated by interleaved mapping rule, a document i is 
+represented as local document identifier LIDintlv(i): 
+⎣ ⎦ 1/)1()( +−= MiiLIDintlv                       (5.2)  
+Note that the original document identifier i mapped to WSk then can be obtained using the 
+following equation 
+kiLIDMi intlv +−×= )1)((                       (5.3)  
+Figure 5.2 presents the algorithm to generate a partitioned inverted file with interleaved 
+mapping rule. The time complexity is O(f) where f  is the number of postings in the input 
+inverted file. 
+document identifiers: 1   2   3   4   5   6   7   8   9 
+ 
+ 
+      WS1       WS2         WS3 
+(a) Mapping document identifiers to workstation IDs 
+ 
+posting list: 2, 3, 5, 7, 8, 11, 12, 13, 15, 16 
+ 
+represented using 
+original document identifier:  7, 13, 16     2, 5, 8, 11     3, 12, 15 
+ 
+represented using 
+local document identifier:    3, 5, 6       1, 2, 3, 4      1, 4, 5 
+                          WS1          WS2         WS3 
+                    (b) Partitioning a posting list 
+Figure 5.1 Partitioning with interleaved mapping rule 
+26 
+5.2 Summary Remarks 
+This chapter proposes an inverted file partitioning algorithm for parallel information 
+retrieval. The inverted file is generally partitioned into disjoint sub-files, each for one workstation, 
+in an IRS that runs on a cluster of workstations. When processing a query, all workstations have 
+to consult only their own sub-files in parallel. The key idea of our proposed algorithm is to use 
+the document identifier assignment algorithm to enhance the clustering property of posting lists 
+for frequently used query terms. This can aid the interleaving partitioning scheme to produce 
+superior query performance. Experimental results show that the PBDIA algorithm can aid the 
+interleaving partitioning scheme to achieve a better load balance and improve the parallel query 
+performance by a factor of 1.13 to 1.18 no matter how many workstations are in the cluster. The 
+PBDIA algorithm has substantial and consistent potential to improve the performance of an IRS 
+run on a cluster of workstations. This shows that the clustering property should deserve much 
+attention in parallel IR. 
+28 
+inverted file to optimize average query processing time when the distribution of query terms 
+is known. In a typical IRS, a few frequently used query terms constitute a large portion of all 
+term occurrences in queries. Based on this fact, the PBDIA algorithm assigns consecutive 
+document identifiers to those documents containing frequently used query terms. 
+Experimental results show that the PBDIA algorithm only takes a few seconds to generate a 
+DIA for a collection of 1GB, and improves query speed by up to 25%. 
+(4) For parallel IR, we propose a novel approach that partitions an inverted file to minimize 
+parallel query processing time. The interleaving partitioning scheme has been proven that it 
+can partition an inverted file with good load balance and produce near-ideal speedup. We 
+observe that the cluster property plays an important role for interleaving partitioning scheme 
+in the load balance and the query speed. We propose using the PBDIA algorithm to enhance 
+the cluster property of document identifiers in posting lists. Experimental results show that 
+the PBDIA algorithm can further improve the parallel query speed for interleaving 
+partitioning scheme by 14% to 17% no matter how many workstations are in the cluster. 
+ 
+To verify scalability of our research works, we concatenated the FBIS and LAT to form a 
+bigger collection TREC. In all topics, the performance of our proposed methods for TREC is not 
+worse than that for FBIS and LAT. This indicates that our proposed methods provide good 
+scalability.  
+There are several issues that need to be discussed: 
+(1) Inverted file updating 
+Although our research works focus only on static document collections, they can still work 
+well for dynamically changing collections with very few modifications.  
+For dealing with changes due to inserted documents, sparing free space for each posting list 
+can be allocated to allow future expansion (Brown et al., 1994), and the postings in the 
+posting lists should be stored in descending order by document identifier since it is typically 
+more efficient to insert at the head of the list than in any other location. This does not affect 
+the performance of our research works. 
+For dealing with changes due to deleted documents, a searchable update log can be used to 
+store the postings of deleted documents between periodic rebuilds. When (partially) 
+rebuilding inverted file, query processing is used to search both the inverted file and the 
+update log, and merge the results of both. This can be accelerated by using our research 
+works. 
+(2) Disk design considerations 
+We use an IDE hard disk per workstation in our experiments. However, low disk throughput 
+is one of the main impediments to improving the performance of our research works. How to 
+increase disk throughput with different disk organizations/architectures is a very interesting 
+research topic. For example, SCSI disk drives and disk arrays can be employed to improve 
+disk throughput. For SCSI disk drives, to amortize the cost of a disk access, the controller 
+read a fixed number of consecutive blocks ahead and stores them in its cache. How to adjust 
+the block size and the number of read-ahead blocks is an important issue. For disk arrays, the 
+30 
+7. References 
+Aalbersberg, I.J. & Sijstermans, F. (1990). InfoGuide: A full-text document retrieval system. In 
+A.M. Tjoa & R. Wagner (Eds.), Proceedings of the international conference of database 
+and expert systems applications (DEXA'90), (pp.12-21). Berlin: Springer-Verlag. 
+Anh, V.N. & Moffat, A. (1998). Compressed inverted files with reduced decoding overheads. In 
+R. Wilkinson, B. Croft, and C.V. Rijsbergen (Eds.), Proceedings of the 21st annual 
+international ACM SIGIR conference on Research and Development in Information 
+Retrieval, (pp. 290-297), Melbourne. New York: ACM Press. 
+Anh, V.N. & Moffat, A. (2005). Inverted index compression using word-aligned binary codes. 
+Information Retrieval, 8(1), 151-166. 
+Bell, T.C., Moffat, A., Nevill-Manning, C.G., Witten, I.H., and Zobel, J. (1993). Data 
+compression in full-text retrieval systems. Journal of the American Society for 
+Information Science, 44(9), 508-531. 
+Breslau, L., Cao, P., Fan, L., Phillips, G., and Shenker, S. (1999). Web caching and zipf-like 
+distributions: evidence and implications. In Proceedings of Eighteenth Annual Joint 
+Conference of the IEEE Computer and Communications Societies (IEEE INFOCOM '99), 
+(pp. 126-134), New York, Mar. Los Alamitos, CA: IEEE Computer Society Press. 
+Brown, E.W., Callan, J.P., and Croft, W.B. (1994). Fast incremental indexing for full-text 
+information retrieval. In Proceedings of the 20th Very Large Data Base Conference 
+(VLDB'94) , (pp. 192-202). 
+Cheng, C.S., Shann, J.J.J., and Chung, C.P. (2005). Unique-order interpolative coding for fast 
+querying and space-efficient indexing in information retrieval systems. To appear in 
+Information Processing and Management. 
+Cheng, C.S., Shann, J.J.J., and Chung, C.P. (2004). A Unique-Order Interpolative Code for Fast 
+Querying and Space-Efficient Indexing in Information Retrieval Systems. In P.K. 
+Srimani et al. (Eds.), Proceedings of ITCC 2004 International Conference on 
+Information Technology: Coding and Communications Volume 2, (pp. 229-235), Las 
+Vegas, Nevada, Apr. Los Alamitos, CA: IEEE Computer Society Press. 
+Elias, P. (1975). Universal codeword sets and representations of the integers. IEEE Transactions 
+on Information Theory, IT-21(2), 194-203. 
+Faloutsos, C. (1985). Access methods for text. ACM Computing Surveys, 17(1), 49-74. 
+Fraenkel, A.S. & Klein, S.T. (1985). Novel Compression of sparse bit-string－Preliminary report. 
+In A. Apostolico & Z. Galil (Eds.) Combinatorial Algorithms on Words: Vol. 12, NATO 
+ASI Serials F. (pp. 169-183). Berlin: Springer-Verlag. 
+Frakes, W.B. & Baeza-Yates, R. (1992). Information Retrieval: Data Structures and Algorithms. 
+Upper Saddle River, NJ: Prentice Hall. 
+Gallager, R.G. & Van Voorhis, D.C. (1975). Optimal source codes for geometrically distributed 
+alphabets. IEEE Transactions on Information Theory, IT-21(2), 228-230. 
+Gelbukh, A., Han, S.Y., and Sidorov, G. (2003). Compression of boolean inverted files by 
+document ordering. In Proceedings of 2003 IEEE International Conference on Natural 
+Language Processing and Knowledge Engineering (IEEE NLPKE-2003), (pp. 244-249), 
+32 
+for the 22nd International Conference on the Research and Development in Information 
+Retrieval (SIGIR'99), (pp. 105-112). New York: ACM Press. 
+Salton, G. (1989). Automatic Text Processing: The Transformation, Analysis, and Retrieval of 
+Information by Computer. Reading, Mass: Addison-Wesley. 
+Salton, G. & McGill, M.J. (1983). Introduction to Modern Information Retrieval. New York: 
+McGraw-Hill. 
+Scholer, F., Williams, H.E., Yiannis, J., and Zobel, J. (2002). Compression of inverted indexes for 
+fast query evaluation. In M. Beaulieu, R. Baeza-Yates, S.H. Myaeng, and K. Järvelin 
+(Eds.), Proceedings of the 25th annual international ACM SIGIR conference on 
+Research and Development in Information Retrieval, (pp. 222-229), Tampere, Finland. 
+New York: ACM Press. 
+Shieh, W.Y., Chen, T.F., Shann, J.J., and Chung, C.P. (2003). Inverted file compression through 
+document identifier reassignment. Information Processing and Management, 39(1), 
+117-131. 
+Stanfill, C., Thau, R., and Waltz, D. (1989). A parallel Indexed algorithm for Information 
+Retrieval. In N.J. Belkin & C.J. Van Rijsbergen (Eds.), Proceedings of the 12th annual 
+conference on research and development in Information Retrieval (SIGIR'89), (pp. 
+88-97). New York:ACM Press. 
+Stanfill, C. & Thau, R. (1991). Information retrieval on the connection machine: 1 to 8192 
+Gigabytes. Information Processing & Management, 27 (4): 285-310. 
+Tenenbaum, A.M., Langsam, Y., and Augenstein, M.J. (1990). Data structures using C. 
+Englewood CLiffs, N.J. 07632: Prentice-Hall. 
+Teuhola, J. (1978). A Compression method for clustered bit-vectors. Information Processing 
+Letters, 7(6), 308-311. 
+Trotman, A. (2003). Compressing inverted files. Information Retrieval, 6(1), 5-19. 
+Turpin, A. (1998). Efficient prefix coding (Ph.D. thesis). Melbourne: University of Melbourne. 
+Turtle, H. & Flood, J. (1995). Query evaluation: strategies and optimizations. Information 
+Processing & Management, 31(6): 831-850. 
+Voorhees, E. & Harman, D. (1997). Overview of the sixth text retrieval conference (TREC-6). In 
+E.M. Voorhees & D.K. Harman (Eds.), Proceedings of the Sixth Text REtrieval 
+Conference (TREC-6), (pp. 1-24). Gaithersburg, MD: NIST. 
+Williams, H.E. & Zobel, J. (2002). Indexing and retrieval for genomic databases. IEEE 
+Transactions on Knowledge and Data Engineering, 14(1), 63-78. 
+Williams, H.E. & Zobel, J. (1999). Compressing integers for fast file access. The Computer 
+Journal, 42(3), 193-201. 
+Witten, I.H., Moffat, A., and Bell, T.C. (1999). Managing Gigabytes: Compressing and Indexing 
+on Documents and Images, Second Edition. San Francisco, CA: Morgan Kaufmann 
+Publishers. 
+Wolfram, D. (1992). Applying informetric characteristics of databases to ir system file design, 
+part i: informetric models. Information Processing and Management, 28(1), 121-133. 
+Xie, Y. & O’Hallaron, D. (2002). Locality in search engine queries and its implications for 
+34 
+計畫成果自評 
+本計畫規劃了一系列的研究，探討如何以最小的資源成本建置符合需求的叢集式資訊檢索
+系統，將系統的資源發揮最大的效能，期以最小的資源成本提供使用者一個高效能和高服
+務品質的資訊檢索環境。在為期三年的研究中，為了能夠有效增進系統效能與儲存空間利
+用率，我們完成了以下研究議題的探討： 
+(1) 發展一個有效率的編碼方法來縮減轉置檔案所佔用的空間， 
+(2) 發展雙層可跳躍式解碼之轉置檔案來除去多餘的解碼， 
+(3) 利用文件編號來使得轉置檔案最佳化， 
+(4) 發展平行資訊檢索系統上的轉置檔案切割方法。 
+實驗顯示我們的研究可以在不增加硬體成本下，有效縮短查詢處理時間，而對於長查詢(long 
+queries)與平行資訊檢索(parallel IR)更有明顯的好處。相關的研究成果已投稿到國際期刊
+Information Processing & Management 並申請中華民國專利。在此研究基礎上，未來可持續
+探討如何透過動態的資源管理機制，讓叢集式資訊檢索系統在面對各種不同的外界環境
+時，能夠動態地調整系統的負載與資源配置，並以最小的成本滿足給定的執行效能需求。 

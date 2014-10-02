@@ -1,0 +1,755 @@
+的資料必須被保證一定能送達，這畫面方能被解碼。 
+時序性可縮放化能力(temporal scalability)允許資料傳輸時，任何時間點被資
+料截斷或丟棄。這個機制使得收到的部份資料仍然能夠被解碼，改善基本的視訊品
+質，而雜訊比可縮放化能力(SNR scalability)則能將畫面編碼成具相同播放率、空間
+解析度(spatial resolution)與不同量化(quantization)精確度的兩層(基礎層與加強層)
+畫面資料。其中，較高精確的離散餘弦轉換(Discrete cosine transform, DCT)係數可
+由基礎層的離散餘弦轉換係數與加強層的離散餘弦轉換殘值獲得。這離散餘弦轉換
+係數要具精確性，可由反轉離散餘弦轉換單元去產生重建影像殘值，而這殘值則須
+由前一畫面作移動補償所得。因此，當前一畫面的資料量遠不及於要預測的畫面
+時，解碼將會失敗。 
+研究目的 
+根據上述的視訊內容分析，可以事先得知每個視訊序列的特徵資訊，依據
+此一資訊我們發展一個動態的配置權值給封包的技巧，依據不同視訊內容特徵將不
+同優先順序的權值配置給封包，以便於傳輸資料時，在我們的排程演算法控制播放
+率的大小。我們的排程演算法則是以資料丟棄方法為核心，根據貪婪演算法(greedy 
+algorithm)去丟棄權值較小的封包並將頻寬資源留給較重要的封包，來建立一個動
+態排程控制視訊的不同播放率。我們調查一些即時排程(real-time scheduling)的研
+究，大部份在效能評估考慮遺失率(miss ratio)的測量，而這遺失率是代表錯失的工
+作數除以全部工作總數。在即時排程領域有一個非精確模式(imprecise computation 
+model)，這與MPEG-4 FGS framework相似，Shih and Liu[2][3]在這模式下針對遺失
+率，提出了FAST演算法並證明最佳解。 
+在我們的先前研究[4]，已發現以最早期限優先(Earliest Deadline First)法則
+為基礎的排程，應用在MPEG-4 FGS時解碼會失敗。因為，這方法並不考慮丟棄資
+料對解碼的影響。不幸地，FAST演算法就是以最早期限優先法則為基礎而發展出
+來，這樣的結果將導致解碼失敗。同時在另一方面，這個演算法並不考慮減少播放
+率來達到節省頻寬的方式，因此，我們研究計畫的主要目的如下： 
+(1). 以客觀視訊品質量測模式，計算不同視訊內容在不同的畫面播放率與
+資料位元率之客觀品質數值。 
+(2). 以主觀的視訊品質量測方法來評估不同視訊內容在不同的畫面播放率
+與資料位元率之主觀品質數值。 
+(3). 在 MPEG-4 FGS 的架構下，提出一個以權重配置(weight assignment)技
+巧來決定編碼後資料的重要性。 
+(4). 依據這個不同的權重所配置的封包進行最佳的排程方法，並發展演算
+法去證明其最佳解。 
+(5). 發展其它演算法或修改權重配置技巧，使得該方法能動態的決定播放
+率且符合頻寬不足的需求。 
+文獻探討 
+即時排程(real-time scheduling)的相關研究 
+ 2
+們的研究是在有限的網路頻寬下，去發展多媒體傳輸的最佳解決方案。 
+丟棄畫面(dropping frames)方法的相關研究 
+從上述即時排程研究的探討中可知，使用資料丟棄的方法可以節省頻寬資
+源，因此我們也針對多媒體在視訊傳輸排程的研究去討論丟棄畫面的方法。Furini 
+and Towsley[15]利用一些畫面丟棄的技巧來減少頻寬的損耗並滿足服務品質的限
+制，他們的演算法則以JPEG和MPEG的視訊資料進行效能評估。Zhang et. al[16]提
+出有效率的選擇畫面刪去法(efficient selective frame discard)針對預先儲存視訊序列
+的傳輸應用來滿足頻寬資源受限的環境，他們試圖在JPEG的視訊資料下去最小化
+畫面的刪除數目。Pejhan et. al[17]提出一個動態控制播放率(dynamic frame rate 
+control)技巧來編碼與儲存不同播放率的視訊序列，這方法雖然只儲存各個播放率
+所需的移動向量資訊，但仍必須使用伺服端大量的儲存空間，這種方式下只能在離
+線環境下進行移動估計。當須要重新編碼時，移動向量的資訊可以直接由檔案讀取
+而不須要再重新去計算。這好處是因為這移動向量資訊檔遠比相關壓縮後的視訊串
+流資料來的小。他們的動態控制播放率也可用於資料位元率(bit rate)的控制，而且
+允許接收端去解可用頻寬與預先編碼的串流不吻合的情形。 
+Song and Chun[18]針對MPEG-2 在畫面層級(frame level)作視訊編碼，展示
+了虛擬播放率控制法(virtual frame rate control)以及位元配置演算法(bit allocation 
+algorithm)。這方法包含三個步驟，第一，在編碼之前先將視訊輸入的格式轉換成
+漸進式的(progressive)格式。第二，檢查在預先定好大小的前一視窗長度內，計算
+其畫面的平均移動量，而且再依據該平均移動量去決定目前的視窗長度其畫面播放
+率。第三，依據決定的畫面播放率處理目前的視窗長度內之畫面，將特定而多餘的
+畫面虛擬地跳過。這技巧是依據謹慎地修護一些跳過畫面的區塊，使得它能跳過所
+選定的畫面。 
+Chan et. al[19]針對低延遲 (low-delay)視訊編碼，提出一個結構化的
+Rate-Quantization基底(base) rate-control架構，在畫面層級部份作播放率與資料位元
+率的編碼控制，在大的區塊層級(macroblock level)決定其量化所需參數，這方法包
+含三個步驟，第一，針對較好的連續畫面去決定出每個畫面群組(Group of Pictures, 
+GOPs)的播放率。第二，用畫面紋理(frame texture)與緩衝器是否充滿去估計出每個
+畫面的目標位元數(target-bit)。第三，針對每一群的大區塊(macroblock)植基於
+Kalman filter修改適應性的(adaptive) Rate-Quantization Model去計算出每一區塊適
+合的量化參數。 
+Song et. al[20]提出一個新的H.263+傳輸率控制(rate control)技術，經由播放
+率的調整來支援可變資料位元率(Variable Bit Rate, VBR)的頻道(channel)。尤其，在
+一滑動視窗長度內以移動資訊為基礎來作控制畫面播放率的編碼，它能有效率的權
+衡決定空間性(spatial)與時間性(temporal)的視訊品質。Yang and Hemami[21]提出一
+個播放率控制(frame rate control)技術，使用扭曲率(rate-distortion, RD)最佳化移動
+補償嵌入小波編碼器的架構，並具有MINMAX扭曲評斷準則，這方法在使得很多
+群畫面(GOP)內資料位元率的最大扭曲率會最小。他們所提出畫面層級在資料位元
+配置上組合RD最佳化，並精確地控制到正確的位元數。在一群畫面(GOP)的編碼
+ 4
+善橫跨網際網路頻寬的不可預測與多變性，但非精確性計算模式所探討的資源是
+CPU的計算時間，任何處理工作(task)是可被隨時中斷處理並奪去CPU控制權，這
+種可奪取的(preemptive)運算模式是建構在CPU的情境切換(context switch)，然而，
+這與多媒體傳輸資料以封包為單位的網路傳輸是不同的，在MPEG-4[29]編碼則是
+將一張張的畫面以區塊為基礎(block-based)作編碼儲存資訊，依據MPEG對視訊的
+壓縮技巧來看主要有二，其一是區塊為主的移動補償 (block based motion 
+compensation)用來縮減時域上多餘的資料量，如果兩連續播放畫面(frame)有相同的
+部分，則第一畫面如果已經完整傳送了畫面資訊，第二畫面就可只傳兩畫面不同之
+處的訊息即可。其二是離散餘弦轉換壓縮(DCT based compression)則用來減低頻域
+的資料量，將一畫面做DCT轉換後將高頻部份(即人眼較看不到的細節)去掉，只傳
+輸低頻部份。因此，在MPEG-4 FGS架構下，除了具備有類似非精確模式的工作，
+另外，不同的畫面封包資料可能具有相依性，如預測畫面(P frame)必須依賴前一主
+要畫面(I frame)的資料。 
+研究方法 
+我們研究的系統模式建立在MPEG-4 FGS架構之上，是一個具混合時序性與
+雜訊比的可縮放化能力(hybrid temporal-SNR scalability)[1]，這模式經由單一加強層
+(enhancement layer)同時支援時序性可縮放化能力(temporal scalability)與雜訊比可
+縮放化能力(SNR scalability)。 
+這系統模式的每一多媒體視訊串流被編碼為三種不同的畫面格式(frame)： 
+(1). Intra frame(I frame):它是不利用之前的畫面資料所編碼的靜態 frame，它所
+佔的資料量最大。它是由時域到頻域的離散餘弦轉換壓縮，通常是將一完整畫面分
+成許多小塊(block)，8x8 或 16x16，再分別對小塊做離散餘弦轉換。 
+(2). Predicted frame(P frame):從解碼器的觀點來說，它是從最近解碼出來的 I 
+frame 或 P frame 所預測出來的。 
+(3). Bidirectional frame(B frame):它是從最近解碼出來的前後兩個 I frames 或 P 
+frames 所計算出來的，一個是過去的，一個是未來，具有較大的資料壓縮量。 
+每個畫面經MPEG-4 的編碼成相同大小的串流資料群組(bitstream group)，
+稱之為視訊封包(video packet)[23]，因此，每個畫面的工作包含有一些不等數量且
+相同大小的封包，我們以圖 1 來表示。一般而言，資料位元率為 24 kbps其封包大
+小為 512 bits。 
+ 
+Base layer 
+SNR 
+enhancement
+Temporal 
+enhancement
+1 2 3 4 
+9
+21
+33
+13
+25
+37
+10
+22
+34
+14
+26
+38
+11 
+23 
+35 
+15 
+27 
+39 
+12 
+24 
+36 
+16 
+28 
+40 
+8 
+20 
+32 
+7 
+19 
+31 
+6
+18
+30
+5 
+17
+29
+I0 P3B1 B2 P6 B4 B5 P9 B7 B8 B10 B11
+ 
+圖 2. The weighted assignment  
+ 
+sequence 
+GOP GOP GOP 
+VP VP VP VP VP VP 
+VP: Video Packet 
+GOP: Group of Picture 
+圖 1. 視訊串流階層架構
+ 6
+如：運動競賽，定義為Case IV，以表 1 說明紋理特徵與移動特徵之關係。 
+Akiyo sequence 是低度移動特徵及簡單的紋理特徵，屬於 Case I；Mobile 
+sequence 是低度移動特徵及複雜的紋理特徵，屬於 Case II；Foreman sequence 是高
+度移動特徵及簡單的紋理特徵，屬於 Case III；  Stefan sequence 是高度移動特徵
+及複雜的紋理特徵，屬於 Case IV。為了得到客觀量化數據，我們計算這四個
+sequences 編碼時每一個畫面所需有關移動資料的平均值，如圖 3 所示，而有關紋
+理特徵則取 sequence 的 Intra Frame 所需紋理資料的平均值，如圖 4 所示。 
+0
+1000
+2000
+3000
+4000
+5000
+6000
+Motion characteristic
+Th
+e a
+ve
+rag
+e b
+its
+ of
+ fr
+am
+es_
+Akiyo
+Foreman
+Stefan
+Mobile
+ 
+圖 3. 移動特徵之量化 
+0
+20000
+40000
+60000
+80000
+100000
+120000
+140000
+Texture characteristicTh
+e 
+av
+er
+ag
+e 
+bi
+ts
+ o
+f I
+nt
+ra
+-fr
+am
+es
+   
+ 
+Akiyo
+Foreman
+Stefan
+Mobile
+ 
+圖 4. 紋理特徵之量化 
+我們先以客觀視訊品質測試並計算 PSNR 值、 PSNRΔ 以及標準差 stddev，其
+中 PSNR 可以評估畫面品質，而 PSNRΔ 與標準差 stddev 可以用來評估視訊畫面間
+的流暢度，因此，我們觀察分析在變化不同的畫面播放率下，四個不同內容特徵的
+視訊序列之 與標準差 stddev。另一方面，我們觀察分析在變化不同的資料
+位元率下，四個不同內容特徵的視訊序列之 PSNR 值。 
+PSNRΔ
+其次，我們也使用主觀視訊品質測試，並採用雙受測連續品質等級（Double 
+stimulus continuous quality scale, DSCQS）[37][36]之研究方法，DSCQS方法是一個
+標準的主觀品質評估技術[38]，在評估的同時也兼顧了參考序列的加入，每組評估
+都包含了兩個顯像畫面，一個為 『參考序列』（未經過處理的原始視訊），另一個
+為『實驗序列』（經過處理的視訊），且每組顯像畫面所呈現的是相同的視訊內容，
+受測者必須對這兩個顯像畫面所呈現的視訊進行品質評估，同時，沒有事先告知受
+測者哪個顯像畫面是參考序列或是測試序列，且受測資料是以隨機呈現的方式給受
+測者來觀看並評分。 
+依據上述主觀視訊評估法訂定以下實驗程序步驟： 
+Step 1： 
+首先依據我們所制定的四類視訊內容進行視訊特徵的分類，依視訊內容的連
+續播放特徵分類法可以得到，一是具鮮少移動的靜態背景並且簡單的畫面紋理視訊
+內容，定義為 Case I，所採用的視訊序列是『Akiyo sequence』；二是具鮮少移動的
+物件與較複雜的畫面紋理，定義為 Case II，所採用的視訊序列是『Mobile 
+sequence』；三是具有高速移動的物件與簡單的畫面紋理視訊內容，定義為 Case III，
+所採用的視訊序列是『Forman sequence』；四是具有高速移動的物件甚至常有場景
+切換及相對複雜且隨機出現的畫面紋理，定義為  Case IV，所採用的視訊序列是
+『Stefan sequence』。 
+Step 2： 
+經過第一階段對視訊內容進行特徵分析與分類之後，第二階段就要對這四類
+ 8
+的視訊序列 PSNR 值，計算其標準差如方程式(3)： 
+( )
+N
+ -  PSNR(i)
+  stddev
+N
+1i
+2∑
+==
+μ
+                        (3) 
+PSNR(i)表示第 i 個 PSNR 值，例如 )' f PSNR(f,  PSNR(1) = ，而 μ 為此一視
+訊的平均 PSNR 值，N 為畫面總數。 
+為了暸解畫面播放率的大小對視訊序列所帶來的變動性與影響，我們根據
+與 Standard deviation 來分析畫面播放率，PSNR ofMean Δ )f ,PSNR(f 1ii +Δ 是針對同
+一視訊序列裡，前後兩張畫面的相似程度值，例如第一張畫面與第二張畫面進行
+PSNR 計算，得到一個 值，第二張畫面與第三張畫面得到一個
+值，依此類推，而標準差是針對 PSNR 值來做計算，用來分析 PSNR
+值變動的程度。我們的客觀評估實驗分別計算六個不同的資料位元率，100k, 200k, 
+400k, …,1000 k(bps)，取其平均值以圖 5 與圖 6 分別表示畫面播放率之 值
+與畫面播放率之平均標準差，圖 5 的橫座標表示不同的畫面播放率，縱座標表示
+值，而圖 6 的橫座標表示不同的畫面播放率，縱座標表示平均標
+準差，因此，當畫面播放率愈小時，
+)f ,PSNR(f 21Δ
+)f ,PSNR(f 32Δ
+PSNRΔ
+PSNR ofMean Δ
+PSNR ofMean Δ 的值就愈小，表示同一視訊
+的前後兩張畫面之相似程度愈小，且標準差則愈大，表示畫格與畫格之間的差距愈
+大。 
+10
+15
+20
+25
+30
+35
+40
+10 15 20 25 30
+Frame Rate
+me
+an
+ of
+ △
+PS
+NR
+Mean of △PSNR_akiyo Mean of △PSNR_mobile
+Mean of △PSNR_foreman Mean of △PSNR_stefan
+ 
+圖 5. 畫面播放率之 值 PSNRΔ
+0
+10
+20
+30
+40
+10 15 20 25 30
+Frame Rate
+me
+an
+ of
+ st
+dd
+ev
+Mean of stddev_akiyo Mean of stddev_mobile
+Mean of stddev_foreman Mean of stddev_stefan
+ 
+圖 6. 畫面播放率之平均標準差 
+(3)客觀評估測量下之資料位元率（Bit Rate）對視訊品質的影響 
+即每秒所播放的資料量，分為基礎層（base layer）與加強層（enhancement 
+layer）。在資料位元率的影響程度方面，與畫面播放率的分析方法一樣，將以 PSNR
+與 Standard deviation 來分析，不同之處在於資料位元率在視訊選擇方面是採用畫
+面播放率為 30 fps 來與原始的視訊進行 PSNR 計算與標準差計算，主要考量為分析
+資料位元率的調整，探討處理畫面與原始畫面之間的差異性。 
+圖 7 與圖 8 分別表示資料位元率之 PSNR 值與資料位元率之平均標準差，圖 7
+的橫座標表示傳輸率變動，縱座標表示 Mean of PSNR 值，圖 8 的橫座標表示傳輸
+率變動，縱座標則表示平均標準差，當資料位元率愈低時，Mean of PSNR 值就愈
+低，表示了在低傳輸率的情況裡，畫面品質與原始的視訊品質差異愈大，解析度愈
+差，同時標準差也愈大，表示原始與處理的視訊畫面品質有較大的落差，反之，當
+資料位元率愈大，畫面品質也就愈好，差異程度也愈低。 
+ 10
+品質，主因是它的畫面特徵較簡單，只需低傳輸率即可達到可接受品質，在低傳輸
+率時具有複雜紋理或高移動的視訊內容由於畫面的解析度已經相當不好，所以畫面
+播放率的增加並不會提高主觀的品質滿意度，另外也發現『Akiyo』與『Mobile』
+在畫面播放率低時，主觀的品質感受得分比其在高播放率的滿意程度還高，主因是
+這兩類視訊內容的移動特徵比較不顯著，同時受測者也比較注重畫面的解析度。 
+10
+20
+30
+40
+50
+10 15 20 25 30
+Frame Rate
+mo
+s
+akiyo_100K mobile_100K
+foreman_100K stefan_100K
+ 
+圖 14. 資料位元率 100 kbps 之 MOS 
+10
+20
+30
+40
+50
+60
+10 15 20 25 30
+Frame Rate
+mo
+s
+akiyo_200K mobile_200K
+foreman_200K stefan_200K
+ 
+圖 15. 資料位元率 200 kbps 之 MOS 
+20
+30
+40
+50
+60
+70
+10 15 20 25 30
+Frame Rate
+mo
+s
+akiyo_400K mobile_400K
+foreman_400K stefan_400K
+ 
+圖 16. 資料位元率 400 kbps 之 MOS 
+30
+40
+50
+60
+70
+80
+10 15 20 25 30
+Frame Rate
+mo
+s
+akiyo_600K mobile_600K
+foreman_600K stefan_600K
+ 
+圖 17. 資料位元率 600 kbps 之 MOS 
+40
+50
+60
+70
+80
+90
+10 15 20 25 30
+Frame Rate
+mo
+s
+akiyo_800K mobile_800K
+foreman_800K stefan_800K
+ 
+圖 18. 資料位元率 800 kbps 之 MOS 
+50
+60
+70
+80
+90
+10 15 20 25 30
+Frame Rate
+mo
+s
+akiyo_1000K mobile_1000K
+foreman_1000K stefan_1000K
+ 
+圖 19. 資料位元率 1000 kbps 之 MOS 
+資料位元率的提升也漸漸影響著視訊呈現的畫面品質，而帶動主觀的品質
+感受度的增加，這點就可以從圖 14 到 19 的主觀評估得知，另外在『Stefan』的傳
+輸率之影響而言，當資料位元率較低時（如 100 kbps – 400 kbps），在主觀的品質
+感受部分並沒有明顯的提升，原因在於此類視訊內容的連續畫面特徵屬於複雜紋理
+且具有高度移動的類型，在編碼與呈現的時候需要有較高的資源來滿足，在傳輸率
+已漸漸升高的同時（如 600 kbps – 1000 kbps），畫面播放率的要求逐漸升高，是因
+畫面解析度達到一個水平的同時，畫面流暢度的要求也漸漸被重視，因此，在較高
+的資料位元率時，畫面播放率愈高比較能讓觀眾所接受。 
+圖20表示在不同的視訊內容與不同的畫面播放率其所有資料位元率平均值
+的變動程度，由此圖可以發現『Akiyo』的得分最高，同時也發現受測者比較偏好
+較低的畫面播放率，同樣地，屬於高紋理的『Mobile』，受測者也比較偏好較低的
+畫面播放率，而『Forman』與『Stefan』的受測者則是比較偏向高畫面播放率。在
+圖 21 是說明在不同的視訊內容與不同的資料位元率其所有的畫面播放率平均值之
+變動程度，『Stefan』在較低的傳輸率時（100 - 400 kbps），變動性較不明顯，也表
+ 12
+我們考慮排程滿足基礎層封包的問題，所有封包工作之集合包含有必要性工
+作，意即基礎層之封包與可選擇性工作，意即加強層之封包的集合，同時給予不同
+重要性之封包所對應的權值，我們希望找出最佳演算法使得可排程的封包其權值和
+達到最大而且滿足傳送基礎層封包的要求，我們列出方程式(5)如下所示:  
+))(max()(∑ ∑
+∈ ∈
++
+B ETt Tt
+tWtW                               (5) 
+其中 TB代表基礎層集合中所有封包的工作，TE代表加強層集合中所有封包
+的工作，而 W(t)代表完成該工作(t)的所獲得權值。因為所有封包都是相同大小工
+作，因此先考慮單位時間排程演算法(unit time scheduling)，我們明確地陳述並公式
+化定義這個單位時間排程問題如下: 
+Problem 1. The unit time task-scheduling problem[34]
+單一頻寬資源排程具有期限與權值的單位時間工作之問題，它的輸入為集合
+T={t1, t2,…, tn}，共有 n 個單位時間工作，它們的期限為 使得每一 di滿足
+，它們的權值為 ，如果工作 ti 在期限 di 內完成則可得到 wi 的
+權重，這問題在滿足上述條件下之排程使得權值和為最大。 
+nddd ,...,, 21
+ndi ≤≤1 nwww ,...,, 21
+這方法假設全部的工作都是相同單位時間(unit time)完成，每個工作依其重要
+性有不同的權值，這個 unit time scheduling 演算法已被證明，使用貪婪(greedy)法
+則在 O(n2)時間複雜度下可得最佳解，其演步驟如下所示: 
+Step 1. A=φ  
+Step 2. 依權重值大小作降冪排序 
+Step 3. 依排序選一最大權值的工作並將時間序列加 1 單位 
+Step 4. 若該工作加入集合 A 仍可完成排程則將該工作放入集合 A 
+Step 5. 重複 Step 3 Step4 直到所有工作都測試過為止 
+我們舉一實例如下表 2 並描述其方法，在時間刻度 1 時，選擇最大權值工作
+t1，當時間刻度 2 時，加入可排程的最大權值工作 t2 成為集合{ t2, t1}，依此貪婪法
+則直至時間 6 時，可排程集合為{ t2, t4, t1, t3, t7}而最大權值和為 280。 
+表2. 單位時間排程實例 
+ti t1 t2 t3 t4 t5 t6 t7 
+di 4 2 4 3 1 5 6 
+wi 80 70 60 50 40 30 20 
+ 
+我們延伸上述方法，考慮必須完成基礎層的必要工作TB及儘可能排程集合TE
+的工作封包，使得這些工作在期限內完成的權值總和為最大。這個問題可將必要工
+作TB所有封包的權值加上一個很大的常數值，然後再用unit time scheduling去找出
+最佳解，這是個相等問題(equivalent problem)的概念，我們已發表其相關證明於知
+名國際期刊[5][14]，而這方法的延伸有效且最佳。 
+實驗結果 
+我們採用具有FGS functionality 的Microsoft MPEG-4 software編解碼器[35]，
+以每秒 30 張畫面的 352×288 pixels CIF格式編碼。每一個視訊序列有 300 張畫面，
+ 14
+Akiyo
+30
+33
+36
+39
+42
+45
+48
+900 k 1000 k 1100 k 1200 k
+Bandwidth (bps)
+PS
+N
+R
+ (d
+B
+)
+10 fps
+15 fps
+20 fps
+25 fps
+30 fps
+ 
+Akiyo
+36
+39
+42
+45
+48
+10 15 20 25 30
+Frame rate (fps)
+PS
+N
+R
+ (d
+B
+) 900 k
+1000 k
+1100 k
+1200 k
+ 
+圖 24. Akiyo 在不同的播放率及資料位元率下品質影響的程度 
+Foreman
+30
+33
+36
+39
+42
+45
+48
+1200 k 1400 k 1600 k 1800 k 2000 k
+Bandwidth (bps)
+PS
+N
+R
+ (d
+B
+)
+10 fps
+15 fps
+20 fps
+25 fps
+30 fps
+Foreman
+34
+36
+38
+40
+42
+44
+46
+10 15 20 25 30
+Frame rate (fps)
+PS
+N
+R 
+(d
+B) 1200 k
+1400 k
+1600 k
+1800 k
+2000 k
+ 
+圖 25. Foreman 在不同的播放率及資料位元率下品質影響的程度 
+Stefan
+30
+33
+36
+39
+42
+45
+48
+2400 k 2600 k 2800 k 3000 k 3200 k
+Bandwidth (bps)
+PS
+N
+R
+ (d
+B
+)
+10 fps
+15 fps
+20 fps
+25 fps
+30 fps
+ 
+Stefan
+30
+33
+36
+39
+42
+45
+10 15 20 25 30
+Frame rate (fps)
+PS
+N
+R
+ (d
+B
+)
+2400 k
+2600 k
+2800 k
+3000 k
+3200 k
+ 
+圖 26. Stefan 在不同的播放率及資料位元率下品質影響的程度 
+Mobile
+30
+33
+36
+39
+42
+45
+48
+3800 k 4000 k 4200 k 4400 k 4600 k
+Bandwidth (bps)
+PS
+N
+R 
+(d
+B) 10 fps
+15 fps
+20 fps
+25 fps
+30 fps
+ 
+Mobile
+30
+33
+36
+39
+42
+45
+10 15 20 25 30
+Frame rate (fps)
+PS
+N
+R
+ (d
+B
+)
+3800 k
+4000 k
+4200 k
+4400 k
+4600 k
+ 
+圖 27. Mobile 在不同的播放率及資料位元率下品質影響的程度 
+結論與建議 
+我們藉由初步的主觀視訊品質評估調查，並由三個獨立變數與一個因變
+數，實驗觀察得到以下結論。 
+1.不同類型的視訊內容將會影響使用者滿意度 
+2.畫面播放率將會影響使用者滿意度 
+ 16
+Page(s):372-383. 
+[15]. Furini, M. and Towsley, D.F. (2001) Real-time traffic transmissions over the Internet. IEEE 
+Transactions on Multimedia, Volume: 3, Issue: 1, Page(s):33 - 40. 
+[16]. Zhi-Li Zhang, Nelakuditi, S., Aggarwal, R., and Tsang, R.P.,(1999) Efficient selective frame 
+discard algorithms for stored video delivery across resource constrained networks. Proceedings of 
+INFOCOM '99, Volume: 2, Page(s):472 -479. 
+[17]. Sassan Pejhan, Ti-hao Chiang, Ya-Qin Zhang. (1999) Dynamic Frame Rate Control for Video 
+Streams Oct 30 - Nov 5, 1999, Orlando, Florida, ACM Multimedia, Electronic Proceedings. 
+[18]. Byung Cheol Song; Kang Wook Chun;(2003) A virtual frame rate control algorithm for ef_cient 
+MPEG-2 video encoding, IEEE Transactions on Consumer Electronics, Volume 49, Issue 2, May 
+2003 Page(s):460 - 465 
+[19]. Din-Yuan Chan; Chun-Yuan Chang; Shou-Jen Lin; Chung-Wei Lin;(2004) A rate-control scheme 
+using fast frame-rate controlling and adaptive rate-quantization modeling for h.263, 2004 IEEE 
+International Symposium on Consumer Electronics, Sept. 1-3, 2004 Page(s):390 - 395 
+[20]. Hwangiun Song; Jongwon Kim; Jay Kuo, C.-C.; (1999) Real-time H.263+ frame rate control for 
+low bit rate VBR video, ISCAS '99. Proceedings of the 1999 IEEE International Symposium on 
+Circuits and Systems, 1999. Volume 4, 30 May-2, June 1999 Page(s):307 – 310. 
+[21]. Yan Yang; Hemami, S.S.; (1999) MINMAX frame rate control using a rate-distortion optimized 
+wavelet coder, 1999 International Conference on Image Processing, 1999. ICIP 99, Volume 3, 24-28 
+Oct. 1999 Page(s):551 – 555. 
+[22]. Myeong-Jin Lee; Jae-Kyoon Kim; Global (2000) Video frame rate control for non-guaranteed 
+network services with explicit rate feedback, IEEE GLOBECOM '00 Telecommunications 
+Conference, Volume 1, 27 Nov.-1 Dec. 2000 Page(s):293- 297. 
+[23]. Fred. Halsall, (2001)“Multimedia communications”, Addison-Wesley, 2001. 
+[24]. Shih, W.-K. and Liu, J.W.S., (1992) “On-line scheduling of imprecise computations to minimize 
+error”, Real-Time Systems Symposium, 1992 , 2-4 Dec 1992, Page(s): 280 –289. 
+[25]. Baruah, S.K.; Hickey, M.E.; (1998)“Competitive on-line scheduling of imprecise computations,” 
+Computers, IEEE Transactions on , Volume: 47 Issue: 9 , Sep 1998 ,Page(s): 1027 -1032 
+[26]. Apteker, R.T.; Fisher, J.A.; Kisimov, V.S.; Neishlos, H.; (1995)“Video acceptability and frame 
+rate”, Multimedia, IEEE , Volume: 2 , Issue: 3 , Fall 1995, Pages:32 – 40. 
+[27]. Agung, I.W.; Sweeney, P.;(2004) “Video scene characteristic detection to improve digital 
+watermarking transparency,” Vision, Image and Signal Processing, IEE Proceedings- , Volume: 
+151 , Issue: 2 , 30 April 2004 , Pages:146 – 152 
+[28]. Wenmiao Lu; Yap-Peng Tan;(2004)“A vision-based approach to early detection of drowning 
+incidents in swimming pools,” Circuits and Systems for Video Technology, IEEE Transactions 
+on , Volume: 14 , Issue: 2 , Feb. 2004, Pages:159 – 178 
+[29]. ISO/IEC JTC1/SC29/WG11, (1997)“Overview of the MPEG-4 Standard”, N1729 & N1730, 
+Stockholm meeting, July 1997. 
+[30]. Huey-Min Sun, Yung-Chuan Lin.,(2005)“The Effect of Video Quality for Different Contents, 
+Frame Rates and Bit Rates”, National Computer Symposium 2005, Tainan, Taiwan, Dec. 15-16, 2005, 
+Pages. 
+[31]. M. van der Schaar and H. Radha, (2001)“Temporal-SNR rate-control for Fine-Granular 
+Scalability”, International Conference on Image Processing, Vol. 2, pp.1037-1040, 2001. 
+[32]. S. Olsson, M. Stroppiana, and J. Baina, (1997)“Objective Methods for Assessment of Video 
+Quality: State of the Art,” IEEE Trans. on Broadcasting, Vol. 43, No. 4, pp. 487–495, December 
+1997. 
+[33]. S. Winkler, (2000)“Vision Models and Quality Metrics for Image Processing Applications,” Ph.D. 
+dissertation, EPFL, Switzerland, 2000. 
+[34]. Thomas H. Cormen, Charles E. Leiserson, and Ronald L. Rivest, (1993)“Introduction to 
+Algorithms”, The MIT Press, McGraw-Hill Book Company, 1993. 
+ 18
+行政院國家科學委員會補助國內專家學者出席國際學術會議報告 
+                                                        96 年  7 月 10  日 
+報告人姓名 孫惠民 服務機構
+及職稱 
+長榮大學資管系 
+副教授 
+     時間 
+會議 
+     地點 
+2007.06.28~2007.06.29 
+Shanghai, China 
+本會核定
+補助文號
+NSC 95-2221-E-309-014 
+會議 
+名稱 
+ (中文)第 9 屆國際視覺資訊系統研討會 
+ (英文) The 9th International Conf. on Visual Information Systems 
+發表 
+論文 
+題目 
+ (中文)在有限的頻寬下調整每秒播放率與每畫面的位元數之感受品質影響
+ (英文) The Influence of Perceived Quality by Adjusting Frames per Second 
+and Bits per Frame under the Limited Bandwidth 
+報告內容應包括下列各項： 
+一、參加會議經過 
+本次Visual 2007 會議已是第 9 年舉辦，參加的學者來自全球有美國、加拿大、德國、
+法國、義大利、芬蘭、比利時、澳洲、日本、印度、南韓、新加坡、中國、香港與台灣
+等國，可說是參與國相當多的國際研討會，這個會議投稿的接受率都維持在 50%以下，
+並具有獨立審查制度確保其論文品質，同時接受的論文將被Lecture Notes in Computer 
+Science所收錄，兩天的會議主題包含有Image and Video Retrieval, Visual Biometrics, 
+Intelligent Visual Information Processing, Visual Data Mining, Low-level Visual Information 
+Processing, Applications of Visual Information Systems, Ubiquitous and Mobile Visual 
+Information Systems，以及Semantics等，本人被接受的論文被安排在Low-level Visual 
+Information Processing時間有 15 分鐘在第一天下午 3:50，而這次本人也受邀擔任這個
+session的chair，論文發表完後有兩名學者提問，其中問到本研究是否可以real-time的調
+整每秒播放率與每畫面的位元數去符合環境的需要，另一則提到本研究是否提出演算法
+來改善這類的問題。當然，這兩個議題都不是本研究要解決的，而是以大規模的統計分
+析去分類視訊的特徵，並以實證研究去分析不同視訊內容特徵採用何種技術對受測者的
+感受如何。 
+在 Coffee Break 也與其他與會學者進行更深入的交流，其中一位來自中國北京清華大
+學的 Xianping Fu，是清華的博士後研究，專長是 image compression，並簡短的討論一些
+影像處理的議題與大陸學界的近況。另外也有一位來自香港浸匯基督教大學 Professor 
+Guoping Qiu 也是這次大會的 organizer， 他是復旦大學計算機系的教授到香港客座第二
+年。還有一位來自義大利 Florence University 的博士生 Lamberto Ballan，這位 27 歲的年
+輕人第一次到東方的國家，除了參加這個上海的研討會也參與了 7/2~5 在北京舉辦的
+ICME 2007。 
+  
+附件三
+ 
+表 Y04 

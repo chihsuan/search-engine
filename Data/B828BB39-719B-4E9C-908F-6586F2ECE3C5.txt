@@ -1,0 +1,169 @@
+ 1
+一、前言 
+ 
+緩衝區溢位(Buffer Overflow) 攻擊，是近年來駭客最常使用的入侵技術之一，也是
+一個眾所周知的安全問題。例如 2003年七月中旬開始肆虐的 Code Red病毒，就是一種
+典型利用緩衝區溢位漏洞的攻擊。產生緩衝區溢位漏洞的原因，主要是程式撰寫的疏
+忽，因此近年來也發展出許多檢測漏洞的技術，甚至有人提出修改硬體架構的主張，以
+徹底解決緩衝區溢位的問題。然而，當大家將焦點放在討論Microsoft IIS、Apache Web 
+Server [6]、BIND DNS Server 等軟體伺服器的緩衝區溢位問題時，卻鮮有人注意到
+Web-Based Application 也很有可能因為程式撰寫不當而造成緩衝區溢位的漏洞，包括
+SQL injection、Command injection等。 
+ 
+二、研究目的 
+ 
+Web-Based Application通常使用 Script語言撰寫，例如 PHP、Perl、JSP、ASP等。
+由於其易學易用的特點，即使未曾受過良好程式設計訓練的初學者，亦能輕易的建置一
+個小型的Web-Based Application。能力較佳者，甚至能撰寫一些特定功能的函式庫、模
+組或元件，放在  Open Source 的網站上讓人免費下載使用。當一個 Web-Based 
+Application裡，可能充斥著許多未經嚴格篩選的 Script、函式庫、模組、元件時，我們
+不禁憂心其潛在的安全性問題。另外Web Services也是近年來網際網路上方興未艾的新
+技術，其目的是為了整合各種平台之間的應用服務。如同上述的 Web-Based 
+Application，Web Services通常也是使用 Script 語言所撰寫，所以也面臨了同樣的安全
+問題。甚至 Web Services 可能含有更為重要或更具機密性的服務或資料，因此加強 
+Web-Based Application及Web Services的安全性已是刻不容緩之課題。 
+針對各種不同的 Script，來發展一些檢驗 Script漏洞的工具，是一種解決的方法。
+然而，因 Script種類繁多，況且若應用系統使用到一些編譯過的模組或元件，還是無法
+用此法查驗。因此，本研究提出一次性隨機 URL Mapping的機制，此隱藏所有的真實
+URL，讓攻擊者想嘗試進行入侵時，也毫無著手之處。 
+ 
+三、文獻探討 
+ 
+(一)、常見Web-based程式漏洞 
+常見的 Web 應用程式安全性漏洞有：緩衝區溢位(Buffer Overflow)[1]、資料隱碼
+(SQL Injection)[2]、跨網站程式攻擊(Cross-Site Scripting)[3]等，以下簡單介紹這幾個常
+見的攻擊方式。 
+ 
+緩衝區溢位(Buffer Overflow)： 
+由於程式撰寫時，開發人員並沒有檢查使用者所輸入的資料量是否符合輸入輸出
+緩衝區大小，當使用者輸入的資料量大於所規定的緩衝區大小時，過多的資料會將堆疊
+ 3
+訊連線(Connection)終止。當 Web Client 想要向 Web Server 提出另一個 Request，Web 
+Client需和Web Server重新建立連線，才能送出 Request給Web Server。由於 HTTP底
+層是利用 TCP(Transmission Control Protocol)這個通訊協定來傳送封包，而 TCP開始傳
+送封包之前，需藉由三方握手協議(3-Way Handshaking)來建立 TCP connection，在傳輸
+大量資料或同一連線可以允許多個請求同時進行的情況中，三方握手協議對整體效能並
+不會有顯著影響，但是由於 Web 檔案的大小通常不大，在網路上傳輸的時間並不會太
+長，若每次提出 Request都必須進行三方握手協議，會使得三方握手協議相對成為 HTTP
+效能上的瓶頸。有鑑於此，新版 HTTP/1.1 [5]針對 Connection所造成的效能不佳，提出
+一個新的架構，此架構主要包含三個部分，Persistent Connections、Pipelined Connections
+和 Parallel Connections。Persistent Connections允許多個 Request能共用同一個連線，不
+需每次 Request 皆需重新建立連線，免除了三方握手協議所造成的效能瓶頸；Pipelined 
+Connections在Web Server尚未傳回 Response時，允許多個 Request能先送出，不需等
+待Web Server的回應，藉由減少Message的來回次數(Round trips)來改善效能；Parallel 
+Connections則是允許Web Client和Web Server能同時建立多個連線，來加快網頁載入
+的速度。 
+                             
+ 
+圖 2、Request Message和 Response Message 
+ 
+(三)、Apache Request Handling流程 
+和所有的Web Server一樣，Apache處理 Request的過程如下: 一開始，Web Client
+和Apache HTTP Server先建立Connection，當Connection建立後，Web Client便向Apache 
+HTTP Server提出 Request， Apache HTTP Server接到 Client的 Request後，便開始處理
+Request；最後再將執行結果傳送給 Client。 [7] 
+當 Apache HTTP Server收到 Request後會先剖析 Request message，並將結果儲存
+在 request_rec結構中；之後，才開始處理 Request，產生檔案內容。圖 3 為 Apache HTTP 
+Server讀取 HTTP Request的流程[8]，圖 4 則為 Apache處理 Request的流程。 
+  
+ 5
+ 
+圖 4、Apache HTTP Server處理 Request Message流程 
+ 
+處理 HTTP Request 的流程： 
+Apache HTTP Server將 Request處理分為兩主要部分，各個主要部分再依功能性進
+行細分： 
+1. 取得 Request URI相對應的設定(Configuration)： 
+一開始，先修改Request URI。Apache藉由呼叫 ap_unescape_URL()和 ap_getparents()
+函式來修改 Request URI。函式 ap_unescape_URL()主要用來替換跳脫字元(escape 
+character)，而函式 ap_getparents()則用來去除相對路徑符號，如 ./XXX 或 XXX/../。然
+後讀取相關設定值(Configuration)。Apache 藉由呼叫函式 location_walk()取得 Request 
+URI所對應的相關設定。這裡需要注意的是，此階段必須在 Translate name階段之前執
+行，因為它會影響 URI如何被轉換。 
+ 
+2. 處理模組的 Callback: 
+Apache HTTP Server在每一階段都定義一個掛載點(HOOK)，允許開發人員定義一
+個 Callback function來對 Request做處理。此部分共分為八個階段： 
+(1). Translate name。將 Request URI轉換成真實的檔案名稱與路徑。 
+(2). Read Configuration。因為在經過 Translate name階段後，URI可能會和 Request 
+URI不同，因此需再呼叫函式 location_walk()來取得 URI所對應的相關設定
+(Configuration)。 
+ 7
+ 
+(1)進行認證 
+ 
+圖 6、進行認證 
+a. Client先送出 Request，其 message的內容如圖 6 中的 Request message。 
+b. Server 接收到 Client 的 Request 後，開始處理 Request，發現 Client 所要求的
+URL是「/」，Web Server便去查看 httpd.conf (實際上，Web Server並不是處理
+每一請求都會去查看 httpd.conf，在Web Server重新啟動，進入 Configuration
+階段時，會先剖析 httpd.conf裡的指令(directory)，將能處理指令的模組和相關
+指令關聯在一起，圖 6 中 httpd.conf 裡的 DirectoryIndex 便是由模組 Mod_dir
+負責處理，我們為了說明方便，才直接說 Apache Http Server去查看 httpd.conf
+這個設定檔)。 
+c. 由於 Client所送出的 Request並沒有明確指定要求想要取得那個檔案，而僅送
+一個目錄的 Request 給 Server，如 GET /private/shared/，此時 Server 便以
+DirectoryIndex所設定的檔案名稱(預設常為 index.html或 index.*)，將該目錄中
+與 DirectoryIndex對應的檔案，藉由下列兩種方法：傳送一個重導訊息(Redirect)
+給 Client，通知 Client的 Browser重新導到系統所指定的 URL；或在 Server中
+直接進行內部重導(Internal Redirect)，將 URL直接導到 DirectoryIndex所指定
+的檔案，Client的 Browser並不會察覺 Server內部重導的行為。 
+d. 系統將認證的網頁傳給 Client，來進行認證的動作。 
+ 
+(2) Apache HTTP Server傳回 Initial URL 
+ 9
+圖 8、轉換 URL 
+ 
+a. Client送出編碼過的 URL請求。 
+b. Server收到 request請求，將編碼的 URL透過模組 OneTimeHashedUrl轉換成
+真實檔案名稱。 
+ 
+(2) 產生編碼過的 Response Message 
+ 
+圖 9、產生編碼過的 Response Message 
+a. 轉換 URL後，Apache 核心在 Translate Name階段將前一步驟取得的 URL，
+轉換成真實檔案名稱，隨後，Apache Core Module會呼叫能處理此檔案內容的
+Content Handler處理此檔案，產生檔案內容 
+b. Content Handler將產生的資料送給 Output Filter Chain的第一個 Output Filter，
+由一連串的 Output Filter再做進一步處理。 
+c. 當輪到模組 OneTimeHashedUrl 執行時，模組所定義的 Output Filter 會查看
+httpd.conf 中 OneTimeDir 指令，OneTimeDir 這個指令是我們實作的指令，用
+來指定需要加密的目錄位置。 
+d. 若檔案內容中存在 URL 屬於 OneTimeDir 所設定的路徑下的 URL，模組
+OneTimeHashedUrl 便將此 URL 以 MD5 編碼的字串取代，並將原始 URL 和
+MD5字串儲存到 Berkeley DB中相同的 Entry中；如果 URL不屬於我們所設
+定的路徑，邊不將 URL編碼。 
+e. 將結果傳送給 Client 
+ 
+3. 隨機 URL Entry 
+ 11
+ 
+圖 12、攻擊者取得隨機 URL，嘗試進入系統 
+ 
+若攻擊者無意間取得我們所產生的隨機 URL，未經過系統認證，便向 Server提出
+請求，雖然此 Request是符合我們所定義的隨機編碼 URL，但是 Server會先判斷此 Entry
+的 IP Address 是 否 和 Client 的 IP Address 相 同  ( 如 圖 14 中 儲 存
+013CFE7337C61D7459BFBDB 的 Entry 其 IP Address 為正常使用者的 IP Address 
+140.112.90.150，並不是 61.30.17.100 )，發現兩個 IP Address並不相同， Server便不會
+進行 URL轉換的工作，直接傳送 Page Not Found的錯誤訊息給攻擊者。 
+ 
+ 
+ 
+圖 13、到達隨機 URL Entry逾時時間 
+ 
+ 13
+ 
+圖 14 中橫軸為 Concurrency level，Concurrency level表示某段時間內，同時提出
+的 Request數，即 ab這個 benchmarking tool同時所送出的 Request數，縱軸則為 Request
+執行所花的時間，「OFF」表示未啟動 OneTimeHashedUrl 模組、「ON」則表示有啟動
+OneTimeHashedUrl模組。由圖中可發現當 Concurrency level越來越大時，每一個 Request
+執行完成所花費的時間越來越長，這是因為 Server的計算資源(Computing Power)並非由
+一個 Request 所獨佔，需分配給每一個 Request 輪流執行，因此當有較多的 Request 同
+時進入 Server，會造成每一個 Request每次所得到的執行時間(time slice)越短，由於相同
+Request的處理時間大致固定，這使得每一個 Request等待 CPU執行的次數增加，這也
+意謂著每一個 Request花費在等待 CPU執行的時間也增加，因此每一個 Request執行所
+花費的全部時間也相對地增加。由於我們所實作的模組需過濾檔案內容，這會使得系統
+的執行效能降低，經過分析發現有啟動隨機 URL 對應機制的系統效能會比沒有使用隨
+機 URL對應機制遞減約 11%，對系統效能有些許影響，因此本系統適合在較小的系統
+上執行，而不適合在需要較高效能的網站上，如入口網站或政府機關等大型網站上執行。 
+ 

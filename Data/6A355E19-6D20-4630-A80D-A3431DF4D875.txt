@@ -1,0 +1,319 @@
+the threats, introduced by anti-virus system. 
+英文關鍵詞： Software Testing, Secure Programming, Exploit 
+Generator, Symbolic Execution, Zero-Day Attacks 
+ 
+ 2 
+摘要 
+電腦防毒軟體原本是重要資安的防護工具，但因為防毒系統必須涉及各種檔案格式，包含加密格式、
+archive 格式、執行檔、動態連結檔 DLL 等格式的解讀與識別，其檔案處理的複雜程度遠高於一般作
+業系統，因此引含許多軟體缺陷，並容易遭受攻擊。本研究已運用 S2E 與 KLEE symbolic virtual 
+machine ，配合  QEUMU (emulator) 的使用，針對目前普遍使用之防毒軟體系統，進行 
+symbolic/concolic/fuzzing 測試，主動探測此重要資安系統的安全強度，並試圖轉換缺陷為可供運
+用的攻擊弱點，呈現防毒軟體可能導致的資安威脅。因此在本計畫中我們提出一系列的方法來加速防
+毒軟體的檢測並藉由產生漏洞的脅迫(exploit)來提醒防毒軟體開發者能夠優先修補較危險的漏洞以
+減少危險的發生。我們提出的方法分別是：符號汙染分析、符號環境建置以及選擇性輸入，並運用這
+些方法實作改良在原有之軟體品質與自動脅迫產生平台：CRAX 上，第一個方法是基於符號執行
+(symbolic execution )的汙染分析(taint analysis)，主要用來快速釐清一般可執行檔檔案若能造成
+防毒系統的當機情況，分析對漏洞程式的影響情況，而第二個方法將建置一個符號環境，讓 CRAX能夠
+做到 binary level(執行檔)的測試，選擇性輸入讓 CRAX 在自動產生脅迫上以及測試防毒系統程式更
+有效率。我們將改良過後的 CRAX 與現有同質性之工具作比較，皆有優良的成績，證明了這些方法在
+實際應用上的可行性。 
+ 
+有關防毒系統安全性的評估的報告已經撰寫成三篇碩士論文，並已投稿於會議與期刊中，列在成
+果自評。 
+ 
+關鍵詞：軟體測試、程式安全、攻擊產生器、符號運算、零日攻擊 
+ 4 
+簡介 
+近年來儘管軟體安全漸漸受到重視，防毒軟體被駭客攻擊的事件仍層出不窮，關鍵在於軟體安全漏洞
+很多，但可以產生脅迫(exploit)的確很少，攻擊者只要發現一個 0-day 就可以為所欲為，而反觀守方的
+資安專家們，必須分析所有的軟體漏洞才有可能杜絕威脅，然而隨著現在軟體工業的發展，軟體規模
+不斷擴大，設計也越來越複雜，靠人力分析一個軟體漏洞少則花費數天，多則數禮拜甚至數個月，分
+析專家們，窮盡所有心力也難以阻擋不法者的攻擊，而大型公司與一般使用者更束手無策。也因如此
+一個新興的技術逐漸受到重視，自動脅迫產生(automatic exploit generation)：藉由自動產生軟體漏洞的
+脅迫(exploit)，來證明漏洞是否可被攻擊。此技術仍然在開發中，對於大程式的支援，以及測試 binary
+檔(執行檔測試)的效率，都有其侷限性，若能在這兩方面有所突破，或許防毒軟體安全攻防的平衡，將
+有所改變。 
+. 
+研究動機與目標 
+符號環境建立很困難 
+    KLEE 的符號環境建置使用 2500 行程式碼來修改 40 個函式呼叫(function call)，而 AEG [6] 則花了
+5000 程式碼來修改 70 個函式呼叫(function call)，MAYHEM [7] 則重新改寫 42 個函式呼叫總共寫了了
+上萬行的程式, Hellen[8]為了達到執行檔的污染分析(taint analysis)用了 7000 行程式碼來攔截以及改寫
+系統呼叫(system call)。上面提到的做法都運用修改(函式呼叫)function call 或是攔截系統呼叫(system 
+call) 的方法來達到符號環境建置，但是這兩種方法不只費時也費人力，所以在此研究中，嘗試一種簡
+單的方法來達到符號環境的建置使得 binary level 的符號執行更簡單。這尤其是驅動模式防毒系統測試
+的關鍵。 
+CRAX 在大型程式上的分析沒效率 
+   CRAX 在執行大型程式的時候顯得沒有效率，原因可分成兩類如下        
+ 6 
+時間在執行單一路徑 擬真執行，以及脅迫產生上，但是事實上一個脅迫的大小，在真實環境的限制下，
+通常都很小，事實上，產生一個 exploit 首要關心的是，input 如何影響 EIP，因此若是能夠很快速
+的發現 input 中，直接影響 EIP 的位元組(critical byte)，則就可以根據 critical byte 來決定符
+號輸入的常常度以及位置，來達到增加 CRAX在執行上的效率。  
+  本研究將提出一個方法能夠快速地找尋 critical byte ，並且提出一個策略利用 critical byte來
+決定符號輸入的位置與長度。 
+相關研究 
+第一部分列出一些運用擬真或是符號執行來做漏洞偵測，或是路徑覆蓋率偵測的工具，第二部分介紹
+的工具主要是用在判斷一個可以造成軟體崩壞(crash)檔案是否是可脅迫的(exploitable)，第三部分介紹
+現有的自動脅迫產生(automatic exploit generation)工具。第四部份以一個表格來呈現現有工具對符號環
+境支援度做相關的比較。 
+符號執行 
+Catchconv [9]可以偵測軟體中是否有整數溢位的問題，並且嘗試產生一個可觸發此漏洞的檔案。主
+要的方法是先用擬真執行來到達一個特定的目的(可能發生整數溢位的地方)在透過執行過程中所收集
+的路徑限制式(path constraint )去計算出一個可以觸發整數溢位的輸入。 
+是一個基於LLVM[12]的軟體測試平台，主要運用符號值執行來進行程式路徑覆蓋 (path 
+coverage)測試以及測資產生(test case generation)。另外KLEE也是最早提出符號環境建置的工具. 
+2
+E [10] 是一個分析軟體行為的平台，並建置在 QEMU[13]以及 KLEE 上支援(whole-system)全系
+統的符號執行和擬真執行而且提供完善的符號環境。 
+可脅迫性偵測(Exploitable Detect) 
+Bitblaze[11]是一個執行檔分析的平台，並且支援許多常見的軟體分析技術，例如fuzzing，動態汙
+點分析(dynamic taint analysis)，符號執行，以及靜態分析。 
+Bitblaze也被應用在crash 檔案的檢測，它可以判斷crash檔案是否可脅迫(exploitable)，並且找出系統發
+ 8 
+Bitblaze NO 
+ 
+Binary No 
+!Exploitable NO 
+ 
+Binary NO 
+Heelan Yes Yes Binary Incomplete 
+AEG Yes Yes Source Incomplete 
+MAYHEM Yes Yes Binary Incomplete 
+CRAX Yes Yes Binary Yes 
+ 
+表格 2綜合比較 
+ 
+ 10 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+圖表 3 共享符號記憶體 
+Symbolic File 建置 
+  建立 Symbolic file 的困難點在於，代理程式並不能只是將一塊共享符號記憶體內容直接寫入到檔案，
+因為符號記憶體內容一旦進入到檔案系統(file system)，將會失去所有的符號資訊，而被系統強迫轉成
+一個固定的值(concrete value)，因此這篇論文嘗試讓檔案存取無須涉及檔案系統，而將檔案預先對應到
+一塊記憶體空間上，如圖表 7，這代表受測程式如果有去讀取這個檔案，其實就是直接對記憶體操作，
+而非透過檔案系統來存取資料，接著代理程式再將這一塊對應到檔案的記憶體符號化，完成對受測程
+式共享符號記憶體的概念。 
+  
+ 
+agent 
+ 
+ 
+Tested program 
+ 
+Symbolic share 
+memory 
+ 12 
+               
+ 
+  
+ 
+ 
+圖表 5 symbolic client                  圖表 6 symbolic server 
+Symbolic Environment Variables 建置 
+    代理程式首先向作業系統宣告一個環境變數並且把整塊環境變數符號化，接著代理程式透過函式
+呼叫”fork”產生新的行程(process)，這支新的行程與原行程擁有相同的符號記憶體，最後新行程透過函
+式呼叫”execv”啟動受測程式，一旦受測程式讀取符號環境變數，即會開始符號執行。 
+Symbolic Standard Input 建置 
+在 symbolic standard input 裡代理程式首先建立一條 pipe，pipe 是 c 語言所提供的函式呼叫(function 
+call)可以用來更改標準輸入的來源，接著代理程式將 pipe 的一端連接到已經配置好的符號記憶體而另
+一端則連接標轉輸入，下一步驟，代理程式透過函式呼叫(function call )”fork”來產生一個新的行程
+(process)，這個行程有著和代理程式相同的記憶體配置，並且標準輸入也同樣被導向到符號記憶體，最
+後這個行程，在透過函式呼叫”execv”來啟動受測程式，此時受測程式如果從標準輸入讀取資料，將直
+接對符號記憶體讀取資料並且開始符號執行，而不是從鍵盤接收輸入。圖表7 為Symbolic Standard Input 
+示意圖。 
+ 
+ 
+ 
+    
+Read symbolic from client Read symbolic from server 
+ 14 
+的分支限制式(branch constraint)，此目的也是避免在維護路徑限制式(path constrain)時花多餘的時間，
+當執行結束時，如 EIP 暫存器內容為符號變數，就可以根據符號變數紀錄的資訊如圖表 8 來找出 crash
+檔案裡對應的位元組，如果 EIP 暫存器沒有被汙染(tainted)，則位移符號輸入四個位元組，並且反覆執
+行上述的動作，直到搜尋到 crash 檔案裡的關鍵位元組。其演算法為 演算法 1 
+ 
+ 
+ 
+ 
+ 
+1 2 3 4 5 6 
+ 
+ 
+ 
+ 
+ 
+圖表 8當 EIP暫存器被符號變數汙染，可以直接知道來源與目標對應的關係 
+ 
+Q 
+ 
+1 
+2 
+3 
+4 
+5 
+6 
+ 
+EIP  
+ 16 
+   
+圖表 9 選擇性輸入流程圖 
+true 
+false 
+ 18 
+   . 
+ 圖表 10 堆疊溢位 
+程式碼 3 TYPE 1 crash 
+ 
+. 
+EIP = return address 
+ 20 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+圖表 11 The results of exploit generation 
+ 
+ 目前 MAYHEM這些所測試的應用程式都還屬於較小的，而為了測試 fast concolic execution 我們
+在這也測試了三個較大的應用程式，這些應用程式測試在還沒改善 concolic execution 的效能前甚至
+也無法測量時間因未改善前連 concolic execution都跑不完以至於連 Exploit 都無法產生，可看到表
+13這三個應用程式在改善後都在可容許時間內產生 Exploit。 
+ 
+ 
+Program Input 
+source 
+Input 
+Length 
+Explore Time Exploit Gen. 
+Time 
+Unrar Arguments 5000 114.61 256.6600 
+Mplayer 
+(Windows) 
+File 5568 466.35001 1033.93005 
+Foxit 
+Reader 
+File 10503 2171.37012 3161.8005 
+圖表 13 The results of large application 
+ 
+防毒系統的自動化測試 
+我們使用 Windows XP SP3 + Avira anti virus 10.00.12.28 做測試，只對前 100 byte 做 symbolic 
+execution。附上測試過程的畫面，我們使用 Windows 下移動檔案路徑的方式來測試防毒軟體是否會
+偵測到 kernel 層運作。在未開啟防毒軟體時，「移動檔案」不會有 symbolic execution 的動作。 
+Program Input source Input 
+Length 
+Mayhem Time 
+Core i7, 3.4G 
+CRAX Time 
+Core 2, 2.66G 
+Coolplayer File 210 164.0 140.7  
+Distiny File 2100 963.0 60.8  
+Dizzy Arguments 519 13260.0 313.0  
+(Only 
+Explore) 
+GAlan File 1500 831.0 26.1  
+GSPlayer File 400 120.0 33.3  
+ 22 
+ 
+ 
+ 
+結論 
+本研究中，我們提供了一個簡單的方法在 S2E 平台上建立符號環境，這個方法不需用修改任何的函式
+呼叫(function call)，以及系統呼叫(system call)，因此任何人參照此研究方法的實作，可以馬上重建符
+號環境而不需要花費大量時間與人力，來達到驅動模式如防毒系統可執行檔的黑箱測試。 
+    此研究提出的第二個方法：調適性符號輸入選擇，這個方法大幅度改善 CRAX 在自動脅迫產生
+(automatic exploit generation)的效率，也增加了 CRAX 在防毒系統程式測試的可行性，而在軟體安全的
+議題上，面對大量的軟體漏洞，CRAX 也更有能力去判別那些防毒程式漏洞是最具威脅性，必須優先
+ 24 
+[15] Bellard, F. (2005). QEMU, a fast and portable dynamic translator. In Proceedings of the annual 
+conference on USENIX Annual Technical Conference (p. 41). ATEC’05. Berkeley, CA, USA: USENIX 
+Association. 
+ 
+ 26 
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以
+500 字為限） 
+ 
+本計畫已經能自動進行微軟系統驅動程式的測試，包括防毒系統與一般大型
+程式，包括 mplayer,微軟 office word與 Avira。我們的研究是將軟體安全
+的威脅突顯出來。 
+ 
+ 
+100年度專題研究計畫研究成果彙整表 
+計畫主持人：黃世昆 計畫編號：100-2221-E-009-079- 
+計畫名稱：防毒軟體系統之安全性評估 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 1 1 100%  
+研究報告/技術報告 3 3 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 4 4 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 1 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

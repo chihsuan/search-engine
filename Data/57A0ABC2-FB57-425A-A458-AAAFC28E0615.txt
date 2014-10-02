@@ -1,0 +1,1566 @@
+  2
+基於 Xen/Linux 之高效能虛擬機器平台之研究(III) 
+ 
+計畫編號：NSC 97-2221-E-006-138-MY3 
+執行期限：2008 年 8 月 1 日至 2011 年 7 月 31 日 
+計畫主持人：  張大緯  國立成功大學資訊工程學系 
+計畫參與人員：    黃亭彰  國立交通大學資訊工程學系 
+黃嘉平  國立成功大學資訊工程學系 
+錢郁翔  國立成功大學資訊工程學系 
+郭沐錫  國立成功大學資訊工程學系 
+楊道佼  國立成功大學資訊工程學系 
+鄧海茵  國立成功大學資訊工程學系 
+顏士敦  國立成功大學資訊工程學系 
+黃昶瑋  國立成功大學資訊工程學系 
+陳威佐  國立成功大學資訊工程學系 
+ 
+一、中文摘要 
+ 
+本計畫目標是發展一個高效能的新
+一代虛擬機器平台架構。在第二年度計
+畫，我們著重於無漏失網路服務更新與回
+復，以及虛擬機器的搬移，期能提供基於
+虛擬機器之高容錯能力與高效能之平台
+給網路服務。在第三年度，我們提出一個
+新的方法來改進在虛擬機器上使用日誌
+式檔案系統的效能。 
+日誌式檔案系統是目前被廣泛使用
+的檔案系統類型，利用把檔案系統所有的
+更新紀錄在一個額外的儲存空間，而達到
+保證檔案系統一致性與資料完整性的效
+果。然而紀錄這些檔案系統的更新會增加
+額外的資料量，造成系統效能的下降。其
+中日誌式檔案系統的一種模式: 資料記
+錄模式，可以提供最完整的檔案系統一致
+性與資料完整性。然而，資料記錄模式會
+同時記錄資料與 metadata，而造成極大的
+效能下降。因此，這個模式很少被使用。 
+我們提出了一個在虛擬機器上使用
+的新的紀錄檔案系統的更新方法。藉由
+VMM 與上層作業系統的合作，消除日誌
+式檔案系統所帶來的額外資料量，且同樣
+的保證一樣的一致性與資料完整性。 
+ 
+關鍵詞：日誌式檔案系統，虛擬機器， 
+檔案系統一致性 
+ 
+Abstract 
+The goal of this project is to develop a high 
+performance virtual machine (VM) 
+platform. In the second year, we focused on 
+zero-loss Internet services recovery and 
+virtual machine migration in order to build 
+fault-tolerant and high performance 
+network services on the virtual machines. 
+In the third year, a new journaling approach 
+is proposed to improve journaling file 
+system performance in virtualization 
+environments.  
+Journaling file systems, which are 
+widely used in modern operating systems, 
+guarantee file system consistency and data 
+integrity by logging file system updates to a 
+journal, a reserved space on the storage, 
+before the updates are written to the data 
+storage. Such journal writes increase the 
+write traffic to the storage and thus degrade 
+the file system performance, especially in 
+full data journaling, which logs both 
+metadata and data updates. However, 
+double data write in full data journaling 
+brings high overhead, which restricts it 
+from being a commonly used. 
+ We proposed a new journaling 
+approach to eliminate journal writes in 
+  4
+traditional journaling file systems that no 
+faults in the storage subsystem lead to data 
+loss [12]. Hardware subsystems are usually 
+reliable in server platforms due to 
+redundancy-based techniques such as 
+redundant power, memory mirroring, 
+RAID, etc. or error detection/handling 
+mechanisms in modern architectures. For 
+example, power outages can easily be 
+addressed by battery backup components 
+(e.g. UPS). When power outages occur, 
+VMM can be notified to start the regular 
+shutdown procedure, including flushing 
+critical information back to the storage. As 
+another example, many modern 
+architectures, especially those target at 
+server platforms such as the Intel Xeon 
+processor 7500 series, support RAS 
+(reliability, availability and serviceability) 
+features [13]. In these architectures, 
+malfunctions of hardware components can 
+be detected or handled by the hardware. 
+CPU malfunction can be detected by the 
+machine check exception [14] and handled 
+in the VMM by CPU offline. Memory 
+errors can also be handled by error 
+correction techniques or memory mirroring 
+[15-16]. Furthermore, uncorrectable 
+memory errors are usually preceded by 
+correctable errors [17]. Thus, VMM can 
+proactively move critical information out of 
+a memory area when correctable memory 
+errors have been detected in that area, 
+further reducing the probability of losing 
+critical information due to uncorrectable 
+memory errors. Support of RAS features 
+has been included in many VMMs such as 
+VMware ESX server and Xen [18]. 
+Second, sudden VMM crashes do not 
+occur. This assumption is supported by the 
+low complexity of a VMM. Many VMMs 
+such as OKL4, NOVA, Hyper-V, etc. have 
+similar architecture with microkernel or 
+were designed based on the concept of 
+microkernel [19-23], which exposes a 
+narrow interface and has a small code size. 
+Complicated or error-prone operating 
+system components such as network 
+protocol stacks, file systems, and drivers 
+are moved out of the kernel to achieve 
+higher reliability. For example, moving 
+device drivers, which are known to be the 
+primary source of bugs that lead to system 
+failure [24], out of the VMM greatly helps 
+to reduce the risk of VMM crashes. As 
+indicated by a previous study [19], the 
+similarity between microkernels and 
+VMMs are growing. Research efforts are 
+made to reduce the code sizes of VMMs 
+[23, 25] while microkernels are 
+increasingly used as VMMs [19, 26]. This 
+previous study also shows that the 
+requirements of both a microkernel and a 
+VMM can be met with a single 
+implementation. In addition, hardware 
+vendors such as Intel and AMD also 
+contribute to the reduction of VMM 
+complexity by providing 
+hardware-supported virtualization 
+technologies [27-28]. The low complexity 
+of VMMs allows them to be verified or 
+secured easily. Recently, a micro-kernel 
+seL4 [29], which can be used directly as a 
+VMM [30], has been proved functionally 
+correct by formal verification, meaning that 
+the kernel never crashes, falls into 
+unknown states, or performs unsafe 
+operations. Therefore, bug-free VMMs are 
+currently technically feasible [31]. Since 
+the reliability and security of VMMs are 
+increasingly addressed [23, 25, 32], we 
+expect more VMMs to be verified in the 
+future.  
+Although VMMs can be made reliable, 
+the high complexity of full-blown operating 
+systems prevents them from being verified 
+as correct [24]. For example, Linux 2.6.29 
+has about 7 million SLOC (source lines of 
+C), making the verification nearly 
+impossible currently or in the foreseeable 
+future. Therefore, virtual machine crashes 
+still occur. For example, buggy device 
+drivers, malicious viruses, or network 
+attacks can crash a virtual machine. VMA 
+journaling aims to ensure file system 
+consistency and data integrity in the case of 
+virtual machine crashes. The journal data 
+remain intact during a virtual machine 
+crash since we retain the physical memory 
+of the crashed virtual machine temporarily 
+(before a complete flush of the journal data) 
+and use page protection to prevent wild 
+writes to the journal data. Since the 
+integrity of the journal data/information is 
+maintained, file system recovery can be 
+achieved after virtual machine crashes. 
+  6
+technique is implemented in ext3, a file 
+system that uses physical journaling. 
+To reclaim the space of the journal 
+area, a checkpoint procedure has to be 
+invoked to ensure that all the data updates 
+corresponding to the to-be-reclaimed 
+journal data have been flushed to the data 
+area. The procedure checks the transactions 
+in the journal area, flushes all the 
+corresponding data that has not yet been 
+written to the data area (i.e., the dirty 
+buffers belonging to the transactions), and 
+then reclaims the space used by those 
+transactions until enough space has been 
+reclaimed. 
+Many journaling file systems support 
+more than one journaling modes with 
+different performance and consistency 
+strength. For example, both ext3 and 
+ReiserFS support three journaling modes: 
+writeback, ordered and journal modes. The 
+differences among these modes are the 
+content in the journal area and the flush 
+order of the data.  
+Both writeback and ordered modes log 
+only metadata and therefore do not ensure 
+data integrity. In the writeback mode, data 
+are exposed to the buffer flushing threads 
+of the operating system immediately after 
+each file operation, and metadata are 
+exposed after each journal commit. Since 
+no flushing order is enforced in the 
+writeback mode, metadata may be flushed 
+back to the data storage before the 
+associated data, causing the dangling 
+pointer problem. Therefore, this mode is 
+generally regarded as having the weakest 
+consistency semantic among the three 
+modes. In addition to ext3 and ReiserFS, 
+the writeback mode is also supported by 
+JFS and XFS. The ordered mode solves the 
+dangling pointer problem by ensuring that 
+the updated data are flushed back to the 
+storage before the commit of the associated 
+metadata. During a commit, dirty data 
+buffers corresponding to the 
+to-be-committed metadata are flushed to 
+the data storage before the latter have been 
+written to the journal area. Although the 
+strict flushing order provides strong 
+consistency semantic, the ordered mode 
+does not guarantee data integrity since the 
+data updates are not journaled, as in the 
+writeback mode. For example, a system 
+crash during the update of an in-file record 
+could lead to an unrecoverable corruption 
+of that record. 
+The journal mode supports full data 
+journaling, that is, it logs both data and 
+metadata and thus guarantees both file 
+system consistency and data integrity. All 
+the data and metadata updates are 
+committed to the journal area before they 
+are exposed to the buffer flushing threads 
+of the operating system. However, this 
+mode has inferior performance under most 
+workloads for the following reasons. First, 
+more writes are required in this mode since 
+all the data and metadata updates have to 
+be written to the storage twice. Second, 
+journaling the data updates causes the 
+commit and the checkpoint procedures to 
+be triggered more frequently. 
+ 
+3. DESIGN 
+In this section, we describe the design 
+of VMA journaling. Section 3.1 presents 
+the architecture overview. Section 3.2 
+describes the approach to ensure file 
+system consistency and data integrity under 
+VMA journaling. Journal data reclamation 
+and file system recovery are described in 
+Sections 3.3 and 3.4, respectively. 
+ 
+3.1 Architecture of VMA Journaling 
+The major difference between VMA 
+journaling and traditional journaling 
+approaches is the method of journal data 
+handling. In order to eliminate journaling 
+writes to the storage, VMA journaling 
+commits journal information to the VMM 
+instead of the storage. Fig. 1 illustrates the 
+difference between the handling of journal 
+data in the traditional and the VMA 
+journaling approaches. In step 1, both 
+traditional and VMA journaling groups 
+dirty buffers, which reflect metadata and 
+data updates, into a transaction. Then, the 
+traditional journaling approach commits 
+these dirty buffers to the on-storage journal 
+area, as shown in step 2 of Fig. 1(a). 
+However, VMA journaling commits the 
+dirty buffers to the journal area residing in 
+the VMM memory instead of the storage, 
+as shown in step 2 of Fig. 1(b). Therefore, 
+no journaling writes to the storage are 
+  8
+data, leading the file system to an 
+unrecoverable state. 
+To prevent wild writes from 
+modifying the journal data, VMA 
+journaling write-protects the memory pages 
+of the to-be-committed dirty buffers when 
+committing a transaction. Therefore, the 
+guest operating system can detect wild 
+writes to the journal data via page faults, 
+and deny those writes. Note that this 
+approach differs from the synchronous 
+page protection approach (i.e., 
+unprotecting/protecting the buffer right 
+before/after each buffer update) used in 
+RIO [33], in two aspects. First, VMA 
+journaling protects the to-be-committed 
+dirty buffers in batch. Synchronous page 
+protection could easily lead to a large 
+number of switches between the VMM and 
+guest domains, and thus degrading the 
+system performance, since page 
+protection/unprotection involves modifying 
+page table entries, which are managed by 
+the VMM. By contrast, batch protection 
+prevents frequently updated buffers from 
+frequent protection/unprotection, thus 
+resulting in a much lower overhead. Second, 
+VMA journaling ensures file operation 
+atomicity and data integrity. Atomicity is 
+achieved by protecting the dirty buffers 
+belonging to a transaction and recording 
+the corresponding journal information in a 
+single call to the VMM (i.e., a hypercall). 
+VMM ensures that all or none of the 
+buffers are protected and have their 
+information recorded in the journal area. 
+Moreover, since both data and metadata are 
+committed atomically in units of a 
+transaction, they can be used for ensuring 
+data integrity after a domain crash. More 
+detailed discussions between RIO and 
+VMA journaling are provided in the 
+Related Work. 
+Unlike a wild write, a write issued 
+from the file system to a protected buffer 
+should be allowed since the buffer still 
+represents the updated data. Copy-on-write 
+(COW) is used for such a write. That is, the 
+content of the protected buffer is copied to 
+a free and unprotected buffer, which is used 
+for satisfying the write. On the next commit, 
+these two buffer copies are merged by 
+write-protecting the buffer containing the 
+most up-to-date data and freeing the 
+original protected buffer that contains the 
+stale data. After the merge, a single copy of 
+buffer again represents both the updated 
+data and the journal data. 
+Fig. 2 shows an example of this 
+process. Before the commit of buffer page 
+A, updates of that buffer are performed on 
+the buffer page directly, as shown in step 1. 
+At this time, A represents the updated data. 
+Once A has been committed, as shown in 
+step 2, it represents both the updated data 
+and the journal data. Therefore, it is 
+write-protected to prevent data corruption 
+from wild writes. In step 3, a further file 
+system update to A triggers the COW 
+operation, which copies the data of A to a 
+free page A’ and then performs the update 
+on A’. After the page copying, A’ represents 
+the updated data while A still represents the 
+up-to-date journal data. Thus, further file 
+system updates can be performed on A’ 
+directly. In step 4, A’ is committed and 
+represents both the up-to-date journal data 
+and the updated data, while A becomes the 
+out-of-date journal data and can be released. 
+Releasing out-of-date journal data does not 
+compromise file system consistency since 
+only up-to-date journal data are used for 
+file system recovery. 
+Note, out-of-date journal data may 
+have been written to the storage before 
+being released since dirty buffers are 
+exposed to the buffer flushing threads of 
+the operating system when they are 
+committed (i.e., become the journal data), 
+as in full data journaling of ext3. For 
+example, in Fig. 2, A may have been 
+written to the storage before the commit of 
+A’. However, this does not compromise file 
+system consistency since the file system 
+can be recovered by writing the up-to-date 
+journal data to the storage when the domain 
+crashes. For example, in Fig. 2, if the 
+domain crashes right after the commit of A’ 
+(i.e., step 4), the data can be recovered by 
+writing the content of A’ to the 
+corresponding block of the storage.  
+ 
+  10
+respectively. Therefore, from (1) and (2), 
+the following holds. 
+ 
+Sjournal ≦ (Mdomain / Mpage ) * Stuple + C  
+(3) 
+ 
+In the current implementation, Stuple 
+and C are 12 and 512 bytes, respectively. 
+Thus, for a guest domain with 1 Gbytes of 
+main memory and 4-Kbyte pages, the 
+maximum size of the journal area is only 
+about 3 Mbytes. Such small size as well as 
+the eager journal area reclamation resulting 
+from batch unprotection cause the 
+checkpoint procedure to be rarely triggered 
+in VMA journaling. Furthermore, we can 
+completely prevent checkpointing by 
+simply reserving 3 Mbytes of journal area 
+for the domain mentioned in the example. 
+The reserved space can be even less than 3 
+Mbytes since not all of the main memory 
+can be used by file systems in a domain. 
+ 
+3.4 File System Recovery 
+Similar to traditional journaling 
+approaches, VMA journaling performs 
+recovery by simply replaying the journal 
+data. In VMA journaling, this is achieved 
+through the cooperation of the VMM and 
+the system management domain (e.g. 
+domain 0 in the Xen virtualization 
+environment). Note that, as mentioned in 
+Section 3.2, some journal data may have 
+been flushed to the data area. File system 
+recovery involves writing the not-yet 
+flushed journal data to the data area to 
+ensure file system consistency and data 
+integrity. 
+When a guest domain crashes, the 
+VMM reclaims all memory pages of the 
+domain except those containing the journal 
+data (i.e., the protected buffers). Then, the 
+VMM notifies the system management 
+domain, which wakes up a recovery thread 
+to start the following recovery procedure. 
+First, for each file system mounted as VMA 
+journaling in the crashed domain, the 
+recovery procedure issues a query for the 
+total size of the journal data. If the size is 
+zero, the corresponding file system is 
+consistent and the recovery thread goes on 
+to check the next file system. Otherwise, 
+the recovery thread prepares a free memory 
+pool of that size for exchanging with pages 
+containing these journal data. It then issues 
+a hypercall to perform the memory 
+exchange to obtain the journal data and to 
+retrieve the corresponding journal 
+information from the VMM. After the 
+exchange has been completed, the recovery 
+thread writes the journal data back to the 
+data area according to the journal 
+information. The memory exchange is 
+implemented by page remapping. The 
+journal data are remapped into the system 
+management domain, and the pages in the 
+free memory pool are remapped into the 
+VMM. After the journal data have been 
+written, the memory containing the journal 
+data becomes free memory of the system 
+management domain, and the recovery 
+thread informs the VMM to reclaim the 
+journal information of the file system. Note 
+that a threshold is set on the maximum size 
+of the free memory pool. If the total size of 
+the journal data is larger than the threshold, 
+the steps are repeated until all the journal 
+data have been written back. As in 
+traditional journaling file systems, 
+whole-storage scanning is not required. 
+Note that writing journal data to the 
+data area can also be done without memory 
+exchanges. For this, the memory pages 
+containing the journal data can be 
+remapped into the system management 
+domain, written to the data area, and then 
+returned to the VMM. However, memory 
+exchange is used in the current 
+implementation since it allows the VMM to 
+have the free memory without waiting for 
+the journal data to be written back to the 
+data storage. The free memory can be used 
+to serve incoming VMM requests (e.g. 
+creation of a new domain) immediately 
+after the memory exchange. 
+ 
+ 
+4. IMPLEMENTATION 
+We implemented VMA journaling by 
+modifying the Journaling Block Device 
+(JBD) layer and the journaling-related 
+functions of the ext3 file system 
+(specifically, the journal mode of ext3) in 
+Linux, resulting in a new journaling mode 
+of ext3, called VMA mode. File system 
+  12
+ext3, however, since it requires a pair of 
+extra protection and unprotection 
+operations for each protected buffer, 
+leading to a larger overhead. Specifically, 
+the COW scheme of ext3 makes a copy of 
+the buffer and then updates the original 
+copy. Therefore, it has to unprotect the 
+original copy and protect the new one. To 
+eliminate such overhead, we apply the 
+update on the new copy instead of the 
+original one, which is achieved by external 
+reference redirection after buffer copying. 
+That is, the external references to the 
+original buffer are redirected to the new 
+one so that further updates are performed 
+on the latter. In our work, thirteen functions 
+in ext3 were patched to implement the 
+external reference redirection. Fig. 4 
+illustrates how the code patch works when 
+the file system modifies a directory entry 
+residing in a protected page, which 
+represents a buffer and hence is referred by 
+a buffer data pointer (specifically, the 
+b_data field of structure buffer_head). In 
+step 1, a pointer dir_entry in the file system 
+code refers to the target entry that needs to 
+be modified. To redirect the dir_entry 
+pointer, the patched code saves the page 
+offset k of the dir_entry. In step 2, the 
+content of the protected page is copied to a 
+newly-allocated page (i.e., the cow_page) 
+and then the buffer data pointer and the 
+related kernel references such as the radix 
+tree and the LRU list of the page cache are 
+redirected to the new page. Finally, in step 
+3, the new value of the dir_entry is 
+obtained by adding the new value of the 
+buffer data pointer and the offset k. 
+According to Fig. 4, steps 1 and 3 require 
+the file system code to be patched. On the 
+next commit, the original buffer page 
+contains out-of-date data and thus is called 
+the Out-of-Date Protected (ODP) buffer. 
+All the ODP buffers are useless and they 
+are unprotected and released in batch.  
+ 
+Fig. 4. Example of external reference 
+redirection  
+ 
+4.3 Transaction Commit and Journal 
+Data Reclamation  
+The commit procedure of VMA 
+journaling is triggered periodically, upon 
+file system synchronization or when the 
+total size of buffers belonging to the current 
+transaction exceeds the Maximum 
+Transaction Size (MTS). The MTS and the 
+interval between successive periodic 
+commits are set to 32 Mbytes and 5 
+seconds, respectively, in the current 
+implementation, the same as the default 
+setting of ext3 on a disk partition larger 
+than 4 Gbytes. 
+The commit procedure is as follows. 
+First, the information corresponding to the 
+dirty buffers in the current transaction is 
+gathered. Second, the 
+LOG_OP_MPROTECT operation is 
+invoked to protect these buffers and to 
+unprotect the ODP buffers in batch. Third, 
+all the buffers protected in the second step 
+are inserted into the tail of the committed 
+buffer list, which will be described later. 
+Finally, the buffers are exposed to the dirty 
+buffer flushing threads of the guest 
+operating system so that they can be 
+flushed back to the storage later. 
+Note that, although the procedure of 
+committing dirty buffers in VMA 
+journaling differs from that in traditional 
+journaling approaches, the procedures of 
+grouping dirty buffers are the same in both 
+VMA journaling and traditional journaling 
+approaches. In the current implementation, 
+VMA journaling reuses the code of the 
+journal mode of ext3 to group dirty buffers 
+corresponding to metadata and data updates. 
+  14
+Table 2. Experimental environment 
+Hardware 
+CPU Pentium 4 - 3.2 GHz 
+Memory DDRII 2 GB 
+Disks 
+System disk: 
+Western Digital 
+WD800JD-22LS, 
+80 GB 
+Data disk: 
+Seagate 
+ST336753LW, 
+1.5K RPM, 36.7 
+GB, 4-ms seek 
+time, 2-ms 
+rotational delay, 
+transfer speed : 
+63MB/sec (avg.) 
+VMM Xen 2.0.7 
+Domains 
+Kernel XenoLinux 2.6.11
+Memory 
+128Mbytes for 
+each guest 
+domain 
+256Mbytes for 
+domain 0 
+Virtual 
+disks 
+Virtual system 
+disk: 8 GB  
+Virtual data disk: 
+4 GB 
+Micro 
+Benchmarks 
+Filebench: seq_write, 
+rnd_write and file_delete 
+Macro 
+Benchmarks 
+Postmark, untar and 
+kernel_compile 
+ 
+Three micro-benchmarks, seq_write, 
+rnd_write and file_delete, adopted from 
+filebench [34] and three macro-benchmarks, 
+postmark [35], untar and kernel_compile, 
+were used for performance evaluation. In 
+the seq_write benchmark, a single empty 
+file is first created and then has 8 Kbytes of 
+data appended each time until the file size 
+reaches 600 Mbytes. This benchmark is 
+data write intensive and is used to evaluate 
+the benefit of journal write elimination in 
+VMA journaling. The rnd_write benchmark 
+issues a sequence of 4 Kbytes random 
+writes to a 512 Mbytes file until 128 
+Mbytes of data have been written. This 
+benchmark is used to evaluate the 
+performance of random writes. The 
+file_delete benchmark first allocates 40K 
+files in 100 directories (i.e., the file creation 
+stage) and then uses 16 threads to delete 
+these files (i.e., the file deletion stage). The 
+file size is set as a gamma distribution with 
+the median size of 16 Kbytes. Note, since 
+the goal of this benchmark is to evaluate 
+the performance of file deletion, only the 
+time spent in the file deletion stage is 
+measured. File deletion causes the 
+operating system to immediately reclaim 
+the buffers containing the file data, which 
+in turn causes buffer unprotection in VMA 
+journaling. Therefore, this benchmark is 
+used to measure the performance impact of 
+frequent buffer unprotection. Postmark 
+simulates the workload of a news or email 
+server. During execution, it creates an 
+initial set of small files and then applies a 
+number of transactions on those files. Each 
+transaction consists of a create/delete 
+operation together with a read/append 
+operation. Thus, it is a metadata access 
+dominated and I/O-intensive workload. In 
+the experiment, the initial file set contains 
+10K files residing in 200 directories, the 
+file size ranges from 0.5 Kbytes to 9.8 
+Kbytes (i.e., the default setting of 
+postmark), and 25,000 transactions are 
+performed. The untar benchmark extracts a 
+Linux source tree (version 2.6.11) from a 
+bzip2-compressed image. The size of the 
+compressed image is 36 Mbytes and the 
+decompressed source tree includes 17,090 
+files, ranging from 6 bytes to 853 Kbytes, 
+in 1,083 directories and the total size is 231 
+Mbytes. The kernel_compile benchmark is 
+a CPU-intensive workload, which builds a 
+compressed kernel image from the source 
+tree of the Linux kernel (version 2.6.15). 
+The total size of the object files and the 
+kernel image is about 25 Mbytes.  
+  
+5.2 Performance Results  
+In this section, we present the 
+performance results of the VMA mode and 
+the other journaling modes of ext3 under 
+the benchmarks. In each experiment, the 
+average execution time (with standard 
+deviation) of ten iterations of benchmark 
+execution is reported. In each iteration, a 
+various number of domains were run 
+concurrently, on each of which an instance 
+of the given benchmark was executed (with 
+cold cache) and the average execution time 
+  16
+ 
+Fig. 7. Performance of rnd_write under 
+concurrent domains  
+ 
+ 
+Fig. 8. Performance of file_delete under 
+concurrent domains 
+ 
+5.2.2 Results Under Macro Benchmarks  
+This section presents the performance 
+results under the macro benchmarks: 
+postmark, untar, and kernel_compile. Fig. 9 
+shows the results of postmark under one to 
+eight concurrent domains. As shown in the 
+figure, VMA mode achieves the best 
+performance among the four journaling 
+modes in almost all the cases under this 
+benchmark. Specifically, it outperforms the 
+journal mode and the metadata journaling 
+modes by up to 42.3% and 24.5%, 
+respectively, under multiple concurrent 
+domains. Due to the elimination of the 
+journal writes, VMA mode reduces the 
+write traffic to the storage by about 50% 
+compared to the journal mode and by about 
+8% compared to the metadata journaling 
+modes. The cost of page 
+protection/unprotection contributes 13.3% 
+to 30.4% of the overall execution time and 
+most of the cost comes from page 
+unprotection. According to our 
+measurement, 92% of the page 
+unprotection overhead results from file 
+deletion in postmark. 
+Fig. 10 shows the results of untar. As 
+shown in the figure, the VMA mode 
+outperforms the journal mode by up to 
+41.1%, which is due to the reduction of 
+write traffic to the storage by up to 49%. 
+However, the VMA mode does not result in 
+performance superior to the metadata 
+journaling modes when there are four or 
+fewer domains. This is because the untar 
+benchmark generates fewer metadata writes 
+when compared to postmark. In spite of 
+this, VMA journaling ensures data integrity, 
+and its performance is superior to that of 
+metadata journaling modes when the 
+number of concurrent domains is larger 
+than four. Fig. 11 shows the results of the 
+kernel_compile benchmark. As expected, 
+all the modes show similar performance 
+since the workload is CPU-bound. The cost 
+of page protection/unprotection is not 
+noticeable due to the limited number of 
+invocations to the corresponding hypercall.  
+ 
+ 
+Fig. 9. Performance of postmark under 
+concurrent domains 
+ 
+ 
+Fig. 10. Performance of untar under 
+concurrent domains 
+ 
+  18
+ 
+Fig. 13. Execution time of the 
+LOG_OP_MPROTECT operation with 
+different batch sizes  
+ 
+5.2.5 Cost of Checkpointing 
+ Checkpointing is required to reclaim 
+the space of on-storage or in-VMM journal 
+area. As mentioned in Section 2.2, the 
+checkpoint procedure checks the 
+transactions in the journal area, flushes all 
+the corresponding data that have not yet 
+been written to the data area (i.e., the dirty 
+buffers belonging to the transactions), and 
+then reclaims the space used by those 
+transactions until enough space has been 
+reclaimed.  
+To measure the cost of checkpointing 
+for a given journaling mode, the number of 
+checkpointing events occur during the 
+execution of each benchmark under that 
+mode is first recorded. If the number is not 
+zero, the checkpointing cost is obtained by 
+measuring the performance difference of 
+that mode under a default-sized journal 
+area and a large-sized journal area. The 
+performance difference (i.e., the difference 
+in the benchmark execution time) is then 
+normalized to the benchmark execution 
+time of that mode under the default-sized 
+journal area. The size of the large-sized 
+journal area is selected so that 
+checkpointing never occurs under that size. 
+According to our results, 
+checkpointing occurs only in the journal 
+mode because all the metadata and data 
+updates are stored in the journal area in that 
+mode. Fig. 14 shows the checkpointing cost 
+of the journal mode under eight concurrent 
+domains, with 128-Mbyte default-sized 
+journal area and 1-Gbyte large-sized 
+journal area. It can be seen that the average 
+cost ranges from 1% to 6.2%. Although 
+VMA journaling also logs all the metadata 
+and data updates, only the journal 
+information (i.e., the metadata for locating 
+the journal data) is stored in the in-VMM 
+journal area, consuming little memory 
+space and thus never triggering 
+checkpointing in the experiments. 
+ 
+Fig. 14. Cost of checkpointing in the 
+journal mode of ext3 
+ 
+5.2.6 Results on Non-Empty Virtual 
+Disks 
+ In this section, we show the 
+performance of VMA journaling on aged 
+and non-empty virtual disks. Before the 
+execution of each benchmark, the layout of 
+the virtual disk is initialized by Impressions, 
+a framework for generating realistic file 
+system images [36]. The disk space 
+utilization is set as 77% so that the 
+utilization can be larger than 80% during 
+the execution of each benchmark. 
+Moreover, the parameter layout score is set 
+as 0.1, so that on average only 10% of the 
+blocks in a file are adjacent, to reflect a 
+fragmented file system. 
+Fig. 15 shows the performance of 
+postmark and untar on empty and 
+non-empty virtual disks, respectively. In 
+the experiment, eight concurrent domains 
+are run. As indicated by the figure, 
+although performance on non-empty disks 
+degrades for all the journaling modes due 
+to file fragmentation, the performance 
+differences among the modes are similar in 
+empty and non-empty disks, showing that 
+the effectiveness of VMA journaling 
+remains on non-empty disks. Results of the 
+other benchmarks are not shown since 
+aging the disk has little performance impact 
+under those 
+benchmarks.
+  20
+ 
+5.4 Memory Overhead 
+Fig. 17 shows the in-VMM memory 
+overhead (i.e., the journal area size) of 
+VMA journaling measured during the 
+execution of a single domain. As shown in 
+the figure, the memory overhead is less 
+than 200 Kbytes, demonstrating that the 
+overhead is not significant. The rising 
+edges in the figure correspond to batch 
+protection while the falling edges 
+correspond to batch unprotection. Many 
+edges are steep, indicating that a large 
+number of buffer pages can be 
+protected/unprotected in batch. An 
+exception occurs in the results of the 
+file_delete benchmark, in which the size of 
+the journal information drops slowly, 
+meaning that only a small number of buffer 
+pages can be unprotected in each page 
+unprotection hypercall. As mentioned in 
+Section 5.2.1, this is due to immediate 
+buffer unprotection triggered by file 
+deletion. Note that, under the file_delete 
+benchmark, the size of journal information 
+is not zero at time 0. This is because only 
+the results of the file deletion stage, which 
+follows the file creation stage, are shown. 
+According to our measurement, up to 8192 
+and 8577 pages are protected and 
+unprotected, respectively, in a single 
+hypercall during the execution of the 
+benchmarks. The frequencies for batch 
+protection and unprotection are 0.2 to 1.2 
+and 3.8 to 891.9 times per second, 
+respectively, under the benchmarks. 
+Next, the memory overhead in the 
+guest domain, that is, the size of the extra 
+memory resulting from COW, is measured. 
+Note, COW increases the memory usage 
+and could result in more frequent buffer 
+replacement when the increased memory 
+usage leads to memory pressure. Fig. 18 
+shows the sizes of COW memory during 
+the execution of a single domain running 
+postmark. Since postmark is dominated by 
+metadata writes, a large volume of 
+protected metadata are duplicated to 
+perform further file operations. As shown 
+in the figure, the maximum overhead is 
+about 10.3 Mbytes. Note that, the COW 
+overhead drops periodically since COW 
+memory generated in a transaction will be 
+reclaimed during the commit of that 
+transaction. Moreover, the other 
+benchmarks in this paper show negligible 
+overhead (i.e., less than 100 Kbytes in 
+untar and less than 20 Kbytes in the three 
+micro benchmarks). The insignificant 
+memory overhead would not lead to 
+noticeable increase in the frequency of 
+buffer replacement. 
+ 
+Table 3. Recovery time and IO traffic during recovery 
+  Writeback mode 
+Ordered 
+mode 
+Journal  
+mode 
+VMA  
+mode 
+Postmark 
+Recovery time 
+(sec) 0.28±0.09 0.27±0.06 5.39±1.34 2.93 ±0.86
+IO traffic during 
+recovery (MB) 9.3±2.2 9.1±1.6 132.2±30.8 69.6 ±18.4
+Untar 
+Recovery time 
+(sec) 0.33±0.05 0.33±0.09 5.91±1.8 3.49 ±1.04
+IO traffic during 
+recovery (MB) 12.9±1.8 12.9±2.2 130.8±31.2 68.8 ±18.5
+Kernel_ 
+compile 
+Recovery time 
+(sec) 0.44±0.05 0.46±0.04 1.1±0.22 0.69 ±0.19
+IO traffic during 
+recovery (MB) 16.5±1.5 16.5±1.8 33.6 ±7.6 24.3 ±3.7
+  22
+ 
+6. DISCUSSION 
+6.1 Reliability of Hardware and Virtual 
+Machine Monitors 
+Although VMA journaling ensures 
+data integrity and shows superior 
+performance to full data journaling mode, it 
+is not intended to replace the traditional 
+journaling approaches in all kinds of 
+virtualization environments. As mentioned 
+before, VMA journaling is based on the 
+assumptions that hardware errors do not 
+lead to loss of critical data and sudden 
+VMM crashes do not occur. The former 
+assumption is similar to the one made in 
+traditional journaling file systems that no 
+faults in the storage subsystem lead to data 
+loss [12]. Hardware subsystems are usually 
+reliable in server platforms due to 
+numerous techniques such as redundant 
+power, memory mirroring, RAID, etc. For 
+example, the annual failure rate of a disk 
+drive is about 1.7% to 8.6% according to 
+the previous study [37]. For drives with 
+average annual failure rate of 4%, the 
+probability of data loss is 0.16% for a 
+5-drive RAID 5 disk array. The probability 
+can be even lower if RAID 10 is used. For 
+another example, the average failure rate of 
+a DIMM (Dual In-line Memory Module) is 
+about 0.22% per year [17]. With memory 
+mirroring, which is common in server 
+platforms, the failure rate of a DIMM pair 
+can be reduced to 0.0044% (i.e., 0.22% * 
+0.22%). For a server machine with 4 pairs 
+of DIMMs, the probability of data loss is 
+about 0.017%. This probability can be 
+reduced further by using stronger ECC to 
+recover more error bits or by utilizing 
+proactive approaches to avoid data loss 
+from DIMM failures (e.g. migrating critical 
+data out of a DIMM when frequent 
+correctable errors occur on that DIMM). 
+The latter assumption is supported by the 
+low complexity of VMMs. As mentioned in 
+the Introduction, a micro-kernel seL4 [29], 
+which can be used directly as a VMM, has 
+been proved functionally correct, meaning 
+that the kernel/VMM never crashes, falls 
+into unknown states, or performs unsafe 
+operations. Therefore, bug-free VMMs are 
+technically feasible currently [31]. 
+Moreover, most VMM vendors are 
+currently making efforts on improving the 
+reliability of their VMM implementations. 
+Due to these assumptions, VMA 
+journaling targets at server platforms with 
+reliable VMM and hardware subsystems 
+and aims to ensure file system consistency 
+and data integrity in the case of virtual 
+machine crashes. Note that, VMA 
+journaling is not the only work that 
+assumes memory to be reliable. Previous 
+studies have already demonstrated that 
+memory can serve as reliable storage [33, 
+38-40], provided that fault tolerant 
+techniques are used. These techniques are 
+common in today’s servers. Nevertheless, 
+since the assumptions made by VMA 
+journaling are stronger than that made by 
+traditional journaling file systems, VMA 
+journaling is not intended to replace the 
+traditional journaling approaches in all 
+kinds of virtualization environments. For 
+example, traditional journaling modes may 
+be preferable in a desktop platform without 
+UPS since VMA journaling cannot ensure 
+file system consistency and data integrity 
+upon sudden power outage. 
+ 
+Table 4. Sizes of code and data before/after implementing VMA journaling  
+ 
+VMM ext3 Recovery thread  
+Before code 
+mod. 
+After 
+code 
+mod. 
+Before code 
+mod. 
+After 
+code 
+mod. 
+Before code 
+mod. 
+After 
+code 
+mod. 
+Code 
+sizes 
+(Kbytes) 
+241.4  248.6 29.5  33.7 N/A 3.0  
+Data 
+sizes 
+(Kbytes) 
+19.4  19.5 7.3  8.0  N/A 0.7 
+  24
+Layout)-like file systems [43] and 
+log-structured file systems [44]. Below, we 
+briefly introduce these approaches except 
+from the journaling file systems, which 
+have been described in the Section 2. 
+Soft update tracks metadata 
+dependency to guarantee in-order update to 
+the storage. Instead of achieving the 
+guarantee by synchronous writes, it uses 
+asynchronous writes and removes the 
+dependency to the in-memory blocks when 
+a block is going to be flushed. Specifically, 
+in the to-be-flushed block, all the pointers 
+that refer to the in-memory blocks are 
+rolled back to their prior states in order to 
+maintain consistency. The pointers are then 
+rolled forward when the block has been 
+completely written to the storage. For 
+example, assuming that a directory block is 
+originally in state S and a file creation 
+operation changes the directory block to 
+state S’ by associating the inode of the 
+newly created file to the directory block. If 
+the directory block needs to be flushed 
+before the new inode, its state is rolled back 
+from S’ to S to avoid inconsistency. The 
+state can be rolled forward to S’ after the 
+flush is completed. Such roll back/forward 
+operations could lead to additional flushes 
+for the same block. Moreover, maintaining 
+dependency information requires extra 
+memory and CPU resources.  
+WAFL-like file systems guarantee file 
+system consistency by periodically taking 
+file system snapshots (i.e., consistent file 
+system states). They adopt the non-in-place 
+update approach on storage blocks, that is, 
+a block update is written to a new location 
+on the storage and then reflected 
+recursively up to the root of the file system 
+tree. In a WAFL-like file system, a 
+snapshot can be taken simply by 
+duplicating the root inode. After the 
+duplication, the old root inode corresponds 
+to the snapshot while the new one 
+corresponds to the current file system 
+whose state can be changed by further file 
+system operations. After the system crash, 
+the latest snapshot can be used to bring the 
+file system back to the consistent state. 
+The log-structured file system (LFS) 
+regards the storage as a log and appends all 
+the file system updates to the end of the log. 
+The space occupied by the stale data (i.e., 
+the garbage) is reclaimed later by a cleaner 
+process. LFS keeps vital metadata 
+information (e.g. inode map and segment 
+usage table) in memory and writes the 
+information to the log during the periodic 
+checkpointing. In case of a system crash, 
+the in-memory metadata can be recovered 
+according to the last checkpoint and the 
+following log information. Since file 
+system updates are realized by sequential 
+writes, LFS has excellent write 
+performance. The main overhead of LFS is 
+the cleaning process, which maintains 
+enough free space in the log. Although 
+some approaches have been proposed to 
+reduce the cleaning overhead [45-46], their 
+effectiveness depends on the workload 
+[47]. 
+Note that not all of these approaches 
+guarantee data integrity, which requires 
+atomic data and metadata update of a file 
+operation. Specifically, traditional 
+asynchronous-write based file systems, soft 
+update and metadata journaling cannot 
+ensure data integrity since they do not track 
+data updates. In contrast, full data 
+journaling, WAFL-like file systems and 
+LFS record new data and metadata updates 
+before applying the updates and thus ensure 
+data integrity. 
+ VMA journaling aims at improving 
+the performance of journaling file systems 
+in virtualization environment by 
+eliminating their main overhead (i.e., 
+journal writes). VMA journaling supports 
+full data journaling and hence guarantees 
+both file system consistency and data 
+integrity. Moreover, the proposed 
+journaling interface allows VMA journaling 
+to be applied to existing journaling file 
+systems without much effort.  
+ 
+7.2 File/Storage Systems Based on 
+Non-Volatile Memory 
+To prevent loss of journal data, VMA 
+journaling retains the memory of a guest 
+domain during the crash of that domain. 
+This is similar to systems that store critical 
+information in non-volatile memory to 
+prevent the information from being lost. In 
+this section, we describe the efforts that 
+utilize non-volatile memory to improve the 
+  26
+In recent years, several virtual 
+machine aware file systems, such as VMFS 
+[57], XenFS [58] and Ventana [59], have 
+been proposed. All of them focus on the 
+sharing and management of virtual disks. 
+VMFS is a cluster file system optimized for 
+accesses to large-size virtual disks. It 
+allows a set of storages to be shared by 
+multiple virtual machines via iSCSI or fibre 
+channel links. Ventana is a distributed file 
+system that provides fine-grained 
+versioning and secured sharing on a set of 
+file trees for virtual machines. XenFS 
+allows multiple virtual machines to share 
+the cache of virtual disks so as to reduce 
+the accesses to the virtual disks. 
+Copy-on-write is used when a virtual 
+machine issues a write to the shared copy. 
+In contrast to those file systems that mainly 
+focus on virtual disk sharing, VMA 
+journaling aims at improving the 
+performance of journaling file systems in a 
+virtual machine. 
+ 
+8. CONCLUSIONS 
+In this paper, a virtual machine aware 
+journaling approach called VMA journaling 
+is proposed to eliminate journal writes and 
+hence to improve the performance of 
+journaling file systems in sever 
+virtualization environments. Based on 
+reliable hardware subsystems and VMM, 
+VMA journaling ensures file system 
+consistency as well as data integrity upon 
+virtual machine crashes. The journal writes 
+are eliminated by placing the journal area 
+in the VMM memory rather than on the 
+storage. Moreover, in contrast to traditional 
+journaling approaches that write the journal 
+data to the journal area, only the metadata 
+(i.e., the journal information) is written to 
+the journal area in VMA journaling. This 
+leads to the very small size of the journal 
+area even in the case of full data journaling, 
+and in turn causes the checkpoint procedure 
+to be rarely triggered in VMA journaling. 
+Page protection is used to prevent wild 
+writes in the guest domains from corrupting 
+the journal data, and batch 
+protection/unprotection is adopted to 
+minimize the protection overhead. Upon a 
+system crash, a recovery thread locates the 
+journal data with the support of the VMM 
+and writes the data back to the data storage 
+so as to recover the file system state.  
+VMA journaling is implemented in 
+Linux ext3 running on the Xen VMM and 
+the performance is evaluated via three 
+micro- and three macro-benchmarks. 
+Performance results show that VMA 
+journaling achieves a performance 
+improvement of up to 50.9% over the full 
+data journaling approach of ext3. Under 
+metadata-write dominated workloads, its 
+performance could even be superior to the 
+metadata journaling approaches of ext3, 
+which do not guarantee data integrity. 
+Moreover, the recovery time is less than the 
+full data journaling approach of ext3 since 
+VMA journaling does not need to scan the 
+on-storage journal area for replaying the 
+committed metadata and data updates. 
+Finally, the memory overhead is not 
+significant. 
+ 
+ACKNOWLEDGMENTS 
+We would like to thank the 
+anonymous reviewers and the editor for 
+their helpful comments on this paper. This 
+research was supported in part by grant 
+NSC 97-2221-E-006-138-MY3 from the 
+National Science Council, Taiwan, 
+Republic of China. 
+ 
+REFERENCES 
+[1] Gray J, Reuter A. Transaction 
+Processing: Concepts and Techniques. 
+Morgan Kaufmann Publishers Inc., 
+1992. 
+[2] Ts'o TY, Tweedie S. Planned 
+extensions to the Linux Ext2/Ext3 file 
+system. Proceedings of the USENIX 
+Annual Technical Conference: 
+FREENIX Track. USENIX 
+Association, 2002; 235-243. 
+[3] Bonwick J, Moore B. ZFS: the Last 
+Word in File Systems. 
+http://hub.opensolaris.org/bin/downloa
+d/ 
+Community+Group+zfs/docs/zfslast.p
+df [2006]. 
+[4] Oracle Corporation. Btrfs Design. 
+https://btrfs.wiki.kernel.org/index.php/Btrfs
+_design [2008]. 
+[5] Bryant R, Forester R, Hawkes J. File 
+system performance and scalability in 
+  28
+virtual-machine monitors 
+microkernels done right? ACM 
+SIGOPS Operating System Review 
+2005; 40(1): 95-99. DOI: 
+http://doi.acm.org/10.1145/1113361.11
+13363 
+[21] Microsoft Corporation. Hyper-V 
+Server. 
+http://www.microsoft.com/hyper-v-ser
+ver/en/us/default.aspx [2009]. 
+[22] Peter M, Schild H, Lackorzynski A, 
+Warg A. Virtual machines jailed: 
+virtualization in systems with small 
+trusted computing bases. Proceedings 
+of the First EuroSys Workshop on 
+Virtualization Technology for 
+Dependable Systems. ACM, 
+Nuremberg, Germany, 2009; 18-23. 
+DOI: 
+http://doi.acm.org/10.1145/1518684.1
+518688 
+[23] Steinberg U, Kauer B. NOVA: a 
+microhypervisor-based secure 
+virtualization architecture. 
+EuroSys ’10: Proceedings of Fifth 
+European Conference on Computer 
+Systems. ACM, New York, NY, USA, 
+2010; 209-222. DOI= 
+http://doi.acm.org/10.1145/1755913.1
+755935 
+[24] Chou A, Yang J, Chelf B, Hallem S, 
+Engler D. An empirical study of 
+operating systems errors. SOSP ’01: 
+Proceedings of the Eighteenth ACM 
+Symposium on Operating Systems 
+Principles. ACM, Banff, Alberta, 
+Canada, 2001; 73-88. 
+[25] Mccune JM, Li Y, Qu N, Zhou Z, 
+Datta A, Gligor V, Perrig A. 
+TrustVisor: efficient TCB reduction 
+and attestation. SP ’10: Proceedings of 
+the Thirty-First IEEE Symposium on 
+Security and Privacy. IEEE Computer 
+Society, Washington, DC, USA, 2010; 
+143-158. DOI= 
+http://dx.doi.org/10.1109/SP.2010.17 
+[26] Tessin MV. Towards high-assurance 
+multiprocessor virtualisation. 
+VERIFY ’10: Proceedings of the Sixth 
+International Verification Workshop. 
+Floc, Ediburgh, UK, 2010. 
+[27] AMD Inc. AMD64 Architecture 
+Programmer’s Manual Volume 2: 
+System Programming. 
+http://support.amd.com/us/Processor_
+TechDocs/24593.pdf [June 2010]. 
+[28] Intel Corporation. Intel virtualization 
+technology. Intel Technology Journal 
+2006; 10(3). 
+[29] Klein G, Elphinstone K, Heiser G, 
+Andronick J, Cock D, Derrin P, 
+Elkaduwe D, Engelhardt K, Kolanski 
+R, Norrish M, Sewell T, Tuch H, 
+Winwood S. SeL4: formal verification 
+of an OS kernel. SOSP '09: 
+Proceedings of the ACM SIGOPS 
+Twenty-Second Symposium on 
+Operating Systems Principles. ACM, 
+Big Sky, Montana, USA, 2009; 
+207-220. DOI: 
+http://doi.acm.org/10.1145/1629575.1
+629596 
+[30] Heiser G, Andronick J, Elphinstone K, 
+Klein G, Kuz I, Ryzhyk L. The road to 
+trustworthy systems. STC ’10: 
+Proceedings of the Fifth Workshop on 
+Scalable Trusted Computing. Chicago, 
+USA, 2010. 
+[31] Brown E. Hypervisor Technology 
+Claimed 100 Percent Bug-free. 
+http://www.linuxfordevices.com/c/a/ 
+News/NICTA-sel4-OK-Labs-OKL4/ 
+[13 August 2009] 
+[32] Garfinkel T, Pfaff B, Chow J, 
+Rosenblum M, Boneh D. Terra: a 
+virtual machine-based platform for 
+trusted computing. SOSP ’03: 
+Proceedings of the Nineteenth ACM 
+Symposium on Operating Systems 
+Principles. ACM, Bolton Landing, NY, 
+USA, 2003; 193-206. 
+DOI=http://doi.acm.org/10.1145/9454
+45.945464 
+[33] Chen PM, Ng WT, Chandra S, Aycock 
+C, Rajamani G, Lowell D. The Rio 
+file cache: surviving operating system 
+crashes. ASPLOS '96: Proceedings of 
+the Seventh International Conference 
+on Architectural Support for 
+Programming Languages and 
+Operating Systems. ACM, Cambridge, 
+Massachusetts, USA, 1996; 74-83. 
+DOI: 
+http://doi.acm.org/10.1145/237090.23
+7154 
+[34] Kustarz E, Shepler S, Wilson A. 
+  30
+making NVRAM suitable for 
+extremely reliable storage. HotDep '07: 
+Proceedings of the Third Workshop on 
+Hot Topics in System Dependability. 
+USENIX Association, Edinburgh, UK, 
+2007; 10-10.  
+[50] Wright CP, Spillane R, Sivathanu G, 
+Zadok E. Extending ACID semantics 
+to the file system. ACM Transactions 
+on Storage 2007; 3(2): 4-4. DOI: 
+http://doi.acm.org/10.1145/1242520.1
+242521 
+[51] Lowell DE, Chen PM. Free 
+transactions with Rio Vista. SOSP '97: 
+Proceedings of the Sixteenth ACM 
+Symposium on Operating Systems 
+Principles. ACM, Saint Malo, France, 
+1997; 92-101. DOI: 
+http://doi.acm.org/10.1145/268998.26
+6665 
+[52] Baker M, Asami S, Deprit E, 
+Ouseterhout J, Seltzer M. Non-volatile 
+memory for fast, reliable file systems. 
+ASPLOS '92: Proceedings of the Fifth 
+International Conference on 
+Architectural Support for 
+Programming Languages and 
+Operating Systems. ACM, Boston, 
+Massachusetts, USA, 1992; 10-22. 
+DOI: 
+http://doi.acm.org/10.1145/143365.14
+3380 
+[53] Wu M, Zwaenepoel W. eNVy: a 
+non-volatile, main memory storage 
+system. ASPLOS '94: Proceedings of 
+the Sixth International Conference on 
+Architectural Support for 
+Programming Languages and 
+Operating Systems. ACM, San Jose, 
+California, United States, 1994; 86-97. 
+DOI: 
+http://doi.acm.org/10.1145/19547 
+3.195506 
+[54] Miller EL, Brandt SA, Long DDE. 
+HeRMES: high-performance reliable 
+MRAM-enabled storage. HotOS '01: 
+Proceedings of the Eighth Workshop 
+on Hot Topics in Operating Systems. 
+IEEE Computer Society, 2001; 95-95. 
+[55] Edel NK, Tuteja D, Miller EL, Brandt 
+SA. MRAMFS: a compressing file 
+system for non-volatile ram. 
+MASCOTS '04: Proceedings of the 
+Twelfth Annual International 
+Symposium on Modeling, Analysis, 
+and Simulation of Computer and 
+Telecommunications Systems. IEEE 
+Computer Society, 2004; 596-603. 
+[56] Kim JK, Lee HG, Choi S, Bahng KI. 
+A PRAM and NAND flash hybrid 
+architecture for high-performance 
+embedded storage subsystems. 
+EMSOFT '08: Proceedings of the 
+Eighth ACM International Conference 
+on Embedded Software. ACM, Atlanta, 
+GA, USA, 2008; 31-40. 
+DOI:http://doi.acm.org/10.1145/14500
+58.1450064 
+[57] Clements AT, Ahmad I, Vilayannur M, 
+Li J. Decentralized deduplication in 
+SAN cluster file systems. Proceedings 
+of the USENIX Annual Conference, 
+San Diego, CA, USA, 2009; 101-114. 
+[58] Williamson M. XenFS. 
+http://wiki.xensource.com/xenwiki/Xe
+nFS [2008].  
+[59] Pfaff B, Garfinkel T, Rosenblum M. 
+Virtualization aware file systems: 
+getting beyond the limitations of 
+virtual disks. NSDI '06: Proceedings 
+of the Third Conference on Networked 
+Systems Design and Implementation. 
+USENIX Association, San Jose, CA, 
+2006; 26-26. 
+  32
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以
+500 字為限） 
+虛擬機器技術使得多個各自獨立的虛擬機器可以在單一個實體機器上運行，目前已被廣
+泛地被應用在伺服器整合、系統容錯、除錯工具及入侵檢測等諸多領域上，也已經成為未來
+企業使用的主流 IT 技術。在三年的計畫中，我們針對虛擬機器的效能瓶頸，包括了 Inter-domain 
+communication，VM load balance，VM service recovery 和 file system performance，提出了對應
+的效能改善方法，這些技術有些已發表於國際學術期刊，有些尚在整理投稿中。我們認為，
+此計畫所開發之多項技術可以應用在雲端運算相關的產業或產品中。在雲端運算的應用研究
+與相關產業越來越發達的此時，本計畫之成果可以大幅提高相關產品之附加價值與效能，打
+造更快速有效率之雲端環境。 
+ 
+ 
+  34
+者可以回應其它學者的意見。這段時間本人獲益良多，除了與人解說論文外，還聽
+了許多寶貴的意見。另外，本人也看了很多人的作品，對自己未來的研究有了新的
+想法。 
+會議第二天和第三天，本人主要是去聆聽其它學者的論文，受益良多。 
+ 
+二、與會心得 
+    因為這次是支身參加，以本人一個碩士生來說，很多東西都很新鮮。學到的包
+括外國人報告與台灣人報告的差別；還有就是許多別人已經跑在領先的領域，但是
+在台灣卻剛在萌芽。當然本人也有聽到一些人的作品，其實是本實驗室早前就已經
+做過的，顯示我們在某些領域是領先的。 
+    另外就是本人與幾個瑞典和德國的學生和教授交談了許多。發現他們做事情都
+很實在，而且也會做得恰如其分。有幾位學者研究的議題與本實驗室未來的議題很
+相似，因此本人也趁機邀請他們與本實驗室一起做研究。 
+ 
+三、考察參觀活動 
+    參觀了 MDH，但是由於已經是他們的暑假期間，所以很少人在學校出沒，另外
+他們的學校布置方式其實與成功大學很相近。 
+ 
+四、建議 
+建議國家應多補助研究生出國參與會議。尤其是頂級的國際會議，即使沒投論文，
+參與這類頂級會議對一個研究生來講，都是莫大的幫助，可以大大擴展他的視野。 
+ 
+ 
+行政院國科會補助專家學人出席國際學術會議報告   
+                                                                      
+報告人姓名 陳威佐 服務機構及  職  稱
+成功大學資訊工程所 
+碩士生 
+時間 
+會議 
+地點 
+2011/6/15~2011/6/17 
+SIES 2011 
+Västerås, Sweden 
+本會核定
+補助文號 NSC 97-2221-E-006-138-MY3
+會   議   名   稱 
+(中文)  第六屆國際工業嵌入式系統研討會 
+(英文) 6th IEEE International Symposium on Industrial Embedded 
+Systems Conference (SIES’11) 
+發表論文題目 
+(中文)  具備低成本，低功率，高可擴充性和可靠性的處理器群平台
+(英文)  A Low Cost, Low Power, High Scalability and Dependability 
+Processor-Cluster Platform 
+ 
+ 
+一、參加會議經過 
+    這是本實驗室第一次參與 SIES這個會議。這次會議主要的參與者是歐洲國家的
+學者與學生。會議共分成三天，每天有數個 Sessions。會議內容包括即時系統、系
+統設計、多核心系統等等。 
+本人是參加第一天的 WIP Session。每個在 WIP Session發表之論文需要五分
+鐘的 Oral Presentation，另外還需張貼 Poster。Oral Presentation時，幾乎所有參加
+會議的人都會去聽，且問答非常地踴躍，令人印象深刻。Oral Presentation結束後，
+發表WIP論文的學者必須張貼海報。大會保留兩小時的海報時間，讓發表WIP論
+文的學者可以回應其它學者的意見。這段時間本人獲益良多，除了與人解說論文
+外，還聽了許多寶貴的意見。另外，本人也看了很多人的作品，對自己未來的研
+究有了新的想法。 
+會議第二天和第三天，本人主要是去聆聽其它學者的論文，受益良多。 
+ 
+二、與會心得 
+    因為這次是支身參加，以本人一個碩士生來說，很多東西都很新鮮。學到的包
+括外國人報告與台灣人報告的差別；還有就是許多別人已經跑在領先的領域，但
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/10/30
+國科會補助計畫
+計畫名稱: 基於Xen/Linux之高效能虛擬機器平台之研究
+計畫主持人: 張大緯
+計畫編號: 97-2221-E-006-138-MY3 學門領域: LINUX推動計劃
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

@@ -1,0 +1,527 @@
+行政院國家科學委員會專題研究計畫成果報告 
+有限回饋前置編碼系統之研究 
+計畫編號：NSC 96-2221-E-194-007 
+執行期限：民國96年8月1日 至  97年7月31日 
+主持人：劉宗憲 國立中正大學通訊工程學系  
+計畫參與人員：邱俊甯、姜瑾嶧 國立中正大學通訊工程研究所 
+ 
+摘要 
+本篇報告中，我們主要介紹的是 beamforming
+的作法，與討論其重要的特性。因為 beamforming
+需要計算通道的 SVD，因此文章中也介紹多種不
+同的 SVD 演算法，如 GR-SVD、R-SVD、BDC 與
+Jacobi method。站在真實系統實現的角度，必須使
+用 limited feedback 系統來實現 beamforming，因此
+必須從 codebook 中挑選已量化過的 codeword 當成
+beamforming 矩陣。最後我們從模擬的結果觀察
+limited feedback 系統中使用 codebook 對系統 BER
+所造成的衰減。 
+ 
+1. 簡介 
+近幾年之間，MIMO相關的研究變成當紅技
+術，其中主要包括了空間多工 (Spatial multiplexing) 
+技術、space-time block code (STBC)與 precoding 技
+術，這三項 MIMO 技術已被多項無線通訊標準所
+考慮，例如 IEEE 802.11n 與IEEE 802.16e 。所謂空
+間多工 (Spatial multiplexing) 是指傳送端與接收端
+利用 多天線來 傳送多 組的數據串流  (spatial 
+streams)，因此可以提供較大的通道容量 (channel 
+capacity) 與較高的資料傳輸速率(data rate)。STBC
+則是利用傳送端有多根天線的特性，透過對spatial 
+streams編碼，使得接收端可以更準確的還原訊號。
+而 precoding 技術則是傳送端根據通道資訊來調整
+傳送訊號，因此藉由precoding技術可提高訊號品質
+(quality)與資料可靠性 (reliability)。 
+Precoding的作法有許多種，根據不同目的所
+設計出的precoding都不一樣，例如minimization of 
+MSE[1]、maximization of SNR[2]、maximization of 
+the smallest singular value[3] 與 maximization of 
+mutual information[4]等等。而目前最受歡迎的
+precoding作法稱為beamforming，所謂beamforming
+是指透過precoding技術將MIMO 通道對角化至 
+eigen subchannel，這樣不但會得到最大的通道容
+量，同時也降低不同spatial streams之間的相互干
+擾。在一些文章中會將precoding與beamforming視
+為相同技術，但是在本報告中將beamforming視為
+precoding中的一種。雖然 beamforming的好處很
+多，不過使用beamforming的系統必須計算出通道
+矩陣的SVD，如此一來將會大大的增加系統複雜。
+然而無論是哪一種precoding都必須使用到通道資
+訊，但是受限於實際系統的考量，一般利用
+sounding 的方式或使用 closed-loop 的通訊系統來實
+現  precoding。本篇報告所要介紹的是closed-loop 
+的系統，必須使用  limited feedback 的方式將
+precoding matrix (beamforming matrix) 回傳給傳送
+端。所謂 limited feedback 是利用有限的資源將接
+收端得到的資訊回傳至傳送端，有限的資源指的是
+使用低速率與極窄的頻寬傳輸，所以只能回傳一些 
+bits 至傳送端。以 IEEE 802.16e [5]的作法為例(如
+圖1)傳送與接收兩端皆儲存了相同的 codebook，接
+收端由所得到的通道資訊計算出最佳的 precoding 
+matrix ，將其與 codebook 中的所有 codeword 比
+對，再選擇最合適的  codeword，最後將所選 
+codeword 的編號回傳至傳送端。如此一來，傳送
+端可以依照回傳的編號從  codebook 中挑出 
+codeword，做為傳送端的 precoding matrix。 
+本篇報告主要介紹的是beamforming作法與幾
+種不同的SVD演算法。因為模擬的部分使用的是
+IEEE 802.16e codebook，所以文章中也會介紹IEEE 
+802.16e codebook生成方式。最後透過模擬的結果
+討論beamforming與limited feedback系統的特性。 
+ 
+AWGN
+ZF
+detectorModulator F H
+Codebook
+selector
+Demodulator
+ 
+圖1：Limited feedback 系統方塊圖。 
+ 
+2. 系統模型 
+       令H為 MIMO系統 的通道矩陣，維度為 tr × ，
+假設 } ,min{ rtN = ，而H的 SVD 為 HVΣUH   = ，
+其中 ),,( 1 Ndiag σσ …=Σ 為singular values所組
+最後定義 ΣBUUU = 、 ΣBVVV = 則可以得到A的
+SVD。現在常用的SVD演算法是由 Golub 於1970年
+時提出來的GR-SVD[10]，所依據的理論基礎是根
+據 implicit QR 演算法而來。在此之後也有一些研
+究針對  GR-SVD 做改良，例如  R-SVD [11]與 
+Bidiagonal divide-and-conquer (BDC)[12]等等。另
+外，這幾年來 Jacobi method [13]備受矚目，主要是
+因為它不但提供更高的精確度，而且可以利用平行
+處理減少運算時間。但是，與基於 implicit QR的
+SVD演算法比較起來，Jacobi method 仍然需要較高
+的運算量。接下來的幾個小節將簡單介紹上述幾種
+不同的SVD演算法。 
+ 
+3.1 Golub-Reinsch  algorithm (GR-SVD)  [10] 
+        GR-SVD 可 以 分 為 兩 個 步 驟 ， 首 先 利 用
+Householder矩陣將A簡化至bidiagonal矩陣B。第二
+個步驟是利用疊代的方式讓B矩陣的superdiagonal
+元素收斂至零。 
+【步驟一】Householder bidiagonalization 
+        假設A是一個 nm× 的矩陣，利用Householder
+矩陣連續相乘後可以得到下列結果 
+⎥⎥
+⎥
+⎦
+⎤
+⎢⎢
+⎢
+⎣
+⎡
+××
+××
+== −
+0
+0
+0
+V
+VVA
+U
+UUB
+BB
+%%…… 
+	
+	 211 n
+T
+TT
+n . 
+以下是一個A為 34 × 的例子： 
+⎥⎥⎦
+⎤
+⎢⎢⎣
+⎡
+⎥⎥⎦
+⎤
+⎢⎢⎣
+⎡
+⎥⎥⎦
+⎤
+⎢⎢⎣
+⎡
+⎥⎥⎦
+⎤
+⎢⎢⎣
+⎡
+⎥⎥⎦
+⎤
+⎢⎢⎣
+⎡
+×
+××
+××
+×
+×
+××
+××
+××
+××
+××
+××
+××
+××
+××
+×××
+×××
+×××
+×××
+×××
+→→→→
+000
+00
+0
+0
+00
+00
+0
+0
+0
+0
+0
+0
+0
+0
+0
+3211 UUVU
+ 
+【步驟二】對角化 bidiagonal 矩陣 
+        接下來利用疊代的方法與 implicit QR 將B矩陣
+對角化。首先令 
+⎥⎥
+⎥⎥
+⎥
+⎦
+⎤
+⎢⎢
+⎢⎢
+⎢
+⎣
+⎡
+×
+×××
+×××
+==
+nn
+T
+t
+tt
+00
+00
+001211
+"
+%#
+%%%
+#%
+"
+BBT . 
+為一個tridiagonal矩陣，選擇 nnt=μ (T的第 n 行 n
+列元素)。計算下式中 Givens rotation 矩陣 1G  
+[ ] [ ]0, ,
+1
+1211 ∗=⎥⎦
+⎤⎢⎣
+⎡
+−− 
+	
+G
+cs
+sc
+tt μ . 
+將得到的 1G 矩陣與原始的B矩陣相乘得到一個新
+的B矩陣： 1BGB ← 。接下來便可以決定出Givens 
+rotation 矩陣 1U 、 1V 、 2U 、…、 1−nV 與 1−nU ，完
+整的過程為 
+⎥⎥
+⎥⎥
+⎦
+⎤
+⎢⎢
+⎢⎢
+⎣
+⎡
+→
+⎥⎥
+⎥⎥
+⎦
+⎤
+⎢⎢
+⎢⎢
+⎣
+⎡
+→
+⎥⎥
+⎥⎥
+⎦
+⎤
+⎢⎢
+⎢⎢
+⎣
+⎡
+→ ×××+
+××
+××
+×
+××
+××
++××
+×
+××
+××+
+××
+%
+…
+…
+###%
+…
+…
+###%
+…
+…
+###
+%
+%
+%
+%
+%
+%
+0000
+000
+0
+00
+00
+2
+0000
+000
+00
+00
+0
+1
+0000
+000
+00
+0
+00
+1 VBBUBG T
+"
+%
+…
+…
+###%
+…
+…
+###
+%
+%
+%
+% →
+⎥⎥
+⎥⎥
+⎦
+⎤
+⎢⎢
+⎢⎢
+⎣
+⎡
+→
+⎥⎥
+⎥⎥
+⎦
+⎤
+⎢⎢
+⎢⎢
+⎣
+⎡
+→ ×××
+××
+××
+×
+××
++××
+××
+0000
+000
+00
+00
+00
+3
+0000
+000
+00
+0
+00
+2 VBBUT
+ 
+完成上述步驟後的B矩陣可表示為 
+BVUVVBUUB Tn
+T
+n =← −− )()( 1111 ""  
+其非對角線元素變會得比原始的B矩陣小，重複多
+次之後非對角線元素收斂至零，將對角線原素依大
+小順序重新排列後，即可以得到對角矩陣 Σ。 
+ 
+3.2  Modified algorithm (R-SVD) [11] 
+        1982年Chan針對GR-SVD提出了改善的方法，
+主要是考慮當A矩陣的 nm >> 時的狀況下，如何簡化
+Householder bidiagonalization 的運算量。他的作法
+是先將 A 矩陣做QR分解後，再利用GR-SVD求上
+三角矩陣R的SVD，其數學式為 
+N
+T
+T
+ΣV
+U
+0
+X
+Q
+0
+VΣX
+Q
+0
+R
+QA ⎥⎦
+⎤⎢⎣
+⎡=== ⎥⎦
+⎤⎢⎣
+⎡⎥⎦
+⎤⎢⎣
+⎡   . 
+主要簡化的地方是；對R做bidiagonalization時的運
+算量遠少於直接對A做bidiagonalization，且當 m 遠
+大於 n 時效果更是顯著。 
+ 
+3.3 Bidiagonal divide-and-conquer (BDC) [12] 
+    Gu與Demmel等人於1994年提出的SVD演算法宣
+稱比原始的GR-SVD演算法在運算的時間上，至少
+節省二至三倍以上的時間。而且，當A的矩陣維度
+愈大時所節省的時間愈多。假設B矩陣是一個 nn ×
+⎩⎨
+⎧
+−
+== ×
+otherwise ,
+                 ,
+)(
+1
+wwI
+evI
+v
+H
+NN
+p
+H  
+其中 1evw −=  而 wwHp
+2= 。 
+【運算二】利用一個 MN ×1- 的 unitary 矩陣 A 與
+一個N×1的向量 v生成 1+× MN 的 unitary 矩陣。 
+⎥⎥
+⎥
+⎦
+⎤
+⎢⎢
+⎢
+⎣
+⎡
+=
+0
+0
+001
+)() ,( AvAv #
+"
+HHC . 
+其中 MN ≥−1 且 IAA =H 。 
+【運算三】從一個 NN × 矩陣裡取後面 1−N 個 
+columns 可以得到一個 1−× NN 的矩陣。 
+NHHE :2:,)()( vv =  
+藉由相互搭配上述三種運算可以產生多種不同維度
+的矩陣如表4，其包含的codebook為 ),,( LSNV t ；
+傳送端天線數 tN =2、3、4，streams 個數 S = 2、
+3、4，與codebook index bits個數 L = 3、6。另外有
+關L = 6 bits 的向量產生方法請參考IEEE 802.16e 
+codebook。 
+5. 效能分析 
+        最後，為了清楚了解beamforming的特性，我
+們利用Matlab模擬一個MIMO beamforming系統，
+完整的模擬過程如圖3。原始information bits經過調
+變後通過precoding矩陣F後，再藉由MIMO通道H
+傳送至接收端，接收端則利用ZF檢測還原訊號，
+最後做解調找出原始的information bits。 
+ 
+ 
+圖3：Matlab模擬方塊圖。 
+ 
+        在通道已知的條件下，首先要看的是；當F為
+最佳的precoding矩陣時，不同spatial streams之間
+BER的關係。如圖4，這是一個 44× 的MIMO系
+統，spatial streams數目為4，使用的通道H是i.i.d的
+flat fading通道，調變為16-QAM。由圖中可以看出
+不同spatial streams之間BER差異很大，主要是受到
+H的singular values的大小所影響。另外，值得一提 
+的是，當H具有special correlation的關係時，這樣的
+差距會更加明顯。因為當通道的correlation愈強
+時；最大的singular value與最小的singular value相
+差愈大。因此，在這樣的系統中，如果我們只需要
+一個spatial stream，則special correlation的通道反而
+可 
+以更增強其訊號強度，達到較好的BER，這與一般
+認知的spatial correlation會造成較大的相互干擾剛
+好相反。  
+        接下來要觀察的是，在limited feedback系統中
+使用codebook對系統BER所造成的衰減程度。模擬
+的環境是 44× 的MIMO系統，spatial streams數目為
+1，H是i.i.d的flat fading通道，16-QAM，如圖5。圖
+中分別比較non precoding、quantized precoding 
+3=L  與 6=L 、和optimal precoding四種情況的 
+BER，其中quantized precoding ( 3=L )指的是使用
+3=L 的 IEEE 802.16e codebook。在此模擬的是
+spatial streams數目為1的情況，所以此時precoding
+矩陣為一個向量，稱為 beamforming vector。而
+codeword選擇的方式是依照IEEE 802.16e規格中建
+議的作法，選擇與最佳beamforming vector內積最大
+的codeword當成beamforming vector。從模擬出來的
+結果可以看到在 3=L 的情況下，其BER與最佳的
+情況相差不過2dB，當 6=L 時更是縮減到約只有
+1dB。這樣的結果與我們的預期相符合，當L愈大
+時codebook所產生的量化誤差愈小，因此BER表現
+也愈接近最佳狀況。 
+ 
+表1： V(2, 1, 3) 
+表2： V(3, 1, 3) 
+表3： V(4, 1, 3) 
+ 
+[4] R. S. Blum and J. H.Winters, “On optimum MIMO with 
+antenna selection,” IEEE Commun. Lett., vol. 6, no. 8, pp. 
+322–324, Aug. 2002. 
+[5] IEEE Std 802.16e-2005. “IEEE Standard for Local and 
+Metropolitan Area Networks–Part 16, Amendment 2 and 
+Corrigendum 1,” New York, NY:IEEE, Feb. 2006. 
+[6] I. Telatar, Capacity of multi-antenna Gaussian channels, 
+Technical Report, AT & T Bell Laboratories, 1995.  
+[7] T. M. Cover and J. A. Thomas, Elements of Information 
+Theory. New York: Wiley, 1991.  
+[8] W. Dai, Y. Liu and B. Rider, “Quantization bounds on 
+Grassmann manifolds and applications to MIMO 
+communications, ” IEEE Trans. Inf. Theory, vol. 54, no. 3, 
+pp. 1108–1123, Mar. 2008.  
+[9] S. Wang, H. Kim, B. K.Yi, and S. Kwon , “On the 
+feedback channel for MIMO beamforming, ” in Proc. 
+IEEE WCNC, 2008.  
+[10] G. H. Golub and C. Reinsch, “Singular value 
+decomposition and least squares solutions, ” Numer. Math.,  
+vol. 14, pp. 403-420, 1970.   
+[11] T. F. Chan, “An Improved algorithm for computing 
+the singular value decomposition, ” ACM Trans. Math., 
+vol. 8, no. 1, pp.72-83, Mar. 1982.  
+[12] M. Gu, J. Demmel, and I. Dhillon, “Efficient 
+computation of the singular value decomposition with 
+applications to least squares problems, ”Technical Report 
+CS-94-257, Department of Computer Science, University 
+of Tennessee, Knoxville, TN, USA, Oct. 1994.  
+[13] V. Hari and K. Veselic,” On Jacobi methods for 
+singular value decompositions, ”SIAM J. Sci. Stat. 
+Comput., 8(5) : 741-754, 1987.  
+[14] G. H. Golub and C. F. Van Loan, Matrix 
+Computations. Baltimore: Johns Hopkins University Press, 
+3rd ed., 1996.  
+ 

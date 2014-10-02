@@ -1,0 +1,783 @@
+In this report, we document the development of a component-based network simulation
+environment that provides a systematic way to simulate with high fidelity protocol
+operations in a variety of target network architectures. We take a four-step approach to
+developing a truly extensible, composable network simulation environment with reusable
+components: First, we lay a component-based software architecture, called the
+autonomous component architecture (ACA). Second, we propose a new real-time,
+process-driven simulation technique that fits naturally in ACA and simulates the real
+system realistically. Third, we devise a packet-based network simulation framework,
+called Extensible Internetworking Framework (INET), on top of ACA. Fourth, to
+empirically evaluate the performance, we implement in Java both ACA and INET, and
+several representative suites of protocol components in a variety of network architectures.
+The resulting codes, along with a scripting framework, constitute a network simulation
+environment called J-Sim. By virtue of the many desirable features inherited from ACA,
+the J-Sim environment meets the flexibility, composability, reusability, extensibility and
+diagnosability requirements. However, a drawback of the ACA is the component
+overhead. In this report, we show (via experimentation) that the component overhead is
+not significant (in the range of 0.2-0.6 µs), and J-Sim achieves better scalability than two
+other network simulators in the public domains, ns-2 and SSFNET, in terms of both the
+experiment setup time and the simulation completion time.
+Keywords: J-Sim, ns-2, SSFNET, network simulation, component-based software
+architecture, software architecture, discrete-event simulation
+Abstract
+allow diagnosis to be conducted in an efficient manner. In addition, it is desirable that debugging,
+tracing, and data collection can be performed at the level of components.
+We take a four-step approach to designing and developing a truly extensible, composable network
+simulation environment with reusable components. The four steps are listed as follows:
+1. We have presented in a companion paper [26] a component-based software architecture, called the
+autonomous component architecture (ACA), that deploys a message-passing, independent execution
+model to more closely mimic hardware systems, in terms of how components are specified and
+assembled and how components interact with one another. (For completeness of this paper, we will
+give a succinct overview of ACA in Section 2.)
+2. To explore the use of ACA in network simulation, we have to consider the issues of how to configure
+and implement a simulation engine and how to model network components in ACA. Thus, we
+propose a new real-time process-driven simulation technique that fits naturally in ACA, simulates
+the real system realistically, and provides the same level of fidelity as traditional event-driven
+simulation.
+3. We lay a packet-based network simulation framework, called Extensible Internetworking Framework
+(INET), on top of ACA. Generic network components are defined in the framework, and are general
+enough to accommodate future technology advances.
+4. To demonstrate the use of the architecture and the modeling framework, we implement both ACA
+and INET in Java, and several representative protocol components in a variety of network archi-
+tectures. The resulting codes, along with a scripting framework, constitute a network simulation
+environment called J-Sim [12, 25].
+By virtue of the desirable features inherited from ACA, the J-Sim environment meets the composability,
+reusability, flexibility, extensibility and diagnosability requirements outlined above. However, a drawback
+of the ACA is the component overhead. In this paper, we show (via empirical studies) that the component
+overhead is not significant (in the range of 0.2-0.6 µs), and that J-Sim achieves better scalability than
+ns-2 and SSFNET in terms of both the experiment setup time and the simulation completion time.
+The rest of the paper is organized as follows. We give an overview of ACA in Section 2, and present
+the new simulation technique, called real-time process-based simulation in Section 3. Then, we introduce
+the INET model and its associated components that lay on top of the ACA in Section 4. Following that,
+we report how we implement J-Sim in Section 5 and discuss in Section 6 how we implement Internet
+protocols in the Differentiated Services (DiffServ) architecture using the INET modeling framework.
+(Other network architectures are implemented in J-Sim in a similar fashion.) Finally, we summarize
+and compare existing network simulation environments in Section 7 and present a performance study in
+Section 8. The paper concludes with Section 9.
+2 Overview of The Autonomous Component Architecture (ACA)
+In this section, we give a concise overview of the autonomous component architecture (ACA) that
+pertains to network simulation. Interested readers are referred to [26] for the rationale behind designing
+the ACA, a detailed account of its specification, and a thorough evaluation of the component overhead.
+The ACA closely mimics the integrated circuit (IC) design. We beleive that the reason why
+software design cannot achieve the same level of modularity as IC design is because the object-oriented
+2
+Binding contracts at the design time and components at the system integration time eliminates
+the hyper-spaghetti objects and subsystems phenomenon, where objects in the system are tightly coupled
+and invisibly tangled with one another to the degree that it is difficult, if not impossible, to extract
+some of the classes from one system for reuse in another system [20, 28, 29]. The information needed for
+contract binding is defined in the interface of a component. This enables a component to be implemented
+completely independently from the rest of the system, and a software system to be composed in a very
+similar way as in digital circuit design. It also allows a software system to be easily re-configured at run
+time.
+Ports: Ports are the points of contact of a component with the outside world. Each component may
+own one or more ports. Two components are connected by “wiring” their ports together. When a
+component sends data at one of its ports, the port relays the data to the port(s) that connect to it.
+When data arrives at a port, the component which owns the port processes the data and may generate
+(in compliance with the bound contract) outputs at some other ports.
+Independent Execution Model: An important feature of the ACA is its independent execution
+model. At any time when data arrive at a port of a component, the component processes the data
+immediately in an independent execution context (e.g., thread in Java). Simultaneously-arrived data may
+be processed at the same time (Figure 2 (b)) and their interference is only subject to synchronization
+and mutual exclusion when multiple contexts access the shared data area. A specific synchronization
+mechanism should be further specified in an ACA implementation.
+The ability to handle data in independent execution contexts, along with the fact that components
+are bound with one another only at the system integration time, enables a component to be autonomous
+(hence the name of the architecture). A component can be easily reused in other software systems with
+the same contract context.
+Component Hierarchy: The ACA supports the notion of composite component, i.e., a component
+may be composed of several components and the entire system forms a component hierarchy. In the
+hierarchy, a composite component is said to be the parent component of the encapsulated components,
+which are called the child components. The notion of composite components allows one to organize a
+software system in any desirable hierarchy.
+As the component hierarchy is similar to the file system in a modern operating system, the ACA
+adopts the naming method of the UNIX file system to uniquely identify every component and port in the
+hierarchy — the identification of a component in the software system, or the path, is formed recursively by
+concatenating the path of the parent component, a “/” separator, and the identification of the component.
+The root component has path “/”.
+context 1
+execution
+A
+Component
+B
+Component
+data sent
+from A to B
+context 1
+execution
+context 2
+execution
+A
+Component
+B
+Component
+data sent
+from A to B
+(a) (b)
+Figure 2: Two different execution models: (a) conventional method-call execution model and (b) inde-
+pendent execution model.
+4
+Runtime
+1
+2 3
+4
+1 C2C
+(a) (b)
+1. Component C1 is about to send out data at a port to component C2 in the execution context x.
+2. To have C2 receive the data, the execution context x sends the data and the request for a new execution
+context y to the runtime.
+3. The runtime takes over the sending process. The execution context x returns from the sending process and
+carries on in component C1.
+4. The runtime creates and activates the execution context y to process the data at component C2.
+Figure 3: (a) Data sent from component C1 to component C2. (b) What actually happens during the
+sending process.
+3 Real-Time Process-Driven Simulation in ACA
+As mentioned in Section 1, to enable network simulation in the ACA, one has to determine how the
+simulation engine is implemented and how network components are modeled in the ACA. We elaborate
+on the first issue in this section, and defer the second issue to Section 4.
+As the ACA employs a message-passing, independent execution model, it is natural to have each
+event executed in an independent execution context and carry out event executions in real time as opposed
+to at fixed time points in discrete-time event-driven simulation. The interactions and interferences among
+event executions take place in the same manner as they are in the real system, and hence this technique
+mimics the real system to be simulated more realistically. We term this simulation technique real-time
+process-driven simulation.
+The simulation engine that employs real-time, process-driven simulation is actually the ACA
+runtime with one additional function: when all the execution contexts are inactive, the runtime performs
+a “leap forward” operation in time to the nearest future so that at least one execution context can be
+active. This technique preserves the execution semantics of the real system and hence produces simulation
+results of high fidelity.
+To realize real-time, process-driven simulation, the ACA runtime keeps the following variables:
+(1) last time updated the last (wall) time at which the current simulation time is adjusted.
+(2) time scale the ratio of the wall time to the simulation time.
+(3) time advances the amount of time units (in simulation time) advances so far.
+The current simulation time is then calculated as:
+current simulation time = (current wall time - last time updated)
+/ time scale + time advances;
+When the simulation time advances, the variables are updated as follows:
+6
+As INET is built on top of the ACA, every network entity, e.g., a network, a node, a network
+interface card (NIC), a physical link, or a protocol instance, is a component. In particular, networks
+and nodes are composite components. A network component may contain node and link components and
+possibly more network components, while a node component may consist of one or more NIC components,
+protocol components, and application components. As ACA supports the notion of component hierarchy,
+organizing network components in a hierarchical manner is natural and straightforward. The remaining
+task is to define a set of base components from which different scenarios in different network architectures
+can be readily composed.
+The internal structure of a network node in INET is depicted in Figure 5. The core service layer
+(CSL) includes and provides the common internetworking services to the clients. The services provided by
+the CSL are categorized into six categories: data, identity, routing table, interface/neighboring, multicast
+and packet filter configuration services. The clients are modules in the upper protocol layer (UPL), such as
+application, transport, and routing protocols that use the CSL services, as depicted in Figure 5. Services
+provided by the CSL are defined in terms of contracts. For example, the CSL exports a routing service
+in terms of a routing contract (as a reactor). A routing protocol module in the UPL may own a port
+that is bound to the routing contract (as an initiator). The port is connected to the CSL at the system
+integration time. In what follows, we outline each of the services.
+4.1 Data Services
+There are two types of data services and one data service event:
+(1) Packet Sending (Downward): An UPL module uses this service to send a packet into the
+network. In this service, an UPL module chooses one of the following methods to forward the packet:
+default forward, explicit multicast, and exclusive broadcast. In the default forward method, the CSL
+looks up the routing table based on the specified destination address to determine on which outgoing
+interface(s) the packet should be sent. In the explicit multicast method, the CSL sends the packet on the
+Layer
+Core
+Service
+Table
+Routing
+...
+...
+Queue
+...
+...
+Application 1 Application 2
+Transport 1 unicast
+routing
+multicast
+routing
+signaling
+protocol
+...
+Queue
+Network
+Node 1
+Node 2
+Node 3
+Node 4
+control path
+data path
+node
+module
+physical linkTransport 2
+Network
+InterfaceInterface 1
+Packet Filter 11
+m
+n1
+Packet Filter  1
+Switch
+Packet Filter
+m
+(Packet Filter      1)
+Packet
+Dispacher
+(Packet Filter          )
+m
+n m
+Identity Database
+Interface
+Mgmt
+Mulicast
+Figure 5: A typical INET node. The figure also shows the decomposition of the core service layer (CSL).
+8
+(3) Identity Addition: The initiator (an UPL module) sends a request containing the identities to
+be added and their lifetimes. In response, the reactor adds the set of identities to its database. Each
+identity remains valid for the time duration specified by the corresponding lifetime and then removed.
+(4) Identity Removal: The initiator (an UPL module) sends a request containing the identities to be
+removed. In response, the reactor removes the set of identities from its database.
+(5) Identity Timeout Query: The initiator (an UPL module) sends a request containing the identities
+whose lifetimes it queries about. In response, the reactor sends back the set of time values in double[],
+each of which corresponds to the remaining lifetime of the corresponding identity.
+(6) Identity Events: Whenever there is a change in the identity database, the CSL exports an event
+at the designated event port (.id@). Two types of event are defined: identity added and identity removed.
+The event object in both cases is ether an identity or an array of identities.
+4.3 Routing Table Services
+The CSL maintains a routing table. The routing table solely consists of pairs of key (RTKey) and
+route entry (RTEntry). For each packet to be forwarded, the CSL looks up the forwarding interfaces in
+the table by finding the longest matched 4 entry based on the source address, the destination address,
+and/or the incoming interface on which the packet arrived. An UPL module may look up or configure
+the routing table using the following routing table service contracts:
+(1) Route Lookup: In this contract, the initiator specifies the source address, the destination address
+and the incoming interface on which the packet arrived in an RTKey object, and sends the key. The
+reactor (CSL) then responds with the interface(s) (int[]) on which the packet should be forwarded.
+(2) Route Entry Addition: To add a new routing entry, or to modify an existing entry, the initiator
+sends a request containing the key (RTKey) of the route entry, the route entry (RTEntry) to be added
+and the lifetime of that entry. Upon receipt of such a request, the reactor (CSL) adds (modifies if the
+entry already exists) the entry in the routing table and keeps the entry for the lifetime specified. In
+the case of modifying an existing entry, a zero value of the lifetime commands the reactor to keep the
+previous lifetime.
+(3) Graft: This service is used to graft a set of outgoing interfaces to an existing route entry. The
+initiator sends a request with the same format as an “add” request except that the first command field is
+an integer of 1 (the “graft” command). Upon receipt of a “graft” request, the reactor modifies the route
+entry as if it were an “add” request except that the reactor adds (rather than replaces with) in the entry
+the outgoing interfaces specified in the request.
+(4) Prune: This service is used to prune a set of outgoing interfaces from an existing route entry. The
+initiator sends a request with the same format as an “add” request except that the first command field is
+an integer of 2 (the “prune” command). Upon receipt of a “prune” request, the reactor modifies the route
+entry as if it were an “add” request except that the reactor prunes from the routing entry the outgoing
+interfaces specified in the request.
+4to be described in the route entry removal service
+10
+(1) All Interfaces Retrieval: The initiator sends a null request and the reactor returns an array of
+interfaces in InterfaceInfo[], each element of which corresponds to an interface of the node.
+(2) One Interface Retrieval: The initiator sends an interface index and the reactor returns the
+information of the interface in InterfaceInfo; or null if the interface does not exist.
+(3) Neighbor Events: This event is exported when a new neighbor is discovered (the “neighbor up”
+event) or an existing neighbor is down (the “neighbor down” event). The neighboring information may be
+manually, statically configured into the CSL. In this case, the CSL exports all the neighbor-up events at
+the node boot-up time. Alternatively, the CSL may be instrumented to collect the neighbor information
+and export the neighbor events dynamically (by running some generic Hello protocol).
+4.5 Multicast Services
+The CSL provides the multicast group join/leave/query services to allow multicast applications
+to join/leave/query a multicast group. The contracts for these services are identical to the identity
+addition/removal/query services, respectively. In addition, the CSL in a router may export the multicast
+group events to a multicast routing protocol whenever a host joins a new multicast group or the last host
+leaves a multicast group.
+4.6 Packet Filter Configuration Services
+Packet filters are the extensible part of the CSL. Each interface of a node may contain a bank
+of packet filters. When the CSL forwards a packet on an outgoing interface, the packet may traverse a
+subset of packet filters in the bank before being placed in the outgoing buffer of the interface. When a
+packet arrives on an interface of a node, it may also traverse a (possibly different) subset of packet filters
+in the bank before being handed to the dispatching function of the CSL. While different implementations
+of CSL may have different sets of packet filters installed, all implementations should provide the following
+service for UPL modules to configure packet filters:
+(1) Packet Filter Configuration: The initiator sends a request containing the index of the filter bank
+or interface, the index of the packet filter in the bank, and the content of the configuration request. Upon
+receipt of the request, CSL dispatches the request to the packet filter specified, and then returns a reply if
+applicable. The contents of the request and the reply depend on the actual function and implementation
+of the packet filter, and are not specified here.
+4.7 Decomposition of the Core Service Layer
+Following the notion of “complex protocol graph and simple protocols,” we decompose the CSL into
+six components: Identity, RoutingTable, PacketDispatcher, InterfaceDatabase, MulticastMgmt and Packet-
+FilterSwitch, and one or more extensible packet filter banks as illustrated in Figure 5.
+Six CSL Components: The Identity component keeps all the identities of the node and provides the
+identity services (Section 4.2) to both the UPL modules and the other components in the CSL. The
+RoutingTable component keeps the routing table entries and provides the routing services (Section 4.3)
+to the UPL modules, especially the routing protocols, as well as the other components in the CSL.
+12
+5.1 Class Organization
+We implement every component or entity in the ACA and INET frameworks as a class, and
+organize classes into layers. Figure 6 depicts the five-layer class organization in J-Sim. Specifically, both
+the component and the port in ACA are implemented as classes in the ACA layer. The NET layer
+contains network simulation primitives and tools such as Packet, Module, traffic generation models and
+common tools. The INET layer implements INET on top of the NET layer. In particular, it defines (i) the
+basic components (Network, Node, and Link) for construction of hierarchical networks, (ii) the Protocol
+component that serves as the base class for implementing protocol modules, and (iii) contract classes
+(Section 2), one for each contract defined in INET. Also developed are the components that constitute
+the core service layer (discussed in Section 4).
+Specific network architectures, such as the Internet best-effort architecture, the integrated services
+architecture and the differentiated services architecture, are further derived from the INET layer. Fi-
+nally, protocol modules and/or algorithms specific to a certain architecture are developed on top of that
+architecture layer.
+5.2 Runtime and Simulation Engine
+In J-Sim, execution contexts are implemented by Java threads, and thread execution is scheduled
+by the thread scheduler in the Java Virtual Machine (JVM). The runtime consists of two classes: (1)
+the WorkerThread class wraps up the Java Thread class with the execution context information; and (2)
+the WorkerManager class creates and recycles WorkerThreads, and implements the control mechanism
+that controls the number of WorkerThreads that can be simultaneously active, and all the operations
+(such as “stop” and “resume”) that facilitates control of the runtime. When data is sent at a port, the
+Internet
+Base
+Scheduler
+Admission
+Routing
+ResourceManagement
+Adspec
+Rspec
+PacketSending (Contract)
+PacketDelivery (Contract)
+IdentityLookup (Contract)
+IdentityConfiguration (Contract)
+RouteLookup (Contract)
+RouteConfiguration (Contract)
+PacketFilterConfig (Contract)
+InterfaceQuery (Contract)
+NeighborEvent (Contract)
+MulticastHostEvent (Contract)
+Port
+Component WorkerManager
+WorkerThread
+ForkManager
+DV
+DVMRP
+OSPF
+MOSPF
+TCP
+UDP
+Internet
+INET
+Integrated Differentiated
+Services
+Architecture
+(IntServ)
+Services
+Architecture
+(DiffServ)
+Modules
+VirtualClock
+PGPS
+WF2Q
+CBT w/ QoS Extension
+OSPF w/ QoS Extension
+...CBT
+Marker
+Meter
+TokenBucketMeter
+WRRScheduler
+ThreeColorMeter
+TSWMeter
+PriorityQueue
+...
+IntServ
+Modules
+DiffServ
+Modules
+...
+Network
+Link
+Node
+Protocol
+CSL
+InterfaceDatabase (Hello)
+PacketDispatcher
+RoutingTable
+Identity
+PacketFilterSwitch
+PacketFilter
+IGMP
+Queue
+NetworkInterface
+NET
+Profile
+HQS
+Routing
+MulticastRouting
+UnicastRouting
+Module
+Packet
+Address
+Traffic generation models
+TrafficMonitor (tool)
+NamTrace (tool)
+ACA
+Figure 6: The class pyramid in J-Sim. As a case study, we explain the implementation details of the
+Differentiated Services (DiffServ) architecture in Section 6. The implementation details of other network
+architectures can be found elsewhere [23, 25, 27].
+14
+Identity PktDispatcher
+ICMP
+RoutingTable
+Layer−2 Layer−2
+IGMP InterfaceDatabase
+TrafficConditioner
+CSL
+Services
+Multicast
+Services
+Neighbor
+Services
+Routing
+Services
+Identity
+Services
+Data
+Interface/
+Table
+Classifier
+Meter1
+Marker1
+Meter2
+Marker2
+Meter
+Marker
+n
+n
+...
+(a) The CSL of an edge router (b) The TrafficConditioner component
+Port (contract initiator)
+Port (peer or contract reactor)
+Control path
+Data path
+Figure 7: Modeling of a Diffserv edge router: (a) the router extends the IP router model by adding
+a TrafficConditioner to perform traffic conditioning on an ingress link; (b) the internal structure of the
+TrafficConditioner component.
+Structure of a Diffserv Edge Router: Figure 7 (a) depicts the CSL structure of an ingress edge
+router with one link entering a DS domain. The router encapsulates the traffic aggregation and condition-
+ing functions in one TrafficConditioner packet filter component. Figure 7(b) depicts the detailed structure
+of an example TrafficConditioner component. It consists of a packet classifier and a set of meter-marker
+pairs that perform traffic conditioning for each traffic flow. Each pair of meter-marker is installed by
+a signaling protocol. Their parameters are set according to the traffic profile of, and the service class
+assigned to, a traffic flow.
+Specifically, when a packet arrives, the packet is classified and dispatched to the appropriate pair
+of meter-marker. The classifier may perform complex classification operations using multiple fields in
+the packet header, typically a combination of source address, destination address, DS field, protocol ID,
+source port and/or destination port. The meter measures the traffic rate and monitors whether or not
+the traffic has been compliant with the profile. The marker then uses the result of the meter to mark
+the packet in the DS field or drop the packet if the packet is out of the profile. Note that the traffic flow
+may be a microflow (an application-to-application connection) if the edge router is the first DS-capable
+router along the path of the flow, or a traffic aggregate if the edge router connects two DS domains. In
+the latter case, the marker performs re-marking according to the service contract (termed as service layer
+agreement (SLA)) between the two domains.
+Structure of a Diffserv Core Router: After entering a DS domain, packets are classified and treated
+by core routers only with the use of their DS field. Figure 8 (a) depicts the CSL structure of a Diffserv
+core router. A signaling protocol may be used to adjust PHBs at run time when the SLAs between
+neighboring DS domains change over time. Inside the CSL, the PHBs are implemented in the layer-
+2 component. Figure 8 (b) depicts a hierarchical queue structure that implements two defined PHBs:
+expedited forwarding (EF) [13] and assured forwarding (AF) [10], and the IP forwarding for best-efforts
+16
+7 Related Work
+Most notable efforts on network simulation include: Maryland Routing Simulator (MaRS) [1],
+NEtwork Simulation Testbed (NEST) [7], REalistic And Large (REAL) [14], NetSim [11], Telecommuni-
+cation Description Language (TeD) [19]), Global Mobile Information System Simulator (GloMoSim) [8],
+OPNET [18], ns-2 (ns version 2) [2], and Scalable Simulation Framework (SSF ) [6, 24])/SSFNET [5].
+Each of these existing software packages has its own focuses, and was not exclusively designed with the
+objectives outlined in Section 1 such as composability, reusability, flexibility, extensibility and diagnosabil-
+ity. In this section, we give an overview of some of these network simulation environments and compare
+J-Sim against ns-2 and SSFNet qualitatively in terms of the design and software architecture. In the
+following section, we compare J-Sim against ns-2 and SSFNet quantitatively in terms of the simulation
+setup time and the simulation completion time.
+MaRS is a network simulation package based on a general-purpose network simulator NetSim
+developed earlier. As the name suggests, it is mainly used to study different routing algorithms. NEST is
+a general-purpose simulation package designed to simulate distributed networked systems and protocols.
+It provides a client-server based graphical environment for constructing the simulation and controlling
+its execution. REAL is a substantially improved, and faster, version of NEST and is designed specifically
+for studying different congestion and flow control mechanisms in TCP/IP networks.
+GloMoSim is a simulation environment for wireless mobile networks. GloMoSim is designed as
+a set of modules in the layered architecture; each module simulates a specific protocol in the protocol
+stack. GloMoSim has been designed using the parallel discrete-event simulation capability provided
+by PARSEC, a C-based sequential and parallel simulation language that can be used to program new
+modules which can be added to GloMoSim. GloMoSim currently supports protocols for a purely wireless
+network. On the other hand, J-Sim supports protocols for both wired and wireless networks.
+OPNET is a commercial network modeler and simulator provided by OPNET Technologies, Inc. In
+OPNET, a network is modeled in a hierarchical approach that closely matches the hierarchical architecture
+of the Internet: networks, subnets and nodes (fixed, mobile or satellite). Each node is modeled as a set of
+processes where each process is modeled as a finite state machine (FSM). The entire network is simulated
+using a discrete-event simulator. OPNET supports three types of links: point-to-point, bus and wireless.
+A wireless link is used in wireless, mobile or satellite network simulation. However, although OPNET
+can simulate both wired and wireless networks, it does not include detailed models for wireless sensor
+networks as J-Sim does.
+7.1 Ns-2 versus J-Sim
+Ns-2 began as a variant of the REAL network simulator in 1989, and has evolved substantially over
+the past few years. It provides substantial support for simulating TCP flow control and congestion control,
+routing, and multicast protocols. A ns-2 node is modeled as a collection of Classifiers. These classifiers
+basically form a tree structure. At the leaves of this tree structure are Agents, which model protocols and
+Links (which in turns model interfaces and physical links). These classifiers distribute incoming packets
+to the correct agent and/or one or more outgoing links by examining the packet headers. A typical
+unicast node is depicted in Figure 10. To extend the nodal functionality, more classifiers are added and
+organized into the node.
+The way in which classifiers are composed in a node in ns-2 is similar to that in J-Sim in terms of
+the notion of compositional design. However, the nodal structure is very different from that in J-Sim (or
+18
+Aspect SSF J-Sim
+Object-oriented
+framework
+Five base classes:
+(i) Entity serves as a container mechanism for
+defining alignment of a group of components
+to common local time (e.g., ProtocolGraph ex-
+tends Entity);
+(ii) inChannel and (iii) outChannel are com-
+munication endpoints for event exchange;
+(iv) Event is the base class for information
+exchange; and
+(v) Process is the base class for describing
+dynamic behavior. Each instance of process
+is owned by a specific entity and may wait
+for input to arrive on channels owned by the
+entity, wait for some amount of simulation
+time to elapse, or do both.
+A simple and well-defined component-based
+software architecture: Component is the base
+class. Ports are the only interfaces of a com-
+ponent to send/receive data. When data ar-
+rives at a port, a dedicated execution con-
+text (a Java thread) is created for the com-
+ponent to process the data. Components are
+distributed in the sense that two components
+may process different data at the same time
+without synchronization between them.
+Components can be hierarchically structured.
+A component may be itself a container mech-
+anism and consist of subcomponents. This
+facilitates hierarchical modeling of complex
+systems.
+Simulation
+framework
+Classes interact with the underlying simula-
+tion engine with defined APIs.
+Simulation engine is built in the runtime and
+is transparent to components.
+Process-oriented
+modeling
+A set of wait() methods is provided for mod-
+elers to write process-based models.
+Provides, in addition to the set of wait()
+methods, synchronization methods to further
+extend programming freedom.
+Simulation
+technique
+Discrete event simulation. Can work with both discrete event simulation
+and real-time process-based simulation.
+Configuration The configuration files are in the Domain
+Modeling Language (DML) format. They are
+used to synthesize a model and instantiate a
+simulation with the help of the configuration
+database package SSF.DML. The language is,
+however, not suitable to be used in an inter-
+action environment.
+A dual-language environment is provided:
+Java is used to create components and a
+script language is used as glue or a control
+language that integrates components in a de-
+sired fashion at run time and provides high-
+level, dynamic control. This facilitates fast
+prototyping of customized simulation scenar-
+ios, and runtime configuration and diagnosis.
+Performance
+scalability
+Achieving scalability by use of parallel simu-
+lation kernels.
+Working on parallel and distributed sim-
+ulation. Will investigate whether or not,
+and how, the conservative approaches pro-
+posed in [9, 21] can be leveraged in real-time
+process-driven simulation.
+Table 3: A comparison between SSF and J-Sim.
+8 Evaluation
+As mentioned in Section 1, a drawback of the ACA is the component overhead. In this section, we
+intend to better understand whether or not, and to what extent, J-Sim component overhead has an impact
+on its scalability. Specifically, we first evaluate J-Sim in terms of its inter-component communication
+overhead and thread management overhead. Following that, we compare J-Sim against ns-2 and SSFNET
+in terms of their experiment set up time and simulation completion time.
+8.1 Inter-component Communication Overhead Incurred in J-Sim
+Recall that when data arrives at a port of a component, the runtime creates a thread as the new
+execution context to process the data at the receiving component. The time overhead incurred depends
+on how threads are created and handled. A straightforward approach is to create a new thread each time
+a new context is needed. As it is usually expensive to create and start a new thread, this approach is not
+20
+Runtime Implementation Overhead (µs)
+No thread recycling 60.83
+Thread recycling + synchronization 7.29
+Synchronization-free (one thread per message) 0.62
+Discrete event runtime (no thread management) 0.18
+Direct method invocation 0.038
+Table 5: Inter-component communication overheads incurred in J-Sim under different approaches. “Di-
+rect method invocation” is used as a baseline for comparison, and cannot be implemented in J-Sim.
+8.2 Empirical Comparison among J-Sim, ns-2, and SSFNET
+We now empirically compare J-Sim (version 1.3) against ns-2 (version 2.28) and SSFNET (version
+2.0) in terms of experiment setup time (i.e., time to create and configure the network before simulation
+starts) and simulation completion time (i.e., time to complete simulation of T units of simulation time).
+All the experiments for this part of study are conducted on a Pentium IV 2.66 GHz PC running Red Hat
+Linux 8.0 kernel 2.4.18 with 1 GB RAM. Each data point reported below is an average of 10 simulation
+runs.
+We adopt the popular single-bottleneck scenario (Figure 11) used in most of the congestion control
+and buffer management studies. Two routers are connected with a bottleneck link of propagation delay
+1.6 second. The first and second routers are connected to n TCP sender hosts and n TCP receiver
+hosts, respectively, where n varies from 10 to 10000. All the links between end hosts and routers have
+0.01-second propagation delay and 10Mbps bandwidth. Each sender host sets up a TCP connection that
+is destined to a distinct receiver host. The size of the buffer at the interface of the first router to the
+second is set to be 4096× n bytes. The rest of the system parameters were set as follows:
+• Simulation time T was set to 1000 seconds.
+• Maximum Segment Size (MSS) was set to 960 bytes. In J-Sim, the ns compatibility flag was set
+to true in order to use 40 TCP+IP header bytes, rather than 50. Using this setting, together with
+setting MSS to 960, makes packets have size 1000 bytes.
+• In J-Sim, the link emulation flag was set to true to enable link emulation.
+• The bandwidth of the bottleneck link was set to B × n where B = 50 kbps.
+• Two different loads are set up: MEDIUM and HEAVY. The maximum TCP throughput is set to
+r × B where r is set to 50% and 90% for MEDIUM and HEAVY loads respectively and the TCP
+maximum throughput is approximately calculated as min(CWND, AWND)
+RTT
+where RTT = 2 × (1.6 +
+2 × 0.01) = 3.24 second. Therefore, min(CWND, AWND)
+RTT
+= r ×B.
+Although the single bottleneck scenario does not represent a wide spectrum of possible simulation
+scenarios, it does serve as a good scenario to stress testing a simulation environment because (1) the
+routing table size of each router is at least (n + 1); (2) since at least one TCP retransmission timeout
+event is set for a TCP connection, there are at least n events in the event queue of the simulation
+engine during the entire duration of a simulation run; (3) for each acknowledgment packet, TCP resets
+(under most cases) the retransmission timeout event, which involves canceling the previous event and
+then enqueuing a new event at the end of the event queue; and (4) during the transport of a data packet
+and its corresponding acknowledgment packet, at least six events are created for each hop and each event
+is enqueued at/near the front of the queue. From the above observations, we can conclude that (a)
+22
+ 0
+ 100
+ 200
+ 300
+ 400
+ 500
+ 600
+ 0  1000  2000  3000  4000  5000  6000  7000  8000  9000  10000
+Se
+tu
+p 
+Ti
+m
+e 
+(se
+co
+nd
+s)
+Number of Connections
+J-Sim/Event/Java
+J-Sim/Event/Tcl
+J-Sim/Real/Java
+J-Sim/Real/Tcl
+NS2
+SSFNET
+(a) Experiment setup time
+ 0
+ 2000
+ 4000
+ 6000
+ 8000
+ 10000
+ 12000
+ 0  1000  2000  3000  4000  5000  6000  7000  8000  9000  10000
+Co
+m
+pl
+et
+io
+n 
+Ti
+m
+e 
+(se
+co
+nd
+s)
+Number of Connections
+J-Sim/Event/Java
+J-Sim/Event/Tcl
+J-Sim/Real/Java
+J-Sim/Real/Tcl
+NS2
+SSFNET
+(b) Simulation completion time
+Figure 12: Experiment setup time and simulation completion time incurred in carrying out 1000-second
+simulation in ns-2, SSFNET and J-Sim (MEDIUM load).
+simulation is less than twice that in the case of event-driven simulation. There is an insignificant difference
+between the simulation completion time for a compiled program and that for an interpreted script.
+In terms of simulation completion time, ns-2 performs best (because a Java program is inherently
+slower than a C/C++ program). However, as shown in Figure 13(b), ns-2 suffers from memory thrashing
+and its performance deteriorates dramatically when n ≥ 9000 under HEAVY loads. SSFNET is not as
+scalable as J-Sim in terms of simulation completion time, and moreover, incurs out-of-memory exception
+when n ≥ 9000. In contrast, J-Sim exhibits better scalability because of better memory usage (in garbage
+collection), and its simulation completion time does not increase significantly with n. In the worst case,
+the simulation completion time in J-Sim (using event-driven simulation) is no more than four times larger
+than that in ns-2.
+Finally, as shown in Figures 12-13, the scenario setup time, which was often neglected, takes a
+non-negligible portion of the entire time for simulation. For example, it takes approximately 540 seconds
+for ns-2 to set up the simulation scenario of 9000 TCP connections for the case of MEDIUM load, and
+approximately 1078 seconds to complete the 1000-second simulation run; i.e., the scenario setup time is
+more than 50% of the simulation completion time.
+9 Conclusions and Future Work
+In this paper, we present the design, implementation, and evaluation of a component-based, com-
+positional network simulation environment, called J-Sim. Through empirical studies, we show that (a)
+in large-scale simulation scenarios (e.g., the number of nodes ≥ 18000), J-Sim outperforms ns-2 and
+SSFNET in terms of the simulation setup time and the simulation completion time, and (b) in small-
+scale simulation scenarios, the simulation completion time in J-Sim is no more than four times larger
+than that in ns-2.
+In conjunction with the work reported in this paper, we have enabled parallel simulation in J-Sim
+24
+[5] J. Cowie, H. Liu, J. Liu, D. Nicol, and A. Ogielski. “Towards Realistic Million-Node Internet Simulations”.
+In Proceedings of the 1999 International Conference on Parallel and Distributed Processing Techniques and
+Applications (PDPTA’99), Las Vegas, Nevada, June 28 - July 1 1999.
+[6] J. Cowie, D. M. Nicol, and A. T. Ogielski. “Modeling the Global Internet”. Computing in Science & Engi-
+neering, 1(1):42–50, January/February 1999.
+[7] A. Dupuy, J. Schwartz, Y. Yemini, and D. Bacon. “NEST: A Network Simulation and Prototyping Testbed”.
+Communications of the ACM, 33(10):64–74, October 1990.
+[8] GloMoSim. http://pcl.cs.ucla.edu/projects/glomosim/.
+[9] D. Hamnes and A. Tripathi. Feedback based adaptive risk control protocols in parallel discrete event simula-
+tion. Technical Report 95-002, Department of Computer Science, University of Minnesota, Minneapolis, MN,
+January 1995.
+[10] J. Heinanen, F. Baker, W. Weiss, and J. Wroclawski. “Assured Forwarding PHB Group”. RFC2597, Internet
+Engineering Task Force, June 1999. ftp://ftp.ietf.org/rfc/rfc2597.txt.
+[11] N. Heybey, A. Renovations by Robertson. “The Network Simulator”. Technical report, Laboratory of Com-
+puter Science, Massachusetts Institute of Technology, May 1994.
+[12] J-Sim. http://www.j-sim.org/.
+[13] V. Jacobson, K. Nichols, and K. Poduri. “An Expedited Forwarding PHB”. RFC2598, Internet Engineering
+Task Force, June 1999. ftp://ftp.ietf.org/rfc/rfc2598.txt.
+[14] S. Keshav. “REAL : A Network Simulator”. Technical Report 88/472, University of California, Berkeley,
+December 1988.
+[15] R. Morris, E. Kohler, J. Jannotti, and F. Kaashoek. “The Click modular router”. In Proceedings of the 17th
+ACM Symposium on Operating Systems Principles (SOSP’99), pages 217–231, Kiawah Island, South Carolina,
+December 1999.
+[16] K. Nichols, S. Blake, F. Baker, and D. Black. “Definition of the Differentiated Services Field (DS
+Field) in the IPv4 and IPv6 Headers”. RFC2474, Internet Engineering Task Force, December 1998.
+ftp://ftp.ietf.org/rfc/rfc2474.txt.
+[17] S. W. O’Malley and L. L. Peterson. “A dynamic network architecture”. ACM Transactions on Computer
+Systems, 10(2):110–143, May 1992.
+[18] OPNET. http://www.opnet.com/.
+[19] K. Perumalla, A. Ogielski, and R. Fujimoto. “TeD — A Language for Modeling Telecommunication Networks”.
+ACM SIGMETRICS Performance Evaluation Review, 25(4), March 1998.
+[20] C. Pfister and C. Szyperski. “Why Objects Are Not Enough”. In Proceeding of the First International
+Component Users Conference (CUC’96), 1996.
+[21] A. L. Poplawski and D. M. Nicol. “Nops: A Conservative Parallel Simulation Engine for TeD”. In Workshop
+on Parallel and Distributed Simulation, pages 180–187, 1998.
+[22] K. Ramakrishnan and S. Floyd. “A Proposal to add Explicit Congestion Notification (ECN) to IP”. RFC2481,
+Internet Engineering Task Force, January 1999. ftp://ftp.ietf.org/rfc/rfc2481.txt.
+[23] A. Sobeih, W.-P. Chen, J. C. Hou, L.-C. Kung, N. Li, H. Lim, H.-Y. Tyan, and H. Zhang. J-Sim: A simulation
+environment for wireless sensor networks. In Proc. of the Annual Simulation Symposium (ANSS 2005), 2005.
+[24] Ssfnet.org. “Scalable Simulation Framework API Reference Manual Version 1.0”, March 1999. Documentation
+Draft, James H. Cowie, Editor.
+[25] H.-Y. Tyan. Design, Realization and Evaluation of a Component-based Compositional Software Architecture
+for Network Simulation. PhD thesis, Department of Electrical Engineering, The Ohio State University, 2002.
+[26] H.-Y. Tyan and C.-J. Hou. Design, realization, and evaluation of a component-based, compositional network
+simulation environment. In 2002 SCS Western Multiconference on Computer Simulation – communication
+networks and distributed systems modeling and simulation conference, January 2002.
+[27] H.-Y. Tyan, A. Sobeih, and J. C. Hou. Towards composable and extensible network simulation. In Proc. of
+IPDPS’05, NSF Next Generation Software Program Workshop, 2005.
+[28] J. Udell. “ComponentWare”. BYTE Magazine, 19(5):46–56, May 1994.
+[29] B. F. Webster. “Pitfalls of Object-Oriented Development”. M&T Books, New York, 1995. ISBN 1-55851-397-3.
+26

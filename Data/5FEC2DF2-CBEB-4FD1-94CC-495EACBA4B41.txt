@@ -1,0 +1,1941 @@
+ 2 
+行政院國家科學委員會專題研究計畫成果報告 
+ 
+網路虛擬環境動態負載分擔多重伺服器架構 
+A Dynamic Load-Sharing Multi-Server Architecture  
+for Networked Virtual Environments  
+ 
+計畫編號 ：NSC 98-2221-E-008-049- 
+執行期限 ：98 年 8 月 1 日至 99 年 12 月 31 日 
+主持人  ：江振瑞    國立中央大學資訊工程系 
+共同主持人 ：黃興燦    國立中央大學資訊工程系 
+ 
+中文摘要 
+本計畫提出一個應用於網路虛擬環境(Networked Virtual Environments, NVEs)的多重伺服
+器動態負載分擔機制，在虛擬環境中某些區域因事件或熱點效應而發生過載時，能將過重的
+負載有效率的轉移給鄰接區域的伺服器，以提高系統的擴充性(Scalability)和服務品質(Quality 
+of Service)。本計畫將整個虛擬環境空間分割成固定大小的細胞(Cell)，數個細胞形成一塊區
+域(Region)，每一個區域都由一個區域伺服器(Region Server)管理。我們提出分散式的導向性
+負載擴散演算法(Directed Load Diffusion algorithm, DLD)來偵測與處理局部區域過載的問題： 
+1. 每一伺服器自我偵測負載是否超過過載門檻值(Overload Threshold, OLT)以判斷是否啟動
+負載釋放程序。 
+2. 過載發生時，以過載(Overloaded)伺服器為中心選擇區域之邊界細胞(Boundary Cells)轉移
+給選定的相鄰低載(Underloaded)伺服器，調整後的管理區域仍是連續且維持最小邊界，以
+避免過多的跨伺服器通訊(Inter-Server Communication, ISC)影響系統效能。 
+3. 運用強制負載帄衡請求 (FLB-Req)來改進熱點(Hotspot)所造成的連續區域過載和負載轉
+移沒有效率的問題。 
+本計畫並進行模擬實驗以驗證 DLD 演算法在降低遷移(Migration)產生的資料量與減少跨伺服
+器通訊(Inter-Server Communication, ISC)兩方面的優越性。實驗結果顯示 DLD 在此二方面都
+優於相關研究提出的負載帄衡方法，DLD 演算法具有良好的負載帄衡特性，而且具有較低的
+負載移轉成本與跨伺服器通訊成本。 
+ 
+關鍵詞：負載帄衡、網路虛擬環境、多人線上遊戲、熱點、多重伺服器 
+ 4 
+一、前言 (Introduction) 
+ 
+網路虛擬環境(Networked Virtual Environment, NVE)可以讓散布於各地的使用者透過網
+路在網路的虛擬環境中互動，其中最成功的應用就是現在流行的巨量多人線上遊戲 
+(Massively Multi-player Online Game, MMOG)。巨量多人線上遊戲會同時有數以萬計的玩家同
+時處在同一個虛擬環境之中，以目前最廣為應用的主從式(Client/Server)網路架構來說，用戶
+端的狀態更新、維護、同步、仲裁等工作都倚賴伺服器來進行，然而隨著使用者數量增加，
+伺服器的運算能力和通訊頻寬等因素成為限制虛擬環境規模和遊戲品質的瓶頸。雖然有一些
+研究採用同儕式(peer-to-peer, P2P)架構來提升 NVE 的擴展性，然而 P2P 網路架構的不穩定
+性、不易管理與安全性未臻成熟等因素，使得這種架構仍未被大規模的應用於商業使用。要
+突破這些限制因素，多重伺服器 (Multi-Server) 是有效且在商業上被廣為使用的架構，以
+MMOG 為例，整個遊戲的虛擬環境被分割成許多個區域，每個區域都由一部區域伺服器
+(Region Server, RS)管理，如此系統可以以加入更多區域伺服器來滿足虛擬環境規模擴大和使
+用者數量增加所帶來的服務需求。 
+然而，使用多重伺服器技術仍有一些問題有待解決，其中最關鍵的是伺服器之間的動態
+負載帄衡問題。由於大多數的網路虛擬環境應用，尤其是 MMOG，使用者可以隨意在虛擬環
+境中移動，致使某些區域伺服器得負載超過負荷，而某些區域伺服器剩餘大量的資源而未被
+使用。靜態的區域劃分與伺服器配置並不適用於這種動態的應用環境，近年來有些研究針對
+這樣的需求提出了動態多伺服器的負載帄衡演算法[1][3][5][7][10][11][13]，各自以不同的伺
+服器負擔監控標準與負載調整程序，某個程度上解決多重伺服器間的動態負載帄衡問題。然
+而，效能仍不夠理想，尤其是當網路虛擬環境中出現熱點(Hotspot)現象時；此外，過高的負
+載轉移成本和跨伺服器通訊(Inter-Server Communication, ISC)成本對於系統的運作有不利的
+影響。 
+大部分的動態負載帄衡演算法會先將整個遊戲虛擬空間全部分割成固定大小的細胞
+(Cell)，數個細胞形成一塊區域 (Region)，每一個區域都由一個區域伺服器管理 (Region 
+Server)。Cell 可分為兩種，一種是有和其他區域伺服器相鄰的 Cell，稱為邊界細胞(Boundary 
+Cell)，另一種相鄰的細胞都是屬於相同區域稱為內部細胞(Inner Cell)。當其中一個區域伺服
+器發生過載(overloaded)的情況，就必須要啟動負載帄衡的機制來維持遊戲的品質。大部分的
+動態負載帄衡演算法會以改變伺服器所掌管的區域配置(Region Remapping)，將負擔過載區域
+裡的部分 Cells 轉移給其他負擔較輕的伺服器來達成目的。進行區域重配置必須考慮 (a)盡可
+能讓網路虛擬環境裡的各個伺服器達到負載帄衡  (b)盡量將跨伺服器通訊 (Inter-Server 
+Communication)降到最低[7]。為了滿足(a)，在動態負載帄衡演算法進行區域重配置後，各伺
+服器的管理區域(Managing Region)可能不是一塊連續的範圍，當使用者在虛擬環境中移動
+時，發生伺服器之間的 Avatar 遷徙(Avatar Migration, AM)的機率將大幅增加，頻繁的 Avatar
+遷徙會讓使用者明顯地感覺到系統反應的遲滯而影響其滿意度。當伺服器的管理區域不是一
+個連續的範圍時，表示管理區域的邊長增加，並導致跨區域通訊的數量增加，也讓使用者會
+有較大的機率跨越不同伺服器所管理的區域，造成 Avatar 遷徙次數的增加，跨伺服器通訊使
+得一個訊息必須被傳送兩次而增加伺服器負載量。 
+另外一個會影響到負載帄衡的因素是熱點(Hotspot)，熱點發生的原因通常是因為事件或
+是地標(如：遊戲中的轉運站、市集)等等人潮眾多的地點。採用固定式區域的演算法無法完
+全解決熱點(Hotspot)問題的原因是因為無法動態的調整伺服器區域管理的大小，熱點引發的
+計算與通訊頻寬需求會集中於一個小範圍區域內，因而無法被轉移而造成瓶頸。 
+針對這些問題，我們提出 DLD (Directed Load Diffusion)多重伺服器間的動態負載帄衡演
+算法，從區域的配置和熱點(Hotspot)問題的處理兩個方向解決區域負擔過載(Overloading)的問
+ 6 
+ 
+2.Snap-based動態負載帄衡演算法  
+ 
+Snap-based 動態負載帄衡演算法的概念是周期性的記錄系統的瞬間狀態，類似快照
+(snapshot)的方式，將當時每個伺服器的負載狀況記錄下來，以此偵測是否發生負荷過載，並
+以這些紀錄來做為進行負載帄衡的依據。在Chen等[7]提出的方法中，每一個伺服器必須定期
+去抽樣自己發送更新封包給所管轄的使用者的頻率，並計算出帄均時間間隔作為服務品質
+(Quality of Service, QoS)的標準。在此方法中，每一個伺服器皆須維護一個稱為地區負載圖的
+無向圖G(V, E, W)，其中V的每一個元素v代表一個區域；元素e為伺服器在虛擬區域中負責區
+域的拓樸關係，相鄰且同屬一個伺服器的區域的e是連接狀態；每個v具有w表示其負載狀態。
+每個伺服器定時和相鄰伺服器間交換地區負載圖及輕負載伺服器列表，以獲得虛擬環境的全
+域連接與負載狀態。此方法會造成嚴重的區域零碎化(fragmentation)，因而引起非常高的跨區
+域通訊，這時需要針對零碎的區域進行整合，由於負載釋出和區域整合的程序過於繁複，這
+個方法的運作成本很高。 
+Morillo 等[10]提出不同的做法，伺服器對應的管轄單位是物件而非區域。每個伺服器的
+CPU使用率以及管轄的使用者(avatar)必須定期的被監控，當一伺服器的CPU利用度超過99%
+的時候，就會觸發負載帄衡機制將部分使用者轉移到其他伺服器，讓伺服器的CPU使用率至
+少降低到90%。每一個使用者對伺服器造成的負載是由存現度Pf (presence factor)所計算出來，
+一個使用者的Pf定義為其AOI(Area of Interesting)之中包含自己本身和其它使用者數量，伺服
+器將會定期地計算每個使用者所造成的負載。本方法中，伺服器須將管轄的物件依照他們的
+Pf進行排序以決定轉移的物件，其前提是假設負載相當的物件應屬於同一區域，一旦此前提
+不成立變容易造成很大的通訊延遲。 
+其他研究如Ahmed和 Shirmohammad [5]所提出的方法中，是根據各個Cell內的訊息生成
+率(messages generation rate)來決定Cell的負載程度。[1][11]的論文中將所有Cells的負載由中央
+伺服器做最佳化配置，其運算複雜度很高，而且無法滿足NVEs中使用者容易動態移動的需求。 
+ 
+3.Greedy-based動態負載帄衡演算法  
+ 
+不同於前述的 Snap-based 演算法需要時常更新其它伺服器的負載狀態以便選擇負載釋放
+的對象，Greedy-based 動態負載帄衡演算法只把過度的負載轉移給鄰接區域的伺服器，若所
+有鄰接伺服器都處於過載狀態，它們也用同樣的程序將承接的負載或過度的負載轉移給其他
+鄰接伺服器，依此直到系統的負載帄衡為止。相較於 Snap-based 演算法，Greedy-based 動態
+負載帄衡演算法的運作成本較低。 
+Wang 等人[13]提出一個 Greedy-based 的動態負載帄衡演算法-Layered Iterative Load 
+Balancing Algorithm，在過載發生時，過載伺服器以 BFS 方式來搜尋自己的鄰居(稱為第一層
+鄰居, 1st layer neighbor)，當第一層鄰居中有伺服器的負載低於安全負載閾值(safe load 
+threshold)，則直接將超過的部分負載轉移到該伺服器。如果第一層鄰居的負載皆超出安全負
+載閥值，或是原過載伺服器在進行負載轉移後仍然高於安全負載閥值，表示第一層鄰居無法
+幫助過載伺服器將負載降低到安全負載閥值以下。這時第一層鄰居會以 BFS 方式試圖將負載
+轉移到自己的鄰居，亦即原過載伺服器的第二層鄰居(2nd layer neighbor)，如此依序進行到過
+載伺服器的負載量低於安全負載閾值或是參與負載轉移的鄰接伺服器層數超出最大層數 k 時
+為止。至於要如何選擇需要被移轉的 Cell，作者以每個 Cell 所有相鄰的 Cells 中隸屬於轉入區
+域和轉出區域的比值，經位置因素調整後作為 Cell 的權值。權值較大的 Cells 將被優先移轉，
+因為這些 Cells 被移轉後，會引發的跨區域通訊最少。 
+Bazerra 等[3]提出的演算法並非已轉移局部 Cells 所帶來的負載考量，而是將鄰近幾個區
+域的負載重新分配，已達到負載帄衡的目的。當過載情形發生時，過載 server 會尋找在虛擬
+ 8 
+Cell)的資訊，相同的 SB 也會取得區域 A 的邊界 Cell(圖 2a 中格紋的 Cell)的資訊；區域 A,C
+和區域 B,C(圖 2)之間亦相同，區域伺服器相互交換訊息，讓鄰接區域的伺服器取得該區域的
+邊界 Cell 之狀態。如此可讓處於區域邊界 (region boundary)的 Avatar，能夠得知相鄰區域的
+邊界 Cell 的狀態，當 Avatar Migration 發生時，將可省去 Avatar 資料在區域伺服器之間的複
+製動作， 因而使得 Avatar 控制權移轉可以加快，降低使用者感受到的遲滯，達到無縫式
+(seamless)的虛擬環境。另外在伺服器交換的訊息中，也包含伺服器當時本身的負載量，供鄰
+接區域伺服器在發生過載時，計算地區負載比率(Local Load Ratio, LLR)之用。 
+A
+C
+B
+C
+A
+B
+ 
+(a) 伺服器 A, B 交換       (b) 伺服器 B, C 交換 
+圖 2 伺服器之間的邊界 Cell 資訊交換 
+ 
+負載定義 
+ 
+在本研究中，負載可分為伺服器的計算負載(computational load)和伺服器處理訊息封包
+(message packets)的負載。當使用者狀態改變或事件(event)發生時，用戶端發出行為請求
+(request)傳送給伺服器，伺服器收到請求後進行相對應的計算處理，再將計算後的結果更新
+(update)傳給使用者。所以經由 Avatar 行為所產生的伺服器負載可由下列三個參數所加總得
+出： 
+(a) 處理用戶端請求所產生的負載 (Request Load, RL) 
+(b) 計算處理所產生的負載 (Computational Load, CL) 
+(c) 對用戶端更新狀態所產生的負載(Update Load, UL) 
+如圖 3 (a)所示，Avatar a1 與 b1 並沒有在對方的 AOI(Area of Interest)裡，因此伺服器 A 與伺服
+器 B 的負載來自所管轄的 Avatar。在圖 3(b)，由於 a1 同時在 a2與 b1的 AOI 裡，所以系統必
+須讓 a2 與 b1 都能夠收到 a1 的狀態更新 
+ 
+AOI of a1
+Server A
+Client a1 Client b1
+Req a1
+Update a1
+Server B
+Req b1
+Update b1
+AOI of b1
+Border
+Inter-Server 
+Comm(A,B) = 0
+Load (Sa) = 
+RLa1 + CLa1 + ULa1
+Load (Sa) = 
+RLb1 + CLb1 +  ULb1
+ 
+(a) Avatar 不在相互的 AOI 內 
+ 10 
+ 
+2. 導向性負載擴散演算法 
+本節將討論我們提出的導向性負載擴散演算法(Directed Load Diffusion algorithm, DLD)
+的處理程序與執行細節。DLD 在選擇負載轉移對象和負載轉移量依據 LLR 而有所不同，此
+外在選擇被移轉的 Cells 同時考量如何降低跨伺服器通訊。 
+ 
+Greedy Load Balancing 
+ 
+判斷過載機制 
+在虛擬環境進行中，伺服器每隔一檢查週期(check load period, TCL)檢查自身的負載狀
+況。伺服器發現本身負載大於過載門檻值 OLT 時，即判定過載情形發生，必須進行負載帄衡
+動作。 
+ 
+選擇負載轉移的對象伺服器 
+過載情形發生後，過載伺服器隨即計算本身所處地區 LLR 是否大於安全門檻值。若 LLR
+小於安全門檻值，表示以伺服器為中心的地區負載情形良好，伺服器將選擇鄰居伺服器中負
+載比率最低者進行負載轉移，可以讓以過載伺服器為中心的地區中不同容量的伺服器，保持
+相近的使用率；若 LLR 大於安全門檻值，則表示該地區的負載情形已經偏高，每個鄰接伺服
+器的負載比率都已接近安全門檻值，過載伺服器將選擇鄰接伺服器中安全容量最大者作為負
+載轉移的對象，以求能夠儘快地將負載轉移出去。 
+ 
+計算轉移負載量 
+在 Greedy load balancing 程序中，不論選取的負載轉移對象是該地區中負載比率最低者或
+是安全容量最高者，都是為了不使接收端伺服器負載超出安全門檻值，因此必須以過載伺服
+器的 OSV 和接受負載轉移伺服器的 SC 兩者取最小值來做為轉移負載量。 
+ 
+Forced Load Balancing (FLB) 
+ 
+強制負載帄衡請求 (FLB-Req) 
+在發生 Hotspot 的區域，產生的負載量具有連續性及負載量與 Hotspot 距離呈現反比的特
+性，區域距離 Hotspot 的核心愈近，負載量愈重；反之則負載愈輕。所有當一個區域內有一
+個負載極高的 Hotspot 時，其周圍區域的負載也可能很重，使每個鄰居伺服器都超出安全門
+檻值，因而無法接受管理 Hotspot 的過載伺服器的負載轉移，或是在負載轉移後伺服器的負
+載仍然安全過載門檻值。如此該伺服器必須發出一個強制負載帄衡請求(FLB-Req)給自己的所
+有鄰接伺服器，每個收到 FLB-Req 的伺服器不論其負載是否已達到過載門檻值，都將進行負
+載轉移的動作。 
+ 
+禁止移轉列表 (FT-List) 
+在常見的情況下，過載伺服器的兩個鄰居伺服器，也會是相互的鄰居，形成一個三角連
+結(triangle connection)，位於三角連結中的伺服器相互的負載轉移造成該地區的 LLR 仍然無
+法減輕，並沒有實質的將過載伺服器的負載釋放。為避免這樣的情形，在過載伺服器發出的
+FLB-Req 中包含一個禁止移轉列表(Forbidden Transfer List, FT-List)，FT-List 內有過載伺服器
+和其所有鄰居伺服器的 ID。所有收到 FLB-Req 的伺服器都不能將負載往 FT-List 上列有的伺
+服器移轉，如此可以迫使收到 FLB-Req 的伺服器將負載往較外層的地區擴散，如此才能減輕
+發生 Hotspot 區域的負載。 
+如果 Hotspot 所在的區域管理伺服器 SH已經過載，其鄰居伺服器必須盡快地清出空間，
+以協助 SH將負載降低至過載門檻值以下。因此在收到 FLB-Req 後，這些鄰居伺服器會試圖
+ 12 
+的效果不大；反之若取樣數太多，則容易造成帄均數無法適時地反應動態的情況，產生失真
+現象。 
+ 
+負載帄衡時機調整機制 Balancing Timing Coordination (BTC) 
+在 Greedy load balance algorithm 中，伺服器須定時檢查自己是否有過載情形發生，若是
+檢查是否過載的頻率太高則浪費伺服器資源，且當同一時間有兩個以上的伺服器發生過載情
+形而同時進行負載帄衡的工作，可能會造成將負載帄衡動作的衝突(collision)，導致負載轉移
+至同一個伺服器使其產生過載的不當配置。因此我們以負載帄衡時機調整機制 Balancing 
+Timing Coordination (BTC)來處理這類問題，在以檢查週期 TCL 為單位的時間內，每個伺服器
+都擁有一個專屬的 Time slot，在各自的 Time slot 中進行過載檢查的動作。 
+Time slot 可以大幅降低負載分擔的衝突問題，卻可能造成當伺服器處於過載狀況時又無
+法一次將負載降至安全門檻值時，必須等待下一個 Time slot 才能再次進行負載帄衡的處理，
+造成負載帄衡的效率降低。較理想的對策為當過載伺服器無法一次將過載的負載轉移完畢，
+將 TCL 調整為一秒，以利下一秒直接處理剩餘的轉移工作，直到轉移工作處理完成。當過載
+伺服器的負載成功地降至安全門檻值以下，為了防範相同的 Hotspot 可能再出現，伺服器將
+於每次檢查負載沒有發現過載以後，將 TCL 乘以 2，逐步拉長 TCL，直到 TCL 達到原來的 Time 
+slot 設定。 
+ 
+五、結果與討論 (Results and Discussions) 
+ 
+我們以實驗來驗證 DLD 動態帄衡演算法的效能，實驗的各項主要環境設定如表 2 所列，
+每個伺服器最少必須管理一個 Cell，最多則沒有限制，並使用三個 Hotspot 來模擬 Avatar 群
+聚的情形。我們設定將過載門檻值，安全門檻值與輕載門檻值分別設定為 0.9，0.8 和 0.6 以
+預留 10%的容量來應付可能突然增高的負載。鑑於目前的 MMOG 中用戶端皆以許多不同格
+式的指令與外部通訊，各個指令在伺服器端產生的負載不同，本實驗假設伺服器端在收到
+Avatar Req 後產生三種隨機負載，分別為 3, 5, 以及 10，以求更符合現實世界中的虛擬環境系
+統。參考市面上熱門的 MMOG[15][17] 實際使用參數，我們將 Avatar 移動速度與 AOI 半徑
+的比率設定為 1:4，TCL則設定為 32[14]。在實驗中 Migration 值是 Cell 轉移時須處理的資料
+量，按照產生的原因可分為 (1) Still migration：因 Cell 被移轉而產生的 Migration。(2) Walking 
+migration：Avatar 移動產生的 Migration 
+表 2 虛擬環境參數設定 
+Cells  224 (14*16) 
+Servers  8 
+Avatars  800 
+Avatar request load  1 
+Avatar update load  2 
+Avatar computational load 3, 5, or 10(random)  
+Duration  30 min 
+Tload_avg 20 
+TCL 32 sec 
+ 
+表 3 伺服器處理容量設定 
+S0 S1 S2 S3 S4 S5 S6 S7 
+1000 1400 1800 2200 1000 1400 1800 2200 
+ 
+由於本演算法使用伺服器負載率作為判斷過載與否的依據，可以達到異質系統間的動態
+負載帄衡，如圖 4 表示，在整體系統接近滿載的情況下，伺服器負載量仍然依照各伺服器的
+容量比率分配。 
+ 
+ 14 
+ 
+負載帄衡指標 
+ 
+本研究以伺服器負載標準差 σ 來做為負載帄衡的指標，圖 7 中可以看出 DLD-wLC 在大
+部分的測試時間內 σ 皆保持於最低的位置，這是由於 DLD-wLC 在選擇負載轉移對象時，同
+時考量地區的負載帄衡，並且避免接收端發生過載情形。DLD-woLC 則因為缺乏檢查接收端
+伺服器負載機制而表現出負載震盪較為劇烈的情形。 
+ 
+0
+0.05
+0.1
+0.15
+0.2
+1
+0
+0
+2
+0
+0
+3
+0
+0
+4
+0
+0
+5
+0
+0
+6
+0
+0
+7
+0
+0
+8
+0
+0
+9
+0
+0
+1
+0
+0
+0
+1
+1
+0
+0
+1
+2
+0
+0
+1
+3
+0
+0
+1
+4
+0
+0
+1
+5
+0
+0
+1
+6
+0
+0
+1
+7
+0
+0
+1
+8
+0
+0
+DLD-wLC
+DLD-woLC
+ProGReGA
+M
+ean
+u
+sag
+e d
+ev
+iatio
+n
+ 
+圖 7 三種演算法伺服器負載標準差 σ 比較 
+ 
+六、計畫成果自評 (Self Evaluation) 
+ 
+本研究所提出的 DLD 是以貪婪演算法為基礎的方式，讓不同的伺服器間以移轉邊界 Cell
+管理權的方式來達成負載的移轉，並且根據周圍鄰居伺服器的負載狀況，依據地區負載比率
+(Local Load Ratio, LLR)挑選擁有最小容量使用率或最大剩餘容量的鄰居伺服器來做負載轉
+移，讓不同容量上限的伺服器，都能維持在安全負載量(safety load ratio, SLT)以下。當伺服器
+超出上限且第一層鄰居伺服器已無法分擔其負載，伺服器將發出強迫負載帄衡請求(Forced 
+Load Balance Request, FLB-Req)，迫使第一層鄰居伺服器將負載轉移第二層鄰居以騰出空間協
+助過載伺服器降低負載量，並且各個伺服器盡力維持自己區域形狀的連續性以減少跨伺服器
+通訊。我們以模擬實驗來驗證 DLD 演算法的執行效能，並將模擬結果與相關的 ProGReGA[7]
+動態負載帄衡方法的模擬結果進行比較，證實 DLD 演算法具有較佳的負載帄衡效能，而且具
+有較低的負載移轉成本與跨伺服器通訊成本。針對 NVEs 的應用特性，DLD 是一個良好的
+Multi-Server 架構的負載帄衡解決方案，對於本計畫的研究目的也都獲得很好的處理結果。 
+ 
+本計畫共參與一個國際合作研究計畫，並發表三篇相關研討會論文與一篇碩士論文(研究
+生: 張富翔, 論文標題: 網路虛擬環境多重伺服器動態負載帄衡)，以下是本計畫所發表國際會
+議論文和參與國際合作研究計畫的報告。我們認為本計畫的研究成果符合計畫之預期。 
+ 
+參與國際合作研究計畫報告 
+1. 與巴黎第六大學 Maha Abdallah 教授之國際合作研究計畫國外研究報告書 
+Conference / Workshop Paper 
+1. Shun-Yun Hu, Chuan Wu, Buyukkaya, E.,   Chien-Hao Chien,   Tzu-Hao Lin,   Abdallah, M.,   Jehn-Ruey 
+Jiang,   Kuan-Ta Chen, “A Spatial Publish Subscribe Overlay for Massively Multiuser Virtual Environments,” 
+2010 International Conference on Electronics and Information Engineering (ICEIE 2010), Aug. 2010. 
+2. Chien-Hao Chien, Shun-Yun Hu and Jehn-Ruey Jiang, “Bandwidth-Aware Peer-to-Peer 3D Streaming,” 
+NetGames 2009, 2009. 
+3. Mo-Che Chan, Jehn-Ruey Jiang, Chao-Wei Hung, and Wei Tsang Ooi, “Group-Based Peer-to-Peer 3D 
+Streaming Authentication,” 3rd International Workshop on Peer-to-Peer Network Virtual Environments 
+(P2PNVE 2009), 2009. 
+出席國際學術會議心得報告 
+報告撰寫人: 江振瑞 
+ 
+本次至法國巴黎第六大學參加 NetGames 2009 會議(Paris, France, 
+November 23-24, 2009)，擔任 session chair(Session 5: Massively Multiplayer 
+Online Games)並發表一篇論文(Title: Bandwidth-Aware Peer-to-Peer 3D 
+Streaming，如附件)。巴黎第六大學為一著名大學，以理工領域之研究著稱，
+因為居禮夫人曾在該校任教並從事研究工作，又稱居里夫人大學。以下為
+會議在巴黎第六大學進行的概況。 
+NetGames 2009 邀請 Michael R. Macedonia , Ph.D. (Vice President and 
+General Manager, Forterra Federal Systems) 舉行第一場標題為 “Next 
+Generation Virtual Worlds”的專題演講，Macedonia 博士介紹 21 世紀虛擬世
+界的新挑戰，包括如何使用 cloud computing 與 virtual machine 概念、如何
+實踐 security 與 privacy、如何在 mobile devices 上設計更有效的使用者介面
+與更高效能的應用等。第二場專題演講標題為“Trends in 3D technologies 
+and the impact on networked games”，由 Rémi Arnaud, Ph.D. (Chief Software 
+Architect Screampoint International)主講，Arnaud 博士針對 3D 內容的產出
+與使用現況有深入淺出的剖，尤其對於新的技術，如 GPU、OpenCL、 
+COLLADA、WebGL、MPEG、OpenGL ES 等更有詳細的說明。 
+NetGames 2009 僅接受 18 篇論文，分 5 個 seesion 進行發表，分別為
+Session 1: Impact of Avatar Movement & Players' Behavior, Session 2:                             
+Mobile and Wireless Games, Session 3: Posters & Demos, Session 4:                             
+P2P Game Architecture, Session 5: Massively Multiplayer Online Games。會議
+進行中，與會學者導論熱烈，本次會議，我們在 P2P Game Architecture 的
+session，發表標題為“Bandwidth-Aware Peer-to-Peer 3D Streaming”的論文。
+論文發表之後，有多位與會人士提問。例如，有學者問到在我們論文提到
+的影響網路頻寬使用效率的三個因素中，何者的影響程度最大?根據我們實
+驗的數據顯示，這三者的影響程度相當。報告撰寫人與提問者進行簡短的
+討論，而提問人明顯滿意報告撰寫人的答覆。 
+報告撰寫人並獲邀請主持 Massively Multiplayer Online Games 的
+session。這個 session 中有三篇論文發表，分別為“PlayerRating: A Reputation 
+System for Multiplayer Online Games”、“The Impact of Virtualization on the 
+Performance of Massively Multiplayer Online Games” 與 “Evaluating 
+Ginnungagap: a middleware for migration of partial game-state utilizing 
+core-selection for latency reduction”。 
+ 
+Recent proposals in P2P-based 3D streaming (e.g., FLoD
+[7]) show the benefits of using the P2P architecture to reduce
+server load. However, request contention and overloading
+can occur for some nodes [15], so some users’ bandwidth
+cannot be properly used when the data sources are limited
+to only a few nearby neighbors in the virtual space.
+This motivates us to propose a Bandwidth-Aware Peer Se-
+lection (BAPS) method that avoids request contention and
+overloading. Unlike existing P2P 3D streaming schemes,
+BAPS allows users to send requests to neighbors within the
+AOI (area of interest) as well as to other users. Therefore,
+more data sources become available. Furthermore, BAPS
+adopts bandwidth reservation and the Tic-for-Tac concept
+from BitTorrent [6] to 1) ensure a stable level of quality
+of service (QoS); 2) improve bandwidth utilization, and 3)
+achieve higher scalability. We verify BAPS with simulations
+and compare its performance with related P2P 3D streaming
+schemes to show its advantages.
+The rest of the paper is organized as follows. Section 2
+defines our problem and describes the expected results; Sec-
+tion 3 proposes our peer selection and piece selection meth-
+ods; Section 4 presents the results of the experiments; and
+conclusions will be given in Section 5.
+2. PROBLEM FORMULATION
+We formulate our user scenario based on Second Life, as it
+is a more generalized model for virtual worlds among current
+MMOGs. There are two types of network transmissions in
+Second Life: states and content data. States provide infor-
+mation about what surrounds the current user, such as the
+positions of other users and the placements or status of ob-
+jects (e.g., how filled is a glass of water, or how much money
+an item costs). When a user is aware of the surrounding
+objects through the states, requests of the 3D objects (i.e.,
+the content data) can then be sent to the server. States
+therefore consist of smaller packets and require higher re-
+sponsiveness and security. On the other hand, according to
+Huang et al. [9], 61% to 88% of the network traffic in Second
+Life is for textures, which is a type of 3D content. Therefore,
+to reduce server loading and maximize the number of con-
+current users, the sensible priority is to reduce bandwidth
+usage due to the transmission of 3D objects. This paper is
+based on a former study of FLoD [7], which is a framework
+that addresses issues of 3D streaming in a P2P network.
+In FLoD, there are two sources for content download: AOI
+neighbors and the server. AOI neighbors refer to the other
+users who are within a given user’s visibility, or Area of In-
+terest (AOI). As AOIs may intersect, users can find other
+users with similar object interests to form a neighbor group,
+which can then serve as another source for content down-
+load. When a user wants to download certain objects in
+the AOI, the user can send a request to another user who
+owns the object from the AOI neighbor group. If there are
+no AOI neighbors to request, requests are then sent to the
+server. However, as there is a limit on concurrent servable
+requests, a download might be delayed due to the inability
+to send or respond to requests. We identify three problems
+in FLoD’s basic strategy:
+1. Non-server content sources are limited to cur-
+rent AOI neighbors. However, other non-AOI users who
+have been in the same area may still possess the objects of
+interest. The download thus can be inefficient due to the
+insufficiency in content sources.
+2. Random peer selection can cause bandwidth
+waste and request jam. It is found that a naive random
+peer selection causes users of different upload bandwidth to
+carry the same loading [15], which means that the users of
+low upload bandwidth can be in a request jam (i.e., receiving
+requests beyond their capacities), whereas users with high
+bandwidth capacity are idling. The upload bandwidth thus
+is not efficiently allocated.
+3. Unstable connections exist between peers. As
+connections are created and broken very dynamically ac-
+cording to user movements, the response time of the con-
+tent requests cannot be estimated accurately. The quality
+of streaming thus would suffer and cannot be consistently
+guaranteed.
+In summary, it is found that getting content from only
+the AOI neighbors limits the download sources, and ran-
+dom selection causes unbalanced workload and request con-
+tention. Sung et al. [15] propose to solve the above problems
+by reserving a list of past AOI neighbors and using a multi-
+level AOI for the request areas. However, the work neglects
+the difference in upload bandwidth between users and does
+not assure that the source nodes have sufficient bandwidth
+to provide for download. The P2P network thus may not
+transmit most effectively. Besides, when the user density
+is high, even with multi-level AOI requests, users within a
+single area might still receive excessive data requests. There-
+fore, we propose an improved mechanism with the following
+objectives:
+1. Develop a bandwidth allocation method to reduce the
+waiting time to fulfill download requests and improve the
+streaming quality.
+2. Construct peer lists to provide additional data sources,
+and adopt a Bandwidth-Aware Peer Selection (BAPS) strat-
+egy, so that peer selection is not limited to only AOI neigh-
+bors.
+3. Introduce the Tit-for-Tat in BitTorrent [6] to provide
+prioritized download for users with larger upload bandwidth,
+so that they are able to provide more data to other users
+sooner, reducing the server’s loading for better scalability.
+3. DESIGN OF BAPS
+3.1 Assumptions and Basic Ideas
+Based on the ideas of FLoD [7] and the work of Sung et
+al. [15], we divide a virtual world into several scenes with
+fixed sizes. Each scene consists of a scene description with
+the number of objects and each object’s placement and size.
+When a user logins the virtual world, he/she will be informed
+of the scene descriptions according to the user’s AOI cover-
+age. In this work we assume that there is a gateway server
+to perform this task (i.e., the server notifies each user the
+necessary scene descriptions) in order to focus on the P2P
+aspect of content exchange. Note that in the original FLoD
+design, scene descriptions are provided by a P2P overlay as
+well. However, as scene descriptions are often much smaller
+than the actual content, we assume that they have negligible
+contribution to bandwidth and may be performed in either
+a client-server or P2P fashion. The required 3D objects
+are then downloaded according to the scene descriptions.
+When new objects are found, a list of required objects is
+formulated by a Piece Selection procedure to determine the
+content pieces to be downloaded and their priorities. Once
+a piece is selected, the Peer Selection procedure will find
+Table 1: Simulation parameters
+World dimension (units) 1000x1000
+Cell size (units) 100x100
+AOI-radius (units) 100
+Time-steps (10 steps = 1 sec) 1500
+Object Size (KB) 100 - 300
+Piece Size (KB) 5
+Percentage of Base Piece 10%
+Server Download/Upload Limit (KB) 1000/1000
+AOI neighbors. As users in set B have reserved bandwidth
+for incoming requests, when a piece request is sent to any
+peer in set B, it will immediately be served without being
+delayed due to too many requests. We choose from set B
+a content provider who has not yet reached the maximum
+supportable requests. If no provider is found in set B, then
+we pick a source from set C. When no appropriate provider is
+found either in set B or set C, we examine whether we meet
+the Server Request Condition [7]. If so, we send a request
+to the server. In case we fail to find anyone to request,
+that means the total system resource is insufficient, and we
+would randomly select a few users in set A to ask for new
+connections.
+When a provider receives a piece request, it should imme-
+diately decide whether to serve the request. In the original
+FLoD, the piece request procedure uses the first come first
+serve model, or FCFS. The benefit of this model is an equal
+opportunity for all requesters. Thus, the requested load-
+ing is evenly distributed. However, the FCFS model offers
+the same opportunity for users with high upload and users
+with low upload bandwidth, making the high capacity users
+to have idle bandwidth resource while unable to distribute
+content to others (called a content bottleneck [10]). To im-
+prove such scenario, when a requester asks for a connection
+channel, if the provider is fully loaded, connection preference
+is given to peers with higher upload bandwidth, using a Tit
+for Tat policy [6]. When connections are fully loaded, those
+with lower transmissions will be suspended, so that high ca-
+pacity peers can obtain content faster and serve sooner.
+4. EVALUATION
+This section describes the evaluation of BAPS via simu-
+lations. We first present the simulation environment and
+methods, followed by the metrics used and result analy-
+sis. Our experiment is based on the FLoD architecture and
+procedures [7] (see Table 1 for the simulation parameters).
+At the initialization phase, all 3D objects are placed ran-
+domly in the VE, and the object sizes are between 100KB
+to 300KB. During the experiment, several nodes are created
+to represent users of the virtual world. Similar to the ob-
+jects, their placements are random. At the beginning, all
+nodes remain at the initial positions until an initial set of
+AOI objects are all downloaded. This assures that users
+are equipped with some content to exchange with others be-
+fore their movements. This way we can focus on the steady
+state behaviors during data distribution. The user band-
+width allocation is set as in [2] (see Table 2) to simulate a
+real environment, so that we may examine the performance
+of different algorithms under a realistic bandwidth distribu-
+tion.
+Table 2: user bandwidth distribution
+download (KB/sec) upload (KB/sec) Node Fraction
+96 10 0.05
+187 30 0.45
+375 100 0.40
+1250 625 0.10
+4.1 Metrics
+The following metrics are used for performance evaluation:
+Server Request Ratio (SRR):Users request data pieces
+from both peers and the server. When a user is unable to
+find a peer provider and that the Server Request Condi-
+tion is matched, the user can request from the server. The
+proportion of pieces (in data size) obtained from the server
+is described in percentage as Server Request Ratio (SRR).
+Lower values of SRR mean lower loading for the server and
+better system scalability.
+Fill Ratio: To evaluate the visual quality of a scene, a
+simple quantity is to measure the ratio between successfully
+downloaded content and the total interested (i.e., within
+AOI) content (in sizes). Higher ratio means the user has
+downloaded a more complete 3D scene and thus will have
+better visual quality.
+Request Latency: The delay between sending a piece
+request to acquiring the piece is important, as it evaluates
+the efficiency of request serving and shows whether there is
+a request jam.
+4.2 Performance Analysis
+In the following simulations, we use two simulation setups
+to evaluate bandwidth utilization and the system’s scalabil-
+ity: (1) Fixed user size and movement paths to maintain
+the same available bandwidth, while adjusting object quan-
+tities to evaluate bandwidth utilization; (2) Fixed object
+placements and quantities with varying user size to evaluate
+the system’s scalability. Finally, we evaluate the streaming
+quality of with time-series in how fill ratio changes.
+Bandwidth utilization: In a P2P network, data pieces
+are obtained from both server and peers. When users cannot
+find appropriate sources in the P2P network, the request is
+shifted to server. So if the SRR is high, then the P2P net-
+work may be under-utilized. By maintaining the same user
+size (100 peers) and movement paths while varying the ob-
+ject size (from 100 up to 500), we test the P2P network’s per-
+formance under different workloads. We randomly place M
+objects in the VE, whose sizes are Di|i = 1, 2, 3...,M . The
+total content size thus is:
+∑M
+i=1Di, which is also the max-
+imum downloadable volume for a user. The average down-
+loadable volume in AOI is shown as AOIArea/WorldArea∗∑M
+i=1Di. For example, when there are 300 objects with an
+average size of 200KB, there will be a total of 60 MB of
+content, and the average content size in an AOI is 1.88MB.
+As shown in Figure 2(a), when the content sources are ex-
+tended from AOI neighbors to also include Peer List neigh-
+bors, with our Peer Selection strategy and the same number
+of objects, server’s loading reduces 59.8% on average. For
+example, when there are 200 objects, the SRR is 14.6% in
+FLoD but only 8.6% in BAPS, which is about a 55.9% re-
+duction on the server loading; when there are 500 objects,
+the reduction rate becomes 66.2%.
+The server loading is efficiently reduced due to having
+multiple sources and the improved peer selection. However,
+we also need to know the bandwidth overhead of using Peer
+Lists. It is found that Peer List transmission takes 4.3%
+in the entire transmission, and the proportion increases as
+the number of objects increases. This shows that its cost
+is acceptable, but also indicates that as the object quan-
+tity grows, AOI neighbors will not provide sufficiently, so
+requests for Peer Lists would increase.
+As for the fill ratio, Figure 2(b) shows that the fill ra-
+tio reduction in FLoD is higher than BAPS. When there
+are 100 objects, the fill ratio in FLoD is 87.5%, and when
+the object size increases to 500, the fill ratio is reduced to
+55.7% with a reduction rate of 31.8%. So as object density
+increases, bandwidth becomes insufficient and the fill ratio
+suffers. As for BAPS, the fill ratio is reduced from 92.5% to
+75.1%, which is 17% less compared to FLoD. Consequently,
+given identical bandwidth, BAPS is able to provide better
+utilization with a lower reduction in fill ratio.
+Figure 2(c) shows the latency for getting the base piece
+(i.e., the base latency [7]), where the base piece is 10% of
+object size. We note that as object size increases, it takes
+more time to get the base piece. The latency curve of FLoD,
+however, grows noticeably faster than BAPS. It is likely due
+to the limited content sources and random peer selection in
+FLoD, as requests are distributed evenly to all peers, even
+those with low bandwidth. With BAPS, not only base piece
+download is prioritized, bandwidth is also reserved for base
+piece requests to ensure that users can obtain them faster.
+System Scalability: We simulate different number of
+peers to evaluate the scalability of the system, while fixing
+the object size at 300. When users are unable to obtain
+content from peers, requests are shifted to the server. So we
+need to observe whether server loading increases as the num-
+ber of user scales. Figure 3(a) shows the percentage of data
+obtained from the server in FLoD and BAPS. When user
+size increases, FLoD and BAPS both reduces server loading.
+But for BAPS the server request ratio is even lower. Fig-
+ure 3(b) shows the average fill ratio after 1500 time-steps.
+The more limited content sources may produce the lower
+fill ratio for FLoD. Figure 3(c) shows the comparisons in
+base latency. We can easily observe the difference in perfor-
+mance from Figure 3(b) and Figure 3(c). One observation is
+that both FLoD and BAPS can effectively relive server loads
+and maintain relatively stable performances as user scales.
+However, BAPS in general achieves better performance, as
+connection channels are created to provide better guarantee
+on request latency.
+Streaming Quality: Figure 4(a) and Figure 4(b) show
+the time-series of fill ratio under 100 peers and 300 objects.
+We see that FLoD takes more time to stabilize, and when
+users begin to move, the fill ratio decreases more significantly
+than in BAPS. In these figures, we show the maximum /
+average / minimum fill ratios achieved among all users. A
+fast increase in maximum fill ratio indicates the effective use
+of the Tit-for-Tat policy. It preferentially makes the users
+connect with peers of higher upload speed and suspend the
+non-performing connection channels. The minimum fill ratio
+indicates the percentage of peers with the worst streaming
+quality. An important observation from Figure 4(b) is that
+by reducing request jam, a more stable streaming is achieved
+even in the worst case scenario. For commercial providers,
+such minimal QoS guarantee can be important to ensure a
+basic level of user satisfaction.
+5. CONCLUSION
+FLoD demonstrates the possibility of progressive 3D con-
+tent streaming in a P2P network. In this paper, we point
+out some improvements that can be made to FLoD’s origi-
+nal design, by proposing bandwidth allocation channels that
+reduce the request latency, and a Bandwidth-Aware Peer Se-
+lection (BAPS) that improves the source limitation due to
+getting data from only AOI neighbors. The experiments
+show that with limited AOI neighbors as content sources,
+when object density increases, source insufficiency and re-
+quest jam can occur. Such insufficiency, however, can be
+solved with BAPS and the adoption of Peer Lists. To make
+high capacity users contribute more, we use BitTorrent’s
+Tit-for-Tat peer selection strategy to determine which peers
+can form connection channels. Future improvements to BAPS
+include using a more distributed approach (instead of rely-
+ing on server) to maintain the Peer List, as this will bring
+workloads to server that would increase with user size and
+create a scalability bottleneck in the system.
+6. REFERENCES
+[1] A. Andre, S. Saito, and M. Nakajima. Adaptive 3d
+content for multi-platform on-line games. In Proc.
+Cyberworlds, 2007.
+[2] A. Bharambe, C. Herley, and V. Padmanabhan.
+Analyzing and improving a bittorrent networks
+performance mechanisms. In Proc. INFOCOM, 2006.
+[3] J. Botev et al. The hyperverse: concepts for a
+federated and torrent-based ’3d web’. IJAMC,
+2(4):331–350, 2008.
+[4] W. Cheng et al. An analytical model for progressive
+mesh streaming. In Proc. ACM Multimedia, 2007.
+[5] C.-H. Chu, Y.-H. Chan, and P. Wu. 3d streaming
+based on multi-lod models for networked collaborative
+design. Computers in Industry, 59(9):863–872, 2008.
+[6] B. Cohen. Incentives build robustness in bittorrent. In
+Proc. Economics of Peer-to-Peer Systems, 2003.
+[7] S.-Y. Hu et al. Flod: A framework for peer-to-peer 3d
+streaming. In Proc. INFOCOM, 2008.
+[8] S.-Y. Hu, J.-R. Jiang, and B.-Y. Chen. Peer-to-peer
+3d streaming. IEEE Internet Computing, (to appear).
+[9] H. Liang et al. Texture in second life: Measurement
+and analysis. In Proc. P2P-NVE, 2008.
+[10] N. Magharei and R. Rejaie. Prime: Peer-to-peer
+receiver-driven mesh-based streaming. In Proc.
+INFOCOM, pages 1415–1423, 2007.
+[11] S. Mondet et al. Streaming of plants in distributed
+virtual environments. In Proc. Multimedia, 2008.
+[12] J. Royan, P. Gioia, R. Cavagna, and C. Bouville.
+Network-based visualization of 3d landscapes and city
+models. IEEE CG&A, 27(6):70–79, 2007.
+[13] D. Schmalstieg and G. Schaufler. Adaptive 3d content
+for multi-platform on-line games. In Proc. Virtual
+Reality Annual International Symposium, 1997.
+[14] S. Singhal and M. Zyda. Networked Virtual
+Environments. ACM Press, 1999.
+[15] W. L. Sung, S. Y. Hu, and J. R. Jiang. Selection
+strategies for peer-to-peer 3d streaming. In Proc.
+NOSSDAV, 2008.
+[16] X. Susu et al. Coolstreaming: Design, theory, and
+practice. multimedia. IEEE TMM, 9(8), 2007.
+這次會議因為是國際性的會議，因此完全是用英文來討論，雖然對我來說相當吃
+力，但是在這幾天的參與下來，也漸漸習慣用英文去討論，當然也讓我覺得英文
+的確是個很重要的必備技能。 
+經過這次的會議，我覺得的確不能只是在學校內做研究，如果能像這次的機會出
+去國外參加學術性的交流，真的可以體會到不一樣的感受，像做學問的態度，以
+及不一樣的競爭力和外語的重要性。有了這次的體驗，讓我覺得更該多充實自己
+才能夠提升自己的競爭力。 
+recipients who possess the key beforehand. Another method
+for content authentication is to make the content owner sign
+a digital signature (DS), which is a piece of information
+based on both the content and the owner’s private key. The
+receiver can verify the content by the owner’s public key,
+which is publicly accessible, so the DS scheme is suitable for
+public authentication [6]. Some watermarking methods [6],
+[7] were proposed for authenticating 3D contents. They are
+based on concepts similar to either the DS or the MAC. For
+example, Wu and Cheung proposed a public authentication
+method to imperceptibly embed the owner’s signature into
+the 3D content by “stealing” least significant bits (LSBs) of
+floating point numbers representing the content.
+The nature of 3D streaming, however, introduces a new
+complication in authentication. Suppose we generate a single
+DS (or MAC) for the whole 3D contents, then the 3D con-
+tents can only be authenticated when the they are completely
+received. It is crucial, however, for users to be able to
+authenticate the contents progressively (i.e., to authenticate
+the 3D contents as they are being received), since 1) we want
+to detect any malicious tampering early, and 2) not all users
+wait to receive the whole 3D contents. For the case of 3D
+mesh objects, a naive solution for progressive authentication
+is to generate a DS (or MAC) for the base mesh and for each
+of the refinement sent. This solution, however, is expensive.
+In [8], the hash-chain and Rabin signature schemes are
+proposed to decrease the cost of signing digital signatures.
+In this paper, we present an efficient solution for progres-
+sive authentication of P2P 3D streaming that takes advantage
+of secure group communication to further save computation.
+Users in virtual environments usually form a group to
+perform specific actions. For example, friends might visit
+a virtual shopping mall together. One of the users of the
+group is assumed to be the trusted leader, who is to download
+3D contents and verify their authenticity and integrity by a
+specified 3D streaming progressive authentication scheme
+mentioned above. The leader then sends group members
+a checksum value for each 3D content piece via group
+secure channels. A group member can download 3D contents
+from any user, even from non-group members, and can
+authenticate the downloaded 3D contents by the encrypted
+checksum values received from the leader. Since checksum
+is cheap to compute, much computation is saved. We will
+evaluate the computation saving of the proposed scheme
+for the case of progressive meshes based on the hash-
+chain signature 3D streaming authentication scheme which
+is so far of the lowest computation cost to the best of our
+knowledge. We will also evaluate the rendering quality when
+embedding the hash-chain signature into the LSBs of the
+mesh data. We show that such embedding is imperceptible
+(i.e., it does not introduce significant distortion to the mesh),
+while at the same time, preserves the total size of the mesh.
+The rest of the paper is organized as follows. In Section 2,
+we introduce some related work. We describe the proposed
+method in Section 3, and show its evaluations in Section 4.
+Finally, some concluding remarks are drawn in Section 5.
+II. RELATED WORK
+In this section, we introduce some related work, including
+P2P 3D streaming, authenticated 3D streaming, progressive
+meshes, imperceptible public 3D mesh authentication, and
+secret key exchange. The notations used in this section and
+in the rest of this paper are listed in Table I.
+Table I
+NOTATIONS
+peeri the peer/member i
+PKi the peeri’s public key
+H(x) hash operator with input message x
+Esk[x] message encrypting x by symmetric key sk
+{x}PK message encrypting x by asymmetric key PK
+x‖y concatenation of the messages x and y
+cj checksum of 3D data piece Dj
+tj timestamp of cj
+ctj checksum of cj and tj
+A → B : x peer A sends message x to peer B.
+x
+?
+= y to check if value x is equal to value y
+x
+?
+< y to check if value x is small than value y
+A. Peer-to-Peer 3D Streaming
+FLoD [4], [5] is the first P2P 3D streaming framework that
+partitions the VE into rectangular cells, and specify scene
+descriptions (i.e., files containing lists of objects within each
+cells) for object discovery. It relies on the recent research
+of P2P virtual environment (P2P VE) [?], [9], [10], where a
+2D spatial overlay returns a list of nearby users within the
+area of interest (AOI) for the discovery of content sources.
+The returned neighbors are called AOI neighbors. Once a
+navigating user obtains a list of AOI neighbors, the user
+can then send queries to these AOI neighbors to exchange
+states on scene content availability, and request the AOI
+neighbors to exchange contents. The server is contacted only
+if no neighbors have the relevant contents. As the query-
+response approach to inquire content availability may be
+slow, a follow-up work of FLoD [11] adopts an alternative
+strategy where peers would actively push content availability
+to their AOI neighbors to reduce time for state exchange.
+Additional AOI neighbors are also maintained to increase the
+potential pool of source peers who could provide contents.
+B. Authenticated 3D Streaming
+Authenticity of progressive mesh streaming can be con-
+firmed if a digital signature is generated for each piece of
+3D streaming data. However, to generate digital signature
+for each piece is not practical because public key cryptosys-
+tem consumes a lot of computation power. Some efficient
+stream signing mechanisms [8], [12] are proposed to avoid
+generating digital signature for each piece. Below in this
+subsection, we introduce a protocol proposed in [8] using
+hash chains to achieve very low computation cost.
+a pre-specified large prime p, a pre-specified primitive root
+(or generator) g of p, and a shared password pw known
+only by A and B. It’s security is based on the complexity
+of solving the discrete logarithm problem and can be proved
+in a formal model even though the password is chosen from
+a small range. It has the following steps:
+1) User A first picks a random value x, then calcu-
+lates gx (mod p) and Epw[gx (mod p)]. Note that
+for the sake of representation convenience, we omit
+“(mod p)” in the rest of the paper.
+In this step, A sends his/her identity A and Epw[gx]
+to B. The procedure can be abstracted as follows.
+A → B : A,Epw[g
+x]
+2) B picks a random number y and calculates gy . B also
+uses the shared password pw to decrypted Epw[gx]
+to obtain the value gx, and calculates the secret key
+sk′ = H(A‖B‖gx‖gy‖gxy). Finally, B transmits
+Epw[g
+y] and H(sk′‖1) to A. After A receives this
+message, A also uses the share password pw to decrypt
+Epw[g
+y] to obtain the value gy , and calculates the
+secret key sk′′ = H(A‖B‖gx‖gy‖gyx). Note that
+the value gxy is equivalent to gyx, so sk′ = sk′′.
+A ensures that B already knows the secret key by
+checking H(sk′‖1) ?= H(sk′′‖1). The procedure can
+be abstracted as follows.
+A ← B : Epw[g
+y],H(sk′‖1)
+3) User A transmits H(sk′‖2) to B, and B ensures
+that A already knows the session key by checking
+H(sk′‖2)
+?
+= H(sk′′‖2). The procedure can be ab-
+stracted as follows.
+A → B : H(sk′‖2)
+III. THE PROPOSED SCHEME
+Observing that users in virtual environments usually
+form a group to perform specific tasks, such as visiting a
+shopping mall together or fighting monsters cooperatively
+in an MMOG, we propose to take advantage of secure
+group communication to further reduce the cost of 3D
+streaming authentication. The basic idea is for members of a
+group, formed by social network facilities or MMOG team
+formation tools, to elect a leader according to the reputation,
+computing power or connection stability of members. The
+leader will verify the authenticity and integrity for 3D con-
+tents of interest by a public authentication mechanism, such
+as the hash chain-based scheme proposed in [8], and will
+then relay the authenticity by encrypted checksum values to
+all members of this group via secure group communications.
+We also suggest embedding the authentication information
+into the LSB of floating point numbers representing 3D con-
+tents to make the authentication information imperceptible.
+In this section, we show a scheme achieving group-based
+P2P 3D streaming authentication for the case of progressive
+meshes. The scheme has three phases: 1) secure channel
+initialization, 2) authenticity and integrity relay, and 3)
+verification. We describe the details of every phase in the
+following subsections.
+A. Secure Channel Initialization Phase
+In the first phase, group members elect a leader, and then
+each member establishes a secure channel with the leader
+by a secret key exchange mechanism similar to Bellare et
+al.’s [15]. Besides, a padding value (PV) is exchanged after
+the secure channel is established. The padding value PV
+is used to pad on 3D contents before contents checksum is
+calculated. This phase has the following steps for initializing
+the secure channel and exchanging PV. We assume all users
+have verified/trusted others’ public keys before continuing
+the steps below. Note that the public key infrastructure (PKI)
+can meet this requirement.
+1) Let P = {peer1, peer2, peer3, ..., peern} be a group
+of members (peers). Firstly, peers in P elect a leader,
+denoted by leader, where leader ∈ P .
+2) Every peer picks an individual random number. Sup-
+pose leader picks xi and peeri picks yi. Then leader
+computes gxi and peeri computes gyi , where p is a
+sufficient large prime and g is p’s generator.
+3) leader sends {gxi}PKi to peeri, where gxi is en-
+crypted by peeri’s public key. The procedure can be
+abstracted as follows.
+leader → peeri : {g
+xi}PKi , where peeri ∈
+P\{leader}.
+4) peeri sends gyi and H(gxiyi‖1) to leader, where gyi
+and H(gxiyi‖1) are encrypted by leader’s public key.
+The procedure can be described as follows.
+leader ← peeri : {g
+yi}PKleader , H(g
+xiyi‖1)
+5) leader decrypts the received message in the previous
+step to get gyi and H(gxiyi‖1). Then leader computes
+gyixi and the hash value of (gyixi‖1) (note that the
+value gxiyi is equivalent to gyixi). leader accepts the
+message if the hash value matches with H(gyixi‖1);
+otherwise leader rejects it. Likewise, peeri also does
+the same match checking.
+6) Now, leader and peeri share a pairwise secret key
+ski computed by ski = H(gxiyi‖2). leader chooses
+a random padding value PVi, encrypts PVi and its
+checksum by ski and transmits the encrypted PVi
+and checksum to peeri. The procedure is abstracted
+as follows.
+leader → peeri : Eski [PVi‖checksum of PVi]
+7) peeri decrypts the received message to get PVi and
+its checksum, and then checks the legitimation of PVi.
+peeri accepts the secret key ski if PVi is legitimate;
+otherwise, peeri rejects the secret key and leader and
+peeri should go through all steps in the first phase.
+(However, we omit the star-over process in this paper
+to save space.)
+ 0
+ 0.01
+ 0.02
+ 0.03
+ 0.04
+ 0.05
+ 0.06
+ 0  0.1  0.2  0.3  0.4  0.5  0.6  0.7  0.8  0.9
+CP
+U 
+tim
+e 
+(se
+co
+nd
+)
+piece size (MB)
+hash chain
+proposed
+Figure 2. The CPU time consumption of the hash chain-based and the
+proposed authentication schemes
+A. Computation Cost
+In the proposed scheme, the group leader needs to verify
+the authenticity and integrity of 3D contents with a pre-
+specified authentication mechanism, such as the hash chain-
+based mechanism proposed in [8], while group members
+only need to perform the verification with encrypted check-
+sum values sent by the leader. Consequently, the group
+members save a lot of computation, while the leader bears
+heavier computation load. We assume that 1) the pre-
+specified authentication mechanism is the hash chain-based
+mechanism proposed in [8], and 2) the mechanism uses
+SHA-1 hash function, and 3) the proposed scheme uses
+the Adler32 checksum function and the AES/CTR 128-bit
+secret key encryption/decryption function. In Figure 2, we
+plot, according to benchmarks reported in [16], the CPU
+consumption time of a group member for the hash chain-
+based authentication scheme and the proposed scheme under
+different data piece data sizes. We can easily observe that
+the proposed scheme consumes less computation time than
+its counterpart and the superiority is more significant when
+the data piece size is larger. When data piece size is about
+0.9MB, about 2/3 computation is saved.
+On the other hand, the leader has heavier computation
+load since it needs to calculate the checksum value of each
+data piece separately for each individual group member.
+Furthermore, the leader should encrypt the checksum values
+by a secret key separately for every group member before
+sending them to the member. The computation load of the
+leader thus increases with the number of group members.
+Fortunately, the checksum and the secret-key encryption do
+not cause too much computation and the number of group
+members is usually not too large. Note that when a group
+has too many members, we can demand the members to
+elect more leaders so that each leader will serve only a small
+number of members. Figure 3 plots the relationship between
+ 5
+ 10
+ 15
+ 20
+ 25
+ 30
+ 35
+ 40
+ 45
+ 5  10  15  20  25  30  35
+CP
+U 
+tim
+e 
+(0.
+00
+00
+01
+ se
+co
+nd
+)
+number of members
+CPU consumption
+Figure 3. Relationship between the number of group members and the
+leader’s CPU time consumption
+the group size and the leader’s CPU consumption.
+B. Rendering Quality for Imperceptible Authentication
+As mentioned in Section III, authentication information
+is suggested to be embedded into the LSB of floating
+point numbers representing progressive meshes to make the
+information imperceptible. In this section, we evaluate the
+rendering quality for such information embedding when the
+hash-chained based authentication scheme proposed in [8]
+is adopted to authenticate progressive meshes. Figure 4(a)
+and Figure 4(b) show the rendering of the base mesh and
+the full mesh of a horse model represented by progressive
+meshes. Since a typical digital signature is about the size
+from 1024 to 2048 bits and the base mesh has 60 vertices
+in the horse model, each floating point number has to carry
+12 bits of a 2048-bit digital signature. Figure 4(c) shows the
+base mesh of which every floating point number carries 12
+bits of the digital signature. We can see that distortion exists
+between Figure 4(a) and Figure 4(c). However, the result
+is acceptable since the base mesh is just used to roughly
+show the simplified shape of the 3D model. On the other
+hand, since a SHA-1 hash value occupies 160 bits and every
+vertex split has about 15 vertices in the horse model, each
+floating point number has to carry 4 bits of the hash value.
+Figure 4(d) shows the rendering of the horse model with
+the complete mesh embedded with hash values. We can see
+that there is almost no difference between Figure 4(b) and
+Figure 4(d). This result indicates that the rendering quality of
+imperceptible hash chain-based 3D streaming authentication
+scheme is acceptable for the case of progressive meshes.
+VI. CONCLUSION
+We have presented an authentication scheme for group-
+based peer-to-peer 3D streaming using secure group com-
+munication to reduce CPU time consumption. The group
+行政院國家科學委員會補助國內研究生出席國際學術會議報告 
+                                                              2009 年  8 月 31 日 
+報告人姓名 賴勇良 
+ 
+ 
+就讀校院 
+（科系所） 
+                     ●博士班研究生 
+中央大學資訊工程所 
+                     □碩士班研究生 
+     時間 
+會議 
+     地點 
+2009.8.23 ~ 2009.8.27 
+ 
+Cannes La Bocca, France 
+本會核定 
+補助文號 
+NSC-98-- -- 
+會議 
+名稱 
+ (中文) 第二屆 無線移動網路 國際研討會 
+ (英文) The Fifth International Conference on Wireless and Mobile 
+Communications 
+發表 
+論文 
+題目 
+ (中文) 無線網路廣播之傳輸效率最佳化研究 
+ (英文) Broadcasting with Optimized Transmission Efficiency in Wireless 
+Networks 
+二、與會心得 
+ 
+這次參加的會議主要多是由自歐洲的學者，他們的研究計畫多是長期的，並且針對幾個重點研究方
+向進行研究，其研究是非常扎實的，而且一旦有所創新的發現，往往能夠取得領先的位置，這種研
+究策略是非常值得借鏡的。這次能夠出國發表論文，在台下都是外國學者的情況下，如何能夠解釋
+自己的想法，並且與台下的學者互動，有著非常多的體會與經驗獲得，非常感謝指導教授、學校和
+上級單位的幫忙才得以成行。 
+ 
+ 
+三、考察參觀活動(無是項活動者省略) 
+ 
+ 
+四、建議 
+ 
+感謝能有此一機會讓學生會參與此次國際研討會。參與此次研討會後，感到學術研討會之重要性，
+在研討會上不僅可以聽到最新的研究方向，並且也可以與不同國家的研究學者的互動，希望能夠多
+有機會讓台灣學生參與國際會議，使台灣能與各國的學術上能有互動的機會。 
+ 
+ 
+ 
+五、攜回資料名稱及內容 
+ 
+會議論文一份 
+ 
+ 
+六、其他 
+ 
+ 
+ 
+Figure 2.  Broadcasting via hexagon vertexes in OFP  
+ 
+Figure 3.  Broadcasting via hexagon centers and vertexes in OBP  
+II. RELATED WORK 
+Flooding is an intuitive method to broadcast a packet 
+throughout the entire network. In the flooding protocol, each 
+node retransmits a packet when receiving it at the first time. 
+The flooding protocol is simple, but may lead to a large 
+number of redundant forwarding packets, which consumes 
+much energy and raises the possibility of packet collision. 
+Many broadcast protocols [2-3, 7, 9, 11-13] are proposed to 
+improve the flooding protocol. They can be generally 
+classified as the Connected Dominating Set (CDS) 
+approaches and the geometry approaches. 
+The CDS approaches select a number of nodes for 
+retransmitting a packet to reach all nodes on the basis of unit 
+disk graph, where two nodes have an edge between them if 
+they are within each other’s transmission range. Given a 
+graph G(V,E), where V is a node set and E is an edge set, a 
+CDS is a subset V'V such that each node in VV' (i.e., in 
+V but not in the V') connects to at least one node in V', 
+while V' is connected. To find a CDS for any given graph is 
+proved to be an NP-hard problem in [4]. Even in a unit disk 
+graph, to find a minimum CDS (or MCDS), the CDS with 
+the minimum number of nodes, is also NP-hard [8]. 
+Assuming each node knows the global topology of the 
+network, Das and Bhargavan in [2] proposed two global 
+algorithms to find the MCDS based on Guha’s 
+approximation algorithm in [5]. The two global algorithms 
+work under the restriction that each node knows the entire 
+topology of the network. To eliminate the restriction, Wu 
+and Li in [13] proposed a localized distributed algorithm to 
+find a CDS and then prune redundant nodes to approximate 
+the MCDS. However, as reported in [1], the approximation 
+ratio of the algorithm may not be so good in large networks. 
+The geometry approaches assume that each node is aware 
+of its own location to make retransmission decisions.  They 
+usually have good transmission efficiency. For example, the 
+Optimal Flooding Protocol (OFP) [11] has transmission 
+efficiency of 0.41, i.e. 67% of the theoretical bound. To the 
+best of our knowledge, OFP has the highest transmission 
+efficiency among all existed geometry-based protocols. OFP 
+is based on a regular hexagonal partition of the network and 
+only the nodes nearest to hexagon vertexes need to 
+rebroadcast the packet. As shown in Fig. 4, a source node in 
+OFP first broadcasts a packet. And the node nearest to the 
+vertex location (1) is responsible for rebroadcasting. Then, 
+the node nearest to the location (11) is responsible for 
+rebroadcasting. And then, the nodes nearest to the locations 
+(111) and (112) are responsible for rebroadcasting, and so on. 
+Similarly, the other nodes nearest to the vertex locations (2), 
+(3),…, (6), (21), (211), (212), … are responsible for 
+rebroadcasting. In this way, the broadcast packet can be 
+delivered to all nodes in the network. 
+ 
+ 
+Figure 4.  The illustration of transmissions in OFP 
+ 
+Figure 5.  The illurstation of the covering problem 
+The design idea of OFP is related to the covering problem 
+[6], which asks “How to arrange circles such that the 
+minimum number of circles can completely cover a given 
+area?” To quantify the efficiency of the solutions to this 
+problem, Kershner in [6] defined the covering efficiency 
+ρ=AT/AE, where AT is the total summation of circles’ areas 
+and AE is the effective covered area. Smaller ρ is preferred. 
+If a solution uses fewer circles to cover the area, the 
+summation of circles’ areas (AT) will become smaller, and ρ 
+will thus become smaller. It is worth mentioning that if we 
+assume that the center of each circle has a transmitting node 
+with the circle being the transmission range, then the circles’ 
+covering efficiency is the reciprocal of the nodes’ 
+transmission efficiency. 
+Uncovered 
+region 
+s 
+1 
+2 
+3 
+4 5 
+6 
+11 
+111 
+112 
+21 
+211 212 
+R 
+s 
+s 
+Boundary of the 
+covered area 
+ 
+Figure 6.  Transmissions of OBP in hexagon rings 
+ 
+B. Geometric Mapping 
+In this subsection we present the geometric mapping 
+M(Ck,i) that maps a hexagon center node Ck,i to a location Lk,i 
+relative to the source node S. As shown in Fig. 7, each 
+hexagon ring can be partitioned into six sectors, indexed by 
+0,..,5, with each sector having k hexagon centers in the level-
+k ring. Let Zk,q denote the location relative to S of the first 
+hexagon center in the sector q of the level-k hexagon ring 
+(e.g., Z2,0 is the location of the hexagon center on the 
+horizontal line from S towards  right). We have  Z𝑘 ,𝑞 =
+(𝑘 3R ∙ cos 𝑞 ∙ 60° , 𝑘 3R ∙ sin(𝑞 ∙ 60°))  for q=0,..,5, 
+where R is the transmission range or the hexagon side length. 
+Since each sector has k hexagon centers, we can figure out 
+that hexagon center Ck,i is within sector q, where q =⌊i/k⌋. 
+Now we can define the geometric mapping M(Ck,i) as 
+follows. (Note that “+” represents the vector addition 
+operator in the mapping and the following location 
+calculations.) 
+ 
+Let 𝑞 = ⌊𝑖 𝑘 ⌋.  If 𝑖 is a mutiple of 𝑘, M C𝑘 ,𝑖 = Z𝑘 ,𝑞  . 
+ 
+Otherwise, M(C𝑘 ,𝑖) =
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 𝑍𝑘 ,0 + (−𝑖
+ 3R
+2
+, 𝑖
+3R
+2
+), if 𝑞 = 0
+𝑍𝑘 ,1 + ((𝑘 − 𝑖) 3R, 0), if 𝑞 = 1
+𝑍𝑘 ,2 + ((𝑞 ·𝑘 − 𝑖)
+ 3R
+2
+, (𝑞 ·𝑘 − 𝑖)
+3R
+2
+), if 𝑞 = 2
+𝑍𝑘 ,3 + ((𝑖 − 𝑞 ·𝑘)
+ 3R
+2
+, (𝑞 ·𝑘 − 𝑖)
+3R
+2
+), if 𝑞 = 3
+𝑍𝑘 ,4 + ((𝑖 − 𝑞 ·𝑘) 3R, 0), if 𝑞 = 4
+𝑍𝑘 ,5 +   𝑖 − 𝑞 ·𝑘 
+ 3R
+2
+,  𝑖 − 𝑞 ·𝑘 
+3R
+2
+ , if 𝑞 = 5
+             (1) 
+ 
+In Fig. 7, we illustrate the above mapping by two 
+examples. The first example is about M(C2,1). Since 
+q=⌊1/2⌋=0, we calculate Z2,0 =  2 3R ∙ cos 0 , 2 3R ∙
+sin 0  = (2 3R, 0) . We then have M(C2,1) = Z2,0 +
+ −
+ 3R
+2
+,
+3R
+2
+ . The second example is about M(C2,7). 
+Since 𝑞 = ⌊7/2⌋ = 3 , we calculate Z2,3 =  2 3R ∙
+cos 180° , 2 3R ∙ sin 180°  = (−2 3R, 0) . We then 
+have M(C2,7)= Z2,3 +  
+ 3R
+2
+,−
+3R
+2
+ . 
+ 
+Figure 7.  The illurstartion of geometric mapping 
+C. Activation Target Mapping 
+In this subsection we present the activation target 
+mapping T(Ck,i). The input of T(Ck,i) is a center node Ck,i for 
+k1. (Ck,i) is to find two next-level neighboring center 
+nodes Ck+1,w and Ck+1,w+1 of Ck,i, where w is even. If such 
+neighboring nodes exit, the output of T(Ck,i) is {Ck+1,w, 
+Ck+1,w+1}; otherwise, the output is an empty set. For example, 
+T(C1,0)={C2,0, C2,1} since Ck+1,w is C2,0 and Ck+1,w+1 is C2,1 
+with w=0. For another example, T(C2,1)=, since the index w 
+of the neighboring center nodes C3,1 and C3,2 of C2,1 is odd.  
+As shown in Fig. 8, each hexagon ring can be partitioned 
+into six sectors, indexed by 0,..,5, each having a starting axis 
+(i.e., A0, ,…, A5). Let q=⌊i/k⌋ denote the index of the sector 
+in which Ck,i resides.  T(Ck,i) is defined as follows. 
+T C𝑘 ,𝑖 =
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ C𝑘+1,i , C𝑘+1,𝑖+1 , if 𝑞 = 0 and  𝑖 is even
+ C𝑘+1,𝑖+1, C𝑘+1,𝑖+2 , if 𝑞 = 1 and  𝑖 is odd
+ C𝑘+1,𝑖 , C𝑘+1,𝑖+1 , if 𝑞 = 1,  𝑖 mod 𝑘 = 0 and  𝑖 is even
+ C𝑘+1,𝑖+2 , C𝑘+1,𝑖+3 , if 𝑞 = 2 and 𝑖 is even
+ C𝑘+1,𝑖+3 , C𝑘+1,𝑖+4 , if 𝑞 = 3 and 𝑖 is odd
+ C𝑘+1,𝑖+2 , C𝑘+1,𝑖+3 , if 𝑞 = 3,  𝑖 mod 𝑘 = 0 and 𝑖 is even
+ C𝑘+1,𝑖+4 , C𝑘+1,𝑖+5 , if 𝑞 = 4 and 𝑖 is even
+ C𝑘+1,𝑖+5 , C𝑘+1,𝑖+6 , if 𝑞 = 5 and 𝑖 is odd
+ C𝑘+1,𝑖+4, C𝑘+1,𝑖+5 ,    if 𝑞 = 5,  𝑖 mod 𝑘 = 0 and 𝑖 is even
+∅, otherwise
+     (2) 
+C2,6 
+S 
+C1,2 C1,1 
+C1,0 
+C1,4 
+C2,5 
+C2,4 
+C1,3 
+C2,3 C2,2 
+C2,1 
+C2,11 
+C2,10 C2,8 C2,9 
+C2,7 
+C1,5 
+C2,0 
+Z2,0 
+Z2,3 
+Sector 0 
+Sector 2 
+Sector 3 
+Sector 4 
+Sector 5 
+Z2,1 
+Sector 1 
+side  
+length (R) 
+C2,6 
+S 
+C1,2 C1,1 
+C1,0 
+C1,4 
+C2,5 
+C2,4 
+C1,3 
+C2,3 
+C2,2 
+C2,1 
+C2,11 
+C2,10 
+C2,8 
+C2,9 
+C2,7 
+V1,0 
+V2,2 
+V2,1 
+C1,5 
+V2,4 
+V2,5 
+V1,1
+ 
+ 
+  V1,2 
+C0,0 
+C2,0 
+V2,0 
+V2,3 
+Horizontal 
+axis 
+C3,0 
+C3,1 
+C3,2 
+C3,3 C3,4 C3,5 
+C3,6 
+C3,7 
+C3,8 
+C3,9 
+C3,10 
+C3,11 
+C3,12 C3,13 C3,14 C3,15 
+C3,16 
+C3,17 
+V3,0 
+V3,1 
+V3,2 V3,3 
+V3,4 
+V3,5 
+V3,6 V3,7 
+V3,8 
+ Figure 9.  Comparisons of required transmissions for OFP and OBP 
+ 
+Figure 10.  Reachability of OFP and OBP for various node densities 
+Second, we compare by simulation experiments the 
+protocols’ reachability, the ratio of the number of the nodes 
+receiving the packet over the total number of reachable 
+nodes, for different node densities. In the simulation, we 
+assume the entire network area is a level-3 hexagon ring with 
+all inner rings included, and assume nodes are uniformly 
+deployed with different densities from 10/R
+2
+ (nodes per 
+transmission area), 12/R
+2
+,…, to 20/R2. We also assume that 
+nodes exchange location information to decide the best node 
+responsible for rebroadcasting. As shown in Fig. 10, OFP is 
+better than OBP in terms of reachability. The reachability of 
+OFP is 100% for all node densities, while the reachability of 
+OBP is larger than 95% for all node densities, and 
+approximates 99% for the 16/R
+2
+, 18/R
+2
+, and 20/R
+2
+ densities. 
+Theoretically, both protocols have 100% reachability when 
+the node density is sufficiently high. However, when the 
+node density is low, retransmitting nodes may be away from 
+center locations or vertex locations. Therefore, the network 
+area may not be fully covered for some cases. This accounts 
+for the reason why OBP does not maintain 100% reachability 
+for all cases. Since OFP has more retransmitting nodes, the 
+reachability is still 100% even for low node density. 
+VI. CONCLUSION 
+We have proposed an optimized broadcast protocol (OBP) 
+for the wireless network to disseminate a packet throughout 
+the network. The key idea of OBP is to select nodes based on 
+a hexagon ring pattern to minimize the number of 
+retransmissions for better transmission efficiency. The 
+analysis result shows that OBP’s transmission efficiency is 
+over 90% of the theoretical upper bound. However, we have 
+observed the OBP may fail to reach all nodes in networks of 
+low node densities. Fortunately, we have an adaptive 
+solution shown below to solve the problem. We make the 
+source node set adaptively the hexagon side length to be a 
+ratio , 0<1, of the transmission range R according to the 
+node density. When a node finds that the node density is low, 
+it sets a small  value. On the other hand, a node sets a large 
+ value when it detects node density is high. We can easily 
+see that a smaller  value causes more retransmitting nodes, 
+which in turn lead to higher reachability. In this way, OBP 
+can keep high reachability and high transmission efficiency 
+at the same time. In the future, we plan to investigate how to 
+measure the node density accurately and to investigate the 
+relationship between the node density and the value of  to 
+render OBP with the best performance. 
+REFERENCES 
+ 
+[1] G. S. Basagni, M. Mastrogiovanni, and C. Petrioli, “A performance 
+comparison of protocols for clustering and backbone formation in 
+large scale ad hoc networks,” in Proc. of IEEE International 
+Conference on Mobile Ad-hoc and Sensor Systems 2004, 2004.  
+[2] B. Das and V. Bharghavan, “Routing in ad-hoc networks using 
+minimum connected dominating sets,” in Proc. of IEEE International 
+Conference on Communications 1997, 1997. 
+[3] A. Durresi, V. Paruchuri, R. Kannan, S.S. Iyengar, “Optimized 
+Broadcast Protocol for Sensor Networks,“ IEEE Transactions on 
+Computers, Volume 54, Issue 8, pp. 1013 – 1024, Aug. 2005. 
+[4] M. R. Garey and D. S. Johnson, Computers and Intractability: A 
+Guide to the Theory of NP-completeness,  Freeman San Francisco, 
+1979. 
+[5] S. Guha, “Approximation algorithms for connected dominating sets,” 
+Algorithmica, vol. 20, pp. 374-387, 1998. 
+[6] R. Kershner, “The number of circles covering a set,” American 
+Journal of Mathematics, pp. 665-671, 1939. 
+[7] D. Kim and N. F. Maxemchuk, “A comparison of flooding and 
+random routing in mobile ad hoc network,” in Proc. of Third New 
+York Metro Area Networking Workshop, 2003. 
+[8] M. V. Marathe, H. Breu, H. B. Iii, S. S. Ravi, and D. J. Rosenkrantz, 
+“Simple heuristics for unit disk graphs,” Networks, Volume 25, pp. 
+59-68, 1995. 
+[9] S.-Y. Ni, Y.-C. Tseng, Y.-S. Chen, and J.-P. Sheu,“The broadcast 
+storm problem in a mobile ad hoc network,” in Proc. of the 5th 
+Annual ACM/IEEE International Conference on Mobile Computing 
+and Networking, 1999. 
+[10] V. Paruchuri, “Adaptive scalable protocols for heterogeneous 
+wireless networks,” PhD dissertation, Louisiana State University, 
+2006. 
+[11] V. Paruchuri, A. Durresi, D. S. Dash, and R. Jain, “Optimal flooding 
+protocol for routing in ad-hoc networks,” in Proc. of IEEE Wireless 
+Communications and Networking Conference, 2003. 
+[12] B. Williams and T. Camp, “Comparison of broadcasting techniques 
+for mobile ad hoc networks,” in Proc. of the 3rd ACM International 
+Symposium on Mobile Ad Hoc Networking and Computing, 2002. 
+[13] J. Wu and H. Li, “On calculating connected dominating set for 
+efficient routing in ad hoc wireless networks,” in Proc. of the 3rd 
+international Workshop on Discrete Algorithms and Methods For 
+Mobile Computing and Communications, 1999. 
+10
+28
+55
+91
+25
+55
+97
+151
+0
+50
+100
+150
+200
+250
+300
+2 3 4 5
+N
+o
+. o
+f 
+Tr
+an
+sm
+is
+si
+o
+n
+s
+Level of Hexagon Rings
+OFP
+OBP
+0.8
+0.85
+0.9
+0.95
+1
+10 12 14 16 18 20
+R
+e
+ac
+h
+ab
+ili
+ty
+Densitity
+OBP
+OFP
+A Spatial Publish Subscribe Overlay for Massively Multiuser Virtual Environments
+Shun-Yun Hu†, Chuan Wu‡, Eliya Buyukkaya§, Chien-Hao Chien∗, Tzu-Hao Lin∗,
+Maha Abdallah§, Jehn-Ruey Jiang∗, and Kuan-Ta Chen†
+†Institute of Information Science, Academia Sinica, Taiwan, R.O.C.
+‡Department of Computer Science, The University of Hong Kong, Hong Kong, P.R.C.
+§Laboratoire d’Informatique de Paris 6 (LIP6), Universite’ Paris 6, France
+∗Department of CSIE, National Central University, Taiwan, R.O.C.
+Abstract—Peer-to-peer (P2P) architectures have become pop-
+ular for designing scalable virtual environments (VEs) in recent
+years. However, one question that remains is whether a single
+overlay can be flexible enough to support different types of
+VEs. We present S-VON, a P2P overlay that attempts this goal
+by providing spatial publish / subscribe (SPS) services. Besides
+flexibility, S-VON also aims to be practical and efficient by
+utilizing super-peers and considering the physical topology (i.e.,
+network distance) to reduce latencies. Our simulations show that
+super-peers provide a unique design space where both bandwidth
+usage and latencies can be effectively reduced, such that even a
+crowded Second Life region can be hosted with residential ADSL.
+I. INTRODUCTION
+In recent years, massively multiuser virtual environments
+(MMVEs) such as massively multiplayer online games
+(MMOG), have demonstrated a growing interest and need for
+immersive interactions within virtual environments (VEs). A
+networked VE allows global users to assume virtual represen-
+tations called avatars and enter a virtual world, to interact with
+others for adventure, socialization, or training. Although state-
+of-the-art MMOG can host up to a million concurrent users,
+such scalability is achieved by heavy content replications and
+server-side investments — hosting disjoint clusters of servers,
+each serving a few thousands of users maximally. To lower
+server costs and increase concurrent users to millions in a
+single virtual world, many peer-to-peer (P2P) approaches have
+been proposed in recent years [1], [2], [3], [4], [5], [6], [7].
+These designs can be mainly categorized as follows:
+Overlay management The construction of a P2P overlay
+that determines how nodes in a networked VE should connect
+and exchange messages [1], [2].
+State management The maintenance and distribution of
+game states (i.e., the various attributes used by game objects,
+such as a player’s health points and equipments) onto many
+peers, while handling consistency, load balancing, and fault
+tolerance [3], [4], [5], [6], [7].
+Content management The utilization of client resources to
+distribute game content such as voice [8], or 3D models and
+textures [9].
+Fundamental to these designs is a robust and efficient P2P
+overlay that supports some primitive VE operations, while
+considering the reality of P2P networks (e.g., heterogenous
+peer resources, fluctuating network conditions, and dynamic
+peer presence), alongside with application requirements (e.g.,
+latency constrains due to the interactive nature of VEs). In this
+paper, we propose a generic overlay design that supports the
+different requirements and network considerations for large-
+scale networked VE. We first identify the basic primitive in
+VEs as a spatial publish / subscribe (SPS) mechanism [10].
+That is, the ability to publish or subscribe to an arbitrary
+convex virtual area is generic enough to support various
+existing VE systems. We then propose S-VON, a P2P overlay
+that is designed to be practical, where a super-peer architecture
+is used; flexible, where spatial publish / subscribe is supported
+via a Voronoi-based Overlay Network (VON) [1]; and efficient,
+where the overlay topology is considered during transmission
+to reduce latencies. Our analysis and simulations demonstrate
+S-VON’s scalability and efficiency to support basic VE re-
+quirements, and show how a busy Second Life [7] region can
+be hosted under residential ADSL environment.
+II. BACKGROUND
+VE systems can be seen as state machines where various
+game states are updated via application-specific rules called
+game logic [5]. User behaviors are captured as event messages,
+which are sent to the game state manager for processing. The
+manager may then send update messages to notify other users
+affected by the actions. An event - process - update cycle thus
+is a common design for VEs. The key to building scalable
+VEs is then a task of dividing the workload of these cycles
+to many separate hosts (e.g., server clusters or peers in a
+P2P networks), while maintaining the basic consistency and
+interactivity requirements [11]. This division of workload is
+possible as even though a system may have a large number of
+total users, each user often interacts with only a small number
+of spatially nearby users within an area of interest (or AOI)
+[1], which is typically circular in shape. As the user’s AOI is
+limited, message exchanges thus can be localized.
+A VON is a fully-distributed overlay that supports the
+discovery of neighbors within an AOI (i.e., the AOI neigh-
+bors). Each VON node has a coordinate point and can move
+continuously on a 2D plane. A node joins the network by
+contacting a gateway to forward its join request to the neighbor
+closest to its join location, so that it can learn of some
+initial AOI neighbors. To discover new neighbors, each node
+organizes the coordinates of itself and its known neighbors in
+a Voronoi diagram, so that its boundary neighbors (i.e., AOI
+neighbors whose Voronoi regions overlap with the AOI border,
+see the triangle and circle nodes in Fig. 2) can check if new
+neighbors will enter the AOI as it moves. To ensure overlay
+connectivity, each node needs to minimally connect with its
+closest enclosing neighbors (squares in Fig. 2). This way, even
+though only a few AOI neighbors are known initially, new
+neighbors can be discovered without a centralized server.
+Fig. 2. Neighbors in VON. Big circle is the AOI of the center star node.
+The original VON supports area subscriptions natively, but
+not area publications (i.e., VON allows a node to specify an
+AOI to receive point publications, but a message cannot be sent
+to a specified area unrelated to or beyond a node’s AOI). We
+observe that by specifying the subscription area as the AOI,
+subscribers can first learn of potential publishers by perform-
+ing AOI neighbor discovery. As such knowledge is mutual, the
+publishers are also made aware of their potential subscribers
+continuously. If each publisher maintains such a subscriber list
+of nodes with potential interests in its publications, a publisher
+can then send publications directly to subscribers. Our first
+extension to VON is thus to let each node, as a publisher, to
+maintain a subscriber list.
+To add relays to the picture, we define a VON peer as a
+virtual client entity stored and managed by a relay. Relays
+thus act as proxies for the clients in forming a VON composed
+of the clients’ corresponding VON peers. All VON-specific
+functions then are performed by VON peers (e.g., neighbor
+discovery, message publications), and actual clients only send
+pub/sub requests to their relays, and receive publications. S-
+VON thus can be seen as a logical layer of VON, running on
+top of the relay mesh. Instead of representing a client machine,
+a VON peer represents a client’s interest (i.e., its subscription
+area), and many VON peers can physically be at the same
+relay. To support the proper discovery of other relays, each
+VON peer also keeps the contact info (e.g., IP and port) of
+its currently residing relay, and exchanges this info with other
+VON peers during neighbor discovery among the VON peers.
+So the following differences exist between the original
+VON and S-VON: 1) VON assumes that any client can send
+messages directly to another client, while S-VON assumes
+only relays can do so; 2) VON is mainly a method for
+distributed neighbor discovery, while S-VON is designed to
+support spatial publish subscribe. VON thus only supports area
+subscriptions, but not area publications; 3) In VON, only one
+Voronoi diagram is maintained by a client host; however, for
+S-VON, several distinct ones are kept at a relay host, one for
+each VON peer, and none at the clients.
+B. Spatial Publish Subscribe
+We now describe how subscriptions and publications are
+supported. For simplicity, we will discuss SPS logically with-
+out mentioning the underlying relays.
+Subscriptions When a client subscribes, it specifies its sub-
+scription as an area with a reference point inside. The reference
+point becomes the position of a VON peer managed by the
+client’s relay. For point subscriptions, we simply use a small
+area. The VON peer joins the VON at the reference point with
+the subscription area as its AOI. After joining, the subscription
+is learnt by all other VON peers whose Voronoi regions
+are covered by the subscription area (i.e., the joiner’s AOI
+neighbors). As the knowledge on neighbors is mutual, this
+effectively notifies these AOI neighbor to build up a unique
+subscriber list of the VON peers interested in its publications.
+Publications Whenever a publication occurs, the pub request
+is first sent from the publishing client to its relay, then pro-
+cessed by the client’s corresponding VON peer. The VON peer
+looks up its subscriber list and determines if any subscribers
+should receive the message. Note that this function is not
+natively supported by VON. The publication is then sent
+directly to those subscribing VON peers (via their associated
+relays physically), and forwarded to the VON peers’ associated
+clients. If no subscribers are found, the publication will have
+no effect. To support area publications, when a publication
+spans more than one Voronoi regions, it is first forwarded to
+each VON peer whose Voronoi regions are partially covered
+by the publication, and the above process is repeated at each
+affected VON peer. Note that the VON peers affected may or
+may not reside at the same relay physically, so the publisher’s
+relay may need to forward the message. Contacting the af-
+fected relays is possible as the contact of the physical relay
+is stored with the VON peer. To avoid redundant forwarding,
+mechanisms such as VoroCast [14] can be utilized.
+Movements When clients move continuously in the VE, their
+subscriptions are also updated. This is done by the clients first
+notifying their respective relays, who will then update the AOI
+of the clients’ VON peer. VON’s move procedure [1] is then
+followed so that all AOI neighbors can learn of the updated
+AOI, and update the contents of their subscriber lists to reflect
+the change in subscription interests. To ensure consistency,
+VON peers at the relays hold the authoritative versions of the
+client positions, all others are considered as replicas (e.g., at
+clients, or in the subscriber lists kept by the VON peers at
+other relays).
+(a) bandwidth usage (b) transmission latency
+Fig. 3. Performance Evaluation of S-VON
+(a) discovery consistency (b) effect of concurrent failures
+Fig. 4. Correctness Evaluation of S-VON
+We see that the failures of clients almost have no impact
+on consistency, as should be expected given a client’s light
+role. However, failures of relays are more serious when the
+concurrent failures exceeds 5 (5.56% of all nodes, or 11.11%
+of all relays) under cluster movement. Discovery consistency
+drops to as low as 80% and do not seem to be restoring.
+However, we note that such relay-only failure may be rare.
+V. CONCLUSION
+In this paper we present S-VON, a generic P2P overlay that
+supports spatial publish / subscribe (SPS) operations for virtual
+environment applications. S-VON is designed to be practical,
+by utilizing a super-peer based design; flexible, by supporting
+SPS operations; and efficient, by considering network topology
+for quick message deliveries. By utilizing a Voronoi-based
+Overlay Network (VON), we design a method to support SPS
+in a distributed and low-latency manner. From our simulations,
+we show that S-VON effectively supports a crowded Second
+Life region, by lowering the bandwidth usage at the server,
+and the latencies between clients, all under current residential
+ADSL environment. As future work, we would like to explore
+how SPS can be used to support state management efficiently,
+and how to handle malicious client or relay behaviors.
+REFERENCES
+[1] S.-Y. Hu et al., “Von: A scalable peer-to-peer network for virtual
+environments,” IEEE Network, vol. 20, no. 4, pp. 22–31, 2006.
+[2] E. Buyukkaya and M. Abdallah, “Data management in voronoi-based
+p2p gaming,” in Proc. IEEE CCNC, 2008.
+[3] B. Knutsson et al., “Peer-to-peer support for massively multiplayer
+games,” in INFOCOM, 2004, pp. 96–107.
+[4] A. Bharambe et al., “Colyseus: A distributed architecture for multiplayer
+games,” in Proc. NSDI, 2006.
+[5] S.-Y. Hu et al., “Voronoi state management for peer-to-peer massively
+multiplayer online games,” in Proc. IEEE CCNC, 2008, pp. 1134–1138.
+[6] A. Bharambe et al., “Donnybrook: Enabling large-scale, high-speed,
+peer-to-peer games,” in Proc. SIGCOMM, 2008.
+[7] M. Varvello, C. Diot, and E. Biersack, “P2p second life: experimental
+validation using kad,” in Proc. INFOCOM, 2009.
+[8] J.-R. Jiang and H.-S. Chen, “Peer-to-peer aoi voice chatting for mas-
+sively multiplayer online games,” in Proc. P2P-NVE, 2007.
+[9] S.-Y. Hu, J.-R. Jiang, and B.-Y. Chen, “Peer-to-peer 3d streaming,” IEEE
+Internet Computing, vol. 14, no. 2, pp. 54–61, 2010.
+[10] S.-Y. Hu, “Spatial publish subscribe,” in Proc. IEEE Virtual Reality
+(IEEE VR) Workshop MMVE, 2009.
+[11] G. Schiele et al., “Requirements of peer-to-peer-based massively multi-
+player online gaming,” in Proc. GPC, 2007.
+[12] G.-Y. Huang et al., “Scalable reputation management with trustworthy
+user selection for p2p mmogs,” IJAMC, vol. 2, no. 4, pp. 380–401, 2008.
+[13] F. Dabek et al., “Vivaldi: A decentralized network coordinate system,”
+in Proc. SIGCOMM, 2004.
+[14] J.-R. Jiang et al., “Scalable aoi-cast for peer-to-peer networked virtual
+environments,” in Proc. ICDCS Workshops, 2008.
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：江振瑞 計畫編號：98-2221-E-008-049- 
+計畫名稱：網路虛擬環境動態負載分擔多重伺服器架構 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 7 4 100%  
+博士生 2 1 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 3 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 7 4 100%  
+博士生 2 1 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

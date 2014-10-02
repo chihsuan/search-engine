@@ -1,0 +1,3148 @@
+i摘 要
+由於超大型積體電路元件尺寸逐漸縮小，時脈頻率增加，使得訊號延遲造
+成的缺陷不再被能忽視，也無法不去測試。測試與訊號延遲相關的錯誤時，必
+須用到 at-speed 測試技術。在以往，這種測試通常是用功能測試向量來完成，
+但是代價較高。結構化測試可提供另一種 at-speed 測試的選擇。掃瞄測試是工
+業界已使用多年的結構化可測試設計，然而它亦有許多缺點，如測試時間長、
+消耗功率高、及無法執行延遲錯誤之測試等等。近年來，已有許多新的掃瞄測
+試架構被提出來解決這些問題。然而在這些研究中，有一項因素始終未受到應
+有的重視，亦即掃瞄鍊之實體設計與邏輯層次之間的關係。由於掃瞄鍊之實體
+結構並不影響定值錯誤涵蓋率，故大多時被忽略不計。因此，掃瞄鍊之實體結
+構通常在實體設計中之繞線階段完成，而測試向量則在不同的流程中產生。然
+而，若假設所有掃瞄鍊次序都可接受，故忽略實體設計之相關資訊，將無法達
+到高品質的掃瞄測試。在一個成功的掃瞄測試計算機輔助設計環境中，邏輯及
+實體相關的問題都應列入考慮。
+在本計劃中，我們研究可測試延遲錯誤之掃瞄鍊結構。除了延遲錯誤涵蓋
+率之外，我們亦將研究其他高品質設計及測試之相關課題，包括測試功率、測
+試資料壓縮、及掃瞄鍊繞線長度等。本計劃之最終目標，是將自動測試圖樣產
+生以及實體設計放在一個整合的架構下，使得所有因素可獲得更有效的處理。
+關鍵詞：轉態錯誤、掃瞄測試、實體設計、自動測試圖樣產生、掃瞄鍊排序
+iii
+目錄
+第一章 前言 ...................................................... 5
+第二章 研究目的 .................................................. 6
+2.1. THE PROBLEMS OF THE DELAY FAULT TESTING...........................................................6
+2.2. TRANSITION FAULT ATPG .....................................................................................6
+2.3. SCAN CHAIN ORDERING .......................................................................................7
+2.4. MODIFY PATTERNS FOR PERFORMANCE ...................................................................7
+第三章 文獻探討 .................................................. 8
+3.1. TRANSITION FAULT MODEL ...................................................................................8
+3.2. SCAN-BASED DELAY TESTING ................................................................................8
+3.3. SCAN CHAIN ORDER ..........................................................................................11
+3.3.1. LOW-POWER TESTING......................................................................................12
+3.3.2. DELAY FAULT TESTING......................................................................................12
+3.3.3. TEST DATA REDUCTION ....................................................................................13
+3.3.4. IMPROVE FAULT COVERAGE IN LOW-POWER BIST.................................................13
+3.4. ATPG AND PHYSICAL DESIGN ..............................................................................14
+第四章 研究方法 ................................................. 16
+4.1. SCAN CHAIN ORDERING FOR LOS FAULT COVERAGE.................................................16
+4.1.1. PROBLEM DESCRIPTION ....................................................................................16
+4.1.2. LAYOUT-AWARE SCAN CHAIN ORDERING..............................................................19
+4.1.2.1. GENERAL FLOW .......................................................................................19
+4.1.2.2. ANALYSIS OF CONFLICT AND DISTANCE..........................................................21
+4.1.2.3. SCAN CHAIN REORDER (PHASE II) ...............................................................22
+4.1.2.4. LOS TEST PATTERN GENERATION AND COMPACTION (PHASE III) .......................25
+4.1.2.5. EXTENSION TO MULTIPLE SCAN CHAINS AND MULTIPLE CLOCK DOMAINS............27
+4.2. ON-CHIP TEST GENERATION MECHANISM FOR SCAN-BASED TWO-PATTERN TESTS ........28
+4.2.1. GENERAL APPROACH .......................................................................................29
+4.2.2. BIT-FIXING LOGIC ............................................................................................30
+4.2.3. INVERSION CONTROL LOGIC ..............................................................................31
+4.3. LOW CAPTURE POWER TEST GENERATION FOR LOC TRANSITION TEST BASED ON
+DON’T-CARE FILLING .....................................................................................................35
+4.3.1. BACKGROUND ................................................................................................36
+4.3.1.1. POWER MODEL .......................................................................................36
+4.3.1.2. PROBLEM FORMULATION...........................................................................36
+4.3.2. LOW-POWER ATPG FOR LOC TRANSITION TEST ...................................................37
+4.3.2.1. LOC TEST PATTERN GENERATION ................................................................37
+4.3.2.2. X-FILLING ...............................................................................................38
+5第一章 前言
+In the past, the semiconductor industry paid little attention to at-speed test techniques.
+However, decreasing feature sizes and increasing clock speeds have combined to alter the defect
+effect dramatically. Recent evidence indicates that delay-inducing defects can no longer be
+ignored nor go untested [1]-[4]. For circuits designed beyond 130nm technologies, the transition
+fault is considered essential to achieve acceptable defect level.
+The detection of delay fault requires at-speed test techniques, which create signal transitions
+to be captured at normal speed. In the past, it was typically accomplished with functional patterns.
+However, functional patterns are unattractive for many reasons; for example, the cost of
+developing them, and the cost of tester hardware to apply them. Structural test techniques [5]-[7]
+offer a viable alternative for at-speed testing. However, there are many complicating factors when
+moving from relatively slow scan-based tests for stuck-at faults to testing for delay faults. Design
+methodologies such as multiple clock domains, mixed negative and positive edge clocking, and
+other design trick, all pose challenges to the implementation of successful, high coverage delay
+tests.
+For today’s nano-scale SOC, it is almost impossible to test a circuit without applying some
+design-or-testability (DFT) techniques. Scan-based test is a structured DFT that has been widely
+accepted in industry for years. The traditional scan tests, although greatly improve stuck-at fault
+coverage, do have many problems, including long test time, high test power, delay fault coverage,
+etc. Many improved scan architectures have been proposed in recent years for low-power testing,
+test time/data reduction, and delay fault testability. However, one thing that is missing in almost
+all of the previous studies is the relationship between physical design and logical part of the scan
+chain. Most of the researchers in this area mainly focus on the logic part of the scan test, while
+the physical scan chain structure is ignored as it does not affect the stuck-at fault coverage. As a
+result, the final scan chain structure is usually decided in the place and route stage in physical
+design, while the test vectors for the circuit under test (CUT) are generated in a different flow.
+However, to achieve high-quality scan test, it is no longer enough to ignore physical design issues
+by assuming that all scan chain orders are acceptable. In a successful computer-aided design
+(CAD) environment for scan-test insertion, both logic and physical issues should be taken into
+account.
+In this research project we addressed the problems in delay fault testable scan chain
+architecture. In additional to delay fault coverage, we have also worked on other issues related to
+high-quality design and test, including testing power, test data reduction, and routing length of the
+scan structure. The ultimate goal is to include the automatic test pattern generation (ATPG) and
+the physical design parts into an integrated environment such that all these issues can be treated
+in the same time.
+7For the enhanced scan, the ATPG is easy. As long as we can generate a signal transition at
+the fault site and propagate the fault effect to some primary output, a test pattern pair is generated.
+This pattern-pair can be generated by modifying stuck-at fault ATPG.
+For skewed-load test, we shall first generate the second vector V2, which is a stuck-at fault
+test pattern, and then try to justify V1 through the given scan chain structure. The possible
+conflicts between V1 and V2 may be avoided if we consider the possible conflicts earlier when we
+generate V2.
+For broadside test, again we must generate the second vector V2 first, and then try to justify
+V1 through the given combinational logic.
+2.3. Scan Chain Ordering
+The scan chain ordering algorithm must take into account two set of information. (1) The
+physical layout, which determine the final routing length of the scan chain. Ideally, the final scan
+cell order should not significantly increase the overall scan chain length. (2) The test patterns,
+which are used to evaluated the quality of a given order.
+The problem in this part is mainly due to the NP-completeness of the scan chain ordering.
+Heuristic approaches have to be developed for the efficient execution of the ordering algorithm.
+2.4.Modify Patterns for Performance
+The problem in this part is mainly due to the NP-completeness of the scan chain ordering.
+Heuristic approaches have to be developed for the efficient execution of the ordering algorithm.
+9termed as the initialization pattern and V2 as the launch pattern. The response of the CUT to the
+pattern V2 must be captured at functional speed (rated clock period). The whole operation can be
+divided into 3 cycles: (i) Initialization Cycle (IC), where the CUT is initialized to a particular
+state (V1 is applied), (ii) Launch Cycle (LC), where a transition is launched at the target gate
+terminal (V2 is applied) and (iii) Capture Cycle (CC), where the transition is propagated and
+captured at an observation point.
+Functional at-speed test patterns are undesirable mainly due to the cost consideration. On the
+other hand, scan-based delay testing methodologies have been discussed for years but are only
+seeing increased usage. To actually generate and deliver the tests, there are also two primary
+techniques in scan-based circuits. The first is often referred to as the “skewed load”technique
+(sometimes it is referred to as “launch-off-shift”(LOS)). In this approach, if the scan contains n
+flip-plops, the first of two transition fault test patterns is obtained by shifting the chain n–1 times,
+and also applying the fist of two sets of primary input (PI) values to the non-scan pins. In a
+muxed data scan design, the second of the two test patterns is obtained by shifting the scan chain
+once more, toggling the scan-enable pin, changing the PI values, and then pulsing the clock to
+capture the response data into the scan flip-flops. If desired, the primary outputs (Pos) would also
+be sampled during this one cycle to detect transition faults that propagate to those pins.
+This technique requires that the scan-enable signals must be operable at full speed. Besides,
+if the PIs and POs are utilized for fast PI changes or PO sampling, then they too must operate at
+full speed. Such design requirements can be difficult to meet, and the necessity for PI/PO
+at-speed operation also increases the complexity (and thus cost) of the tester. This is particularly
+troubling of at-speed scan testing is to be “retrofitted”into a circuit that was not designed with
+this sort of intent in mind. Figure 1(a) shows the skewed load method waveform for a
+multiplexed-DFF design; similar approach can be applied to an LSSD. The LC is a part of the
+shift operation and is immediately followed by a fast capture pulse. The scan enable (SEN) is
+high during the last shift and must go low to enable response capture at the CC clock edge. The
+time period for SEN to make this 1  0 transition corresponds to the functional frequency.
+Hence, skewed load requires the SEN signal to be timing critical. Skewing the clock (CLK)
+creates a higher launch-to-capture clock frequency than standard shift clock frequency. Saxena et
+al. [15] list more launch and capture waveforms used by skewed load approaches.
+11
+3.3. Scan Chain Order
+In traditional scan test targeted for stuck-at faults, the scan chain order is not an issue. As
+long as all bits in a test vector are properly put into their corresponding scan cells, it really
+doesn’t matter how they are delivered. An example is given in Figure 2, in which two different
+scan chain orders are shown. The bit order seen at the scan-in port will be changed as the scan
+chain order is modified. In this case, a scan chain order is usually selected to minimize the overall
+wire length required for scan chain routing.
+Figure 2. An example of scan chain order.
+The problem of finding the shortest scan chain routing is equivalent to the well-known
+traveling salesman problem (TSP), or more precisely, the asymmetric traveling salesman problem
+(ATSP) since the scan-in and scan-out port of a scan cell are not in the same location. Previous
+studies has shown that, with random scan chain order, the total wire length can be 10x longer
+than the shortest scan chain, as shown in Figure 3. The best scan chain order can be found by an
+ATSP solver; however, it is generally very slow for larger circuits and heuristic approach has to
+be applied to solve the problem in reasonable time.
+(a) (b)
+Figure 3. (a) The shortest scan chain order, (b) a random order.
+1 0 1 0
+CUT
+1 0 1 0 1 0 1 0
+1010 1100
+13
+Figure 5. Scan chain reorder for delay fault testability.
+3.3.3. Test Data Reduction
+Test data reduction has attracted a lot of interests in recent years, and various approaches
+have been proposed. An obvious way to reduce test data is to produce a minimum test set for a
+CUT. Many test set compaction algorithms have been developed. Some test data reduction
+techniques are achieved through structure modification [36]-[39]. In this case, the same bit can be
+broadcasted to multiple scan cells at the same time to reduce the amount of data to be sent, if
+these scan cells are not conflicted in the same test cube. Obviously, the scan chain order affects
+the compression rate in this case.
+3.3.4. Improve Fault Coverage in Low-Power BIST
+In order to reduce testing power for BIST, usually a TPG with low transition probability is
+used to reduce switching activity. The problem, however, is that the fault coverage achieved by
+the same length of test sequence is usually lower due to the reduced randomness. A possible way
+to remedy this problem is through scan chain reorder [40]. A conceptual example is shown in
+Figure 6. The test vector generated by the pseudorandom pattern generator (PRPG) is fed to
+smoothers to remove excessive signal transitions in the test vector. Although the original PRPG
+vector matches the given test cube, the smoothed pattern is not. One possible way to improve the
+fault coverage is to reorder the scan chain, as shown in the figure.
+1 0 1 0?1010 1 0 1 001100
+NOT POSSIBLE!
+V1: 1010
+V2: 0110
+V1
+V2
+15
+17
+= (4 2), which means SC2 is moved to position 4 and SC4 is moved to position 2. Therefore,
+permutation 1 is a composite of two permutations: 1 = c1 ◦c2, where permutation c1 is a
+cycle of length 3, andc2 is a cycle of length 2.
+In the proposed LOS test scheme, the test vectors are specified according to the given scan
+chain order. The following notations will be used in our discussion.
+Assume that there are m vector pairs in the test set. Let the k-th vector pair in a test-pair set
+VP be denoted as vpk. The IV and AV of vpk will be referred to as vpk,1 and vpk,2, respectively. The
+bit value in scan cell x of vector vpk,1 (vpk,2) is denoted as vpk,1(x) (vpk,2(x)). In an ATPG pattern,
+the bit value can be {0, 1, X}, where X is an unspecified bit. When a vector pair can be launched
+from a given scan chain order, two adjacent scan cells should not have conflict. The following
+definitions define the Bit Conflict, which is the cost for the reorder algorithm.
+Definition 1: Number of Bit Conflict BCi,j from scan cell SCi to SCj:
+Let scan cell SCi be the immediate predecessor of cell SCj. If there exists a vector pair vpk
+such that either (1) vpk,1(i)=0 and vpk,2(j)=1 or (2) vpk,1(i)=1 and vpk,2(j)=0, we say that there is a
+bit conflict BCi,j(vpk) from SCi to SCj for vpk, as shown in Figure 6.
+
+
+ 
+otherwise0
+]0)(1)([]1)(0)([if1
+)( 2,1,2,1,,
+jvpivpjvpivp
+vpBC kkkkkji (2)
+
+
+
+
+1
+0
+,, )(
+m
+k
+kjiji vpBCBC (3)
+Figure 6. Bit conflict in LOS scan test.
+The bit conflict is not symmetric, i.e., BCi,jBCj,i. The bit conflict for the whole scan
+chain is defined as the summation of bit conflicts between all adjacent scan cells. The
+index of the scan cell in position i is–1(i).
+SC1 SC2SC3
+vpk,1 1 0
+0
+vpk,2 0 1
+Original Scan Chain
+vpk,2 0 0
+vpk,1 1 0
+Reordered Scan Chain
+SC1 SC3SC2
+(a) (b)
+19
+Mdistance. Element Mdistance[i, j] is the Manhattan distance between SCi and SCj.
+In order to evaluate whether a given scan chain order fits a test set, we define the
+Compatible Test Pair Coverage (CTPC) as follows.
+pairstesttotal#
+pairstestcompatible#CTPC (6)
+A test pattern pair is compatible under the given scan chain if this pair can be launched
+through LOS test. In other words, V2 is formed by a 1-bit shift of V1. When CTPC is 100%, the
+LOS test achieves the same fault coverage provided by the initial test set. Similar coverage metric
+was also used in [46].
+Example 1: Consider the two-vector test pair set shown in Figure 7. The corresponding Scan
+Conflict Matrix Mconflict is also shown in the figure. For example, Mconflict[1,2] = 2, as there are
+conflicts from SC1 to SC2 in vector pairs 1 and 2. Assume that the initial scan chain order is
+SC1SC2SC3SC4. It can be seen that neither test pair can be launched in this chain, as there
+are bit conflicts in both cases. Thus, CTPC = 0 under this scan chain order.
+Figure 7. An example of scan conflict matrix.
+4.1.2. Layout-Aware Scan Chain Ordering
+4.1.2.1. General Flow
+We propose a three-phase layout-aware scan chain ordering scheme. In Phase I of the flow, a
+short scan chain is constructed. Note that finding the shortest-length scan chain is the traveling
+salesman problem (TSP), and a heuristic approach usually provides satisfactory result [47]. A set
+of test vector pairs are generated to cover transition faults in the circuit under test. Both the Scan
+Conflict Matrix and Distance Matrix are computed according to the layout information and the
+test vector pairs. In the second phase, scan cells are reordered to reduce bit conflicts with
+restricted wire length penalty. The reorder process is iteratively carried out until bit conflicts in
+the new order BCis 0 or no reduction is possible (i.e., all n–1 links have been tried and no
+vp1,1 0 x
+1 1
+vp1,2 1 1
+0 x
+vp2,1 1 1
+SC1 SC3SC2 SC4
+SC1 0 2
+0 0
+SC2 0 0
+SC1 SC3SC2 SC4
+Scan Conflict Matrix MconflictTest Pair Set
+21
+Figure 8. Bit conflict in LOS scan test.
+4.1.2.2. Analysis of Conflict and Distance
+Since the reduction in fault coverage is affected by the amount of bit conflicts, it would be
+better to first reorder cells with larger number of conflicts.
+For two scan cells SCi and SCj, the number of bit conflicts (either BCi,j or BCj,i) and the
+distance between them is usually correlated, and this fact affects the efficiency of the reorder
+algorithm. When placement is conducted, the EDA tools tend to put logically related gates in
+Input: Positions of Scan Cells (P), Circuit under Test (C)
+Output: Scan Chain Order (), LOS test set (SLT)
+//PHASE I: Initialization
+1. 0 generate_min_length_scan_chain_order(P);
+2. VP generate_all_vector_pairs(C);
+3. VP remove_redundant_test(VP);
+4. Mconflict construct_conflict_matrix(0, VP);
+5. Mdistance construct_distance_matrix(0, P);
+//PHASE II : Scan Chain Reorder
+6. 0;
+7. do {
+8. Find an untried link from cell in position x such that
+)1(),(
+1
+0))1)((, 111
+max 
+
+   ii
+n
+ixx
+BCBC  ;
+9. r reorder(SCx,);
+10. if (r is identify permutation) {
+11. fail 0;
+12. r◦;
+}
+13. else
+14. fail++;
+15. } while (BC> 0 && fail < n–1) { // n: # of scan cells
+//PHASE III : LOS test pattern Generate and Compaction
+16. SLT;
+17. for all (vpkVP) {
+18. tk generate_LOS_test(vpk,);
+19. SLT test_compact(SLT, tk);
+}
+23
+Figure 10. (a) Before, and (b) after reorder
+The reordering process for y < x can be conducted in the same way. This reordering is also a
+permutation consisting of a single cycle:r = (x, x–1,…, y+1, y).
+In summary, the reordering process is to connect the base cell in position x to another scan
+cell in position y. This process can be expressed by the permutation:
+r =
+
+
+
+
+
+xyyyxx
+xyyyxx
+if),1,,1,(
+if),1,,2,1(
+
+
+(8)
+In general, there are many candidate scan cells that satisfy Eq. (7), so the question is that
+which one should be used for reorder. To achieve the minimum increment in routing length, we
+need to find a scan cell SCv that is the nearest to )(1 xSC  and satisfies Eq. (7). On the other hand,
+another legitimate scan cell SCw may lead to larger reduction in bit conflicts and hence reduce the
+number of reorder operations. Although SCw creates a longer routing path than SCv does, fewer
+reorder operations may actually produce a shorter scan chain. A possible solution is to restrict the
+range of taget scan cells, and choose the one that leads to the maximum reduction in bit conflicts
+among these candidate scan cells.
+Let BC(x, y) be the bit conflicts reduction in order if base cell )(1 xSC  is connected to
+)(1 y
+SC  by the reorder operation:
+BC(x, y) =  )1(),()(),1()1(),( 111111    yyyyxx BCBCBC 
+ 
+)1(),1()1(),()(),( 111111    yyxyyx BCBCBC  (9)
+The reordering process is formally given in Figure 11. This algorithm selects the scan cell
+)(1 y
+SC  that achieves the maximum bit conflicts reduction in UB (i.e., a given upper bound)
+(a)
+(b)
+x x+1 y–1
+25
+Figure 11. Reorder a cell
+4.1.2.4. LOS Test Pattern Generation and Compaction (Phase III)
+At the end of Phase II, we have a scan chain order that makes most or all the vector pairs
+compatible. In the last step, first we need to generate the final n+1 bit LOS test vector vk from
+corresponding vector pair vpk,1 and vpk,2. The rules for generating vector are outlined as follows.
+1. vpk,1(i)=X: vpk,1(i) vpk,2(i+1);
+2. vpk,1(i)X and vpk,2(i+1)=X: vpk,2(i+1) vpk,1(i);
+3. vpk,1(i)X, vpk,2(i+1)X, vpk,1(i)vpk,2(i+1): no test;
+4. others: no change in vpk,1(i) and vpk,2(i+1).
+Most of the LOS test vectors obtained above still contain many X-bits. Therefore, we can
+Algorithm: reorder(x,)
+Input: Position in scan chain (x), Scan chain order ()
+Output: A permutation (r)
+1. LSort_Scan_cells();
+// according to distance to
+2. max_red 0;
+3. target_cell 0;
+4. for (i=1, j=0; i <= n–1, j <= UB; i++) {
+5. y position of the i-th scan cell in L;
+6. if (reorder to cell y causes hold time violation)
+7. continue;
+8. if (BC(x, y) > max_red) {
+9. j++;
+10. max_redBC(x, y);
+11. target_cell y;
+}
+}
+12. y target_cell;
+13. if (max_red > 0)
+14. returnr according to Eq. (8);
+15. else if (x == n–1) {
+16. x n;
+17. goto step 2;
+}
+18. else
+19. return identity permutation;
+// no permutation
+27
+4.1.2.5. Extension to Multiple Scan Chains and Multiple Clock Domains
+Although the scan chain reorder algorithm presented in this section is targeted for single
+scan chain, it can be easily extended to multiple scan chains. There are two possible ways to
+apply this method in multiple scan chains. An easy and straightforward approach is to reorder
+scan cells only within each scan chain. In this case, the scan chain reorder algorithm is applied to
+each chain individually. The drawback of this approach is that the number of candidates for
+reorder operation will be reduced, and it may be possible that some bit conflicts cannot be
+removed. In order to achieve maximal conflicts reduction, reorder operations should be allowed
+across different chains, and this can be done as follows. First, connecting all chains into a virtual
+single scan chain by assuming the end of one chain is connected to the first scan cell in the next
+chain. The proposed scan chain reorder algorithm is then applied to this virtual scan chain. Once
+the reordering process is completed, the virtual scan chain is simply broken down again so that
+multiple scan chains are constructed.
+For systems with multiple clock domains, the reorder algorithm has to make sure that no
+clock domain violations are caused by the reordering operations, as the detection of
+inter-clock-domain delay faults depends on proper clocking schemes. One possible solution is to
+add lockup latches; however, the inclusion of extra lockup latches may increase the scan chain
+length.
+29
+4.2.1. General Approach
+In either LOS or LOC delay test, the first vector of a pattern pair <v1, v2> is shifted into the
+scan chain from the ATE, while the second vector (v2) is either the 1-bit shift of v1 (LOS test) or
+the circuit response of v1 (LOC test). Since v2 is dependent on v1, it is always possible that some
+valid test pattern pairs cannot be launched in either LOS or LOC. For example, let <100, 001> be
+a valid test pair, and the scan cells are chained in the given order. Since the 1-bit shift of v1 (100)
+is either x10, the given v2 (001) cannot be launched through LOS.
+In order to improve scan-based delay fault coverage, an embedded bit-fixing mechanism is
+proposed in this paper. Assume that pattern pair <v1, v2> is a required delay test, and v1 has been
+loaded into the scan chain. Let vt be the test vector generated in the scan chain in the next clock
+cycle; in other words, vt is the 1-bit shift of v1 in LOS, and the output response of v1 in LOC.
+Whenever vt is different from v2, a correction vector c has to be provided for the bit-fixing
+operation:
+vtc = v2 (10)
+The temporary vector vt will be referred to as a transition vector henceforth. If both vt and v2
+are known, the corresponding correction vector can be easily calculated:
+c = v2vt (11)
+Example 3: Let <100, 001> be a two-pattern test to be launched with LOS test. The initialization
+vector v1 = (100) is first loaded into the scan chain. In the next clock cycle, a bit‘0’is applied to
+the scan-in port, and thus the transition vector vt is (010), which is different from the required v2 =
+(001). Hence, a correction vector c = vtv2 is applied to modify the transition vector: c = (010)
+(001) = (011), which actually means the last two bits in vt have to be complemented to generate
+the required v2.
+In general, there is no single correction vector that is applicable to all pattern pairs. Thus, the
+bit-fixing circuit should be able to dynamically change the correction vector. On the other hand,
+the hardware overhead of the bit-fixing circuit increases as the number of correction vectors
+becomes larger, thus it is imperative to restrict the number of correction vectors.
+31
+Figure 12. The proposed architecture.
+4.2.3. Inversion Control Logic
+Consider a scan chain of n scan cells and a set of m two-pattern tests. Let IV and AV of the
+i-th pattern pair be denoted as ivi and avi, respectively. Similarly, the transition vector for this
+pattern pair is denoted as tvi. Let bit k, 1 k n, in ivi, tvi, and avi, be denoted as ivi,k, tvi,k, and
+avi,k, respectively. The correction vector ci for pattern pair i can be determined as follows:
+ci,k = F if and only if tvi,k = avi,k
+ci,k = D if and only if tvi,k = x or avi,k = x (12)
+ci,k = I if and only if tvi,kx, avi,kx and tvi,kavi,k
+In Eq. (12), F shows that a fixed value (i.e., no change) appears in the corrected bit, while I
+indicates an inverting operations is required for correction. D is the don’t-care condition, which
+means both F and I are acceptable. The x in ivi or avi indicates an unspecified bit. Figure 13 is an
+example on how to compute correction vectors for a set of LOS test vectors.
+Figure 13. The construction of correction vectors.
+Note that the notations F, I, and D are used to indicate the bit-fixing operation required for a
+given bit. There are many different ways to carry out fixed and inverting operations. If the
+XOR-based bit-fixing scheme, as shown in Fig. 1, is used, operations F and I are achieved by
+applying 0 and 1 to the upper input of an XOR gate, respectively. As a result, the correction
+vector becomes a normal binary vector.
+Inversion Control Logic
+Configuration Register
+CUT
+SI
+SE
+….FF FF
+SO
+….
+Initialization Transition Activation Correction
+vectors vectors vectors vectors
+1 0 x x 1 1 1 0 x x 1 x 1 0 1 F D I D D
+1 x x 1 0 0 1 x x 1 x 0 1 0 0 D I D D I
+0 1 x 1 x 0 0 1 x 1 x x 1 1 0 D D F D I
+1 x x 1 1 x 1 x x 1 1 x 0 x 1 D D D D F
+0 0 0 x 0 x 0 0 0 x 1 0 0 1 x D F F I D
+33
+computation time can be prohibitive for a large test set. Therefore, we introduce a simple greedy
+algorithm, which is outlined in Figure 15, to reduce the number of seeds for vector correction.
+Initially, a set of two pattern tests are generated. Correction vectors are created for pattern-pairs
+which cannot be launched through the given test method (LOS or LOC). The set of vectors are
+sorted according to the number of D’s in ascending order; in other words, the vector with fewest
+D’s is processed first. Initially, the set S has only an all-D seed. In each iteration of the while-loop,
+the correction vector c with the fewest D’s in C is selected. This vector is compared with all the
+seeds in S to see if it is compatible with an existing seed. If a seed sj is compatible with c, sj is
+updated by taking the intersection of the initial sj and c. Otherwise, c becomes a new seed. Vector
+c must be removed from the sorted vector set C before the end of the loop. The complexity of the
+seed-searching process is O(|C|2).
+Consider the example in Figure 14 again. The five correction vectors are sorted into a list:
+{c2, c3, c4, c5, c1}. At the end of each iteration of the while-loop, seeds in S are listed as follows:
+{s1=c2}, {s1=c2, s2=c3}, {s1=c2, s2=c3, s3=c4}, {s1=c2c5, s2=c3, s3=c4}, {s1=c2c5, s2=c1c3,
+s3=c4}. These three seeds are encoded as (b1b0) = (01), (10), (11), respectively, with code (00)
+represents normal scan mode with no inversion. If seed s1 is selected, scan cells 1, 4, and 5 are
+inverted. Similarly, scan cells 1, 3, 4 are inverted in seed s2, and cells 1, 3, 5 are inverted in s3.
+The final bit-fixing circuit is shown in Figure 16.
+35
+seed si can be written as a binary vector with si,k{0, 1}, where 0 indicates non-inverting and 1
+is inverting. After n shift operations, vi,k will be moved to the k-th scan cell in the scan chain, and
+bit value in scan cell k will be vi,ksi,1si,1…si,k, which is supposed to be the k-th bit ivi,k
+of the initialization vector. Therefore, the stored vector vi for vector pair <ivi, avi> and seed si can
+be computed as follows:
+ kj j,ik,ik,i sivv 1 , nk1 , (5)
+where‘+’operation indicates the modulo-2 addition (i.e, exclusive-OR operation).
+Example 4: Consider the circuit given in Example 1 again, with the pattern pair <100, 001> and
+correction vector c = (011). By using Eq. (5), the stored vector would be (110). Thus, the entire
+test procedure works as follows. Since the stored vector is (110), with the correction vector set to
+be (011), after three shift operations the scan chain will contain (100). In the next cycle, ATE
+applies a bit 0 to the SI port and thus the next vector in the scan chain would be (001).
+4.3.Low Capture Power Test Generation for LOC Transition
+Test Based onDon’t-Care Filling
+Low power testing attracts a lot of attention, as the test patterns usually consume higher
+power that may reduce yield or even cause permanent damage. Thus, it is very important to keep
+both average and peak test power under control. An extremely high power increases the damage
+probability, which makes reducing peak power an important topic. Peak power usually occurs in
+the capture cycles, thus an efficient way to reduce peak power is to find test vectors with
+restricted power consumption in the capture cycle.
+Many test generation algorithms have been proposed to reduce power in both scan-shift [52]
+and capture cycles [53]. There are plenty of unspecified bits (X-bits) in the ATPG patterns. By
+fitting proper specified bits into X-bits, we can reduce power consumption [54]. A Progressive
+Matching Filling (PMF) technique [55] was proposed for capture power reduction in scan-based
+transition test. In this method, X-bits in the first vector of a test pair are assigned to logic values
+that match the corresponding bits in the second vector so that signal transitions can be minimized.
+As a result, the capture power is reduced.
+In this research, we present a low-power ATPG algorithm for transition test. A bidirectional
+X-filling scheme that minimizes signal transitions between test vectors is proposed, and a peak
+vector replacement method is applied to the vector set to further reduce peak power. Compared
+with previous work [55], our method achieves about 50% reduction in both peak power and
+average peak power consumption.
+37
+Figure 17. LOC Transition Test.
+Figure 18. LOC Transition Test.
+Unfortunately, the X-filling shown in Figure 2 may not be always possible, since the PPI
+part of AV is also the output response of the circuit when IV is applied. Since PI is fully
+controllable, we shall try to assign the same PI vector to both AV and IV whenever possible to
+minimize the signal transitions from IV to AV and thus reduce test power. On the other hand, an
+X-filling in the PPI part of AV must be justified, and the effects of an assignment to the IV have
+to be simulated. The goal is thus to find an X-filling such that the Hamming distance between IV
+and AV is minimized.
+4.3.2. Low-Power ATPG for LOC Transition Test
+The proposed ATPG algorithm consists of three phases. In phase I is a set of LOC test pairs
+are generated, and the X-bits in these patterns are filled for low power. In phase 3 the vector set is
+compacted, and a vector replacement scheme is applied to further reduce the peak power.
+4.3.2.1. LOC Test Pattern Generation
+Assume that a transition fault f appears on line l. A vector pair <IV, AV> is a valid test for f if
+X-Filling
+IV: 01010001IV: x101xx01
+AV: 00x100x1 AV: 00010001
+Combinational
+Logic
+PI1
+PIm
+PPI1 PPO1
+PPOn
+PO
+PPIn
+IV AV
+PI1
+PIm
+PPI1 PPO1Combinational
+Logic
+FF
+FF
+…
+… …
+… …
+PI1
+PIm
+PPIn PPOn
+39
+PIi(IV) and PIi(AV) are X, a random value is assigned to both positions.
+Step 2: If PPIj(IV) is X and PPIj(AV) is specified (0 or 1) for any 1jn, assign
+PPIj(IV)PPIj(AV).
+Step 3: Conduct logic simulation for the IV assignment and update X-bits in AV accordingly.
+Step 4: If PPIj(AV) is X and PPIj(IV) is specified for any 1jn, temporarily assign
+PPIj(AV)PPIj(IV) and justify the assignment. If the assignment is justified successfully, make
+the assignment permanent; otherwise invert the assignment. Go to Step 5 if for all 1jn, either (1)
+both PPIj(AV) and PPIj(IV) are X, or (2) both PPIj(AV) and PPIj(IV) are specified; else go to step
+2.
+Step 5: If PPIj(IV)=PPIj(AV)=X, assign PPIj(IV) to be either 0 or 1, and then go back to Step 2.
+Finish the process if all X-bits have been filled.
+Figure 20. An example of X-filling.
+An example of the X-filling process is given in Figure 20. The initial vector pair is given in
+Figure 20(a), where bit pair (a, b) and (c, d) are candidates for X-filling for Step 1.
+IV
+AV
+X
+1
+1
+X
+X
+X
+0
+X
+X
+X
+1
+1
+0
+1
+X
+X
+IV
+AV
+IV
+AV
+IV
+AV
+1
+1
+1
+1
+0
+1
+0
+X
+0
+1
+1
+1
+0
+1
+0
+X
+IV
+(e) step 4
+PI
+Justify h in step 4 to 1
+e
+f
+a
+c
+d
+g
+(a) test pair
+X
+1
+1
+X
+0
+X
+0
+X
+X
+1
+1
+1
+0
+1
+X
+X
+X
+1
+1
+1
+0
+1
+0
+X
+X
+1
+1
+1
+0
+1
+X
+X
+X
+1
+1
+1
+0
+1
+0
+X
+0
+1
+1
+1
+0
+1
+X
+X
+(b) step 1 (c) step 2
+(d) step 3
+IV simulation set to 0
+IV
+1
+1
+1
+1
+0
+1
+0
+1
+0
+1
+1
+1
+0
+1
+0
+X
+(f) step 5
+IV
+1
+1
+1
+1
+0
+1
+0
+1
+0
+1
+1
+1
+0
+1
+0
+1
+(g) Finish
+e
+f
+i
+PPI
+PI
+PPI
+41
+第五章 結果與討論
+5.1. Scan Chain Ordering for LOS Fault Coverage
+We have conducted experiments to verify the efficiency of the proposed method with several
+ISCAS’89 benchmark circuits, and the results are presented in this section. We only select
+circuits with at least 30 flip-flops, as the reorder algorithm is more effective for circuits with
+more scan cells. These benchmark circuits are also used in previous studies for LOS-based delay
+test. The statistics of the benchmark circuits are given in Table II. The third column shows the
+transition fault coverage (TF Cov.) achievable by the initial test set assuming that enhanced scan
+is used (i.e., no restrictions). A vector pair is generated by pairing sa0 and sa1 test vectors
+associated with a fault site. The test vectors are generated by the Atlanta package. If a valid vector
+pair cannot be found for a transition fault with this approach, the fault is simply ignored at this
+stage.
+Table II. Circuit Statistics
+Circuit # Scan cells TF Cov. (%)
+S1423 91 97.53
+S5378 214 97.13
+S9234 247 93.22
+S13207 700 97.89
+S15850 611 89.79
+S38417 1664 95.80
+The circuits are synthesized by Synopsys Design Compiler with UMC 0.18μm technology,
+while place & route are carried out by Cadence SoC Encounter. Test vector pairs are generated
+for transition faults in the circuit, and the initial scan chain is established by tools from UCLA
+[47], which minimize the routing length of the scan chain. Finally, the proposed method is used to
+generate a new scan chain.
+In order to justify our reordering algorithm that searches for candidate for reorder starting
+from the nearest scan cell (see algorithm in Figure 11), we conduct a study on the frequency of a
+cell being selected as the target for reordering (scan cell in position y in Figure 10), and the
+results are shown in Figure 22 and Table III. In Figure 22, we show that our algorithm effectively
+selects a neighboring scan cell for reorder.
+43
+with respect to the initial scan chains. The lengths of the scan chains are 1.7 to 2.8 times of the
+initial chains. On the average, the reordered chains are 2.2 times in length compared to the
+original ones. The last two columns give the run time of the experiments, which are performed on
+a PC with Intel Core II CPU at 1.6GHz. In our experiments, we first execute Phase II repeatedly
+to find out the best UB (Figure 11), and the time used is shown in column 8. With a known UB,
+the run time for the whole flow with the given optimal UB is shown in the last column.
+Table IV. Results of scan chain reorder.
+ML Routing Reordered Scan Chain Run Time (Sec)
+Circuit
+BC WL (m) # Reorder BC WL (m) Incr. Search UB Reorder
+S1423 270 1341.8 57 0 3100.9 2.3x 0.250 0.109
+S5378 647 2602.4 79 0 4615.6 1.8x 0.968 0.671
+S9234 1047 3071.7 110 0 8051.9 2.8x 1.640 1.234
+S13207 1784 7715.2 153 0 13199.0 1.7x 10.156 8.781
+S15850 1724 7374.2 212 0 16350.1 2.2x 7.546 8.765
+S38417 3395 18129.7 532 0 47232.3 2.6x 117.018 85.718
+Avg 1478 0 2.2x
+Figure 23 illustrates the effect of scan chain reordering for S15850. This circuit is selected
+since it requires the longest route for reordered connection (see Table III) and thus represents the
+worst case scenario. Still, it can be seen that the initial routing structure is only partially changed.
+(a) (b)
+Fig. 23. Scan chain reorder for S15850; (a) initial scan chain. (b) reordered scan chain.
+Table V summarizes the TPG results. Columns 2 and 3 are the transition fault coverage (TF
+Cov.) and CTPC in the initial scan chain. Columns 4 and 5 give the transition fault coverage and
+CTPC in the reordered scan chain. It can be seen that, in each benchmark circuit, the proposed
+method achieves 100% CTPC, and the fault coverage is actually higher than the initial fault
+coverage listed in Table I. The reason is that the compacted test set launches more transitions than
+the initial test set, and thus some other faults become testable as well. The improvement in
+45
+5.2.On-Chip Test Generation Mechanism for Scan-Based
+Two-Pattern Tests
+We have conducted experiments on ISCAS’85 and ISCAS’89benchmark. The statistics of
+the circuits are summarized in Table VII.
+47
+TABLE VIII. Experimental results of LOS test.
+Circuit #P FC (%) Extra #P Extra FC #Seeds
+C880 108 95.83 13 4.17 2
+C1355 131 90.41 41 9.08 38
+C1908 146 91.86 49 7.9 16
+C2670 269 93.48 30 2.97 2
+C3540 301 90.59 62 5.96 27
+C5315 317 96.55 58 2.75 3
+C7552 342 97.59 46 1.22 8
+S1423 122 95.47 20 3.58 4
+S5378 261 95.17 43 3.7 9
+S9234 454 85.01 74 9.43 15
+S13207 425 92.22 86 6.35 67
+S15850 267 91.4 105 5.22 53
+S38417 475 95.09 102 4.38 89
+S38584 412 90.29 93 5.56 78
+TABLE IX. Experimental results of LOC test.
+Circuit #P FC (%) Extra #P Extra FC #Seeds
+C880 100 95.12 18 4.88 5
+C1355 119 89.41 51 10.08 40
+C1908 126 91.26 54 8.5 17
+C2670 247 93.43 39 3.02 3
+C3540 261 89.81 65 6.85 30
+C5315 267 96.06 64 3.24 5
+C7552 331 96.98 52 1.83 10
+S1423 108 95.06 34 3.99 5
+S5378 247 94.07 51 4.8 11
+S9234 423 83.89 80 10.55 18
+S13207 401 91.35 99 7.22 70
+S15850 244 90.1 111 6.52 55
+S38417 469 93.71 105 5.76 90
+S38584 401 89.74 102 6.11 81
+The area overhead of the proposed method is summarized in Table X. The experimental
+results show that, even in the worst case, the area overhead for the proposed approach is no more
+than 5%, which is much smaller than those required in the previous method [51].
+TABLE X. Comparison: hardware overhead (%).
+49
+TABLE XI. Fault coverage of the LOC vectors
+Proposed
+circuit
+SAF TF #Vec
+S208 100.00% 68.786% 26
+S641 100.00% 91.689% 155
+S713 95.166% 81.373% 168
+S953 100.00% 88.032% 194
+S1423 98.369% 86.226% 183
+S1488 100.00% 81.877% 173
+S1494 99.473% 79.858% 175
+S5378 98.869% 84.874% 902
+S9234 94.037% 79.299% 1135
+S13207 98.915% 76.759% 1671
+S15850 97.487% 75.969% 1559
+S38417 99.664% 92.863% 4118
+Average 98.498% 82.30%
+Table XII shows the reduction in peak power achieved by test vector replacement, which is
+carried out after LOC TPG and X-filling. Columns 2 and 3 show the peak WSA (i.e., the largest
+WSA produced by all valid test pairs) without and with vector replacement, respectively. Column
+4 gives the percentage reduction in peak power, and it can be seen that, on the average, the peak
+power is reduced by 11% with vector replacement, and for S1423 the reduction is 30%. Columns
+5 to 7 give the same set of data for average WSA reduction. Since the vector replacement is
+targeted for peak power reduction, it is no surprise that the average WSA is almost the same after
+applying this technique.
+51
+TABLE XIII. Comparison of experimental results.
+Peak WSA Average WSA
+WSA
+PMF Our Red (%) PMF Our Red (%)
+S208 - 102 - - 45 -
+S641 - 359 - - 57 -
+S713 - 381 - - 58 -
+S953 - 221 - - 82 -
+S1423 - 493 - - 162 -
+S1488 - 798 - - 531 -
+S1494 - 784 - - 531 -
+S5378 2559 1023 +60 612 377 +38.4
+S9234 6033 3015 +50 2765 1339 +51.6
+S13207 5456 2538 +53.5 2702 1299 +51.9
+S15850 7257 4109 +43.4 2686 1023 +61.9
+S38417 14853 7665 +48.4 6054 3071 +49.3
+Avg. 7232 1791 +49.3 2964 715 +52.0
+53
+[18] P. Girard, L. Guiller, C. Landrault, and S. Pravossoudovitch, “A test vector inhibiting
+technique for low energy BIST design,”in Proc. VLSI Test Symp., pp. 407-412, 1999.
+[19] S. Gerstendorfer and H.-J. Wunderlich, “Minimized power consumption for scan-based
+BIST,”in Proc. Int. Test Conf., pp. 77 -84, 1999.
+[20] S. Wang and S.K. Gupta, “LT-RTPG: a new test-per-scan BIST TPG for low heat
+dissipation,”in Proc. Int. Test Conf., pp. 85-94, Oct. 1999.
+[21] V. Dabholkar, S. Chakravarty, I. Pomeranz, and S. Reddy, “Techniques for minimizing
+power dissipation in scan and combinational circuits during test application,” IEEE Trans.
+on Computer-Aided Design of Integrated Circuits and Systems, vol. 17, no. 12, pp.
+1325-1333, Dec. 1998.
+[22] R. Sankaralingam, R.R. Oruganti, and N.A. Touba, “Static compaction techniques to
+control scan vector power dissipation,”in Proc. IEEE VLSI Test Symp., pp. 35-40, 2000.
+[23] T.-C. Huang and K.-J. Lee,“Reduction of power consumption in scan-based circuits during
+test application by an input control technique,”IEEE Trans. CAD, vol. 20, no. 7, pp.
+911-917, July 2001.
+[24] A. Chandra and K. Chakrabarty, “Combining low-power scan testing and test data
+compression for system-on-a-chip,”in Proc. IEEE/ACM Design Automation Conf., pp.
+166-169, 2001.
+[25] R. Sankaralingam, B. Pouya, and N.A. Touba, “Reducing power dissipation during test
+using scan chain disable,”in Proc. VLSI Test Symp., pp. 319-324, May 2001.
+[26] R. Sankaralingam and N.A. Touba,“Inserting test points to control peak power during scan
+testing,”in Proc. DFT in VLSI Systems, pp. 138 -146, Nov. 2002.
+[27] S. Kajihara, K. Ishida, and K.Miyase, “Test vector modification for power reduction during
+scan testing,”in Proc. VLSI Test Symp., pp. 160 -165, May 2002.
+[28] N.Z. Basturkmen, S.M. Reddy, and I. Pomeranz, “A low power pseudo-random BIST
+technique,”in Proc. Computer Design: VLSI in Computers and Processors, pp. 468-473,
+Sept. 2002.
+[29] N.Z. Basturkmen, S.M. Reddy and I. Pomeranz, “Pseudo random patterns using Markov
+sources for scan BIST,”in Proc. Int. Test Conf., pp. 1013-1021, Oct. 2002.
+[30] I. Polian, B. Becker and S.M. Reddy, “Evolutionary optimization of Markov sources for
+pseudo random scan BIST,”in Proc. Design, Automation, and Test in European Conf., pp.
+1184-1185, 2003.
+[31] Y. Bonhomme, P. Girard, L. Guiller, C. Landrault, and S. Pravossoudovitch,“Power driven
+chaining of flip-flops in scan architectures,”in Proc. Int. Test Conf., pp. 796-803, Oct.
+2002.
+[32] Y. Bonhomme, P. Girard, C. Landrault, and S. Pravossoudovitch, “Efficient scan chain
+design for power minimization during scan testing under routing constraint,”in Proc. Int.
+Test Conf., pp. 488-493, Oct. 2003.
+[33] Y. Bonhomme, P. Girard, , L. Guiller, C. Landrault, S. Pravossoudovitch, and A. Virazel,
+“Design of routing-constrained low power scan chains,”in Proc. Design, Automation, and
+55
+LFSR-based test pattern generation,”in Proc.Int’l On-Line Testing Workshop, pp. 80-86,
+2001.
+[51] S. Tragoudas, and V. Nagarandal,”On-chip embedding mechanisms for large sets of vectors
+for delay test,”IEEE Trans. on Computer-Aided Design of Integrated Circuits and Systems,
+vol. 24, pp. 488-497, Mar. 2005.
+[52] S. Kajihara, K. Ishida, and K. Miyase, “Test vector modification for power reduction during
+scan testing,” in Proc. VLSI Test Symp., pp. 160-165, 2002.
+[53] W. Li, S. M. Reddy, and I. Pomeranz, “On test generation for transition faults with
+minimized peak power dissipation,” in Proc. DAC., pp. 504-509, 2004.
+[54] X. Wen, Y. Yamashita, S. Kajihara, L.-T. Wang, K.K. Saluja, and K. Kinoshita, “On 
+low-capture-power test generation for scan testing,” in Proc. VLSI Test Symp. , pp. 265-270,
+2005.
+[55] W. Li, S.M. Reddy, and I. Pomeranz, “On reducing peak current and power during test,” in 
+Proc. Annual Symp. VLSI, pp. 156-161, 2005.
+出席國際會議研究心得報告 
+會議名稱︰ (中文) 亞洲測試研討會 
+ (英文) Asian Test Symposium (ATS 2006) 
+時間及地點︰ 日本福崗(Fukuoka, Japan)、2006/11/20 至 2006/11/23 
+出席人︰ 王行健  
+ 國立中興大學資訊科學系 
+發表論文︰ 共二篇 
+一、 (中文) 可提高歪斜載入轉態測試覆蓋率並考慮佈局之掃瞄鏈重排 
+ (英文) Layout-Aware Scan Chain Reorder for Skewed-Load Transition Test 
+Coverage 
+二、 (中文) 可減少測試資料及測試時間之多模式分段掃瞄架構及考慮佈局之掃瞄
+鏈繞線 
+ (英文) Multi-Mode Segmented Scan Architecture with Layout-Aware Scan Chain 
+Routing for Test Data and Test Time Reduction 
+ 
+一、參加會議經過 
+2006 年亞洲測試研討會(Asian Test Symposium 2006)於 2006 年 11 月 20 日至 23 日
+在日本福崗(Fukuoka, Japan)召開，該會議由 IEEE Computer Society 舉辦。此會議為積
+體電路測試領域之學術研討會，每年輪流在亞洲各國舉辦；雖然名為亞洲測試會議，實
+際上參加者遍及全球，是測試領域相當知名的國際會議。本年度有 127 篇一般論文投
+稿，共接受了 63 篇論文；另有 7 篇工業界論文。議程分為二十一個論文 sessions 以及
+一個工業界海報 sessions，論文涵蓋 18 個領域，包括 Test Power Reduction, Memory Test, 
+IDDQ and Burn-In Test, High-Level Test, Verification, Delay Test, Scan Test Techniques, 
+Reliability Circuit Design, Diagnosis, Analog DFT, Defect ATPG, Test Compression, BIST, 
+DFT for Processors and ASICs, 以及其他比較特殊的測試問題。 
+主要為當地學者。在技術方面，這次的議程中 SoC 相關的研究快速消失；而與製程良
+率相關的問題亦比去年少了許多。其部份原因可能是這些議題在過去這幾年已有太多研
+究了，以致於可再深入研究的問題較少。今年的論文主題分佈比較平均，測試資料壓縮
+方面仍有不少論文。 
+ 
+三、攜回資料名稱及內容 
+攜回會議論文集一本。 
+ 
+2. Preliminaries 
+ 
+A commonly used delay fault model is the 
+transition fault. According to this model, every line is 
+associated with two faults: a slow-to-rise fault (rising 
+fault) and a slow-to-fall fault (falling fault). It is often 
+assumed that the extra delay caused by a transition 
+fault on a line is sufficiently large such that the delay 
+of every path passing through this line exceeds the 
+maximum allowed value, which is usually the system 
+clock period for synchronous sequential circuits. 
+The following two requirements are necessary and 
+sufficient for a vector pair (V1, V2) to be a test of a 
+transition fault f on line l. 
+1. When the circuit inputs are changed from V1 to V2, 
+the rising (falling) transition fault f is activated by 
+a rising (falling) logic transition on line l. 
+2. V2 is a test for a stuck-at-0 (stuck-at-1) fault on l. 
+In the proposed method, we first generate vector 
+pairs for all detectable transition faults. A vector pair is 
+generated for each fault, and inputs that are not 
+necessary for fault detection are kept unspecified. In 
+this way, the probability of successful scan chain 
+ordering becomes higher. These vectors will be 
+compacted in the final step. 
+Let the index set of the scan cells in an n-cell circuit 
+be S = {1, 2, …, n}, and the scan cells are denoted as 
+SC1, SC2, …, SCn. A scan chain ordering problem is 
+essentially a bijection function of the index π: S → S, 
+such that scan cell SCi is put in position π(i) in the scan 
+chain. Such a function is called a permutation, which is 
+usually written as: 
+
+
+
+
+=
+)()2()1(
+21
+n
+n
+πππ
+π "
+"      (1)  
+For example, we can represent the five-cell scan 
+chain SC5→SC4→SC1→SC2→SC3 by the following 
+permutation: 
+
+
+
+
+=
+12543
+54321
+1π  
+A permutation is the product of several cycles. Each 
+cycle is also a permutation, in which each element is 
+moved to the position originally occupied by the next 
+element. For example, the above permutation consists 
+of two cycles: π1 = (3 5 1) ◦ (4 2) = π2 ◦ π3. 
+Permutation π2 is a cycle of length 3, in which SC3 is in 
+position 5, SC5 is in position 1, and SC1 is in position 3. 
+ 
+3. Notations and Cost Metrics 
+ 
+In our skewed-load test scheme, the test vectors are 
+specified according to the given scan chain order. The 
+following notations will be used in our discussion. 
+Assume that there are m vector pairs in the test set. 
+Let the k-th vector pair in a test-pair set VP be denoted 
+as vpk. The IV and AV of vpk will be referred to as vpk,1 
+and vpk,2, respectively. The bit values in scan cell x of 
+vector vpk,1 (vpk,2) is denoted as vpk,1(x) (vpk,2(x)). When 
+a vector pair can be launched from a given scan chain 
+order, two adjacent scan cells should not have conflict. 
+The following definitions define the Bit Conflict, 
+which is the cost for the reorder algorithm. 
+Definition 1. Number of Bit Conflict BCi,j from scan 
+cell SCi to SCj: 
+Let scan cell SCi be the immediate predecessor of 
+cell SCj. If there exists a vector pair vpk such that either 
+(1) vpk,1(i)=0 and vpk,2(j)=1 or (2) vpk,1(i)=1 and 
+vpk,2(j)=0, we say that there is a bit conflict BCi,j(vpk) 
+from SCi to SCj for vpk, as shown in Figure 1. 
+
+
+
+=∧=
+∨=∧=
+=
+otherwise0
+]0)(1)([   
+]1)(0)([ if
+1)(
+2,1,
+2,1,
+, jvpivp
+jvpivp
+vpBC
+kk
+kk
+kji
+ (2) 
+∑−
+=
+=
+1
+0
+,, )(
+m
+k
+kjiji vpBCBC  (3) 
+The bit conflict is not symmetric, i.e., BCi,j ≠ BCj,i. 
+The bit conflict for the whole scan chain, which is 
+defined as the summation of bit conflicts between two 
+adjacent scan cells, is given in the following definition. 
+The index of the scan cell in position i is π–1(i). 
+Definition 2. Scan Chain Bit Conflict (BCp) 
+Given a scan chain order π(S) and a test set of m 
+vector pairs, the number of bit conflicts under the 
+given order (that is, the permutation π) for vector pair 
+vpk, denoted as BCπ(vpk), is defined as follows. 
+∑−
+=
++−−
+=
+1
+0
+)1(),(
+)()( 11
+n
+i
+kiik vpBCvpBC πππ     (4)  
+The scan chain bit conflict under order π, denoted 
+as BCπ, is the number of bit conflicts for all vector 
+pairs: 
+∑−
+=
+=
+1
+0
+)(
+m
+k
+kvpBCBC ππ  (5) 
+Definition 3. A vector pair vpk is vector pair 
+compatible with respect to a scan chain order π(S) if 
+BCπ(vpk) = 0. 
+ 
+Figure 1. Bit conflict in skewed-load scan test 
+ SC1 SC2 SC3 
+vpk,1    1          0           0 
+vpk,2     0         1           0 
+Original Scan Chain 
+vpk,2   0           0            1 
+vpk,1   1           0            0 
+Reordered Scan Chain 
+SC1 SC3 SC2 
+(a) (b) 
+15th Asian Test Symposium (ATS'06)
+0-7695-2628-4/06 $20.00  © 2006
+relationship between conflicts vs. distance for a single 
+scan cell and for all scan cells. In Figure 3(a), the scan 
+cells are sorted according to their distances to the “base 
+cell”. It can be seen that cells closer to the base cell 
+tends to produce more conflicts. Still, it is possible that 
+at least one cell in the neighborhood does not conflict 
+with the base cell, and our experimental results in Sec. 
+5 validate this conjecture. In Figure 3(b), the bit 
+conflicts between every base cell and its i-th closest 
+scan cell are added together to be the number of the i-
+th bit conflict, and the distribution for the n–1 cells are 
+given in the figure. In general, the number of conflicts 
+diminishes very fast as the distance becomes larger. 
+scan cell (sorted according to distance)
+B
+it 
+C
+on
+fli
+ct
+ 
+scan cell (sorted according to distance)
+B
+it 
+C
+on
+fli
+ct
+ 
+Figure 3. Bit conflict vs. distance: (a) for a 
+scan cell, (b) for all scan cells. 
+ 
+4.3. Scan Chain Reorder (Phase II) 
+ 
+The reordering problem can be formulated as 
+follows. Assume that the original order is π, and there 
+are bit conflicts from the x-th scan cell to its next cell 
+in the scan chain. The scan cell in position x will be 
+called the “base cell”. In order to reduce conflicts with 
+minimum increment in routing length, we will find a 
+scan cell, say in position y, that is the nearest to 
+)(1 x
+SC
+−π
+and satisfies the following relationship: 
+ 
+)1(),()(),1()1(),(
+)1(),1()1(),()(),(
+111111
+111111
++−+
++−+
+−−−−−−
+−−−−−−
+++<
+++
+yyyyxx
+yyxyyx
+BCBCBC
+BCBCBC
+ππππππ
+ππππππ  (7) 
+Figure 4(a) illustrates the scan chain connection, 
+and Figure 4(b) shows the reordering procedure, 
+assuming that x < y. It can be seen from Figure 4 that 
+three links are removed while another three links are 
+added. This reordering can be expressed as a cycle: πr 
+= (x+1, x+2, …, y–1, y), and thus the new order is π’ 
+= πr ◦ π. 
+ 
+Figure 4. (a) Before, and (b) after reorder 
+ 
+The reordering process for y < x can be conducted 
+in the same way. This reordering is also a permutation 
+consisting of a single cycle: πr = (x, x–1, …, y+1, y). 
+In summary, the reordering process is to connect the 
+base cell in position x to another scan cell in position y. 
+This process can be expressed by the permutation: 
+πr =
+
+
+<+−
+>−++
+xyyyxx
+xyyyxx
+ if),1,,1,(
+ if),1,,2,1(
+"
+"  (8) 
+The reordering process is formally given in Figure 
+5. 
+ 
+ 
+Figure 5. Reorder a cell 
+ 
+In general, the routing length increases while bit 
+conflicts decreases after a reordering process. Thus we 
+can manage the trade-off between wire length and bit 
+conflicts by controlling the number of reorders. Since 
+the scan cells with fewer bit conflicts will be reordered 
+later, these actions can be skipped without serious 
+impact on fault coverage, and the routing length can be 
+shorted as a result. A simple upper bound UB (line 10 
+in Figure 2) on the number of reorders can be set by as 
+follows. In Figure 4(b) it can be seen that each reorder 
+operation changes three links. Therefore, when we 
+have finished n/3 reorder operations, where n is the 
+number of scan cells, almost all of the initial 
+connections have been changed, and this can be a good 
+choice to stop the reordering process. 
+Input: Position in scan chain (x), Scan chain order (π) 
+Output: A permutation (πr) 
+1. L←Sort_Scan_cells(); 
+2.  // according to distance to               
+3. for (i=1; i <= n – 1; i++) { 
+4.         y ← position of the i-th scan cell in L; 
+5.         if (Eq. (7) is satisfied) 
+6.             return πr according to Eq. (8); 
+7. } 
+8. return identity permutation; // no permutation 
+)(1 xSC −π
+)(1 xSC −π
+(a)
+(b)
+x                    x+1                      y–1             y                    y+1  
+(a) 
+(b) 
+15th Asian Test Symposium (ATS'06)
+0-7695-2628-4/06 $20.00  © 2006
+S38417, since the number of reorder operations 
+required is less than the upper bound in these cases. 
+Column 9 shows the lengths of the reordered scan 
+chains, and compares them to the original ones. The 
+numbers of final skewed-load test vectors are shown in 
+the last column. The proposed method achieves 100% 
+CTPC without limiting the number of operations, while 
+on the average 98.9% CTPC can be reached with the 
+upper bound set.  The lengths of the scan chains are 
+1.387 to 2.568 times of the initial chains. On the 
+average, the reordered chains are 1.757 (w/ UB) and 
+1.850 (w/o UB) times in length compared to the 
+original ones. 
+ 
+Table 4. Comparison: shortest scan chain vs. 
+skewed-load (based on path delay faults) [10] 
+Initial Chain [3] Skewed-Load [10] Circuit 
+CTPC Wire CTPC Wire 
+s9234 6.34% 1020 96.90% 1950 (1.911x) 
+s13207 5.11% 4160 100.00% 11860 (2.850x) 
+s38417 0.00% 13030 29.46% 14030 (1.076x) 
+Avg. 3.81% 6070 75.45% 9280(1.528x) 
+ 
+By far the only previous work on scan chain 
+ordering targeted for routing length and delay test 
+coverage was by Gupta et. al [10], and the results are 
+summarized in Table 4. In their work, the circuit was 
+synthesized with TSMC 0.13µm technology, while the 
+tests are targeted for only critical path delay faults. 
+Broad-side tests are conducted first, and thus the 
+number of skewed-load tests may not be very large. In 
+the two cases where near 100% CTPC is achieved, the 
+wire lengths become 1.91 and 2.85 times longer. In 
+similar condition, our method produces chains that are 
+2.82 and 1.81 times longer. 
+ 
+7. References 
+ 
+[1] J. Savir, “Skewed-load transition test: Part I, 
+calculus,” in Proc. Int’l Test Conf., pp. 705-713, 
+Sep. 1992. 
+[2] J. Savir, and S. Patil, “Broad-Side Delay Test,” IEEE 
+Trans. CAD, Vo. 13, No. 8, pp. 1057-1064, Aug. 1994. 
+[3] K.D. Boese, A.B. Kahng, and R.-S. Tsay, “Scan chain 
+optimization: heuristic and optimal solutions,” Research 
+Report UCLA, 1994. 
+[4] W. Mao and M. D. Ciletti, “Arrangement of latches in 
+scan-path design to improve delay fault coverage,” in 
+Proc. ITC, pp.387-393, 1990. 
+[5] K.T. Cheng, S. Devadas, K. Keutzer, “A partial 
+enhanced-scan approach to robust delay-fault test 
+generation for sequential circuits,” in Proc. Int’l Test 
+Conf., pp. 403-410, 1991. 
+[6] J. Leenstra, M. Koch, and T. Schwederski, “On scan 
+path design for stuck-open and delay fault detection,” in 
+Proc. European Test Conf., pp. 201-210, 1993. 
+[7] I. Polian and B. Becker, “Multiple Scan Chain Design 
+for Two-Pattern Testing,” J. Electronic Testing, Vol. 19, 
+No. 1, pp. 37-48, Feb. 2003. 
+[8] I. Pomeranz, S.M. Reddy, “On the coverage of delay 
+faults in scan designs with multiple scan chains,” in 
+Proc. ICCD, pp. 206-209, 2002.  
+[9] Y. Bonhomme, P. Girard, L. Guiller, C. Landrault, and 
+S. Pravossoudovitch, “Efficient scan chain design for 
+power minimization during scan testing under routing 
+constraint,” in Proc. Int’l Test Conf., pp. 488-493, 2003. 
+[10] P. Gupta, A.B. Kahng, I.I. Mandoiu, and P. Sharma, 
+“Layout-aware scan chain synthesis for improved path 
+delay fault coverage,” IEEE Trans. CAD, Vol. 24,  No. 
+7,  pp. 1104-1114, 2005. 
+ 
+Table 3. Skewed-load transition fault test with scan chain reordering. 
+Minimum-length Routing [3] Skewed-Load with Scan Chain Ordering 
+# Reorder Circuit FC CTPC BC Wire length w/ UB w/o UB FC CTCP BC Wire length # Vec 
+30 - 95.90% 94.59% 60 2215.0 (1.650 x) 140 S1423 86.70% 78.44% 270 1341.8 
+- 64 97.93% 100.00% 0 3224.7 (2.403 x) 138 
+71 - 97.70% 99.69% 9 4434.9 (1.704 x) 301 S5378 87.62% 80.21% 647 2602.4 - 79 97.83% 100.00% 0 4615.6 (1.773 x) 307 
+82 - 92.20% 96.12% 155 5092.2 (1.657 x) 468 s9234 83.76% 78.59% 1047 3071.7 
+- 150 93.61% 100.00% 0 8667.4 (2.821 x) 502 
+233 - 98.11% 99.81% 12 13735.2 (1.780 x) 471 s13207 86.25% 78.98% 1784 7715.2 - 245 98.19% 100.00% 0 13954.3 (1.808 x) 471 
+203 - 91.30% 99.07% 61 14043.0 (1.904 x) 293 s15850 81.86% 82.31% 1724 7374.2 - 263 91.42% 100.00% 0 17418.4 (2.362 x) 299 
+554 - 96.55% 98.90% 220 36740.5 (2.026 x) 497 s38417 88.51% 84.92% 3395 18129.7 - 738 96.78% 100.00% 0 49037.7 (2.704 x) 498 
+Avg: w/ UB - - 95.30% 98.03% 86.1 12710.1 (1.895 x) - 
+Avg: w/o UB 
+85.78% 80.58% 1478 6705.8 
+- - 95.96% 100.00% 0 16153.0 (2.408 x) - 
+ 
+15th Asian Test Symposium (ATS'06)
+0-7695-2628-4/06 $20.00  © 2006
+the data in any one segment is not compatible with
+others, the test vector has to be shifted serially, and ISA
+simply becomes a single scan chain.
+Figure 3. Illinois scan architecture
+Many segmented scan architectures were proposed
+to reduce test time/data/power. Test power reduction
+can be achieved by only loading segments with care
+bits, while other segments are frozen [8]. Since only
+one segment is controlled and observed at a time, the
+test data volume, test application time, and test power
+consumption are all reduced at once. A reconfigurable
+scheme that includes a mapping logic to control the
+connection of multiple scan chains was introduced in
+[9]. This method increases multiple scan chains
+compatibility to achieve additional compaction. The
+segmented addressable scan architecture [10] reduces
+test data/time by parallel loading compatibility classes
+without additional test channels. However, the segment
+address must be loaded for every test pattern.
+The previous studies only focus on the architecture
+aspect of the scan chain, while the layout information is
+ignored. For the multiple scan chains architecture
+shown in Figure 1, the order of the scan cells does not
+matter. On the other hand, in order to broadcast test
+input through multiple scan segments (e.g., Figure 2
+and Figure 3), test vectors in various segments must be
+compatible, and the compatibility is decided by the
+order of scan cells in scan segments. However, if the
+scan chains are ordered without considering physical
+constraints, the over all routing length can be radically
+longer [11]. Excessively long scan chain not only
+creates long signal delay but also consumes more test
+power, and thus should be avoided. In this paper, we
+present the first study on constructing multiple scan
+chains architecture where routing constraints are also
+taken into account. The proposed test architecture is
+simple; however, it achieves significant test data and
+test time reduction. The architecture also reduces test
+power consumption and ATE channel requirements.
+This paper is organized as follows. Section 2
+reviews some preliminary information, and Section 3
+discusses the proposed architecture. The design
+methodology of the scan chain architecture is presented
+in Section 4, and experimental results are given in
+Section 5. Section 6 concludes this paper.
+2. Layout-Aware Scan Chain Routing
+Early research on scan-cell ordering mainly focuses
+on the minimum-length routing, which is equivalent to
+solve the traveling salesman problem. Scan chain
+reorder has been proposed for low-power scan test [11]
+and scan-based delay test, while no studies have been
+conducted on scan-chain reorder for test compaction.
+The scan-chain ordering without constraint is not
+feasible in general, as the routing length may become
+too long. A cluster-based routing approach [11], in
+which the scan cells are only allowed to be reordered
+within a cluster, greatly alleviates the excessive routing
+length caused by scan-chain reorder. The global
+interconnection among clusters is shown in Figure 4,
+where the routing area is divided into kk equal-sized
+clusters.
+(a) (b)
+Figure 4. Scan chain with clustering order: (a)
+single scan-chain, (b) multiple scan chains
+In this paper, we assume the multiple scan chains
+architecture shown in Figure 4(b). However, the
+reordering is not restricted in a cluster. Instead, the
+routing area is divided into k equal-height rows, and
+initially scan cells in each chain are ordered according
+to their x-coordinate. The scan cells in these chains will
+be reordered to achieve better test vector compatibility
+without significant routing penalty.
+Most of ISA-based scan architectures assume that all
+segments are of equal length. However, it is not easy to
+divide a scan chain evenly for any given layout. In the
+proposed architecture, the numbers of scan cells may
+not be equal for all the chains, but in general the
+differences among scan segments are relatively small.
+3. Multi-Mode Segmented Scan
+The block diagram of the proposed multi-mode
+segmented scan architecture (MSSA) is shown in
+Figure 5. The architecture consists of a counter for
+configuration selection, a decoder for configuration
+control, k AND gates for clock control, k scan segments
+with Mux/DeMux and an optional output compressor,
+Scan-in
+Segment 0
+Segment 1
+Segment 2
+Segment 3
+O
+utput
+C
+om
+pressor
+15th Asian Test Symposium (ATS'06)
+0-7695-2628-4/06 $20.00  © 2006
+detected faults. Generate a set of test cubes C for
+the undetected faults in serial mode.
+2. Reorder scan chains according to C so that most
+of the undetected faults can be detected in
+broadcast mode. Generate broadcast test vectors
+according to the reordered scan chain.
+3. Construct the multicast configurations.
+4. Generate and compact test vectors for undetected
+faults in multicast and serial mode.
+4.1 Generating Test Cubes for Reorder
+The TPG in step 1 is targeted for scan chain reorder
+and the patterns are not used later. This step is meant to
+identify the“hard-to-detect”faults that cannot be easily
+detected by a random order in the broadcast mode. The
+test vectors generated in this step is not used, as the
+scan chain orders will change in the next step. Test
+cubes for undetected faults are generated, and these
+cubes will be used for scan chain reorder. The rationale
+is that these faults are hard to detect in the broadcast
+mode, and we shall reorder scan chains so that they
+may be detectable in the broadcast mode under the new
+order.
+4.2 Scan Chain Reordering Algorithm
+In order to find the best scan chain order for test
+data compression, we need to search all possible orders,
+which is very expensively. Since we want to limit the
+routing penalty due to scan chain reorder, we need to
+restrict the scope of reorder. The proposed reordering
+process works as follows.
+After step 1, we have a set of test cubes for the
+undetected faults. Given the initial order, we can
+compute the number of conflicts of all scan cells. For
+example, let a test vector for a three-segment system be
+{(0x1), (x11), (11x)}. There is a conflict in the first
+position since one of them is 0 and the other is 1. There
+are no conflicts in the second and third scan cells. Let
+the window size for reorder be w, and scan cells in each
+segment labeled as shown in Figure 2. In the i-th
+window, we considers scan cells (i–1)w+1 to iw in
+each chain simultaneously. The cells in a window can
+be assigned to any order to reduce conflicts among all
+the segments for the given cubes. At the end of this
+process, an order with the minimum number of
+conflicts in each window is obtained. Although the
+above process is relatively simple, it may not provide
+good results as the reorder is restricted in the same
+window. In order to improve the results, one may
+repeat the above procedure again with a different set of
+windows. In our experiment, we choose w=3. In the
+first iteration, the first window starts at cell 1 (i.e., it
+contains cells 1, 2, and 3 of each segment), and in the
+second iteration the first window starts at cell 2 (i.e., it
+contains cells 2, 3, and 4 of each segment).
+We have conducted experiments on scan chain
+reorder for 6 benchmark circuits with various numbers
+of scan chains, and the best and worst results are shown
+in Table 2. The fault coverage increases from 0.49% to
+16.89% after scan chain reorder. The routing results are
+given in Table 3. The circuits are synthesized with
+TSMC 0.25µm technology, and the routing lengths are
+estimated by SOC Encounter from Cadence.
+Table 2. Fault coverage improvement
+Maximum (%) Minimum (%)Circuit
+# chains improvement # chains improvement
+S5378 14 8.14 10 3.19
+S9234 10 5.40 12 4.60
+S13207 22 16.89 18 8.74
+S15850 20 11.91 19 2.19
+S38417 26 5.74 32 0.49
+S38584 32 5.47 28 1.79
+Table 3. Routing lengths of scan chains
+Circuit # chains Initial (µm) Reordered (µm) ratio
+S5378 14 44432.500 45453.700 102.3%
+S9234 10 53021.100 55570.900 104.8%
+S13207 24 174346.592 187172.448 107.4%
+S15850 20 151967.744 167228.288 110.0%
+S38417 35 570355.136 603450.240 105.8%
+S38584 33 367424.832 431049.792 117.3%
+4.3 Two-Way Partitions for Multicasting
+In many cases, the reason that a test vector cannot be
+broadcasted under ISA is due to a small number of
+conflicts. These vectors can be efficiently compressed
+in the multicast mode. We will explain the idea with an
+example. Consider a 4-segment scan chain with the
+following three test cubes. The lengths of the segments
+are 5, 7, 6, and 8, respectively.
+(1) Broadcast mode:
+Test pattern: 0x01xxx01x1x0xx1010x0x011x
+Segment 1: 0x01x
+Segment 2: xx01x1x
+Segment 3: 0xx101
+Segment 4: 0x0x011x
+Broadcast test vector: 0x01011x
+(2) Multicast mode:
+Test pattern: 0x11xxx01x1x0xx1010x0x011x
+Segment 1: 0x11x
+Segment 2: xx01x1x
+Segment 3: 0xx101
+Segment 4: 0x0x011x
+P1,0 = {1}, Broadcast test vector: 0x11x.
+15th Asian Test Symposium (ATS'06)
+0-7695-2628-4/06 $20.00  © 2006
+provides better results for S38417 and S38584, while
+for S13207 the result is very close. For S15850, MSSA
+requires about 6.5% more test data than DCU, but it is
+still much better than other methods. Besides, since the
+input data are broadcasted rather than compressed,
+these data can be further compressed by other methods.
+Table 5. Comparison with other techniques
+Circuit Mintest DCC FDR DCU MSSA
+S13207 163,100 31,772 30,880 22,092 22,933
+S15850 57,434 27,721 26,000 20,824 22,180
+S38417 113,152 84,896 93,466 77,630 58,685
+S38584 161,040 65,396 77,812 56,296 45,553
+Finally, the extra hardware required to implement
+MSSA in each circuit is listed in Table 6. The circuit
+size is measured in terms of equivalent gate, which is a
+two-input NAND gate.
+Table 6. Hardware overhead
+Circuit #Chain #Gates(Counter)
+#Gates
+(Decoder)
+#Gates
+(Total)
+S5378 14 18 61 79
+S9234 10 28 36 64
+S13207 24 18 102 120
+S15850 20 28 51 79
+S38417 35 47 226 273
+S38584 33 28 165 193
+6. Concluding Remarks and Future Work
+In this paper, we presented a multi-mode segmented
+scan architecture. The architecture supports three
+operation modes: broadcast, multicast, and serial. Most
+of the patterns that cannot be broadcasted can be
+compressed in the multicast mode, in which segments
+are partitioned into two groups and segments in the
+same partition are fed by the same set of test data.
+Layout information is generally ignored in previous
+research on the multiple scan architecture for test
+compaction. However, the constructed scan chain can
+be an excessively long if the layout constraint is not
+considered, and the circuit performance may suffer as a
+result. We proposed a layout-aware method to reorder
+scan cells. Experimental results show that this method
+improves fault coverage with less than 10% increase in
+routing length in most cases.
+The reordering method used in this paper is rather
+simple and not efficient enough. In order to reduce
+computation time, we have to restrict the window size
+to be 3. In the future we will develop faster algorithm to
+achieve better compression rate.
+Another reason for the suboptimal compression is
+that the scan chain lengths are not equal. We shall
+conduct more experiments on this regard.
+7. References
+[1] P.H. Bardell and W.H. McAnney, “Self-Testing of Multichip
+Logic Modules,”in Proc. Int. Test Conf., pp. 200-204, 1982.
+[2] E.J. McCluskey, “Logic Design Principles with Emphasis on
+Testable Semicustom Circuits,” Prentice-Hall, Englewood
+Cliffs, NJ, USA, 1986.
+[3] B. Koenemann,“LFSR-Coded Test Patterns for Scan Designs,”
+in Proc. European Test Conf., pp. 237-242, 1991.
+[4] E.J. McCluskey, et. al, “Test Data Compression,”Design &
+Test of Computers, Vol. 20, No. 2, pp. 76–87, Mar.-Apr. 2003.
+[5] I. Hamzaoglu and J. Patel, “Reducing Test Application Time
+for Full Scan Embedded Cores,”in Proc. Int. Symp. on Fault
+Tolerant Computing, pp. 260-267, 1999.
+[6] T. Hiraide, K.O. Boateng, H. Konishi, K. Itaya, M. Emori and
+H. Yamanaka, “BIST-Aided Scan Test –A New Method for
+Test Cost Reduction,”in Proc. VLSI Test Symp., pp. 359-364,
+2003.
+[7] K-J. Lee, J-J. Chen and C-H. Huang, “Broadcasting Test
+Patterns to Multiple Circuits,”IEEE Trans. Computer-Aided
+Design, Vol. 18, No. 12, pp. 1793-1802, Dec. 1999.
+[8] O. Sinanoglu and A. Orailoglu,“A Novel Scan Architecture for
+Power-Efficient, Rapid Test,”in Proc. Int. Conf. Computer-
+Aided Design, pp. 299-303, 2002.
+[9] S. Samaranayake, E. Gizdarski, N. Sitchinava, F. Neuveux, R.
+Kapur and T. Williams, “A Reconfigurable Shared Scan-in
+Architecture,”in Proc. VLSI Test Symp, pp. 9-14., 2003.
+[10] A. Al-Yamani, E. Chmelar and M. Grinchunk, “Segmented
+Addressable Scan Architecture,”in Proc. IEEE VLSI Test
+Symp., pp. 405-411, 2005.
+[11] Y. Bonhomme, P. Girard, L. Guiller, C. Landrault and S.
+Pravossoudovitch, “Efficient Scan Chain Design for Power
+Minimization During Scan Testing Under Routing Constraint,” 
+in Proc. Int. Test Conf., pp. 488-493, 2003.
+[12] A. R. Pandey and J. H. Patel, “An Incremental Algorithm for
+Test Generation in Illinois Scan Architecture Based Designs,”
+in Proc. European Design and Test Conf., pp. 368-375, 2002.
+[13] P. Hamzaoglu and J. H. Patel, “Test set compaction algorithms
+for combinational circuits,”in Proc. Int. Conf. Computer-
+Aided Design, pp. 283-289, 1998.
+[14] C. S. Tautermann A.Wurtenberger and S. Hellebrand, “Data
+Compression for Multiple Scan Chains Using Dictionaries with
+Corrections,”in Proc. IEEE Int. Test Conf., pp. 926-935, Oct.
+2004.
+[15] A. Chandra and K. Chakrabarty, “Frequency-directed run-
+length (FDR) codes with application to system-on-a-chip test
+data compression,”in Proc. VLSI Test Symp., pp. 42-47, 2001.
+[16] S. Youhua, N. Togawa, M. Yanagisawa, T. Ohtsuki and S.
+Kimura,“Low Power Test Compression Technique for Designs
+with Multiple Scan Chain,”in Proc. IEEE Asian Test Symp.,
+pp. 386-389, 2005.
+15th Asian Test Symposium (ATS'06)
+0-7695-2628-4/06 $20.00  © 2006
+論文即分別對延遲錯誤之測試資料壓縮及降低峰值功率提出研究成果。此外，掃瞄測試
+之實體設計亦是設計過程中必須處理的一過問題，然而相關的研究不多；之第二篇論文
+即對一個特殊的掃瞄架構提出了其實體設計方法。
+這次本人參加 ATS 的另一項任務為向 ATS 指導委員會報告 ATS 2009 的籌辦情形。
+第十八屆亞洲測試會議(ATS 2009)將在 2009 年於臺中市舉辦；本人擔任議程主席，將盡
+力促使此會議圓滿完成。
+二、與會心得
+本次會議之稿件來源除地主國外，仍以亞洲為最大宗(超過 60 篇)，美國 40 篇次之，
+歐洲各國亦投稿 15 篇。亞洲部份，以印度(14 篇)、日本(18 篇)、以台灣(19 篇)投稿最多。
+我國發表論文 13 篇，無論投稿數及接受率都不差。不過，中國及印度這幾年研究成果進
+步顯著，國內研究人員須更加努力，在技術方面，本次會議的熱門議程大致仍是Delay Test,
+DFT, Power Issues 等，另 Memory Test 及 ATPG 亦有不少成果發表。
+2. Preliminary 
+ 
+In this section, we first provide some background 
+information, and then give the motivation of this work. 
+ 
+2.1. Test compression in scan architecture 
+ 
+Illinois Scan Architecture (ISA) [5], as shown in 
+Figure 1, can efficiently reduce test data volume and 
+test application time. In ISA, a single scan chain is 
+partitioned into multiple scan segments, which are fed 
+by the same set of data whenever the data in segments 
+are compatible. The major limitation of the broadcast-
+based methods is that only a subset of the test vectors 
+can be broadcasted. Therefore, the compression rate is 
+restricted by the percentage of test vectors that must be 
+applied in serial. 
+ 
+Figure 1. Illinois scan architecture 
+ 
+2.2. Transition fault test 
+ 
+A commonly used delay fault model is the transition 
+fault. According to this model, every line is associated 
+with two faults: a slow-to-rise fault (rising fault) and a 
+slow-to-fall fault (falling fault). The following two 
+requirements are necessary and sufficient for a vector 
+pair <V1, V2> to be a test of a transition fault f on line l. 
+1. When the circuit inputs are changed from V1 to V2, 
+the rising (falling) transition fault f is activated by 
+a rising (falling) logic transition on line l. 
+2. V2 is a test for a stuck-at-0 (stuck-at-1) fault on l. 
+An ATPG method targeted for good LOS transition 
+test coverage and restricted scan chain length was 
+proposed [6]. In this approach, a vector pair is 
+generated for each fault, and inputs that are not 
+necessary for fault detection are kept unspecified. In 
+this way, the probability of successful scan chain 
+ordering becomes higher. A scan chain that achieves 
+100% test coverage for the given test set is constructed, 
+and the vector pairs are compacted in the final step. 
+ 
+2.3 Motivation 
+ 
+Most available test data compression techniques are 
+less effective for LOS test vectors. Coding based 
+methods, including LFSR-coding [7], dictionary coding 
+[8], and run-length coding [9], exploits the X-bits in 
+ATPG patterns to improving encoding efficiency. 
+Since LOS patterns contain fewer X-bits and more bit 
+transitions, as we discussed in Section 1, the encoding 
+techniques will be less effective. 
+The effectiveness of broadcast based methods 
+depends on the percentage of test patterns that can be 
+broadcasted. Consider the ISA, in which the percentage 
+of vectors that can be broadcasted is b, where 0 ≤ b ≤ 1. 
+An LOS test vector can be broadcasted if and only of 
+both IV and AV can be broadcasted, so the probability 
+that an LOS test vector can be broadcasted is roughly 
+b2, which implies a much lower compression rate. As a 
+result, the ISA based methods, in which only serial and 
+broadcast modes are supported, may not be effective 
+for LOS test compression. 
+In order to improve compression rate, the multicast 
+mode [10] operation can applied the part of test vectors 
+that can not be broadcasted. As a result, the portion of 
+test vectors that require serial transfer is significantly 
+reduced, as we will see in the experimental results. 
+ 
+3. Proposed method 
+ 
+In this section, we shall first present a multiple scan 
+segments architecture for LOS test compression, and 
+then propose an ATPG method that maximizes the 
+compression rate. 
+ 
+3.1. LOS-enabled multi-mode segmented scan 
+ 
+The block diagram of the LOS-enabled MSSA is 
+shown in Figure 2. The only difference between this 
+architecture and the original MSSA [10] is an extra 
+stage of OR gates inserted between the decoder and the 
+AND gates, and the purpose of these gates is to launch 
+AV via the shift operation. 
+ 
+ 
+Figure 2. LOS enabled MSSA 
+Scan-in 
+Segment 0 
+Segment 1 
+Segment 2 
+Segment 3
+O
+utput 
+C
+om
+pressor 
+Clock 
+Scan Input 
+S/B_ 
+Counter 
+Decoder 
+Count Enable
+Output Compressor 
+Segm
+ent 1 
+Segm
+ent 2
+Segm
+ent k–1
+Segm
+ent k 
+Inversion Control 
+96
+are conflicts between these two segments in at least one 
+vector. To find a k-way partition of the segments into 
+compatible sets is essentially a k-way click partitioning 
+of the compatibility graph, or equivalent a k-coloring 
+of the conflict graph. It is well know that the k-coloring 
+problem is NP-complete for k ≥ 3, which is not 
+desirable. Fortunately, the 2-coloring can be solved in 
+linear time, which means our multicast configurations 
+can be constructed efficiently. The partition algorithm 
+is given in Figure 3. 
+ 
+Figure 3. Construct multicast configurations 
+ 
+4. Experimental results 
+ 
+We have conducted experiments on some ISCAS’89 
+larger benchmark circuits. In each circuit, we tried 
+various numbers of scan segments, and the best results 
+are shown. Table 2. reports the results in each case. 
+The first column gives circuit names. Columns 2 
+through 4 give the number of enhanced scan patterns, 
+test data volume (TD) and fault coverage (FC) reported 
+in [4]. Columns 5 through 9 give the number of scan 
+segments (#Seg.), broadcast patterns (#B), serial 
+patterns (#S), test data volume and fault coverage in 
+ISA. Columns 10 through 15 show the results of MSSA, 
+in which the numbers of multicast patterns (#M) also 
+included. 
+Table 2. summarizes the test data volume and 
+transition fault coverage after test data compression. 
+Compared to ISA, in which only broadcast and serial 
+operations are used, the inclusion of multicast mode 
+operations achieves much better compression rate. 
+ 
+5. References 
+ 
+[1] J. Savir, “Skewed-load transition test: Part I, calculus,” 
+in Proc. Int’l Test Conf., pp. 705-713, Sep. 1992. 
+[2] J. Savir, and S. Patil, “Broad-Side Delay Test,” IEEE 
+Trans. CAD, Vo. 13, No. 8, pp. 1057-1064, Aug. 1994. 
+[3] K-J. Lee, J-J. Chen, and C-H. Huang, “Broadcasting test 
+patterns to multiple circuits,” IEEE Trans. on CAD, Vol. 
+18, No. 12, pp. 1793-1802, Dec. 1999. 
+[4] X. Liu, M.S. Hsiao, S. Chakravarty, and P.J. Thadikaran, 
+“Efficient techniques for transition testing,” ACM Trans. 
+on Design Automation of Electronic Systems, Vol. 10, 
+No. 2, pp. 258-278, Apr. 2005. 
+[5] I. Hamzaoglu and J. Patel, “Reducing test application 
+time for full scan embedded cores,” in Proc. Int. Symp. 
+on Fault Tolerant Computing, pp. 260-267, 1999. 
+[6] S.-J. Wang, K.-L. Peng, and K. S.-M. Li, “Layout-aware 
+scan chain reorder for skewed-load transition test 
+coverage,” in Porc. Asian Test Symp., pp. 169-174, 
+2006 . 
+[7] B. Koenemann, “LFSR-coded test patterns for scan 
+designs,” in Proc. European Test Conf., pp. 237-242, 
+1991. 
+[8] C. S. Tautermann, A.Wurtenberger and S. Hellebrand, 
+“Data compression for multiple scan chains using 
+dictionaries with corrections,” in Proc. Int. Test Conf., 
+pp. 926-935, Oct. 2004. 
+[9] A. Chandra and K. Chakrabarty, “Frequency-directed 
+run-length (FDR) codes with application to system-on-a-
+chip test data compression,” in Proc. VLSI Test Symp., 
+pp. 42-47, 2001. 
+[10] P.-C. Tsai and S.-J. Wang, “Multi-mode segmented scan 
+architecture with layout-aware scan chain routing for 
+test data and test time reduction,” in Proc. Asian Test 
+Symp., pp. 225-230, 2006.  
+ 
+Table 2. The number of test patterns and comparison of test data volume 
+ES[4] ISA MSSA Circuit 
+#P TD FC (%) #Seg. #B #S TD FC (%) #Seg. #B #S #M TD FC (%) 
+S1423 186 17112 99.11 14 24 107 10036 98.25 14 12 29 98 4234 98.49 
+S5378 722 155230 98.4 10 108 244 54944 98.2 12 63 31 371 21589 98.3 
+S9234 -- -- -- 10 116 411 104944 94.13 12 59 204 497 73261 94.23 
+S13207 -- -- -- 25 334 268 197554 98.53 25 284 22 508 52614 98.54 
+S15850 -- -- -- 15 230 176 117372 93.92 15 210 22 406 55982 94.07 
+S38417 2682 4465530 99.66 24 340 364 630200 98.62 35 202 172 1193 411999 98.85 
+ 
+Input: A set of test cubes (M), Segments with order 
+Output: All multicast configurations 
+1. L←Sort_descending_order_of_conflicts(M); 
+2. Construct initial conflict graph G=(V,E) where 
+E=∅; 
+3. // initially there are no edges in the conflict graph 
+4. while ((t ←first cube in L) ≠ ∅ ) { 
+5.    G’ ← G ∪ {conflicts due to t}; 
+6.    if  (2-coloring is possible for G’) { 
+7.      record the partition Pi,0 and Pi,1; 
+8.      G ← G’; 
+9.      L ← L – t; 
+10.    } 
+11.    else { 
+12.      output current partition; 
+13.      E ← ∅; 
+14.      // clear edge weights 
+15.      } 
+16. } 
+98
+means five cycles are required for the scan shifts, and 
+the test data amount is reduced to 20 bits. 
+In the following discussion, a chain without 
+branches in the tree will be referred to as a scan 
+segment. For example, {ff5, ff8}, and {ff9, ff7} are all 
+scan segments. 
+ 
+Fig. 2. Scan tree architecture 
+ 
+The reduction in test data volume is decided by the 
+number of compatible flip-flops. Higher compression 
+rate can be achieved by exploiting unspecified bits 
+(i.e., X-bits) in the test cubes. Since an X-bit is 
+compatible to both 0 and 1, more scan cells can be 
+compatible when the X-bits are abundant in the test 
+patterns. 
+The last source of compatibility arises if the values 
+in two scan cells are always complemented to each 
+other whenever they are both specified. For example, it 
+can be seen that, in Fig. 1, the bit value in ff5 is always 
+the complement of that in either ff1 or ff9. We shall 
+refer to this property as the inverse compatibility. 
+ 
+3. Layout-aware scan tree construction 
+ 
+Fig. 3 gives an example of the bottom-up approach 
+for multi-layer scan tree synthesis. In this example, a 
+tree of three layers is constructed. In each layer, the 
+layout surface is divided into several regions, where 
+each region produces a scan segment in the 
+corresponding layer in the scan tree. In Fig. 3(a), the 
+bottom layer divides the scan cells into 7 regions, 
+while the second layer (Fig. 3(b)) consists of 4 regions. 
+The top layer consists of only one region, as shown in 
+Fig. 3(c). Scan cells in a region will be chained into a 
+scan segment whenever possible. In Fig. 3(d), the final 
+three-level scan tree is constructed by concatenating 
+the scan segments. Note that scan segments chained in 
+the same layer appear in the same level of the scan 
+tree. In the proposed algorithm, we provide user-
+defined parameters to specify the number of regions in 
+each level except the top level, with the restriction that 
+a lower level consists of more scan segments than a 
+higher level.  In Fig. 3, the numbers of regions from 
+bottom to top are 7, 4, and 1, respectively. 
+ 
+Fig. 3. An example of multi-level scan tree 
+synthesis 
+ 
+3.1. Multi-layer scan tree synthesis procedure 
+ 
+The overall scan tree synthesis procedure is outlined 
+as follows. 
+(1) Generate test set with X-bits. 
+(2) Find compatible scan cells according to the test set. 
+(3) If current layer is the top layer, go to step 11. 
+Otherwise, read the user-specified numbers of 
+regions and tiles. 
+(4) Divide the layout surface into m regions 
+(5) Partition each region into t tiles. 
+(6) Decide the whether the compatibility threshold of 
+p tiles in a region is reached. Go to step (8) if the 
+threshold is reached. 
+(7) Establish scan segments in tiles and regions. 
+(8) Select the largest region, and connect the free scan 
+cells according to the given direction and the 
+routing length. 
+(9) If the number of tiles in a region is 1, go to step (3); 
+otherwise, go to step (10). 
++ 
+R1 
+R2 
+R3 
+R4
+R5
+R6
+(a) 
+=
++ 
+R0 
+R1 
+R2
+R3
+(b) 
+Root 
+(c) 
+Root 
+(d) 
+R1 R2 
+R3 R4 R5 R6 
+R0 
+R0 
+ 
+R0 R1 
+R2 R3 
+t1       0             1           1            0            1 
+t2       0             1           1            1            1 
+t3       0             1           1            0            0 
+t4       0             0           1            0            1 
+ff5 ff8 ff1 ff2 ff3 
+ff9 ff7 ff4 
+ff6 
+130
+segments, and dotted lines mean the cells are to be 
+connected.  
+Fig. 7 shows the final scan tree routing for S38417 
+obtained by the proposed scan tree synthesis for 
+minimum routing length. 
+ 
+Fig. 7. Scan tree of S38417 
+ 
+4. Experimental Results 
+ 
+We have conducted experiments on some 
+benchmark circuits. The circuits are synthesized by 
+SOC-Encounter from Cadence with UMC 0.18µm 
+technology. The statistics of the circuits are 
+summarized in Table 1, including the numbers of test 
+vectors (#tv), scan cells (#FF), and primary outputs 
+(#PO). The test data volume (TD) and wire length (WL) 
+of the minimum-length single scan chain [7] are listed 
+in the last two columns. 
+Table 1. Statistics for single scan chain 
+Circuit  #tv #FF #PO TD WL (µm) 
+S5378 97 214 12 20758 2602 
+S9234 105 247 8 25935 3072 
+S13207 233 700 12 163100 7715 
+S15850 94 611 12 57434 7374 
+S38417 68 1664 8 113152 18130 
+S38584 110 1464 16 161040 20345 
+Table 2 shows the synthesis result of the proposed 
+method targeted for high compression rate only. 
+Columns 2, 3, 4 give the height (H), the number of 
+scan outputs (#SO), and the number of layers (#L) of 
+the synthesized scan tree. Column 5 gives the test data 
+volume of the scan tree, and column 6 shows the 
+reduction in data volume, compared to the single scan 
+chain structure listed in Table 1. It can be seen that, on 
+the average, 62.9% of test data are eliminated. Column 
+7 gives the overall wire length (WL) of the scan tree 
+for each circuit, and column 8 compares it to the WL 
+of the minimum-length single scan chain [7]. The 
+overall scan chain length increase ranges from 3.34 to 
+8.13 times of the minimum scan chain. 
+Table 3 gives the synthesis results of scan trees 
+targeted for minimum routing length. In this case, the 
+wire length increases about 60%, while only 15.4% of 
+data are compressed. 
+Table 2. High compression rate scan trees 
+Compression Length Circuit H #SO #L TD Red (%) WL (µm) Ratio 
+Time 
+(sec) 
+s5378 94 12 7 9118 56.0 8682 3.34x 2 
+s9234 126 8 8 13230 48.9 11426 3.72x 3 
+s13207 135 12 9 31455 80.7 37605 4.87x 18 
+s15850 189 12 9 17766 69.0 38239 5.19x 9 
+s38417 758 8 8 51544 54.4 116857 6.45x 78 
+s38584 467 16 8 51370 68.1 165350 8.13x 56 
+Avg.     62.9   5.28x 27.7 
+Table 3. Low routing overhead scan trees 
+Compression Length Circuit H #SO #L 
+TD Red (%) WL (µm) Ratio 
+Time 
+(sec) 
+S5378 184 2 2 17848 14.0 4001 1.54x 2 
+S9234 223 3 2 23415 9.7 4827 1.57x 4 
+S13207 572 5 2 133276 18.2 13036 1.69x 18 
+S15850 527 4 2 49538 13.7 11176 1.52x 12 
+S38417 1400 4 2 95200 15.8 28799 1.59x 77 
+S38584 1260 4 2 138600 13.9 32993 1.62x 51 
+Avg.     14.2   1.59x  26.0 
+It is possible to sacrifice wire length for higher 
+compression rate, and vice versa. There are many 
+possible tradeoffs, and one set of experiment results are 
+shown in Table 4. In this case, the wire length is about 
+3 times longer, while 51.9% test data are reduced. 
+Table 4. Balanced scan trees 
+Compression Length Circuit
+  H #SO #L TD Red (%) WL (µm) Ratio 
+Time
+(sec)
+s5378 94 12 7 9118 56.0 8682 3.34x 2 
+s9234 126 8 8 13230 48.9 11426 3.72x 3 
+s13207 245 12 3 57085 65.0 25676 3.33x 14 
+s15850 291 12 3 27354 52.3 22826 3.10x 11 
+s38417 986 8 4 67048 40.7 56705 3.13x 77 
+s38584 750 16 4 82500 48.7 74584 3.67x 49 
+Avg.     51.9   3.38x 37.8
+ 
+5. References 
+ 
+[1] K. Miyase and S. Kajihara, “Optimal scan tree construction 
+with test vector modification for test compression,” in Proc. 
+ATS, pp. 136-141, Nov, 2003. 
+[2] Y. Bonhomme, et. al. “An efficient scan tree design for test 
+time reduction,” in Proc. ETS, pp. 174-179, May 2004. 
+[3] Y. Bonhomme, et. al., “An efficient scan tree design for test 
+time reduction,” in Proc. VLSI Design, pp.6, Jan. 2006. 
+[4] K. Miyase, S. Kajihara, and S. M. Reddy, “Multiple scan tree 
+design with test vector modification,” in Proc. ATS, pp.76-81, 
+Nov, 2004. 
+[5] P. Hamzaoglu and J. H. Patel, “Test set compaction algorithms 
+for combinational circuits,” in Proc. ICCAD, pp. 283-289, Nov. 
+1998. 
+[6] J.-S. Chang and C.-S. Lin, “Test set compaction for 
+combinational circuits,” IEEE Trans. CAD, vol. 14, no. 11, pp. 
+1370-1378, 1995. 
+[7] K. D. Boese, A. B. Kahng, and R. S. Tsay, “Scan chain 
+optimization: Heuristic and optimal solutions,” UCLA CS 
+Dept., Oct. 1994. 
+132
+<v: PPI>. The PO and PPO parts of the circuit are 
+denoted as <f(v): PO> and <f(v): PPO>, respectively. 
+Four cases of X-filling are discussed in [21]. In Case 1, 
+the X-bits only appear in the primary input <v: PI> and 
+there are no X-bits in <v: PPI> and <f(v): PPO>. In this 
+case, there is nothing to be done. In Case 2, X-bits only 
+appear in <v: PPI>, and there are no X-bits in <f(v): 
+PPO>. Therefore, the X-bits in <v: PPI> are assigned to 
+the values of corresponding bits in <f(v): PPO> to 
+reduce signal transitions. In Case 3, X-bits only appear 
+in <f(v): PPO> and <v: PI>, and there are no X-bits in 
+<v: PPI>. The Criterion-1 proposed in the paper [21] is 
+used, the line (v) with X in <f(v): PPO> which has the 
+largest number of sets of X-bits in <v: PI> reached from 
+the line (v) is first selected to justify. 
+The most complicated conditions appear in Case 4, 
+in which there are X-bits in both <v: PPI> and <f(v): 
+PPO>. Let the values of position i in <v: PPI> and <f(v): 
+PPO> be a and b, respectively. There are four possible 
+(a, b) combinations. In Type-A, neither of the pair (a, b) 
+is an X-bit, and thus no X-filling is possible. In Type-B, 
+only a is the X-bit while in Type-C only b is the X-bit. 
+Either Type-B or Type-C pair can be processed, and the 
+Criterion-2 defined in [21] was used to determine which 
+type is first executed. The Type-D pairs are processed in 
+the last step. For a given pair, first 0 (1) is assigned to 
+both a and b to avoid a capture transition. If such an 
+assignment is not possible, opposite values are assigned 
+to the pair. Whenever there are multiple Type-D pairs, 
+the Criterion-1 is used again to determine the 
+processing order of Type-D pairs. 
+2.2. Motivation of the Proposed Method 
+The aforementioned X-filling procedure works 
+well for Cases 1, 2 and 3. On the other hand, in Case 4 
+the selection between Type-B and Type-C depends on 
+the number of X-bits. In worst case, only transitions in 
+the selected X-bits can be reduced, while transitions in 
+other X-bits are not saved, as the example in Figure 1(a). 
+Thirteen flip-flops appear in the partial circuit; and in a 
+test only the PPOs fed to FF1 through FF7 and the PPIs 
+applied to FF8 through FF13 are specified, and the 
+specified bits are indicated by the boldfaced numbers. 
+The remaining bits are initially unspecified. According 
+to the aforementioned procedure, Type-B X-filling 
+should be used, as there are more X-bits in the PPIs part 
+(7 bits). Therefore, PPIs of FF1~FF7 are assigned 
+according to the specified values on the corresponding 
+PPOs, and they are shown in italic in Figure 1(a). 
+However, the PI assignment creates conflicts between 
+PPIs and PPOs for FF8~FF13. In this case, the number of 
+capture transitions is six. If we assign the PPIs of FF1, 
+FF4 and FF7 to the opposite values, as shown in Figure 
+1(b), the result will be three capture transitions, which is 
+only half of those in Figure 1(a). 
+Similiarly, the specified bits are boldfaced and 
+then Type-C X-filling is applied in Figure 1(c), and it 
+produces seven capture transitions. According to the 
+Criterion-1, the value of PPO of FF8 is first processed 
+and assigned as the value of PPI of FF8. However, the 
+assignment will cause that the FF3, FF4, FF7 and FF9 
+will have capture transitions. Likewise, the FF1, FF2 and 
+FF5 also have capture transitions after the FF6 is 
+assigned. Assume that we first assign the values of FF6 
+and FF8 to opposite values and then there are only three 
+capture transitions in the new case, as shown in Figure 
+1(d). 
+For Type-D, we also present an example to 
+explain the possible problem, as shown in Figure 2. 
+There are five flip-flops with Xs in the PPIs and PPOs, 
+initially. Assume we justify the values of PPI and PPO 
+of FF1 first. According to the Type-D, we try to assign 
+the values of PPI and PPO to one and zero and then 
+opposite values, as shown in Figure 2. In Figure 2(a), 
+we assign the values of PPI and PPO of FF1 to zero and 
+then there are two capture transitions induced. In Figure 
+2(b), the values of PPI and PPO of FF1 are assigned to 
+one and then there are also two capture transitions 
+induced. If we assign the values of PPI and PPO of FF1 
+to one and zero, respectively, we also get two capture 
+transitions induced, as shown in Figure 2(c). Finally, the 
+values of PPI and PPO of FF1 are assigned to zero and 
+one, respectively. However, there is only one capture 
+transitions induced, as shown in Figure 2(d).  
+     According to the previous two cases, we can 
+conclude that the processing procedure mentioned in the 
+paper [21] may not be a better solution to address the 
+capture power issue. Therefore, we propose an 
+alternative solution to address this problem. The details 
+of the proposed alternative solution are illustrated in 
+next section. 
+ 
+Circuit 1 
+ 
+Circuit 2 
+(a) (b) 
+(c) 
+PPO 1   0    1  1   0  0 
+FF 8  9   10 11  12  13 
+PPI 1   0    1  1   0    0 
+PPO 0   1    0  0   1  1 
+FF 8  9   10 11  12  13 
+PPI 1   0    1  1   0    0 
+(d) 
+PPO 0   1   1   1 
+FF 1   2   3   4 
+PPI 0   0   1   1 
+PPO 1  1  0  1    1 
+FF 5  6  7   8   9 
+PPI 1   0  0   0    1 
+PPO  0  1  1   1 
+FF  1   2   3   4 
+PPI  1   0   0   0 
+PPO 0  0  1  0    0 
+FF 5  6  7   8   9 
+PPI 1   0  0   0    1 
+Figure 1. (a) The result for Type-B with Circuit 1, (b) the result 
+for Type-B after bit-modification, (c) the result for Type-C 
+with Circuit 2 and (d) the result for Type-C after 
+bit-modification.
+PPO 1  1 1    0 1 0 1 
+FF 1 2  3   4   5 6 7 
+PPI 0 1  1   1   1 0 0 
+PPO 1  1 1    0 1 0 1 
+FF  1  2  3   4   5 6 7 
+PPI  1  1  1   0   1 0 1 
+414
+3.3 LCP X-Filling 
+3.3.1 Finding the Minimum Set of Specified Inputs 
+The definitions of terms that will be used later are 
+given as follows. 
+Definition 1: The X-frontier is the set of gates whose 
+outputs are specified while at least one input of each 
+gate is unspecified. 
+Definition 2: A net belongs to the X-cut if its fanout 
+gate is in X-frontier. 
+An X-cut essentially divides a given circuit into 
+two regions: the X-region containing all the X-valued 
+nets and the S-region containing all the specified nets. 
+The definitions are illustrated in Figure 5.  
+ 
+Figure 5. X-cut and X-frontier. 
+ 
+In the proposed approach, the most important 
+issue is to find the Minimum Set of Specified Inputs 
+(MSSI) to maximize the X-region. This can be done by 
+using a minimum input assignment X-filling technique, 
+as shown in Figure 6. Assigning 0 to the output only 
+needs one input to be specified, as shown in Figure 6(a), 
+and thus four X-bits are left in the input side. On the 
+other hand, assigning output to 1 requires three inputs to 
+be specified, as shown in Figure 6(b), with only two 
+X-bits left. We use a heuristic approach that is guided 
+by the gate levels to find the minimum set of inputs for 
+X-region control. The level of a gate is defined as 
+follows. A gate is at level i if the largest level of it fanin 
+gates is i–1, and all inputs, including PIs and PPIs, are 
+level 0 gates. Each output is also treated as a gate whose 
+level is equal to the level of its fanin gate plus 1. The 
+gate level is a rough estimation of the distance between 
+a gate and the circuit input. For the example shown in 
+Figure 6, the level of a gate is indicated inside the gate. 
+In the justification process for a PPO assignment, 
+whenever there is a choice to select a candidate gate for 
+justification, the one with the lowest gate level is 
+selected. The reason for this heuristic is very simple, as 
+the input cone of a lower-level gate is usually smaller, 
+and thus fewer inputs have to be specified to justify the 
+given output assignment. In Figure 6(a), the heuristic 
+selects the bottom AND gate to justify the output 0 
+assignment, as the level of the AND gate (level 1) is 
+smaller than the upper OR gate (level 2). As a result, 
+only one input is needed to control the X-cut. 
+Whenever there are multiple X-bits in the PPOs, the 
+PPO with the largest gate level is first assigned. The 
+rational is that a PPO with the larger gate level is 
+usually involved with a deeper and bigger input cone. 
+When the PPO assignment is justified, more internal 
+signals are specified and then there is a better chance to 
+cover other X-valued PPOs. 
+ 
+X-frontier 
+X-region 
+S-region 
+X 
+0 
+0 
+X 
+X X
+X 
+X 
+0 
+X-cut 
+PPI 
+PPO 
+(b) 
+0  X  X  1  1  X  X  0  0  X  X  1
+1  0  0  0  1  0  1  1  1  0  1  1
+ 
+Circuit under Test 
+(c) 
+ 
+Circuit under Test 
+0  0  0  1  1  0  1  0  0  0  1  1
+1  0  0  0  1  0  1  1  1  0  1  1
+(a) 
+ 
+Circuit under Test 
+X X  X  1  X  X  X  0  X  X  X  1
+X  0  X  X  1  0  X  X  1  0  X  1
+1  2 3 4  5  6  7  8  9  10  11  12 
+Figure 7. (a) Bit-raising with respect to essential faults 
+creates X-bits in test vectors, (b) after raising bits technique 
+are applied and (c) after the test response is assigned to the 
+corresponding inputs with X. 
+X-cut 
+X 
+0 
+0 
+X
+X X
+X
+X
+0
+(a) 
+3 
+2
+1
+1
+0
+0
+4 
+0
+0
+0
+1 
+1 
+1 
+X
+X
+X
+1
+1
+1
+(b) 
+3 
+2
+1 
+1
+0
+0
+4 
+0
+0
+0
+Figure 6. (a) Assign output to 0, and (b) Assign output to 1. 
+416
+smaller than those in [21]. For these circuits, the peak 
+transitions of LCP [21] are used as the constraints PP in 
+algorithmic procedure for pattern-splitting, and the 
+results are given in the last two columns. 
+ 
+5. Conclusion 
+In this paper, we presented a low capture power 
+TPG method by finding the minimum set of specified 
+inputs to satisfy output assignment. The remaining 
+X-bits can be filled in such a way that the capture power 
+is reduced. Several heuristics are presented to achieve 
+the LCP test generation. These techniques can be easily 
+included to in any automatic test pattern generator with 
+only slight modification. Experimental results on 
+ISCAS’89 benchmarks show that, in general, the 
+proposed method achieves lower capture power with 
+fewer test patterns. 
+6. References 
+[1] A. Chandra and K. Chakrabarty, “Test data compression for 
+system-on-a-chip using Golomb codes,” in Proc. VLSI Test 
+Symp., pp. 113-120, 2000. 
+[2] A. Jas, B. Pouya and N.A. Touba, “Test data compression 
+technique for embedded cores using virtual scan chains,” in 
+IEEE Trans. on VLSI Systems, pp. 775-781, 2004. 
+[3] D. Das and N.A. Touba, “Reducing test data volume using 
+external/LBIST hybrid test patterns,” in Proc. Int. Test Conf., 
+pp. 115 -122, 2000. 
+[4] K.-J. Lee, J.-J. Chen and C.-H. Huang, “Using a single input to 
+support multiple scan chains,” in Proc. IEEE Int. Conf. on 
+Computer-Aided Design, pp. 74-78, Nov. 1998. 
+[5] Y. Zorian, “A distributed BIST control scheme for complex 
+VLSI devices,“ in Proc. VLSI Test Symp., pp. 4-9, Apr. 1993. 
+[6] R.M. Chou, K.K. Saluja, and V.D. Agrawal, “Scheduling tests 
+for VLSI systems under power constraints,” IEEE Trans. on 
+VLSI Systems, vol. 5 , no. 2, pp. 175-185, Jun. 1997. 
+[7] T. Schuele and A.P. Stroele, “Test scheduling for minimal 
+energy consumption under power constraints,” in Proc. VLSI 
+Test Symp., pp. 312-318, 2001. 
+[8] P. Girard, L. Guiller, C. Landrault, and S. Pravossoudovitch, 
+“A test vector inhibiting technique for low energy BIST 
+design,” in Proc. VLSI Test Symp., pp. 407-412, 1999. 
+[9] S. Gerstendorfer and H.-J. Wunderlich, “Minimized power 
+consumption for scan-based BIST,” in Proc. Int. Test Conf., pp. 
+77 -84, 1999. 
+[10] S. Wang and S.K. Gupta, “LT-RTPG: a new test-per-scan 
+BIST TPG for low heat dissipation,” in Proc. Int. Test Conf., 
+pp. 85-94, Oct. 1999. 
+[11] V. Dabholkar, S. Chakravarty, I. Pomeranz, and S. Reddy, 
+“Techniques for minimizing power dissipation in scan and 
+combinational circuits during test application,” IEEE Trans. on 
+Computer-Aided Design of Integrated Circuits and Systems, 
+vol. 17, no. 12, pp. 1325-1333, Dec. 1998. 
+[12] R. Sankaralingam, R.R. Oruganti, and N.A. Touba, “Static 
+compaction techniques to control scan vector power 
+dissipation,” in Proc. IEEE VLSI Test Symp., pp. 35-40, 2000. 
+[13] A. Chandra and K. Chakrabarty, “Combining low-power scan 
+testing and test data compression for system-on-a-chip,” in 
+Proc. IEEE/ACM Design Automation Conf., pp. 166-169, 2001. 
+[14] R. Sankaralingam, B. Pouya, and N.A. Touba, “Reducing 
+power dissipation during test using scan chain disable,” in 
+Proc. VLSI Test Symp., pp. 319-324, May 2001. 
+[15] R. Sankaralingam and N.A. Touba, “Inserting test points to 
+control peak power during scan testing,” in Proc. DFT in VLSI 
+Systems, pp. 138 -146, Nov. 2002. 
+[16] S. Kajihara, K. Ishida, and K. Miyase, “Test vector 
+modification for power reduction during scan testing,” in Proc. 
+VLSI Test Symp., pp. 160 -165, May 2002. 
+[17] N.Z. Basturkmen, S.M. Reddy, and I. Pomeranz, “A low power 
+pseudo-random BIST technique,” in Proc. Computer Design: 
+VLSI in Computers and Processors, pp. 468-473, Sept. 2002. 
+[18] Y. Bonhomme, P. Girard, L. Guiller, C. Landrault, and S. 
+Pravossoudovitch, “Power driven chaining of flip-flops in scan 
+architectures,” in Proc. Int. Test Conf., pp. 796-803, Oct. 2002. 
+[19] Y. Bonhomme, P. Girard, C. Landrault, and S. 
+Pravossoudovitch, “Efficient scan chain design for power 
+minimization during scan testing under routing constraint,” in 
+Proc. Int. Test Conf., pp. 488-493, Oct. 2003. 
+[20] Y. Bonhomme, P. Girard, , L. Guiller, C. Landrault, S. 
+Pravossoudovitch, and A. Virazel, “Design of 
+routing-constrained low power scan chains,” in Proc. Design, 
+Automation, and Test in European Conf., vol. 1, pp. 62-67, 
+Feb. 2004. 
+[21] X.-Q. Wen, Y. Yamashita, S. Morishima, S. Kajihara, L-T 
+Wang, K.K. Saluja and K. Kinoshita,  “On low-capture-power 
+test generation for scan testing,” in Proc. VLSI Test Symp., pp. 
+265-270, 2005. 
+[22] S. Remersaro, X. Lin, Z. Zhang, S.M. Reddy, I. Pomeranz and 
+J. Rajski, ‘‘Preferred Fill: A Scalable Method to Reduce 
+Capture Power for Scan Based Designs,’’ in Proc. Int. Test 
+Conf., 2006. 
+[23] F. Brglez, D. Bryant, and K. Kozminski, “Combinational 
+profiles of sequential benchmark circuits,” in Proc. IEEE Int. 
+Symp. on Circuits and Systems, pp. 1929-1934, 1989. 
+[24] I. Hamzaoglu and J.H. Patel, “Test set compaction algorithms 
+for combinational circuits,” in IEEE Trans. Computer-Aided 
+Design of Integrated Circuits and Systems, pp. 957-963, 2000. 
+ 
+Table I. Comparison of experimental results. 
+LCP [21] Proposed method 
+w/o pattern-splitting 
+Proposed method 
+w/ pattern-splitting 
+circuit 
+TP TRANS TP TRANS TP TRANS 
+S1238 128 11 121 4 121 4 
+S1423 27 29 20 35 27 29 
+S5378 106 85 97 81 97 81 
+S9234 133 99 105 94 105 94 
+S13207 235 286 233 199 233 199 
+S15850 101 169 94 158 94 158 
+S35932 13 922 12 1082 18 909 
+S38417 91 491 68 409 68 409 
+S38584 121 459 110 726 126 423 
+TOTAL 955 2551 860 2788 889 2306 
+ 
+418
+論文即分別對延遲錯誤之測試資料壓縮及降低峰值功率提出研究成果。此外，掃瞄測試
+之實體設計亦是設計過程中必須處理的一過問題，然而相關的研究不多；之第二篇論文
+即對一個特殊的掃瞄架構提出了其實體設計方法。
+這次本人參加 ATS 的另一項任務為向 ATS 指導委員會報告 ATS 2009 的籌辦情形。
+第十八屆亞洲測試會議(ATS 2009)將在 2009 年於臺中市舉辦；本人擔任議程主席，將盡
+力促使此會議圓滿完成。
+二、與會心得
+本次會議之稿件來源除地主國外，仍以亞洲為最大宗(超過 60 篇)，美國 40 篇次之，
+歐洲各國亦投稿 15 篇。亞洲部份，以印度(14 篇)、日本(18 篇)、以台灣(19 篇)投稿最多。
+我國發表論文 13 篇，無論投稿數及接受率都不差。不過，中國及印度這幾年研究成果進
+步顯著，國內研究人員須更加努力，在技術方面，本次會議的熱門議程大致仍是Delay Test,
+DFT, Power Issues 等，另 Memory Test 及 ATPG 亦有不少成果發表。
+2. Preliminary 
+ 
+In this section, we first provide some background 
+information, and then give the motivation of this work. 
+ 
+2.1. Test compression in scan architecture 
+ 
+Illinois Scan Architecture (ISA) [5], as shown in 
+Figure 1, can efficiently reduce test data volume and 
+test application time. In ISA, a single scan chain is 
+partitioned into multiple scan segments, which are fed 
+by the same set of data whenever the data in segments 
+are compatible. The major limitation of the broadcast-
+based methods is that only a subset of the test vectors 
+can be broadcasted. Therefore, the compression rate is 
+restricted by the percentage of test vectors that must be 
+applied in serial. 
+ 
+Figure 1. Illinois scan architecture 
+ 
+2.2. Transition fault test 
+ 
+A commonly used delay fault model is the transition 
+fault. According to this model, every line is associated 
+with two faults: a slow-to-rise fault (rising fault) and a 
+slow-to-fall fault (falling fault). The following two 
+requirements are necessary and sufficient for a vector 
+pair <V1, V2> to be a test of a transition fault f on line l. 
+1. When the circuit inputs are changed from V1 to V2, 
+the rising (falling) transition fault f is activated by 
+a rising (falling) logic transition on line l. 
+2. V2 is a test for a stuck-at-0 (stuck-at-1) fault on l. 
+An ATPG method targeted for good LOS transition 
+test coverage and restricted scan chain length was 
+proposed [6]. In this approach, a vector pair is 
+generated for each fault, and inputs that are not 
+necessary for fault detection are kept unspecified. In 
+this way, the probability of successful scan chain 
+ordering becomes higher. A scan chain that achieves 
+100% test coverage for the given test set is constructed, 
+and the vector pairs are compacted in the final step. 
+ 
+2.3 Motivation 
+ 
+Most available test data compression techniques are 
+less effective for LOS test vectors. Coding based 
+methods, including LFSR-coding [7], dictionary coding 
+[8], and run-length coding [9], exploits the X-bits in 
+ATPG patterns to improving encoding efficiency. 
+Since LOS patterns contain fewer X-bits and more bit 
+transitions, as we discussed in Section 1, the encoding 
+techniques will be less effective. 
+The effectiveness of broadcast based methods 
+depends on the percentage of test patterns that can be 
+broadcasted. Consider the ISA, in which the percentage 
+of vectors that can be broadcasted is b, where 0 ≤ b ≤ 1. 
+An LOS test vector can be broadcasted if and only of 
+both IV and AV can be broadcasted, so the probability 
+that an LOS test vector can be broadcasted is roughly 
+b2, which implies a much lower compression rate. As a 
+result, the ISA based methods, in which only serial and 
+broadcast modes are supported, may not be effective 
+for LOS test compression. 
+In order to improve compression rate, the multicast 
+mode [10] operation can applied the part of test vectors 
+that can not be broadcasted. As a result, the portion of 
+test vectors that require serial transfer is significantly 
+reduced, as we will see in the experimental results. 
+ 
+3. Proposed method 
+ 
+In this section, we shall first present a multiple scan 
+segments architecture for LOS test compression, and 
+then propose an ATPG method that maximizes the 
+compression rate. 
+ 
+3.1. LOS-enabled multi-mode segmented scan 
+ 
+The block diagram of the LOS-enabled MSSA is 
+shown in Figure 2. The only difference between this 
+architecture and the original MSSA [10] is an extra 
+stage of OR gates inserted between the decoder and the 
+AND gates, and the purpose of these gates is to launch 
+AV via the shift operation. 
+ 
+ 
+Figure 2. LOS enabled MSSA 
+Scan-in 
+Segment 0 
+Segment 1 
+Segment 2 
+Segment 3
+O
+utput 
+C
+om
+pressor 
+Clock 
+Scan Input 
+S/B_ 
+Counter 
+Decoder 
+Count Enable
+Output Compressor 
+Segm
+ent 1 
+Segm
+ent 2
+Segm
+ent k–1
+Segm
+ent k 
+Inversion Control 
+96
+are conflicts between these two segments in at least one 
+vector. To find a k-way partition of the segments into 
+compatible sets is essentially a k-way click partitioning 
+of the compatibility graph, or equivalent a k-coloring 
+of the conflict graph. It is well know that the k-coloring 
+problem is NP-complete for k ≥ 3, which is not 
+desirable. Fortunately, the 2-coloring can be solved in 
+linear time, which means our multicast configurations 
+can be constructed efficiently. The partition algorithm 
+is given in Figure 3. 
+ 
+Figure 3. Construct multicast configurations 
+ 
+4. Experimental results 
+ 
+We have conducted experiments on some ISCAS’89 
+larger benchmark circuits. In each circuit, we tried 
+various numbers of scan segments, and the best results 
+are shown. Table 2. reports the results in each case. 
+The first column gives circuit names. Columns 2 
+through 4 give the number of enhanced scan patterns, 
+test data volume (TD) and fault coverage (FC) reported 
+in [4]. Columns 5 through 9 give the number of scan 
+segments (#Seg.), broadcast patterns (#B), serial 
+patterns (#S), test data volume and fault coverage in 
+ISA. Columns 10 through 15 show the results of MSSA, 
+in which the numbers of multicast patterns (#M) also 
+included. 
+Table 2. summarizes the test data volume and 
+transition fault coverage after test data compression. 
+Compared to ISA, in which only broadcast and serial 
+operations are used, the inclusion of multicast mode 
+operations achieves much better compression rate. 
+ 
+5. References 
+ 
+[1] J. Savir, “Skewed-load transition test: Part I, calculus,” 
+in Proc. Int’l Test Conf., pp. 705-713, Sep. 1992. 
+[2] J. Savir, and S. Patil, “Broad-Side Delay Test,” IEEE 
+Trans. CAD, Vo. 13, No. 8, pp. 1057-1064, Aug. 1994. 
+[3] K-J. Lee, J-J. Chen, and C-H. Huang, “Broadcasting test 
+patterns to multiple circuits,” IEEE Trans. on CAD, Vol. 
+18, No. 12, pp. 1793-1802, Dec. 1999. 
+[4] X. Liu, M.S. Hsiao, S. Chakravarty, and P.J. Thadikaran, 
+“Efficient techniques for transition testing,” ACM Trans. 
+on Design Automation of Electronic Systems, Vol. 10, 
+No. 2, pp. 258-278, Apr. 2005. 
+[5] I. Hamzaoglu and J. Patel, “Reducing test application 
+time for full scan embedded cores,” in Proc. Int. Symp. 
+on Fault Tolerant Computing, pp. 260-267, 1999. 
+[6] S.-J. Wang, K.-L. Peng, and K. S.-M. Li, “Layout-aware 
+scan chain reorder for skewed-load transition test 
+coverage,” in Porc. Asian Test Symp., pp. 169-174, 
+2006 . 
+[7] B. Koenemann, “LFSR-coded test patterns for scan 
+designs,” in Proc. European Test Conf., pp. 237-242, 
+1991. 
+[8] C. S. Tautermann, A.Wurtenberger and S. Hellebrand, 
+“Data compression for multiple scan chains using 
+dictionaries with corrections,” in Proc. Int. Test Conf., 
+pp. 926-935, Oct. 2004. 
+[9] A. Chandra and K. Chakrabarty, “Frequency-directed 
+run-length (FDR) codes with application to system-on-a-
+chip test data compression,” in Proc. VLSI Test Symp., 
+pp. 42-47, 2001. 
+[10] P.-C. Tsai and S.-J. Wang, “Multi-mode segmented scan 
+architecture with layout-aware scan chain routing for 
+test data and test time reduction,” in Proc. Asian Test 
+Symp., pp. 225-230, 2006.  
+ 
+Table 2. The number of test patterns and comparison of test data volume 
+ES[4] ISA MSSA Circuit 
+#P TD FC (%) #Seg. #B #S TD FC (%) #Seg. #B #S #M TD FC (%) 
+S1423 186 17112 99.11 14 24 107 10036 98.25 14 12 29 98 4234 98.49 
+S5378 722 155230 98.4 10 108 244 54944 98.2 12 63 31 371 21589 98.3 
+S9234 -- -- -- 10 116 411 104944 94.13 12 59 204 497 73261 94.23 
+S13207 -- -- -- 25 334 268 197554 98.53 25 284 22 508 52614 98.54 
+S15850 -- -- -- 15 230 176 117372 93.92 15 210 22 406 55982 94.07 
+S38417 2682 4465530 99.66 24 340 364 630200 98.62 35 202 172 1193 411999 98.85 
+ 
+Input: A set of test cubes (M), Segments with order 
+Output: All multicast configurations 
+1. L←Sort_descending_order_of_conflicts(M); 
+2. Construct initial conflict graph G=(V,E) where 
+E=∅; 
+3. // initially there are no edges in the conflict graph 
+4. while ((t ←first cube in L) ≠ ∅ ) { 
+5.    G’ ← G ∪ {conflicts due to t}; 
+6.    if  (2-coloring is possible for G’) { 
+7.      record the partition Pi,0 and Pi,1; 
+8.      G ← G’; 
+9.      L ← L – t; 
+10.    } 
+11.    else { 
+12.      output current partition; 
+13.      E ← ∅; 
+14.      // clear edge weights 
+15.      } 
+16. } 
+98
+means five cycles are required for the scan shifts, and 
+the test data amount is reduced to 20 bits. 
+In the following discussion, a chain without 
+branches in the tree will be referred to as a scan 
+segment. For example, {ff5, ff8}, and {ff9, ff7} are all 
+scan segments. 
+ 
+Fig. 2. Scan tree architecture 
+ 
+The reduction in test data volume is decided by the 
+number of compatible flip-flops. Higher compression 
+rate can be achieved by exploiting unspecified bits 
+(i.e., X-bits) in the test cubes. Since an X-bit is 
+compatible to both 0 and 1, more scan cells can be 
+compatible when the X-bits are abundant in the test 
+patterns. 
+The last source of compatibility arises if the values 
+in two scan cells are always complemented to each 
+other whenever they are both specified. For example, it 
+can be seen that, in Fig. 1, the bit value in ff5 is always 
+the complement of that in either ff1 or ff9. We shall 
+refer to this property as the inverse compatibility. 
+ 
+3. Layout-aware scan tree construction 
+ 
+Fig. 3 gives an example of the bottom-up approach 
+for multi-layer scan tree synthesis. In this example, a 
+tree of three layers is constructed. In each layer, the 
+layout surface is divided into several regions, where 
+each region produces a scan segment in the 
+corresponding layer in the scan tree. In Fig. 3(a), the 
+bottom layer divides the scan cells into 7 regions, 
+while the second layer (Fig. 3(b)) consists of 4 regions. 
+The top layer consists of only one region, as shown in 
+Fig. 3(c). Scan cells in a region will be chained into a 
+scan segment whenever possible. In Fig. 3(d), the final 
+three-level scan tree is constructed by concatenating 
+the scan segments. Note that scan segments chained in 
+the same layer appear in the same level of the scan 
+tree. In the proposed algorithm, we provide user-
+defined parameters to specify the number of regions in 
+each level except the top level, with the restriction that 
+a lower level consists of more scan segments than a 
+higher level.  In Fig. 3, the numbers of regions from 
+bottom to top are 7, 4, and 1, respectively. 
+ 
+Fig. 3. An example of multi-level scan tree 
+synthesis 
+ 
+3.1. Multi-layer scan tree synthesis procedure 
+ 
+The overall scan tree synthesis procedure is outlined 
+as follows. 
+(1) Generate test set with X-bits. 
+(2) Find compatible scan cells according to the test set. 
+(3) If current layer is the top layer, go to step 11. 
+Otherwise, read the user-specified numbers of 
+regions and tiles. 
+(4) Divide the layout surface into m regions 
+(5) Partition each region into t tiles. 
+(6) Decide the whether the compatibility threshold of 
+p tiles in a region is reached. Go to step (8) if the 
+threshold is reached. 
+(7) Establish scan segments in tiles and regions. 
+(8) Select the largest region, and connect the free scan 
+cells according to the given direction and the 
+routing length. 
+(9) If the number of tiles in a region is 1, go to step (3); 
+otherwise, go to step (10). 
++ 
+R1 
+R2 
+R3 
+R4
+R5
+R6
+(a) 
+=
++ 
+R0 
+R1 
+R2
+R3
+(b) 
+Root 
+(c) 
+Root 
+(d) 
+R1 R2 
+R3 R4 R5 R6 
+R0 
+R0 
+ 
+R0 R1 
+R2 R3 
+t1       0             1           1            0            1 
+t2       0             1           1            1            1 
+t3       0             1           1            0            0 
+t4       0             0           1            0            1 
+ff5 ff8 ff1 ff2 ff3 
+ff9 ff7 ff4 
+ff6 
+130
+segments, and dotted lines mean the cells are to be 
+connected.  
+Fig. 7 shows the final scan tree routing for S38417 
+obtained by the proposed scan tree synthesis for 
+minimum routing length. 
+ 
+Fig. 7. Scan tree of S38417 
+ 
+4. Experimental Results 
+ 
+We have conducted experiments on some 
+benchmark circuits. The circuits are synthesized by 
+SOC-Encounter from Cadence with UMC 0.18µm 
+technology. The statistics of the circuits are 
+summarized in Table 1, including the numbers of test 
+vectors (#tv), scan cells (#FF), and primary outputs 
+(#PO). The test data volume (TD) and wire length (WL) 
+of the minimum-length single scan chain [7] are listed 
+in the last two columns. 
+Table 1. Statistics for single scan chain 
+Circuit  #tv #FF #PO TD WL (µm) 
+S5378 97 214 12 20758 2602 
+S9234 105 247 8 25935 3072 
+S13207 233 700 12 163100 7715 
+S15850 94 611 12 57434 7374 
+S38417 68 1664 8 113152 18130 
+S38584 110 1464 16 161040 20345 
+Table 2 shows the synthesis result of the proposed 
+method targeted for high compression rate only. 
+Columns 2, 3, 4 give the height (H), the number of 
+scan outputs (#SO), and the number of layers (#L) of 
+the synthesized scan tree. Column 5 gives the test data 
+volume of the scan tree, and column 6 shows the 
+reduction in data volume, compared to the single scan 
+chain structure listed in Table 1. It can be seen that, on 
+the average, 62.9% of test data are eliminated. Column 
+7 gives the overall wire length (WL) of the scan tree 
+for each circuit, and column 8 compares it to the WL 
+of the minimum-length single scan chain [7]. The 
+overall scan chain length increase ranges from 3.34 to 
+8.13 times of the minimum scan chain. 
+Table 3 gives the synthesis results of scan trees 
+targeted for minimum routing length. In this case, the 
+wire length increases about 60%, while only 15.4% of 
+data are compressed. 
+Table 2. High compression rate scan trees 
+Compression Length Circuit H #SO #L TD Red (%) WL (µm) Ratio 
+Time 
+(sec) 
+s5378 94 12 7 9118 56.0 8682 3.34x 2 
+s9234 126 8 8 13230 48.9 11426 3.72x 3 
+s13207 135 12 9 31455 80.7 37605 4.87x 18 
+s15850 189 12 9 17766 69.0 38239 5.19x 9 
+s38417 758 8 8 51544 54.4 116857 6.45x 78 
+s38584 467 16 8 51370 68.1 165350 8.13x 56 
+Avg.     62.9   5.28x 27.7 
+Table 3. Low routing overhead scan trees 
+Compression Length Circuit H #SO #L 
+TD Red (%) WL (µm) Ratio 
+Time 
+(sec) 
+S5378 184 2 2 17848 14.0 4001 1.54x 2 
+S9234 223 3 2 23415 9.7 4827 1.57x 4 
+S13207 572 5 2 133276 18.2 13036 1.69x 18 
+S15850 527 4 2 49538 13.7 11176 1.52x 12 
+S38417 1400 4 2 95200 15.8 28799 1.59x 77 
+S38584 1260 4 2 138600 13.9 32993 1.62x 51 
+Avg.     14.2   1.59x  26.0 
+It is possible to sacrifice wire length for higher 
+compression rate, and vice versa. There are many 
+possible tradeoffs, and one set of experiment results are 
+shown in Table 4. In this case, the wire length is about 
+3 times longer, while 51.9% test data are reduced. 
+Table 4. Balanced scan trees 
+Compression Length Circuit
+  H #SO #L TD Red (%) WL (µm) Ratio 
+Time
+(sec)
+s5378 94 12 7 9118 56.0 8682 3.34x 2 
+s9234 126 8 8 13230 48.9 11426 3.72x 3 
+s13207 245 12 3 57085 65.0 25676 3.33x 14 
+s15850 291 12 3 27354 52.3 22826 3.10x 11 
+s38417 986 8 4 67048 40.7 56705 3.13x 77 
+s38584 750 16 4 82500 48.7 74584 3.67x 49 
+Avg.     51.9   3.38x 37.8
+ 
+5. References 
+ 
+[1] K. Miyase and S. Kajihara, “Optimal scan tree construction 
+with test vector modification for test compression,” in Proc. 
+ATS, pp. 136-141, Nov, 2003. 
+[2] Y. Bonhomme, et. al. “An efficient scan tree design for test 
+time reduction,” in Proc. ETS, pp. 174-179, May 2004. 
+[3] Y. Bonhomme, et. al., “An efficient scan tree design for test 
+time reduction,” in Proc. VLSI Design, pp.6, Jan. 2006. 
+[4] K. Miyase, S. Kajihara, and S. M. Reddy, “Multiple scan tree 
+design with test vector modification,” in Proc. ATS, pp.76-81, 
+Nov, 2004. 
+[5] P. Hamzaoglu and J. H. Patel, “Test set compaction algorithms 
+for combinational circuits,” in Proc. ICCAD, pp. 283-289, Nov. 
+1998. 
+[6] J.-S. Chang and C.-S. Lin, “Test set compaction for 
+combinational circuits,” IEEE Trans. CAD, vol. 14, no. 11, pp. 
+1370-1378, 1995. 
+[7] K. D. Boese, A. B. Kahng, and R. S. Tsay, “Scan chain 
+optimization: Heuristic and optimal solutions,” UCLA CS 
+Dept., Oct. 1994. 
+132
+<v: PPI>. The PO and PPO parts of the circuit are 
+denoted as <f(v): PO> and <f(v): PPO>, respectively. 
+Four cases of X-filling are discussed in [21]. In Case 1, 
+the X-bits only appear in the primary input <v: PI> and 
+there are no X-bits in <v: PPI> and <f(v): PPO>. In this 
+case, there is nothing to be done. In Case 2, X-bits only 
+appear in <v: PPI>, and there are no X-bits in <f(v): 
+PPO>. Therefore, the X-bits in <v: PPI> are assigned to 
+the values of corresponding bits in <f(v): PPO> to 
+reduce signal transitions. In Case 3, X-bits only appear 
+in <f(v): PPO> and <v: PI>, and there are no X-bits in 
+<v: PPI>. The Criterion-1 proposed in the paper [21] is 
+used, the line (v) with X in <f(v): PPO> which has the 
+largest number of sets of X-bits in <v: PI> reached from 
+the line (v) is first selected to justify. 
+The most complicated conditions appear in Case 4, 
+in which there are X-bits in both <v: PPI> and <f(v): 
+PPO>. Let the values of position i in <v: PPI> and <f(v): 
+PPO> be a and b, respectively. There are four possible 
+(a, b) combinations. In Type-A, neither of the pair (a, b) 
+is an X-bit, and thus no X-filling is possible. In Type-B, 
+only a is the X-bit while in Type-C only b is the X-bit. 
+Either Type-B or Type-C pair can be processed, and the 
+Criterion-2 defined in [21] was used to determine which 
+type is first executed. The Type-D pairs are processed in 
+the last step. For a given pair, first 0 (1) is assigned to 
+both a and b to avoid a capture transition. If such an 
+assignment is not possible, opposite values are assigned 
+to the pair. Whenever there are multiple Type-D pairs, 
+the Criterion-1 is used again to determine the 
+processing order of Type-D pairs. 
+2.2. Motivation of the Proposed Method 
+The aforementioned X-filling procedure works 
+well for Cases 1, 2 and 3. On the other hand, in Case 4 
+the selection between Type-B and Type-C depends on 
+the number of X-bits. In worst case, only transitions in 
+the selected X-bits can be reduced, while transitions in 
+other X-bits are not saved, as the example in Figure 1(a). 
+Thirteen flip-flops appear in the partial circuit; and in a 
+test only the PPOs fed to FF1 through FF7 and the PPIs 
+applied to FF8 through FF13 are specified, and the 
+specified bits are indicated by the boldfaced numbers. 
+The remaining bits are initially unspecified. According 
+to the aforementioned procedure, Type-B X-filling 
+should be used, as there are more X-bits in the PPIs part 
+(7 bits). Therefore, PPIs of FF1~FF7 are assigned 
+according to the specified values on the corresponding 
+PPOs, and they are shown in italic in Figure 1(a). 
+However, the PI assignment creates conflicts between 
+PPIs and PPOs for FF8~FF13. In this case, the number of 
+capture transitions is six. If we assign the PPIs of FF1, 
+FF4 and FF7 to the opposite values, as shown in Figure 
+1(b), the result will be three capture transitions, which is 
+only half of those in Figure 1(a). 
+Similiarly, the specified bits are boldfaced and 
+then Type-C X-filling is applied in Figure 1(c), and it 
+produces seven capture transitions. According to the 
+Criterion-1, the value of PPO of FF8 is first processed 
+and assigned as the value of PPI of FF8. However, the 
+assignment will cause that the FF3, FF4, FF7 and FF9 
+will have capture transitions. Likewise, the FF1, FF2 and 
+FF5 also have capture transitions after the FF6 is 
+assigned. Assume that we first assign the values of FF6 
+and FF8 to opposite values and then there are only three 
+capture transitions in the new case, as shown in Figure 
+1(d). 
+For Type-D, we also present an example to 
+explain the possible problem, as shown in Figure 2. 
+There are five flip-flops with Xs in the PPIs and PPOs, 
+initially. Assume we justify the values of PPI and PPO 
+of FF1 first. According to the Type-D, we try to assign 
+the values of PPI and PPO to one and zero and then 
+opposite values, as shown in Figure 2. In Figure 2(a), 
+we assign the values of PPI and PPO of FF1 to zero and 
+then there are two capture transitions induced. In Figure 
+2(b), the values of PPI and PPO of FF1 are assigned to 
+one and then there are also two capture transitions 
+induced. If we assign the values of PPI and PPO of FF1 
+to one and zero, respectively, we also get two capture 
+transitions induced, as shown in Figure 2(c). Finally, the 
+values of PPI and PPO of FF1 are assigned to zero and 
+one, respectively. However, there is only one capture 
+transitions induced, as shown in Figure 2(d).  
+     According to the previous two cases, we can 
+conclude that the processing procedure mentioned in the 
+paper [21] may not be a better solution to address the 
+capture power issue. Therefore, we propose an 
+alternative solution to address this problem. The details 
+of the proposed alternative solution are illustrated in 
+next section. 
+ 
+Circuit 1 
+ 
+Circuit 2 
+(a) (b) 
+(c) 
+PPO 1   0    1  1   0  0 
+FF 8  9   10 11  12  13 
+PPI 1   0    1  1   0    0 
+PPO 0   1    0  0   1  1 
+FF 8  9   10 11  12  13 
+PPI 1   0    1  1   0    0 
+(d) 
+PPO 0   1   1   1 
+FF 1   2   3   4 
+PPI 0   0   1   1 
+PPO 1  1  0  1    1 
+FF 5  6  7   8   9 
+PPI 1   0  0   0    1 
+PPO  0  1  1   1 
+FF  1   2   3   4 
+PPI  1   0   0   0 
+PPO 0  0  1  0    0 
+FF 5  6  7   8   9 
+PPI 1   0  0   0    1 
+Figure 1. (a) The result for Type-B with Circuit 1, (b) the result 
+for Type-B after bit-modification, (c) the result for Type-C 
+with Circuit 2 and (d) the result for Type-C after 
+bit-modification.
+PPO 1  1 1    0 1 0 1 
+FF 1 2  3   4   5 6 7 
+PPI 0 1  1   1   1 0 0 
+PPO 1  1 1    0 1 0 1 
+FF  1  2  3   4   5 6 7 
+PPI  1  1  1   0   1 0 1 
+414
+3.3 LCP X-Filling 
+3.3.1 Finding the Minimum Set of Specified Inputs 
+The definitions of terms that will be used later are 
+given as follows. 
+Definition 1: The X-frontier is the set of gates whose 
+outputs are specified while at least one input of each 
+gate is unspecified. 
+Definition 2: A net belongs to the X-cut if its fanout 
+gate is in X-frontier. 
+An X-cut essentially divides a given circuit into 
+two regions: the X-region containing all the X-valued 
+nets and the S-region containing all the specified nets. 
+The definitions are illustrated in Figure 5.  
+ 
+Figure 5. X-cut and X-frontier. 
+ 
+In the proposed approach, the most important 
+issue is to find the Minimum Set of Specified Inputs 
+(MSSI) to maximize the X-region. This can be done by 
+using a minimum input assignment X-filling technique, 
+as shown in Figure 6. Assigning 0 to the output only 
+needs one input to be specified, as shown in Figure 6(a), 
+and thus four X-bits are left in the input side. On the 
+other hand, assigning output to 1 requires three inputs to 
+be specified, as shown in Figure 6(b), with only two 
+X-bits left. We use a heuristic approach that is guided 
+by the gate levels to find the minimum set of inputs for 
+X-region control. The level of a gate is defined as 
+follows. A gate is at level i if the largest level of it fanin 
+gates is i–1, and all inputs, including PIs and PPIs, are 
+level 0 gates. Each output is also treated as a gate whose 
+level is equal to the level of its fanin gate plus 1. The 
+gate level is a rough estimation of the distance between 
+a gate and the circuit input. For the example shown in 
+Figure 6, the level of a gate is indicated inside the gate. 
+In the justification process for a PPO assignment, 
+whenever there is a choice to select a candidate gate for 
+justification, the one with the lowest gate level is 
+selected. The reason for this heuristic is very simple, as 
+the input cone of a lower-level gate is usually smaller, 
+and thus fewer inputs have to be specified to justify the 
+given output assignment. In Figure 6(a), the heuristic 
+selects the bottom AND gate to justify the output 0 
+assignment, as the level of the AND gate (level 1) is 
+smaller than the upper OR gate (level 2). As a result, 
+only one input is needed to control the X-cut. 
+Whenever there are multiple X-bits in the PPOs, the 
+PPO with the largest gate level is first assigned. The 
+rational is that a PPO with the larger gate level is 
+usually involved with a deeper and bigger input cone. 
+When the PPO assignment is justified, more internal 
+signals are specified and then there is a better chance to 
+cover other X-valued PPOs. 
+ 
+X-frontier 
+X-region 
+S-region 
+X 
+0 
+0 
+X 
+X X
+X 
+X 
+0 
+X-cut 
+PPI 
+PPO 
+(b) 
+0  X  X  1  1  X  X  0  0  X  X  1
+1  0  0  0  1  0  1  1  1  0  1  1
+ 
+Circuit under Test 
+(c) 
+ 
+Circuit under Test 
+0  0  0  1  1  0  1  0  0  0  1  1
+1  0  0  0  1  0  1  1  1  0  1  1
+(a) 
+ 
+Circuit under Test 
+X X  X  1  X  X  X  0  X  X  X  1
+X  0  X  X  1  0  X  X  1  0  X  1
+1  2 3 4  5  6  7  8  9  10  11  12 
+Figure 7. (a) Bit-raising with respect to essential faults 
+creates X-bits in test vectors, (b) after raising bits technique 
+are applied and (c) after the test response is assigned to the 
+corresponding inputs with X. 
+X-cut 
+X 
+0 
+0 
+X
+X X
+X
+X
+0
+(a) 
+3 
+2
+1
+1
+0
+0
+4 
+0
+0
+0
+1 
+1 
+1 
+X
+X
+X
+1
+1
+1
+(b) 
+3 
+2
+1 
+1
+0
+0
+4 
+0
+0
+0
+Figure 6. (a) Assign output to 0, and (b) Assign output to 1. 
+416

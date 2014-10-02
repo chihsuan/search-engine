@@ -1,0 +1,663 @@
+一、前言 
+語音辨識系統可分為特定語者(speaker dependent, SD)模型與不特定語者(speaker independent, 
+SI)模型兩種，特定語者模型由於是先錄製某特定語者大量的語料來訓練此語者的模型，故有極高
+的辨識率，但此法在即時實際應用時較不可行，因此，一般是以不特定語者模型為主[1]。不特定
+語者模型因為是經由很多數語者錄製了大量語料再訓練而成，但辨識能力通常不能像特定語者模型
+那麼好。因此，對於一個不特定語者模型之語音辨識系統而言，具有能隨著語者的不同而語音模型
+也能配合著調整的語者調適技術是非常必須的。 
+目前，主要有三個範疇的語者調適機制，其機制依時間的先後發展分別是貝氏調適
+(Bayesian-based adaptation) 、 轉 換 調 適 (Transformation-based adaptation) 及 特 徵 聲 音 調 適
+(Eigenvoice-based adaptation)，前二者調適機制已常見於目前的語音辨識的應用中，而特徵聲音調
+適機制則較屬在學術之研究的階段。貝氏調適與轉換調適之最具代表性的調適演算法分別是 MAP
+演算法[1, 2]及MLLR演算法[3, 4]，此兩則演算法已廣泛地應用於目前的語音辨識相關應用。特徵
+聲音調適法在語者調適的家族中算是最晚被發展的調適機制，從 2000年被提出後至今已將近約十
+年[5]，此調適機制已為從事語音處理相關研究之研究學者的重要研究課題。然而，此一調適方法
+亦不能逃脫貝氏調適法與轉換調適法等在調適上的弱處，亦即調適語料不充足時，則調適品質亦會
+下降，甚至可能更低於基準的辨識率。有鑑於此，本計畫之研究課題在思索如何將模糊邏輯控制有
+效地整合至特徵聲音調適範疇的調適機制及調適演算法，強化原先方法的設計，若能達此，則特徵
+聲音語者調適技術將能更接近生活面之實務應用，而能加速跳脫學術研究的階段。 
+特徵聲音調適法有時亦被稱為語者分群調適(Speaker-clustering-based)方式，此方法之理念乃是
+主要是以向量空間做為基礎，因而向量空間建立的好壞是影響調適品質的關鍵。向量空間的建立方
+式是先搜集很多數的語者的語料，接著再利用每位語者的大量語料，訓練其各自的的語者特定模型
+(SD model)參數，而這些參數即是做為建立向量空間的來源。特徵向量空間建立好後，由於基底較
+多的因素，因而再實施利用主成分分析理論，將一些代表性較大的特徵向量(基底)挑出，而挑出的
+基底即做為組成向量空間的方向軸，至此，特徵向量(eigenvector)空間已建立好(此向量空間即所謂
+之 Eigenvoice)，而若是一位受測語者欲做調適，我們僅須利用此位語者的語料即可找到其在已建
+立好之向量空間所對應的位置即可，而此位置點即是每個特徵向量軸之特徵值，因此，計算語者在
+特徵向量空間的位置即是在求得每個特徵向量軸的特徵值，而這位置點將隨著調適動作的持續而跟
+著移動，亦即一直逼近語者之最可能的位置。一般在求每個特徵向量軸的特徵值是利用最大相似度
+(maximum-likelihood, ML)的法則或利用最小分類錯誤(minimum-classification error, MCE)的法則以
+做特徵值的分解(eigen-decomposition)動作。以最大相似度法則為例，其特徵值的分解動作乃是僅
+利用調適語料的資訊而估得與調適語料相似度最大之語音模型，然而，當調適語料不充份時，由調
+適語料所估算的語音模型將會不準確(由於每個特徵向量軸的特徵值之不精確的估算)，因而造成令
+人不滿意之辨識性能。最大相似度法則之僅參考調適語料的資訊所造成不準確估算的特徵值的現象
+可藉由最大後機率(maximum a posteriori, MAP)法則加以改善。相較於最大相似度法則，在調適語
+料不充份時，使用最大後機率法則實現特徵值分解的動作將可得到較為準確的特徵值，亦即能得到
+較為準確之測試語者的語音模型而展現較好的調適效果。然而，由於最大後機率法則額外多參考了
+前知(prior)的資訊，使得利用此法則求解特徵值的計算量將較最大相似度法則為高，此現象對於講
+ 1
+Eigen-MLLR方法不但可保有其原本演算法設計之參數調整的理念，又可同時達到快速推算參數之
+能力。然而，Eigen-MLLR亦會有在遭遇調適語料稀少時所出現調適性能不佳的弱點，基於此，本
+計畫提出一個基於模糊控制之 Eigen-MLLR方法(FLC-regulated Eigen-MLLR)，此方法成功地整合
+模糊控制於傳統的 Eigen-MLLR方法，藉由模糊控制之參數調校能力改善 Eigen-MLLR調適程序中
+之參數平滑機制，此發展的方法將較原先 Eigen-MLLR方法有更佳之調適性能。 
+眾所皆知，對於語者調適而言，不僅調適語料的數量重要，調適語料的品質亦是決定調適性能
+優劣的一個關鍵性因素，不妥適的調適語料將直接導致一個不可靠的語音辨識模型，因而降低辨識
+系統的辨識性能。基於此，本計畫運用了支持向量機(Support Vector Machine, SVM)機制設計了一
+個調適語料的取決方法，此類方法的提出的動機乃為某些特定的語者調適方法對於調適語料的品質
+甚為敏感，如屬於貝氏調適範疇技術之經典的MAP調適方法，此語料取決的方法可同時結合模糊
+控制機制一併整合於語者調適技術，藉由有效地同時管控調適語料的品質與數量等兩個因素，將可
+以使得語者調適方法更具備強健性特質。此類方法稱之為混合式支持向量機與模糊控制(Hybrid 
+SVM-FLC)調適方法，該方法先行導入於 MAP 調適方法，其亦可適用於特徵聲音語者調適方法或
+其它調適範疇的調適技術。 
+ 
+二、研究目的 
+本計畫之研究目的為研究如何運用模糊邏輯控制之優異的參數調適能力至 Eigenvoice 調適範
+疇的調適機制或調適演算法的設計中。眾所皆知，Eigenvoice調適演算法對於特徵值的估測的準確
+度，實會影響到語者調適的品質。目前較為流行之 Eigenvoice調適範疇的調適演算法像是運用最大
+相似性特徵分解方式、運用最大後機率特徵分解方式(Maximum a posteriori Eigen-Decomposition, 
+MAPED)分解方式等仍會遭遇當調適語料不充足時，調適品質亦會下降，甚至可能更低於基準的辨
+識率之弱點，亦或經改良後的演算法反而造成計算量太大之負擔(計算複雜度太高)，本計畫之研究
+目的乃在設計一個優異的模糊邏輯控制機制於 Eigenvoice調適機制或調適演算法中，使得整合 FLC
+的 Eigenvoice調適機制或調適演算法在調適語料少時仍能維持一定的辨識率，而在調適語料多時又
+能充份展現原 Eigenvoice語者調適該具備的調適能力，再者，相較於原先未導入 FLC的調適機制
+或調適演算法，所發展之整合 FLC的 Eigenvoice語者調適方法又不會增加太多的額外計算量而仍
+然能達到即時調適的能力。 
+ 
+三、文獻探討 
+誠如前述，三個主要範疇的語者調適機制貝氏調適、轉換調適與特徵聲音調適等調適範疇技
+術，依時間的順序先後被發展出。MAP調適演算法乃是貝氏調適範疇的代表，其發展約源自 1991
+年，在調適語料不充足的情況下，MAP調適方法會比ML(maximum likelihood, ML)調適方法在調
+適性能的展現上更好。相較於 ML調適法，當進行調適程序時，MAP調適法額外考慮了語音模型
+的前知(prior)資訊，因此，當調適語料不足之情況下，不致於將語音模型調差而能使得辨識系統維
+持一定的辨識率水準[1, 2]。 
+MLLR(Maximum likelihood linear regression, MLLR)調適方法約於 1995年被提出，此調適方法
+ 3
+究發現在調適語料甚少的情況下，若利用最大後機率法則(maximum a posteriori, MAP)的理念進行
+特徵參數的推算將較傳統利用最大相似度法則(maximum likelihood, ML)之方式，其推算得到的特
+徵值參數將較為精確，亦即有較好的調適效果，此類特徵值參數估算技術稱之為最大後機率特徵分
+解法(maximum a posteriori eigen-decomposition, MAPED)。然而，運用最大後機率之MAPED方法
+亦無法避免其它運用最大後機率法則的語者調適方法(如MAPLR轉換調適)的缺點，亦即此類運用
+最大後機率法則的語者調適方法之計算複雜度皆會較原先之運用最大相似度法則的語者調適方法
+高，因此，對於即時(Realtime)線上語者調適的語音辨識系統而言將是較為不利之處。如何設計一
+個計算快速並且性能優異的語者調適演算法一直是從事語音處理技術的研究學者的一個主要研究
+課題，而此課題亦是本執行計畫「模糊邏輯控制於特徵聲音語者調適之參數調適研究」所積極研究
+的方向。 
+香港科技大學近年來亦針對特徵聲音空間的語者調適機制進行基礎的研究。與國內相關單位在
+此領域的研究方向不甚相同，國內學者的研究方向較著重在特徵聲音技術之橫向的應用，如各範疇
+類別的調適方法如何進行整合而能同時獲取各調適方法之優點，而香港科技大學之學術研究單位的
+研究方向乃是針對特徵聲音技術進行特徵聲音空間改善之縱向的基礎研究。其研究發現傳統語音的
+特微空間的理念可再做進一步的精進化，亦即將特徵聲音空間做更深入的定義，其研究已先後提出
+了核心特微聲音(kernel eigenvoice)機制[21]與嵌入式核心特徵聲音(embedded kernel eigenvoice)機制
+[22, 23]等，而語音辨識常用的調適技術之MLLR調適方法亦在其提出的核心特徵聲音機制下重新
+再做考量與設計，因而提出了一套融合核心特徵聲音技術之特質的 MLLR 調適方法，其稱為以核
+心特徵空間為基礎的MLLR方法(kernel eigenspace-based MLLR)[24, 25]，此類強化 PCA特徵值估
+算方式以對特徵聲音技術進行特徵聲音空間改善的相關研究目前仍然在進行中。 
+ 
+四、研究方法 
+研究方法請參閱本計畫所衍生之期刊論文[26-28]。本計畫所採用的研究方法於附錄中的論文有
+詳細的描述。 
+ 
+五、結果與討論 
+結果與討論請參閱本計畫所衍生之期刊論文[26-28]。本計畫最後所獲得之研究成果與相關技術
+議題的討論在附錄中的論文有詳細的描述。 
+ 
+參考文獻 
+[1] C. H. Lee, C. H. Lin and B. H. Juang, “A study on speaker adaptation of the parameters of 
+continuous density hidden Markov models,” IEEE Transactions on Acoustics, Speech and Signal 
+Processing, vol. 39, pp. 806–814, 1991. 
+ 5
+[18] C. Chesta, O. Siohan and C. H. Lee, “Maximum a posteriori linear regression for hidden Markov 
+model adaptation,” in Proceedings of the European Conference on Speech Communication and 
+Technology, pp. 211-214, 1999. 
+[19] W. Chou, “Maximum a posteriori linear regression with elliptically symmetric matrix priors,” in 
+Proceedings of the European Conference on Speech Communication and Technology, pp. 1-4, 1999. 
+[20] C.-H. Huang, J.-T. Chien and H.-M. Wang, “A new eigenvoice approach to speaker adaptation,” in 
+Proceedings of the IEEE International Symposium on Chinese Spoken Language Processing, pp. 
+109–112, 2004. 
+[21] B. Mak, J. T. Kwok and S. Ho, “Kernel eigenvoice speaker adaptation,” IEEE Transactions on 
+Speech and Audio Processing, vol. 13, no. 5, pp. 984–992, 2005. 
+[22] B. Mak and S. Ho, “Various reference speakers determination methods for embedded kernel 
+eigenvoice speaker adaptation,” in Proceedings of the IEEE International Conference on Acoustic, 
+Speech and Signal Processing, vol. 1, pp. 981–984, 2005. 
+[23] B. Mak, R. Hsiao, S. Ho and J. T. Kwok, “Embedded kernel eigenvoice speaker adaptation and its 
+implication to reference speaker weighting,” IEEE Transactions on Audio, Speech, and Language 
+Processing, vol. 14, no. 4, pp. 1267-1280, 2006. 
+[24] R. Hsiao and B. Mak, “Kernel eigenspace-based MLLR adaptation using multiple regression 
+classes,” in Proceedings of the IEEE International Conference on Acoustic, Speech and Signal 
+Processing, vol. 1, pp. 985–988, 2005. 
+[25] B. Mak and R. Hsiao, “Kernel eigenspace-based MLLR adaptation,” IEEE Transactions on Audio, 
+Speech, and Language Processing, vol. 15, no. 3, pp. 784-795, 2007. 
+[26] I. J. Ding, “Enhancements of maximum likelihood eigen-decomposition using fuzzy logic control for 
+eigenvoice-based speaker adaptation,” accepted to appear in International Journal of Innovative 
+Computing, Information and Control, vol. 7, no. 8, 2011. 
+[27] I. J. Ding, “A hybrid SVM-FLC approach to MAP speaker adaptation for speech recognition,” ICIC 
+Express Letters - An International Journal of Research and Surveys, vol. 5, no. 2, pp. 349-354, 2011. 
+[28] I. J. Ding, “Enhancing eigenspace-based MLLR speaker adaptation using a fuzzy logic learning 
+control scheme,” accepted to appear in IEICE Transactions on Information and Systems. 
+ 
+計畫成果自評 
+本計畫之實際研究內容與原申請計畫之規畫內容確實相符，本執行計畫「模糊邏輯控制於特徵
+聲音語者調適之參數調適研究」就特徵聲音語者調適技術領域進行導入模糊邏輯控制機制的研究，
+本研究就特徵聲音語者調適中之特徵值分解方法進行改善，所提出的方法稱為基於模糊控制之最大
+相似性特徵值分解方法(FLC-MLED); 對於目前一個流行的 Eigen-MLLR 特徵聲音調適方法，本研
+究亦進行該方法之強化，所提出之方法為基於模糊控制之 Eigen-MLLR 方法 (FLC-regulated 
+Eigen-MLLR); 本研究除了進行調適演算法的研究外，亦運用了 SVM 設計了一個調適語料的取決
+機制於基於模糊控制之語者調適，該方法稱為 Hybrid SVM-FLC語者調適。 
+ 7
+International Journal of Innovative
+Computing, Information and Control ICIC International c©2011 ISSN 1349-4198
+Volume 7, Number 8, August 2011 pp. 1–10-05020
+ENHANCEMENTS OF MAXIMUM LIKELIHOOD
+EIGEN-DECOMPOSITION USING FUZZY LOGIC CONTROL
+FOR EIGENVOICE-BASED SPEAKER ADAPTATION
+Ing-Jr Ding
+Department of Electrical Engineering
+National Formosa University
+No. 64, Wunhua Rd., Huwei Township, Yunlin County 632, Taiwan
+ingjr@nfu.edu.tw
+Received May 2010; revised November 2010
+Abstract. This paper presents a fuzzy logic control (FLC) mechanism for the popu-
+lar eigenvoice-based speaker adaptation scheme. The proposed mechanism regulates the
+influence of maximum likelihood eigen-decomposition (MLED) when the training data
+from a new speaker is inadequate. The FLC-MLED method functions by accounting for
+the adaptation data when estimating the linear combination coefficients for eigenvector
+decomposition. This approach ensures the robustness of speaker adaptation against data
+scarcity. The proposed mechanism is conceptually simple, effective and computationally
+inexpensive. Experimental results indicate that FLC-MLED outperforms conventional
+MLED, especially when encountering data insufficiency. The proposed approach per-
+forms better than maximum a posteriori eigen-decomposition (MAPED) at a much lower
+computing cost.
+Keywords: Speech recognition, Speaker adaptation Takagi-Sugeno fuzzy logic con-
+troller, Maximum likelihood eigen-decomposition, Maximum a posteriori eigen-decompos-
+ition
+1. Introduction. Computing techniques for automatic speech recognition (ASR) have
+existed for years [1-4]. As they have matured, these techniques have found more and more
+applications in everyday life [5]. Nevertheless, the recognition performance of any speech
+recognition system ever built is undeniably inferior to a human listener [6]. During speech
+recognition, variations in speech are strange to the system or known to the system only in
+poor “vocal shape”. These variations often cause a mismatch between the pre-established
+reference templates and the testing template, compromising recognition performance.
+Speaker adaptation (SA) sometimes referred to as model-based adaptation, can reduce
+this mismatch phenomenon. Speaker adaptation is the process of transforming a speaker
+independent (SI) speech recognition system into a speaker dependent (SD) system. This
+process achieves SD-like performance by adjusting the acoustic parameters of the SI speech
+model, typically in the form of hidden Markov models (HMM), with speech samples
+acquired from a target speaker.
+There are three major types of speaker-adaptive techniques: Bayesian-based adapta-
+tion, transformation-based adaptation and speaker-clustering-based adaptation. Bayesian-
+based model adaptation directly re-estimates the acoustic model parameters using maxi-
+mum a posteriori (MAP) adaptation [7,8]. The Bayesian reasoning framework is an ex-
+ample of this approach. Transformation-based model adaptation, such as maximum likeli-
+hood linear regression (MLLR) [9] and maximum a posteriori linear regression (MAPLR)
+[10,11], must derive certain appropriate transformations from a set of adaptation ut-
+terances from a new speaker and then apply them to clusters of HMM parameters.
+1
+ENHANCEMENTS OF MAXIMUM LIKELIHOOD EIGEN-DECOMPOSITION 3
+This study proposes a fuzzy control mechanism to tackle the issue of the unreliable
+MLED estimation of the linear combination coefficients due to insufficient training data
+without incurring the high cost of the MAPED-like approach. Based on the amount
+of adaptation utterances available, the MLED approach can be regulated to exploit the
+rapidness of MLED in calculating the linear combination coefficients when the amount
+of training data allows, while simultaneously alleviating the undesired effect of poor es-
+timation of the linear combination coefficients. The resulting implementation is called
+FLC-MLED, where FLC represents fuzzy logic control and indicates the underlying fuzzy
+mechanism incorporated in the conventional MLED. The use of FLC mechanism in es-
+timating acoustic parameters for eigenvoice-based speaker adaptation has been rarely
+attempted. However, an adaptation method with the support of FLC has several advan-
+tages compared to those without:
+• better performance in ordinary cases,
+• robustness against the scarcity of training data,
+• less computation in parameter estimation compared to other MLED-enhancement
+methods (e.g., the typical MAPED).
+Fuzzy control has been applied to a wide range of applications with great success [24],
+including speech recognition. Takagi-Sugeno (T-S) fuzzy model is conceptually simple
+and straightforward [25,26], and has appeared in the control of systems as complicated
+as an electric power plant [27-29]. Therefore, this study employs the T-S fuzzy model in
+eigenvoice speaker adaptation.
+The rest of the paper is organized as follows. Section 2 briefly describes the theoret-
+ical formulation of MLED and MAPED. This section also introduces the concept idea
+of incremental MLED eigenvoice adaptation under fuzzy regulation, followed by the for-
+mulation of the T-S fuzzy mechanism for model adaptation in this study. Section 2 also
+presents a complexity analysis of the proposed scheme and describes a future improvement
+of the proposed FLC-MLED approach. Section 3 presents the experiment results, which
+compare the effectiveness and performance of FLC-MLED with conventional MLED and
+MAPED. Finally, Section 4 provides some concluding remarks.
+2. FLC-MLED Eigenvoice Adaptation. The basic idea of eigenvoice adaptation is to
+build a number of speaker clusters in advance, and then represent the model of the current
+speaker as an interpolated form of the weighted sum of the speaker clusters. R. Kuhn et
+al. [12] first proposed the eigenvoice adaptation using a priori knowledge concerning the
+variations among all training speakers was represented as the set of SD model parameters
+in the form of eigenvectors named eigenvoices. A new speaker model is then expressed as
+the linear combination of the set of eigenvoices. The eigenvoice approach greatly reduces
+the number of parameters to be estimated, however, is still capable of retaining the overall
+system characteristics to capture the variance between speakers.
+The eigenvoice approach must take care of two things: eigenvoice construction (the
+training phase) and coefficient estimation (the adaptation phase). Figure 1 shows that
+in the eigenvoice construction phase, a set of N well-trained SD models from N speakers
+must be established first. Then, the model parameters of each SD model are “vectorized”,
+forming a set of N “supervectors”. Space dimension reduction techniques, such as PCA,
+are then applied to the set of N supervectors to obtain N eigenvectors with dimension
+D, also called as “eigenvoices.” In general, the higher-order eigenvoices are thrown away
+and only the first K (where K < N ≪ D) eigenvoices are kept. These eigenvoices
+are significant because they possess most of the information from speech data and are
+thus capable of representing all the variations in considerations. Finally, using these K
+eigenvoices, an accurate speaker space “K-space” can be spanned and acquired. The
+ENHANCEMENTS OF MAXIMUM LIKELIHOOD EIGEN-DECOMPOSITION 5
+The auxiliary function R(wˆ|w) in Equation (7) is defined as follows
+R
+(
+⌢
+w|w) = S∑
+s=1
+Ms∑
+m=1
+T∑
+t=1
+γ
+(s)
+m (t)
+{
+n log(2pi) + log
+∣∣∣C(s)m ∣∣∣+ h(xt, s,m)}
++
+K∑
+j=1
+{
+log(2pi) + 2 log σw(j) +
+(wˆ(j)− µw(j))2
+σ2w(j)
+}
+,
+(8)
+where the coefficient w(j) is modeled by a Gaussian distribution with mean µw(j) and
+variance σ2w(j). To maximize R(wˆ|w), set (∂R(wˆ|w)/∂wˆ(j)) = 0, j = 1, 2, . . . , K. The
+combination coefficients wˆ(1), wˆ(2), . . . , wˆ(K) are then derived by the following K equa-
+tions:
+µw(j)
+σ2w(j)
++
+S∑
+s=1
+Ms∑
+m=1
+T∑
+t=1
+γ
+(s)
+m (t)
+(
+e
+(s)
+m (j)
+)T
+C
+(s)−1
+m xt
+=
+K∑
+k=1
+wˆ(k)
+{
+S∑
+s=1
+Ms∑
+m=1
+T∑
+t=1
+γ
+(s)
+m (t)
+(
+e
+(s)
+m (k)
+)T
+C
+(s)−1
+m e
+(s)
+m (j) + δ(k − j) wˆ(j)
+σ2w(j)
+}
+.
+(9)
+Solving the Equation (9) for the combination coefficients is obviously more time con-
+suming than using MLED due to the use of additional parameters {µw(j), σ2w(j)} of the
+prior distribution [23]. Though it enhances the robustness of MLED, the MAPED scheme
+is more complicated and requires much more time in calculations than the MLED scheme.
+2.2. Incremental MLED eigenvoice adaptation. The coefficient estimation phase
+performs eigenvoice speaker adaptation using the eigen-decomposition algorithm such as
+MLED or MAPED to estimate a set of weights to find a weighted combination of eigen-
+voices for the new speaker. Given sufficient adaptation data, the eigenvoice adaptation
+method is effective. However, given insufficient adaptation data, the accuracy of the es-
+timated combination coefficients, especially derived by the MLED approach, is dubious.
+Poor estimation of the combination coefficients in turn leads to incorrect positioning in
+the speaker space. The problem of scarce adaptation data can be alleviated by using the
+MAPED scheme if heavy computation is permissible.
+Given insufficient training data, it is necessary to be more “conservative” in using the
+combination coefficients thus derived. In other words, the effect of the adaptation should
+be restricted so that the adapted mean vector does not reference too much from the
+combination coefficients derived with the insufficient training data. Therefore, this study
+proposes the following incremental MLED eigenvoice adaptation approach [7,8]
+µˆ(s)m =
+K∑
+k=1
+[
+λ · w(k) + (1− λ) · µw(k)
+]
+e(s)m (k), 0 ≤ λ ≤ 1, (10)
+where w(k) is the combination coefficient calculated by MLED and µw(k) is the prior
+mean of the combination coefficient. The linear combination coefficients for eigenvector
+decomposition are not calculated as in the maximum likelihood criterion. Instead, this ap-
+proach calculates a weighted sum of the maximum likelihood estimate and the prior mean
+of the combination coefficient. The form of incremental MLED eigenvoice adaptation in
+Equation (10) is very similar to MAP adaptation [7,8], which is essentially an MAP-like
+adaptation. A weight parameter λ governs the balance of w(k) and µw(k), mimicking
+the role of the adaptation speed parameter in MAP adaptation [7,8]. Using a weighting
+scheme, λ, should achieve satisfactory adaptation performance even when only a small
+amount of training data is available for eigen-decomposition. Note that the weight λ
+varies depending on how much confidence one has in the combination coefficient derived
+from MLED. A possibly not so well estimate of the combination coefficient from MLED
+ENHANCEMENTS OF MAXIMUM LIKELIHOOD EIGEN-DECOMPOSITION 7
+for the input x(n); aip, p = 0, 1, . . . , n, are consequent parameters through which the i-th
+consequence yi is expressed as a linear combination of n inputs.
+2.3.2. FLC-MLED formulation. For the specific problem in this study, the aforemen-
+tioned simple rule governing λ regulation, given N adaptation samples observed for all
+Gaussian mixture components, can be formulated as follows:
+Rule 1: If N is small,
+Then λ is small,
+Rule 2: If N is medium,
+Then λ is medium,
+Rule 3: If N is large,
+Then λ is large.
+Let M1(N), M2(N) and M3(N) be membership functions associated respectively with
+small, medium and large amounts of training data available for adaptation, as Figure 2
+shows, and let λS, λM and λL be the small, medium and large values of λ determined
+respectively by functions f1(N), f2(N) and f3(N) in each of the three cases. Then, the
+previous set of rules can be further clarified as:
+Rule 1: If N is M1(N),
+Then λS = f1(N),
+Rule 2: If N is M2(N),
+Then λM = f2(N),
+Rule 3: If N is M3(N),
+Then λL = f3(N),
+where
+M1(N) =
+
+1 N ≤ N1,
+N2 −N
+N2 −N1 N1 ≤ N ≤ N2,
+0 N ≥ N2,
+M2(N) =
+
+0 N ≤ N1 or N ≥ N3,
+N −N1
+N2 −N1 N1 < N ≤ N2,
+N3 −N
+N3 −N2 N2 ≤ N < N3,
+M3(N) =
+
+0 N ≤ N2,
+N −N2
+N3 −N2 N2 < N < N3,
+1 N ≥ N3,
+together with the implication functions
+f1(N) = a1 ·N + b1,
+f2(N) = a2 ·N + b2,
+f3(N) = a3 ·N + b3,
+and the final system output [25]
+λ =
+3∑
+i=1
+Mi(N)fi(N)
+3∑
+i=1
+Mi(N)
+. (13)
+Equation (13) shows that for N < N1, λ is solely determined by f1(N), i.e., λ = λS,
+whereas for N > N3, λ is determined by f3(N) alone. When N is approximately N2, λ is
+determined by f2(N) since M2(N) is much greater than M1(N) and M3(N).
+The system now has nine hyperparameters (a1, a2, a3, b1, b2, b3, N1, N2 and N3) to be
+fixed, for which an iterative process is developed as follows:
+ENHANCEMENTS OF MAXIMUM LIKELIHOOD EIGEN-DECOMPOSITION 9
+Figure 3. A procedure to fix FLC hyperparameters a1 and b1
+Step 5: Re-estimate the parameter N3 under the condition N2 ≤ N ≤ N3, wherein
+M1(N) = 0, M2(N) =
+N3−N
+N3−N2 , M3(N) =
+N−N2
+N3−N2 and
+λ =
+M2(N)f2(N) +M3(N)f3(N)
+M2(N) +M3(N)
+=
+N3−N
+N3−N2 · (a2 ·N + b2) + N−N2N3−N2 · (a3 ·N + b3)
+N3−N
+N3−N2 +
+N−N2
+N3−N2
+=
+(N3 −N)(a2 ·N + b2) + (N −N2)(a3 ·N + b3)
+N3 −N2 .
+Since a2 and b2, together with a3 and b3, have already been determined at Steps 4 and
+3 respectively, a new value for N3 can now be obtained by tuning for a higher R
+q value
+than in Step 4.
+Step 6: Given the new estimate of N3 from Step 5, update N1 and N2 such that
+N1 : N2 : N3 = 1 : 2 : 3,
+δ = |R
+q−R∗|
+R∗ , /
+∗ R∗ : desired recognition rate ∗/
+R0 = Rq.
+Repeat from Step 2 until δ is less than a predefined threshold.
+ENHANCEMENTS OF MAXIMUM LIKELIHOOD EIGEN-DECOMPOSITION 11
+As a final remark, the use of the T-S FLC mechanism is one choice from many fuzzy
+formulations in control by computation. For example, the Mamdani (linguistic) type
+fuzzy model [33] is an alternative that can be used in place of T-S FLC in the proposed
+FLC-MLED.
+3. Experiments. The study presents experiments with FLC-MLED adaptation to com-
+pare its recognition performance with MLED- and MAPED-adaptations when encounter-
+ing different amounts of adaptation data. The following subsections present the experi-
+mental settings and results of the proposed FLC-MLED adaptation algorithm.
+3.1. Databases and experimental design. Experiments testing the recognition of 30
+worldwide famous city names in Mandarin were run in three parts: (1) establishing the
+initial SI models and the eigenspace, (2) the training phase for fixing FLC hyperparame-
+ters, and (3) the recognition phase for evaluating the performance of tuning of λ weight
+by the FLC (FLC-MLED).
+An 8 kHz sampling rate was set for speech signal acquisition. The analysis frames were
+30-ms wide with a 15-ms overlap. A 24-dimensional feature vector was extracted for each
+frame. This feature vector was made up of a 12-dimensional mel-cepstral vector and a
+12-dimensional delta-mel-cepstral vector.
+The database MAT400 sub-database DB3 [34] was used to train the initial SI models
+as a set of HMM parameters. This study adopted the Initial/Final HMM’s. A syllable in
+Mandarin comprises an initial part and a final part. The modeling of Mandarin syllables
+assumes that the initial part is right dependent on the beginning phone of the following
+final part and the final part is context independent [35]. A Mandarin utterance consists
+of one to several syllables. The HMM of a syllable comprises an HMM with 3 states for
+the initial part, and an HMM with 6 states for the final part. The HMM of an utterance
+consists of all HMMs of the constituent syllables. Each state has 4 Gaussian mixture
+components. An SD model was generated for each training speaker in the database by
+adjusting the SI model. The resulting SD models were then used to build up the eigenspace
+bases.
+The training phase collected training data for tuning the hyperparameters of the FLC
+from 15 speakers. Each of the 15 speakers uttered 10 city names (picked among 30 cities)
+to generate the adaptation data, and then uttered 60 names (two utterances for each
+city) to generate FLC parameter tuning data (to be used in following-up observations);
+all utterances were recorded by an ordinary microphone. The training phase experiment
+procedure is described in the pseudo-code sequence below.
+R¯0 = baseline recognition rate; t = 0;
+Repeat
+{ t ++;
+R¯t2 = 2 utterances training (eigenvectors, hyperparameters);
+R¯t4 = 4 utterances training (eigenvectors, hyperparameters);
+R¯t6 = 6 utterances training (eigenvectors, hyperparameters);
+R¯t8 = 8 utterances training (eigenvectors, hyperparameters);
+R¯t10 = 10 utterances training (eigenvectors, hyperparameters);
+R¯t =
+5∑
+i=1
+R¯t2·i
+5
+;
+∆R¯t =
+∣∣R¯t − R¯t−1∣∣ ;
+} until ∆R¯t < threshold;
+ENHANCEMENTS OF MAXIMUM LIKELIHOOD EIGEN-DECOMPOSITION 13
+Figure 4. The curve of the training values of λ
+5 MLED-adapted and 5 MAPED-adapted models using 2, 4, 6, 8 and 10 adaptation
+utterances, respectively, were also constructed for performance comparison. Then, 60
+utterances from each of the 15 speakers were fed into the five adapted models to evaluate
+their recognition rates.
+3.2. Experiment results. The training phase produced some interesting experimental
+results and observations. The weight λ increased as the number of adaptation utterances
+increased. As Figure 4 shows, λ rose noticeably when the number of utterances increased
+from 2 to 6, and then ascended gradually and somewhat stabilized as the number of
+utterances increased further. The λ curve exhibited the same tendency as one determined
+from the precursory fuzzy rule base design (Section 2.3.2).
+This study also uses various numbers of adaptation utterances to compare the recogni-
+tion performance of the proposed FLC-MLED utilizing a T-S FLC, the MLED without
+referencing any prior knowledge and the MAPED. As Figure 5 shows, the recognition rate
+improved as the number of adaptation utterances increased for all three adaptations. In
+the case of limited adaptation utterances, the performance of the MLED and MAPED
+methods fall below the baseline recognition rate, which indicates the potential inaccuracy
+or unreliability of inadequately MLED and MAPED models due to insufficient adapta-
+tion data. The performance of the FLC-MLED method remained above the baseline
+when only 2 utterances were available for adaptation. In all testing cases, the proposed
+FLC-MLED adaptation achieves the best recognition, followed by MAPED adaptation
+and MLED adaptation. FLC-MLED performs better than MLED and MAPED, espe-
+cially when training data is quite limited. Note that MAPED tends to catch up with
+FLC-MLED when the amount of training data increases.
+Finally, Figures 6 and 7 show the effects of λ variation on the recognition performance
+of MLED under extreme cases of training data availability are also observed. The former
+shows that while the training data are scarce, such as 2 utterances, the performance falls
+below the baseline if, for λ being more than 0.3, the model adaptation is to be largely
+determined by the combination coefficients w(k) derived from MLED, which is very much
+likely poorly estimated. With a small value of λ, the influence of w(k) on the adaptation
+is less and the recognition rate is still able to maintain above the baseline. Conversely,
+given sufficient training data, 10 utterances for instance, full advantage of adaptation by
+w(k) should be exploited, by using a big λ value, for good performance, as Figure 7 shows.
+4. Conclusions. This paper presents an FLC-MLED scheme with a weight control pa-
+rameter λ determined by the fuzzy logic controller. The fuzzy mechanism regulates λ
+ENHANCEMENTS OF MAXIMUM LIKELIHOOD EIGEN-DECOMPOSITION 15
+available follow the requirement in the FLC design. FLC-MLED is an adaptive learn-
+ing method that is more robust against data insufficiency than conventional MLED and
+incurs much lower computation cost than MAPED.
+Acknowledgment. This research is partially supported by the National Science Council
+(NSC) in Taiwan under grant NSC 99-2218-E-150-004. The author also gratefully ac-
+knowledges the helpful comments and suggestions of the reviewers, which have improved
+the presentation.
+REFERENCES
+[1] B. H. Juang and L. R. Rabiner, Automatic speech recognition – A brief history of the technology
+development, Encyclopedia of Language and Linguistics, 2nd Edition, Elsevier, 2005.
+[2] M. Nakayama and S. Ishimitsu, Speech support system using body-conducted speech recognition for
+disorders, International Journal of Innovative Computing, Information and Control, vol.5, no.11(B),
+pp.4255-4266, 2009.
+[3] X. Wang, J. Lin, Y. Sun, H. Gan and L. Yao, Applying feature extraction of speech recognition
+on VoIP auditing, International Journal of Innovative Computing, Information and Control, vol.5,
+no.7, pp.1851-1856, 2009.
+[4] T. Guan and Q. Gong, A study on the effects of spectral information encoding in mandarin speech
+recognition in white noise, ICIC Express Letters, vol.3, no.3(A), pp.415-420, 2009.
+[5] L. R. Rabiner, The power of speech, Science, vol.301, pp.1494-1495, 2003.
+[6] R. P. Lippmann, Speech recognition by machines and humans, Speech Communication, vol.22, pp.1-
+15, 1997.
+[7] C. H. Lee, C. H. Lin and B. H. Juang, A study on speaker adaptation of the parameters of continuous
+density hidden Markov models, IEEE Trans. on Acoustics, Speech and Signal Processing, vol.39,
+pp.806-814, 1991.
+[8] J. L. Gauvain and C. H. Lee, Maximum a posteriori estimation for multivariate Gaussian mixture
+observations of Markov chains, IEEE Trans. on Speech and Audio Processing, vol.2, no.2, pp.291-298,
+1994.
+[9] C. J. Leggetter and P. C. Woodland, Maximum likelihood linear regression for speaker adaptation of
+continuous density hidden Markov models, Computer Speech and Language, vol.9, pp.171-185, 1995.
+[10] C. Chesta, O. Siohan and C. H. Lee, Maximum a posteriori linear regression for hidden Markov
+model adaptation, Proc. of the European Conference on Speech Communication and Technology
+(EUROSPEECH), pp.211-214, 1999.
+[11] W. Chou, Maximum a posteriori linear regression with elliptically symmetric matrix priors, Proc.
+of the European Conference on Speech Communication and Technology (EUROSPEECH), pp.1-4,
+1999.
+[12] R. Kuhn, J.-C. Junqua, P. Nguyen and N. Niedzielski, Rapid speaker adaptation in eigenvoice space,
+IEEE Trans. on Speech and Audio Processing, vol.8, no.6, pp.695-707, 2000.
+[13] K. T. Chen, W. W. Liau, H. M. Wang and L. S. Lee, Fast speaker adaptation using eigenspace-based
+maximum likelihood linear regression, Proc. of the International Conference on Spoken Language
+Processing, pp.742-745, 2000.
+[14] K. T. Chen and H. M. Wang, Eigenspace-based maximum a posteriori linear regression for rapid
+speaker adaptation, Proc. of IEEE the International Conference on Acoustic, Speech and Signal
+Processing, pp.917-920, 2001.
+[15] B. Mak, S. Ho and J. T. Kwok, Speedup of kernel eigenvoice speaker adaptation by embedded kernel
+PCA, Proc. of the International Conference on Spoken Language Processing, pp.2913-2916, 2004.
+[16] B. Mak and R. Hsiao, Improving eigenspace-based MLLR adaptation by kernel PCA, Proc. of the
+International Conference on Spoken Language Processing, pp.13-16, 2004.
+[17] R. Hsiao and B. Mak, Kernel eigenspace-based MLLR adaptation using multiple regression classes,
+Proc. of the IEEE International Conference on Acoustic, Speech and Signal Processing, pp.985-988,
+2005.
+[18] B. Mak, J. T. Kwok and S. Ho, Kernel eigenvoice speaker adaptation, IEEE Trans. on Speech and
+Audio Processing, vol.13, no.5, pp.984-992, 2005.
+[19] B. Zhou and J. Hansen, Rapid discriminative acoustic model based on eigenspace mapping for fast
+speaker adaptation, IEEE Trans. on Speech and Audio Processing, vol.13, no.4, pp.554-564, 2005.
+ 
+ 
+ 
+ 
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：丁英智 計畫編號：99-2218-E-150-004- 
+計畫名稱：模糊邏輯控制於特徵聲音語者調適之參數調適研究 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 3 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 1 1 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

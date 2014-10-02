@@ -1,0 +1,1615 @@
+高性能儲存與傳遞系統 
+ 
+計畫編號： NSC 96-2221-E-007-131-MY3 
+執行期間： 中華民國 96 年 8 月 1 日至 99 年 7 月 31 日 
+  主持人： 許雅三教授 
+      Email: yshsu@ee.nthu.edu.tw 
+執行單位： 國立清華大學電機所 
+中文摘要 
+在這三年期的計畫中，我們開發了建立高性能儲存與傳遞系統所需之技術。這些技術不但提升了
+儲存系統之效能，更從資料(data)與詮釋資料(metadata)不同的角度切入，提升了整個系統的可靠
+度，使儲存系統可以面對科學與商業上的不同新應用。另外，我們還建立了一個全新的、基於虛
+擬機器(virtual machine)之儲存系統模型，及其模擬環境。這不但使我們能夠快速發展各項技術與
+執行系統驗證的工作，更為虛擬化儲存系統開發平台增添了一個新的選擇。 
+關鍵詞：儲存系統、檔案系統、物件儲存、詮釋資料、虛擬機器、可靠度、磁碟陣列 
+ 
+Abstract 
+During this three-year project, we have developed several techniques for high performance storage and 
+transferring system. These techniques not only increase performance of storage systems, but also increase the 
+reliability from the aspect of data and metadata. Hence, these techniques make storage systems suitable for 
+dealing with challenges from new scientific and commercial applications. Moreover, in order to develop 
+techniques and verify the storage system, we have also developed a brand new storage system model and an 
+emulation platform based on virtual machine (VM).  
+ 
+Keywords: Storage System, File System, Object Storage, Metadata, Virtual Machine, Reliability, Redundant 
+Array of Inexpensive Disks 
+三、 文獻探討 
+在物件化介面(object-based interface)方面的研究大多偏向整體儲存架構的探討，而且用戶端
+和伺服器之間的傳輸是利用網路溝通。在檔案系統方面有分散式檔案系統-Ceph[1]、Antara[2]和
+SAN 檔案系統-Lustre[3]，而 OSD 模擬器方面則有 IBM Object Storage Device Simulator [4]、IITK OSD 
+Simulator [5]和 the DISC-OSD Project [6]。而 Ohio 超級電腦中心則將 Parallel Virtual File System (PVFS)
+和 OSD 模擬器做整合[7]。但這些研究都是屬於用遠端(remote)的方式來模擬 OSD 裝置，會因為
+中間網路傳輸的 overhead 導致存取儲存裝置的 latency 過高，這樣就不容易觀察出 OSD 裝置的優
+勢。而我們採用虛擬機器的方式跑整個系統的模擬能夠有效地模擬出實際情況的存取並能精確地
+測量出 OSD 裝置的特性。 
+傳統上儲存系統對於可靠度之解決方法，多使用如磁碟陣列[8]之方式，將數個儲存媒體裝
+置聯合起來，使一定數量內之裝置損壞時，不致造成整個系統的失效。亦有許多不同研究，利用
+磁碟陣列之概念，製作出軟體磁碟陣列、或跨網路之支援[9-14]。但隨著儲存系統容量的增加，
+以及資料利用方式的多樣化，傳統的方法在時間與空間效率方面漸漸不符合需求。因此，從資料
+的角度來處理儲存系統的特性(如可靠度、效率、安全性…等)之研究便開始出現。達成此目標可
+以由幾個層面來切入。如：可堆疊檔案系統(Stackable File System)[15,16]便提出在檔案系統的存取
+過程中，可藉由插入不同之模組來對存取之檔案名稱或內容作不同操作(如編碼、檔名重導、掃
+毒…等)，使檔案系統可以彈性地採用需要之功能。亦有研究利用此概念，製作出類似磁碟陣列
+之檔案系統陣列(Redundant Array of Independent Filesystems)[17]，將特性不同之檔案系統(如光儲存
+系統、網路檔案系統、記憶體檔案系統)聯合起來做類似磁碟陣列之應用，使上層檔案系統可以
+擁有各種系統之優點。另一方面亦有研究提出區塊層級延伸(Block-level Extension)[18,19]的概念，
+其認為相較於在檔案系統上，許多操作(如編碼、壓縮等)於區塊層級執行將更為單純且容易實
+現。且許多提供區塊存取之儲存節點(如：SAN 系統)本身即為具有運算功能之電腦，足以提供延
+伸功能所需之運算，避免實現於檔案系統時 client 端所需之額外運算。但其所能應用之範圍受到
+相當大之限制：經過此延伸層運算之結果必然只能儲存至相同之區塊，否則必須付出額外空間來
+記錄不同儲存區塊之對應(mapping)。另外，由於區塊儲存系統對每個區塊皆一視同仁，因此運算
+結果之資料量只能小於或等於原先輸入之資料，否則會造成與上層系統的矛盾而導致互相之資料
+覆蓋。由上述之研究可知，我們利用 OSD 區塊與檔案之概念結合之概念，可以更容易達成延伸
+功能(如可靠度)之實現。 
+Metadata Server 在分散式網路儲存系統中一直扮演著重要角色，而為了增進效能，一個系統
+中通常使用數台 Metadata Server。因此，如何將整個系統的 metadata 分配於其上，成為影響效能
+與可靠度的重要原因。傳統上主要使用幾個方法如：static subtree partitioning 如 NFS[20]、AFS[21]，
+其相對直觀的作法可能造成某幾台 server 負載遠大於其他，造成負載不平均的情況；另外亦有使
+用雜湊(Hashing)的方法如 Vesta[22]、Intermezzo[23]，雖然緩解了負載不平均的情形，但集中式的
+Hash Table 會成為系統之瓶頸，進而降低效能與可靠度。 
+在第一年的計畫裡，我們採用 QEMU 當這次研究的虛擬機器平台。主要在原本 QEMU 架構
+的 Emulated device layer 和 Generic device layer 中新增 SCSI OSD Disk 和 block-osd 並在兩者間採用
+asynchronous 的傳輸以增加 throughput。為了符合 T10 Technical Committee[25]制定的 SCSI OSD 標
+準，我們參考了 SAM-2 (SCSI Architecture Model-2) [26], SPC-2 (SCSI Primary Commands-2) [27]和
+SPI-2 (SCSI Parallel Interface-2) [28]，並修改了 Linux SCSI subsystem 和 LSI53C895A SCSI Controller，
+將其支援的 command size 從 16 bytes 增加到 OSD 標準的 200 bytes。 
+   
+Emulated device
+layer
+Generic device
+layer
+Hard disk
+QEMU
+Target CPU Emulator
+User space
+Kernel space
+SCSI subsystem
+sg
+sym53c8xx_2
+LSI53C895A
+SCSI OSD 
+Disk
+block-osd
+libebofs
+ 
+圖 1: 虛擬機器-QEMU 平台架構圖 
+在效能測試部份，我們選用在 linux 平台很普遍的 Ext2 當比較對象，並採用 Bonnie++[29] 
+benchmark，修改使其支援 OSD 的介面。Single-file 的測試是以寫入或讀取 300MB 的總量，而 block 
+size 是指單一存取的大小。從效能圖表中可以看出 SCSI OSD Disk 在缺乏 page cache 的輔助，在
+大檔案的讀寫下效能還能勝過 Ext2 normal，整體效能皆在關掉 cache 的 Ext2 suppressed 之上。在
+single-file 效能測試方面，當 block size 為 1 MB 時，SCSI OSD Disk 的讀取效能為 Ext2 suppressed
+的 4.3 倍，寫入效能為 2.72 倍。而在 multiple-file 效能測試方面，也可以看出 SCSI OSD Disk 在大
+檔案讀寫上明顯勝過 Ext2，在小檔案讀寫上，SCSI OSD Disk 位居劣勢，這是由於傳統檔案系統
+的 in-memory storage management 在小檔案處理上較具優勢。 
+Single-file performance 
+0
+20000
+40000
+60000
+80000
+100000
+120000
+140000
+4K 8K 16K 32K 64K 128K 256K 512K 1M
+OSD w/o dio
+OSD w/ dio
+ext2 suppressed
+ext2 normal
+KB
+/ 
+se
+c
+Block size   
+0
+20000
+40000
+60000
+80000
+100000
+120000
+4K 8K 16K 32K 64K 128K 256K 512K 1M
+OSD w/o dio
+OSD w/ dio
+ext2 suppressed
+ext2 normal
+Block size
+KB
+/ 
+se
+c
+圖 2: Sequential write test(左)和 sequential read test(右) 
+Emulated device layer
+Generic device layer
+Host devices
+QEMU
+Target CPU Emulator
+User space
+Kernel space
+Device drivers
+Guest 
+Host 
+將搜尋時間降為 constant time。而為了增進其可靠度，在整個環狀的的 MDSC 當中，每個 node 皆
+會備份其下一 node 上之資料，並會定時對彼此送出 ping message 來確認各 node 的狀態。藉此，
+整個系統得以容忍非相鄰 node 同時失效之可能毀損。如圖 3 所示，若干不相鄰之 node 失效，當
+此一情況被發現之後，各失效 node 之上一 node 便會概括失效 node 之工作，增加其負責之雜湊含
+數值範圍。另外，此一 node 也會將其上之資料備份至原本失效 node 之下一 node，以維持備份的
+原則。 
+ 
+圖 7: 應用 Chord DHT 網路建立之 Metadata Server Cluster (MDSC) 
+ 
+圖 8:  MDSC 之備份與錯誤回復示意圖，任一 node 皆備份了下一 node 資料 
+亦表達了此種概念。基於此原因，我們建立了一個新的檔案系統架構，其主要目的為使基於該架
+構所設計之檔案系統，皆可對各個檔案做不同程度之可靠度設定，達成彈性管理與減少浪費的目
+標。而在保護資料的方法上，主要有複製(Replication)與使用錯誤更正碼(Error-Correcting Code, ECC)
+產生冗餘資訊(Redundancy)兩種方法。前者藉由重複資訊記錄於儲存媒體上的次數，或在多台儲
+存裝置上紀錄相同資訊(mirroring)來降低當儲存媒體或裝置毀損時，資料損失的機率，其最著名
+的運用便是 RAID-1。後者主要藉由將一定量之編碼區塊(Coding Block)分成相同大小之較小
+Symbol，依此運算出指定數量 Redundant Symbol(例如 RAID-5)。藉由各 Symbol 間數學上之代數特
+性，可在毀損 Symbol 各數小於最大限制時計算出其原始內容。若此最大限制等同於 Redundant 
+Symbol 的個數，則稱此種編碼為 Optimal Code，例如 Reed-Solomon Code[31,32]即是典型的一種。
+此外亦有如 Low-Density Parity Check, LDPC[33,34]，雖然錯誤回復能力較低(最大限制小於
+Redundant Symbol 個數)但其運算複雜度小於 Ideal Code。我們比較了這幾種方法，其結果如表 2。 
+表 1: 不同檔案種類對應之不同可靠度要求 
+檔案用途 重要性(損壞量之於成本損失) 資料相對大小 
+Executables 高 中 
+Passwords, Licenses, 
+Keys 高 小 
+Multi-Media File 
+Systme Log, Core-Dump 
+低 大 
+表 2: 不同資料可靠度對策之差別 
+方法 空間效率 計算量 
+Replication 低 低 
+Optimal Code(RS,BCH[35], 
+EVENODD[36] …) 
+高 高 
+Non-Optimal Code (LDPC…) 高 中 
+而在雛型系統的建立方面，我們於 Linux 作業系統下建立一個修改過的 Ext2 檔案系統，作為
+基於新架構之檔案系統範例。該 Ext2 檔案系統將對不同的可靠度層級進行定義，並對歸屬於各
+層級之檔案分別使用同位元檢查與不同編碼率之 Reed-Solomon Code 等保護措施，來展現上述彈
+Symposium, Jul. 2003, pp. 380-386. 
+[4] IBM Object Storage Device Simulator for Linux [Online]. Available: 
+http://www.alphaworks.ibm.com/tech/osdsi 
+[5] IITK OSD Simulator [Online]. Available: http://sourceforge.net/projects/iitk-osd-sim/ 
+[6] DISCOSDT10Implementation[Online].Available: http://sourceforge.net/projects/disc-osd/ 
+[7] A. Devulapalli, D. Dalessandro, P. Wyckoff, N. Ali, P. Sadayappan, “Integrating Parallel File 
+Systems with Object-Based Storage Devices,” Proceedings of the 2007 ACM/IEEE conference on 
+Supercomputing, Vol. 00, No. 27, 2007. 
+[8] David A. Patterson , Garth Gibson , Randy H. Katz, “A case for redundant arrays of inexpensive 
+disks (RAID)”, Proceedings of the 1988 ACM SIGMOD international conference on Management 
+of data, p.109-116, June 01-03, 1988, Chicago, Illinois, United States 
+[9] S.-K. Hung and Y. Hsu, “Reliable parallel file system using raid technology,”in International 
+Computer Symposium, Taiwan, 2004 
+[10] S.-K. Hung and Y. Hsu, “Modularized redundant parallel virtual file system,”in Tenth Asia-Pacific 
+Computer System Architecture Conference Singapore: Springer-Verlag, 2005, pp. 186-199 
+[11] S.-K. Hung and Y. Hsu, “Reliable parallel file system with parity cache table support,”IEICE 
+Transaction on Information and Systems, January 2007 
+[12] John H. Hartman , John K. Ousterhout, “The Zebra Striped Network File System,”in Proceedings 
+of the Fourteenth ACM Symposium on Operating Systems Principles, 1993, pp. 29-43 
+[13]  Darrell D. E. Long , Bruce R. Montague , Luis-felipe Cabrera, “Swift/RAID: A Distributed RAID 
+System,”University of California at Santa Cruz 1994 
+[14] Yifeng Zhu,  Hong Jiang,  Xiao Qin,  Dan Feng,  David R. Swanson, “Design, Implementation 
+and Performance Evaluation of a Cost-Effective, Fault-Tolerant Parallel Virtual File System,”in 
+International Workshop on Storage Network Architecture and Parallel I/O, 2003 
+[15] John S. Heidemann and Gerald J. Popek. “File-system development with stackable layers” ACM 
+Transactions on ComputerSystems, 12(1): 58–89, 1994. 
+[16] Erez Zadok and Jason Nieh. “FiST: A Language for Stackable File Systems” USENIX ’00, pages 
+55–70, San Diego, CA,June 2000. 
+[17] Nikolai Joukov, Arun M. Krishnakumar, Chaitanya Patti, Abhishek Rai, Sunil Satnur, Avishay 
+Traeger, and Erez Zadok, “ RAIF: Redundant Array of Independent Filesystems, “In Proceedings 
+of the 24th IEEE Conference on Mass Storage Systems and Technologies (MSST 2007), San Diego, 
+CA, September 2007. 
+[18] Michail D. Flouris and Angelos Bilas, “Violin: A Framework for Extensible Block-level Storage,” 
+In Proceedings of 13th IEEE/NASA Goddard Conference on Mass Storage Systems and 
+Technologies, 2005 
+[19] Jorge Guerra,  Luis Useche,  Medha Bhadkamkar,  Ricardo Koller, Raju Rangaswami, “The 
+Double Disk Failures in RAID Architectures,” IEEE Transactions on Computing, 44(2), February, 
+1995, pp. 192-202. 
+[37] Yi-Chiun Fang, Chien-Kai Tseng, Yarsun Hsu, “Emulation of Object-based Storage Devices by a 
+Virtual Machine,” in Frontiers of Parallel and Distributed Computing Conference 2010. 
+[38] Changkuo Yeh, Tse-Ta Tseng, Yarsun Hsu, “An Improved Metadata Server Cluster,” in High 
+Performance Computing ASIA Conference 2009. 
+[39] Tzer-Ta Tseng, Yarsun Hsu, “A Flexible and Cost-effective File-wise Reliability Scheme for 
+Storage Systems”, in High Performance Computing and Communications Conference 2010. 
+Therefore, a smarter dynamic subtree portioning 
+was proposed. However, dynamic subtree policy 
+still suffers from the unbalance problem due to 
+“hot spot” directories.  
+Another different approach uses pure hashing. 
+For instance, Vesta[10], Intermezzo [11] are 
+based on pure hashing. Although the hashing 
+approach resolves the load balance problem, the 
+central hash table is a performance bottleneck 
+and can render the entire system unusable when 
+it fails.  
+Both Equipotent subtree partition [3] and 
+DDG [4] provide their own partition policy for 
+directory hierarchy. They both make a uniform 
+distribution of directories and files across 
+metadata servers. However, scalability and 
+reliability of metadata servers have not been 
+addressed.  
+ 
+3. Implementation of DHT-MDSC and  
+RDHT-MDSC 
+ 
+3.1. DHT-MDSC Architecture 
+ 
+DHT-MDSC can be divided into two parts, 
+metadata servers and clients. Multiple metadata 
+servers (MDS) form a metadata server cluster 
+(MDSC) to service metadata requests. Clients 
+send their requests to the metadata server they 
+attach. Figure 1 shows the MDSC architecture. 
+Each server has an ID or hash key associated 
+with it. The hash space is assumed to be 1024 in 
+this example. A finger table and a hash table are 
+also implemented on each metadata server as 
+shown in the Figure. These metadata servers 
+form a ring network by connecting two 
+neighboring servers. In order to maintain the 
+ring network, an MDS must record its two 
+neighbors, predecessor (PD) and successor (SC). 
+PD is the neighbor node in the counterclockwise 
+direction and SC is the neighbor node in the 
+clockwise direction. Following this rule, the next 
+successor (N-SC) of an MDS is defined to be the 
+successor of an SC, i.e. the second neighbor 
+node in the clockwise direction. The front 
+predecessor (F-PD) of an MDS is defined to be 
+the predecessor of a PD, i.e. the second neighbor 
+node in the counterclockwise direction. For 
+example, the F-PD, PD, SC and N-SC of the 
+MDS (ID = 5) are 761, 898, 135 and 273 
+respectively. Every hash key in a hash space also 
+has its F-PD, PD, SC and N-SC. For example, 
+the F-PD, PD, SC and N-SC of any hash key 
+between 899 and 5 are the same as the MDS (ID 
+=5).  Hash functions like SHA1, SHA2, etc 
+generate the hash key for a server according to 
+its IP address and port. The finger table in each 
+MDS contains part of the routing information for 
+an MDSC. A finger table entry contains a hash 
+key range and an MDS’ id called SC-F 
+(successor of a finger table entry). SC-F is used 
+to indicate which MDS a metadata operation 
+within the hash key range should be forwarded 
+to. The hash table is composed of a hash key 
+array ranging between an MDS’ id and its PD’s 
+id. Each array entry has a linked list to store the 
+metadata of a file hashed to the same key. 
+Clients surrounding the ring structure also 
+connect to this local network. But they do not 
+know the existence of any MDS at the beginning. 
+They use a discovery message to find an MDS 
+they can use. A discovery message is a broadcast 
+type packet containing a client’s id, IP and port. 
+A client broadcasts the discovery message to the 
+network. It then picks the MDS with the shortest 
+response time as its relayed server (RS). Once 
+the RS is chosen, a client transmits all of its 
+requests to this relayed server. Whenever a client 
+issues a metadata command (such as read, write, 
+delete, etc.) to its relayed server, the server will 
+forward the command to a proper MDS 
+according to the routing information contained 
+in its finger table.  
+The following example illustrates how a 
+metadata write operation associated with file 
+/temp/test/data.txt is carried out. There are three 
+steps to complete a write operation. Assume the 
+RS of this client is chosen to be the MDS with 
+ID = 5. In step 1, a client hashes the file name 
+“/temp/test/data.txt” to, said 453. It then 
+encapsulates its id and the file’s metadata into a 
+write message. The write message is sent to its 
+RS (ID=5). In step 2, after receiving the write 
+message, the RS finds the destination MDS 
+(ID=538) (i.e. the MDS containing the metadata 
+for this file) by looking up its finger table. The 
+RS then forwards the write message to this MDS 
+(ID =538). Finally, the MDS (ID = 538) writes 
+the metadata to its memory. In step 3, the MDS 
+(ID = 538) returns an acknowledgement to the 
+RS which then forwards it back to the client. 
+Join and leave are two major methods for an 
+MDS to join to or leave from an MDSC. Join 
+method is used when a new MDS wants to join 
+an MDSC. First, it must broadcast a discovery 
+message to its subnet. It then chooses the first 
+MDS which sends back a reply message as the 
+candidate to help it complete the join process. 
+There are four steps for a new MDS to join an 
+MDSC: updating its neighbors, initializing its 
+finger table, updating others’ finger table, and 
+getting its own metadata from its PD. In step 1, 
+the candidate is asked to find the two neighbors 
+of the new MDS. After that, their neighbor 
+relation is updated by the candidate.  In step 2, 
+the candidate establishes the finger table for the 
+new MDS. In step 3, the candidate sends update 
+messages to update finger tables of other MDSes. 
+The update messages are sent to those MDSes 
+metadata server fails. In order to improve its 
+reliability, we have also implemented a reliable 
+DHT-MDSC (RDHT-MDSC). RDHT-MDSC 
+can tolerate the failure of any metadata server. 
+Our design replicates each MDS’ metadata to its 
+successor and records some additional 
+information to recover the ring structure of 
+DHT-MDSC if broken. An MDS must record its 
+N-SC and F-PD. Each successor of SC-F in its 
+finger table also needs to be recorded. In the 
+following we will illustrate how to reconstruct 
+the ring structure when it is broken because of a 
+failed MDS. If an MDS fails (no responses from 
+ping message), its SC will receive a connection 
+abort exception. These ping messages are 
+maintained between two neighboring MDSes. 
+There are two steps to handle the reconstruction 
+process: reconstruct the neighboring relation and 
+update the finger tables of affected MDSes. In 
+the following, we call the SC of a failed MDS 
+SF-MDS (successor of the failed MDS) and its 
+PD PF-MDS (predecessor of the failed MDS). In 
+step 1, the PD and F-PD of SF-MDS are 
+changed to PF-MDS and its PD respectively. 
+After that, SF-MDS sends an “update 
+front-predecessor” message to its SC. Then, the 
+F-PD of its SC is changed to PF-MDS. The same 
+process is required for PF-MDS and its PD. In 
+step2, SF-MDS sends failure messages to all 
+affected MDSes stored in its finger table. When 
+the failure message arrives at an MDS, it deals 
+with the message (updating its finger table entry 
+if needed) and forwards the message to its SC. 
+The process terminates when any SC has 
+received the same failure message previously. 
+After all of the MDSes in SF-MDS’s finger table 
+return acknowledgements, the ring structure has 
+been reconstructed and the MDSC can handle 
+new requests as usual again. The time it takes to 
+reconstruct a ring is called “reconstruction time”.  
+In order to tolerate future MDS failure, we 
+need to duplicate each MDS’s metadata to its SC. 
+The time taken to copy metadata depends on the 
+size of metadata stored in an MDS. 
+Figure 2 shows the metadata relocation 
+processes of our RDHT-MDS. Originally, there 
+are nine MDSes with their metadata represented 
+on top of them. Each metadata has a number that 
+represents where it comes from. Now suppose 
+MDS2, MDS4, MDS6 and MDS8 fail 
+simultaneously, the metadata controlled by them 
+can be found on MDS3, MD5, MDS7 and MD9 
+respectively. Therefore the system can tolerate 
+multiple failed MDSes and continue to function. 
+However, currently the system can not tolerate 
+the failure of two side-by-side metadata servers 
+since their metadata can not be recovered 
+elsewhere. We feel it is less likely that two 
+neighboring nodes fail simultaneously. Finally, 
+all of the survival MDSes will transmit their 
+metadata to their SCs in order to tolerate future 
+failure of metadata servers as shown in Figure 2 
+(c). Therefore the system can tolerate not only 
+the usual failure of one MDS but also the 
+simultaneous failures of multiple MDSes as long 
+as no side-by-side metadata servers fail 
+simultaneously.  
+ 
+MDS1
+MDS2
+MDS3
+MDS4
+MDS5MDS6
+MDS7
+MDS8
+MDS9
+9 1
+1 2
+2 3
+3 4
+4 55 6
+6 7
+7 8
+8 9 MDS1
+MDS3
+MDS5
+MDS7
+MDS9
+9 1
+2 3
+4 5
+6 7
+8 9
+MDS1
+MDS3
+MDS5
+MDS7
+MDS9
+9 1
+2 3
+4 5
+6 7
+8 9
+9 1
+2 3
+4 5
+6 7
+8
+(a) (b)
+(c)
+Figure 2 Reconstruction of RDHT-MDSC 
+ 
+4. Performance Evaluations 
+ 
+In this section we study the performance of 
+DHT-MDSC and RDHT-MDSC. Even though 
+we think that hash key based system has better 
+performance than traditional subtree system, it is 
+important to quantify their performance gap. We 
+use five IBM e-servers as metadata servers 
+(MDSes), five Supermicro 1UTwin servers as 
+clients, and connect them with 3com Gigabit 
+Ethernet. The hardware configuration of MDSes 
+and clients is listed in Table 1. All of them use 
+Windows Server 2003 operating system.  
+ 
+Table 1 Hardware configuration of MDSs and 
+clients 
+CPU One Intel Xeon CPU 2.8G 
+Memory 512MB DDR 266  
+Metadata 
+Server 
+NIC Broadcom NetXtreme 
+Gigabit Ethernet  
+CPU Two Xeon CPU 2.33G 
+(Core2 Quad)  
+Memory 2GB DDR2-667 X 2  
+Client 
+NIC Intel(R) Pro/1000 EB 
+Gigabit Ethernet  
+Network 
+connection 
+Gigabit 
+switch  
+3C16479 3Com 4226T 
+3C17300 Switch  
+ 
+In order to select a suitable hash space for our 
+tests, we measure read and write  latencies for a 
+hash space ranging from 100 to 1300. We use 
+one IBM e-server as an MDS and one 
+Supermicro 1UTwin with eight physical CPU 
+cores on it as clients. Therefore eight client 
+threads can run on eight different physical CPU 
+and distressful since both write and read 
+latencies increase as more metadata servers are 
+used. This is opposite to what we see in Figure 6 
+(to be described in the next paragraph) where 
+caching (LC-RIC) is used. This is because every 
+metadata request must go through the routing 
+path to reach destination metadata server. Hence, 
+metadata servers are always busy in relaying 
+requests on the ring network. Furthermore, the 
+more metadata servers we add, the longer 
+routing path requests must go through. Therefore, 
+the performance is negatively impacted as more 
+metadata servers are used.  
+ 
+ 
+ 
+Figure 5 Write and read performance of 
+DHT-MDSC without using LC-RIC 
+ 
+ 
+Figure 6 Write and read performance of 
+DHT-MDSC using LC-RIC 
+ 
+ 
+ 
+Figure 7 Write and read throughput of 
+DHT-MDSC using LC-RIC 
+ 
+The scalability for our DHT-MDSC and 
+RDHT-MDSC are also studied as follows. All of 
+the settings are the same as described in the 
+previous paragraph except LC-RIC is turned on 
+here. In Figure 6, we can see that the 
+performance of our DHT-MDSC scales very 
+well as the number of metadata servers is 
+increased. When the number of clients is 40, 
+both write and read performances improve by a 
+factor of about 4.5 as we increase the number of 
+metadata servers from one to five. This is in 
+contrast to the results shown in Figure 5 where 
+LC-RIC is turned off. Therefore, LC-RIC is a 
+critical mechanism to make DHT-MDSC scale 
+with the number of metadata servers. Both the 
+write and read latencies of using only one MDS 
+increase nonlinearly when more clients are 
+added. As the number of clients is increased, 
+more requesting packets are generated and sent 
+to the MDS. However, the server interface card 
+may not be able to handle all of them and some 
+packets may get dropped. This is relieved when 
+more MDSes are used. 
+The write and read throughputs of the 
+DHT-MDSC are shown in Figure 7. It is 
+apparent that the more metadata servers (MDSes) 
+we use the better throughput we can get. Both 
+the write and read throughputs scale nicely with 
+the number of metadata servers. However, the 
+write throughput for a fixed size of MDSC does 
+not always scale with the number of clients. For 
+example, when five MDSes are used, the write 
+throughput increases initially and then drops 
+down when number of clients is large than 24. 
+This is because the five MDSes are overloaded 
+5. Conclusions 
+ 
+In this paper we present the design and 
+implementation of our DHT-MDSC and 
+RDHT-MDSC. The architecture supports a 
+scalable, reliable, and high performance 
+metadata file system. The system is also very 
+flexible to allow an MDS to join to or leave from 
+the metadata server cluster (MDSC). Therefore, 
+the system does not need to be shut down for 
+hardware upgrade, periodical check or planned 
+maintenance. LC-RIC is a smart and efficient 
+caching mechanism to significantly improve the 
+performance of RDHT-MDSC. The 
+reconstruction time of RDHT-MDSC is less than 
+18 milliseconds. The other advantage of 
+RDHT-MDSC is that it can recover itself from 
+the failure of multiple metadata servers as long 
+as no two side-by-side metadata servers fail 
+simultaneously. 
+ 
+6. Acknowledgements 
+ 
+The authors would like to thank the support from 
+National Science Council under grant 
+96-2221-E-007-131-MY3. 
+ 
+7. References 
+[1] D.Roselli, J.Lorch, and T.Anderson, “A 
+Cmparison of File System Workloads,” 
+Proceedings of the 2000 USENIX Annual 
+Techical Conference, pp. 41-54, Jun 2000. 
+[2] Scott Brandt, Ethan L. Miller, Darrell D. E. 
+Long, and Lan Xue, “Efficient Metadata 
+Management in Large Distributed File 
+Systems,” NASA/IEEE Symposium on Mass 
+Storage Systems and Technologies (MSST 
+2003), pp. 290–298, San Diego, California, 
+April 7–10, 2003. 
+[3] Zhou Gongye, Lan Qiuju and Chen Jincai, “A 
+Dynamic Metadata Equipotent Subtree 
+Partition Policy for Mass Storage System,” 
+Frontier of Computer Science and Technology 
+FCST, 1-3 November, 2007. Los Angeles: 
+IEEE Computer Society, 2007.29-34 
+[4] Jin Xiong, Rongfeng Tang, Sining Wu, Dan 
+Meng, Ninghui Sun, “An Efficient Metadata 
+Distribution Policy for Cluster File Systems,” 
+IEEE International Conference on Cluster 
+Computing (Cluster2005), September 26-30, 
+2005, Boston, USA. 
+[5] Ion Stoica, Robert Morris, David Liben-Nowell, 
+David R. Karger, M. Frans Kaashoek, Frank 
+Dabek, Hari Balakrishnan, “Chord: A Scalable 
+Peer-to-peer Lookup Protocol for Internet 
+Applications,“ IEEE/ACM Transactions on 
+Networking, Vol. 11, No. 1, pp. 17-32, February 
+2003. 
+[6] Carns, P.H., Ligon III, W.B., Ross, R.B., 
+Thakur, “PVFS: A parallel file system for linux 
+clusters,” 4th Annual Linux Showcase and 
+Conference, Atlanta, GA, pp. 317–327, 2000 
+[7] Mesnier, M., Ganger, G.R., Reidel, E., 
+“Object-Based Storage,” IEEE 
+Communications Magazine 41(8), 84–90, 2003 
+[8] B. Pawlowski, C. Juszczak, P. Staubach, C. 
+Smith, D. Lebel, and D. Hitz, “NFS version 3: 
+Design and implementation,” Preceedings fo 
+the Summer 1994 USENIX Technical 
+Conference, pp. 137-218, Apr. 2003. 
+[9] J. H. Morris, M. Satyanarayanan, M. H. Conner, 
+J. H. Howard, D. S. H. Rosenthal, and F.D. 
+Smith, “Andrew: A distributed personal 
+computing environment,” Communications of 
+the ACM, 29(3):184-201, Mar, 1986. 
+[10] P. F. Corbett and D. G. Feitelson, “The Vesta 
+parallel file system,” ACM Transactions on 
+Computer Systems, 14(3)225-264, 1996. 
+[11] P. Braam, M. Callahan, and P. Schwan, “The 
+intermezzo file system,” Proceedings of the 3rd 
+of the Perl Conference, O’Reilly Open Source 
+Convention, Monterey, CA, USA, Aug, 1999. 
+[12] Chord: http://pdos.csail.mit.edu/chord/ 
+ 
+  
+User 
+application
+Software 
+storage 
+emulator
+Device driver
+Operating system
+System under test
+ 
+User application
+Device driverOperating 
+system
+System under test
+Network adapter
+Network
+Software storage emulator
+Device driverOperating 
+system
+Network adapter
+ 
+(a) 
+ 
+(b) 
+ 
+Figure 1. Conventional storage emulation frameworks (a) Local storage emulation (b) Remote storage emulation 
+ 
+ 
+designed as a petabyte-scale storage architecture, uses 
+an object-interface file system in its object storage 
+cluster. The prototype object store Antara [3] uses its 
+own network protocol to provide its functionalities. 
+Lustre [4] is a SAN file system which uses an object 
+store as its storage infrastructure for improved 
+scalability. The IBM Object Storage Device Simulator 
+[5], IITK OSD Simulator [6] and the DISC-OSD 
+Project [7] are software OSD emulators based on the 
+T10 OSD Draft [8, 9]. An implementation of the 
+Parallel Virtual File System (PVFS) integrated with a 
+software OSD emulator is presented in a project by 
+Ohio Supercomputer Center [10]. All of the OSDs in 
+the research mentioned above are communicated 
+through network protocols which introduce significant 
+communication overhead. They focus more on the 
+performance of the overall storage architecture rather 
+than the analysis of the OSD itself. 
+ Research has been conducted on software storage 
+emulation. A timing-accurate storage emulator is 
+presented by the Parallel Data Lab in Carnegie Mellon 
+University [1]. The emulator allows experiments to be 
+performed with not-yet-existing storage components in 
+the context of real systems executing real applications. 
+It integrates DiskSim [11], an efficient, accurate and 
+highly-configurable disk system simulator, with its 
+time-keeping components. An instructional disk drive 
+simulator with statistical disk models is presented in 
+Vesper [12], retaining simplicity while providing 
+timing statistics similar to that of real disk drives. The 
+emulators are all based on the traditional block device 
+and do not provide the object interface. They are 
+implemented as standalone subsystems instead of  
+ 
+ 
+emulated devices in a virtual machine. The result of 
+these implementations is the consumption of the 
+resources of their host CPUs or the network 
+communication overhead. 
+Other researchers also use QEMU for the emulation 
+of system behaviors and communication protocols. The 
+Virtual 802.11 Fuzzing Project [13] utilizes QEMU to 
+Software storage emulator
+System under test
+User application
+Device driverOperating 
+system
+Target CPU emulator
+Virtual machine
+ 
+Figure 2. Virtual storage emulation 
+to the SCSI lower-level layer and registers its callback 
+function. 
+The sym53c8xx_2 device driver is the last part of 
+the request processing in the Linux kernel. It is 
+responsible for converting the SCSI request into the 
+device messages and communicating with the device. 
+The driver allocates a job structure which contains the 
+information the hardware device needs to execute a job. 
+The driver then performs a DMA mapping of the data 
+blocks against the scatter-gather lists. The driver puts 
+the address of the job structure in the start queue and 
+triggers the SCSI controller. The SCSI SCRIPTS 
+processor in the LSI53C895A SCSI Controller wakes 
+up and starts fetching and executing the job, raising an 
+interrupt after job completion. 
+The emulated LSI53C895A SCSI Controller lies in 
+the emulated device layer. It is triggered by the 
+sym53c8xx_2 driver and fetches the inserted job from   
+the start queue. The controller reads from the address 
+of the SCSI command, indicated in the job structure, to 
+its internal buffer by performing DMA. The controller 
+then sends the command buffer to the attached SCSI 
+OSD Disk through the exported method. 
+The emulated SCSI OSD Disk, upon receiving the 
+SCSI command, parses the command and sets up its 
+internal request structure, returning the direction and 
+length of the data transfer. The SCSI controller sends a 
+read request to the disk if data transfer is required from 
+the SCSI OSD Disk to the host. The controller sends a 
+write request if data transfer is required in the other 
+direction. The two methods trigger the SCSI OSD Disk 
+to find its internal request structure previously set up 
+and to send the data transfer request to its attached 
+generic device block-osd. 
+The block-osd generic device exports the 
+asynchronous read and write methods. The two 
+methods call the registered callback functions after the 
+request is scheduled and completed. The asynchronous 
+I/O scheduler in the generic device layer calls the 
+exported methods from EBOFS when an OSD request 
+is scheduled. The callback functions notify the SCSI 
+controller of a completed I/O transfer. 
+The emulated LSI53C895A SCSI Controller stores 
+the address of the completed job to the done queue 
+after the completion of the I/O transfer. The controller 
+raises an interrupt-on-the-fly after the completion of the 
+job. The processor keeps fetching and executing new 
+jobs while the host CPU handles the interrupt. 
+The interrupt service routine for the emulated 
+LSI53C895A SCSI Controller is called to handle the 
+interrupt-on-the-fly. The address of the completed job 
+is acquired from the done queue and sent to the 
+completion function. The residuals and the status code 
+are recorded, and DMA unmapping is performed 
+against the scatter-gather lists. The registered callback 
+function is called to enter the SCSI mid-level layer. 
+The SCSI mid-level layer sends the block-layer 
+request to the block layer for completion. The block 
+layer inserts the request into a done list and raises a 
+softirq. The interrupt service routine completes and 
+returns at this point. 
+The softirq handler, when scheduled by the kernel 
+scheduler, looks for the completed requests in the done 
+list and calls their callback functions. The callback 
+function in the SCSI mid-level layer is responsible for 
+cleanups and passing the command and result status to 
+the upper-level layer. The SCSI upper-level layer raises 
+the done flag in the request and wakes up the original 
+routine waiting for the flag. 
+The original routine, after being awakened by the 
+callback function, copies the necessary data from the 
+kernel space to the user space. The routine then checks 
+to determine if the scatter-gather lists need to copy 
+their buffers back to the user-space data buffer. Copies 
+are needed if the request is a read operation and if 
+direct I/O is not specified. The user pages are 
+unmapped from the kernel if direct I/O is specified. 
+The allocated pages in the scatter-gather lists are 
+released to the kernel otherwise. The sg driver returns 
+after removing the request. 
+User applications can send any kind of SCSI 
+command, even customized ones, to the SCSI device 
+by performing the SG_IO ioctl() system call to the 
+sg device. The generic design of the sg driver enables it 
+to transfer the extended SPC-2 commands with slight 
+kernel modifications. 
+ 
+4. Implementation Details 
+ 
+Most of the implementations are done in the SCSI 
+subsystem and I/O scheduler in QEMU. The 
+independence between the different components in 
+QEMU allows the other layers to be left untouched. 
+Other minor modifications are applied to the Linux 
+kernel. 
+ 
+4.1. QEMU SCSI OSD Disk 
+ 
+The QEMU SCSI OSD Disk is implemented based 
+on the emulated SCSI disk. The disk exports methods 
+to its SCSI controller. The controller calls the 
+registered methods when it needs to process the SCSI 
+request. The QEMU SCSI OSD Disk is responsible for 
+parsing the SCSI command and preparing the request 
+for the underlying EBOFS. The actual object data 
+transfer is done in EBOFS. Only configuration 
+function as the parameters. An asynchronous request 
+structure is initialized, set up and inserted into the 
+asynchronous request queue. The asynchronous I/O 
+scheduler is awakened, and the issued request returns 
+with the address of the asynchronous request structure. 
+The scheduler fetches an asynchronous request from 
+the request queue, marks it as active, and calls the 
+exported methods from EBOFS for the data transfer. 
+Data will be read from or written to the buffer address 
+given by the issuing emulated device, based on the 
+given object ID, offset and transfer length. The 
+scheduler records the return value from the EBOFS call 
+in the asynchronous request structure and fires the 
+signal SIGUSR2 after the transfer completion. The 
+signal handler, catching the signal, writes a token byte 
+to the pipe to indicate a request completion. The 
+asynchronous I/O scheduler keeps fetching and 
+processing the requests until the request queue 
+becomes empty. 
+An I/O handling function is called every time the 
+QEMU CPU emulator finishes one iteration. This 
+function searches for the I/O handlers and calls the 
+corresponding handling functions. The asynchronous 
+I/O handling function reads the tokens from the pipe 
+and searches for the completed asynchronous requests. 
+The handling function calls the callback function 
+registered in the completed asynchronous request and 
+frees the request. The callback function is registered by 
+the emulated SCSI OSD Disk. The emulated device is 
+responsible for handling the callback and performing 
+further actions. 
+The remove, flush and stat methods are 
+implemented as synchronous operations. They are 
+called immediately after the SCSI OSD Disk parses the 
+SCSI command. The methods pass the request directly 
+to EBOFS without extra manipulations. 
+ 
+4.3. Other Minor Modifications 
+ 
+The QEMU SCSI OSD Disk uses the variable-
+length CDB format for its commands. The SCSI 
+subsystem in the Linux kernel does not currently 
+provide full support for this format. Modifications to 
+the SCSI subsystem are required by this work. 
+A macro limiting the command buffer size in the 
+Linux SCSI subsystem is modified. The buffers 
+allocated for the SCSI command in the SCSI subsystem 
+are limited by the macro MAX_COMMAND_SIZE. This 
+macro is extended from 16 to 200, the length of the 
+commands in the T10 OSD draft. 
+ A macro limiting the command buffer size in the 
+block layer is also modified. The SCSI mid-level layer 
+converts a SCSI request to the block I/O request  
+ 
+ 
+structure. The SCSI command in the SCSI request is 
+copied to an internal buffer unsigned char 
+__cmd[BLK_MAX_CDB] during the conversion of 
+the request. The macro BLK_MAX_CDB is extended 
+from 16 to 200. 
+A variable indicating the largest command size the 
+LSI53C895A SCSI Controller can receive is modified. 
+The variable unsigned short max_cmd_len 
+lies in a data structure every SCSI lower-level driver is 
+required to implement. The structure is exported to the 
+mid-level layer for driver management. The SCSI mid-
+level layer performs a safety check before issuing the 
+request to the lower-level driver. It determines whether 
+or not the command size exceeds the maximum size the 
+underlying device can handle. This variable is modified 
+from 16 to 200 in the sym53c8xx_2 device driver. 
+The parameter limiting the largest command size the 
+device can handle is modified in the emulated 
+LSI53C895A SCSI Controller. The controller copies 
+AIO Scheduler
+Head Tail
+Request Queue
+Asynchronous 
+request
+Return
+EBOFS
+Record the return value from 
+the EBOFS call
+Emulated 
+device layer
+OSD request
+QEMU SCSI OSD Disk
+Callback
+Generic 
+device layer Return
+Exported methods from the 
+generic device interface
+Read / Write with the 
+object interface
+ 
+Figure 5. The overall sketch of the asynchronous 
+request processing 
+  
+0
+20000
+40000
+60000
+80000
+100000
+120000
+140000
+4K 8K 16K 32K 64K 128K 256K 512K 1M
+OSD w/o dio OSD w/ dio ext2 suppressed ext2 normal
+Block size
+K
+B
+/ 
+se
+c
+ 
+0
+5000
+10000
+15000
+20000
+25000
+30000
+35000
+40000
+45000
+4K 8K 16K 32K 64K 128K 256K 512K 1M
+OSD w/o dio OSD w/ dio ext2 suppressed ext2 normal
+Block size
+K
+B
+/ 
+se
+c
+ 
+Figure 6. The result of the Sequential Write test Figure 7. The result of the Rewrite test 
+ 
+ 
+management, outperforms the ext2 file system with 
+cache suppression in all block sizes. The ext2 file 
+system and the SCSI OSD Disk both benefit from the 
+larger DMA size with larger data blocks. The 
+increasing overhead of space management in ext2, 
+however, results in a much slower throughput growth 
+rate. The throughput difference between the SCSI OSD 
+Disk and the cache-suppressed ext2 file system 
+increases as the block size increases. The overhead of 
+the file system allocator increases as the block size 
+increases. The allocator spends more time allocating 
+space for larger blocks, and space fragmentation is 
+more likely to occur. The SCSI OSD Disk shows a 
+performance improvement of 330% over the cache-
+suppressed ext2 file system with block size 1 MB. 
+The direct I/O feature in the sg driver avoids extra 
+kernel buffer copies, but it introduces significant per-
+command overhead. The feature is a performance win 
+for SCSI commands only with large data payloads. 
+Direct I/O benefits from avoiding buffer copies with 
+block sizes larger than 32 KB. The performance is 
+improved by 30% compared to disabling the feature, 
+and by 436% compared to the cache-suppressed ext2 
+file system with block size 256 KB. 
+ The normal ext2 file system, with the benefits from 
+the page cache subsystem, outperforms the rest of the 
+configurations with block sizes smaller than 32 KB. 
+The SCSI OSD Disk still outperforms the normal ext2 
+file system with block sizes larger than 32 KB, and the 
+throughput difference increases as the block size 
+increases. The throughput is relatively stable in terms 
+of the block size. It is 14% smaller, however, than its 
+cache-suppressed counterpart when the block size 
+reaches 1 MB. This demonstrates the drawback of  
+ 
+ 
+using memory caches with large data transfers. The 
+overhead of preparing buffers and doing buffer copies 
+degrades the overall performance. 
+The result of the Rewrite and Sequential Read test 
+are shown in Figure 7 and Figure 8, respectively. The 
+results are similar to the Sequential Write test, with the 
+exception of the normal ext2 file system performing 
+much better at throughput in the Sequential Read test. 
+This is a result of the caching effect in the page cache 
+subsystem and prefetching in the file system. The 
+normal ext2 file system outperforms the rest of the 
+configurations with block sizes smaller than 64 KB, 
+and outperforms its cache-suppressed counterpart in all 
+cases. The SCSI OSD Disk, compared with the cache-
+suppressed ext2 file system, shows a performance 
+improvement of 13% in the Rewrite test and of 172% 
+in the Read Sequential test with block size 1 MB. 
+0
+20000
+40000
+60000
+80000
+100000
+120000
+4K 8K 16K 32K 64K 128K 256K 512K 1M
+OSD w/o dio OSD w/ dio ext2 suppressed ext2 normal
+Block size
+K
+B
+/ 
+se
+c
+ 
+Figure 8. The result of the Sequential Read test 
+  
+0
+1000
+2000
+3000
+4000
+5000
+6000
+7000
+8000
+1K 2K 4K 8K 16K 32K 64K 128K 256K
+OSD Seq ext2 Seq OSD Rand ext2 Rand
+number of files
+D
+e
+le
+te
+s
+/ 
+se
+c
+File size 8 KB
+ 
+0
+1000
+2000
+3000
+4000
+5000
+6000
+7000
+1K 2K 4K 8K 16K
+OSD Seq ext2 Seq OSD Rand ext2 Rand
+File size 1 MB
+D
+e
+le
+te
+s
+/ 
+se
+c
+number of files
+ 
+Figure 13. The result of the small-file Delete test Figure 14. The result of the large-file Delete test 
+ 
+ 
+written back to the disk asynchronously. All of the 
+sequential configurations slightly outperform their 
+random counterparts due to the increased overhead of 
+allocation in random configurations. The random 
+allocation overhead of the SCSI OSD Disk decreases 
+the performance by 10% with 256 K files. The SCSI 
+OSD Disk underperforms the ext2 file system in all 
+cases with small files, but outperforms the ext2 file 
+system in all cases with large files. This is the result of 
+the file system performing in-memory storage 
+management and of the larger overhead the sg driver 
+introduces. In-memory storage management shows its 
+advantage with small I/O transfer size. The effort of 
+allocation is relatively small, and the operation returns 
+after the memory copy from the request to the page 
+cache is completed. The generic design and blocking 
+wait of the sg driver increases the driver overhead of 
+the SCSI OSD Disk. The overhead increases the 
+performance gap between the two models. The in-
+memory storage management becomes a burden for the 
+system with large transfer size. The overhead of buffer 
+management degrades the performance, resulting in the 
+SCSI OSD Disk outperforming the ext2 file system in 
+all cases. 
+The results of the Read test are shown in Figure 11 
+and Figure 12. The sequential small-file reads in the 
+ext2 file system benefit from the in-memory storage 
+management and outperform the rest of the small-file 
+configurations in all cases. The sequential reads utilize 
+the underlying disk by performing reads from 
+neighboring sectors. The random small-file reads in the 
+ext2 file system underperform the rest of the 
+configurations in all cases. The random reads do not 
+have the benefit of neighboring sector reads and spend 
+more time resolving inodes. The SCSI OSD Disk, 
+without the in-memory storage management, 
+outperforms the ext2 file system in all large-file read 
+cases. Its sequential read shows a performance 
+improvement of 232% over the ext2 file system with 4 
+K files. Its random reads underperform the sequential 
+counterparts due to more time spent in locating data in 
+the disk. The throughput of sequential reads in the 
+SCSI OSD Disk increases as the number of objects 
+increases in some cases. This results from the 
+underlying I/O scheduler in EBOFS. The I/O scheduler 
+uses the elevator algorithm to search for pending 
+requests and combines neighboring sector reads into 
+one large read, thereby reducing the read overhead. 
+The allocation becomes more fragmented as the 
+number of objects keeps increasing, and the throughput 
+drops due to more effort in resolving data locations and 
+more read overhead. 
+The results of the Delete test are shown in Figure 13 
+and Figure 14. Deletion in the SCSI OSD Disk requires 
+the commands to be sent to the device. Deletion in file 
+systems only requires marking the corresponding in-
+memory inode. Sequential deletes in the ext2 file 
+system outperform the rest of the configurations in all 
+cases. This results from less effort in resolving inodes 
+and the benefit of in-memory inode processing. The 
+effort of resolving inodes with random deletes 
+increases dramatically as the number of files increases. 
+Random small-file deletes with more than 16 K files 
+underperform the random small-object deletes. The 
+SCSI OSD Disk outperforms the ext2 file system by 
+169% with 64 K small-object random deletes. 
+exists. This framework allows for more in-depth and 
+accurate analyses to early system emulations at a 
+reasonable speed. An object-based storage emulator is 
+integrated into QEMU to implement the model which 
+allows realistic workloads to be applied to the storage 
+system. 
+The results of the OSD model demonstrate the 
+advantages of an object-based interface. The offloading 
+of storage management into the device dramatically 
+increases the throughput of the storage system. The 
+throughput of the OSD model outperforms that of a 
+local file system in most cases, especially under heavy 
+workloads. The results suggest that the object-based 
+storage architecture is an ideal choice for throughput 
+machines. 
+ 
+Acknowledgement 
+ 
+This work is supported by the National Science 
+Council (NSC) of Taiwan under grant 96-2221-E-007-
+131-MY3. 
+ 
+References 
+ 
+[1] J. L. Griffin, J. Schindler, S. W. Schlosser, J. S. Bucy, G. 
+R. Ganger, “Timing-Accurate Storage Emulation,” 
+Proceedings of the Conference on File and Storage 
+Technologies, Jan. 2002, pp. 75-88. 
+[2] S. A. Weil, S. A. Brandt, E. L. Miller, D. D. E. Long, C. 
+Maltzahn, “Ceph: A Scalable, High-Performance 
+Distributed File System,” Proceedings of the 7th 
+symposium on Operating systems design and 
+implementation, 2006, pp. 307-320. 
+[3] A. Azagury et al, “Towards an Object Store,” 
+Proceedings of the 20th IEEE/11th NASA Goddard 
+Conference on Mass Storage Systems and Technologies, 
+2003, pp. 165-176. 
+[4] P. Schwan, “Lustre: Building a File System for 1,000-
+node Clusters,” Proceedings of the Linux Symposium, 
+Jul. 2003, pp. 380-386. 
+[5] IBM Object Storage Device Simulator for Linux 
+[Online]. Available:  
+http://www.alphaworks.ibm.com/tech/osdsim 
+[6] IITK OSD Simulator [Online]. Available:  
+http://sourceforge.net/projects/iitk-osd-sim/ 
+[7] DISC OSD T10 Implementation [Online]. Available:  
+http://sourceforge.net/projects/disc-osd/ 
+[8] SCSI Object-Based Storage Device Commands (OSD) 
+Revision 10, T10 Project 1355-D, Jul. 2004. 
+[9] SCSI Object-Based Storage Device Commands -2 
+(OSD-2) Revision 2, T10 Project 1729-D, Jul. 2007. 
+[10] A. Devulapalli, D. Dalessandro, P. Wyckoff, N. Ali, P. 
+Sadayappan, “Integrating Parallel File Systems with 
+Object-Based Storage Devices,” Proceedings of the 
+2007 ACM/IEEE conference on Supercomputing, Vol. 
+00, No. 27, 2007. 
+[11] The DiskSim Simulation Environment [Online]. 
+Available: http://www.pdl.cmu.edu/DiskSim/ 
+[12] P. DeRosa, K. Shen, C. Stewart, J. Pearson, “Realism 
+and Simplicity: Disk Simulation for Instructional OS 
+Performance Evaluation,” Proceedings of the 37th 
+SIGCSE technical symposium on Computer science 
+education, 2006, pp. 308-312. 
+[13] Virtual 802.11 Fuzzing [Online]. Available: 
+http://www.iseclab.org/projects/vifuzz/ 
+[14] SCSI Primary Commands - 2 (SPC-2), T10 Project 
+1236-D, Jul. 2001. 
+[15] Debian - The Universal Operating System [Online]. 
+Available: http://www.debian.org/ 
+[16] The Linux Kernel Archives [Online]. Available: 
+http://www.kernel.org/ 
+[17] Ubuntu [Online]. Available: http://www.ubuntu.com/ 
+[18] Bonnie++ [Online]. Available: 
+http://www.coker.com.au/bonnie++/ 
+[19] S. Kang, A. L. Reddy, “An Approach to Virtual 
+Allocation in Storage Systems,” ACM Transactions on 
+Storage, Vol. 2, No. 4, Nov. 2006, pp. 371-399. 
+[20] GT.M High end TP database engine [Online]. Available: 
+http://sourceforge.net/projects/fis-gtm/ 
+[21] FIS GT.M Database Engine [Online]. Available: 
+http://fis-gtm.com/ 
+[22] The Linux sg3_utils package [Online]. Available:  
+http://sg.danny.cz/sg/sg3_utils.html 
+ 
+ 
+ability to communicate to each other. Several works 
+utilize the concept of stackable file system to achieve 
+reliability like RAIF [4], which develops a file system 
+consisting of different media, and I/O Shepherding [5], 
+which increases reliability of file systems by allowing 
+different reliability policies. However, both works view 
+and handle reliability issues in the scope larger than file. 
+Others also propose storage extensions in the block-
+level. Violin [6], a storage framework consisting of 
+virtual devices is proposed to implement various 
+functionality like encryption in the scope of device 
+block. ABLE [7], is also a proposed infrastructure that 
+supports block-layer extensions in operating system. 
+The approach of block layer gives an efficient and 
+compact way to develop functionalities which concern 
+individual storage blocks rather than files. Obviously, 
+block-level extension is not suitable to handle 
+reliability issues in the scope of files. 
+ 
+3. File-wise Reliability Scheme 
+3.1. The idea 
+The idea of the new scheme is allowing users to 
+configure different levels of reliability on individual 
+files. In most cases, storages are utilized to store files, 
+i.e. file systems. As the result, concerns of storage 
+reliability can be derived from the properties of files. 
+Different kinds of application raise different 
+requirements for file reliability. For example, program 
+files or user account files tolerate no error during the 
+service life of the system. Otherwise, temporary files 
+can have very short life-times causing it unlikely to 
+suffer from disk errors. Unfortunately, today's storage 
+reliability strategies treat all containing files identically 
+and thus cause inflexibility on storage space, reliability 
+and cost. 
+Following gives a brief analysis of current storage 
+reliability technologies. Let )( fileC fail  denotes the 
+cost resulting from certain file containing incorrect data 
+or cannot be accessed and )( filePfail  denotes the 
+probability that the situation happens. Then the 
+expected value of loss due to file reliability issue can 
+be shown as: 
+∑
+files
+failfail filePfileC )()(  
+Thus, reliability technologies try to decrease the loss. 
+In the other hand, the price expended to construct such 
+reliability mechanism can be shown as: 
+∑ +
+files
+deviceR CfileC )(   
+where )( fileCR  represents costs(e.g. additional 
+storage space usage or access time) related to 
+individual files, and deviceC  represents the constant 
+costs independent of files (e.g. RAID controller, 
+interconnection and redundant disk drives). Notice that 
+the estimation is identical across files under the storage. 
+However, under the new scheme which recognizes 
+different levels of reliability, the cost can be different. 
+After picking out those files unlikely to contain error 
+during use (low failP ) or less important (low failC ), the 
+cost becomes: 
+∑ ∑ ∑++ )()()( ,,, fileCfileCfileC highRlowRnoneR  
+deviceC+  
+where noneRC ,  and lowRC , denote efforts and costs on 
+files with minor or no reliability requirement. Hence, 
+the associated costs on those less important or short-life 
+files in the system can be reduced. Figure 1 also 
+illustrates the concept of the new scheme. 
+ 
+ 
+3.2. User Space vs. Kernel Space 
+ 
+There are different ways to realize file-level 
+reliability scheme. For example, user space backup 
+software can achieve file-level reliability by different 
+numbers of replications of files. Even MD5 [12] 
+checksum signature of files can guarantee certain level 
+of data integrity. However, realization in user space 
+results in several drawbacks. First, the user space 
+realization will encounter capability issues when 
+working with system files such as executables and 
+library files. OS kernels can have their own loaders to 
+access system files, and thus resulting in difficulties to 
+introduce new reliable system file formats which works 
+with user space reliability program. As the result, a 
+transparent file reliability layer resident in the kernel 
+space is a preferable solution. Furthermore, user space 
+programs are themselves files and suffer from the same 
+ 
+Figure 1. Illustration of  file-wise reliability scheme 
+that fits requirements closer and reduces cost 
+Too much effort results 
+in excessive reliability 
+and high cost 
+Default or less effort 
+on reliability cannot 
+satisfy requirements 
+File-wise, reliability 
+scheme fits 
+requirements closer  
+30 
+Group of Files 
+Required 
+R
+el
+ia
+b
+il
+it
+y
+ M
+ea
+su
+re
+ 
+sectors, and thus achieves better burst-error protection 
+and the ability to recover sector erasure.  Table 1 
+shows the designed fault-tolerance capabilities 
+belonging to each level. Reliability level 1 provides file 
+pages with basic 1-sector-erasure recovery, and level 2 
+and 3 provide further error corrections. Notice that the 
+error correction capability is specified by maximum 
+correctable errors per 128-byte coding block. 
+Additional space required in each level is the same as 
+its erasure recovery capability (i.e. 1~2 sectors per 
+page).  
+ 
+Table 1. Algorithms and fault-tolerance capability (one 
+page) of modified Ext2 file system.  
+Level 0 1 2 3 
+Algorithm N/A XOR 
+Parity 
+(144,128)  
+RS 
+(160,128)  
+RS 
+Erasure 
+Recovery 
+N/A 1 sector 1 sector 2 sectors 
+Error 
+Correction 
+N/A N/A 8bytes 
+/128bytes 
+16bytes 
+/128bytes 
+ 
+ 
+Figure 2. Arrangement of data in page for encoding 
+ 
+Redundancy information of all file pages is 
+concatenated to form the whole redundancy record of 
+the file. The redundancy record is stored as a dummy 
+file with its mapping information attached in the data 
+file inode. A duplicate of the data file inode with 
+substituted size and mapping information is created to 
+represent the dummy file during reliability related 
+routines, and changes are stored back to the file inode 
+when finished. Thus, operations such as allocation and 
+accessing of redundancy records can be performed by 
+reuse of existing functions without any conflicts. Figure 
+3 illustrates the flow of ext2_setrlevel(), which 
+changes of reliability level of a file.  
+ 
+ 
+Figure 4. The flow chart of ext2_checkpage and 
+ext2_recoverpage 
+ 
+Two functions, ext2_checkpage() and 
+ext2_recoverpage(), are built as  workhorses for 
+methods checkpage() and recoverpage() 
+defined in the previous section. Works of both 
+functions are almost the same, including determination 
+of the reliability level of the file which owns the page, 
+fetching of redundancy, and the decoding of content. 
+Figure 4 illustrates the flow of ext2_checkpage 
+and ext2_recoverpage(). There is also a 
+ext2_write_page_rdata() function for 
+write_page_rdata() method. 
+ext2_write_page_rdata() is a simplified 
+ 
+Figure 3. The flow chart of ext2_setrlevel 
+ 
+ 
+4KB Data Page 
+(8 512Byte-sectors) 
+         
+ 
+ 
+Redundancy 
+(1~2 sectors) 
+ 
+ 
+ 
+Coding Blocks 
+Encoding 
+ 
+overhead of changing reliability level seems to be 
+minor in the long run. In addition, performance of write 
+on files with different reliability level is shown in 
+Figure 7. It is measured by writing different amount of 
+data in zero-length files with preconfigured reliability 
+levels. Synchronized IO was used to measure the real 
+time required to write back data and redundancy. Write 
+of data also causes more processing time then purely 
+changing reliability level. 
+ 
+Set_Rlevel Time
+0
+50
+100
+150
+200
+250
+300
+350
+1 2 4 8 16 32 64 128 256 512 1024
+File Size(MB)
+T
+im
+e(
+S
+ec
+o
+n
+d
+)
+level_1 level_2 level_3  
+Figure 6. Time of setting different reliability level 
+ 
+Write Time
+0
+50
+100
+150
+200
+250
+300
+350
+400
+450
+1 2 4 8 16 32 64 128 256 512 1024
+File Size(MB)
+T
+im
+e(
+S
+ec
+o
+n
+d
+)
+level_0
+level_1
+level_2
+level_3
+ 
+Figure 7. Time of writing on file with different 
+reliability level 
+ 
+Next, the performance of reliable read will be 
+measured. Since parity cannot correct error data, only 
+level 2 and 3 which utilize Reed-Solomon error 
+correcting code will be tested. Evaluation is performed 
+by setting different sized files to designated reliability 
+level, measuring the time spent to read them with 
+O_RREAD flag set. Figure 8(a) shows time spent on 
+initial read of files. Operations of reliable reading take 
+approximately the same time as to setting them to 
+designated reliability levels. However, the results of 
+subsequent reads, shown in Figure 8(b), are very 
+different. Since checkpage() sets PageChecked flag at 
+the end of successful reads and allows the system to 
+identify decoded data  pages, no repetitive decoding 
+are performed on those checked pages. Hence, 
+subsequent reads act as pure access of page cache and 
+have relatively better performance. 
+ 
+Reliable Read Time (Initial Reads)
+0
+50
+100
+150
+200
+250
+300
+350
+400
+1 2 4 8 16 32 64 128 256 512 1024
+File Size(MB)
+T
+im
+e(
+S
+ec
+o
+n
+d
+)
+level_2 level_3
+ 
+(a) 
+Reliable Read Time (Subsequent Reads)
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+0.3
+0.35
+0.4
+0.45
+1 2 4 8 16 32 64 128 256 512 1024
+File Size(MB)
+T
+im
+e
+(S
+ec
+o
+n
+d
+)
+level_2 level_3
+ 
+(b) 
+Figure 8. Time of reading files with different levels. 
+(a) Initial reads (b) Subsequent reads with decoded 
+pages marked by PageChecked flag 
+ 
+The performance of another type of fault-tolerance 
+i.e. decoding triggered by recoverpage(), will also 
+be evaluated. In order to trigger recoverpage() on 
+access of good media, a small trick that makes read of 
+data pages always trapped into recoverpage() is 
+applied in the kernel code. And thus the experiment 
+represents the worst case, pretending that maximum 
+recoverable amount of erasure is encountered in read 
+operations. Results are shown in Figure 9. Notice that a 
+sector-wise re-read is required to identify the erasure, 
+the speed of recoverpage() is slower then 
+checkpage() which accesses only once to data.  
+Finally, to evaluate practical uses of file-wise 
+reliability scheme, Table 4 shows statistics and time to 
+change reliability level on three real system directories: 
+/usr/bin, /bin and /lib. The content of these directories 
+come from the default installation of Slackware Linux 
+12. As shown, the maximum file size in these important 
+system directories is 3.9MB, which is far less than 
+extreme sizes used in previous experiments. It also 
+costs user a reasonable time to transfer all these files to 
+highest reliability levels.  
+無研發成果推廣資料 
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+We are talking to a few organizations outside the country for further 
+possible collaboration. 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

@@ -1,0 +1,475 @@
+摘要
+有鑒於半導體製程的複雜度不斷成長，許多電子系統層級(ESL)的設計流程與EDA工
+具都被發展與應用在設計與開發系統晶片(SoC)。雖然市面上已有許多商業EDA工具
+能夠用於設計與開發系統晶片，但是在open source工具上卻一直處於缺乏或是功能不
+夠完整的狀態。於2007年所提出的QEMU-SystemC給了open source的EDA工具一線曙
+光，可是過多的限制使得QEMU-SystemC無法用在全系統的開法與設計上。為此，
+我們提出了QEMU-SystemC for SoC development (QSC2) 的平臺，它可以提供全系統
+定址和連接的介面，以及可擴充的generic on-chip bus (GOCB)協定，亦即TLM-2.0介
+面，用於虛擬平臺整合、平臺分析和設計空間探究，並同時保有原本QEMU-SystemC
+的功能。QSC2以open source的方式提供類似現今商業EDA工具的發展平臺，但是同
+時也更具備設計上的彈性、擴充性與系統分析的能力。
+Keywords: 軟硬體協同模擬、設計空間探究、泛用晶片匯流排協定、平臺式設計、電
+子系統層級設計流程、QEMU-SystemC, SystemC模化,系統晶片模擬
+i
+1 前言
+Due to the fast-growing complexity of system-on-chip (SoC), several electronic system level
+(ESL) design methodologies and electronic design automation (EDA) tools have been pro-
+posed to facilitate the SoC development [1]. The current ESL design flow can be presented
+from the specification determination, modeling, and hardware/software partition to the hard-
+ware/software implementation, integration, and verification. But how to effectively reduce the
+development time of each flow step is still an open question. To enable the hardware/soft-
+ware co-design at the early stage of ESL design flow, one of the popular ways is to adopt the
+platform-based design, which can provide a virtual platform combined with diverse models for
+co-simulation. In order to approximate the real execution of the target system, we only investi-
+gate the virtual platform, which can simulate with a unmodified full-fledged operating system
+(OS), such as Linux.
+With regard to the simulation speed, most of the ESL methodologies speed up the simulation
+by abstracting the level of details. The abstraction can be divided into several levels: from the
+highest behavior model, transaction-level model (TLM)1 down to the lowest register-transfer
+level (RTL). TLM [1, 3] has been used in the early stage of ESL design flow, which can benefit
+from the specification determination, the hardware/software partitioning, down to the imple-
+mentation and verification. At the same time, as far as design space exploration is concerned,
+one of the most important factors is to be able to achieve all kinds of estimations with suffi-
+cient accuracy under all the constraints of the system, such as performance and cost and power
+consumption. The results of design space exploration will reveal if the system constraints are
+satisfied.
+The TLM interface can combine with the instruction set simulator (ISS) for SoC or MPSoC
+(Multi-Processor SoC) co-simulation [4, 5, 6, 7]. Several EDA tools using platform-based
+methodology along with the TLM interface, like Synopsis’s Platform Architect, Innovator and
+ARM’s RealView SoC Designer, and so on, provide the SystemC model library and design
+space exploration for ESL design [8, 9, 10], but most of them are commercial tools. The other
+platforms we surveyed are even more limited. For example, SPACE and MPARM only sup-
+port ARM ISS simulation [11, 12]; Platune only supports MIPS architecture [13]. In 2007,
+the QEMU-SystemC, which is open source tool, was proposed for a software/SystemC SoC
+emulation framework [14], and the communication mechanism between SystemC models us-
+ing TLM-2.0 was supported in 2009 [15]. Another simulation framework [16, 17] that com-
+bines QEMU-SystemC with CoWare’s Platform Architect was proposed in 2009. Although
+the authors claimed that they implement the so-called local master interface to access the host
+memory, no details whatsoever are provided. The QEMU-SystemC associated framework men-
+tioned above can be used on the software and device driver development with the integration
+of slave device. It can also be used to run a variety of full-fledged operating systems (OS). But
+the design space exploration of full system can not be achieved without knowing transactions
+simulated between the processor model and the on-chip bus model, i.e., between QEMU and
+SystemC [18].
+1TLM here differs from TLM-2.0 standard [2] in that the former indicates that the smallest unit of communica-
+tion is a “transaction” whereas the latter indicates a standardized interface for modeling the memory-mapped bus,
+which complies with the rules defined in Open SystemC Initiative (OSCI) TLM-2.0 Language Reference Manual.
+1
+3.1.1 Dynamic Binary Translation in QEMU
+In short, the DBT used by QEMU can be divided into two steps: (1) preparation and (2)
+translation. The first step is responsible for generating the DCG off-line while the second step
+is responsible for actually translating each of the target instructions into the host code—by first
+translating the target instructions into a sequence of indices to TFs and then from the sequence
+of indices into the host code. In other words, if we think of the sequence of indices as the
+intermediate code or the watershed of the front end and the back end, then DCG plays the role
+of the back end of a compiler.
+From the viewpoint of QEMU, the target instructions to be executed have to be loaded into
+memory first and then translated instruction by instruction to the host code at run-time up to the
+next branch, jump, or instruction that interrupts the flow of execution. Then, the translation will
+be suspended, and the host code in the Translation Block Cache (TBC)—which is composed
+of one or more TBs (the basic block of QEMU) chained together—is executed. The purpose of
+chaining TBs together is so that they can be executed together without returning the control to
+the QEMU monitor. In addition, to speed up the performance, QEMU does not check at every
+TB if a virtual hardware interrupt is pending. Instead, the virtual interrupt hardware needs to
+call a specific function asynchronously to announce that an interrupt is pending.
+3.1.2 Hardware Emulation Features in QEMU
+QEMU provides the system mode to execute an OS of the target CPU with a software memory
+management unit (MMU). The way the load and store instructions of the target CPU access the
+memory depends on how the virtual address of the target OS is mapped to the virtual address
+of the host processor. As for the slave port of I/O, QEMU predefined a set of callback functions
+in C to act as the slave I/O interface, which can be used to model the virtual hardware device
+for the virtual platform of QEMU.
+Hardware devices with master ports may access the other peripherals or memory areas directly.
+Because the memory of QEMU is managed by a software MMU, the most convenience way to
+access the memory of QEMU is thus to utilize the memory access functions defined by QEMU,
+which have been applied to a variety of virtual platforms provided by QEMU. In addition,
+most of the hardware interrupt sources will be connected to the virtual interrupt controller
+modeled by the I/O interface of QEMU. Then, the virtual interrupt controller will ultimately
+be connected to the virtual CPU, which will in turn call a specific function asynchronously to
+inform the CPU main loop of QEMU that an interrupt is pending.
+3
+whatsoever about the CoWare-SystemC wrapper they proposed are provided.
+3.3 On-Chip Bus Modeling
+Because of the pressure of time-to-market on SoC design, several on-chip bus standards have
+been purposed for accelerating the system integration. Each on-chip bus usually specifies the
+master/slave interfaces for components compliant with the standard to connect seamlessly with
+the on-chip bus. Several of the on-chip buses have even been successfully utilized on pro-
+duction systems, including AMBA version 2, version 3 (also called AXI), IBM CoreConnect,
+STBus, OCP bus, and so forth. In order to cope with diverse on-chip bus protocols, TLM-2.0
+with base protocol for modeling most of them was proposed. Because of the emergence of
+TLM, several on-chip bus standards provide their own bus models at the transaction level to
+benefit the ESL design flow, such as AMBA-PV Extension [24], STBus [25], OCP Modeling
+Kit [26], GreenBus [27], and PowerPC 405 Evaluation Kit [28]. Most of them are based on
+SystemC version 2.1 and TLM-2.0 and thus need to be converted to SystemC 2.2. In addition,
+the GreenSocket interface [29] proposed by GreenSoCs [30] can be used to model the OCP
+protocol.
+3.3.1 TLM-2.0 Interface
+TLM-2.0 is a modeling interface based on SystemC for modeling the memory-mapped bus
+model. It is capable of modeling from the temporal decoupling (TD) down to the approximately-
+timed (AT). However, modeling at the cycle-accurate level is beyond the scope of TLM-2.0.
+The capability of mixed level modeling is demonstrated by the simple bus, which is mod-
+eled using AT coding style, connected with a variety of initiator and target models using TD,
+loosely-timed (LT), and AT coding style. No matter which coding style is used, the TLM-2.0
+interface provides the primitive base transaction protocol that has been applied to most of the
+specific on-chip bus protocols, such as AMBA, OCP-IP, and Core Connect [23]. Thus, the
+GOCB protocol, and the API thereof, can be achieved by enabling the TLM-2.0 interface on
+our virtual platform.
+4 研究方法
+The framework we proposed consists of three major components: (1) ISSs based on QEMU; (2)
+the infrastructure interface that provides the accessibility from SystemC models to the memory
+model managed by the software MMU of QEMU and the bidirectional interrupt cascading;
+and (3) the simple bus, built on the extensible GOCB protocol and the API provided by the
+TLM-2.0, as the interconnect on the virtual platform we proposed.
+5
+TBTBTB · · ·
+TITITI · · ·
+TFTFTF · · ·
+Figure 2: TBC before insertion of IXC (cf. Figure 3). Note that the lower layer is an enlarge-
+ment of its immediate upper layer. In other words, the top layer shows that TBC is composed
+of an unknown number of TBs chained together. The second layer shows that each TB at the
+top layer is composed of an unknown number of TIs. The bottom layer shows that each TI in
+the second layer is composed of an unknown number of TFs. Or in short, TBC is composed of
+an unknown number of TFs.
+· · · TIIXCTIIXCTIIXC
+IXC TFTFTF · · ·
+TB′TB′TB′ · · · TB′TB′TB′ · · ·
+· · · TIIXCIXCTIIXC TI′
+TFIXC IXCfl TF· · ·· · ·
+(a) (b)
+· · · TIIXCTIIXCTIIXC
+TB′TB′TB′ · · ·
+TF IXCmld
+IXC TF TFml· · · TF· · ·
+IXCmla
+· · · TIIXCTIIXCTIIXC
+TB′TB′TB′ · · ·
+TF
+IXC TF TFms· · · TF· · ·
+IXCms
+(c) (d)
+Figure 3: TBC after insertion of IXC (cf. Figure 2). Note that the lower layer is an enlarge-
+ment of its immediate upper layer. (a) Non-load and non-store instructions, (b) Conditionally
+executed non-load and non-store instructions, (c) Memory load instructions, and (d) Memory
+store instructions.
+4.2.2 Hardware Interrupt Mechanism
+To make the proposed framework capable of model replacement, hardware models with inter-
+rupt are divided into three categories: (1) hardware models that can only receive interrupts,
+(2) hardware models that can only send interrupts, and (3) hardware models that can both re-
+ceive and send interrupts. Since QEMU-SystemC models only the peripherals in SystemC that
+raise interrupts, it only needs to provide the capability of sending interrupt from SystemC to
+QEMU. The framework we proposed herein has been made capable of both sending and receiv-
+ing interrupts. As such, it is capable of handling hardware models like the interrupt controllers
+discussed above.
+4.2.3 Communication between ISS and SystemC
+The QEMU and SystemC-based virtual platform is implemented as two threads of a single pro-
+cess and communicated by using an unidirectional FIFO based on the shared memory mecha-
+7
+5 結果與討論
+In this section, we demonstrate the proposed framework in terms of three features: (1) design
+space exploration, (2) performance estimation, (3) TLM-2.0 support as shown in Figures 6, 7
+and 8. The simulation time is estimated by booting up a full-fledged Linux kernel whereas the
+statistics are collected while the modeled system is up and running. For all the experimental
+results given in this section, a 2.40GHz Intel Core 2 Quad Q6600 processor machine with
+2GB of memory is used as the host, and the target OS is built using the BuildRoot package
+[31]. The Linux distribution is Fedora 9, and the kernel is Linux version 2.6.27.12-78. QEMU
+version 0.11.0-rc1 and SystemC version 2.2.0 (including the reference simulator provided by
+OSCI) are all compiled by gcc version 4.3.1. In summary, we proposed a QEMU and SystemC-
+based virtual platform that can facilitate the SoC development at the early stage of ESL design
+flow. Not only the design space exploration, performance estimation, and TLM-2.0 support are
+achieved, but the waveform can be dumped for hardware debugging as shown in Figure 9. In
+addition, the simulation times in booting up the Linux kernel at different levels of details are as
+shown in Figure 10.
+SIC
+PL011
+(UART)
+PL050
+(KMI0,
+KMI1)
+...
+...
+ARM926
+IRQ
+FIQ
+...
+PL190
+(VIC)
+in
+SystemC
+Virtual Versatile/PB926EJ-S Platform
+on QEMU
+Hardware models
+in SystemC
+(a)
+SIC ...
+PL050
+(KMI0,
+KMI1)
+PL011
+(UART)
+PL190
+(VIC)
+Virtual Versatile/PB926EJ-S Platform
+on QEMU
+Memory
+PL080
+(DMAC)
+FIQ
+IRQ
+...
+...
+ARM926
+Infrastructure
+Interface
+Internal memory
+access interface
+Interrupt propagation
+interface
+ISS wrapper
+Model (BFM)
+Bus Functional
+processor interface
+BFM & hardware models in SystemC
+(b)
+Figure 6: Design space exploration of QEMU and SystemC-based virtual platform. (a) Block
+diagram of virtual Versatile/PB926EJ-S platform on QEMU with the PL190 VIC model written
+in SystemC. (b) Block diagram of the virtual platform Versatile/PB926EJ-S of QEMU with the
+PL080 DMAC model written in SystemC.
+ 0.1
+ 1
+ 10
+ 100
+ 1000
+ 10000
+w
+/o D
+M
+A
+(m
+in)
+w
+/o D
+M
+A
+(m
+ax)
+N
+orm
+alized
+w
+/o D
+M
+A
+(m
+in)
+N
+orm
+alized
+w
+/o D
+M
+A
+(m
+ax)
+w
+ith D
+M
+A
+(m
+in)
+w
+ith D
+M
+A
+(m
+ax)
+N
+u
+m
+b
+er
+ o
+f 
+m
+il
+li
+o
+n
+ t
+ra
+n
+sa
+ct
+io
+n
+s
+Data movement settings
+Number of transactions of different data movement settings
+NTI
+NLD
+NST
+NTX
+NDMAR
+NDMAW
+(a)
+-1
+ 0
+ 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+min max
+P
+er
+fo
+rm
+an
+ce
+ g
+ai
+n
+ (
+%
+)
+Data movement
+Performance gain of the data movement comparing with DMA and w/o DMA
+GTI
+GLD
+GST
+GTX
+(b)
+Figure 7: Performance estimation of QEMU and SystemC-based virtual platform. (a) The
+statistics of different data movement settings. (b) Performance gain of data movement “with
+DMA” with respect to one “without DMA” in percentage.
+9
+References
+[1] B. Bailey, G. Martin, and A. Piziali, ESL Design and Verification. Morgan Kaufmann
+Publishers, 2007.
+[2] J. Aynsley, OSCI TLM-2.0 Language Reference Manual, 2009, http://www.systemc.org/
+members/download files/check file?agreement=tlm 2-0 080606.
+[3] F. Ghenassia, Transaction-Level Modeling with SystemC. Springer, 2005.
+[4] L. Benini, D. Bertozzi, D. Bruni, N. Drago, F. Fummi, and M. Poncino, “Legacy SystemC
+Co-Simulation of Multi-Processor Systems-on-Chip,” in Proceedings of IEEE Interna-
+tional Conference on Computer Design: VLSI in Computers and Processors, 2002, pp.
+494–499.
+[5] I. Oussorov, W. Raab, U. Hachmann, and A. Kravtsov, “Integration of Instruction Set
+Simulators into SystemC High Level Models,” in Proceedings of Euromicro Symposium
+on Digital System Design, 2002, pp. 126–129.
+[6] F. Fummi, S. Martini, G. Perbellini, and M. Poncino, “Native ISS-SystemC Integration
+for the Co-Simulation of Multi-Processor SoC,” in Proceedings of Europe Conference
+and Exhibition Design, Automation and Test, vol. 1, Feburary 2004, pp. 564–569.
+[7] L. Formaggio, F. Fummi, and G. Pravadelli, “A Timing-Accurate HW/SW Cosimulation
+of an ISS with SystemC,” in Proceedings of International Conference on Hardware/Soft-
+ware Codesign and System Synthesis, September 2004, pp. 152–157.
+[8] Synopsys Inc. Platform Architect. http://www.synopsys.com/Tools/SLD/
+VirtualPrototyping/Pages/PlatformArchitect.aspx.
+[9] Synopsys Innovator. [Online]. Available: http://www.synopsys.com/Tools/SLD/
+VirtualPlatforms/Pages/Innovator.aspx
+[10] ARM RealView Development Suite. [Online]. Available: http://www.arm.com/products/
+DevTools/
+[11] J. Chealier, O. Benny, M. Rondonneau, G. Bois, E. M. Aboulhamid, and F.-R. Boyer,
+“SPACE: A Hardware/Software SystemC Modeling Platform Including an RTOS,” in Pro-
+ceedings of Forum on Specification and Design Languages, 2003.
+[12] L. Benini, D. Bertozzi, A. Bogliolo, F. Menichelli, and M. Olivieri, “MPARM: Exploring
+the Multi-Processor SoC Design Space with SystemC,” Journal of VLSI Signal Process-
+ing, vol. 41, no. 2, pp. 169–182, 2005.
+[13] T. Givargis and F. Vahid, “Platune: A Tuning Framework for System-on-a-Chip Plat-
+forms,” IEEE Transactions on Computer-Aided Design of Integrated Circuits and Sys-
+tems, vol. 21, no. 11, pp. 1317–1327, November 2002.
+[14] M. Monto´n, A. Portero, M. Moreno, B. Martı´nez, and J. Carrabina, “Mixed SW/SystemC
+SoC Emulation Framework,” in Proceedings of IEEE International Symposium on Indus-
+trial Electronics, June 2007, pp. 2338–2341.
+11
+教育部補助國內大學校院博士班研究生出席國際會議報告
+        99  年  5 月  6  日
+報告人姓名 葉則承 就讀學校系所
+及年級
+國立中山大學資訊工程
+系博士班三年級
+會議期間及地點 Valletta, Malta 
+2010/4/26~2010/4/28
+本部核定補助
+文號
+99年 2月 10日
+中院工博字第002號
+會議名稱 (中文) 第十五屆國際電子電機工程師協會地中海電子科技研
+討會
+(英文) The 15th IEEE Mediterranean Electrotechnical 
+Conference
+發表論文題目 (中文) 用於系統晶片發展之基於QEMU和 SystemC的快速週期
+精確之指令集模擬器
+(英文)  A Fast Cycle-Accurate Instruction Set 
+Simulator Based on QEMU and SystemC for SoC 
+Development.
+報告內容包括下列各項： 
+一、參加會議經過
+二、與會心得
+三、建    議
+四、攜回資料名稱及內容
+五、其    他
+一、參加會議經過：
+The 15th IEEE Mediterranean Electrotechnical Conference ( 簡 寫 
+MELECON) 是針對電子科技的設計方法、技巧和實驗結果的主要討論會；同時也
+是IEEE Region 8 的主要研討會之一。該研討會主要在促進不同科技領域的學
+者和與會者的技術交流，其中包含控制系統、網路、資訊科技、機電、奈米及微米
+電子、電力系統、訊號及影像處理等相關議題。雖然這次的議程包含 plenary 
+sessions、 regular technical sessions、special sessions、poster sessions
+和 tutorials；但是似乎因為冰島火山灰對歐洲飛行航班的影響，tutorials的
+全部講者都取消了。會議舉辦的 4月 26日到 28日的早上 9點到 9點 45分都是 
+plenary sessions，分別是來自丹麥、新加坡和德國的不同領域的教授主講電力
+的資訊。有些 presenter會一口氣講很多東西，但是台下的聽眾卻不容易抓住該
+篇論文真正研究的重點；有些 presenter卻能夠流利的把重點都表達清楚。
+ 在參與此次國際研討會後，對於國際上的研究團隊有了許多認識，有時不
+能單純的只靠文獻上的閱讀，還要多參加研討會的討論來了解在科技上潮流的
+走向，以及不同的學者對這些研究的看法與精闢的見解，尤其是我們所研究的
+議題一直是走在全球正在急於發展的前端，更需要真正在接觸這些研究的設計
+者加入開發的構想行列。
+另一方面則是語文能力上的不足有深深的體認。雖然在論文撰寫、基本溝通
+與發表論文上可以應付，但是還是需要加強聽力，以便比別人更容易掌握從研
+討會上獲得第一手的資訊。
+最後，透過此次的論文發表、session chair 對我們的肯定，我們更有信心
+將我們的成果推向更大規模的研討會，以吸收更多不同的意見來修正我們的發
+展目標而非閉門造車；同時也感謝與我們相關的研究論文的發表與 poster的討
+論，可以激發我們的研究靈感以便朝更卓越的研究成果邁進。
+三、建議：
+雖然2010 MELECON的舉辦地點在歐洲，但是出席此次研討會的研究生中台
+灣只有兩位，中國只有一位，日本有三位。其中亞洲參與的研究團隊相較於其他
+的研討會來說是少很多的，最大的因素在於歐洲地區需要較多的經費，但是在
+國內的經費補助上似乎不是相當充足，許多學生其實必須自行負擔一半以上的
+費用才能前往與會，因此國內研究團隊在出席歐陸研討會的意願上會相對來說
+較為低。在比較過許多歐洲的研究團隊的成果後，會發現台灣的研究團隊並不亞
+於其它先進的歐美國家，但因為經費不足而選擇在國內舉辦的研討會失去揚名
+國際的機會，實屬可惜。許多歐美先進國家都會給予博士生充足的研究經費，反
+觀台灣的博士生都需要自行吸收補助不足的費用上，或許需要重新再審視我國
+對學術研究的重視程度。要突破台灣在學術能量上的不足，需要更有遠見的去培
+無衍生研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

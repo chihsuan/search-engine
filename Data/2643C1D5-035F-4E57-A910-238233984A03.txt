@@ -1,0 +1,275 @@
+一、 中文摘要 
+網絡入侵偵測系統已被廣泛用於保護計算機系統免受網路攻擊。由於越來越多的攻擊和網路的複
+雜性，傳統的軟體方法對單一核心處理器已經不適用於當前的高速網路。本計畫的主要目的提出以
+多核心圖形處理器(graphics processing unit , GPU)加速正規表示法比對之演算法與架構設計，本計畫
+所提出之平行演算法利用GPU多核心架構有效加速字串比對，相較實現Aho-Corasick演算法於CPU的
+方法，加速約4000倍，相較其他硬體架構，亦有2-3倍的效能改善。此外，我們所提出的演算法亦可
+降低傳統Aho-Corasick演算法的記憶體需求。 
+研究成果將發表於2010 IEEE Globecom國際會議和第21超大型積體電路設計暨計算機輔助設計
+研討會。 
+ 
+關鍵字：字串比對、多核心圖形處理單元 
+ 
+三、 計畫緣由與目的 
+Network Intrusion Detection Systems (NIDS) have been widely used to protect computer systems from 
+network attacks such as denial of service attacks, port scans, or malware. The string matching engine used 
+to identify network attacks by inspecting packet content against thousands of predefined patterns dominates 
+the performance of an NIDS. Due to the ever-increasing number of attacks and network complexity, 
+traditional string matching approaches on uni-processors have become inadequate for the high-speed 
+network. 
+To accelerate string matching, many hardware approaches are being proposed that can be classified into 
+logic-based [1][2][3][4] and memory-based approaches [5][6][7][8][9]. Recently, Graphic Processor Unit 
+(GPU) has attracted a lot of attention due to their cost-effective parallel computing power. A modified 
+Wu-Manber algorithm [10] and a modified suffix tree algorithm [11] are implemented on GPU to accelerate 
+exact string matching while a traditional DFA approach [12] and a new state machine XFA [13] are 
+proposed to accelerate regular expression matching on GPU.  
+In this project, we study the use of parallel computation on GPUs for accelerating string matching. A 
+direct implementation of parallel computation on GPUs is to divide an input stream into multiple segments, 
+each of which is processed by a parallel thread for string matching. For example in Fig. 1(a), using a single 
+thread to find the pattern “AB” takes 24 cycles. If we divide an input stream into four segments and allocate 
+each segment a thread to find the pattern “AB” simultaneously, the fourth thread only takes six cycles to 
+find the same pattern as shown in Fig. 1(b). 
+ 
+Figure 1. Single vs. multiple thread approach 
+However, the direct implementation of dividing an input stream on GPUs cannot detect a pattern 
+occurring in the boundary of adjacent segments. We call the new problem as the “boundary detection” 
+problem. For example, in Fig. 2, the pattern “AB” occurs in the boundary of segments 3 and 4 and cannot be 
+identified by threads 3 and 4. Despite the fact that boundary detection problems can be resolved by having 
+threads to process overlapped computation on the boundaries (as shown in Fig. 3), the overhead of 
+overlapped computation seriously degrades performance.  
+ 
+Figure 2. Boundary detection problem that the pattern “AB” cannot be identified by Thread 3 and 4. 
+Thread 1   Thread 2   Thread 3  Thread 4 
+AAAAAAAAAAAAAAAAAAAAAAAABBBBBBBB 
+A A A A A A A A A A A A A A A A A A A A A A A B 
+(a): Single thread approach 
+(b): Multiple threads approach 
+1 thread  
+24 cycles 
+4 threads  
+6 cycles 
+A A A A A A A A A A A A A A A A A A A A A A A B 
+process string matching on their own segments by traversing the same AC state machine simultaneously. As 
+discussed in introduction, the direct implementation incurs the boundary detection problem. To resolve the 
+boundary detection problem, each thread must scan across the boundary to recognize the pattern that occurs 
+in the boundary. In other words, in order to resolve the boundary detection problem and identify all possible 
+patterns, each thread must scan for a minimum length which is almost equal to the segment length plus the 
+longest pattern length of an AC state machine. For example in Fig. 5, supposing each segment has eight 
+characters and the longest pattern of the AC state machine has four characters, each thread must scan a 
+minimum length of eleven (8+4-1) characters to identify all possible patterns. The minimum length is 
+calculated by adding the segment length and the length of the longest pattern, and then subtracting one 
+character. The overhead caused by scanning the additional length across the boundary is so-called 
+overlapped computation.  
+On the other hand, the throughput of string matching on GPU can be improved by deeply partitioning 
+an input stream and increasing threads. However, deeply partitioning will cause the probability of the 
+boundary detection problem to increase. To resolve the boundary detection problem, the overlapped 
+computation increases tremendously and leads to throughput bottleneck.  
+ 
+Figure 5. Direct implementation which divides an input stream into multiple  
+segments and allocates each segment a thread to traverse the AC state machine. 
+4.2 Parallel Failureless-AC Algorithm 
+In order to increase the throughput of string matching on GPU and resolve the throughput bottleneck 
+caused by the overlapped computation, we propose a new algorithm, called Parallel Failureless-AC 
+Algorithm (PFAC). In PFAC, we allocate each byte of an input stream a GPU thread to identify any virus 
+pattern starting at the thread starting location.  
+The idea of allocating each byte of an input stream a thread to identify any virus pattern starting at the 
+thread starting location has an important implication on the efficiency. First, in the conventional AC state 
+machine, the failure transitions are used to back-track the state machine to identify the virus patterns starting 
+at any location of an input stream. Since in the PFAC algorithm, a GPU thread only concerns the virus 
+pattern starting at a particular location, the GPU threads of PFAC need not back-track the state machine. 
+Therefore, the failure transitions of the AC state machine can all be removed. An AC state machine with all 
+its failure transitions removed is called Failureless-AC state machine. Fig. 6 shows the diagram of the PFAC 
+which allocates each byte of an input stream a thread to traverse the new Failureless-AC state machine. 
+ 
+Figure 6. Parallel Failureless-AC algorithm which allocates each byte of an  
+A B E D E G A B B E E E E E B B B C C 
+.  .  .  .  .  .  .  .  .  .  .  .  
+. . . . . . . . . . . .  
+A A A A A A A A A A A A A A A A A A A A A A A A B A A A A A A A 
+ Figure 9. Most threads terminate early in PFAC 
+4.3 Experimental Results 
+We have implemented the proposed algorithm on a commodity GPU card and compare with the recent 
+published GPU approaches. The experimental configurations are as follows: 
+ CPU: Intel® Core™2 Duo CPU E7300 2.66GHz 
+ System main memory: 4,096 DDR2 memory 
+ GPU card: NVIDIA GeForce GTX 295 576MHz 
+ 480 cores with 1,792 MB GDDR3 memory 
+ Patterns: string patterns of Snort V2.4 
+In order to evaluate the performance of our algorithm, we implement three approaches described in this 
+project for comparisons. As shown in Table 1, the CPU_AC denotes the method of implementing the AC 
+algorithm on CPU, which is the most popular approach adopted by NIDS systems, such as Snort. The 
+Direct_AC approach denotes the direct implementation of the AC algorithm on GPU. The PFAC denotes the 
+Parallel Failureless-AC approach on GPU. Table 1 shows the results of these three approaches for 
+processing two different input streams. Column one lists two different input streams, the normal case 
+denotes a randomly generated sequence of 219Kbytes comprising 19,103 virus patterns, whereas the virus 
+case denotes a sequence of 219 Kbytes comprising 61,414 virus patterns.  
+Column 2, 3, 4, and 5 list the throughput of the three approaches, CPU_AC, Direct_AC, and PFAC, 
+respectively. For processing the normal case of input streams, the throughput of CPU_AC, Direct_AC, and 
+PFAC are 997, 6,428, and 3,963,966 KBps (Kilo Bytes per second), respectively. The experimental results 
+show that the PFAC performs up to 4,000 times faster than the CPU_AC approach while the Direct_AC can 
+only perform 6.4 times as fast. In other words, the PFAC also achieves up to 600 times faster than 
+Direct_AC approach on GPU. 
+Furthermore, because the new algorithm removes the failure transitions of the AC state machine, the 
+memory requirement can also be reduced. Table 2 shows that the new algorithm can reduce the number of 
+transitions by 50%, and therefore achieve a memory reduction of 21% for Snort patterns. Table 3 compares 
+with several recent published GPU approaches [10][11][12][13]. In Table 3, columns 2, 3, 4, and 5 shows 
+the character number, memory size, the throughput, and the memory efficiency which is defined as the 
+following equation. 
+Memory efficiency = Throughput / Memory    (1) 
+As shown in Table 3, our results are faster than all [10][11][12][13] with efficient memory usage. We 
+ .  .  . X X X X A B E D E X X X X X .  .  .  
+Thread tn~tn+3 Thread tn+6, tn+8 
+B G B G 
+  
+ 
+A 
+ 
+ 
+ 
+        
+ 
+ 
+B E D E 
+E F 
+tn………tn+3………tn+6 … tn+8 
+1    2    3     
+0       4    5    6    7
+8    9      
+0       4    5    6    7 
+ 
+ 
+A 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+B E D E 
+E F 
+1    2    3     
+8    9      
+ 10
+Symposium, Kaohsiung, Taiwan, August 3-6, pp.163-166, 2010. (Best Paper Nominee)  
+ 
+[2]  Cheng-Hung Lin, Sheng-Yu Tsai, Chen-Hsiung Liu, Shih-Chieh Chang, and Jyuo-Min Shyu, 
+"Accelerating String Matching Using Multi-threaded Algorithm on GPU," to appear in 
+IEEE GLOBAL COMMUNICATIONS CONFERENCE (IEEE GLOBECOM 2010), Miami, 
+Florida, USA, December 6-10, 2010. 
+ 
+六、 結論 
+Graphics Processor Units (GPUs) have attracted a lot of attention due to their cost-effective and 
+dramatic power of massive data parallel computing. In this project, we have proposed a novel 
+parallel algorithm to accelerate string matching by GPU. The experimental results show that the 
+new algorithm on GPU can achieve a significant speedup compared to the AC algorithm on CPU. 
+Compared to other GPU approaches, the new algorithm achieves 3 times faster with significant 
+improvement on memory efficiency. In addition, because the new algorithm reduces the complexity 
+of the AC algorithm, the new algorithm also improves on memory requirements. 
+ 
+七、 參考文獻 
+[1] R. Sidhu and V. K. Prasanna, “Fast regular expression matching using FPGAs,” in Proc. 9th 
+Ann. IEEE Symp. Field-Program. Custom Comput. Mach. (FCCM), 2001, pp. 227-238. 
+[2] B.L. Hutchings, R. Franklin, and D. Carver, “Assisting Network Intrusion Detection with 
+Reconfigurable Hardware,” in Proc.10th Ann. IEEE Symp. Field-Program. Custom Comput. 
+Mach. (FCCM), 2002, pp. 111-120. 
+[3] C. R. Clark and D. E. Schimmel, “Scalable Pattern Matching for High Speed Networks,” in 
+Proc. 12th Ann. IEEE Symp. Field-Program. Custom Comput. Mach. (FCCM), 2004, pp. 
+249-257 
+[4] J. Moscola, J. Lockwood, R. P. Loui, and M. Pachos, “Implementation of a Content-Scanning 
+Module for an Internet Firewall,” in Proc. 11th Ann. IEEE Symp. Field-Program. Custom 
+Comput. Mach. (FCCM), 2003, pp. 31–38. 
+[5] M. Aldwairi*, T. Conte, and P. Franzon, “Configurable String Matching Hardware for 
+Speeding up Intrusion Detection,” in ACM SIGARCH Computer Architecture News, 2005, pp. 
+99–107 
+[6] S. Dharmapurikar and J. Lockwood, “Fast and Scalable Pattern Matching for Content 
+Filtering,” in Proc. of Symp. Architectures Netw. Commun. Syst. (ANCS), 2005, pp. 183-192 
+[7] Y. H. Cho and W. H. Mangione-Smith, “A Pattern Matching Co-processor for Network 
+Security,” in Proc. 42nd Des. Autom. Conf. (DAC), 2005, pp. 234-239 
+[8] L. Tan and T. Sherwood, “A high throughput string matching architecture for intrusion 
+detection and prevention,” in proc. 32nd Ann. Int. Symp. on Comp. Architecture, (ISCA), 2005, 
+pp. 112-122 
+出席國際學術會議心得報告 
+計畫名稱：以多核心圖形處理器為基礎之並行化正規表示樣式比對演算法與架構
+設計(I) 
+計畫編號：NSC 98-2221-E-003-016- 
+報告人：林政宏副教授 
+會議名稱：International SOC Design Conference (ISOCC) 
+會議地點：Busan, Korea 
+會議時間：November 22-24 
+出國目的：發表論文 
+論文名稱：Design and Verification for Dual Issue Digital Signal Processor 
+與會心得： 
+It’s a really good experience to attend the International SOC Design Conference 
+(ISOCC) held on November 22-24, 2009 in Busan, Korea. The International SoC 
+Design Conference (ISOCC) aims at providing the world’s premier SoC design forum 
+for leading researchers from academia and industries. My paper titled “Design and 
+Verification for Dual Issue Digital Signal Processor” was accepted as poster 
+presentation. Because many attendances work on relative researches, I obtained a lot 
+of positive feedback. During my presentation, many professors and students discussed 
+with me about my researches. In addition, I also listened several interesting research 
+topics including network intrusion detection, multicore design and verification, and so 
+on. 
+Finally, I am very thankful for NSC supporting me to attend this conference. 
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：林政宏 計畫編號：98-2221-E-003-016- 
+計畫名稱：以多核心圖形處理器為基礎之並行化正規表示樣式比對演算法與架構設計(I) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 2 2 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 1 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

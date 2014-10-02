@@ -1,0 +1,4717 @@
+Abstract 
+With the rapid advances in video coding technology, network infrastructure, and computing 
+power, wireless video entertainment becomes more and more important. However, the wireless 
+channels have varying connection quality and protocol, which is not suitable to ensure video quality. 
+The latest video coding standard called Scalable Video Coding (SVC) has been standardized 
+recently for the next generation of video applications. The SVC provides three scalabilities: Spatial 
+scalability, Temporal scalability, and SNR scalability (Quality scalability) to achieve various 
+adaptations such as power adaptation, complexity adaptation and bit-rate adaptation. Inside the SVC, 
+the H.264 is used as the fundamental to aim at significant video compression performance. 
+Therefore, the complexity of the SVC is much higher than H.264 whatever the coding or 
+implementation complexity. As a result, we aim at the realization of a low power and high 
+performance SVC codec IP which can support baseline profile and high profile by reducing the 
+computational complexity of SVC. 
+In this project, we have finished the following works: (1) Analyze the memory requirements for 
+difference coding flows for SVC. Afterword, the coding flow which achieves best tradeoff between 
+internal memory usage and external memory bandwidth is specified and the corresponding 
+hardware pipeline architecture and detail scheduling are defined as well. Through our hardware 
+architecture, three layers per each scalability with maximum frame resolution, 1080P@60fps, can 
+be supported under the working frequency of 135MHz. (2) Propose an improved internal memory 
+architecture to solve the problem of intensive memory requirement. Simulation results show that the 
+external memory bandwidth can be saved by 38KB and 77KB per frame when the internal memory 
+size of 25KB and 68KB are supported, respectively with additional 36.31% of internal memory 
+utilization improvement. (3) Propose a bandwidth aware search range decision algorithm for motion 
+estimation. Via the proposed Bandwidth-Rate-Distortion model, the proper search range can be 
+decided under bandwidth constraint with negligible rate distortion performance degradation. 
+Without bandwidth constraint, the proposed method can save the bandwidth up to 70%. (4) Propose 
+a low bandwidth prediction method to further decrease the demands of bandwidth. Through the 
+combination of prediction modes and additional including of fast algorithm, 76.7% bandwidth can 
+be saved with 0.001dB PSNR degradation and 1.16% bitrate increasing. (5) Propose a low 
+bandwidth requirement inter-layer data reuse prediction algorithm and a frame size based motion 
+estimation selection algorithm. Through observing the relationship between motion vector 
+predictors of inter and inter-layer prediction, an algorithm can be defined to determine whether to 
+reuse the reference data. Simulation results reveal that our proposed algorithm only conducts 0.91% 
+bit-rate increasing and 0.09dB PSNR degradation with up to 80.9% data access savings. (6) Propose 
+a high throughput entropy decoder design for H.264/AVC and SVC video coding standards. Via the 
+help of our proposed hybrid memory architecture and fast mathematical transformation method, our 
+design can decode 451.4Mbins per second. (7) Propose a high performance scalable video decoder 
+to provide the capability of decoding 60 frames per second with frame resolution of 
+CIF-SD480P-HD1080P and three quality layers. (8) Propose a low bandwidth and bandwidth aware 
+motion estimation design. Through modeling the relationship between rate-distortion performance 
+and bandwidth requirements, a motion estimation algorithm is thus proposed to achieve best 
+目錄 
+1. 前言 .............................................................................................................................................. 2 
+2. 計畫目的 ......................................................................................................................................... 5 
+3. 相關研究 ......................................................................................................................................... 6 
+4. 研究方法與步驟 ............................................................................................................................. 9 
+5. 結果與討論 ................................................................................................................................... 10 
+6. 計畫成果自評 ............................................................................................................................... 23 
+7. 附錄 ............................................................................................................................................... 25 
+ 
+ 
+ 
+  
+ 圖一 .Scalable Video Coding Encoder架構圖 (two spatial layer) 
+ 
+以下則是對 Scalable Video Coding三個維度的可調性加以說明 
+ 空間可調性(Spatial Scalability) 
+在空間的可調性上目前的方法採用和過去 MPEG-4 和 MPEG-2 相似的概念，也就是利
+用降頻(Decimation)方式先對輸入視訊產生不同的畫面解析度，而為了提升壓縮率，目前
+的方法將低解析度層的動態補償預估後的殘餘訊號經過插補(Interpolation)用來預估高解
+析度層的殘餘訊號。目前使用在降頻與差補的濾波器，以應用在H.264 half filter上的6-tap 
+filter 最能夠達成畫面品質與複雜度之間的平衡。此外，不同解析層的動態向量(Motion 
+Vector)也採用類似的預估來改善壓縮率，並以此降低複雜度。若不同層間的空間解析度
+為二的倍數時，可直接將低解析度的動態向量與區塊尺寸(block size)直接乘以二。如果
+不為二的倍數的話，SVC中也有提到 ESS(extended spatial scability)的技術，可以由低解
+析度層的動態向量與區塊尺寸經運算得到高解析度的資料。 
+ 
+ 時間的可調性(Temporal Scalability) 
+在時間軸上的動態補償預估採用動態補償時間軸濾波(Motion Compensated Temporal 
+Filtering, MCTF, optional encoding features) 或 Hierarchical B-frames。這個方法能夠得到
+良好在時間軸上降頻的效果，而且可以隨意調整其倍率。透過階梯結構(Lifting Structure)
+的轉換，動態補償時間軸濾波可進一步簡化成多層次的雙向預估結構(Hierarchical B 
+Frame Prediction)，可容易達成時間上的可調性，同時也可用現有的MPEG-4 14496-10 精
+進視訊壓縮標準來實現。 
+2. 計畫目的 
+本計畫的目的是為了開發一個的可調視訊編解碼  (scalable video codec) IP，包含了
+baseline profile 和 high profile.。目標應用為在無線傳輸在手持裝置進行視訊會議或娛樂
+(baseline profile)，以低功耗、適用於無線網路為主要考量，或是數位家庭裡 HDTV/DTV的影
+音娛樂服務(high profile)，以降低硬體代價、應付 HDTV需求為主要考量。針對這樣的應用，
+我們預期的規格為 baseline profile@352×288×30fps，和 high profile@1920x1080×30fps(HDTV)，
+並且可以 scalable以支援不同解析度需求。此外，由於 SVC的 IP可以應用在可攜式裝置或是
+被整合在更複雜的 SoC設計內，減少功率消耗也將是一個很重要研究重點。 
+ 
+  
+之編碼方式跟常見之巨區塊為基礎之硬體編碼方式有極大的差異性。因此，為了使 FGS編碼
+之硬體架構變得可行，Chen et. al [20]提出區塊為基礎之 FGS編碼架構設計來達到記憶體存取
+的減少。Huang et. al [21]提出一display order oriented SVC decoder，可有效減少記憶體使用量。
+Lin et. al [22]提出一應用於 progressive MCTF的架構系列，經由適當的 folding與 scheduling，
+可達成硬體代價與速度的平衡。然而這些尚缺乏完整的架構與排程，與實際的實現。對於層
+間預測模式而言，Lin et. al [23]提出一節省硬體成本之層間殘值預測之硬體架構。除了上述針
+對各別元件的硬體架構設計之外，Chen et. al [24]-[25]，提出針對於 SVC之編碼器硬體架構。
+然而此兩篇文獻並無討論針對 SVC之層間預測方法最佳化架構設計。 
+ 
+Reference 
+[1] Joint Draft 11 of SVC Amendment , Joint Video Team (JVT) of ISO/IEC MPEG & ITU-T 
+VCEG, Oct. 2007,   
+[2] H. Schwarz, D. Marpe, and T. Wiegand, ―Overview of scalable extension of H.264/MPEG-4 
+AVC video coding standard,‖ IEEE Transactions on Circuit and Systems for Video Technology, 
+vol.17, no.9, pp.103-1120, September 2007. 
+[3] H. Schwarz, D. Marpe, and T. Wiegand, ―Analysis of hierarchical B pictures and MCTF,‖ in 
+Proceedings of International Conference on Multimedia Expo, July 2006. 
+[4] C. A. Segall and G. J. Sullivan, ―Spatial scalability within the H.264/AVC Scalable Video 
+Coding Extension,‖ IEEE Transactions on Circuits and Systems for Video Technology, vol.17, 
+no.9, 1121-1135, September 2007. 
+[5] Y. Gao and L.P. Chau, ―Efficient fine granularity scalability using adaptive leaky factor,‖ IEEE 
+Transactions on Broadcasting, vol. 51, no. 4, pp. 512-519, December 2005. 
+[6] W. J. Han ―Modified IntraBL design using smoothed reference,‖ Joint Video Team (JVT) 
+JVT-R091, 2006. 
+[7] T. S. Wang, C. S. Park, J. H. Kim; M. S. Yoon and S. J. Ko, ―Improved inter-layer intra 
+prediction for scalable video coding,‖ in Proceedings of IEEE TENCON, pp.1-4, 2007. 
+[8] Y. Ye and Y. Bao, ―CE2: improved residual upsampling for ESS,‖ Joint Video Team (JVT) 
+JVT-W117, 2007. 
+[9] L. Lange, ―Extended inter-layer motion vectors prediction in scalable video coding – case study 
+and improvement proposal,‖ Joint Video Team (JVT) JVT-R094, 2006. 
+[10] L. Lange, ―Extended inter-layer motion vectors prediction in JSVM – case study and 
+experimental results,‖ Joint Video Team (JVT) JVT-S063, 2006. 
+[11] L. Xiong, ―Reducing enhancement layer directional intra prediction modes,‖ Joint Video Team 
+(JVT) JVT-P041, 2005. 
+[12] Y. Libo, ―Low complexity intra prediction for enhancement layer,‖ Joint Video Team (JVT) 
+JVT-Q084, 2005. 
+[13] He Li, Z. G. Li, and C. Wen, ―Fast mode decision algorithm for Inter-frame coding in fully 
+scalable video coding,‖ IEEE Transactions on Circuits and Systems for Video Technology, 
+vol.16, no.7, pp.889-895, July 2006. 
+[14] H. C. Lin, W. H. Peng, H. M. Hang and W. J. Ho, ―Layer-adaptive mode decision and motion 
+search for scalable video coding with combined coarse granular scalability (CGS) and 
+temporal scalability,‖ in Proceedings of IEEE International Conference on Image Processing, 
+4. 研究方法與步驟 
+1. 設計流程 
+整體設計主要是依據以下嚴謹的 ESL design 和 IP設計方法。首先，設定目標規格，利
+用高階語言(C or SystemC)來建立設計的原型，搭配 ESL design 平台分析相關 memory access
+和 bandwidth utilization，依據分析結果，調整設計排程，反覆進行至達成目標。設計主要分
+為硬體加速部分和軟體驅動程式與 API的部分。硬體部分將分為較小的區塊和各別區塊的設
+計流程：細部規格，RTL程式，程式驗證，程式碼覆蓋率(code coverage)，初步合成與整合進
+整個設計。同時，為了 IP的可重複使用性，相關的參考文件將會完整的建立。 
+ 
+在整體設計流程中，主要的瓶頸在於驗證的複雜度和所需時間上的考量。由於 video 資
+料龐大，即使短短數分鐘的軟體模擬也將會花掉許多的時間。而且，閘層次的模擬的時間更
+比 RTL層次模擬的時間慢 10至 100倍的時間。為了幫助減輕這個問題，ESL design 平台的
+建立可有效減少此問題。另一個問題是驗證的複雜度牽涉到此設計本身的特性。對於解碼器
+而言，JVT 的標準確定了一致性。對於編碼器而言，因為標準沒有一致的規範，則需要測試
+不同的設定條件。輸出的位元串流必需能被 reference software解碼來確認編碼器的功能正確。
+為確保功能完整驗證，將利用 assertion-based verification 和 verification language來幫助驗證。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+prediction)，並將預測結果傳遞給第二級的運算。在本計劃所提之硬體架構中，我們將 Inter layer 
+prediction以及 Inter prediction整合成單一 IME模組，如此一來可以達到較佳之硬體及資料存
+取共用；而在第二級中會依據第一級 IME的結果來執行分數點的移動估計（FME）及重建以
+及 Intra模式預測及重建；經由第一級及第二級之後，所有的預測編碼皆已經完成，於是在第
+三級中會執行 Entropy coding(EC)以及 FGS的編碼動作以產生編碼後的位元串流(Bitstream)；
+最後在第四級的部份會執行去區塊(DB)演算法來去除重建影像的不自然現象。圖七所示為本
+計劃所提之 SVC編碼器詳細排程圖。在圖七中同一個 pipeline stage裡有兩個相同功能但不同
+顏色的區塊，此代表同一個 stage有兩套相同功能之硬體模組同時在執行，這是由於 SVC的
+運算複雜度遠大於 H.264 編碼器，所以我們必頇有兩套硬體的支援才能達到如此高計算量。
+經由本計劃所提之硬體設計，可以在135MHz的頻率之下達到1080P@60fps以及三層的Spatial、
+Temporal、Quality的可調性。 
+IBL_0
+IEL2_0
+IEL1_0
+BBL_1
+BEL2_1
+BEL1_1
+BBL_2
+BEL2_2
+BEL1_2
+BBL_3
+BEL2_3
+BEL1_3
+BBL_4
+BEL2_4
+BEL1_4
+BBL_5
+BEL2_5
+BEL1_5
+BBL_6
+BEL2_6
+BEL1_6
+BBL_7
+BEL2_7
+BEL1_7
+PBL_8
+PEL2_8
+PEL1_8
+ 0                     1                   2                   3                   4                    5                   6                   7                    8
+ 1                     6                   4                   7                   3                    8                   5                   9                    2
+Coding order
+Picture order
+3
+2
+1
+ 
+圖三、畫面編碼順序 
+ 
+ 
+MB0Base MB0Enh0 MB22Enh0 MB396Enh0 MB0Enh1 MB44Enh1 MB1583Enh1MB1Base MB99Base
+   
+MBs per frame in base layer
+MBs per frame in 
+enhancement layer 0
+MBs per frame in 
+enhancement layer 1
+Encoding order  
+圖四、巨區塊編碼順序 
+ 
+ 圖七、本計劃所提之詳細排程 
+ 
+2. 低記憶體成本之 FGS編碼方法 [P2] 
+為了達到任意位元串流的截斷，因此 FGS係數的編碼方式採用整張畫面為基礎之掃描方式來
+編碼。然而此整張畫面為基礎之掃描方式對於硬體設計而言，會帶來龐大的內部記憶體需求
+以及外部記憶體存取量。此外，由於目前視訊編碼器之硬體設計皆是以巨區塊(Macroblock)
+為基本的處理單位，此種整張畫面之處理單位亦為 SVC編碼器之硬體設計帶來更高之複雜度。
+為了使 FGS係數編碼之硬體實做變得可行，文獻[16]提出一 scan bucket的方式來達到以巨區
+塊為基礎之 FGS 係數編碼方式。此方法最主要的想法是利用內部記憶體來暫時存放 FGS 係
+數，接下才將這些資料給予編碼至位元串流。然而在此文獻中並無考慮 FGS係數分佈狀況，
+因此造成此方法之方法內部記憶體使用率不彰以及大量的外部記憶體存取量。因此本計劃提
+出一改良式內部記憶體架構，用以改善文獻中所遇到之缺點。在本計劃中，我們首先分析 FGS
+係數分佈情況，經由此分析結果我們發現到大部份的 FGS 係數皆會集中在前面幾個 scan 
+buckets。因此本計劃所提出來之改良式內部記憶體架構，會分配較大之記憶體空間給予前面
+16個 scan buckets，而其它 scan buckets則給予較少之記憶體空間用以儲存 FGS係數。圖八(a)
+及(b)分別為文獻[16]及本計劃所提之不同內部記憶體架構示意圖。從圖八範例可發現，文獻
+[16]需要將 12個 FGS係數儲存至外部記憶體，而本計劃所提之方法只需儲存 7個 FGS係數
+至外部記憶體。實驗結果顯示，跟文獻[16]比較起來，本計劃所提之方法在內部記憶體大小
+為 25KB以及 68KB時，每張畫面可以節省 38KB and 77KB外部記憶體存取量，以及達到至
+少 36.31%之內部記憶體使用率改善。 
+ 圖九、本計劃所提之頻寬限制感知之可變搜尋範圍決策方法流程圖 
+ 
+ 
+4. 低頻寬需求之層間殘值預測方法 [P4] 
+由前述章節分析中得知，Inter Layer以及 Inter模式預測所需要之外部記憶體存取量佔據了整
+體系統外部記憶體存取量之 50.54%。由於視訊編碼系統之效能會被外部記憶體存取之速度給
+左右，減少外部記憶體存取量不只可以加快系統編碼速度，亦可以減少因為記憶體存取所造
+成之電源消耗。因此在本計劃中提出低頻寬需求之模式預測方法。圖十(a)及(b)所示為 Inter
+以及 Inter-layer residual prediction的預測示意圖。經由觀察我們可以發現到，在此兩種預測方
+法中其參考資料(Reference MB pixels)皆相同。因此我們只需要去從外部記憶體下載參考資料
+進來內部記憶體一次，接下來此參考資料即可被此兩種預測模式給共用。本計劃所提出來之
+架構如圖十一所示。經由在計算 Inter Prediction 的過程當中，我們只需要額外減掉參考層的
+殘值(Reference layer residuals)，即可同時得到 Inter以及 Inter-layer residual prediction的絕對值
+誤差和。透過本計劃所提之參考資料共用方法，可以達到 50%的外部記憶體存取量節省。為
+了更進一步達到頻寬的節省，本計劃額外採用快速演算法來減少頻寬需求。實驗結果顯示本
+計劃所提之低頻寬需求之模式預測方法，可以平均減少 76.7%的頻寬節省並維持在 0.001dB
+的 PSNR下降以及 1.16%位元率增加。 
+ 
+(a) Inter prediction process 
+ 
+(b) Inter-layer residual process 
+圖十、Inter以及 Inter Layer Residual Prediction 
+MB Start
+MB End
+Skip Detect
+BRD Model
+SR Boundary Pred
+ME
+Skip ?
+Feasible SR SR = 0
+Yes
+No
+Pre-MB SR
+Reuse reference data of 
+INTER prediction for ILM 
+with SR [-8, +7]
+Obtain the 
+RD_Cost for ILM
+Obtain the best mode
+Derive the 
+MVPINTER
+Derive the  MVPILM
+INTER 
+prediction
+Y
+end
+N
+Load the
+reference data
+Skip 
+ILM mode
+start
+mvp_diff < threshold
+Obtain the 
+RD_Cost for 
+INTER
+ 
+圖十二、本計劃提出之適用低頻寬需求層間移動向量預測模式演算法 
+ 
+ 
+Reuse reference data 
+of INTER prediction 
+For Inter-BL
+Obtain the 
+RD_Cost for 
+partition n
+Obtain the best mode
+Obtain the 
+RD_Cost for 
+INTER
+Derive the MVPINTER
+INTER
+prediction
+Y
+end
+N
+Load the
+reference data
+Derive Mbpartition, n=0
+Y
+Loaded reference 
+data from external 
+memory
+n = n+1
+Accumulate the 
+RD_Cost
+N
+Derive MVInterBL for 
+partition n; MVInterBL_n 
+start
+ n < MBpartition
+mv_diff < threshold
+ 
+圖十三、本計劃提出之適用低頻寬需求 Inter-BL預測模式演算法 
+ 
+ 圖十五、本計劃提出之延遲均衡的雙符號內容適應性變動長度解碼器 
+ 
+圖十六、本計劃提出之二元算術編碼架構 
+ 
+level_prefix_1
+levelSuffixSize
+Generator
+level_suffix_1
+levelCode_1 = 
+level_prefix_1 << suffixLength
+levelCode_1 += level_suffix_1
+suffixLength == 0 && 
+level_prefix_1 == 15
+i == TrailingOnes 
+&& TrailingOnes < 3
+levelCode_1 += 15
+levelCode_1 += 2
+Yes
+No
+Yes
+No
+bitstream
+suffixLength_1
+suffixLength 
+Detector
+level_1
+level calculator
+level_prefix_2
+levelCode_2 = 
+level_prefix_2 << suffixLength_1
+level_suffix_2
+levelCode_2 += level_suffix_2
+Bitstream 
+Shifter
+level calculator
+level_2
+suffixLength 
+Detector
+suffixLength_2
+suffixLength_init
+suffixLengthFirst Part
+Second Part
+Context Model
+Memory
+(SRAM)
+Context Model
+Memory
+(Register)
+Two-symbol 
+Binary 
+Arithmetic 
+Decoding
+Binarization 
+Matching
+Context Selection
+(Next SE)
+Context Selection
+(Current SE)
+Addr_SRAM
+Addr1_REG
+Addr2_REG
+CM_sel
+CM_S
+CM_R1
+CM_R2
+CM_bin1
+CM_bin2
+binIdxPlus2_flag
+Match
+CM_update1
+CM_update2
+MCS Stage TSBAD Stage
+SE_type_curr
+SE_type_next
+1
+2
+0
++1
++2
+nextBinIdx
+nextBinIdx_plus1
+nextBinIdx_plus2
+binVal_1 binVal_2
+Updated
+range, offset
+8、位元失真率最佳化之有效率低頻寬移動估計演算法設計及硬體實作[P8] 
+由於對高解析度視訊品質需求增加，資料頻寬問題為現今視訊編碼器設計時最大的挑戰。低
+頻寬及頻寬感知的移動估計設計可帶來更平順及更佳的視訊品質，並可進一步達到資料存取
+時功率消耗的減少。此研究提出一頻寬有效率的移動估計演算法及其硬體實作。首先，本研
+究提出一需求導向之資料存取機制，此機制會依據移動估計演算法之需求，至外部記憶體取
+得所需之參考資料。有別於傳統移動估計演算法需至外部記憶體取得大量之參考資料，本研
+究所提出來之需求導向資料存取機制，對於 4CIF 解析度之影像而言，最多可以節省 79.15%
+的資料頻寬，且僅有 0.03dB 的 PSNR 下降以及 2.50% 位元率的增加。此外，本研究亦出一
+頻寬感知之移動估計演算法。在此研究中，我們首先探討位元失真以及頻寬之間的關係。接
+下來，根據位元失真以及頻寬之間的關係，提出一數學模型用以描述此三者之間的關係。最
+後，根據這些數學模型，架構出本計劃所提出之頻寬感知之移動估計演算法如圖十九所示。
+實驗結果顯示，在頻寬有限的情況之下，本計劃提出之演算法對低、中、高移動量的測試影
+像而言，可以分別達到 2.43%, 0.08%及 0.20% BD-Bitrate的節省以及 0.17dB, 0.01dB和 0.01dB 
+BD-PSNR的增加。最後，本計劃亦將提出之演算法及數學模型，經由一些簡化及最佳後，設
+計出其對應之硬體架構如圖二十所示。利用 90nm CMOS 技術合成結果顯示，本設計僅需
+75.27K gate counts並工作在 23MHz的頻率之下，可以達到每秒處理 30張 4CIF的影像。 
+Start of MB
+Perform ME for 
+Step0, 1 and 2
+Bandwidth allocation for 
+current MB, NMB_i, Loop=0
+Perform ME for 
+step Loop
+Update available 
+bandwidth DBAvailable
+Loop++
+Loop==NMB_i
+Min RDCost located at center?
+YES
+YES
+NO
+NO
+Start of GOP
+Start of frame
+Bandwidth 
+initialization
+End of GOP
+End of MB
+End of frame
+Min RDCost 
+located at center?
+NO
+YES
+Proposed 
+bandwidth aware 
+ME algorithm 
+ 
+圖十九、本計劃所提之頻寬感知之移動估計演算法 
+ 
+SAD calculation 
+module
+Bandwidth 
+modeling 
+module
+RDCost 
+buffer
+Current 
+buffer
+Reference 
+buffer
+Bandwidth aware ME controller
+MV cost generator
+Bandwidth Aware Motion Estimation
+Memory controller
+External Memory
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+32
++
+ 
+圖二十、本計劃所提之移動估計演算法架構 
+6. 計畫成果自評 
+本年度研究內容與符合原計畫、達成預期目標、研究成果之具有學術或應用價值、適合
+在學術期刊發表或申請專利。本計劃目前成果如下。 
+ 
+已發表之論文 
+[P1] Tzu-Yu Chen, Gwo-Long Li, Tian-Sheuan Chang, ―Memory Analysis for H.264/AVC Scalable 
+Extension Encoder,‖ IEEE International Symposium on Circuits and Systems, Taipei, Taiwan, 
+May 2009. 
+[P2] Meng-Wei Shen, Gwo-Long Li, Tian-Sheuan Chang, ―A Memory Efficient Fine Grain 
+Scalability Coefficient Encoding Method for H.264/AVC Scalable Video Extension,‖ IEEE 
+International Symposium on Circuits and Systems, Taipei, Taiwan, May 2009. 
+[P3] Wei-Cheng Tai, Gwo-Long Li, Tian-Sheuan Chang, ―Bandwidth-Rate-Distortion Optimized 
+Motion Estimation,‖ IEEE International Conference on Multimedia and Expo, Cancun, Mexico, 
+June 2009. 
+[P4] Hsiao-Shan Huang, Gwo-Long Li, and Tian-Sheuan Chang, ―Low Memory Bandwidth 
+Prediction Method for H.264/AVC Scalable Video Extension,‖ Asia-Pacific Signal and 
+Information Processing Association Annual Summit and Conference, Sapporo, Japan, October 
+2009, pp.294-298. 
+[P5] Po-Yuan Hsu, Gwo-Long Li, and Tian-Sheuan Chang, ―Memory Analysis for H.264/AVC 
+Scalable Extension Decoder,‖ Asia-Pacific Signal and Information Processing Association 
+Annual Summit and Conference, Sapporo, Japan, October 2009, pp.299-302. 
+[P6] Yuan-Hsin Liao, Gwo-Long Li, Tian-Sheuan Chang, ―A High Throughput VLSI Design with 
+Hybrid Memory Architecture for H.264/AVC CABAC Decoder,‖ IEEE International 
+Symposium on Circuits and Systems, Paris, France, May 2010, pp.2007-2010. 
+[P7] Yu-Chen Chen, Gwo-Long Li, Tian-Sheuan Chang, ―Efficient Inter-layer Prediction Hardware 
+Design with Extended Spatial Scalability for H.264/AVC Scalable Extension,‖ IEEE 
+International Symposium on Circuits and Systems, Paris, France, May 2010, pp.665-668. 
+[P8] Gwo-Long Li and Tian-Sheuan Chang, ―RD Optimized Bandwidth Efficient Motion 
+Estimation and Its Hardware Design with On-Demand Data Access,‖ IEEE Transactions on 
+Circuits and Systems for Video Technology. (Accept) 
+ 
+審稿中及預計投稿之論文 
+[UP1] Gwo-Long Li, Hsiao-Shan Huang, and Tian-Sheuan Chang, ―On the Data Efficient 
+Prediction Algorithm and Hardware Design for H.264/AVC Scalable Extension,‖ IEEE 
+Transactions on Circuits and Systems for Video Technology. (Under writing) 
+[UP2] Yuan-Hsin Liao, Gwo-Long Li, Tian-Sheuan Chang, ―A Highly Efficient VLSI Architecture 
+for H.264/AVC Level 5.1 CABAC Decoder,‖ IEEE Transactions on Circuits and Systems for 
+Video Technology. (Under review) 
+[UP3] Gwo-Long Li, Yu-Chen Chen, Yuan-Hsin Liao, Po-Yuan Hsu, Meng-Hsun Wen, and 
+7. 附錄 
+已發表之論文 
+[P1] Tzu-Yu Chen, Gwo-Long Li, Tian-Sheuan Chang, ―Memory Analysis for H.264/AVC Scalable 
+Extension Encoder,‖ IEEE International Symposium on Circuits and Systems, Taipei, Taiwan, 
+May 2009. 
+[P2] Meng-Wei Shen, Gwo-Long Li, Tian-Sheuan Chang, ―A Memory Efficient Fine Grain 
+Scalability Coefficient Encoding Method for H.264/AVC Scalable Video Extension,‖ IEEE 
+International Symposium on Circuits and Systems, Taipei, Taiwan, May 2009. 
+[P3] Wei-Cheng Tai, Gwo-Long Li, Tian-Sheuan Chang, ―Bandwidth-Rate-Distortion Optimized 
+Motion Estimation,‖ IEEE International Conference on Multimedia and Expo, Cancun, Mexico, 
+June 2009. 
+[P4] Hsiao-Shan Huang, Gwo-Long Li, and Tian-Sheuan Chang, ―Low Memory Bandwidth 
+Prediction Method for H.264/AVC Scalable Video Extension,‖ Asia-Pacific Signal and 
+Information Processing Association Annual Summit and Conference, Sapporo, Japan, October 
+2009, pp.294-298. 
+[P5] Po-Yuan Hsu, Gwo-Long Li, and Tian-Sheuan Chang, ―Memory Analysis for H.264/AVC 
+Scalable Extension Decoder,‖ Asia-Pacific Signal and Information Processing Association 
+Annual Summit and Conference, Sapporo, Japan, October 2009, pp.299-302. 
+[P6] Yuan-Hsin Liao, Gwo-Long Li, Tian-Sheuan Chang, ―A High Throughput VLSI Design with 
+Hybrid Memory Architecture for H.264/AVC CABAC Decoder,‖ IEEE International 
+Symposium on Circuits and Systems, Paris, France, May 2010, pp.2007-2010. 
+[P7] Yu-Chen Chen, Gwo-Long Li, Tian-Sheuan Chang, ―Efficient Inter-layer Prediction Hardware 
+Design with Extended Spatial Scalability for H.264/AVC Scalable Extension,‖ IEEE 
+International Symposium on Circuits and Systems, Paris, France, May 2010, pp.665-668. 
+[P8] Gwo-Long Li and Tian-Sheuan Chang, ―RD Optimized Bandwidth Efficient Motion 
+Estimation and Its Hardware Design with On-Demand Data Access,‖ IEEE Transactions on 
+Circuits and Systems for Video Technology. (Accept) 
+ 
+is reached. For example, at round 0, we scan (0 0 0 1) for 
+block 0, C for block 1, 1 for block 2, and (0 0 0 0 0 1) for 
+block 3. At round 1, A for block 0, (0 1) for block 1, 1 for 
+block 2, and no coefficient for block 3 are scanned. At round 2, 
+only scan 1 for block 2 is needed. Repeat the scan principle 
+until there is no coefficient needs to be coded. Finally, the 
+coding order is (0 0 0 1), C, 1, (0 0 0 0 0 1), A, (0 1), 1, 1, B, 
+(0 1), 1, …, I, O. 
+ 
+ 
+Fig. 2. Example of FGS coefficients coding order 
+To accomplish the FGS coefficients coding described 
+above, traditional manner has to load coefficients of entire 
+frame into internal memory. Take 4CIF (704*576) as example, 
+internal memory needs to allocate about 400K to store whole 
+frame. If frame size is bigger than 4CIF, such as HD 720p 
+(1280*720) and 1080p (1920*1080), it takes more internal 
+memory requirements. This internal memory requirement is 
+unlikely for hardware implementation. 
+Generally, the hardware design of video coding is based on 
+macroblock level. In order to make the FGS hardware design 
+practicable, Chen et al. [2] proposed a scan bucket algorithm 
+which moves FGS scan from frame level to macroblock level. 
+Traditional FGS coding order requires many scans through all 
+blocks in the whole frame. However, the proposed method by 
+[2] only loads a macroblock one time and arranges the 
+coefficients to be coded in advance. That is, when one block is 
+chosen, the coefficients in this block are classified and then 
+put them into corresponding bucket. Fig. 3 shows an example 
+of this method. If block 0 is scanned, storing (0 0 0 1) into 
+bucket 0, A into bucket 1, B into bucket 3, 1 into bucket 6, and 
+# (end of block) into bucket 7. Afterward, other blocks are 
+processed in turns. When the data in the bucket is full, the 
+coefficients are stored into external memory. By using this 
+method, FGS scan can change to macroblock level rather than 
+frame level. It only needs to load 256 byte (1 macroblock size) 
+to internal memory instead of loading entire frame (400K for 
+4CIF) at one time. 
+ 
+Fig. 3. Example of coefficient distribution after scan bucket method 
+III. MOTIVATION 
+The scan bucket algorithm provides a new way to move 
+FGS scan from frame level to macroblock level. Only with 
+some extra internal memory (bucket memory), the size of 
+internal memory is saved from frame data to macroblock data. 
+However, the probability of FGS coefficients in 
+enhancement layer equal to zero may be high. This may cause 
+internal memory waste. Fig. 4 shows an example to 
+demonstrate this situation. After the scan bucket algorithm, the 
+bucket distribution is like Fig. 5. It can be observed that the 
+bucket with small index contains most of coefficients, but 
+other buckets only have few coefficients inside. If the bucket 
+size is set to a small value, like 1, total internal bucket 
+memory will be 6 bytes. Although this setting saves internal 
+memory, it increases the external memory access by 9 since 
+there are 9 coefficients should be stored into external memory. 
+If the bucket size is set to a large number, like 6, only the 
+bucket 0 has to send 3 coefficients to the external memory. 
+However, this setting wastes too much internal memory since 
+there are 27 internal memory spaces are unused. This is a 
+trade-off between bucket size (internal memory) and external 
+memory access. 
+ 
+Fig. 4. Coefficients after zigzag 
+scan 
+Fig. 5. The coefficient distribution 
+after bucket scan 
+IV. PROPOSED METHOD 
+In this section, we analyze the distributive characteristic of 
+the coefficients for FGS. According to the statistical results, 
+we propose our method in the second part. 
+A. Statistic 
+In enhancement FGS layer, coefficients are coded by 4x4 
+or 8x8 transform block size. Five different sequences with 
+three spatial layers: QCIF, CIF, and 4CIF are analyzed. We set 
+3035
+Authorized licensed use limited to: National Chiao Tung University. Downloaded on May 09,2010 at 17:12:18 UTC from IEEE Xplore.  Restrictions apply. 
+coefficient for bucket 8 need to be stored into external 
+memory. As a result, the proposed method only needs to store 
+7 coefficients into external memory.  
+ 
+Fig. 9. Illustration for two types of scan bucket 
+V. SIMULATION RESULTS 
+In this section, we perform some simulations to verify the 
+efficiency of our proposal. Three spatial layers with size of 
+QCIF, CIF, and 4CIF are tested. Fig. 10 shows the simulation 
+results of five sequences (Foreman, Stefan, Football, Mobile, 
+and Weather) with FGS base layer QP=28 and FGS 
+enhancement layer QP=16. In these figures, x-axis is the 
+internal memory size and y-axis indicates the amount of 
+external memory accesses for one frame. In the case of small 
+internal memory size such as 25K(α=1500, β=30), our 
+proposed non-uniform memory method can save 38KB 
+external memory accesses per frame in average compared to 
+previous work. In addition, for the large internal memory size, 
+such as 68K (α=4000, β=80), 77K of external memory 
+accesses per frame in average can be saved. With the increase 
+of internal memory size, the proposed method can save 
+extremely amount of external memory accesses whatever the 
+content of video sequence. 
+300
+350
+400
+450
+500
+550
+20 40 60 80 100
+KB
+KB
+Internal Memory
+A
+m
+o
+un
+t 
+of
+ E
+x
+te
+rn
+al
+ M
+em
+o
+ry
+ A
+cc
+es
+s Proposed method
+Chen [2]
+ 
+(a) Foreman 
+ 
+300
+350
+400
+450
+500
+550
+20 40 60 80 100
+KB
+KB
+Internal Memory
+A
+m
+o
+un
+t o
+f 
+E
+x
+te
+rn
+al
+ M
+em
+or
+y 
+A
+cc
+es
+s Proposed method
+Chen [2]
+ 
+(b) Stefan 
+300
+350
+400
+450
+500
+550
+20 40 60 80 100
+KB
+KB
+Internal Memory
+A
+m
+o
+un
+t o
+f 
+E
+x
+te
+rn
+al
+ M
+em
+or
+y 
+A
+cc
+es
+s Proposed method
+Chen [2]
+ 
+(c) Football  
+ 
+300
+350
+400
+450
+500
+550
+20 40 60 80 100
+KB
+KB
+Internal Memory
+A
+m
+o
+un
+t o
+f 
+E
+x
+te
+rn
+al
+ M
+em
+or
+y 
+A
+cc
+es
+s Proposed method
+Chen [2]
+ 
+(d) Mobile 
+ 
+300
+350
+400
+450
+500
+550
+20 40 60 80 100
+KB
+KB
+Internal Memroy
+A
+m
+ou
+n
+t o
+f 
+E
+x
+te
+rn
+al
+ M
+em
+or
+y 
+A
+cc
+es
+s Proposed method
+Chen [2]
+ 
+(e) Weather 
+ 
+Fig. 10. Simulation results of five sequences 
+VI. CONCLUSION 
+In this paper, the memory problem for implementing FGS 
+hardware is addressed and a non-uniform memory method is 
+proposed to achieve the best trade-off between the internal 
+memory and external memory access. Simulation results show 
+that our proposed method can respectively save 38KB and 
+77KB external memory accesses per frame in average for 
+25KB and 68KB internal memory size when compared to 
+previous work. In addition, with the increase of internal 
+memory size, the significant external memory access can be 
+saved by our proposal. 
+REFERENCES 
+[1] H. Schwarz, D. Marpe, and T. Wiegand, “Overview of the scalable 
+video coding extension of the H.264/AVC standard,” IEEE Transaction 
+on Circuits and Systems for Video Technology, vol. 17, no. 9, pp. 1103-
+1120, Sep. 2007. 
+[2] Y.-J. Chen, Y.-H. Chen, T.-D. Chuang, C.-T. Li, S.-Y. Chien, and L.-G. 
+Chen, “Architecture design of fine grain SNR scalable encoder with 
+CABAC for H.264/AVC scalable extension,” in proceeding of IEEE 
+Workshop on Signal Processing Systems, pp. 515-520, Oct. 2007. 
+[3] A. Isabelle, C. Nathalie, K. Sylvain, and P. Stéphane, “Complexity 
+reduction of FGS passes,” Joint Video Team, Doc. JVT-R069, Jan. 
+2005. 
+[4] J. Ridge, X. Wang, A. Hallapuro, and M. Karczewicz, “Simplification 
+and unification of FGS,” Joint Video Team, Doc. JVT-S077, Apr. 2006. 
+3037
+Authorized licensed use limited to: National Chiao Tung University. Downloaded on May 09,2010 at 17:12:18 UTC from IEEE Xplore.  Restrictions apply. 
+important benefit is that the search window data can be shared 
+by two frames. For instance, under the temporal scalability of 
+3, Fig. 2 shows three encoding schemes that meet the 
+requirement. Fig. 2(a) is the hierarchical B scheme with 
+group-of-picture (GOP) size of 4; Fig. 2(b) and 2(c) are called 
+the frame parallel encoding scheme. For example, in Fig. 2(b), 
+two B1 frames can share their search window data in I/P 
+frame and B0 frame. Fig. 2 infers that with a larger GOP size, 
+more data can be shared by the encoding frames. 
+III. MEMORY ANALYSIS AND IMPROVEMENTS 
+In this section, we discuss the memory issues on the SVC 
+standard. In the first subsection, analysis of internal and 
+external memory will be derived according to different coding 
+flows. And based on the analysis result, some improvements 
+applied from previous work and proposed by our observation 
+will be presented in later paragraph. 
+A. Analysis 
+We introduce three coding flows in spatial domain and list 
+their internal memory storage and external memory access in 
+the following. Here the GOP size is set to 8 for the maximum 
+memory reuse, and for convenience, we define a “set of 
+frame” (SOF) as the 3 spatial layers in the same temporal 
+order of the input sequence. 
+1) Frame-Level 
+Fig. 3(a) illustrates the pseudo code of this coding method. 
+In frame-level coding, enhancement layer would be encoded 
+after the entire reference layer is encoded. 
+To figure out the usage of internal memory under this 
+coding flow, we formulate all the requirement terms that are 
+shown on Table I. The corresponding deduction of external 
+memory access per SOF is listed in Table II. 
+In this case we assume the pre-deblocking (PDB) data are 
+stored in internal memory, and that causes the PDB data 
+dominate the internal memory usage. For high frame 
+resolution, the storage for PDB data would be a serious burden 
+of internal memory. Base on this concern, we attempt to move 
+PDB data into the external memory. This idea changes the 
+formula of internal memory storage for PDB data into a 
+constant, the additional cost of external memory access is 
+shown on Table III. 
+ 
+ 
+2) Row-Level 
+Here we inquire into the coding flow exposed on Fig. 3(b). 
+The enhancement layer would be encoded after the 
+corresponding rows of macro-blocks in reference layer are 
+encoded, and that results in the internal memory needs to 
+reserve the space for base layer information. Assume the PDB 
+data are stored in internal memory, the storage of them can be 
+formulated in Table IV; and the corresponding external 
+memory access is as the same as Table II. If the PDB data are 
+stored in external memory, the additional cost of this change is 
+as the same as Table III. 
+In this comparison we store a row of data in internal 
+memory for simplicity. They can also be placed in external 
+memory by the aids of DMA. If so, the storage difference 
+between frame-level method and row-level method would be 
+negligible. Such being the case, however the page-break effect 
+on data access in the latter would decrease the bandwidth 
+efficiency in external memory. 
+TABLE I.  INTERNAL MEMORY USAGE UNDER THE FRAME-LEVEL 
+CODING FLOW 
+Name Bytes 
+Search window max(3*SWwb*SWhb, SWwp*SWhp)
+Motion vector 144*(Wmb, max + 2)
+PDB coefficient  
+(row and  column data) 256*m*(Wmb, max + 1)
+mb_type and sub_mb_type 5.5*(Wmb, max + 2)
+Other neighboring info* 5.5*Wmb, max + 9
+SWwb: the width of search window for B frame; SWhb: the height of search window for B frame; 
+SWwp: the width of search window for P frame; SWhp: the height of search window for P frame; 
+Wmb, max: the width of the largest frame in the unit of macro-block; m: numbers of quality layer 
+*: includes coded block pattern, non-zero transform coefficient flags for deblocking process,  
+and neighboring intra prediction modes 
+I/P B1 B0 PB1 B1 B1
+I/P B0B1 PB1
+I/P B0B1 PB1 B0B1 PB1
+(a)
+(b)
+(c)
+Figure 2.   Four encoding schemes with different GOP size; (a): GOP 
+size = 4; (b): GOP size = 6; (c): GOP size = 8 
+(b)
+(c)
+(a)
+Figure 3.   Pseudo code for three coding flows: (a) frame-level, (b) row-
+level, and (c) macro-block (MB)-level 
+362
+Authorized licensed use limited to: National Chiao Tung University. Downloaded on May 09,2010 at 17:12:59 UTC from IEEE Xplore.  Restrictions apply. 
+The result shows that the values of most FGS coefficient 
+are still distributed in a small range even though the difference 
+of QP between two FGS layers is large. What’s more, for the 
+sequence with larger frame size, the correlation among 
+neighboring pixels should be much higher. It infers that FGS 
+coefficients would be more concentrated in a narrow range. 
+Therefore we can simply reduce the external access by shorten 
+the bit length of FGS coefficients. For the rare coefficients 
+with large value, we treat them by the original method. 
+IV. ANALYSIS ASSUMPTION AND RESULTS 
+In the following we discuss the encoding under the case of 
+3 temporal layers (GOP size = 8), 3 spatial layers, and 3 
+quality layers, with YUV 4:2:0 format input in frame rate 30 
+fps. In spatial domain, we choose 3 spatial layers with the 
+frame size of CIF (352 x 288 pixels), SD 480p (720 x 480 
+pixels), and HD 1080p (1920 x 1080 pixels). 
+After we applied our specification into the previous 
+analysis, which is shown on Table VII, the performance of 
+frame-level coding, listed in row (1), would be the best one 
+under the given condition. With GOP size equals 8, the coding 
+flow is presented in Fig. 4, where the number of the frame 
+block presents its coding order. 
+Table VII shows the comparison of different coding flow 
+and the later improvements. In the case (A) with PDB data 
+stored in the internal memory, the proposed improvements can 
+save over 30 % of internal memory storage and 53.6 % of 
+external memory access. In the case (B) with PDB data stored 
+in the external memory, the proposed improvements reduce 
+over 56 % of external memory access, along with 8.3 % 
+increase of internal memory storage. With such improvements, 
+the proposed method just occupies 38.28 % and 40.78 % of 
+bandwidth for a 64-bit bus with a 266 MHz SDRAM for case 
+(A) and (B), respectively, as shown in Fig. 5. Thus, this design 
+can be easily implemented in current chip design. 
+V. CONCLUSION 
+In this paper, we have studied the memory performance of 
+SVC. In spatial domain, the frame-level encoding enjoys the 
+minimal internal memory storage and the lowest external 
+memory bandwidth. With other improvements in temporal and 
+quality domain, the overall requirement of external memory 
+bandwidth could be further decreased over 53%. Based on the 
+results in this paper, the detail scheduling and pipeline 
+architecture would be the future work. 
+ 
+TABLE VII.  MEMORY PERFORMANCE OF EACH CODING FLOW UNDER 
+THE GIVEN SPECIFICATION 
+(A) PDB Data Stored in 
+Internal Memory 
+(B) PDB Data Stored in 
+External Memory 
+Memory Usage Internal 
+Storage 
+(KB) 
+External 
+Access per 
+SOF (MB) 
+Internal 
+Storage 
+(KB) 
+External 
+Access per 
+SOF (MB)
+Frame-level (1) 133.49 55.78 44.24 62.90
+Row-level (2) 200.55 55.78 55.05 62.90
+MB-level (3) 203.55 60.64 59.55 67.76
+Improved frame-
+level (4) 92.52 25.90 47.89 27.59
+Change 
+(1) vs. (4) -30.7 % -53.6% +8.3 % -56.1 %
+Improved frame-level: frame-level with improvements in section III. (B). 
+ 
+REFERENCES 
+[1] H. Schwarz, D. Marpe, and T. Wiegand, “Overview of the scalable 
+video coding extension of the H.264/AVC standard,” IEEE Transaction 
+on Circuits and Systems for Video Technology, vol. 17, no. 9, pp. 1103-
+1120, Sep. 2007. 
+[2] C.-T. Huang, C.-Y. Chen, Y.-H. Chen, and L.-G. Chen, “Memory 
+analysis of VLSI architecture for 5/3 and 1/3 motion-compensated 
+temporal filtering,” in proceeding of IEEE International Conference on 
+Acoustics, Speech, and Signal Processing, vol. 5, pp. v/93-v/96, Mar. 
+2005. 
+[3] Y.-H. Chen, T.-D. Chuang, Y.-J. Chen, and L.-G. Chen, “Bandwidth-
+efficient encoder framework for H.264/AVC scalable extension,” in 
+proceeding of IEEE Internaitonal Symposium on Multimedia 
+Workshops, pp. 401-406, Dec. 2007. 
+[4] H. Schwarz, D. Marpe, and T. Wiegand, “Hierarchical B Pictures,” 
+Joint Video Team, Doc. JVT-P014, Jul. 2005. 
+[5] H. Schwarz, D. Marpe, and T. Wiegand, “Analysis of hierarchical B-
+pictures and MCTF,” in proceeding of IEEE International Conference 
+on Mutimedia and Expo, pp. 1929-1932, Jul. 2006. 
+[6] Y.-H. Chen, T.-D. Chuang, Y.-H. Chen, C.-H. Tsai, and L.-G. Chen, 
+“Frame-parallel design strategy for high definition B-frame 
+H.264/AVC encoder, ” in proceeding of IEEE International Synposium 
+on Circuits and Systems, pp. 29-32, May. 2008. 
+[7] H. Schwarz, T. Hinz, H. Kirchhoffer, D. Marpe, and T. Wiegand, 
+“Technical Description of the HHI Proposal for SVC CE1,” ISO/IEC 
+JTC 1/SC 29/WG 11, Doc. M11244, Oct. 2004. 
+               Usable: 64 bits @ 266 MHz => 67.65 MB per SOF
+               Total use: 28,248.9 KB = 27.59 MB per SOF
+Inter Layer & 
+Inter Prediction
+Intra Prediction & 
+Reconstruction
+Entropy 
+Coding 
+Deblocking FGS
+1,107.6 KB
+3,499.2 KB
+3,692.3 KB
+ To Internal Memory
+13,857.0 KB 1,536.3 KB
+Utility: 40.78%
+3,692.3 KB
+ To Internal Memory
+To External 
+SDRAM
+864.2 KB
+Internal Memory
+Size: 47.89 KB
+Figure 5.   The overall internal memory storage and external memory 
+access of the proposed architecture for case (B) in Table VII. 
+Figure 4.   Proposed coding flow of encoder 
+364
+Authorized licensed use limited to: National Chiao Tung University. Downloaded on May 09,2010 at 17:12:59 UTC from IEEE Xplore.  Restrictions apply. 
+Node storage Message update PE
+Ag1(d)
+Ag2(d)
+Ag3(d)
++
++
++
++
++
++
++
++
+m
+in
++
+reg
+Mf(d)
+m
+in
+reg
+Ag0(d)
+Cv
++
+Kv
+mini0
+Mf m
+in
++
+reg
+Cv
+m
+in
+temp
++
+reg
+Mb(d)
+Mb
+norm0
+- M0t(d)
+Mf(D-1-d)
+Aggregation processing Forward processing Backward processing Normalizationprocessing
+reg
+reg
+reg
+reg
+cost(d)
+M0t-1(d)
+M1t-1(d)
+M2t-1(d)
+M3t-1(d)
+Cost and
+Previous
+messages
+cost
+M0t-1
+M1t-1
+M2t-1
+M3t-1
+ 
+Figure 2.  Park¶s architecture for message update PE [5]. 
+mf(-1) = -
+mini = 
+Loop1:
+For d=0 to D-1 {
+Ag0(d) = cost(d) + M1t-1(d) + M2t-1(d) + M3t-1(d)
+mini0 = min{Ag0(d), mini0} + Kv
+mf(d) = min{Ag0(d), mf(d-1)+Cv}
+}
+mb(-1)= -
+norm0 = 0
+Loop2:
+For d=D-1 to d {
+temp = min{mf(d), temp+Cv}
+mb(d) = min{temp, mini0}
+norm = norm + mb(d)
+}
+norm0 = norm0 / D
+Loop3:
+For d=0 to D-1 {
+M0t(d) = mb(d)-norm0
+}
+Aggregation and Forward processing
+Backward processing
+Normalization processing
+ 
+Figure 1.  The pseudo code demonstrates detail of the message update 
+processing [2]. 
+3D latency. The direct design for this code requires 2D unit 
+data due to the three loops. Thus, the total size of PE storage is 
+8PD where P is the number of PE and P is usually smaller 
+than N. 
+B. Previous architecture 
+ Park et al. [5] directly design the architecture of message 
+update PE illustrated in Figure 2. The whole operation follows 
+the computing flow in Figure 1. In Figure 2, the node storage 
+is placed outside of message update PE for clarity. The 
+message update PE uses the cost and the messages of iteration 
+t-1 in node storage to compute the new message of iteration t. 
+In the message update PE, the four processing, which are 
+aggregation, forward, backward, and normalization processing, 
+are divided by three pipeline stages. Each stage takes D cycles. 
+The pipeline stage storage Mf and Mb are stack types, and the 
+stack direction should be flipped every D cycles. To support 
+the pipelining stack access scheme, both storage should 
+implemented by registers, since one unit data of each storage 
+is written and read by previous and next stage simultaneously, 
+respectively. It is not economical to apply register to storage 
+implementation, especially with large P. 
+8VLQJ 3DUN¶V GHVLJQ DQG the bipartite approach [2], the 
+storage cost amounts to 5DN+8DP=9DN, where P=N/2. As a 
+result of the large storage cost, both the node storage and the 
+PE storage should be placed inside core instead of outside core, 
+because limited external bandwidth is insufficient for the 
+extremely high data rate. 
+C. Proposed Architectures 
+To reduce the large storage cost, we propose four 
+architectures of message update PE depicted in Figure 3.  
+1) Post-normalization Architecture 
+Figure 3(a) shows the post-normalization architecture.  
+Considering Figure 1, we remove the normalization 
+processing from the Loop3 and then merge it with the 
+aggregation processing of Loop1. In other words, the 
+normalization processing for the current iteration t is taken 
+place in the beginning of the next iteration t+1. With the post-
+normalization scheme, the stage storage Mb can be eliminated, 
+and PE storage can be saved 50%. However, this architecture 
+has some overheads. First, the message width of node storage 
+needs to be extended by 4 bits. Second, the register norm 
+inside PE is moved to outside of PE, and thus the number of it 
+becomes from 4P to 4N. Third, because of the movement of 
+the normalization processing, the critical path of the 
+aggregation processing is increased. 
+2) Shadow Buffer Architecture 
+Figure 3(b) shows the shadow buffering architecture 
+whose stage storage Mf could be implemented using 2-port 
+memory instead of a group of registers. By inserting shadow 
+buffer, the writing data computed by forward processing can 
+be buffered for one cycle. Therefore, the stage storage Mf can 
+avoid that the same element is written and read coincidently. 
+This architecture only adds a few overheads of shadow buffers 
+but has more cost savings. 
+3) No Memory Architecture 
+154
+Authorized licensed use limited to: National Chiao Tung University. Downloaded on May 09,2010 at 17:09:23 UTC from IEEE Xplore.  Restrictions apply. 
+010,000,000
+20,000,000
+30,000,000
+40,000,000
+50,000,000
+60,000,000
+70,000,000
+80,000,000
+90,000,000
+100,000,000
+0 500 1,000 1,500 2,000 2,500
+E
+qu
+iv
+al
+en
+t g
+at
+e c
+ou
+nt
+N
+Storage Cost 
+Park's desgin Post-normalization Shadow buffer
+No memory No memory+double PE  
+(a) 
+ 
+0
+10,000,000
+20,000,000
+30,000,000
+40,000,000
+50,000,000
+60,000,000
+70,000,000
+80,000,000
+90,000,000
+100,000,000
+0 500 1,000 1,500 2,000 2,500
+E
+qu
+iv
+al
+en
+t g
+at
+e c
+ou
+nt
+N
+Storage Cost + Computational Circuit
+Park's desgin Post-normalization Shadow buffer
+No memory No memory+double PE  
+(b) 
+Figure 4.  Comparison of different architecture cost, if N increases on the 
+condition of P=256, D=64, B=16. (a) shows storage cost. (b) shows the 
+overall cost including storage cost and computational circuit. 
+TABLE II.  LIST ALL THE EQUIVALENT GATE COUNT OF DIFFERENT 
+OPERATORS AND MEMORIES FOR ESTIMATING COST. ALL THE DATA IS 
+DERIVED FROM UMC 90NM CMOS TECHNOLOGY. 
+Operator Equivalent 
+gate count 
+Delay(ns
+) 
+Memory Equivalent gate count 
+1 bit Adder 7.0 0.37 1-port register file 
+(64x16 bit) 
+5,711 
+1 bit Comparator 10.3 0.25 2-port register file 
+(64x16 bit) 
+6,277 
+1 bit Multiplexer 2.7 0.16 1-port register file 
+(64x20 bit) 
+7,545 
+1 bit Register 7.0 - 2-port register file 
+(64x20 bit) 
+8,346 
+no memory+double PE architectures. Our proposed 
+architectures could save the most storage cost, when N is 
+equal to P. The most reduction of storage cost can achieve 
+26% in post-normalization architecture, 28% in shadow buffer 
+architecture, 58% in no memory architecture, and 34% in no 
+memory+double PE architecture.  
+Considering the overall hardware cost, Figure 4(b) shows 
+the comparison of hardware cost including storage cost and 
+computational circuit. Their cost savings could achieve 24% 
+in post-normalization architecture, 26% in shadow buffer 
+architecture, and 55% in no memory architecture when N=256. 
+Although, the no memory architecture has the lowest cost, its 
+latency is double of others. The no memory+double PE 
+architecture can double the throughput and reduce 28% of 
+Park¶s hardware cost when N=512. As a result of the above all 
+cost estimation, we could observe that N determines the 
+overhead cost of our proposed architectures. Therefore, under 
+a constrained N, the message update PE can adopt our 
+proposed architectures and gain the saving of hardware cost. 
+ 
+IV. CONCLUSION 
+In this paper, we propose four architectures for message 
+update PE and estimate their hardware cost. The better 
+architecture of them is the no memory+double PE architecture 
+which removes all the storage from PE and eliminates its 
+redundant circuit. Beside, this architecture uses the double 
+number of PE to promote its throughput and achieve real-time 
+performance. Compared to Park¶s design, the proposed 
+architecture can reduce 28% of hardware cost at most and 
+support the real-time video-based application for 30 
+fps@320x240 and 64 disparity levels. Our future work is to 
+take the node allocation into consideration for more reduction 
+of hardware cost of BP. 
+ 
+REFERENCES 
+[1] -6XQ11=KHQJDQG+<6KXP³6WHUHR0DWFKLQJ8VLQJ%HOLHI
+3URSDJDWLRQ´IEEE Trans. Pattern Analysis and Machine Intelligence, 
+vol. 25, no. 7, pp. 787-800, July 2003. 
+[2] P. F. Felzenszwalb and D. P. Huttenlocher ³(IILFLHQW %HOLHI
+3URSDJDWLRQIRU(DUO\9LVLRQ´LQProc. IEEE Computer Society Conf. 
+on Computer Vision and Pattern Recognition (CVPR), 2004. 
+[3] $%UXQWRQ&6KXDQG*5RWK³%HOLHI3URSDJDWLRQRQWKH*38IRU
+6WHUHR9LVLRQ´ LQProc. of the 3rd Canadian Conf. on Computer and 
+Robot Vision (CRV), 2006. 
+[4] 4<DQJ/:DQJ5<DQJ6:DQJ0/LDRDQG'1LVWHU³5HDO-
+WLPH*OREDO 6WHUHR0DWFKLQJ8VLQJ+LHUDUFKLFDO%HOLHI 3URSDJDWLRQ´
+in Proc. British Matching Vision Conf.(BMCV), pp. 989-998, 2006. 
+[5] S. Park&&KHQ DQG+ -HRQJ ³9/6,$UFKLWHFWXUH IRU05)%DVHG
+6WHUHR 0DWFKLQJ´ LQ Proc. International Symposium on Systems, 
+Architecture, Modeling and Simulation (SAMOS), Greece, July, 2007. 
+ 
+156
+Authorized licensed use limited to: National Chiao Tung University. Downloaded on May 09,2010 at 17:09:23 UTC from IEEE Xplore.  Restrictions apply. 
+Default_SR denotes default search range in a group of 
+picture (GOP), and GOP_size stands for the number of 
+frames in a GOP. While coding is started at the beginning of 
+GOP, our design receives data transmission rate supplied 
+from the bus system. Based on this bandwidth budget, we 
+allocate appropriate bandwidth within a GOP for better 
+quality maintenance. For ease of decision, the GOP is set to 
+16 for bandwidth budget calculation. 
+ 
+Fig. 1 The overall B-R-D optimized motion estimation algorithm flow 
+ 
+Fig. 2 B-R-D optimized modeling method flow 
+Step 2: B-R-D performance calculation 
+To justify the bandwidth usage, we define the bandwidth 
+efficiency Gave up to k-th MB as follows.  
+ܩܽݒ݁ ൌ෍ሺܴܦܥ݅݊݅ݐ݅ െ ܴܦܥܤܯܣ݅ ሻ
+݇െͳ
+݅ൌͳ
+Ȁ෍ܤ ܹݑݏܽ݃݁݅
+݇െͳ
+݅ൌͳ
+ 
+In which, let ܴܦܥ݅݊݅ݐ݅  denotes the RD cost at the initial 
+MV (i.e. predicted MV),ܴܦܥܤܯܣ݅  refers to the RD cost after 
+motion search of block-matching algorithm (BMA) (i.e. Full 
+search algorithm is used in this paper), and ܤ ܹݑݏܽ݃݁݅  is 
+actual BW usage which has been used for previous i-th MB. 
+Gave means the average RD gains of a given bandwidth. The 
+more Gave the system received, the better the coding 
+efficiency can be achieved. In the following steps, we will 
+use Gave for bandwidth prediction. 
+ 
+Step 3: Bandwidth prediction 
+  The objective of bandwidth prediction is to predict 
+available bandwidth for next MB. First, to keep the quality 
+smoothness between the current and the previous MBs, we 
+use information from previous MBs for further prediction. 
+Thus, the following equation should hold for smoothness: 
+ܴܦܥ݅݊݅ݐ݇ െ ܩܽݒ݁ ܤ ܹܤܲ݇ ൌ
+ͳ
+݇ െ ͳ෍ܴܦܥܤܯܣ
+݅
+݇െͳ
+݅ൌͳ
+ 
+where ܤ ܹܤܲ݇  is the backward bandwidth prediction. In 
+above equation, the left-hand side stands for the target RD 
+cost of the current MB, and the right-hand side is the 
+average RD costs of the previous coded MBs. When we 
+obtain larger Gave from the former steps, it means that the 
+less bandwidth (i.e. ܤ ܹܤܲ݇ ) requirements are required for 
+maintaining the RD gain of the previous MBs. Therefore, 
+the backward prediction for the current MB k can be derived 
+as  
+ܤ ܹܤܲ݇ ൌ
+ͳ
+ܩܽݒ݁ ቎ܴܦܥ݅݊݅ݐ
+݇ െ ቌ ͳ݇ െ ͳ෍ܴܦܥܤܯܣ
+݅
+݇െͳ
+݅ൌͳ
+ቍ቏ 
+In contrast to ܤ ܹܤܲ݇ , we define the forward prediction  
+ܤ ܹܨܲ݇  to keep the quality smoothness between the current 
+and the future MB by adopting certain bandwidth 
+information. The equation is as follows: 
+ܤ ܹܨܲ݇ ൌ
+ͳ
+݊ െ ሺ݇ െ ͳሻቌܤ ܾܹݑ݀݃݁ݐ െ෍ܤ ܹݑݏܽ݃݁
+݅
+݇െͳ
+݅ൌͳ
+ቍ 
+The forward prediction ܤ ܹܨܲ݇  is set to the remaining 
+bandwidth budget divided by the remaining MBs in a GOP 
+that are not coded yet because we have no knowledge of the 
+future RD gain performance.  
+ 
+Step 4: Bandwidth boundary prediction 
+To make maximum usage of the bandwidth budget, we 
+consider the bandwidth prediction condition from step 3 to 
+determine a feasible bandwidth interval as follows:  
+if (BWFP > BWBP){  
+           BWlower = BWBP + 0.5 * (BWFP – BWBP) ;
+           BWupper = BWFP + 0.25*(BWFP – BWBP) ;
+//(condition 1) 
+}
+else{
+           BWlower = BWFP – 0.5 * (BWBP – BWFP) ;
+           BWupper = BWFP ; 
+// (condition 2)
+}
+k k
+k
+k
+k
+k
+k
+k
+k
+k
+k k
+ 
+where BWlower and BWupper denote lower and upper bounds of 
+bandwidth usage per MB, respectively. With this bound, the 
+bandwidth is allowed to be varied within an interval that is 
+bounded by BWlower and BWupper. This equation is depicted in 
+Fig. 3 for clarity. For condition 1 shown in Fig.3, ܤ ܹܤܲ݇  
+smaller than ܤ ܹܨܲ݇  implies that less bandwidth has been 
+0%6WDUW
+0%(QG
+6NLS'HWHFW
+%5'0RGHO
+65%RXQGDU\3UHG
+0(
+6NLS"
+)HDVLEOH65 65 
+<HV
+1R
+3UH0%65
+6WDUW
+(QG
+%:EXGJHWLQLW
+%5'SHUIRUPDQFHFDO
+%:SUHGLFWLRQ
+%:ERXQGDU\SUHGLFWLRQ
+65GHFLVLRQ
+162
+Authorized licensed use limited to: National Chiao Tung University. Downloaded on May 09,2010 at 17:11:15 UTC from IEEE Xplore.  Restrictions apply. 
+[3] Y.-H. Chen and et al, “Power-Scalable Algorithm and 
+Reconfigurable Macro-Block Pipelining Architecture of 
+H.264 Encoder for Mobile Application,” in proceeding of 
+IEEE International Conference on Multimedia and Expo, pp. 
+281-284, July 2006. 
+[4] P.-L. Tai and et al, “Computation-Aware Scheme for 
+Software-Based Block Motion Estimation,” IEEE 
+Transactions on Circuits and Systems for Video Technology, 
+vol. 13, no. 9, pp. 901-913, September 2003. 
+[5] H.-F. Ates and et al, “Rate-Distortion and Complexity 
+Optimized Motion Estimation for H.264 Video Coding,” 
+IEEE Transaction on Circuits and Systems for Video 
+Technology, vol. 18, no. 2, pp. 159-171, February 2008. 
+[6] C.-Y. Chang and et al, “A New Computation-Aware 
+Scheme for Motion Estimation in H.264,” in Proceeding of 
+IEEE International Conference on Computer and 
+Information Technology, pp. 561-565, July 2008. 
+[7] S.-H. Wang and et al, “A Complexity Aware Variable-Bit-
+Depth Motion Estimation,” in Proceeding of International 
+Conference on Consumer Electronics, pp. 233-234, January 
+2005. 
+[8] C.-C.Lin and et al, “Hardware Efficient Skip Mode 
+Detection for H.264/AVC,” in Proceeding of IEEE 
+International Conference on Consumer Electronics, pp.1-2, 
+January 2008. 
+[9] JM12.2 http://iphome.hhi.de/suehring/tml/download/ 
+Table 1 Performance of BRD and BRD+Skip mode under SR const pattern relative to JM.  
+(a) constant search range case at 8 
+Const 8 
+BRD BRD + Skip 
+ΔPSNR (dB) ΔBit-rate (%) ΔPSNR (dB) ΔBit-rate (%) 
+Akiyo Foreman Stefan Akiyo Foreman Stefan Akiyo Foreman Stefan Akiyo Foreman Stefan 
+QP 20 0.00 -0.01 0.04 -0.11 0.56 -7.42 -0.02 0.02 0.02 -0.17 0.76 -3.47 
+QP 24 -0.02 -0.02 0.05 0.20 1.87 -7.23 -0.09 0.00 0.04 -0.85 1.24 -5.49 
+QP 28 -0.02 -0.02 0.10 0.24 1.79 -13.42 -0.14 -0.04 0.04 -1.73 0.78 -7.92 
+QP 32 -0.02 -0.01 0.06 -1.04 1.59 -8.80 -0.24 -0.11 0.04 -4.16 -0.25 -11.77 
+QP 36 0.01 -0.02 0.06 0.12 2.31 -12.62 -0.22 -0.17 0.00 -4.71 -1.24 -13.51 
+(b) constant search range at 24 
+Const 24 
+BRD BRD + Skip 
+ΔPSNR (dB) ΔBit-rate (%) ΔPSNR (dB) ΔBit-rate (%) 
+Akiyo Foreman Stefan Akiyo Foreman Stefan Akiyo Foreman Stefan Akiyo Foreman Stefan 
+QP 20 0.00 0.00 -0.01 -0.02 0.55 -0.20 -0.01 0.03 0.01 -0.21 1.02 -0.08 
+QP 24 -0.01 -0.01 0.00 -0.13 0.67 -1.13 -0.08 0.00 0.01 -1.07 1.31 -1.32 
+QP 28 -0.01 -0.02 0.01 -0.45 1.99 -1.21 -0.15 -0.05 0.00 -1.80 1.41 -1.76 
+QP 32 -0.02 -0.02 -0.01 -1.17 2.03 0.36 -0.24 -0.13 -0.05 -4.54 0.89 -0.08 
+QP 36 0.00 -0.03 -0.03 -0.12 4.48 2.19 -0.25 -0.19 -0.09 -4.59 1.94 1.18 
+ 
+0
+500
+1000
+1500
+2000
+2500
+3000
+3500
+4000
+4500
+0 1000 2000 3000 4000 5000
+R
+e
+a
+l B
+W
+ (
+P
+ix
+e
+l)
+System BW (Pixel)
+SR Const - Akiyo
+JM
+BRD
+BRD+SKIP
+ 
+0
+500
+1000
+1500
+2000
+2500
+3000
+3500
+4000
+4500
+0 1000 2000 3000 4000 5000
+R
+ea
+l B
+W
+ (
+P
+ix
+el
+)
+System BW (Pixel)
+SR Const - Foreman
+JM
+BRD
+BRD+SKIP
+ 
+0
+500
+1000
+1500
+2000
+2500
+3000
+3500
+4000
+4500
+0 1000 2000 3000 4000 5000
+R
+e
+a
+l B
+W
+ (
+P
+ix
+e
+l)
+System BW (Pixel)
+SR Const - Stefan
+JM
+BR
+BRD+SKIP
+ 
+Fig. 5 BW usage comparisons for different sequences 
+ 
+ 
+Fig.3 Illustration of bandwidth boundary determination 
+ 
+ 
+ 
+Fig.4 Illustration of SR decision 
+ 
+%:ORZHU
+%:)3%:%3
+%:EXGJHW
+&RQG
+&RQG
+%:ORZHU
+%:%3%:)3
+%:EXGJHW
+%:XSSHU
+%:XSSHU
+5'*DYHRIIVHW
+%:XSSHU%:ORZHU
+SR_downSR_up
+%:EXGJHW
+5'&SRRO
+5'*DYHRIIVHW
+SR_down SR_upConstant
+5['SRRO
+5['DYHRIIVHW
+SR_up
+%:FRQFHUQ
+4XDOLW\FRQFHUQ
+164
+Authorized licensed use limited to: National Chiao Tung University. Downloaded on May 09,2010 at 17:11:15 UTC from IEEE Xplore.  Restrictions apply. 
+reference layer. Residual upsampling is corresponding to 
+inter-layer residual prediction and it block-wised upsamples 
+residuals. Sample upsampling process is used in inter-layer 
+intra texture prediction that upsamples the corresponding 
+reconstructed samples. With these inter-layer predictions, 
+SVC decoder can decode its data to recover the pixel values. 
+III. MEMORY ANALYSIS 
+A. Memory Analysis for H.264/AVC Decoder 
+The memory requirements of H.264 decoder are mainly 
+dominated by four parts: parsing data, macroblock processing 
+data, neighboring data, and decoded picture buffer. In the 
+following, a macroblock based decoding flow is assume. The 
+parsing data stores the information parsed from the bitstream, 
+such as the SPS, PPS, and slice header data. The transform 
+coefficients parsed from bitstream are also included in it. The 
+parsing data consumes about 4.4 KB memory derived 
+statistical results. The macroblock processing data stores the 
+information that may be used to reconstruct a macroblock 
+such as prediction mode, residuals, and reconstructed samples. 
+This part requires 4.8 KB memory spaces. Since the basic 
+processing unit is macroblock, above memory usage is 
+irrelevant to the frame size actually. The neighboring data 
+stores previous decoded neighboring macroblock information, 
+i.e. left, up, upper-right, or upper-left macroblock, which 
+contains motion vectors, reference picture, prediction mode, 
+and neighboring pixels. Pre-deblocking coefficients are also 
+included. The neighboring data is stored in a row of 
+macroblocks in frame width, for example, a row consists of 
+22 macroblocks in CIF size. For neighboring pixels, the size 
+is one line of samples of the frame width plus one column 
+height of a macroblock. The decoded picture buffer (DPB) 
+stores previous decoded frames as reference frame for inter 
+prediction. The DPB is refreshed after decoding one GOP. 
+However, the data of DPB are stored in external memory 
+since such significant memory requirement is unreasonable to 
+be stored in internal memory. From the analysis described 
+above, the internal memory usage and external memory 
+access of H.264 decoder are summarized in Table I and Table 
+II, respectively. 
+B. Memory Analysis for SVC Decoder 
+Memory requirement of SVC inherits the entire 
+requirement from H.264 with additional memory from inter-
+layer prediction as shown in Figure 3. For the inter-layer 
+prediction, it reuses the reference layer data such as motion 
+vectors, residuals, and reconstructed samples. These data are 
+recognized as inter-layer data. With this inter-layer 
+dependency, different decoding flows will cause different 
+memory requirements. In this paper, we specify three 
+decoding flows, macroblock-based, row-based, and frame-
+based, that can be applied to SVC decoding process. 
+Furthermore, their corresponding internal memory usage and 
+external memory access will be analyzed in the following 
+article. 
+Residual 
+decoding
+Deblocking Filter
+Input 
+Bitstream
+Reconstructed frame
+Sample 
+Reconstruction
+Residual 
+Upsampling
+Sample Upsampling
+Inter-layer prediction
+Intra Prediction
+Neighboring data 
+(neighboring pixels)
+Inter Prediction
+Entropy Decoding
+Parsing data
+Motion Vector
+Reconstruction
+Neighboring data 
+(motion vectors)
+Inter-layer data 
+(reconstructed 
+samples)
+Inter-layer data 
+(residuals)
+Motion Vector
+Upsampling
+Inter-layer data 
+(motion vectors)
+Decoded picture 
+buffer
+  
+Fig. 2   Block diagram of SVC decoder.  
+NALU 
+Reader
+SPS PPS Slice 
+header
+SEI
+Parsing data
+Neighboring 
+data
+Decoded 
+picture 
+buffer
+Input bitstream
+Decoded frame
+NALU type
+Decode MB
+Macroblock 
+processing data
+Inter-layer data (base layer 
+pixels, motion vector, residuals)
+ 
+Fig. 3   SVC decoder memory map 
+ 
+TABLE I.  INTERNAL MEMORY USAGE OF H.264/AVC DECODER 
+Name Size (KB) 
+*Parsing data ~4.4  
+*Macroblock processing data ~4.8  
+Neighboring data 0.2 * 1.06PicWidthInMbs   
+PicWidthInMbs: number of macroblocks in a row of a frame 
+*: fixed data: will not change with the variation of frame resolution 
+TABLE II.  EXTERNAL MEMORY ACCESS OF H.264/AVC DECODER 
+Name Size (KB) 
+Input bitstream *0.0375*PicSizeInMbs 
+Reference samples **1.35 *PicSizeInMbs 
+Reconstructed samples 0.375*PicSizeInMbs 
+PicSizeInMbs: number of macroblocks in a frame 
+*: assume the compression rate is 10% of the original data 
+**:  assume every macroblock has 16 4x4 subblocks with one direction 
+prediction 
+has to store a whole frame of inter-layer data. The 
+amount of inter-layer data is to substitute (3) into Table 
+IV.  
+NumMBref = 
+2
+0
+PicSizeInMbs
+d
+n
+n
+
+
+ .            (3) 
+d: number of spatial layers 
+PicSizeInMbsn: number of macroblocks in spatial layer n 
+ 
+However, these huge inter-layer data are unreasonable to be 
+stored in internal memory. Furthermore, due to different 
+layers are decoded at different time, neighboring data can be 
+stored in only one set of highest spatial layer without overlap. 
+Therefore, the internal memory size is reduced to by setting   
+d = 1 in Table III when compared to macroblock-based and 
+row-based decoding manners. The total external memory 
+access is same as Table V plus inter-layer data mentioned 
+above. 
+IV. RESULTS AND DISCUSSIONS 
+For a clearer picture of the memory usage, we show some 
+quantitative results in this Section. To calculate the memory 
+usage, we make several assumptions in our analysis: 95% of 
+macroblocks are coded in inter prediction, 90% of 
+macroblocks in enhancement layers are coded in Intra_BL 
+mode if the corresponding block in base layer is encoded as 
+Intra mode, and 10% macroblocks in enhancement layers use 
+residual prediction in average. This assumption is a general 
+statistic according to our experiment. The encoding settings 
+are listed in Table VI. Table VII shows the analysis results, in 
+which type I stores all inter-layer prediction data in the 
+internal storage while type 2 stores all inter-layer prediction 
+data in the external memory.  
+The result shows that inter-layer prediction data has great 
+impact to both internal memory storage as well as the external 
+memory access. For type I, internal memory size will be 
+increased by 81% to 8965% when compared to single layer 
+H.264 decoding, especially for frame-based decoding that 
+needs to store 1980 MBs of residuals, prediction modes and 
+motion vectors for inter-layer prediction. For row-based 
+decoding method, 110 MBs of inter-layer prediction data need 
+to be stored in internal memory. For MB-based decoding, 
+only 5 MBs data are needed. This is the reason why the 
+macroblock-based decoding method results in lower internal 
+memory usage. For external memory access, all these flows 
+are the same due to the same reference data. Thus, the MB-
+based decoding is the best choice due to its smallest internal 
+memory usage and the same external memory access when 
+compared to frame-based and row-based decoding methods, if 
+an efficient internal memory design can be supported by the 
+technology provider.  
+Beyond type I, another design possibility is to store the 
+inter-layer prediction data into external memory to reduce the 
+chip cost, just as type II. From the table, it is interesting to 
+find that the extra external memory bandwidth due to inter-
+layer prediction data is insignificant compared to the large 
+reference data. Thus, the bandwidth increasing in type II is 
+just 12% more when compared to that in type I. However, the 
+internal memory usage varies a lot for different coding flow. 
+MB-based decoding has the least reduction due to each layer 
+has its own neighboring data to be stored in internal memory 
+for each layer decoding. Same situation also occurs in row-
+based decoding method as well. For frame-based decoding, 
+the internal memory storage is just 1% more than the single 
+layer H.264 decoding since all the extra storage is within the 
+external memory now. Therefore, the frame-based decoding is 
+the best choice for smallest internal memory size with the 
+acceptable memory bandwidth. 
+TABLE VI  SIMULATION SETTINGS 
+GOP 8 
+QP 32, 26, 20 
+Intra period -1 
+Frame resolution QCIF, CIF, 4CIF 
+TABLE VI.  TABLE VII  COMPARISON OF MEMORY REQUIREMENTS 
+Decoding Flow 
+Internal Memory 
+(KB) 
+External Memory 
+Access (MB) 
+size ratio size ratio 
+Original H.264 27.9 100% 11.5 100% 
+Type I 
+MB 50.6  181% 21.7 189% 
+Row 126.6  454% 21.5 187% 
+Frame 2529  9065% 21.4 186% 
+Type II 
+MB 44.3 159% 24.2 210% 
+Row 43.5 156% 24 209% 
+Frame 28.2 101% 23.9 208% 
+V. CONCLUSIONS 
+In this paper, the memory requirement of SVC decoder is 
+analyzed for three SVC decoding flows. Analysis results 
+show that MB-based or row-based decoding can reuse the 
+inter-layer data but needs extra storage. These two can be a 
+design choice if efficient on-chip memory technology can 
+support. For lower internal memory size and low external 
+memory access, frame-based decoding with external storage 
+of inter-layer data can be a better choice for SVC decoder 
+design. 
+REFERENCES 
+[1] H. Schwarz, D. Marpe, and T. Wiegand, “Overview of the 
+scalable video coding extension of the H.264/AVC standard,” 
+IEEE Tran. CSVT, vol. 17, no. 9, pp.1103-1120, Sep. 2006. 
+[2] H. Schwarz, D. Marpe, and T. Wiegand, “Hierarchical B 
+Pictures,” Joint Video Team, Doc. JVT-P014, Jul. 2005. 
+[3] M. Pelcat, M. Blestel, M. Raulet, “From AVC decoder to SVC: 
+minor impact on a dataflow graph description,” in Proc. IEEE 
+PCS, Lisboa, Portugal, Nov. 2007. 
+ 
+Fig.1 Prediction modes in SVC 
+ 
+ 
+                     (a)                                   (b) 
+Fig.2 (a) Inter prediction process, (b) Inter-layer residual 
+process in JSVM reference software 
+ 
+ 
+When computing the RDCost for inter mode prediction, the 
+D term in equation (1) is derived by calculating the sum of 
+absolute difference of each block (DInter) and it can be 
+expressed as follows: 
+ 
+,|),(),(|),(
+0 0
+ 
+ 
+
+height
+i
+width
+j
+Inter
+jiFjiCjiD
+        (2) 
+ 
+where C represents the pixels of current encoding block, F is 
+the pixels of reference frame, height and width denote the 
+current block size.  
+In contrast to inter prediction shown in Fig. 2(a), we can 
+observe that the inter-layer residual prediction additionally 
+substrates the up-sampled residual from current coding pixels 
+before performing motion estimation search. Consequently, 
+the D term in equation (1) can be calculated as follows when 
+testing inter-layer residual prediction. 
+ 
+ 
+ 
+
+height
+i
+width
+j
+ILres
+jiFjiBjiCjiD
+0 0
+|,),(),(),(|),(
+       (3) 
+ 
+where B represents the base layer up-sampled residuals.  
+From equations (2)-(3), it can be found that the main 
+difference for calculating the D terms between inter and inter-
+layer prediction is that the inter-layer prediction additionally 
+substrates the up-sampled residual from current coding pixels. 
+Based on this observation, it is possible to reuse the current 
+and reference data when testing both the inter- and inter-layer 
+prediction modes. 
+III. PROPOSED LOW-BANDWIDTH PREDICTION METHOD 
+In this section, our proposed data reuse method for inter 
+and inter-layer residual prediction is described in detail. 
+Besides, a fast motion estimation algorithm is also adopted to 
+further reduce memory requirement in motion estimation.  
+ 
+A. Proposed Data Reuse Method for Inter and Inter-layer 
+Residual Prediction 
+From section 2, we observed some identical processes 
+existed between inter and inter-layer residual prediction. 
+Since the current macroblock data and the reference 
+macroblock data of inter-layer residual prediction is the same 
+as inter prediction, the difference between these two 
+prediction modes is that inter-layer residual mode needs one 
+more process which subtracts up-sampled base layer residual 
+from current coding pixels before performing IME. Motivated 
+by this observation, we can combine these two prediction 
+modes into one motion estimation process and receive two 
+prediction results at the same time. In other words, by 
+changing the order of subtraction for DILres calculation, the 
+equation (3) can be rewritten as follows. 
+ 
+ 
+ 
+
+height
+i
+width
+j
+ILres
+jiBjiFjiCjiD
+0 0
+|),(),(),(|),(
+        (4) 
+ 
+Through the equation (4), the DInter can be derived by just 
+extracting the results of C-F during the computation of 
+equation (4). Finally, both the results of DInter and DILres can be 
+obtained concurrently. The combined method is shown in 
+Fig.3. When calculating the RDCost for inter prediction in 
+IME module, we can perform inter-layer residual prediction at 
+the same time by subtracting base layer residual. The 
+advantage of our proposed method is that, in normal 
+prediction process in the SVC, the current and reference 
+pixels should be downloaded twice for both inter and inter-
+layer prediction. However, after the adoption of our proposal, 
+the current and reference pixels only need to be loaded once 
+for both prediction modes. 
+ 
+ 
+Fig.3 Proposed data reuse method which combines inter 
+and inter-layer residual prediction 
+ 
+To demonstrate the efficiency of our proposed method, we 
+show some numerical comparisons of bandwidth saving for 
+our proposal and full search motion estimation with level C 
+data reuse scheme [5]. The bandwidth requirements of full 
+search motion estimation for loading reference data in EL per 
+frame can be calculated as follows.  
+ 
+Fig.6 The steps probability of SCS method 
+IV. SIMULATION RESULTS 
+The proposed algorithm is implemented on a JSVM8.9 [10]. 
+The test condition is shown in Table I. 
+ 
+Table I Simulation conditions 
+Codec JSVM 8.9 encoder 
+Testing sequences 
+Football, Silent, Mobile, Akiyo, 
+Container, Weather 
+QP 8, 18, 28, 38, 48 
+Resolution QCIF and CIF 
+Frame Rate 15Hz 
+Encoder configuration 
+MV search range : ±16 pels.  
+GOP size : 4. 
+Reference frame number : 1  
+Adaptive selecting inter-layer 
+prediction in enhancement layer 
+ 
+Football(QCIF)
+20
+30
+40
+50
+60
+0 500 1000 1500 2000
+Bit Rates(kbits/s)
+P
+S
+N
+R
+(d
+B
+)
+JSVM Proposed
+  
+(a) 
+Football(CIF)
+20
+30
+40
+50
+60
+0 2000 4000 6000 8000 10000
+Bit Rates(kbits/s)
+P
+S
+N
+R
+(d
+B
+)
+JSVM Proposed
+ 
+(b) 
+Fig.7 Rate-Distortion curve of Football. (a) QCIF (b) CIF 
+ 
+Silent(QCIF)
+20
+30
+40
+50
+60
+0 100 200 300 400 500 600
+Bit Rates(kbits/s)
+P
+S
+N
+R
+(d
+B
+)
+JSVM Proposed
+ 
+(a) 
+Silent(CIF)
+20
+30
+40
+50
+60
+0 500 1000 1500 2000 2500 3000 3500
+Bit Rates(kbits/s)
+P
+S
+N
+R
+(d
+B
+)
+JSVM Proposed
+ 
+(b) 
+Fig.8 Rate-Distortion curve of Silent. (a) QCIF (b) CIF 
+ 
+The simulation results of our proposed method are 
+compared with fast full search motion estimation algorithm in 
+JSVM8.9. Fig.7 and Fig.8 show the rate-distortion 
+performance comparisons for BL (in QCIF size) and EL (in 
+CIF size). Two different motion behavior sequences, Silent 
+and Football are shown in figures. From these figures, we can 
+observe that the proposed method can achieve near the same 
+rate distortion performance when compared to JSVM8.9. The 
+detail comparisons for PSNR degradation and bitrate increase 
+are shown in Table II. From this table, we observed that only 
+1.16% and 0.001dB bitrate increase and PSNR degradation in 
+average for our proposed method, respectively. The rate 
+distortion performance degradation mainly is caused by the 
+limited steps of SCS algorithm. However, compared to the 
+bandwidth saving which is critical issue in designing motion 
+estimation, this rate distortion decrease is ignorable. 
+Furthermore, the memory bandwidth requirements can be 
+saved up to 67% for all sequences in average. 
+ 
+V. CONCLUSION 
+In this paper a low memory bandwidth prediction method is 
+proposed to solve the problem of extreme memory bandwidth 
+demands brought by inter-layer prediction of SVC. By 
+combining both inter and inter-layer residual prediction, the 
+reference data for prediction can be reused efficiently. 
+Simulation results show that the proposed method can save 
+67% memory bandwidth requirement with slight rate 
+distortion performance degradation when compared to 
+JSVM8.9. 
+ 
+Low Memory Cost Bilateral Filtering Using 
+Stripe-based Sliding Integral Histogram 
+Po-Hsiung Hsu, Yu-Cheng Tseng, and Tian-Sheuan Chang 
+Graduated Institute of Electronics Engineering  
+National Chiao-Tung University  
+Hsinchu, Taiwan  
+sadeibear.eecs93@nctu.edu.tw, {tyucheng, tschang}@dragons.ee.nctu.edu.tw 
+ 
+Abstract—Bilateral filter can well smooth images while 
+preserving edges, and thus has been widely used in various 
+applications. However, it needs significant memory cost due to a 
+whole image storage. This paper develops three methods to 
+significantly reduce the memory cost. The runtime updating 
+method (RUM) discards unnecessary data in runtime. The 
+stripe-based integral histogram method (SBM) divides image 
+into vertical image-stripes. The sliding origin method (SOM) 
+sliding moves the origin of integration region to achieve the most 
+memory reduction. The final result shows that the proposed 
+approach only needs 24Kbits memory, which saves 99.993% of 
+memory cost for smoothing a VGA-sized image with 30-fps 
+speed, when compared to the previous optimized constant time 
+integral histogram approach.  
+I. INTRODUCTION 
+Smoothing is essential in image processing to enhance 
+perceptual quality for display or robustness for next step 
+processing. Bilateral filtering (BF) is one of the best choices 
+because it can smooth images while preserving their edges.  
+Tomasi et al. [1] first introduced the BF, a non-linear filter, 
+and applies it to both gray level and color image smoothing. 
+The edge-preserving characteristic makes BF wide-used for 
+many applications, such as mesh smoothing [2], tone mapping 
+[3], and flash photography enhancement [4]. The equation of 
+BF is defined by 
+ 
+∑
+∑
+∈
+∈
+−−
+−−=
+Sq qp
+Sq qqp
+p IIGqpG
+IIIGqpG
+IBF
+rS
+rS
+)()(
+)()(
+)(
+σσ
+σσ , (1) 
+where p is the target pixel, and q is the support pixel in the 
+kernel S. The BF sums up the Iq and normalizes its result with 
+the spatial weight Gσs and the range weight Gσr. Usually both 
+Gσs and Gσr are Gaussian function with arguments of spatial 
+distance |p-q| and intensity distance |Ip-Iq|. If the support pixel 
+q is close to p or its intensity is similar to Ip, the weight will be 
+increased for larger effect. Fig. 1 shows the BF performed at 
+an edge pixel p. The BF applies the range weight to eliminate 
+the outlier pixels’ (white pixels) effect, and obtains the 
+smoothing result without blurring as in the traditional 
+Gaussian filter. However, its computational complexity is also 
+much higher. 
+To speed up the BF, various approaches have been 
+proposed. Weiss [5] and Porikli [6] simplified the BF by 
+changing the spatial weight to a box filter, and its smoothing 
+results do not suffer from significant degradation. The 
+simplified BF is as the following equation, 
+ 
+∑
+∑
+∈
+∈
+−
+−=
+Sq qp
+Sq qqp
+p IIG
+IIIG
+IBF
+r
+r
+)(
+)(
+)(
+σ
+σ ,                   (2) 
+where the spatial weight adopts box filter. Based on the 
+simplified BF, they further used the histogram approach to 
+reduce the computational complexity of BF, and (2) can be 
+changed to               
+ 
+∑
+∑
+−
+−=
+b bpb
+bb bpb
+p IIGIh
+IIIGIh
+IBF
+r
+r
+)()(
+)()(
+)(
+σ
+σ . (3) 
+The histogram approach classifies the intensity Iq into the bins 
+b by the corresponding intensity Ib. These bins b are used to 
+count the number of support pixels as the bin value h(Ib). Then 
+the range weight Gσr of each Ib with the specified Ip would 
+multiply the bin value h(Ib) and the support intensity Ib. 
+Finally, the smoothing result of Ip is obtained. 
+Figure 1.  Gaussian filter and bilateral filter 
+ 
+B. Stripe-based IH Method 
+ The SBM slices the original image into many vertical 
+stripe-images, and then computes the IH stripe by stripe. Fig. 4 
+illustrates two neighboring stripe-images and their 
+corresponding origins and end pixels for integration process. 
+Note that the integration region is wider than the stripe-image 
+by wk for overlapping computation. Therefore, the memory 
+cost of this is  
+ ')( binbinks wNwwM ××+× . (8) 
+where wbin’ is equal to log2[M(ws+wk)]. Compared to the 
+original memory cost in (6), the SBM could significantly 
+reduce the memory cost if the ws is much smaller than N. The 
+only drawback is the computational and memory access 
+overhead due to the repeated computation in the overlapped 
+region. 
+ To have a smaller storage with SBM, an intuitive 
+approach with a thinner stripe will lead to a higher percentage 
+of overlapped area. Thus, the selection of wk becomes a 
+tradeoff between memory and computational complexity, 
+which will be discussed in the next section. 
+C. Sliding Origin Method 
+The SOM slides the origin of the integration region along 
+with the computation to reduce memory cost from 2D-space to 
+1D-space. The concept is illustrated in Fig. 5(a). For the HABDC 
+computation as in (5), IHO1
+A and IHO1
+B will become zero if the 
+origin is at O1 instead of O since no histograms exist at A and 
+B. Thus (5) can be simplified to the following equation, 
+ 
+.
+11
+1111
+C
+O
+D
+O
+D
+O
+C
+O
+B
+O
+A
+OABDC
+IHIH
+IHIHIHIHH
+−=
++−−=  　(9)　 
+With above concept, we only need to store one row of current 
+data at CD to compute the new IHO’C’ and IHO’D’ at the next 
+row, as in (4). The whole process is illustrated in Fig. 5(b). 
+The origin movement from O1 to the next row O’ is through 
+the following equation, 
+ LOPOPO IHIHIH 11' −=    (10) 
+where IHO1
+P is integrated from a plane defined by (4), and 
+IHO1
+L is integrated from a line of O1L. These two integrations 
+are independent and performed simultaneous. Fig. 5 (c) 
+shows the data should be stored in memory. For the plane 
+integration, only one row memory is required for IHO1
+P. On 
+the other hand, for the line integration, only a one-pixel 
+memory is required for IHO1
+L. Therefore, the memory cost is 
+approximated to one-row memory as the following equation, 
+ ,''1cos binbin wNNtmem ×××=  (11) 
+where the maximum integration region is wkN, so that wbin” 
+equals to log2[wkN]. Compared to the original memory cost in 
+(6), the dimension of height (M in (6)) is eliminated so that 
+the memory cost of SOM is reduced to 1D-space.  In 
+addition, wbin” is smaller than wbin. Therefore, this approach 
+decreases the cost significantly. 
+IV.  ANALYSIS AND RESULT 
+In this section, we first analyze the optimal ws for the SBM 
+by the tradeoff of memory cost and computational complexity. 
+Then we show the memory reduction with the three proposed 
+methods, and compare these results with that of the original 
+approach. 
+A. Optimal Stripe Width 
+To determine the optimal ws, we combine the SBM with 
+the other two proposed methods for trade off the memory cost 
+and the computational complexity. For the memory cost, the 
+combined method requires  
+ ,)(1 allbinbinks wNww ××+×    (12) 
+where allbinw  is log2[(ws+wk)wk]. 
+For the computational complexity, we design a 
+straightforward architecture to estimate the required cycle 
+counts of the computation in BF. The computation of BF 
+consists of the front-end and back-end processes. The 
+front-end process calculates the histogram of each kernel by 
+(10) and (9). Note that the critical path in (10) is the plane 
+integration. With the proposed three methods, the front-end 
+process should be performed for the counts related to the 
+number of stripe N/ws and the size of integration region 
+M(ws+wp). On the other hand, the back-end process uses the 
+histogram computed by the front-end process to calculate the 
+smoothing result by (3). In (3), the critical path is composed of 
+one adder, two multipliers, one adder tree, and one divider. 
+Figure 3.  Runtime updating method (ROM) 
+Figure 4.  Stripe-based IH method (SBM) 
+ (a)  (b)  (c) 
+Figure 5.  Illustration of sliding origin method (SOM): (a) kernel ABCD 
+based on the sliding origin O1, (b) sliding origin from O1 to O’, (c) storage 
+requirement; 
+Stereoscopic Images Generation with Directional 
+Gaussian Filter 
+Ying-Rung Horng, Yu-Cheng Tseng, and Tian-Sheuan Chang 
+Graduate Institute of Electronics Engineering 
+National Chiao-Tung University, Hsinchu, Taiwan 
+dajing01.ee97g@nctu.edu.tw, {tyucheng, tschang} @dragons.ee.nctu.edu.tw 
+ 
+ 
+Abstract—The depth-based image rendering (DIBR) uses 
+monoscopic image with its corresponding depth map to generate 
+stereoscopic images for 3DTV. The main difficulty in the DIBR 
+is that holes appear in the stereoscopic images because of the 
+occlusion between objects. However, the previous depth 
+smoothing methods to reduce holes usually destroy the perceived 
+depth quality or the perceived naturalness. This paper proposed 
+a new depth smoothing method to solve these problems by 
+applying a new directional Gaussian filter guided by edge 
+direction in the hole-flag area iteratively. The subjective 
+evaluation results show that our proposed method can generate 
+better stereoscopic images with good perceived depth quality as 
+well as perceived naturalness. 
+I. INTRODUCTION 
+The three-dimensional television (3DTV) is believed to be 
+popular for the next-generation television. Conventionally, the 
+3DTV system needs to transmit two images for left and right 
+eyes to the display-end, and then the display-end presents 
+stereoscopic images for viewers. However, the 3DTV system 
+suffers from double bandwidth of traditional 2D television 
+systems. A new approach for 3DTV system is the depth-based 
+image rendering (DIBR) [1], which only transmits a 
+monoscopic image and its corresponding depth map. In this 
+approach, the display-end uses the depth map to render the 
+virtual left-eye and right-eye images. Because the data of 
+depth map are grey level, the DIBR can transmit more 
+efficiently than the typical approach for 3DTV system. 
+The concept of DIBR is based on the parallel camera 
+configuration as shown in Fig.1 (a). In this configuration, an 
+object O is observed at the original center view Vc, the virtual 
+right-eye view Vr, and the virtual left-eye view Vl. This object 
+is also projected to Xc, Xr, and Xl in the image planes 
+respectively. The relationship of the projected positions 
+among views is  
+ Z)f(b/XX cl 2+=  and
+ 
+Z)f(b/XX cr 2−=  (1) 
+where Z is the depth of object from the view plane, f is the 
+focal length, and b is the baseline of Vr and Vl..  
+ 
+(a) (b) 
+Figure 1.   (a) Parallel camera configuration for virtual images warping (b) 
+Example of 3D warping where the depth map with lighter and darker color 
+represent near and far scene, respectively. 
+ 
+Figure 2.  Algorithm flow of DIBR 
+If the dense depth map is given, we can render the virtual left-
+eye and right-eye view images using the center view image. 
+This rendering process is generally called 3D warping. Fig. 1 
+(b) shows an example of the 3D warping. 
+However, the warped virtual images incur many holes 
+(yellow flags in Fig. 1(b)), which may be seen by the right eye 
+or left eye but occluded in the center view. To recover the 
+holes, the hole-filling method, such as linear interpolation [1] 
+or horizontal extrapolation [5], is added after the 3D warping 
+process as shown in Fig. 2. But it suffers from serious texture 
+distortion since the large holes cannot be recovered well. 
+In order to alleviate the difficulty of hole-filling, the depth 
+smoothing method [1]-[4] is adopted before the 3D warping 
+process. The aim of the depth smoothing is to reduce the size 
+of holes by means of lessening the sharp discontinuity in depth 
+maps. 
+Fehn [1] applied a simple Gaussian filter to remove holes 
+effectively, but it suffers from geometric distortion since the 
+depth map is blurred regardless of the shape of objects. The 
+geometric distortion of objects would result in bad perceived 
+naturalness. Therefore, Zhang et al. [2] proposed the 
+asymmetric Gaussian filter (AGF) to retain the perceived 
+naturalness with large standard deviation in vertical direction. 
+convolution weight. Fig. 7 (b) shows that is easy to cause 
+geometric distortion in the warped image. 
+To improve the geometric distortion, we propose the 
+directional Gaussian filter (DGF), which adapts the AGF in [2] 
+to be rotatable by the edge direction of depth map. The edge 
+direction is computed by the following equation.  
+ ,tan 1 )/g(gθ yx−=  (4) 
+where (gx,gy) is the spatial gradient computed by Sobel filter 
+sized by3x3.  
+The DGF can be rotated according to the edge direction θ, 
+and its horizontal and vertical standard deviations σx and σy can 
+be controlled separately. Hence, the equation of DGF is 
+ ,exp
+2 2
+2
+2
+2
+⎪⎭
+⎪⎬
+⎫
+⎪⎩
+⎪⎨
+⎧
+⎟⎟⎠
+⎞
+⎜⎜⎝
+⎛ +−=
+yxyx
+θ,σ,σ
+yx
+π
+1y)(x,G
+yx σσσσ
+θθ  (5) 
+where 
+ 
+⎩⎨
+⎧ ≤≤−+=
+−=
+.
+2
+,
+2
+for ,
+cossin
+sincos wyxw 
+θyθxy
+θyθxx
+θ
+θ  (6) 
+Fig. 6 shows the examples of the proposed DGF with edge 
+direction of 0°, 45°, 60° and 90°. By applying this DGF 
+according to the edge direction, the characteristic of object 
+edges in the depth map can be reserved better. Fig. 7 shows 
+the warping result with the DGF compared to the AGF. Note 
+that although the AGF seems good in the perceived 
+naturalness, the foreground objects are shifted in small 
+variance. This would reduce perceived depth quality. The 
+more detailed comparison will be discussed in Section III. 
+D. Step4:Iterative Smoothing 
+To perform depth smoothing better for holes reduction, we 
+uses the DGF iteratively [4] on the hole-flag regions. At the 
+(t+1)th iteration, the smoothed depth map D(t+1) is 
+ .2/
+2/
+2/
+2/
+2/
+2/
+2/
+2/
+(t)
+1)(t
+∑ ∑
+∑ ∑ ++=
+−
+− −+
+w
+w
+w
+w-
+w
+w
+w
+w
+y)W(x,
+y)y)W(x,vx,(uD
+v)(u,D  (7) 
+We set the number of iteration T as 
+ ,
+min
+ widthhole of maximum
+)σ,(σ
+T
+yx
+=  (8) 
+where the maximum of hole width can be acquired in the step 
+2. That is because the wider hole requires the more effort of 
+smoothing filter. In addition, the effect of the smoothing filter 
+is proportional to the standard deviation. 
+   
+(a) (b) (c) (d) (e) 
+Figure 6.  Kernel of the proposed DGF with the size of 9x9 and σx =3, σy = 1 
+in different angles (a) 0°, (b) 45°, (c) 60°, (d)90°, and (e) the GF with σ =3 
+  
+(a) (b) (c) (d) 
+Figure 7.  Comparison of anaglyph images of warped image as right-eye 
+image and original image as left-eye image, with different smoothing 
+methods:  (a) no depth smoothing, (b) GF with σ =20, (c) AGF with σx =20 
+and σy = 60 [2], (d) Proposed DGF with σx =3 and σy = 1. The red circles in 
+images flag the geometirc distorsion. Note that  (b) and (c) have shift in 
+foreground objects so that the perceived depth is different compared to (a). 
+ 
+Figure 8.  Five test sequences: “teddy” and “cones” from the Middlebury 
+stereo datasets [7], “Interview” from HHI[8], “Ballet” from Microsoft 
+research [9], and “Akko&Kayo” from MPEG-FTV [10]. 
+III. EXPEREIMENT RESULT 
+We implemented three previous rendering methods to 
+compare with our proposed DGF. The AGF [2] and ASF [4] 
+belong to depth smoothing method, and the horizontal 
+extrapolation [5] excludes the depth smoothing step and fills 
+holes with the background color. Fig. 8 shows the five 
+sequences and their depth maps used to evaluation.  
+Fig. 9 shows the resulted image and comparisons, 
+especially for the perceived naturalness. In Fig. 9 (a), without 
+depth smoothing and hole-filling processes, the holes are 
+appears at the background regions. In Fig. 9 (b), the 
+extrapolation method suffers from the serious texture 
+distortion in the background region, where the straight green 
+line behind the wooden grid is deformed. In Fig. 9 (c), the 
+AGF over smoothes the depth map to avoid texture distortion, 
+but the foreground objects are shifted with the similar depth to 
+the background objects. That would decrease the perceived 
+depth quality in the subjective evaluation. In Fig. 9 (d) and (e), 
+the depth maps of ASF and DGF are not smoothed over. For 
+the zoom-in warped images, the proposed DGF could preserve 
+the texture of background better than the ASF. 
+For the perceived depth quality and naturalness of 
+stereoscopic images, we performed the subjective evaluation. 
+In the experiment, we adopted the double-stimulus 
+continuous-quality scale (DSCQS) method described in 
+[11][12]. Fifteen experiment participants observed the 
+stereoscopic images on the iZ3D 22” display [13], and rated 
+the perceived depth quality and the perceived naturalness 
+separately.   
+A High Throughput VLSI Design with Hybrid Memory 
+Architecture for H.264/AVC CABAC Decoder 
+ 
+ 
+Yuan-Hsin Liao, Gwo-Long Li, and Tian-Sheuan Chang 
+Graduated Institute of Electronics Engineering 
+National Chiao-Tung University 
+Hsinchu, Taiwan 
+ashin.ee97g@nctu.edu.tw, glli.ee95g@nctu.edu.tw, and tschang@twins.ee.nctu.edu.tw 
+ 
+  
+Abstract—A high throughput context-based adaptive binary 
+arithmetic coding (CABAC) decoding design with hybrid 
+memory architecture for H.264/AVC is presented in this paper. 
+To accelerate the decoding speed with hardware cost 
+consideration, a new hybrid memory two-symbol parallel 
+decoding technique is proposed. In addition, an efficient 
+mathematical transform method is also proposed to further 
+decrease the critical path of two-symbol binary arithmetic 
+decoding procedure. The proposed architecture is implemented 
+by UMC 90nm technology and experimental results show that 
+our proposal can operate at 264 MHz with 42.37k gate count, 
+and the throughput is 483.1 Mbins/sec, which surpasses previous 
+design with 48.6% hardware cost saving. 
+I. INTRODUCTION 
+The state-of-the-art video coding standard called H.264 
+has been widely adopted in current video application system 
+due to its outstanding coding performance. There have been 
+two entropy coding tools adopted in H.264/AVC. One is 
+Context-based Adaptive Binary Arithmetic Coding (CABAC). 
+The other is Context-based Adaptive Variable Length Coding 
+(CAVLC) [1]. CABAC can achieve averaged bit-rate savings 
+of 9% to 14% at the cost of higher computational complexity 
+in comparison to CAVLC [2]. However, the increased 
+computational complexity and strong data dependencies 
+significantly restrict the throughput of CABAC decoder. This 
+is generally considered as its main disadvantage, and becomes 
+a challenge in hardware design. 
+Many designs have been proposed for accelerating the 
+CABAC decoding. A bin-level pipeline structure was 
+implemented in [3]. However, the syntax element switch 
+overhead (SESO) degraded the decoding performance 
+significantly. In [4], a prediction scheme was presented to 
+resolve the SESO problem. Pipeline structures combined with 
+multiple bins decoding architecture were proposed in [5][6]. 
+In [5], two bins may be decoded in the same cycle for certain 
+syntax elements. The architecture in [6] employed a branch 
+selection two-symbol parallel decoding technique to resolve 
+data dependency problem, and can process two bins within 
+one cycle for general cases, but suffers high area cost.  
+In this paper, we first propose a hybrid memory two-
+symbol parallel decoding technique to decode two bins at a 
+time in most cases. Furthermore, we also propose an efficient 
+mathematical transform method to shorten the critical path of 
+two-symbol binary arithmetic decoding (TSBAD) engine. 
+Through our design, the overall performance of CABAC 
+decoder can be further improved with less hardware cost. 
+The rest of this paper is organized as follows. In Section II, 
+we briefly describe the CABAC decoding. The proposed 
+architecture is presented in Section III. Finally, we provide 
+simulation results in Section IV to demonstrate the 
+performance of our design and draw a conclusion in Section V. 
+II. CABAC DECODING 
+In CABAC, every syntax element (SE) is made up of a 
+series of bins, called a bin string. The bin decoding process 
+consists of four elementary steps: context selection (CS), 
+context model loading (CL), binary arithmetic decoding 
+(BAD), and binarization matching (BM). In the first step, 
+context index (ctxIdx) which acts as the context model address 
+is calculated as follows: 
+ ctxIdxIncctxIdxBasectxIdx   
+where ctxIdxbase denotes the base context index, which is 
+defined as the lower value of the range given in [2]. The 
+ctxIdxInc denotes the context index increment, which is 
+derived based on bin index (binIdx), previously decoded bins, 
+or the already decoded neighboring symbols. After the address 
+is obtained, a context model (CM) loaded from CM memory is 
+passed to the BAD stage. In BAD stage, a bin is decoded to be 
+most probable symbol (MPS) or least probable symbol (LPS) 
+according to a probability model provided by the CM. 
+Afterward, the constructed bin string is de-binarized in the 
+final stage to decide whether the decoding process of current 
+SE is finished or not, and the context model update (CU) 
+process takes place at the same time. 
+The bin decoding performance can be elevated by 
+exploiting the pipelining scheme like [3]. Fig. 1 shows a 4- 
+The work is supported by National Science Council of Taiwan, under 
+Grant NSC 97-2220-E-009-018. 
+TABLE III.  CONTENT OF SRAM AFTER REORGANIZATION OF OUR 
+PROPOSAL 
+Address CM Index Syntax Element 
+0-2 0-2 mb_type (SI) 
+3-5 11-13 mb_skip_flag (P/SP) 
+6-8 24-26 mb_skip_flag (B) 
+9-11 70-72 mb_field_decoding_flag 
+12-31 85-104 coded_block_flag 
+32-171 
+166-226, 
+338-398, 
+417-425, 
+451-459, 
+last_significant_coeff_flag 
+172-201 
+227-231, 
+237-241, 
+247-251, 
+257-261, 
+266-270, 
+426-430,     
+coeff_abs_level_minus1  
+(First bin) 
+202-204 399-401 transform_size_8x8_flag 
+TABLE IV.  CONTENT OF REGISTER AFTER REORGANIZATION OF OUR 
+PROPOSAL 
+Address CM Index Syntax Element 
+0-7 3-10 mb_type (I) 
+8-14 14-20 mb_type (P/SP) 
+15-17 21-23 sub_mb_type (P/SP) 
+18-26 27-35 mb_type (B) 
+27-30 36-39 sub_mb_type (B) 
+31-44 40-53 Mvd 
+45-50 54-59 ref_idx 
+51-54 60-63 mb_qp_delta 
+55-58 64-67 intra_chroma_pred_mode 
+59 68 prev_intra_pred_mode_flag 
+60 69 rem_intra_pred_mode 
+61-72 73-84 coded_block_pattern 
+73-224 
+105-165, 
+277-337, 
+402-416, 
+436-450, 
+significant_coeff_flag 
+225-253 
+232-236, 
+242-246, 
+252-256, 
+262-265, 
+271-275, 
+431-435, 
+coeff_abs_level_minus1 
+(First bin excluded) 
+ 
+Therefore, we employ two CS modules to compute addresses 
+in parallel, one for current SE and another one for next SE. 
+The result of BM will determine which one is chosen for CL. 
+To further reduce the cost, the design of CM shall be 
+considered carefully since the hardware cost of all register 
+based memory is too high and one single dual-port SRAM can 
+not meet the requirement for loading three CMs and 
+performing storing operation in the same cycle. Thus, we 
+propose an approach to implement the CM memory with 
+hardware cost consideration while maintaining the decoding 
+performance. In the proposed flow, because the two-symbol 
+decoding procedure is restricted to a single SE only, it is 
+reasonable to load CMs from different sources and assign  
+Figure 4.  TSBAD block diagram 
+them to TSBAD stage according to the SE type and binIdx of 
+next two bins. As a result, we reorganize the 459 CMs by 
+applying the following principle. For every set of CMs, if two 
+CMs of each set are never used for TSBAD simultaneously, it 
+is stored in SRAM; otherwise, it is stored in registers. For 
+example, there are three candidate CMs used for decoding 
+transform_size_8x8_flag. However, only one of them is 
+necessary for TSBAD since transform_size_8x8_flag is 
+composed of one single bin and thus the second bin decoding 
+process is redundant. Guided by the principle, this set of CMs 
+is stored in SRAM. As a result, the organization of CM 
+memory is listed in Table III and Table IV. After memory 
+addresses are derived, one CM is loaded from SRAM and two 
+CMs are loaded from register at the same time. Compared to 
+the implementation of all register approach, our proposed 
+hybrid CM memory not only avoids data hazards caused by 
+CM reading and writing but also reduces the hardware cost 
+overhead significantly. 
+B. TSBAD Stage 
+In the binary arithmetic decoding procedure, two 
+parameters should be derived and delivered to decode the next 
+bin. One is the updated range and the other is the updated 
+offset. In the traditional TSBAD engine, where two BADs are 
+cascaded directly, the inter-bin dependency of range (R) and 
+offset (O) leads to an unavoidably long critical path. In order 
+to improve decoding performance, a new mathematical 
+transform method for TSBAD procedure is proposed to 
+shorten the critical path. In this paper, only nonequiprobable 
+decoding is discussed since implementation of equiprobable 
+and terminate decoding is much simpler. 
+Fig. 4 illustrates the block diagram of proposed TSBAD. 
+All possible decoding paths are calculated in parallel, and the 
+correct result is chosen at the end of bin decision process. 
+According to the standard, the bin decision is dependent on 
+OLPS. If OLPS is negative, the binVal is identified as MPS; 
+otherwise, the binVal is identified as LPS. For OLPS to be 
+calculated, a mathematical reordering method [7] can be 
+adopted as follows: 
+
+LPSLPSLPS RRORROO  )()(  
+LPS Decoding
+MPS Decoding
+MPS Decoding
+LPS Decoding
+MPS Decoding
+LPS decoding
+Bin1 Decision Bin2 Decision
+binVal1,
+updated range, offset, CM
+binVal2,
+updated range, offset, CM
+range, 
+offset,
+ CM_bin1,
+CM_bin2
+decision_flag decision_flag
+ Efficient Inter-layer Prediction Hardware Design with 
+Extended Spatial Scalability for H.264/AVC Scalable 
+Extension 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+                                 
+Abstract— To support inter-layer prediction with arbitrary 
+frame resolution ratio between successive spatial layers, the 
+scalable video coding (SVC) adopts the mechanism of extended 
+spatial scalability (ESS) to achieve it but with noticeable 
+hardware implementation complexity due to the numerous 
+multiplication operations. Therefore, this paper proposes a 
+hardware efficient inter-layer prediction architecture design 
+with ESS by means of accumulator approach. In addition, an 
+area efficient inter-layer interpolator architecture and simplified 
+transform block identification scheme are also proposed to 
+further reduce hardware costs. Simulation results demonstrate 
+that our proposed architecture can significantly save  gate count 
+when compared to direct implementation approach.  
+I. INTRODUCTION  
+Scalable Video Coding (SVC), a video coding standard 
+extended from H.264/AVC [1], is an efficient way to achieve 
+high performance video coding in adaptive digital video 
+device applications. To fully utilize the content similarity 
+among different spatial layers, the lower layer information can 
+be a prediction candidate when coding high layer video 
+sequences. Therefore, the utilization of prediction from low 
+layer is called inter-layer prediction. 
+To support various end users with different frame 
+resolution requirements, the SVC has to encode video 
+sequences with different frame resolutions such as 1080p, 
+720p, and CIF et.al. However, if the frame resolution ratio 
+between two successive spatial layers is non-dyadic, for 
+example, the frame resolution of two continue spatial layers is 
+1080p and 480p, the co-located region in base layer (BL) is no 
+longer an essential MB in enhance layer (EL). In this case, the 
+ESS process must be applied to generate the predicted samples 
+for inter-layer prediction.  
+Some studies and chip designs for SVC have been 
+proposed in [2] and [3]. However, these works didn’t consider 
+the implementation of ESS and thus can’t be applied to encode 
+video sequences with non-dyadic spatial resolution ratio. As a 
+result, this paper proposed several efficient hardware-oriented 
+schemes and architectures to realize inter-layer prediction with 
+ESS.  
+The rest of this paper is organized as follows. In Section II, 
+the operation of inter-layer prediction with ESS and some 
+architecture design issues are briefly introduced. Section III 
+shows the proposed design. Some implementation results are 
+demonstrated to show the efficiency of our designed 
+architecture in Section IV. Finally, the conclusion is given in 
+Section V. 
+ 
+II. OVERVIEW OF INTER-LAYER PREDICTION WITH ESS 
+AND ITS DESIGN ISSUES 
+The inter-layer prediction process with ESS is mainly 
+composed by two steps. The first step is spatial position 
+calculation [4] which computes the corresponding position in 
+BL and the other is inter-layer intra or residual prediction.  
+The detail procedure is described as follows.   
+ 
+A. Calculation of Corresponding Spatial Positions 
+Compared with dyadic spatial scalability, non-dyadic one 
+suffers from the problem of macroblock position mismatch 
+between two spatial layers. To deal with these mismatches, 
+SVC adopts the scheme called “Calculation of Corresponding 
+Spatial Positions (CCSP)” to map corresponding samples 
+between two successive spatial layers. The concept of this 
+scheme is to exploit inter-layer resolution ratios to determine 
+the corresponding positions and upsampling parameters. The 
+derivation of CCSP is shown as below 
+ 
+BLm ＝ {[(ELm  ×  Dm)＋Am]>>(Sm－4)}－dm                              (1) 
+where m   {x,y} and 0 < x < FrameWidth, 0 < y < FrameHeight 
+ 
+where BLm indicates the 1/16th precision offset relative to   
+top-left position in BL. These terms are used to calculate the 
+The work is supported by National Science Council of Taiwan, under 
+Grant NSC 97-2220-E-009-018. 
+Yu-Chen Chen, Gwo-Long Li, and Tian-Sheuan Chang 
+Graduated Institute of Electronics Engineering 
+National Chiao-Tung University 
+Hsinchu, Taiwan 
+ychen.ee97g@.nctu.edu.tw, glli.ee95g@nctu.edu.tw, tschang@twins.ee.nctu.edu.tw 
+  
+From Eq. (2), BLm+1 can be derived by adding a constant 
+Dm>>(Sm－4) from BLm. In other words, for the purposes of 
+getting the next corresponding sample position, the only 
+operation is adding a constant from current corresponding 
+sample position. Thus, in hardware aspect, the multiplier 
+needed in Eq. (1) can be replaced by a register plus an adder in 
+the form of accumulator. Finally, the area cost of CCSP can be 
+reduced by the substitution from multipliers to accumulators, 
+which is a more efficient way in hardware architecture design.  
+B. Efficient Interpolator Design 
+The major complexity of interpolator comes from the 
+various combination of filtering coefficients. This variety 
+introduces a large amount of arithmetic components and 
+complex control circuits. To lighten hardware burden, we 
+propose a hybrid interpolator architecture to implement both 
+of 4-tap and bi-linear interpolations. Through our design, the 
+adders can be shared by these two interpolation processes and 
+consequently lowers the hardware cost. The details of our 
+designs are describes as follows.  
+ 
+1) Simplification of Coefficients Table 
+      To reduce the control complexity, the most important 
+thing is to simplify the variety of coefficient combinations. 
+From the coefficient table, we observed that there are 
+symmetries in the filter coefficient table as shown in Table II. 
+For example, supposed that 4-tap filter is used and the 
+interpolation phase is 13, circuits whose phase equal to 3 can 
+be shared by only exchanging C-1 for C2, and C0 for C1.  Thus, 
+half of contents in the table can be reduced by exchanging 
+inputs with symmetric coefficient columns in the table. 
+ 
+2) Simple Adder-tree Architecture 
+Fig. 2 shows our proposed hybrid interpolation module. In 
+Stage I, reference samples are rearranged according to 
+interpolation phase and filtering mode. This step takes the 
+advantage of coefficient table symmetry as previously 
+described. In Stage II, scaling engine produces scaled 
+elements and classifies them to three sets. The classifying 
+strategy is to group minimum scaled elements in every set, 
+thus the input selection for adders can be efficiently 
+simplified. The proposed scaled element classification is 
+listed in Table III in detail. Finally, the data path in stage III 
+is basically composed of simple two-level adder-tree 
+architecture. This architecture makes the circuits simpler 
+without complex control signals 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Fig. 2 Architecture of the proposed interpolator 
+TABLE II.  SYMMETRY OF COEFFICIENT TABLE 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+TABLE III.  INPUTS SELECTION AND CLASSIFICATION FOR ADDERS 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+C. Buffer Reduction scheme for Transform Block Identifier 
+The main bottleneck for the transform block identification 
+scheme in [5] is its great amount of storage requirements. 
+These elements are composed of reference layer MB addresses 
+of each sample used for residual interpolation.  To reduce the 
+overhead of restoring buffers, a novel transform block 
+identification scheme is proposed. With this scheme, the 
+identification process can be simplified to minimize area cost. 
+In addition to the position mapping in CCSP, our 
+proposed accumulator based CCSP approach can also result 
+in the information which indicate whether the two adjacent 
+samples belong to the same transform block or not. That is, 
+for any sample m+1 in EL, its corresponding position in BL 
+(PBLm+1) can be derived by simply adding a constant D to 
+BLm with 4 LSBs’ truncation, and the 2nd and 3rd bits of two 
+(a) Bi-linear filter 
+coefficient 
+phase 
+coefficient
+s C1 C0 C0 C1 
+－ － 0 32 0 
+2 30 15 1 30 2 
+4 28 14 2 28 4 
+6 26 13 3 26 6 
+8 24 12 4 24 8 
+10 22 11 5 22 10 
+12 20 10 6 20 12 
+14 18 9 7 18 14 
+－ － 8 16 16 
+ 
+(b)     4-tap filter 
+coefficients 
+phase 
+coefficients 
+C-1 C0 C1 C2 C-1 C0 C1 C2 
+－ － － － 0 0 32 0 0 
+-1 2 32 -1 15 1 -1 32 2 -1 
+-1 4 31 -2 14 2 -2 31 4 -1 
+-1 6 30 -3 13 3 -3 30 6 -1 
+-1 8 28 -3 12 4 -3 28 8 -1 
+-1 11 26 -4 11 5 -4 26 11 -1 
+-2 14 24 -4 10 6 -4 24 14 -2 
+-3 16 22 -3 9 7 -3 22 16 -3 
+－ － － － 8 -3 19 19 -3 
+ 
+Mode Phase 
+adder A adder B adder C adder D 
+in0 in1 in2 in0 in1 in2 in0 in1 in0 in1 in2 
+0 0 16b 16b 0 0 0 0 0 0 A B C 
+0 1 16b 16b 0 2c 0 0 -a -d A B C 
+0 2 16b 16b -b 0 4c 0 -2a -d A B C 
+0 3 16b 16b -2b 2c 4c -d -a -2a A B C 
+0 4 16b 16b -4b 0 8c -d -a -2a A B C 
+0 5 16b 16b 2b 2c 8c c -4a -d A B C 
+0 6 16b 16b 0 2c 8c 4c -4a -2d A B C 
+0 7 16b 16b 0 2d 16c -d -a -2a A B C 
+0 8 C 2C 16B 0 b c -a -d A B 2B 
+1 0 16b 16b 0 0 0 0 0 0 A B C 
+1 1 16b 8b 4b 0 8b 2c 0 0 A B C 
+1 2 16b 8b 4b 4c 0 0 0 0 A B C 
+1 3 16b 8b 2b 4c 0 2c 0 0 A B C 
+1 4 16b 2b 0 0 8c 0 0 0 A B C 
+1 5 16b 2b 4b 0 8c 2c 0 0 A B C 
+1 6 16b 0 4b 4c 8c 0 0 0 A B C  
+1 7 16b 2b 0 4c 8c 2c 0 0 A B C 
+1 8 16b 0 0 0 16c 0 0 0 A B C 
+ Set A Set B Set C  
+ 
+ 
+X-1
+X0
+X1
+X2
+a
+b
+c
+d
+Scaled element set A
+OUT
+A
+B
+C
+2B
+Scalin
+g En
+gin
+e
+Phase and
+Filtering Mode
+Stage I Stage II Stage III
+Scaled element set B
+Scaled element set C
+adderA
+adderB
+adderC
+adderD
+in0
+in1
+in2
+in0
+in1
+in2
+in0
+in1
+in0
+in1
+in2
+ 
+> REPLACE THIS LINE WITH YOUR PAPER IDENTIFICATION NUMBER (DOUBLE-CLICK HERE TO EDIT) < 
+ 
+1 
+ 
+Abstract—Data bandwidth dominates the performance and 
+power consumption in the video encoder design. In which a low 
+bandwidth and bandwidth aware motion estimation design 
+enables smooth and better video quality as well as lower power 
+consumption on data accesses. This paper proposes a bandwidth 
+efficient motion estimation and its hardware implementation to 
+deal with the bandwidth issues. First, an on-demand data access 
+mechanism is proposed to acquire the reference data according to 
+the video content for motion estimation process and thus can 
+avoid unnecessary reference data loading. Furthermore, the 
+available bandwidth constraint is properly modeled into our 
+proposed rate distortion optimization framework to efficiently use 
+the data bandwidth. Simulation results show that our proposed 
+algorithm not only allocates proper data bandwidth for motion 
+estimation according to video content but also saves 79.15% data 
+bandwidth demand with 0.03dB PSNR drop and 2.50% bitrate 
+increase in maximum for 4CIF resolution sequences, when 
+compared to the fully data reuse full search motion estimation 
+which reuses the overlapped reference data to avoid unnecessary 
+data reloading. In addition, under the available data bandwidth 
+constraint, our proposed algorithm can achieve 2.43%, 0.08%, 
+and 0.20% BD-Bitrate saving with 0.17dB, 0.01dB, and 0.01dB 
+BD-PSNR increase on average for high, median, and low motion 
+sequences when compared to the full search motion estimation 
+algorithm. The resulted design only needs 75.27K gate counts 
+when running at 23MHz operating frequency for 4CIF@30 
+frames per second with 90nm CMOS process due to its search 
+range independent buffer design. 
+ 
+Index Terms—Motion estimation, Bandwidth efficient motion 
+estimation, and Bandwidth aware motion estimation  
+I. INTRODUCTION 
+OTION estimation (ME) not only contributes to the 
+most of coding efficiency but also is the most 
+computational intensive as well as data bandwidth intensive 
+component in modern video encoding design [1]. ME finds out 
+the best matching block by matching its current coding 
+macroblock (MB) (a block with 16×16 pixels) with search 
+candidates within the search range. A direct approach called 
+full search, which searches all candidates, has been widely used 
+in hardware implementations [2] due to its simplicity and 
+ 
+Manuscript received January 11, 2010; revised April 30, 2010 and July 19, 
+2010. This work was supported by National Science Council of Taiwan, under 
+Grand NSC98-2220-E-009-001. This paper was recommended by Associate 
+Editor Gwo Giun (Chris) Lee. 
+Gwo-Long Li and Tian-Sheuan Chang are with the Department of 
+Electronics Engineering & Institute of Electronics, National Chiao-Tung 
+University, Hsinchu, Taiwan (corresponding author e-mail: 
+glli@dragons.ee.nctu.edu.tw and tschang@twins.ee.nctu.edu.tw).  
+ 
+regularity. With its regularity, it is easy to fully reuse the 
+overlapped search range data between different searches [3] to 
+reduce the required access and several hardware architectures 
+were proposed in [4-6] to take the advantages of search range 
+data overlapping. However, the bandwidth requirement is still 
+high due to its content independent data loading. Other 
+approaches like fast ME algorithms [7-13] can reduce the 
+computational complexity but they do not help a lot to reduce 
+the required bandwidth for irregular search pattern.  
+To deal with data bandwidth problem, works in [14-19] 
+proposed various efficient ME architectures to reduce data 
+bandwidth requirements. In [14], the authors proposed a 
+modified MB processing order to further increase the data reuse 
+of Level C data reuse scheme [3]. For multiple reference frames 
+motion estimation in H.264, [15] proposed a single reference 
+frame multiple current macroblocks (MBs) scheme to reuse the 
+reference data. An alternative direction to reduce the data 
+bandwidth requirement was introduced in [16, 17] by 
+decreasing the size of search range centered at the motion 
+vector predictor (MVP). In [16], the authors efficiently selected 
+the search area to reduce the data bandwidth requirement by 
+tracing the motion vectors. [17] used a two-step windowing 
+approach to dynamically decide whether to load more reference 
+data for motion estimation. In hardware design, [18, 19] 
+proposed the hardware architectures to reduce the memory 
+bandwidth overhead by adopting the binary motion estimation 
+mechanism which executed the matching process on the 
+generated bit map instead of on the pixels. However, these 
+works still require large and constant bandwidth support from a 
+system because of the adopted full search algorithm. Large 
+bandwidth requirement increases the cost as well as power 
+consumption. Besides, assumption of constant bandwidth 
+support is not practical for a modern complex system-on-a-chip 
+due to high varieties of processing tasks. In addition, they do 
+not consider how to efficiently use the available bandwidth or 
+adapt the search process according to available bandwidth, 
+which would be vital to portable video applications like video 
+phones due to costly DRAM power consumption. As a result, 
+above bandwidth policy implies two consequences: either over 
+design to meet the demands or design unchanged with 
+insufficient bandwidth supply that results in quality 
+degradation or coding time increase.  
+To solve above problems without the side effects, this paper 
+presents an on-demand data access efficient ME and its 
+hardware realization under the rate distortion (RD) optimized 
+framework. Based on the introduced bandwidth-rate-distortion 
+model, the proposed approach can minimize and predict the 
+RD Optimized Bandwidth Efficient Motion Estimation 
+and Its Hardware Design with On-Demand Data Access 
+Gwo-Long Li, Student Member IEEE and Tian-Sheuan Chang, Senior Member IEEE 
+M 
+> REPLACE THIS LINE WITH YOUR PAPER IDENTIFICATION NUMBER (DOUBLE-CLICK HERE TO EDIT) < 
+ 
+3 
+With step n, the data requirement for ME can be adjusted freely 
+for different quality. 
+ 
+ 
+ 
+ Search area of MB1
+Search area of MB2
+Non-overlapped area
+One MB wide
+Data reused 
+area
+ 
+Fig.1 Illustration of data reuse scheme 
+for ME 
+4
+4 43
+1 32
+1 211
+21
+ 
+Fig.2 Example of small-cross search 
+algorithm 
+ 
+1
+2 3 4
+5
+ 
+(a) 
+1
+2 3 4
+5
+ 
+(b) 
+1
+2 3 4
+5
+ 
+(c) 
+1
+2 3 4
+5
+ 
+(d) 
+Fig.3 Data overlapping for different small-cross search results. (a) Min. SAD @ 
+1, (b) Min. SAD @ 2, (c) Min. SAD @ 4, and (d) Min. SAD @ 5 
+ 
+III. PROPOSED FRAMEWORK 
+A. RD optimized bandwidth modeling for video contents and 
+search steps 
+The SAD is commonly used as similarity measurement in ME 
+process due to its computational simplicity, but failed to 
+consider the coding rate brought by motion vector encoding. 
+Therefore, the commonly used Rate-Distortion cost (RDCost) 
+is adopted in this paper and can be calculated as follows. 
+ 
+      (          )   
+   (   (  ))          (      )                              (4) 
+ 
+where λMotion indicates the Lagrange multiplier and the term 
+R(MV-MVP) represents the number of bits for coding the 
+motion vector difference between the motion vector (MV) and 
+the predicted motion vector. Through the adoption of RDCost, 
+the best rate-distortion performance can be achieved.  
+Fig.4 shows the relationship between the rate distortion 
+performance improvement and search steps of the nearest 
+neighbours search. In which the vertical axis is the percentage 
+of RDCost improvement and the horizontal axis is the steps of n 
+in nearest neighbours pattern ME. This simulation uses JM11 
+reference software [22], quantization parameter (QP) with 28, 
+±16 search range and only 16x16 block size for simplicity. The 
+mechanism of variable block size is not included for simplicity 
+due to the SADs of other small block size can be obtained from 
+the data of 16x16 block size in SAD tree based hardware 
+realization, and it will not affect the data bandwidth. Thus, the 
+RDCost improvement can be derived as follows. 
+ 
+         (
+               
+       
+)                                 (5) 
+ 
+where RDCost0 and RDCostn indicate the RDCosts after the 
+first and n+1 steps search of nearest neighbours search, 
+respectively. From these figures we can observe that the 
+∆RDCost is increased significantly in the first few steps. 
+However, the ∆RDCost is increased slightly after more steps. 
+For example, for the Akiyo sequence in Fig.4(a), the ∆RDCost 
+would be stable after three steps. For Football sequence in 
+Fig.4(b), sixteen steps are required for the ∆RDCost 
+stabilization. Therefore, it is unnecessary to search too many 
+steps since the improvement would be negligible after checking 
+certain number of steps. Meanwhile, this also helps to save the 
+data bandwidth requirement if the required steps can be 
+properly predicted.  
+ 
+ 
+(a) 
+ 
+(b) 
+ 
+(c) 
+Fig.4 The relationship between the steps n of small-cross pattern and RDCost 
+and modeled results for sequences of (a) Akiyo, (b) Football, and (c) Foreman 
+ 
+From Fig.4, we can obtain three properties. First, the 
+convergence speed of the sequence is content dependent. For 
+example, the high motion sequence such as Football has slower 
+convergence speed than the slow motion sequence such as 
+Akiyo. This property mainly comes from that the high motion 
+sequence needs more search steps to find out the best result. 
+The second property is that the magnitude of ∆RDCost is also 
+content dependent. For instance, the ∆RDCost of Akiyo 
+sequence is smaller than that of the Football sequence since 
+most MVs in low motion sequence have their best MV highly 
+around the MVP. The last property is that the magnitude of 
+RDCost significant influences the ∆RDCost convergence speed. 
+That is, the sequences with smaller RDCost like Akiyo would 
+have faster ∆RDCost convergence speed than the sequences 
+> REPLACE THIS LINE WITH YOUR PAPER IDENTIFICATION NUMBER (DOUBLE-CLICK HERE TO EDIT) < 
+ 
+5 
+where DBAllocated_MB_i stands for the allocated data bandwidth for 
+current i-th MB by Eq. (6-9) and the MBRemained is the number of 
+un-encoded MBs. In this allocation, the allocated bandwidth by 
+Eq. (9) will be adopted only if the allocated bandwidth is 
+smaller than average remaining data bandwidth per MB. 
+Otherwise, the data bandwidth usage is restricted to average 
+remaining data bandwidth per MB. By this restriction, the 
+problem of over allocation can be avoided. After bandwidth 
+allocation for current MB, the allocated bandwidth should be 
+converted to the corresponding steps in nearest neighbours ME 
+algorithm. The allocated steps can be calculated as follows. 
+ 
+      
+      
+  
+                                 (14) 
+ 
+For the following step, the nearest neighbours search method is 
+applied according to the allocated steps. 
+ 
+Data bandwidth update 
+The allocated data bandwidth might not be fully reused due to 
+early termination condition of the search algorithm. Thus, the 
+unused bandwidth can be recycled for further use. Therefore, an 
+additional data bandwidth update stage should be added into the 
+whole system. The data bandwidth update operations are as 
+follows. 
+ 
+       ∑            
+   
+                              (15) 
+                                                   (16) 
+                                                          (17) 
+ 
+where DBRemained_MB_i refers to the remained data bandwidth for 
+current MB i and DBUsed_MB_i is used data bandwidth after 
+executing nearest neighbours search. 
+ 
+Start of MB
+Perform ME for 
+Step0, 1 and 2
+Bandwidth allocation for 
+current MB, NMB_i, Loop=0
+Perform ME for 
+step Loop
+Update available 
+bandwidth DBAvailable
+Loop++
+Loop==NMB_i
+Min RDCost located at center?
+YES
+YES
+NO
+NO
+Start of GOP
+Start of frame
+Bandwidth 
+initialization
+End of GOP
+End of MB
+End of frame
+Min RDCost 
+located at center?
+NO
+YES
+Proposed 
+bandwidth aware 
+ME algorithm 
+ 
+Fig.5 Flowchart of proposed bandwidth aware ME algorithm 
+ 
+IV. SIMULATION RESULTS 
+Table I and II show the simulation environment settings and 
+test sequences. This simulation uses two scenarios to 
+demonstrate the efficiency of our proposed algorithm. One 
+scenario is to show the data bandwidth savings without data 
+bandwidth constraint. In this scenario, we use the search range 
+to represent BWBus for simplicity and compare with the full 
+search with Level C data reuse scheme since it can achieve the 
+highest data reuse [13, 25, 26]. Another scenario is to 
+demonstrate the rate distortion performance under the data 
+bandwidth constraint. This scenario compares three algorithms 
+including full search (FS), nearest neighbours (NN) [21], and 
+block-based gradient descent search algorithm (BBGS) [27] 
+under the data bandwidth constraints of 20Kbytes and 
+38Kbytes for CIF sequences and 385Kbytes and 765Kbytes for 
+1080p sequences. 
+ 
+Table I Environment settings for simulation 
+Platform JM11 
+Frame structure IPPPP…. 
+Frames to be encoded 300 for CIF and 4CIF, 100 for 1080p 
+Frame rate 30fps 
+Frame resolution CIF, 4CIF, and 1080p 
+Quantization Parameter (QP) 8, 18, 28, 32, 38 
+Group of Picture (GOP) 16 
+Entropy coding CABAC 
+Rate Distortion Optimization (RDO) Simple 
+ 
+Table II Brief content description for test video sequences 
+ Size Sequence Property 
+Slow 
+motion 
+1080p 
+Sunflower 
+Complex texture in background and slow 
+moving in object 
+Rush hour 
+Quiescent motion in background and slow 
+motion in moving objects 
+CIF & 
+4CIF 
+Mother Daughter 
+(MD), Hall, City, 
+Akiyo, News 
+Median 
+motion 
+1080p 
+Tractor 
+Median motion in background and high 
+motion in moving object 
+Station2 Zoom out motion in all scene 
+Riverbed Monotonic texture in all scene 
+CIF Table tennis 
+Median motion in contents with scene 
+changes 
+CIF & 
+4CIF 
+Mobile 
+Complex texture and different motion 
+direction 
+Foreman Zoom in and zoom out motion 
+Coastguard 
+Median motion in background and moving 
+objects 
+High 
+motion 
+1080p 
+Blue sky High motion in all scene 
+Pedestrian, 
+High motion in moving objects CIF & 
+4CIF 
+Soccer, Stefan 
+Football, 
+ 
+Fig. 6 demonstrates the efficiency of bandwidth allocation for 
+our method. For low motion Akiyo sequence in Fig.6(a), the 
+variation of allocated bandwidth is small, only 0.5Kbytes, for 
+each frame. However, the variation of allocated bandwidth 
+becomes larger for medium and high motion sequences. For 
+example in Table tennis sequence, more bandwidth has been 
+allocated to the scene change frame (frame index 131) to satisfy 
+the demands of motion search. 
+Table III to Table V show the comparisons of Peak 
+Signal-to-Noise Ratio (PSNR), bitrate and consumed data 
+bandwidth with search range ±16 and ±32 for CIF resolution, 
+> REPLACE THIS LINE WITH YOUR PAPER IDENTIFICATION NUMBER (DOUBLE-CLICK HERE TO EDIT) < 
+ 
+7 
+different data bandwidth constraint. All these results are 
+relative to the results of the FS algorithm. In our simulation, the 
+total data bandwidth is evenly distributed to each MB in FS, 
+NN, and BBGS motion estimation algorithms and is 
+dynamically allocated to each MB in our proposed algorithm. 
+For low motion sequences, the rate distortion performance of 
+our proposed algorithm is near the same as FS since the best 
+MV can be easily found near MVP from a limited data 
+bandwidth support. For median motion sequences, the 
+BD-PSNRs of our proposed algorithm become better than FS 
+algorithm and the BD-Bitrates of some sequences are decreased. 
+In Table VII, we can observe that the BD-Bitrate saving of 
+Station2 sequence is much higher than other sequences since 
+this sequence has zoom out motion over entire frame. As a 
+result, the data bandwidth requirement of MBs is different from 
+the others due to the MBs in the outer have higher motion than 
+the MBs in the center. Our proposed algorithm can detect such 
+variation and allocate suitable amounts of data bandwidth to 
+each MB. For high motion sequences in Table VIII, the 
+BD-PSNR and BD-Bitrate of our proposed algorithm are much 
+better than FS algorithm due to better detection of data 
+bandwidth requirement of each MB. The BD-Bitrate saving of 
+our proposed algorithm can achieve up to 7.143% for Stefan 
+sequence in maximum and 2.44% in average for all high motion 
+sequences. In summary, our proposed algorithm has higher 
+performance in high motion sequences which are also the 
+hardest sequences to deal with.  
+Table VI Comparison of BD-PSNR and BD-Bitrate for low motion sequences 
+Image 
+size 
+DBTotal Sequence 
+BD-PSNR (dB) BD-Bitrate (%) 
+NN BBGS Proposed NN BBGS Proposed 
+1080p 
+385KB 
+Sunflower -0.032 -0.025 +0.097 +0.550 +0.386 -0.832 
+Rush hour -0.049 -0.033 +0.034 +0.916 +0.615 -1.467 
+765KB 
+Sunflower -0.001 -0.001 +0.016 +0.020 +0.026 -0.294 
+Rush hour -0.006 -0.006 +0.021 +0.046 +0.046 -0.669 
+CIF 
+20KB 
+Akiyo -0.013 -0.044 -0.002 +0.276 +1.046 +0.021 
+News -0.031 -0.051 -0.014 +0.825 +1.421 +0.743 
+MD -0.030 -0.051 -0.027 +0.626 +1.030 +0.287 
+38KB 
+Akiyo -0.011 -0.035 -0.001 +0.298 +0.877 +0.022 
+News -0.023 -0.056 +0.003 +0.452 +1.129 -0.057 
+MD -0.040 -0.063 -0.010 +1.109 +1.739 +0.259 
+Table VII Comparison of BD-PSNR and BD-Bitrate for median motion 
+sequences 
+Image 
+size 
+DBTotal Sequence 
+BD-PSNR (dB) BD-Bitrate (%) 
+NN BBGS Proposed NN BBGS Proposed 
+1080p 
+385KB 
+Tractor -0.029 -0.016 +0.007 +0.439 +0.244 -0.144 
+Station2 -0.243 -0.145 +0.069 +4.586 +2.902 -1.467 
+Riverbed -0.002 -0.003 -0.002 +0.009 +0.020 +0.021 
+765KB 
+Tractor -0.001 -0.001 +0.004 +0.006 +0.006 -0.068 
+Station2 -0.031 -0.031 +0.129 +0.454 +0.454 -2.048 
+Riverbed -0.000 -0.000 +0.001 +0.005 +0.005 -0.017 
+CIF 
+20KB 
+Table tennis -0.128 -0.164 -0.100 +2.680 +3.337 +2.053 
+Mobile -0.000 -0.039 +0.019 +0.024 +0.605 -0.248 
+Foreman -0.182 -0.106 +0.043 +3.670 +2.222 +0.839 
+Coastguard -0.005 -0.038 +0.010 -0.027 +0.631 -0.156 
+35KB 
+Table tennis -0.113 -0.139 -0.051 +2.287 +2.817 +1.046 
+Mobile +0.019 -0.018 +0.000 -0.247 +0.318 +0.009 
+Foreman -0.293 -0.159 +0.021 +6.304 +3.268 -0.514 
+Coastguard +0.004 -0.029 +0.024 -0.052 +0.595 -0.494 
+ 
+Fig.7 to Fig.9 show the frame by frame bitrate usage of 
+different algorithms. This simulation condition is the same as 
+previous one but with unevenly distributed data bandwidth to 
+each MB. This condition is to simulate the traditional ME 
+design with fixed and pre-allocated bandwidth. In that 
+condition, the ME design has fixed search range and expects the 
+search range data arrival in time for computation. However, if 
+the real allocated bandwidth is lower than expected due to 
+bandwidth competition from other devices, the operations of 
+motion estimation will be skipped and the intra mode will be 
+selected as best prediction mode when the allocated data 
+bandwidth has run out. For the bandwidth usage, the simulation 
+shows that both of FS and our proposed algorithm would use up 
+all the available bandwidth but the BBGS and NN algorithm 
+wouldn’t. The PSNR results are similar to the previous one but 
+with quite different bit rate. The result shows that the bitrate 
+usage of the proposed algorithm is much less than those in other 
+algorithms due to fewer intra block coding. This proves that our 
+algorithm can properly allocate bandwidth to MBs according to 
+their content and use up the available bandwidth but never 
+exceed the budget to support ME operations. 
+Table VIII Comparison of BD-PSNR and BD-Bitrate for high motion 
+sequences 
+Image 
+size 
+DBTotal Sequence 
+BD-PSNR (dB) BD-Bitrate (%) 
+NN BBGS Proposed NN BBGS Proposed 
+1080p 
+385KB 
+Blue sky -0.449 -0.151 +0.035 +6.669 +2.235 -0.439 
+Pedestrian -0.017 -0.016 +0.146 +0.316 +0.273 -2.707 
+765KB 
+Blue sky -0.027 -0.027 +0.079 +0.361 +0.361 -1.509 
+Pedestrian -0.004 -0.004 +0.033 +0.055 +0.055 -0.645 
+CIF 
+20KB 
+Football -0.203 -0.126 +0.038 +3.011 +1.853 -0.631 
+Soccer -0.215 -0.150 +0.105 +3.929 +2.689 -1.880 
+Stefan -0.152 -0.153 +0.544 +2.161 +2.143 -7.143 
+38KB 
+Football -0.149 -0.061 +0.085 +2.220 +0.927 -1.295 
+Soccer -0.209 -0.112 +0.086 +3.760 +2.090 -1.517 
+Stefan -0.085 -0.067 +0.516 +1.158 +0.876 -6.599 
+ 
+ 
+Fig. 7 Comparison of bitrate for Stefan sequence under 38KB data bandwidth 
+constraint 
+ 
+Fig. 8 Comparison of bitrate for Pedestrian sequence under 385KB data 
+bandwidth constraint 
+> REPLACE THIS LINE WITH YOUR PAPER IDENTIFICATION NUMBER (DOUBLE-CLICK HERE TO EDIT) < 
+ 
+9 
+PE R
+e
+g
+Curr0(4) Curr1(4) Curr2(4) Curr3(4)
+Ref0(4)
+Ref1(4)
+Ref2(4)
+Ref3(4)
+PE R
+e
+g
+PE R
+e
+g
+PE R
+e
+g
+PE_4x4  
+(a) 
+Abs Abs Abs Abs
+C0(1) C1(1) C2(1) C3(1)
+Previous SAD SAD Out
+R0(1) R1(1) R2(1) R3(1)
+PE  
+(b) 
+Fig.12 (a) PE_4x4 and (b) PE 
+RDCost1RDCost2 RDCost0
+1 10
+10
+Exp. LUT
+s
+n
+Bandwidth 
+modeling module
+ Output 256 pixels
+Input 22 pixelsrc_sel addr_x,addr_y
+Reference buffer
+Input selector
+22x22 
+Pixels buffer
+Output selector
+ 
+Fig.13 Architecture of proposed 
+bandwidth modeling module 
+Fig.14 Architecture of reference buffer 
+ 
+B. Design of the on-demand reference buffer 
+Fig. 14 shows the design of the Reference buffer. In our 
+reference buffer design, the rc_sel signal is used to determine 
+where a row of 22 pixels or a column of 22 pixels should be 
+replaced in 22x22 Pixels buffer. In addition, the addr_x and 
+addr_y signals play the role of determining which 256 pixels 
+should be selected to output for SAD calculation according to 
+ME search algorithm. Note that the size of Reference buffer is 
+only 22x22 pixels which can cover the first three steps and help 
+the data reuse in the remaining steps. In addition, another 
+benefit of 22x22 buffer size is that the reference data loading 
+request can be issued simultaneously to memory controller to 
+load future necessary reference data once the search direction 
+has been decided and SAD calculation module starts to 
+compute SAD. As a result, the stalled cycles can be eliminated.  
+Fig.15 shows the mechanism of reference data updating for 
+our Reference buffer. In our Reference buffer design, we adopt 
+the circular addressing mode so that the new loaded reference 
+data will be stored in most-top-row (Fig.15(a)), 
+most-bottom-row (Fig.15(b)), most-left-column (Fig.15(c)), or 
+most-right-column (Fig.15(d)) registers depending on the 
+required search direction. Through this updating mechanism, 
+only one row or column reference data should be updated 
+instead of overall reference data and consequently reducing the 
+power consumption for updating Reference buffer contents. 
+With above scheme, the required buffer size is independent 
+of required search range. This is quite different from other 
+designs for fast algorithms [4,5,6,18,19] that load all search 
+range data into on-chip memory. However, a common issue for 
+above scheme is the DRAM access latency if the accessed data 
+pattern is a column access as Fig.3(b) and (c). If these access 
+data patterns are required, the DRAM access latencies will be 
+increased due to the required column of pixels are not stored 
+continuously in DRAM. Therefore, the required cycle counts to 
+load the data will be analyzed in the following subsection with 
+the consideration of DRAM access latency. 
+2
+2
+22
+New loaded pixels
+Replaced pixels
+Reused pixels
+R
+e
+p
+la
+c
+e
+ 
+(a) 
+2
+2
+22
+New loaded pixels
+Replaced pixels
+Reused pixels
+R
+e
+p
+la
+c
+e
+ 
+(b) 
+N
+e
+w
+ l
+o
+a
+d
+e
+d
+ p
+ix
+e
+ls
+Reused pixels
+2
+2
+22
+R
+e
+p
+la
+c
+e
+d
+ p
+ix
+e
+ls
+Replace  
+(c) 
+Reused pixels 22
+22
+N
+e
+w
+ lo
+a
+d
+e
+d
+ p
+ix
+e
+ls
+R
+e
+p
+la
+c
+e
+d
+ p
+ix
+e
+ls
+Replace  
+(d) 
+Fig.15 The mechanism of Reference buffer updating in which reference data 
+are loaded for (a) Down-toward, (b)Up-toward, (c)Right-toward, and 
+(d)Left-toward search process 
+ 
+C. Timing analysis with DRAM access latency 
+Fig.16 shows the timing diagram of the proposed design. This 
+timing diagram accurately includes the necessary memory 
+latency caused by DRAM access into the simulation framework 
+by adopting the Micron SDRAM model [28] in our design. In 
+general, the DRAM latency is mainly from the row miss and 
+page miss due to the cross page or cross row access in a data 
+access. Such misses in our algorithm could occur in the same 
+step access or the different step access if the required data are 
+located in different pages or rows. Therefore, the video data 
+mapping in DRAM uses the nearly optimal data mapping 
+proposed in [29] to gain the benefit of high spatial locality of 
+neighboring MBs to reduce the access penalty by row miss or 
+page miss. Fig.17 shows the data mapping of our design. In 
+which the luminance, chrominance, and motion vector 
+components of four adjacent MBs are grouped and stored at the 
+same memory row. With above data mapping, the external 
+DRAM is interconnected to the proposed ME module via a 
+32bits data bus so that four pixels can be loaded from external 
+memory per cycle. Thus, initial 22x22 reference data loading 
+needs 241 cycles in average according to the simulations. With 
+these data, 11 cycles are needed to calculate the RDCosts for 
+five candidates at the first step and three candidates at the 
+second and third step. Once the RDCosts of step0, 1, and 2 have 
+been calculated, 5 cycles are used to derive necessary search 
+steps and bandwidth for the following ME search. Finally, the 
+nearest neighbours search is executed to obtain the best results 
+according to the decided search steps n. It is worth to mention 
+that the required cycles for each step are only the external 
+memory access cycles, 22 cycles in maximum under our 
+operating frequency, since the SAD computation cycles are less 
+> REPLACE THIS LINE WITH YOUR PAPER IDENTIFICATION NUMBER (DOUBLE-CLICK HERE TO EDIT) < 
+ 
+11 
+our proposed algorithm can achieve 2.43%, 0.08%, and 0.20% 
+BD-Bitrate saving with 0.17dB, 0.01dB, and 0.01dB BD-PSNR 
+increase on average for high, median, and low motion 
+sequences under the available data bandwidth constraint when 
+compared to the full search motion estimation algorithm. The 
+resulted hardware implementation with simplified bandwidth 
+control scheme reveals that our proposed ME design can 
+process 30 frames in 4CIF resolution per second when running 
+at 23MHz operating frequency with only 75.27K gate counts 
+and search range independent buffer. 
+REFERENCES 
+[1] T. Wiegand, G. J. Sullivan, G. Bjontegaard and A. Luthra, “Overview of 
+the H.264/AVC video coding standard,” IEEE Transactions on Circuits 
+and Systems for Video Technology, vol.13, no.7, pp.560-576, July 2003. 
+[2] C.-H. Hsieh and T.-P. Lin, “VLSI architecture for block-Matching motion 
+estimation algorithm,” IEEE Transactions on Circuits and Systems for 
+Video Technology, vol.2, no.2 pp. 169-175, Jun 1992. 
+[3] J.-C. Tuan, T.-S. Chang, and C.-W. Jen, “On the data reuse and memory 
+bandwidth analysis for full-search block-matching VLSI architecture,” 
+IEEE Transactions on Circuits Systems for Video Technology, vol. 12, no. 
+1, pp. 61–72, January 2002. 
+[4] W.-F. He, Y.-L. Bi, and Z.-G. Mao, “Efficient frame-level pipelined array 
+architecture for full-search block-matching motion estimation,” in 
+Proceeding of IEEE International Symposium on Circuits and Systems, 
+vol.3, pp.2887-2890, May 2005. 
+[5] Y.-W. Huang, S.-Y. Chien, B.-Y. Hsieh, and L.-G. Chen, “Global 
+elimination algorithm and architecture design for fast block matching 
+motion estimation,” IEEE Transactions on Circuits and Systems for 
+Video Technology, vol.14, no.6, pp.898-907, June 2004. 
+[6] M. Miyama, J. Miyakoshi, Y. Kuroda, K. Imamura, H. Hashimoto, m. 
+Yoshimoto, “A sub-mW MPEG-4 motion estimation processor core for 
+mobile video application,” IEEE Journal of Solid-State Circuits, vol.39, 
+no.9, pp.1562-1570, September 2004. 
+[7] S. Kappagantula and K. R. Rao, “Motion compensated interframe image 
+prediction,” IEEE Transactions on Communications, vol.33, no.9, 
+pp.1011-1015, September 1985. 
+[8] L. M. Po and W. C. Ma, “A novel four-step search algorithm for fast 
+block motion estimation,” IEEE Transactions on Circuits and Systems for 
+Video Technology, vol.6, no.3, pp.313-317, June 1996. 
+[9] S. Zhu and K.-K Ma, “A new diamond search algorithm for fast 
+block-matching motion estimation,” IEEE Transactions on Image 
+Processing, vol.9, no.2, pp.287-290, February 2000. 
+[10] C. Zhu, X. Lin, and L.-P. Chau, “Hexagon-based search pattern for fast 
+block motion estimation,” IEEE Transactions on Circuits and Systems for 
+Video Technology, vol.12, no.5, pp.349-355, May 2002. 
+[11] P.-L. Tai, S.-Y. Huang, C.-T. Liu, and J.-S. Wang, “Computation-aware 
+scheme for software-based block motion estimation,” IEEE Transactions 
+on Circuits and Systems for Video Technology, vol.13, no.9, pp.901-912, 
+September 2003. 
+[12] Z. He, Y. Liang, L. Chen, I. Ahmad, and D. Wu, “Power-Rate-Distortion 
+analysis for wireless video communication under energy constraints,” 
+IEEE Transactions on Circuits and Systems for Video Technology, vol.15, 
+no.5, pp.645-658, May 2005.  
+[13] W.-M. Chao, C.-W. Hsu, Y.-C. Chang, and L.-G. Chen, “A novel hybrid 
+motion estimator supporting diamond search and fast full search,” in 
+proceeding of IEEE International Symposium on Circuits and Systems, 
+vol.2, pp.492-495, May 2002. 
+[14] C.-Y. Chen, C.-T. Huang, Y.-H. Chen, and L.-G. Chen, “Level C+ data 
+reuse scheme for motion estimation with corresponding coding orders,” 
+IEEE Transactions on Circuits and Systems for Video Technology, vol.16, 
+no.4, pp.553-558, April 2006.  
+[15] T.-C. Chen, C.-Y. Tsai, Y.-W. Huang, and L.-G. Chen, “Single reference 
+frame multiple current macroblocks scheme for multiple reference frame 
+motion estimation in H.264/AVC,” IEEE Transaction on Circuits and 
+Systems for Video Technology, vol.17, no.2, pp.242-247, February 2007. 
+[16] H. Shim, K. Kang, and C.-M. Kyung, “Search area selective reuse 
+algorithm in motion estimation,” in proceeding of IEEE International 
+Conference on Multimedia and Expo, pp.1611-1614, July 2007. 
+[17] M.-C. Lin and L.-R. Dung, “Two-step windowing technique for wide 
+range motion estimation,” in proceeding of IEEE Asia Pacific Conference 
+on Circuits and Systems, pp.1478-1481, November 2008. 
+[18] S.-H Wang, W.-L. Tao, C.-N. Wang, W.-H. Peng, T. Chiang, 
+“Platform-based design of all binary motion estimation with bus 
+interleaved architecture,” in Proceeding of IEEE International 
+Symposium on VLSI Design, Automation and Testing, pp.241-244, April 
+2005. 
+[19] S.-H. Wang, S.-H. Tai, and T. Chiang, “A low-power and 
+bandwidth-efficient motion estimation IP core design using binary search,” 
+IEEE Transactions on Circuits and Systems for Video Technology, vol.19, 
+no.5, pp.760-765, May 2009. 
+[20] T.-C. Wang, Y.-W. Huang, H.-C. Fang, and L.-G. Chen, "Performance 
+analysis of hardware oriented algorithm modification in H.264", in 
+proceeding of IEEE International Conference on Multimedia and Exp, 
+vol. 3, pp. 601-604, 2003. 
+[21] M. Gallant, G. Gote, and F. Kossentini, “An efficient 
+computation-constrained block-based motion estimation algorithm for 
+low bit rate vide coding,” IEEE Transactions on Image Processing, vol.8, 
+no.12, pp.1816-1823, December 1999. 
+[22] JM11 http://iphome.hhi.de/suehring/tml/download/ 
+[23] J. R. Jain and A. K. Jain, “Displacement measurement and its application 
+in interframe image coding,” IEEE Transactions on Communications, 
+vol.COM-29, no.12, pp.1799-1808, December 1981. 
+[24] R. Srinivasan and K. R. Rao, “Predictive coding based on efficient motion 
+estimation,” IEEE Transactions on Communications, vol.COM-33, no.8, 
+pp.888-896, August 1985. 
+[25] Y.-H. Chen and T.-D. Chuang and Y.-J. Chen and L.-G. Chen, 
+"Bandwidth-efficient encoder framework for H.264/AVC scalable 
+extension", in proceeding of IEEE International Symposium on 
+Multimedia, pp.401-406, December 2007. 
+[26] T.-C. Chen and Y.-H. Chen and S.-F. Tsai and S.-Y. Chien and L.-G. 
+Chen, "Fast algorithm and architecture design of low-power integer 
+motion estimation for H.264/AVC", IEEE Transactions on Circuits and 
+Systems for Video Technology, vol. 17, no. 5, pp. 568-577, May 2007. 
+[27] L.-K. Liu, and B. Feig, "A block-based gradient descent search algorithm 
+for block motion estimation in video coding, " IEEE Transactions on 
+Circuits and Systems for Video Technology, vol. 6, no. 4, pp. 419-422, 
+August 1996. 
+[28]  http://www.micron.com/products/dram/ddr/partlist.aspx 
+[29] G.-S. Yu and T.-S. Chang, “Optimal data mapping for motion 
+compensation in H.264 video decoding,” in proceeding of IEEE 
+Workshop on Signal Processing Systems, pp.505-508, October 2007. 
+ 
+Gwo-Long Li (S’09) received his B.S. degree from 
+the department of Computer Science and Information 
+Engineering, Shu-Te University, Kaohsiung Taiwan 
+in 2004 and M.S. degree from the department of 
+Electrical Engineering, National Dong-Hwa 
+University, Hualien Taiwan in 2006. He is currently 
+working toward his Ph.D. degree in the department of 
+Electronics Engineering, National Chiao-Tung 
+University, Hsinchu Taiwan. In 2006, he received the 
+Excellent Master Thesis Award from Institute of 
+Information and Computer Machinery. He is the 
+student member of IEEE and his research interest is the video signal processing 
+and its VLSI architecture design.  
+ 
+ 
+Tian-Sheuan Chang (S’93–M’06–SM’07) received 
+the B.S., M.S., and Ph.D. degrees in electronic 
+engineering from National Chiao-Tung University 
+(NCTU), Hsinchu, Taiwan, in 1993, 1995, and 1999, 
+respectively. He is currently an Associate 
+Professor with the Department of Electronics 
+Engineering, NCTU. From 2000 to 2004, he was a 
+Deputy Manager with Global Unichip Corporation, 
+Hsinchu, Taiwan. His current research interests 
+include (silicon) intellectual property (IP) and 
+system-on-a-chip design, very large scale integration signal processing, and 
+computer architecture. 
+  
+ 
+表 Y04 
+ 
+二、與會心得 
+ 
+APSIPA ASC is a small conference, but there are many attendees from Taiwan, 
+especially for those working on signal processing. The paper quality of this conference is on 
+the average, similar to other conferences.  
+We have attended a tutorial on the 3D video by a distinguished lecturer from Korea. We 
+also presented two papers, both in scalable video coding. A famous researcher, Wen Guo, has 
+also expressed interest to our work, and wonder the market possibility of SVC. Basically, our 
+research progress is among the leading group of related fields. 
+ 
+ 
+ 
+三、建議 
+ 
+  APSIPA ASC is a general conference for ASIA Pacific's signal processing communities. 
+Its paper quality could be improved to draw more attention to this conference. The 
+organization is quite good, partly due to its small scale compared to the enormous ISCAS 
+conference. 
+ 
+ 
+四、攜回資料名稱及內容: 
+攜回一論文集 
+ 
+ 
+五、其他 
+ 
+     
+ 
+reference layer. Residual upsampling is corresponding to 
+inter-layer residual prediction and it block-wised upsamples 
+residuals. Sample upsampling process is used in inter-layer 
+intra texture prediction that upsamples the corresponding 
+reconstructed samples. With these inter-layer predictions, 
+SVC decoder can decode its data to recover the pixel values. 
+III. MEMORY ANALYSIS 
+A. Memory Analysis for H.264/AVC Decoder 
+The memory requirements of H.264 decoder are mainly 
+dominated by four parts: parsing data, macroblock processing 
+data, neighboring data, and decoded picture buffer. In the 
+following, a macroblock based decoding flow is assume. The 
+parsing data stores the information parsed from the bitstream, 
+such as the SPS, PPS, and slice header data. The transform 
+coefficients parsed from bitstream are also included in it. The 
+parsing data consumes about 4.4 KB memory derived 
+statistical results. The macroblock processing data stores the 
+information that may be used to reconstruct a macroblock 
+such as prediction mode, residuals, and reconstructed samples. 
+This part requires 4.8 KB memory spaces. Since the basic 
+processing unit is macroblock, above memory usage is 
+irrelevant to the frame size actually. The neighboring data 
+stores previous decoded neighboring macroblock information, 
+i.e. left, up, upper-right, or upper-left macroblock, which 
+contains motion vectors, reference picture, prediction mode, 
+and neighboring pixels. Pre-deblocking coefficients are also 
+included. The neighboring data is stored in a row of 
+macroblocks in frame width, for example, a row consists of 
+22 macroblocks in CIF size. For neighboring pixels, the size 
+is one line of samples of the frame width plus one column 
+height of a macroblock. The decoded picture buffer (DPB) 
+stores previous decoded frames as reference frame for inter 
+prediction. The DPB is refreshed after decoding one GOP. 
+However, the data of DPB are stored in external memory 
+since such significant memory requirement is unreasonable to 
+be stored in internal memory. From the analysis described 
+above, the internal memory usage and external memory 
+access of H.264 decoder are summarized in Table I and Table 
+II, respectively. 
+B. Memory Analysis for SVC Decoder 
+Memory requirement of SVC inherits the entire 
+requirement from H.264 with additional memory from inter-
+layer prediction as shown in Figure 3. For the inter-layer 
+prediction, it reuses the reference layer data such as motion 
+vectors, residuals, and reconstructed samples. These data are 
+recognized as inter-layer data. With this inter-layer 
+dependency, different decoding flows will cause different 
+memory requirements. In this paper, we specify three 
+decoding flows, macroblock-based, row-based, and frame-
+based, that can be applied to SVC decoding process. 
+Furthermore, their corresponding internal memory usage and 
+external memory access will be analyzed in the following 
+article. 
+Residual 
+decoding
+Deblocking Filter
+Input 
+Bitstream
+Reconstructed frame
+Sample 
+Reconstruction
+Residual 
+Upsampling
+Sample Upsampling
+Inter-layer prediction
+Intra Prediction
+Neighboring data 
+(neighboring pixels)
+Inter Prediction
+Entropy Decoding
+Parsing data
+Motion Vector
+Reconstruction
+Neighboring data 
+(motion vectors)
+Inter-layer data 
+(reconstructed 
+samples)
+Inter-layer data 
+(residuals)
+Motion Vector
+Upsampling
+Inter-layer data 
+(motion vectors)
+Decoded picture 
+buffer
+  
+Fig. 2   Block diagram of SVC decoder.  
+NALU 
+Reader
+SPS PPS Slice 
+header
+SEI
+Parsing data
+Neighboring 
+data
+Decoded 
+picture 
+buffer
+Input bitstream
+Decoded frame
+NALU type
+Decode MB
+Macroblock 
+processing data
+Inter-layer data (base layer 
+pixels, motion vector, residuals)
+ 
+Fig. 3   SVC decoder memory map 
+ 
+TABLE I.  INTERNAL MEMORY USAGE OF H.264/AVC DECODER 
+Name Size (KB) 
+*Parsing data ~4.4  
+*Macroblock processing data ~4.8  
+Neighboring data 0.2 * 1.06PicWidthInMbs   
+PicWidthInMbs: number of macroblocks in a row of a frame 
+*: fixed data: will not change with the variation of frame resolution 
+TABLE II.  EXTERNAL MEMORY ACCESS OF H.264/AVC DECODER 
+Name Size (KB) 
+Input bitstream *0.0375*PicSizeInMbs 
+Reference samples **1.35 *PicSizeInMbs 
+Reconstructed samples 0.375*PicSizeInMbs 
+PicSizeInMbs: number of macroblocks in a frame 
+*: assume the compression rate is 10% of the original data 
+**:  assume every macroblock has 16 4x4 subblocks with one direction 
+prediction 
+has to store a whole frame of inter-layer data. The 
+amount of inter-layer data is to substitute (3) into Table 
+IV.  
+NumMBref = 
+2
+0
+PicSizeInMbs
+d
+n
+n
+
+
+ .            (3) 
+d: number of spatial layers 
+PicSizeInMbsn: number of macroblocks in spatial layer n 
+ 
+However, these huge inter-layer data are unreasonable to be 
+stored in internal memory. Furthermore, due to different 
+layers are decoded at different time, neighboring data can be 
+stored in only one set of highest spatial layer without overlap. 
+Therefore, the internal memory size is reduced to by setting   
+d = 1 in Table III when compared to macroblock-based and 
+row-based decoding manners. The total external memory 
+access is same as Table V plus inter-layer data mentioned 
+above. 
+IV. RESULTS AND DISCUSSIONS 
+For a clearer picture of the memory usage, we show some 
+quantitative results in this Section. To calculate the memory 
+usage, we make several assumptions in our analysis: 95% of 
+macroblocks are coded in inter prediction, 90% of 
+macroblocks in enhancement layers are coded in Intra_BL 
+mode if the corresponding block in base layer is encoded as 
+Intra mode, and 10% macroblocks in enhancement layers use 
+residual prediction in average. This assumption is a general 
+statistic according to our experiment. The encoding settings 
+are listed in Table VI. Table VII shows the analysis results, in 
+which type I stores all inter-layer prediction data in the 
+internal storage while type 2 stores all inter-layer prediction 
+data in the external memory.  
+The result shows that inter-layer prediction data has great 
+impact to both internal memory storage as well as the external 
+memory access. For type I, internal memory size will be 
+increased by 81% to 8965% when compared to single layer 
+H.264 decoding, especially for frame-based decoding that 
+needs to store 1980 MBs of residuals, prediction modes and 
+motion vectors for inter-layer prediction. For row-based 
+decoding method, 110 MBs of inter-layer prediction data need 
+to be stored in internal memory. For MB-based decoding, 
+only 5 MBs data are needed. This is the reason why the 
+macroblock-based decoding method results in lower internal 
+memory usage. For external memory access, all these flows 
+are the same due to the same reference data. Thus, the MB-
+based decoding is the best choice due to its smallest internal 
+memory usage and the same external memory access when 
+compared to frame-based and row-based decoding methods, if 
+an efficient internal memory design can be supported by the 
+technology provider.  
+Beyond type I, another design possibility is to store the 
+inter-layer prediction data into external memory to reduce the 
+chip cost, just as type II. From the table, it is interesting to 
+find that the extra external memory bandwidth due to inter-
+layer prediction data is insignificant compared to the large 
+reference data. Thus, the bandwidth increasing in type II is 
+just 12% more when compared to that in type I. However, the 
+internal memory usage varies a lot for different coding flow. 
+MB-based decoding has the least reduction due to each layer 
+has its own neighboring data to be stored in internal memory 
+for each layer decoding. Same situation also occurs in row-
+based decoding method as well. For frame-based decoding, 
+the internal memory storage is just 1% more than the single 
+layer H.264 decoding since all the extra storage is within the 
+external memory now. Therefore, the frame-based decoding is 
+the best choice for smallest internal memory size with the 
+acceptable memory bandwidth. 
+TABLE VI  SIMULATION SETTINGS 
+GOP 8 
+QP 32, 26, 20 
+Intra period -1 
+Frame resolution QCIF, CIF, 4CIF 
+TABLE VI.  TABLE VII  COMPARISON OF MEMORY REQUIREMENTS 
+Decoding Flow 
+Internal Memory 
+(KB) 
+External Memory 
+Access (MB) 
+size ratio size ratio 
+Original H.264 27.9 100% 11.5 100% 
+Type I 
+MB 50.6  181% 21.7 189% 
+Row 126.6  454% 21.5 187% 
+Frame 2529  9065% 21.4 186% 
+Type II 
+MB 44.3 159% 24.2 210% 
+Row 43.5 156% 24 209% 
+Frame 28.2 101% 23.9 208% 
+V. CONCLUSIONS 
+In this paper, the memory requirement of SVC decoder is 
+analyzed for three SVC decoding flows. Analysis results 
+show that MB-based or row-based decoding can reuse the 
+inter-layer data but needs extra storage. These two can be a 
+design choice if efficient on-chip memory technology can 
+support. For lower internal memory size and low external 
+memory access, frame-based decoding with external storage 
+of inter-layer data can be a better choice for SVC decoder 
+design. 
+REFERENCES 
+[1] H. Schwarz, D. Marpe, and T. Wiegand, “Overview of the 
+scalable video coding extension of the H.264/AVC standard,” 
+IEEE Tran. CSVT, vol. 17, no. 9, pp.1103-1120, Sep. 2006. 
+[2] H. Schwarz, D. Marpe, and T. Wiegand, “Hierarchical B 
+Pictures,” Joint Video Team, Doc. JVT-P014, Jul. 2005. 
+[3] M. Pelcat, M. Blestel, M. Raulet, “From AVC decoder to SVC: 
+minor impact on a dataflow graph description,” in Proc. IEEE 
+PCS, Lisboa, Portugal, Nov. 2007. 
+ 
+Fig.1 Prediction modes in SVC 
+ 
+ 
+                     (a)                                   (b) 
+Fig.2 (a) Inter prediction process, (b) Inter-layer residual 
+process in JSVM reference software 
+ 
+ 
+When computing the RDCost for inter mode prediction, the 
+D term in equation (1) is derived by calculating the sum of 
+absolute difference of each block (DInter) and it can be 
+expressed as follows: 
+ 
+,|),(),(|),(
+0 0
+ 
+ 
+
+height
+i
+width
+j
+Inter
+jiFjiCjiD
+        (2) 
+ 
+where C represents the pixels of current encoding block, F is 
+the pixels of reference frame, height and width denote the 
+current block size.  
+In contrast to inter prediction shown in Fig. 2(a), we can 
+observe that the inter-layer residual prediction additionally 
+substrates the up-sampled residual from current coding pixels 
+before performing motion estimation search. Consequently, 
+the D term in equation (1) can be calculated as follows when 
+testing inter-layer residual prediction. 
+ 
+ 
+ 
+
+height
+i
+width
+j
+ILres
+jiFjiBjiCjiD
+0 0
+|,),(),(),(|),(
+       (3) 
+ 
+where B represents the base layer up-sampled residuals.  
+From equations (2)-(3), it can be found that the main 
+difference for calculating the D terms between inter and inter-
+layer prediction is that the inter-layer prediction additionally 
+substrates the up-sampled residual from current coding pixels. 
+Based on this observation, it is possible to reuse the current 
+and reference data when testing both the inter- and inter-layer 
+prediction modes. 
+III. PROPOSED LOW-BANDWIDTH PREDICTION METHOD 
+In this section, our proposed data reuse method for inter 
+and inter-layer residual prediction is described in detail. 
+Besides, a fast motion estimation algorithm is also adopted to 
+further reduce memory requirement in motion estimation.  
+ 
+A. Proposed Data Reuse Method for Inter and Inter-layer 
+Residual Prediction 
+From section 2, we observed some identical processes 
+existed between inter and inter-layer residual prediction. 
+Since the current macroblock data and the reference 
+macroblock data of inter-layer residual prediction is the same 
+as inter prediction, the difference between these two 
+prediction modes is that inter-layer residual mode needs one 
+more process which subtracts up-sampled base layer residual 
+from current coding pixels before performing IME. Motivated 
+by this observation, we can combine these two prediction 
+modes into one motion estimation process and receive two 
+prediction results at the same time. In other words, by 
+changing the order of subtraction for DILres calculation, the 
+equation (3) can be rewritten as follows. 
+ 
+ 
+ 
+
+height
+i
+width
+j
+ILres
+jiBjiFjiCjiD
+0 0
+|),(),(),(|),(
+        (4) 
+ 
+Through the equation (4), the DInter can be derived by just 
+extracting the results of C-F during the computation of 
+equation (4). Finally, both the results of DInter and DILres can be 
+obtained concurrently. The combined method is shown in 
+Fig.3. When calculating the RDCost for inter prediction in 
+IME module, we can perform inter-layer residual prediction at 
+the same time by subtracting base layer residual. The 
+advantage of our proposed method is that, in normal 
+prediction process in the SVC, the current and reference 
+pixels should be downloaded twice for both inter and inter-
+layer prediction. However, after the adoption of our proposal, 
+the current and reference pixels only need to be loaded once 
+for both prediction modes. 
+ 
+ 
+Fig.3 Proposed data reuse method which combines inter 
+and inter-layer residual prediction 
+ 
+To demonstrate the efficiency of our proposed method, we 
+show some numerical comparisons of bandwidth saving for 
+our proposal and full search motion estimation with level C 
+data reuse scheme [5]. The bandwidth requirements of full 
+search motion estimation for loading reference data in EL per 
+frame can be calculated as follows.  
+ 
+Fig.6 The steps probability of SCS method 
+IV. SIMULATION RESULTS 
+The proposed algorithm is implemented on a JSVM8.9 [10]. 
+The test condition is shown in Table I. 
+ 
+Table I Simulation conditions 
+Codec JSVM 8.9 encoder 
+Testing sequences 
+Football, Silent, Mobile, Akiyo, 
+Container, Weather 
+QP 8, 18, 28, 38, 48 
+Resolution QCIF and CIF 
+Frame Rate 15Hz 
+Encoder configuration 
+MV search range : ±16 pels.  
+GOP size : 4. 
+Reference frame number : 1  
+Adaptive selecting inter-layer 
+prediction in enhancement layer 
+ 
+Football(QCIF)
+20
+30
+40
+50
+60
+0 500 1000 1500 2000
+Bit Rates(kbits/s)
+P
+S
+N
+R
+(d
+B
+)
+JSVM Proposed
+  
+(a) 
+Football(CIF)
+20
+30
+40
+50
+60
+0 2000 4000 6000 8000 10000
+Bit Rates(kbits/s)
+P
+S
+N
+R
+(d
+B
+)
+JSVM Proposed
+ 
+(b) 
+Fig.7 Rate-Distortion curve of Football. (a) QCIF (b) CIF 
+ 
+Silent(QCIF)
+20
+30
+40
+50
+60
+0 100 200 300 400 500 600
+Bit Rates(kbits/s)
+P
+S
+N
+R
+(d
+B
+)
+JSVM Proposed
+ 
+(a) 
+Silent(CIF)
+20
+30
+40
+50
+60
+0 500 1000 1500 2000 2500 3000 3500
+Bit Rates(kbits/s)
+P
+S
+N
+R
+(d
+B
+)
+JSVM Proposed
+ 
+(b) 
+Fig.8 Rate-Distortion curve of Silent. (a) QCIF (b) CIF 
+ 
+The simulation results of our proposed method are 
+compared with fast full search motion estimation algorithm in 
+JSVM8.9. Fig.7 and Fig.8 show the rate-distortion 
+performance comparisons for BL (in QCIF size) and EL (in 
+CIF size). Two different motion behavior sequences, Silent 
+and Football are shown in figures. From these figures, we can 
+observe that the proposed method can achieve near the same 
+rate distortion performance when compared to JSVM8.9. The 
+detail comparisons for PSNR degradation and bitrate increase 
+are shown in Table II. From this table, we observed that only 
+1.16% and 0.001dB bitrate increase and PSNR degradation in 
+average for our proposed method, respectively. The rate 
+distortion performance degradation mainly is caused by the 
+limited steps of SCS algorithm. However, compared to the 
+bandwidth saving which is critical issue in designing motion 
+estimation, this rate distortion decrease is ignorable. 
+Furthermore, the memory bandwidth requirements can be 
+saved up to 67% for all sequences in average. 
+ 
+V. CONCLUSION 
+In this paper a low memory bandwidth prediction method is 
+proposed to solve the problem of extreme memory bandwidth 
+demands brought by inter-layer prediction of SVC. By 
+combining both inter and inter-layer residual prediction, the 
+reference data for prediction can be reused efficiently. 
+Simulation results show that the proposed method can save 
+67% memory bandwidth requirement with slight rate 
+distortion performance degradation when compared to 
+JSVM8.9. 
+ 
+表 Y04 
+行政院國家科學委員會補助國內專家學者出席國際學術會議報告 
+                                                            2009年 10 月 31 日 
+報告人姓名 李國龍 
+服務機構 
+及職稱 
+國立交通大學 
+電子工程學系 
+     時間 
+會議 
+     地點 
+October 4 - 7, 2009 
+Sapporo Convention 
+Center, Sapporo, Japan 
+ 
+本會核定 
+補助文號 
+計畫編號 98-2220-E-009-006 
+會議 
+名稱 
+2009 APSIPA Annual Summit and Conference  
+(APSIPA ASC 2009) 
+ 
+發表 
+論文 
+題目 
+1. Po-Yuan Hsu, Gwo-Long Li, and Tian-Sheuan Chang, "Memory Analysis 
+for H.264/AVC Scalable Extension Decoder," in Proc. Asia-Pacific Signal 
+and Information Processing Association Annual Summit and Conference 
+(APSIPA ASC), Sapporo, Japan, October 2009. 
+2. Hsiao-Shan Huang, Gwo-Long Li, and Tian-Sheuan Chang, "Low 
+Memory Bandwidth Prediction Method for H.264/AVC Scalable Video 
+Extension," in Proc. Asia-Pacific Signal and Information Processing 
+Association Annual Summit and Conference, Sapporo (APSIPA ASC), 
+Japan, October 2009. 
+ 
+一、參與會議經過： 
+    APSIPA ASC2009 是亞太訊號與資訊處理協會所舉辦的第一個亞太區訊號與資訊處
+理國際研討會。此會議舉辦時間共有四天，第一天的會議總共有六場 Tutorial sessions。
+而在此六場 Tutorial sessions 中，我參加了上午的 Facial Image Analysis: Detection, 
+Super-Resolution, and Recognition其講者為Kenneth K. M. Lam教授，與下午的Multi-View 
+Video Coding for 3-D Multimedia Services 其講者為 Yo-Sung Ho 教授。聽完了此兩場
+Tutorial sessions 之後，讓我學習到在 Facial Image 與 Multi-View Video Coding 此兩研究
+題目目前最新的研究進展以及可研究的問題。在第二天的會議中，早上去聽了一場由
+Sanjit K. Mitra教授所給的 Invited talk其題目為Structural Subband Decomposition: A New 
+Concept in Digital Signal Processing。下午則是報告我們此次所被接受的論文。接下來第
+三天及第四天的會議中，也各別參加了一些論文報告 Sessions。 
+   
+ 
+ 
+二、與會心得 
+ 
+經由這次會議，看到了目前亞太區訊號與資訊處理的研究學者們最新的研究成果，
+雖然論文品質屬一般水準，但還是有些新的收獲。此外，這一次會議有不少台灣學者與
+會，因此又多認識了幾位台灣學者。 
+ 
+ 
+附
+件
+三 
+國科會補助計畫衍生研發成果推廣資料表
+日期 2010年10月27日
+國科會補助計畫
+研發成果名稱
+發明人
+(創作人)
+技術說明
+技術移轉可行性及
+預期效益
+技術/產品應用範圍
+產業別
+計畫名稱:
+計畫主持人:
+計畫編號: 學門領域:
+(中文)
+(英文)
+成果歸屬機構
+(中文)
+(英文)
+子計畫五：適用於無線視訊娛樂之新世代可調式視訊技術研究(3/3)
+張添烜
+98 -2220-E -009 -006 - 晶片科技計畫--整合型學術研
+子計畫五：適用於無線視訊娛樂之新世代可調式視訊技術研究(3/3)
+國立交通大學 張添烜
+隨著在視訊技術、網路、和計算能力的快速進展，透過無線網路傳送的視訊娛
+樂應用，也越來越重要。然而，無線網路的連線協定多樣化，頻寬變化相當大
+，不利確保視訊娛樂的傳送品質，此外，視訊娛樂內容可能由各種不同能力的
+終端設備做存取，小如只具備小螢幕、有限計算能力與電力的手機，大至功能
+強大的高畫質電視，所需計算能力、記憶體大小、頻寬分配與傳輸保護也大不
+相同。為滿足此需求，MPEG 和ITU-T 擴展MPEG-4 AVC/H.264 成為scalable
+video coding (SVC)。然而，雖然SVC 的multi-layer structure 可帶來種種
+好處達成有效率的壓縮，卻也為SVC帶來比已經相當複雜的H.264還要高上數倍
+的計算量與記憶體存取，因此，如何以硬體實現加速運算，為目前相當重要之
+研究方向。
+本技術開發基於H.264/AVC的SVC矽智財技術，包含了baseline profile和high
+profile。目標應用為在透過無線傳輸的低功耗手持行動裝置(baseline
+profile@640×480×30fps)，或是HDTV (high profile@1280×720×30fps)的視訊
+娛樂服務，並能根據目前頻寬和電力狀況調整視訊編解碼，以達最佳的觀賞品
+質。由於SVC具有畫面大小、畫面速率與SNR可調適性，如何處理這些可調適性
+電機及電子機械器材業
+註：本項研發成果若尚未申請專利，請勿揭露可申請專利之主要內容。
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：張添烜 計畫編號：98-2220-E-009-006- 
+計畫名稱：適用於無線視訊娛樂之多系統融合及節能技術--子計畫五：適用於無線視訊娛樂之新世代
+可調式視訊技術研究(3/3) 
+量化 
+成果項目 
+實際已
+達成數
+（被接
+受或已
+發表） 
+預期總達
+成數(含實
+際已達成
+數) 
+本計
+畫實
+際貢
+獻百
+分比
+單
+位
+備註（質化說明：如數個計畫共同
+成果、成果列為該期刊之封面故
+事...等） 
+期刊論文 0 0 100%  
+研究報告 /技術
+報告 0 0 100%  
+研討會論文 0 0 100%
+篇
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 2 0 100%
+[PT1] 發明者:李國龍、黃筱珊、張添烜
+專利名稱: 用於可調式視訊編碼系統之
+選擇性移動向量預測方法、移動估測方
+法及其裝置--中華民國專利(申請中) 
+[PT2] 發明者:廖元歆、張添烜 
+專利名稱: 背景調適性二進制算數解碼
+裝置及其解碼方法--中華民國專利(申
+請中) 
+ 
+專利 
+已獲得件數 0 0 100%
+件
+ 
+件數 1 0 100% 件 [TR1] High Performance Scalable Video Codec Design 技術移轉 
+權利金 1600 0 100% 千元
+[TR1] High Performance Scalable 
+Video Codec Design 
+碩士生 5 5 100%  
+博士生 2 2 100%  
+博士後研究員 0 0 100%  
+國
+內 
+參與計畫人
+力 
+（本國籍） 
+專任助理 0 0 100%
+人
+次
+ 
+期刊論文 1 1 100%
+Gwo-Long Li and Tian-Sheuan 
+Chang, ＇RD Optimized Bandwidth 
+Efficient Motion Estimation and Its 
+Hardware Design with On-Demand Data 
+Access,＇ IEEE Transactions on 
+Circuits and Systems for Video 
+Technology. (Accept) 
+國
+外 論文著作 
+研究報告 /技術
+報告 0 0 100%
+篇
+ 
+專書 0 0 100% 章/本  
+申請中件數 2 0 100%
+[PT1] Inventors: Gwo-Long Li, 
+Hsiao-Shan Huang, and Tian-Sheuan 
+Chang  
+Title: Selectively motion vector 
+prediction method, motion 
+estimation method and device thereof 
+applied to scalable video coding 
+system--USA Patent (Under review)
+[PT2] 發明者:廖元歆、張添烜 
+專利名稱: 背景調適性二進制算數解碼
+裝置及其解碼方法—大陸專利(申請中)
+ 
+專利 
+已獲得件數 0 0 100%
+件
+ 
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+參與計畫人
+力 
+（外國籍） 
+專任助理 0 0 100%
+人
+次
+ 
+其他成果 
+(無法以量化表
+達之成果如辦理
+學術活動、獲得
+獎項、重要國際
+合作、研究成果
+國際影響力及其
+他協助產業技術
+發展之具體效益
+事項等，請以文
+字敘述填列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人
+數 0 
+ 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+■達成目標 
+□未達成目標（請說明，以 100字為限） 
+□實驗失敗 
+□因故實驗中斷 
+□其他原因 
+說明： 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：■已發表 □未發表之文稿 □撰寫中 □無 
+專利：□已獲得 ■申請中 □無 
+技轉：■已技轉 □洽談中 □無 
+其他：（以 100字為限） 
+已發表之論文: Conference 8 篇，Journal 1 篇 
+審稿中及預計投稿之論文: 4 篇 
+審核中專利:  4 篇 
+技術移轉: 1 件, NT$1,600,000. 
+ 

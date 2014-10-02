@@ -1,0 +1,542 @@
+(a) default-lighting rendering (b) lighting guide
+Figure 1: An example of lighting guide. Given the rendering with the default lighting conﬁguration
+(a), artists paints on it to create a lighting guide (b) to illustrate the atmosphere and mood the
+shot should express. Lighters then manually adjust lighting parameters by referring the guide so
+that the resulting rendering visually matches the lighting guide.
+is similar to the painting-with-light system in that both attempt to obtain lighting setups from
+lighting guides. However, the painting-with-light system assumes that the number of lights and the
+positions of lights are known. Our proposed method does not have such a restriction. The lighting-
+with-paint system is an interactive lighting system in which users paint contribution from a light
+at a time. The system automatically ﬁnds parameters for the corresponding light. It allows more
+general lights such as barn lights. Our system only supports point lights. However, our system
+solves for all lights at the same time while the lighting-with-paint system only allows adding/
+editing a light at a time. Compared to the lighting-with-paint system, the proposed lighting-by-
+guide paradigm potentially oﬀers the following advantage. The painting of the lighting guide is
+more feel-based and scene-based. When painting the lighting guide, the artist often only considers
+the overall atmosphere and is not thinking about one light at a time. Thus, painting a guide could
+be more intuitive to users. However, both paradigms are more complements than competitors.
+Artists could paint a guide and quickly obtain a lighting setting which roughly matches the guide
+using a lighting-by-guide system. They can then ﬁne tune lighting by using the interactive lighting-
+with-paint system to have more control to the ﬁnal results.
+The main contributions of this project are: (1) it introduces the the light-by-guide problem
+and proposes a framework to solve a simpler version of the problem by assuming point lights; (2)
+as with other nonlinear optimization problems, the quality of our solution relies heavily on good
+initial guesses and the project proposes an eﬃcient and eﬀective algorithm to obtain good initial
+guesses. Due to the assumptions and simpliﬁcation we made, the current system is not ready
+for serious animation production yet. However, it could be useful as a lighting tool for hobbyist
+animators since naı¨ve users have a very diﬃcult time managing the often non-intuitive task of
+setting many lighting parameters. In addition, it could be used for mass production of low-quality
+animations or as a quick tool to obtain an initial lighting for further tweaking.
+2 Related work
+Our goal is to automatically estimate lighting parameters to render an image so that its mood
+is similar to the lighting guide painted by artists. Therefore, our work is related to research on
+interactive lighting design, automatic lighting design and relighting.
+Interactive lighting design. Many problems in computer graphics are parameter tweaking prob-
+lems, for example, mapping between rendered images and lighting parameters, mapping between
+animation and animation parameters, and mapping between materials and reﬂectance parameters.
+Because these mappings are often high-dimensional discontinuous functions, the inference of the
+2
+rendering 
+I(p)
+parameter
+p0
+rendering I(p)
+parameter p
+error 
+D(I(p), Ig)
+initial
+guess
+optimization
+difference
+measurement
+lighting
+parameter pscene S
+lighting
+guide Ig
+relighting
+parameter p
+rendering I(p)
+Figure 2: System overview. Our system consists of four components: initial guess, optimization,
+relighting and diﬀerence measurement. The initial guess module provides the optimization module
+with a good initial lighting conﬁguration. The optimization module then attempts to further reﬁne
+the lighting setup by optimizing a goal function which measures the diﬀerence between the lighting
+guide and the rendering. During the process, the relighting function needs to be invoked many
+times for either estimating the gradients of the goal function or the contribution vectors of diﬀerent
+lights.
+Lightspeed, which can automatically change shaders. They also proposed an indirect frame buﬀer
+to deal with anti-aliasing, motion blur, and transparency[17].
+The above systems only consider direct lighting when rendering such that contribution from
+indirect lighting is ignored. Hasan et al. proposed a direct-to-indirect (DIT) method to deal with
+indirect lighting in diﬀuse environments [5]. Their method takes samples in a scene, calculates
+radiances of these samples contributed by indirect lighting and ﬁnally renders the image by taking
+those lit samples as light sources.
+3 Algorithm
+This section describes our lighting-by-guide algorithm. We ﬁrst describe an overview of our
+system (Section 3.1). Next, we describe the details of each component of the system, i.e., relighting
+(Section 3.2), initial guess (Section 3.3), optimization (Section 3.4) and diﬀerence measurement
+(Section 3.5).
+3.1 Overview
+Figure 2 illustrates the basic workﬂow of our system. The inputs to our system consist of the
+scene S (including camera setting, geometric and photometric description of the scene) and the
+lighting guide Ig. From these inputs, our system estimates a lighting conﬁguration p (including
+the number of lights, the position and intensity for each light) so that the resulting rendering
+I(p) = R(p; S) is close to the given lighting guide, where R is the relighting function returning the
+rendering of the scene S under lighting p. Thus, the lighting-by-guide problem attempts to ﬁnd
+the optimal lighting parameter vector p∗ so that
+p∗ = argmin
+p
+E(p),
+where E(p) = D(I(p), Ig) is the goal function and D(I(p), Ig) measures the diﬀerence between the
+rendering I(p) and the guide Ig.
+4
+(a) L2, solve (b) L2, ﬁlter (c) L3, solve (d) L3, ﬁlter
+(e) L4, solve (f) L4, ﬁlter (g) L5, solve (h) L5, ﬁlter
+(i) L6, solve (j) L6, ﬁlter (k) L7, solve (l) L7, ﬁlter
+(m) L8, solve (n) L8, ﬁlter (o) ﬁnal solution
+Figure 3: Illustration of our initial guess algorithm. The algorithm consists of four steps, expand,
+solve, merge and ﬁlter, for each iteration. Here, we show the surviving lights after solving and
+ﬁltering for each iteration. Note that green dots represent the positions of nine true lights. Red
+dots represent a list of surviving lights at each stage. The brighter dots correspond the ones with
+higher intensities. Finally, our algorithm outputs ten lights whose positions are all close to true
+lights (o).
+subdividing cells to create lights), solve (ﬁnding intensities for lights), merge (reducing number of
+surviving lights by clustering) and ﬁlter (removing unimportant lights), until we reach the desired
+resolution (9 levels of subdivision in our current implementation). Figure 3 shows the progress of
+our algorithm. In Figure 3, green dots are the true lights for a scene for which we have the ground
+truth. Red dots are a list of the surviving lights at each stage. The brighter dots correspond to
+the ones with higher intensities.
+Expand. For each remaining cell, uniformly subdivide it into eight sub-cells. Create a light at
+the center of each sub-cell. For each light i, obtain its contribution vector, ϕi, by placing a unity
+light and calling the relighting engine.
+Solve. Solve the linear system Al− Ig = 0 to ﬁnd a proper intensity for each light. To reduce
+the number of lights, we add a regularization term to encourage sparse light setting. Thus, the
+problem becomes ﬁnding l to minimize ‖Al − Ig‖ + λ‖l‖, where λ = 1/64 in our implementation.
+This is solved by singular value decomposition. In addition, to speed up the process, we reduce
+6
+cell happens to be located within the object, the contribution of the representative light would be
+zero and the true light can’t be recovered if we remove this cell. Hence, true lights whose positions
+are close to objects’ surfaces are more likely to be falsely removed if we remove dim lights without
+further examination. To detect whether the lighting behaviors are similar for all positions within a
+cell, we obtain the contribution images for each corner of the cell. If all these contribution images
+are similar enough, we assume that all positions within the cell have similar behavior when serving
+as lights. Thus, a light is removed from the list only if it satisﬁes the following condition,
+li < ϵl and max
+i,j∈corners or center
+τ(ϕi, ϕj) < ϵc
+Figure 3(b) shows the positions and intensities of surviving lights after merging and ﬁltering at
+level 2.
+Finally, we solve the linear system again for remaining light positions to obtain more accurate
+intensity estimates and remove dim lights afterwards. Figure 3(o) shows the output initial lighting
+conﬁguration, which is used as the starting point for optimization.
+3.4 Optimization
+Given the initial guess, optimization simultaneously adjusts both the positions and the inten-
+sities of all lights to better match the lighting guide. Note that he number of lights is ﬁxed during
+optimization. We have experimented with the multidimensional minimization algorithms provided
+in GNU Scientiﬁc Library [2] and found that steepest descent method [16] and simplex method [9]
+performed the best among them. The other methods often use quadratic approximations to guide
+the optimization. However, since our goal function has lots of discontinuities, such approximations
+often lead to worse results.
+One main diﬀerence between the steepest descent method and the simplex method is that the
+former requires the calculation of partial derivatives and the latter does not. Therefore, for each
+iteration, the steepest descent method needs 6n calls to the relighting engine for n lights while the
+simplex method only needs one. For this reason, Pellacini et al. suggested using simplex method
+for their application [12] since it requires fewer relighting calls and is more responsive. However,
+in our application, we found that the steepest descent method could be more eﬀective even though
+it takes more time for one iteration. Both methods often gives comparable minimums. However,
+steepest descent often drops the cost function faster than the simplex method in terms of running
+time even though it tends to involve more calls to the relighting engine. Figure 4 plots the error
+of both methods as a function of execution time.
+3.5 Diﬀerence measurement
+Previous work used the L2-norm [19] or the importance-weighted L2-norm [12] to measure the
+diﬀerence between the guide and the rendering. We have experimented with the L2-norm and
+other perceptual based metrics [18], but have not found much diﬀerence visually. Designing an
+error metric to reﬂect the artist’s intention while painting the lighting guide could lead to better
+results, but is left as future work.
+4 Results
+In this section, we present experimental results for various scenes using our system. The system
+was implemented and tested on a machine with an Intel Core 2 Quad 2.4GHz CPU and an Nvidia
+GeForce 8800 GT GPU. The program only used one thread without taking advantage of the multi-
+core of the CPU. We have tested our system on three diﬀerent scenes of diﬀerent complexity.
+Table 1 summarizes detailed statistics for the tested scenes. The errors reported here are the
+L2-norm of the diﬀerence between the rendering and the reference (if available), normalized by the
+L2-norm of the reference image.
+8
+(a) reference (b) lighting guide
+(c) initial guess (d) ﬁnal lighting
+Figure 5: Balls scene.
+lights, the hierarchical algorithm could be extended from 3D (only spatial partition) to 5D (spatial
+and directional partition). For environment lighting, the illumination brush method [11] could be
+used. In addition, we would also like to support light linking. This, however, could lead to some
+diﬃculties since it might introduce binary variables into the optimization.
+The relighting engine we currently use only considers local illumination eﬀects. Though the
+system could be extended to include global illumination eﬀects by substituting with relighting en-
+10
+(a) lighting guide
+(b) initial guess
+(c) ﬁnal lighting
+Figure 7: Museum scene.
+References
+[1] Carsten Dachsbacher, Marc Stamminger, George Drettakis, and Fre´do Durand. Implicit visi-
+bility and antiradiance for interactive global illumination. ACM Transaction on Graphics, 26
+12
+[19] Chris Schoeneman, Julie Dorsey, Brian Smits, James Arvo, and Donald Greenburg. Painting
+with light. In Proceedings of ACM SIGGRAPH 1993, pages 143–146, 1993.
+[20] Ram Shacked and Dani Lischinski. Automatic lighting design using a perceptual quality
+metric. In Proceedings of Eurographics 2001, pages 215–226, 2001.
+[21] Peter-Pike Sloan, Jan Kautz, and John Snyder. Precomputed radiance transfer for real-time
+rendering in dynamic, low-frequency lighting environments. ACM Transactions on Graphics,
+21(3):527–536, 2002.
+14
+表 Y04 
+一個類似 RANSAC 的方法來取得準確的地理座標分佈模型，由這些具集中地理座標分佈之
+標籤出發，我們找出其最相關之標籤，依次向上而找出其地理包含關係，形成一個個 trace, 
+再將 trace 合併起來，我們就可得到一個標籤階層(tag hierarchy)來描述地理包含關係，其中，
+地標應位於此一標籤階層之底部，結合上述分類器，我們共計得到 3,821 個地標標籤。我
+們再查詢 flickr 中與這些地標標籤相關的照片，取出其 SIFT 特徵，並將其量化及組織成階
+層式樹狀，以便利蒐尋。有了這些資訊，我們可以做內容為基礎之地標影像搜尋
+(content-based landmark image retrieval)、自動標籤推薦(automatic tag suggestion)及內容相關
+搜尋重排序(visual relevance re-ranking)等應用。 
+此外，筆者亦與香港城市大學之楊昌樺(Ngo Chong Wah)教授合辦了一個特別議程
+(special session): Cross-X Multimedia Mining in Large Scale，共計邀請五篇論文發表，分別為
+日 本 National Institute of Informatics 的 PageRank with Text Similarity and Video 
+Near-Duplicate Constraints for News Story Re-ranking, 北 京 清 華 大 學 的 Learning 
+Vocabulary-based Hashing with AdaBoost, 新加坡大學的 Mediapedia: Mining Web Knowledge 
+to Construct Multimedia Encyclopedia, 中國中科院的 Sensing Geographical Impact Factor of 
+Multimedia News Events for Localized Retrieval and News Filtering, 及中正大學的 Travel 
+Photo and Video Summarization with Cross-Media Correlation and Mutual Influence。 
+    在今年的會議中，筆者最喜歡的兩篇論文都與立體影像有關，隨著立體電視技術的進步，
+電視由平面進入立體的時代已經即將來臨了，對於立體內容的需求亦越來越多。第一篇是
+Stereoscopic Visual Attention Model for 3D Video，討論三維電影中的使用者感興趣區域模型。
+第二篇論文是 3D Thumbnails for Mobile Media Browser Interface with Autostereoscopic 
+Displays，討論如何對三維內容做 resizing。此外，大會也安排了三場 keynote 演講，分別是匹
+茲堡大學張系國教授的 Slow Intelligence Systems，微軟亞洲研究院李世鵬博士的 Media 2.0 the 
+New Media Revolution 及 Google 的 Harmut Neven 博士的 designing a Comprehensive Visual 
+Recognition System，都十分精采。 
+ 
+二、與會心得 
+此次出席國際多媒體建模會議，除了有機會觀摩其它國家相關領域的研究水準，也藉由
+Learning Landmarks by Exploiting Social Media
+Chia-Kai Liang, Yu-Ting Hsieh, Tien-Jung Chuang,
+Yin Wang, Ming-Fang Weng, and Yung-Yu Chuang?
+National Taiwan University
+Abstract. This paper introduces methods for automatic annotation of landmark
+photographs via learning textual tags and visual features of landmarks from land-
+mark photographs that are appropriately location-tagged from social media. By
+analyzing spatial distributions of text tags from Flickr’s geotagged photos, we
+identify thousands of tags that likely refer to landmarks. Further verification by
+utilizing Wikipedia articles filters out non-landmark tags. Association analysis is
+used to find the containment relationship between landmark tags and other ge-
+ographic names, thus forming a geographic hierarchy. Photographs relevant to
+each landmark tag were retrieved from Flickr and distinctive visual features were
+extracted from them. The results form ontology for landmarks, including their
+names, equivalent names, geographic hierarchy, and visual features. We also pro-
+pose an efficient indexing method for content-based landmark search. The resul-
+tant ontology could be used in tag suggestion and content-relevant re-ranking.
+1 Introduction
+As digital cameras and storage get cheaper, many of us have thousands of photographs
+in our own albums. Their effective management becomes increasingly important but
+more difficult nevertheless. Image annotations have been shown effective to facilitate
+organization and retrieval of photograph collections. However, automatic image anno-
+tation algorithms for generic semantic are still far from being applicable. A good news
+is that automatically collected metadata, such as time and location, and their derived
+information have been proved helpful in management of photo collections [1]. Almost
+all digital cameras record time stamps when pictures were taken. Some location-aware
+cameras can augment location information about where pictures were taken by using
+GPS, cellular or Wi-Fi Networks. Unfortunately, although automatically-collected lo-
+cation context is useful, location-aware cameras do not grow at a rapid rate because of
+cost, power consumption and image quality. Thus, most images still lack of geographic
+metadata for effective organization and retrieval.
+Even though it is useful to automatically add geographic tags to photographs taken
+by non-location-aware cameras, limited by available content analysis technology, it is
+still hopeless to automatically annotate general geographic names for photographs in
+the near future. Thus, this paper focuses on landmark photographs, pictures of a spe-
+cific but useful category. Figure 1 shows the overview of our system. There are two
+phases in our system, the pre-processing phase and the application phase. In the pre-
+processing phase, we downloaded from Flickr a total of 11,028,186 geotagged photos
+? This work was supported by grants NSC97-2622-E-002-010-CC2 and NTU-98R0062-04.
+Learning Landmarks by Exploiting Social Media 3
+(a) (b)
+Fig. 2. Spatial distributions of the retrieved photos and landmark tags. (a) The spatial distribution
+for geotags. There are totally 11,028,186 geotagged photos in our database mirrored from Flickr.
+A warmer color represents locations with more photos and a colder color means the ones with
+less photos. (b) The spatial distribution of landmark tags. We have identified a total of 3,821
+landmark tags over the world. These tags are shown in red. Green pixels represents the coverage
+of all geotags.
+– Their work mainly focus on finding representative images, but this paper proposes
+methods for more efficient landmark search by visual contents.
+– They only demonstrated their method within San Francisco area. On the contrary,
+this paper explores the world’s landmarks. In addition, this paper demonstrates a
+set of interesting applications enabled by the discovered landmark ontology.
+2 Related work
+In recent years, there are quite a few work on exploring the usage of geographic meta-
+data. Toyama et al. described WWMX, a system for browsing geo-referenced photo
+collections [4] and various issues related to alike systems. Mor Naaman and his col-
+leagues have done lots of exciting work on various topics related to geo-referenced
+tags and photographs, including tag visualization [5, 3], extracting the event and place
+semantics [6, 7], and ranking representative images [8, 2]. The main differences distin-
+guishing our work from theirs are that most of them assume existence of geographic
+metadata and confine the usage to the geotagged images. On the contrary, we perform
+visual analysis to tag images and use the hierarchical visual words to avoid the expen-
+sive pair-wise similarity measurement, making the system more scalable and robust.
+University of Oxford conducted a series of researches on applying the text search
+techniques to the image search problem [9–11]. The key idea is to treat the local distinct
+features, or visual words, in an image as the words in a document. However, in their
+approach, each image in the dataset are considered as an unique entity and therefore a
+large index storage is required. On the contrary, in our approach, hundreds or thousands
+of images from a single landmark are automatically grouped together. Their visual word
+distributions are aggregated into a single one. Therefore, our system can be easily scaled
+to deal with millions of on-line images. Also our system provides novel applications
+beyond simply finding similar images, such as automatic tag suggestion. Finally, Hays
+and Efros use global image features to match an image to the geotagged images [12].
+However, this method is not accurate enough for serious applications.
+Learning Landmarks by Exploiting Social Media 5
+Fig. 3. Examples from the tag hierarchy. The synonyms are shown in dotted circles.
+tag b given that tag a is labelled; N(a, b) denotes the number of photos with both tags a
+and b; and N(a) the number of photos with tag a, we have P (b|a) = P (a∩b)P (a) = N(a,b)N(a) .
+The most related tag to tag a, M(a), is defined as M(a) = argmaxb P (b|a). Given
+a tag a, if we iteratively evaluate M(a),M(M(a)), · · · , eventually it will reach a tag
+like “USA,” “Europe,” “Asia,” “Africa,” etc. A sequence of tags generated in this way
+is called a trace. An example trace beginning from spaceneedle is shown as follows:
+M(spaceneedle) = seattle with P = 0.959924
+M(seattle) = washington with P = 0.294886
+M(washington) = usa with P = 0.0914492
+Some interesting properties can be observed in the traces. First, the synonyms are
+usually the most related tag to each other; i.e., M(M(a)) = a. Second, a tag which is
+the ancestor of other tags is less likely to be a landmark tag. It usually corresponds to a
+district or an even larger area. We create the trace of each geographic tag independently
+and then merge them into a tag hierarchy. Two examples in Figure 3 show the subsets
+of the tag hierarchy. We can clearly see the hierarchical relationships between the tags,
+from continents of root nodes to individual landmarks of leaf nodes.
+3.3 Wikipedia Knowledge
+The leaf nodes of the tag hierarchy may still not correspond to a landmark. It could be
+a local event or an unattractive static object. We show that the exact semantics of the
+tag can be inferred from the corresponding article in Wikipedia, and thus the accuracy
+of the landmark identification can be further improved. For each tag, we find the cor-
+responding article on Wikipedia. Note that The synonyms for a landmark are already
+merged in the tag hierarchy. Thus, for a group of synonyms, we only use the one with
+the highest count. Among 13,854 tags which pass geographic analysis, less than 10 tags
+did not have a Wikipedia article. In these cases, we classify them as the class of “other”.
+Inspired by the spam detection algorithms, we formulate our problem as a classi-
+fication problem. Each article should belong to exactly one of three classes landmark,
+city, and others. The city class contains not only the city-scale tags, but also all the areas
+that are larger than a specific attractive, natural or man-made structure, such as districts,
+Learning Landmarks by Exploiting Social Media 7
+Our approach shares a similar goal and part of the methodology as Ahern et al.’s
+world explorer [3]. However, our system has the following features: more emphasis on
+landmarks and the incorporation of tag hierarchy and Wikipedia-classification. These
+give better results. Using London as an example, here are the tags that are at the leaf un-
+der London but classified as “others” by our wiki-article classifier, guesswherelondon,
+londonbus, londonist and londonunderground. It means that all four have a
+landmark-scale cluster in the geographic analysis. With only geographic analysis like
+Section 3.1 and Ahern et al. did, they can’t be distinguished from real landmarks. In ad-
+dition, the tf-idf measure used by Ahern et al. can find a better tag to represent a group
+of tags in one area, but it does not change the number of clusters. On the contrary, we
+use the tag hierarchy to merge the synonyms. Also, two landmarks in a small area are
+not mixed together in our method. Finally, Ahern et al. segmented the earth into many
+regions in a multi-level pyramid. On the contrary, we perform the analysis globally.
+This can remove some non-geographical tags such as baseball and soccer.
+4 Visual Features for Landmarks
+This section shows how to exploit the visual information of the landmark photos (i.e.,
+images with the tags classified as landmarks) for content-based image retrieval. The
+system must be robust and fast, returning the results immediately after given the query
+image. Additionally, system should be scalable to handle millions of photos.
+4.1 Hierarchical Visual Words Construction
+Since many landmarks are made of similar materials and shot under similar illumination
+conditions, traditional global image features such as color histogram can hardly be used
+to distinguish one landmark from another. A landmark is recognizable due to its unique
+structures and thus it is better to use locally distinct features. Here we apply SIFT [13]
+to detect the interest points in the photo. There are usually hundreds to thousands of
+SIFT features in a single image and therefore it is impractical to store all features in the
+database and perform pairwise feature matching to all of them in the query phase. Here
+we adopt the concept of visual word [14]. All features are coarsely quantized into many
+clusters using k-means and each image can be considered as an article written using
+those clusters. In this way, many techniques in text retrieval can be readily applied [9,
+11]. To recognize thousands of landmarks, we still have to use a large number of clusters
+to preserve the distinctness. This could significantly slow the matching process. Here
+we quantize the features in a hierarchical fashion [15]. In the beginning all feature are
+clustered into k clusters and the features in one cluster are further clustered into k sub-
+clusters. This process is perform recursively until a specific storage limit is reached. All
+the leaf nodes are the final visual words.
+4.2 Efficient Indexing and Search
+In the search phase, features in the query image are detected and each is assigned to the
+nearest visual word. This can be done very efficiently by traversing the tree using best-
+first search if the approximate nearest visual word is sufficient. We also use a modified
+Learning Landmarks by Exploiting Social Media 9
+0.95
+1
+0 85
+0.9
+0.8
+.
+0.7
+0.75
+0.6
+0.65 Hierarchical Visual Word
+Gl b l F t M t hi
+0 5
+0.55
+o a   ea ure  a c ng
+Spatial Matching
+.
+1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+0 0.2 0.4 0.6 0.8 1
+Pr
+ec
+is
+io
+n
+Recall
+Hierarchical Visual Word
+Global Feature Matching
+Spatial Matching
+(a) (b)
+Fig. 5. (a)The average accuracy using three different methods. (b) Their average PR curves.
+ground truth to construct the hierarchical tree. There are totally 1,942,243 raw feature
+vectors. The degree of the clustering at each level is 8, and the maximal tree depth is 11.
+The final hierarchical tree contains 778,011 visual words. The tree consumes 528MBs
+and the backward index consumes 17.5MBs.
+Two methods are compared. The first one uses the global feature to measure the per-
+image similarity. (We used six features including histogram, Gabor texture and others;
+SVM is used for classification.) The second one uses the spatial matching to measure the
+similarity [10]. (Count the number of feature matches between the query image and each
+of the images in the database. The feature matches are verified by spatial constraints.)
+For the first method, the best accuracy of the top return is only 57.6% although it is
+slightly faster than our algorithm (0.211 seconds). The spatial matching method has a
+higher accuracy than our method in the first return, but its performance soon saturates
+after the first 3 returns. It is because many tested images can never find a match image
+in the database when it is not big enough. Also the spatial matching is much slower
+than our method. On average, each query takes 54.843 seconds. Figure 5(a) shows the
+overall performance for three methods. Figure 5(b) shows the PR curves. These show
+that our method is compared favorably to the other two methods.
+For testing robustness, we replace the training data with photos queried from Flickr
+by tags, which are more convenient to obtain but also noisier. For example, Figure 4(b)
+shows part of the retrieved images from Flickr for Torre Agbar, a 21st-century skyscraper
+in Spain. It contains many photos without the landmark. Although many of those pho-
+tos are not visually related to the landmarks, the performance is only decreased by 2%.
+The degradation can be easily compensated by increasing the number of visual words.
+This shows that the hierarchical tree combined with the per-landmark indexing is very
+robust to noise in training data.
+Finally, for testing in a larger scale, we increase the number of landmarks to 150. For
+dataset of this size, we can only use Flickr’s returned images as both data for training
+and ground truth for evaluation. In this case, the average accuracy of the top return is
+30%, which is much higher than that of the random guess (0.6%), and again can be
+increased by increasing the number of visual words. The real performance should be
+better since the “ground truth” here are actually retrieved using Flickr’s search engine
+Learning Landmarks by Exploiting Social Media 11
+6 Conclusion
+This paper proposes methods to automatically transfer tags to unlabeled photographs
+from annotated landmark photographs of a photo-sharing website. We use geographic
+analysis, tag hierarchy construction and wiki-article classification to identify landmarks’
+textual keywords. These also tell us their synonyms and geographic hierarchy. The abil-
+ity to assign structure to tags makes tagging systems more useful. In addition, we pro-
+pose an efficient indexing method for content-based landmark search. With all these,
+we demonstrate a set of interesting applications related to landmarks. In the future, we
+plan to develop more interesting applications using the discovered landmark ontology
+and make the visual search for landmarks more efficient.
+References
+1. Naaman, M., Harada, S., Wang, Q., Garcia-Molina, H., Paepcke, A.: Context data in geo-
+referenced digital photo collections. In: Proceedings of ACM Multimedia. (2004) 196–203
+2. Kennedy, L.S., Naaman, M.: Generating diverse and representative image search results for
+landmarks. In: Proceedings of WWW. (2008) 297–306
+3. Ahern, S., Naaman, M., Nair, R., Yang, J.: World explorer: Visualizing aggregate data from
+unstructured text in geo-referenced collections. In: Proceedings of ACM/IEEE JCDL. (2007)
+4. Toyama, K., Logan, R., Roseway, A., Anandan, P.: Geographic location tags on digital
+images. In: Proceedings of ACM Multimedia. (2003) 156–166
+5. Jaffe, A., Naaman, M., Tassa, T., Davis, M.: Generating summaries and visualization for
+large collections of geo-referenced photographs. In: Proceedings of MIR. (2006) 89–98
+6. Rattenbury, T., Good, N., Naaman, M.: Towards extracting Flickr tag semantics. In: Pro-
+ceedings of WWW. (2007) 1287–1288
+7. Rattenbury, T., Good, N., Naaman, M.: Towards automatic extraction of event and place
+semantics from Flickr tags. In: Proceedings of ACM SIGIR. (2007) 103–110
+8. Kennedy, L., Naaman, M., Ahern, S., Nair, R., Rattenbury, T.: How Flickr helps us make
+sense of the world: Context and content in community-contributed media collections. In:
+Proceedings of ACM Multimedia. (2007) 631–640
+9. Chum, O., Philbin, J., Sivic, J., Isard, M., Zisserman, A.: Total recall: Automatic query
+expansion with a generative feature model for object retrieval. In: Proceedings of IEEE
+ICCV. (2007)
+10. Philbin, J., Chum, O., Isard, M., Sivic, J., Zisserman, A.: Object retrieval with large vocabu-
+laries and fast spatial matching. In: Proceedings of IEEE CVPR. (2007)
+11. Philbin, J., Chum, O., Isard, M., Sivic, J., Zisserman, A.: Lost in quantization: Improving
+particular object retrieval in large scale image databases. In: Proceedings of CVPR. (2008)
+12. Hays, J., Efros, A.: IM2GPS: estimating geographic information from a single image. In:
+Proceedings of IEEE CVPR. (2008)
+13. Lowe, D.G.: Distinctive image features from scale-invariant keypoints. Internatioanl Journal
+of Computer Vision 60(2) (2004) 91–110
+14. Sivic, J., Zisserman, A.: Video Google: A text retrieval approach to object matching in
+videos. In: Proceedings of IEEE ICCV. Volume 2. (2003) 1470–1477
+15. Niste´r, D., Stewe´nius, H.: Scalable recognition with a vocabulary tree. In: Proceedings of
+IEEE CVPR. Volume 2. (2006) 2161–2168
+16. Schindler, G., Brown, M., Szeliski, R.: City-scale location recognition. In: Proceedings of
+IEEE CVPR. (2007)
+97年度專題研究計畫研究成果彙整表 
+計畫主持人：莊永裕 計畫編號：97-2221-E-002-183-MY2 
+計畫名稱：用於快速動畫製作之以視覺參考引導的自動打光演算法 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 2 2 100%  
+研討會論文 1 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 4 4 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

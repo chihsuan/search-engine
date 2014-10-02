@@ -1,0 +1,813 @@
+ 2
+摘要 
+本計畫利用類神經網路(NN)，來進行語
+音辨識，並且實現在 FPGA 晶片之嵌入式平
+台上。本計畫以演化式計算的方式來訓練類
+神經網路，以其得到較高的辨識率。由於在
+進行語音處理的過程中，在 FFT 的計算時
+有大量的浮點數運算，且平台沒支援浮點數
+運算的硬體，所以需要很長的計算時間。在
+本計畫中，我們使用整數的 FFT 取代原本
+的浮點數 FFT，在不影響原本的辨識率下，
+可大量減少計算的時間，提昇語音辨識速
+度。  
+關鍵詞：類神經網路、演化式計算、語音辨
+識、FPGA 晶片、整數 FFT。 
+ 
+Abstract 
+A Back-Propagation Neural Network was used 
+to process speech recognition in order to 
+implement the result on the embedded platform. 
+Due to abundant float-points that were the result 
+of FFT multiplication, supportive hard-ware 
+that should be used for speech recognition could 
+not be found. Therefore long calculation times 
+were needed. An integer was used to replace the 
+float-points in the FFT multiplication 
+calculations in this study and it is hoped that the 
+calculation time could be shortened and the 
+speed of speech recognition increased to the 
+original recognition rate. 
+ 
+Keywords: neural networks, evolutionary 
+computation, speech recognition, FPGA chip, 
+integer FFT 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+1. 前言 
+ 
+ 
+圖 1 語音辨識架構 
+ 
+     語音辨識的發展已有一段時間，其辨
+識平台架構分為三類，從最早期的動態時軸
+校正(Dynamic Time Warping,DTW) [5]的方
+法，利用語音音框的時間差異性來調整進而
+達到辨識目的。類神經網路(Artificial Neural 
+Network,ANN) [4]的出現替代了動態時軸校
+正的應用。最後隱藏式馬可夫模型(Hidden 
+Markov Model,HMM) 的出現，採用統計的
+方式提高語音辨識率的效果。語音辨識在類
+神經網路之前，還需進行語音的錄製、有效
+語音的端點偵測、高頻強波、計算語音特徵
+植等過程，最後才利用類神經網路做語音的
+分類，其架構如圖1 所示。    因為類神經
+辨識語音的速度優於其他方式，加上辨識時
+所需的計算負擔也較少，較適用於計算能力
+較低的晶片架構，所以本篇採用類神經網路
+來做為語音辨識系統架構 ，大多數的類神
+經網路應用於語音辨識時大多採用倒傳遞
+類 神 經 網 路 (Back-Propagation Neural 
+Networks)。 
+ 4
+),1(95.0)()( −−= nXnXnS   ;1 Ln ≤≤  
+(1) 
+上式裡S(n)代表已經過強波處理的訊
+號，X(n)則代表原始信號，L 為每各音框的
+長度(取樣個數)。 
+ 
+2.4 漢明窗(Hamming window) 
+取漢明窗的目的是為了避免每一個音
+框和音框兩端的不連續性，而造成分析時受
+到前後音框的影響，乘上漢明窗減少不連續
+性的影響(為了讓每個音框在頻譜上更集中)
+如下式(2)及(3)為漢明窗的數學函數[1]： 
+⎪⎩
+⎪⎨
+⎧ −≤≤−−=
+;,0
+;10),
+1
+2cos(46.054.0
+)(
+otherwise
+Nn
+N
+n
+nW
+π
+ 
+                                   
+(2) 
+);()()( nSnWnF ×=                    (3) 
+其中L值為音框長度，在音框範圍內的語音
+訊號S(n)乘上W(n)後，即可得到經由漢明窗
+的訊號F(n) 。 
+ 
+2.5 特徵值擷取 
+假設以8k 取樣的語音信號，一秒鐘就
+有八千個取樣點，這麼龐大的資料與語音的
+複雜性是無法做語音的比對進而達到辨識
+的功能，所以我們將利用較小時間單位的音
+框來求出語音的特性也就是特徵值。 
+而語音辨識裡常使用的特徵值可分為
+兩大類， 一為時域(Time domain) 分析， 一
+為頻域(Frequency domain)分析，時域分析的
+方法較直接，運算量較少，且省時，頻域分
+析 須 先 經 過 傅 利 葉 轉 換 (Fouier 
+Transform) ，所以所需的運算量較大也較為
+複雜相對的也需要較多的時間，一般較常用
+的特徵值有線性預估參數 (Linear Predict 
+Coding) 、 倒 頻 譜 參 數 (Cepstrum 
+Coefficient) 、 梅 爾 倒 頻 譜 參 數
+[1](Mel-Frequency Cepstrum Coefficient )
+等；因為梅爾倒頻譜參數[1](Mel-Frequency 
+Cepstrum Coefficient )，接近人耳對語音的
+區別性，所以我們以此做為語音的特徵參
+數。首先把每個音框轉到頻域|X(k)|，因為
+聲音的遮蔽效應，所以將各頻域能量
+|X(k)|，乘上三角濾波器(4)  
+⎪⎪
+⎪⎪
+⎩
+⎪⎪
+⎪⎪
+⎨
+⎧
+<
+≤≤−
+−
+≤≤−
+−
+<
+=
++
++
++
++
+−
+−
+−
+−
+kf
+fkf
+ff
+kf
+fkf
+ff
+fk
+fk
+kB
+m
+mm
+mm
+m
+mm
+mm
+m
+m
+m
+1
+1
+1
+1
+1
+1
+1
+1
+,0
+,
+,
+,0
+)(  
+ Mm ≤≤1                     (4) 
+，M為濾波器數目，累加之後取對數得到 
+ 
+⎭⎬
+⎫
+⎩⎨
+⎧ ∑= +
+−=
+1
+1
+)()(log)(
+m
+m
+f
+fk
+m kBkXmY     (5) 
+對M個Y(m)作離散餘玹轉換(discrete cosine 
+transform) 
+ ∑
+−
+=
+=
+M
+m
+x M
+mn
+mY
+M
+nc
+1
+)
+)
+2
+1(
+cos()(1)(
+π
+ 
+)(ncx 就 是 梅 爾 倒 頻 譜 參 數
+[1](Mel-Frequency Cepstrum Coefficient )，
+為了減少類神經網路的輸入，我們的系統只
+取前10個。 
+ 
+3. 語音辨識平台 
+前面的部分已經將語音的特徵值擷取出
+來，剩下的部份就是需要比對語音，透過特
+徵值參數(或稱圖樣)來做比對的語音辨識
+有多種方式，而這裡採用類神經網路ANN 
+的方式，類神經網路在語音辨識的優點有辨
+識速度較快的優點，反觀動態時間校正
+DTW 的辨識需要將語音樣本資料庫裡的
+資料與測試語音一一做比對，換句話說就是
+當測試語音越多所耗費的辨識時間也相對
+的增加。相對的ANN 只要完成訓練後對於
+測試語音的多寡並不會嚴重的增加時間；除
+了時間的優勢，ANN 還有一項優點，就是
+容錯能力，這是類神經網路特有的特性。 
+ 
+ 6
+ 
+圖 4 8-point FFT 時間分解 
+ 
+4.2 整數傅立葉轉換(Interger FFT) 
+嵌入式平台上，並沒有支援浮點數運算
+的硬體，即使使用 FFT，梅爾倒頻譜參數的
+計算時間依然不符合 real-time 的應用。所以
+將浮點數的乘法與加法，用整數來替換，但
+也因此降低了精確度。 
+圖 4中， 
+⎟⎠
+⎞⎜⎝
+⎛−+⎟⎠
+⎞⎜⎝
+⎛−== ⎟⎠
+⎞⎜⎝
+⎛−
+N
+kj
+N
+keW
+k
+N
+j
+k
+N
+πππ 2sin2cos
+2
+; 
+(13) 
+在整數傅立葉中，我們左移 cos、sin 函
+數 n bit,當乘法結束，右移 n bit，小數點以
+下的省略，重複 N2log 階段[7]。 
+ 在 FFT 的計算過程中，每個加法可能
+有一個 bit 的增長，而乘法會增加 CN -1bit，
+其中 CN 為乘數的位元數。FFT 內部儲存實
+數與虛數的變數，必須有足夠的空間，避免
+溢位。 
+ 
+5. 實驗結果 
+在語音音框的方面，因採用類經網路的
+辨識平台，不管有聲段的時間長短都需要有
+相同數目的音框，並且特徵植的計算中用到
+FFT必須固定音框取樣點，所以本篇論文採
+用變動的重疊率，數學式子(14)如下[2]: 
+⎪⎭
+⎪⎬⎫⎪⎩
+⎪⎨⎧ ⎥⎦
+⎤⎢⎣
+⎡
+−
+−−=
+1
+1
+F
+FS
+F
+F N
+llfloorl
+l
+R          (14) 
+其中，R為音框重疊比率(%)， Fl 為音框寬
+度， Sl 為總有效取樣長度， FN 為音框數目，
+而floor(x)為小於x的最大整數。 
+ 此外，本實驗中端點偵測的方式乃是採
+用計算負擔較少的時域端點偵測法，時域端
+點偵測的原理是取前數個靜音音框(背景雜
+訊)的能量平均值，加上最大能量值音框的
+5%~10%之間，即可作為端點偵測的門檻值，
+如下式(15)表示[2]︰ 
+ ( )[ ] ( )∑+×=
+=
+k
+i
+iE
+K
+nEThreshold
+1
+;1max%5.7  
+~
+1 Nn ≤≤              (15) 
+ 其中Threshold 為端點偵測門檻值，
+~
+N
+為端點徵測前音框數量，E(n)為端點偵測前
+第n 個音框之取樣點能量總和，K 代表擷
+取靜音音框的數量，E(i)為第i 個靜音音框
+的取樣點能量總和，在這裡我們取最大音框
+能量值(max[E(n)])的7.5%，再加上五個靜音
+音框能量的平均值(K = 5) ，就完成了端點
+偵測門檻值的計算。 
+ 整數傅立葉轉換，不同於浮點數傅立葉
+轉換，在它可表示的範圍很小，容易發生溢
+位。實驗過程中，語音辨識對於溢位的忍受
+度很差，而傅立葉轉換每個階段的加法都有
+進位的可能，所以必須預留空間，避免溢
+位。內部儲存實數與虛數的變數，過大增加
+計算時間，過小精確度不足，本篇論文用
+32bit儲存。 
+ 在實驗裡一個語音的音框有25個，1個
+音框256個取樣點，每各frame有10 階的特
+徵值，代表會有250 個輸入參數作為輸入
+層，而在隱藏層的部份則有30 個神經元，
+神經元的數目不可太多，太多會有難以收斂
+的結果，輸出層因為要分類9個語音，所以
+有9個神經元。本次實驗的訓練語音樣本為
+每個數字8組，錄音格式為16bit、8khz、單
+聲道，訓練次數約為4000次。 
+ 
+ 
+ 
+ 8
+cosine transform)結構，並運用整數乘法的方
+式，在簡化時間，以利於硬體平台的實現。 
+ 
+7. 參考文獻 
+ 
+[1] X. Huang, A. Acero, H. Wuenon, 
+SPOKENLANGUAGE PROCESSING A 
+Guide to Theory,Algorithm and System 
+Developmen, Pearson, 2005. 
+[2] F. Runstein and F. Violaro, ”An 
+Isolated-Word Speech Recognition System 
+Using Neural Networks, ”, Proceeding of 
+the 38th Midwest Symposium on Circuit 
+and Systems, , VOL. 1, 1995, pp550-553.   
+[3] Furui, Sadaoki, M. Dekker, Digital speech 
+processing,  synthesis, and recognition, 
+Marcel Dekker , 2001. 
+[4] M. T. Hagon, H. B. Demuth, M. Beale, 
+Neural    Network Design, Thomson 
+Learning, 1996. 
+[5] H. Sakoe, S. Chiba, ”Dynamic 
+Programming                   
+Optimization for Spoken Word 
+Recongition”, IEEE Trans on ASSP, Vol.26, 
+NO. 1, 1978, pp 43-49. 
+[6] W. C. Chu, Speech Coding Algorithms, 
+John             Wiley & Sons, 
+Wiley-IEEE , 2003. 
+[7] S. Oraintara, Y. J. Chen, T. Q. Nguyen                              
+“Integer Fast Fourier Transform”, IEEE 
+Trans on SIGNAL PROCESSING, VOL. 50, 
+NO. 3, 2002, pp607-618. 
+[8] J. Liang, T. Tran, “Fast multiplierless 
+approximation of the DCT,” IEEE Trans 
+on SIGNAL PROCESSING, VOL. 49, NO. 
+12, 2001, pp3032-3044. 
+[9] A. V. Oppenheim, R. W. Schafer, J. R. 
+Buck, DISCRETE-TIME SIGNAL 
+PROCESSING 2nd ed, Pearson; 1999. 
+ 
+計畫成果自評： 
+本計畫已完成語音晶片雛形製作，並以整數
+FFT 加快語音辨識數度，以改善硬體上在語
+音辨識速度的限制。由於以類神經網路為架
+構之語音辨識系統，是比較適合拿來做晶片
+的實現，所以本計畫均以類神經網路作為主
+要的語音辨識平台。而本年度計畫主要在嘗
+試以遺傳演算法進行類神經網路的訓練，以
+期使語音辨識效果提升。由於在進行語音處
+理的過程中，在 FFT 的計算時有大量的浮
+點數運算，且平台沒支援浮點數運算的硬
+體，所以需要很長的計算時間。在本計畫
+中，我們使用整數的 FFT 取代原本的浮點
+數 FFT，在不影響原本的辨識率下，可大量
+減少計算的時間，提昇語音辨識速度。經實
+驗證明，透過整數 FFT 的計算，語音辨識
+速度提高相當的多。因本年度計畫是原規劃
+之計畫內容的第一年度計畫，所以下一年度
+的計畫希望能延續第一年度的計畫，將不同
+的演化式計算的方式應用在模糊類神經網
+路的訓練，並實現在 FPGA 晶片平台上，希
+望能達到更高的語音辨識效果。 
+Proceedings of  the Sixth International Conference on Machine Learning and Cybernetics, Hong Kong, 19-22 August 2007 
+NEURAL BASED ACTIVE NOISE CONTROLLER 
+ 
+CHENG-YUAN CHANG1, SHING-TAI PAN2 
+ 
+1Department of Electrical Engineering, Chung Yuan Christian University, Taiwan 320, R.O.C. 
+1Department of Electronic Engineering, Ching Yun University, Taiwan 320, R.O.C. 
+2Department of Computer Science and Information Engineering,  
+National University of Kaohsiung,Taiwan 320, R.O.C.,  
+E-Mail: cychang@cyu.edu.tw, stpan@nuk.edu.tw 
+Abstract: 
+A neural based controller with adaptive algorithm is 
+presented in this paper to cancel the nonlinear broadband 
+noise of an active noise control (ANC) system. The ways to 
+avoid the premature saturation of backpropagation algorithm 
+and design the optimal learning rate are also included in the 
+paper to improve the noise reduction performance. The 
+proposed neural filter can be easily implemented and also 
+versatile to the other applications. Simulation results of 
+canceling narrowband and nonlinear broadband noise show 
+that the proposed method can effectively cancel the noise in an 
+ANC system. 
+ 
+Keywords: 
+Neural; Adaptive; Active noise cancellation; Aaturation; 
+Backpropagation ; Optimal learning rate 
+ 
+1. Introduction 
+ 
+Active noise control, initially presented by Lueg [1], 
+superimposes sound waves to cancel unwanted noise. It has 
+attracted much interest during recent years because of the 
+development of high-speed microprocessors and digital 
+hardware [2]. In general, active methods are good at low 
+frequencies [3],[4]. Passive noise control (PNC), which has 
+been applied to reduce noise of mechanical systems, is 
+implemented in automobiles and other applications. Such 
+passive methods, using sound absorbing materials, are 
+effective for high frequency noise. However, industrial 
+noise often has significant power at frequencies below 800 
+Hz [3],[7]-[8], where the wavelength of sound is so long 
+that the materials of passive techniques are bulky and heavy, 
+such as in automobile mufflers. Therefore, active methods 
+have an advantage over passive techniques in canceling 
+low-frequency sound waves and reducing the backpressure 
+and energy loss of engines. 
+The ANC system uses the principle of acoustic 
+superposition to achieve the attenuation of the unwanted 
+sound. It involves an electro acoustic system that cancels 
+the primary noise; specifically, an anti-noise of equal 
+amplitude and opposite phase is generated and combined 
+with the primary noise, thus resulting in the cancellation of 
+both noises. The ANC has to be adaptive because of 
+changes in environment, degradation of system components 
+and alteration of the noise source [13]. Methods of actively 
+controlling noise include both feedback and feedforward 
+controls [15]. Feedback control uses a feedback signal as a 
+reference input to an active noise controller, which is 
+obtained from an error microphone, e.g., at the open end of 
+a duct. Feedforward control uses anti-noise, which is 
+correlated with the original noise, to cancel the noise. The 
+primary advantage of feedback control is that no additional 
+reference input is required, so the acoustic feedback 
+problem is prevented. However, feedback control suffers 
+from the “waterbed” effect because of time delays and 
+non-minimum phase zeros; only narrowband noise 
+reduction can thus be achieved. For a high-order model, 
+such as a duct, feedforward control appears to be a viable 
+method for reducing noise at the expense of robustness of 
+performance against plant uncertainty [11].  
+Most of the conventional ANCs, employing the 
+standard filtered-X least mean square (FXLMS) algorithm, 
+are linear in nature [5],[12]. However, the FXLMS 
+algorithm is not capable of training a nonlinear controller, 
+since this algorithm exploits the linearity of the controller. 
+So, active control of nonlinear noise is hard to achieve. 
+Some papers have investigated this problem. A normalized 
+Gaussian radial basis function neural network is proposed 
+to compensate the non-minimum phase secondary path 
+transfer function and control the nonlinear noise process in 
+[13]. In [14], the authors introduced the adaptive Volterra 
+filters for feedforward ANC based on multi-channels 
+structure. In [6],[10] fuzzy-neural and recurrent neural 
+networks have also been used to control the nonlinear 
+noises in the ANC system. Observing the various methods 
+presented in past years, it reveals that the ANC structures 
+for nonlinear control are complex or hard to realize [9]. 
+1-4244-0973-X/07/$25.00 ©2007 IEEE 
+425 
+Proceedings of  the Sixth International Conference on Machine Learning and Cybernetics, Hong Kong, 19-22 August 2007 
+ 
+Thus, 
+( )
+(
+( ) (
+2
+1
+2 1
+1
+1
+2
+1 1
+( 1) ( ) ( ) ( ) ( )
+( ) ( 1) ( ) ( ) ( 1)
+( ) 1 ( ) ( ) ( 1)
+=
+=
+= =
++ = + −
++ − + − − +
+⎧ ⎡⎪
+= − + − +⎨ ⎢⎪ ⎣⎩
+∑
+∑
+∑ ∑
+n
+s e e j s e e j
+j
+n
+s e e j s e e j
+i
+n n
+s e e j s e e j
+j i
+e k e k H H M h k e k H H M h k
+H H M v k x k i e k H H M v k x k i
+e k H H M h k H H M v k x k i
+η
+η
+η
+)
+)2 ⎫⎤⎪⎬⎥⎪⎦⎭
+          (13) 
+ 
+by excluding the  of (10). In order to obtain an 
+optimal learning rate of 
+. . .h o t
+)(kη  to minimize e(k+1); one can 
+let 
+ 
+( ) (2 1
+1
+2 )
+1 1
+( ) ( ) ( ) ( 1)
+−
+= =
+⎡ ⎤
+= + − +⎢ ⎥⎣ ⎦∑ ∑
+n n
+opt s e e j s e e j
+j i
+k H H M h k H H M v k x k iη 2
+          (14) 
+ 
+So, by choosing the optη  in (14), one can minimize the 
+residual noise e(k). 
+ 
+ 
+3. Simulation Results 
+ 
+The active control system and input signal are chosen 
+to be representative of a simple ANC system for a duct. The 
+duct model [7],[8] is depicted as follows. The acoustic plant 
+of duct P(z) and He(z) are modeled by pure time delays of 
+25 samples and 5 samples, respectively. Both the speakers, 
+Hp(z) and Hs(z), and error microphone Me(z) are represented 
+by the second-order Butterworth high-pass filters with a 
+cutoff frequency 80 Hz. Several different noise signals are 
+used to verify the virtue of the proposed NANC ANC 
+system. All the initial weights, wij(0) and vj(0), are 
+randomly initialized between the range [-0.5, 0.5]. The 
+proposed neural ANC filter is based on 4 input-nodes, 6 
+hidden-nodes and 1 output-node neural network. The neural 
+weighting parameters are all randomly chosen between [0, 
+1] at first and then the proposed NANC algorithm will tune 
+the free parameters adaptively to control the undesired 
+noise. A 32nd-order adaptive FIR filter with zero initial 
+weighting parameters and constant learning rate 0.2=η  is 
+used to perform the FXLMS algorithm to be a contrast. 
+The first experiment uses a 100 Hz periodic signal as 
+the undesired noise to illustrate the effectiveness of the 
+proposed algorithm. Figure 3 shows the result, solid line is 
+the original periodic noise, the result of FXLMS algorithm 
+is shown by dashed lines and the proposed NANC approach 
+is shown by dotted line. One can find that both the 
+conventional FXLMS and the proposed NANC scheme 
+cancel the unwanted noise well. 
+The second experiment uses a 400 Hz periodic signal 
+to illustrate the effectiveness of the proposed NANC 
+algorithm. Figure 4 shows the result, solid line is the 
+original periodic noise, the result of FXLMS algorithm is 
+shown by dashed lines and the proposed NANC approach is 
+shown by dotted line. One can find that both the 
+conventional FXLMS and the proposed NANC scheme 
+cancel the unwanted noise still well. But the conventional 
+FXLMS performs not well enough when compared with 
+NANC system. 
+The next experiment uses the combination of 200 and 
+201  periodic signals to be the undesired noise signal. 
+Since the signal is composed of two periodic signals with 
+close frequencies, the noise canceling result is interesting. 
+In order to see the amount of attenuation, the result of 
+canceling composite periodic signal is shown in frequency 
+domain. Figure 5(a) is the original composite periodic 
+signals. Figures 5(b) and (c) are the noise canceling results 
+by the FXLMS and NANC algorithms, respectively. It is 
+clear that the proposed NANC algorithm also performs 
+excellently in canceling the composite periodic signals. 
+Nevertheless, the conventional FXLMS algorithm cannot 
+cancel the noise satisfactorily. The attenuation of composite 
+periodic noise is about 30-50  by proposed neural 
+method and is about 10  for the conventional FXLMS 
+method. 
+Hz
+dB
+dB
+Industrial broadband noise always has significant 
+power below 800 Hz. So, we use a 0 to 800 Hz broadband 
+white noise signal to be the unwanted noise in the third 
+experiment. Besides, the result is also shown in frequency 
+domain to see the amount of attenuation. Figure 6(a) shows 
+the nonlinear broadband noise. Figure 6(b) shows the result 
+of the noise cancellation by conventional FXLMS 
+algorithm. From which one can see the ineffectiveness of 
+the FXLMS in canceling broadband noise. However, one 
+can see the effectiveness of NANC in canceling the 
+broadband noise as shown in Fig. 6(c). The performance of 
+NANC is about 10-15 ; meanwhile, the conventional 
+FXLMS cannot control the broadband noise at all.  
+dB
+These results illustrate that the conventional FXLMS 
+algorithm can only control the narrowband noise yet the 
+proposed NANC algorithm can cancel both the periodic and 
+broadband noises well. The optimal learning rate also helps 
+to achieve faster convergence of the proposed NANC 
+algorithm. Besides, the way to select the number of input 
+node and hidden node is depicted as follows.  
+ 
+ 
+427 
+Proceedings of  the Sixth International Conference on Machine Learning and Cybernetics, Hong Kong, 19-22 August 2007 
+ijw
+( )x k
+( )y k
+i
+jv
+1h
+2h
+3h
+nh
+j
+( 1)x k −
+( 1)x k m− +
+hf
+hf
+hf
+hf
+of
+1z−
+1z−
+Unwanted 
+noise
+Input 
+Layer
+Hidden 
+Layer
+Output 
+Layer
+Figure 2. Architecture of the neural filter 
+ 
+0 5 10 15 20 25
+-1
+-0.8
+-0.6
+-0.4
+-0.2
+0
+0.2
+0.4
+0.6
+0.8
+1
+Time, ms
+A
+m
+pli
+tu
+de
+, v
+ol
+t
+ 
+Figure 3. ANC of periodic noise, original 100 Hz periodic 
+noise: solid, ANC with FXLMS: dashed, ANC with NANC: 
+dotted  
+0 5 10 15 20 25
+-1
+-0.8
+-0.6
+-0.4
+-0.2
+0
+0.2
+0.4
+0.6
+0.8
+1
+Time, ms
+A
+m
+pli
+tu
+de
+, v
+ol
+t
+ 
+Figure 4. ANC of periodic noise, original 400 Hz 
+periodic noise: solid, ANC with FXLMS: dashed, ANC 
+with NANC: dotted 
+ 
+ 
+ 
+0 100 200 300 400 500 600 700 800
+-50
+-40
+-30
+-20
+-10
+0
+10
+20
+30
+Frequency (Hz)
+M
+a
+gn
+itu
+de
+ (d
+B
+)
+ 
+(a) 
+ 
+ 
+0 100 200 300 400 500 600 700 800
+-50
+-40
+-30
+-20
+-10
+0
+10
+20
+30
+Frequency (Hz)
+M
+a
+gn
+itu
+de
+ (d
+B
+)
+ 
+(b) 
+ 
+ 
+0 100 200 300 400 500 600 700 800
+-50
+-40
+-30
+-20
+-10
+0
+10
+20
+30
+Frequency (Hz)
+M
+a
+gn
+itu
+de
+ (d
+B
+)
+ 
+(c) 
+ 
+ 
+Figure 5. ANC of composite periodic noise (a) Original 
+composite periodic noise (b) ANC with FXLMS (c) ANC 
+with NANC 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+429 

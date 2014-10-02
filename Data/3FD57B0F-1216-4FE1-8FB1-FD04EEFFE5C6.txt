@@ -1,0 +1,423 @@
+advance policy to dynamically allocate resources to improve the 
+resource utilization and system reliability. 
+The objective of this year is to develop a prototype system which is 
+able to virtualize multiple physical storage devices so as to form a 
+virtualized storage pool.  At first, we design a storage virtualization 
+module with a view point of kernel level to enable the capability of 
+storage virtualization.  This module is responsible for providing the 
+block-based translation between logical address and physical 
+address.  The major components are threefold: mapping table for the 
+translation between logical address and physical address, virtual 
+resource management for VD-LVM, and transparent interface for 
+I/O access.  By the basic functionalities of these components, this 
+subproject can integrate with other subprojects and service the 
+access request via the common interfaces.  The impact of our 
+achievements could be an important foundation for further 
+enhancement of highly reliable resource management for storage 
+cloud. 
+ 
+I 
+ 
+中文摘要 
+儲存虛擬化是儲存資源的抽象化呈現方式，能將多個實體儲存設備抽象化成虛擬的儲存資源。藉
+由儲存虛擬化的技術可屏蔽底層異質性儲存設備的複雜度，達到透明化的整合存取方式以提供儲存即
+服務的雲端運算環境。目前儲存虛擬化的解決方案大多著重在建立一相對獨立的資料儲存設備群，然
+而本計畫的虛擬儲存管理系統則著重整合分散在各學術單位的儲存設備，這些儲存設備可能是一台同
+時提供運算與儲存能力的伺服器，因此，如何有效虛擬化單位內的儲存資源形成一虛擬儲存池將是本
+子計畫的一大挑戰。鑑於此，本子計畫預計研發一套虛擬磁碟的邏輯磁區管理系統 (VD-LVM)，提供
+異質性儲存設備的抽象化能力，依照不同的使用請求可配置虛擬儲存資源管理，並根據實際資源的使
+用情況研發進階的動態配置功能，藉此將可提升資源的使用率以及提高系統的可靠性。 
+本年度的目標是建置一虛擬磁碟儲存池的基本雛型系統，可以將多個實體儲存設備進行虛擬化，
+提供一單位內的儲存虛擬化環境。首先，將針對一般的實體伺服器設計儲存虛擬化的模組，此模組以
+kernel-level 的觀點，設計 block-device為主的儲存虛擬化技術，提供邏輯儲存位址與實體儲存位址的轉
+換功能。其中設計的項目包含三大基本元件：邏輯儲存位址與實體儲存位址對映表、虛擬儲存資源管
+理以及透明化儲存設備的 I/O 存取介面。藉由研發這些項目的基本元件功能，將有助於與其他子計畫
+進行初步的整合設計與溝通，設計統一的存取方式提供上層對於虛擬資源的存取請求，相關研究成果
+將可為之後研發高可靠儲存雲的資源管理機制，奠定重要的基礎。 
+ 
+關鍵詞：雲端運算、儲存雲、虛擬化、儲存虛擬化、虛擬磁碟的邏輯磁區管理系統 
+ 
+III 
+ 
+目錄 
+ 
+中文摘要............................................................................................................................................................... I 
+Abstract ................................................................................................................................................................ II 
+目錄.................................................................................................................................................................... III 
+一、 前言 ............................................................................................................................................................ 1 
+二、 研究目的 .................................................................................................................................................... 1 
+三、 文獻探討 .................................................................................................................................................... 1 
+四、 研究方法與執行進度 ................................................................................................................................ 3 
+五、 結果與討論 ................................................................................................................................................ 7 
+參考文獻.............................................................................................................................................................. 8 
+ 
+ 
+ 
+2 
+ 
+ 基於伺服器的方法(Host-based) 
+這種做法主要是透過軟體的方式，將儲存虛擬化的相關功能實作在 device driver與 OS 的
+I/O module之間，透過攔截 OS 對底層所下的 I/O request 來做到虛擬化的功能。這種軟體的做
+法很多 OS 都有支援，如 Linux 作業系統的 Logical Volume Manager (LVM) [3]或是Windows
+作業系統的 Logical Disk Manager (LDM) [4]都是直接透過 kernel 來支援儲存虛擬化的技術。 
+基於伺服器做法的好處是不需要額外的硬體來支援虛擬化的實現，而且基本上，任何 OS
+支援的儲存設備都可以拿來當作虛擬化的實體儲存媒體，整體實作上也比較簡單，只要管好
+上層 OS 的 I/O指令到底層 device driver的對映就好了。然而缺點是，這種做法通常只能管到
+一台伺服器中的單個或是多個儲存設備，所以其容錯的能力只能是多個儲存設備壞一個可以
+繼續服務，若是整台機器掛了就無法繼續提供服務。此外，Host-based 的軟體是相依於不同的
+作業系統，因為要替不同的 OS 來實作不同的儲存虛擬化軟體。 
+ 基於儲存設備的方法(Device-based) 
+通常這種做法都是將虛擬化的相關功能實作在硬體上，像是在 device driver 中或是在
+device driver上面再做一層硬體來控管虛擬化的相關功能，例如 Disk Array、NAS [5]等內部有
+做類似 RAID [6] [7]機制的解決方案，都算是這種做法。通常這種具有虛擬化技術的儲存設備
+只支援在自己控管的磁碟之間做到虛擬化，並不支援外接的其他儲存設備，然而有些新版的
+儲存設備，可以讓使用者透過 iSCSI [8]或是 Fibre Channel [9]等介面來外接其他儲存設備，可
+使本身的虛擬化技術也可以管理這些外接的儲存設備。 
+這種做法的好處是速度快(由於是硬體支援的關係)，效率高，而且設備買來之後直接就可
+以使用，不需要任何額外的軟硬體支援。但其缺點就是仍然只能控管有限的儲存資源，就算
+是新版的儲存設備，其所提供的介面也是有限，不可能連接任意多台的儲存設備，而且通常
+可以串接的設備也有限，或是侷限在某些特定產品中，因此在延展性方面還是比較差的。 
+ 基於網路的方法(Network-based) 
+在此做法中每個 storage device透過網路使用 iSCSI或是 Fibre Channel來串成一個 Storage 
+Area Network (SAN) [10]，然後透過連接一台負責做虛擬化的設備來達到儲存設備的虛擬化。
+在此環境中，負責虛擬化的設備 Virtualization Controller(通常是做在硬體中)對上(連到此 SAN
+的機器)是提供虛擬的邏輯磁區操作，而對下 (實體儲存設備)則是透過實體儲存設備的
+controller來做實際 I/O 的操作。更細分的話又有分為 In-Band 以及 Out-of-Band 兩種做法，主
+要就是看 Virtualization Controller 是直接集中管理底層的資源，或是 Virtualization Controller
+本身沒有提供虛擬化的能力，而是要透過外加一個 Meta-Data Servers 來做虛擬化。 
+這種做法的好處是可以虛擬化一個或多個異質的儲存設備，而且沒有在一台機器上的限
+制，另外也可能透過 data caching的機制來優化整體效能。缺點是 Virtualization Controller可
+能也會綁在某些廠商所生產的儲存設備中，以及 In-Band 的做法可能增加 I/O 的 latency，
+Out-of-Band 的做法亦需要特定的軟/硬體支援。 
+ 
+在本計畫的環境中，我們考量的儲存資源大都是一般伺服器中的硬碟，且各單位內的實體儲
+存設備可能屬於異質性，傳統的單一伺服器中的虛擬化技術或是同質虛擬化磁碟陣列方式將無法
+有效的直接適用。鑑於此，本子計畫將探討異質性的儲存設備如何以軟體的方式研發儲存虛擬化
+的技術，並將針對雲端運算的環境研發支援來自遠端儲存設備所提供的虛擬儲存資源。因此我們
+採用 Host-based 的實作方式來串起單一台伺服器上的多個儲存設備，並能整合多台伺服器上的儲
+存資源，藉此來實作出一可動態配置的虛擬磁碟儲存池系統。 
+4 
+ 
+ 系統管理者（System Administrator） 
+這個系統管理者的角色，與上面所提的 IO 要求發起人有所不同，它所發出的要求不
+是對於儲存設備上的資料存取，而是要對這個系統進行設定或是資源調度。一般而言，
+這個角色發起操作的時間和行為都是相對短暫且快速的，例如設定修改儲存資源分配表
+的內容、加入或刪減儲存池內的實體硬碟資源、建立或切斷實體機器之間的網路連線以
+及發起儲存副本之間的同步動作…等工作。 
+由於這個管理者的角色實現方式並不固定，而且為了延展性和管理性的考量，這種
+角色的程式將會以 User space 中某個服務程序的型態出現，因此要使其順暢的跟 Kernel 
+space中的系統模組作溝通，就必須仰賴一組特別撰寫的函式庫作為媒介，讓本系統可以
+收到來自系統管理者所發出的各種要求。 
+(二). 功能區塊 
+功能區塊主要包含四個：重新映射核心、目標儲存、網路核心以及副本機制，茲針對其
+內部功能作進一步說明。 
+ 重新映射核心（Remapping Core） 
+這個功能區塊可以說是整個系統的核心所在，主要的功能就是要對所有來自 IO要求
+發起人的 IO要求進行重新導向，並且透過資源映射關係的分配對照表，把真正該完成的
+IO 要求重新發送到正確的目標儲存設備上。另外，資源映射表的維護以及創建也是處於
+這個功能區塊的工作項目之一，這個資源映射表可以說是儲存了單一台實體機器上，透
+過本儲存虛擬化技術的儲存資源使用關係，任何需要重新導向映射的 IO要求，或是副本
+機制中的資料同步作業，都必須經由這個讀取映射表的內容，才能得到真正的資源所在
+位置。以下便針對這兩個部分功能作說明： 
+ IO重新導向（IO Redirection） 
+這個部分的主要工作，就是接收來自上層發出的 IO要求，透過截取 Linux 的 IO
+系統框架中的 IO 要求資訊，得到該次 IO 要求所指定得硬碟區塊位置，然後根據此
+一資訊查詢映射表，取得真正的儲存資源所在，最後才把該 IO 要求轉發送到真正的
+目標上。 
+而對於每個 IO要求而言，目標儲存可能是在本地端（與發起人所在的實體機器
+相同）的上的儲存資源，可能是來自遠端必須經由網路傳輸資料的儲存資源，也可
+能是本地以及遠端兩個儲存資源同時並存的情況（遠端副本機制）。所以每次的 IO
+要求，都必須要根據不同的映射關係，透過目標儲存功能區塊或網路核心功能區塊
+的協助達成任務。 
+ 映射表機制（Mapping Table） 
+這個部分的主要工作，是在記憶體中建立起所有虛擬與實體儲存資源之間的對
+應關係表。每個虛擬的儲存設備（虛擬硬碟）可以被切分成多個虛擬區塊，而每個
+虛擬區塊則又可以分別映射到多個實體儲存資源上的區塊，以一種資源樹（Tree）
+的型式被記錄在系統中。 
+無論是 IO重新導向工作或是副本機制的工作，當需要查詢資源映射的所在目標
+位置時，透過一組查詢 API 便可以獲得對應的資源位置。另外，由於這個映射表儲
+存了所有對應關係，所以如果系統管理者發出修改映射關係設定的要求時，最終結
+果就是更動、新增或刪除這個映射表中的某些元素。因此這個映射表機制，可以說
+是本系統中最主要的核心設計內容。 
+6 
+ 
+這個機制中最重要得一項工作，就是要能夠動態的完成將一個虛擬區塊所對應的兩
+個目標區塊進行資料的同步。而這個同步工作的進行就必須要仰賴上述的本地端或是遠
+端 IO操作才能夠完成，一方面循序的讀取其中一個目標區塊上的資料，另一方面同時循
+序的寫入到另一個目標區塊上，而這裡所提的目標區塊如果是本地端，則直接使用目標
+儲存功能區塊的功能，否則需要透過網路核心功能區塊所提供的請求客戶端程序。同時，
+為了確保同步時上層發起的 IO要求所造成的同步問題，副本機制的功能區塊中還必須同
+時維護一個資料一致性的位元表（bitmap），來記錄更新後的區塊位置關係。 
+ 
+圖一、儲存虛擬化模組之功能關係圖 
+ 
+本子計畫經過上述的方法，已在 Linux 系統中實現了一個基本的儲存虛擬化系統雛型，以下
+我們將用一個情境範例說明本系統雛型的使用流程，情境範例的環境建制關係如圖二所示。 
+首先，我們所在的實驗環境為兩台各有 200GB尚未使用的實體硬碟之機器，Node A和 Node 
+B，並且使用 Gigabit Either Net 網路方式相連接。欲使用本儲存虛擬化系統前，必須先將我們所撰
+寫的核心模組插入 Linux 系統中，使其具備虛擬化能力，而後開始透過系統管理員的角色分別設
+定兩台機器的實體儲存資源使用狀態，各自分配給本地端或遠端的虛擬儲存資源使用。 
+在本範例情境中，我們假設需要在 Node A 上創建一個 300GB 的虛擬儲存空間，所以必須先
+以系統管理員角色，透過前述的一組特別函式庫操作映射表，在表中插入新的虛擬儲存資源記錄，
+並且建立虛擬資源和實體資源間的對應關係。在這個環境中，由於兩台機器上的實體儲存資源容
+量都無法直接滿足這個 300GB的虛擬儲存要求，所以勢必需要使用兩組映射區塊，並且將這兩組
+映射接續組合成最後的虛擬儲存資源。我們假設在兩台機器上，同樣透過修改各自映射表的內容，
+創建出 150GB的可使用空間，並且分別與 Node A上的虛擬儲存空間建立連接關係，Node A上所
+創建的 150GB空間因為和所要貢獻的虛擬儲存空間存在於同一實體機器上，所以直接可以使用本
+8 
+ 
+設備虛擬化功能，我們在 Linux 系統中實現此計畫的初步系統雛型，在既有 Linux 的系統框架中，
+加入對於儲存設備的虛擬化功能，並且對於多節點的分散式儲存環境做統一的管理與調度。因此，
+本子計畫的系統雛型對於 Linux 系統將有高度的依存性以及相容性，未來所有基於 Linux 系統框架
+所開發的儲存系統或檔案系統，都可以直接或間接的使用到本子計畫所實現的儲存虛擬化系統。 
+參考文獻 
+[1] M. Armbrust, A. Fox, R. Griffith, A. D. Joseph, R. H. Katz, A. Konwinski, G. Lee, D. A. Patterson, A. 
+Rabkin, I. Stoica, and M. Zaharia, “Above the Clouds: A Berkeley View of Cloud Computing,” EECS 
+Department, University of California, Berkeley UCB/EECS-2009-28, February 10 2009. 
+[2] B. Hayes, “Cloud Computing,” Communications of the ACM, vol. 51, pp. 9-11, 2008. 
+[3] RedHat: Logical Volume Manager, http://sources.redhat.com/lvm/, 2005. 
+[4] Logical Disk Manager, http://en.wikipedia.org/wiki/Logical_Disk_Manager.  
+[5] G. A. Gibson and R. V. Meter, “Network attached storage architecture,” Communications of the ACM, 
+43(11), pp. 37-45, 2000. 
+[6] P. M. Chen, E. K. Lee, G. A. Gibson, R. H. Katz, and D. A. Patterson, “RAID: High-performance, 
+reliable secondary storage,” ACM Computing Surveys, 26(2), pp. 145-185, 1994. 
+[7] D. Patterson, G. Gibson, and R. Katz, “A Case for Redundant Arrays of Inexpensive Disks (RAID),” In 
+Proceedings of the ACM SIGMOD International Conference on the Management of Data, pp. 109–116, 
+1988. 
+[8] J. Satran, et al. iSCSI (Internet SCSI), IETF draft-satran-isci-01.txt (Jul. 10, 2000); see 
+www.ece.cmu.edu/~ips. 
+[9] A. F. Benner: Fibre Channel: Gigabit Communications and I/O for Computer Networks, McGraw-Hill 
+(1996). 
+[10] IBM Corp: Introduction to Storage Area Networks, 
+http://www.redbooks.ibm.com/redbooks/pdfs/sg245470.pdf. 
+[11] E. Lee and C. Thekkath, “Petal: Distributed virtual disks,” In Proceedings of the ACM 7th International 
+Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS) 
+(Cambridge, Mass., Oct). ACM Press, New York, 1996, 84–92. 
+[12] Network Block Device, http://nbd.sourceforge.net/.  
+ 
+ 
+ 
+ 
+ 
+Student Cluster Competition大會贊助商 
+ 
+Student Cluster Competition簡介 
+ 
+佈置攤位 
+ 
+ Panel Discussion 
+ 
+ 
+SC大會主席來訪 
+ 
+評審訪談 
+ 
+總冠軍頒獎 
+ 
+五、建議與結語 
+從這次的國際超級運算會議結果看來，我國無論在學術或是產業界在這個領
+域長期的耕耘都已漸漸萌芽發展，對於目前政府的雲端技術發展政策方向更是一
+大佳報，我們期盼在未來的幾年我國對於這個領域方面的教育以及研究可以持續
+給予更大的支持和鼓勵，讓我國的資訊產業實力繼續在全世界發光發熱。 
+ 
+六、攜回資料 
+獎牌、獎狀、大會論文集 
+ 
+ 
+  
+and dimensions for domestic researchers. 
+五、攜回資料 
+Conference Proceeding (Topic: U-healthcare). 
+ 
+ (a) In order to avoid copyright problems, the accepted papers will not be included in the workshop 
+proceedings, but only presentation slides of the accepted papers will be included in the proceedings. So, 
+please prepare a material (PPT file, page limitation: maximum 20 pages) for your presentation in 
+U-Healthcare 2010 and then send it to Dr. Taeshik Shon (uhealthcare.group@gmail.com) by November 20, 
+2010. (No extension!!). 
+ 
+(b) A paper presentation should be made by one of authors of the paper, during a 25 minute time slot (20 
+minutes for the presentation itself and 5 minutes for Q/A). No-shower's paper will not be included in the 
+special issue of the above journal and also the paper's all authors will be included in The FTRA black list. 
+ 
+[3] [Registration] 
+ 
+At least one author per paper MUST be accompanied by one mandatory registration and the registration fee 
+must be paid by **Nov. 23, 2010**. 
+Without a dedicated registration, the paper cannot be accepted for this workshop and the journal publications. 
+Also, the paper's all authors will be included in The FTRA black list. For detailed information on registration 
+fees and online registrations, you can see it in the U-Heathcare 2010 registration site 
+(http://www.ftrai.org/uhealthcare2010/registration.html). 
+ 
+[4] For smooth communications, we have made new PAPER IDs for the accepted papers. You can find your 
+new PAPER ID in U-healthcare 2010 website (http://www.ftrai.org/uhealthcare2010) soon. 
+ 
+If any questions, please contact us by U-Heathcare 2010 contact email (wcc2010@ftrai.org) or one of 
+program chairs, Prof. Yang Sun Lee (yslee48@gmail.com). 
+ 
+Best regards, 
+ 
+Prof. Deok Gyu Lee 
+Corresponding Guest Editor, Special Issue of INFORMATION 
+Outline 
+ Introduction 
+ Medicare-Grid Platform 
+ Applications 
+ Conclusions 
+2 
+Introduction (2/3) 
+ Challenges in making the Electronic Health Record 
+(EHR) sharing mechanism feasible 
+ Standard format 
+ Sharing mechanism 
+ For this, we proposed Medicare-Grid—a grid-based 
+E-health system to address above two issues 
+ Composition of Medicare-Grid Platform 
+ Computing Grid 
+ Data Grid 
+ EHR Management System 
+4 
+Outline 
+ Introduction 
+ Medicare-Grid Platform 
+ Computing Grid 
+ Data Grid 
+ EHR Management System 
+ Applications 
+ Conclusions 
+6 
+Computing Grid(2/2) 
+ 
+8 
+8 
+Data Grid (2/2) 
+ Functions provided by data grid 
+ File management 
+ Upload, download, recovery, replicate and cache from a storage peer. 
+ Use replication level to control the degree of replication 
+ Only support exact search based on file name 
+ Steps to inserting a file into data grid 
+ Clients connect to any peer in the data grid and perform file 
+insertion 
+ Peer who held newly coming files notifies its root to broadcast the 
+new file notification 
+ Root peer notifies its sub-peers who are responsible for newly 
+coming file 
+ The responsible peer gets data content 
+ 
+10 
+EHR Management System(2/5) 
+ 1. How to standardize EHR 
+ Adopt Taiwan electronic Medical record Template 
+(TMT) format, which is a standard EHR format 
+established by Department of Health, Taiwan 
+ A translation program is needed to translate the 
+specific EHR format used in each hospital into 
+standard TMT format 
+ We develop the translation program for Taichung Veterans 
+General Hospital. 
+ More than 500,000 EHR sampling data are translated into 
+standard TMT format and then stored on data grid. 
+12 
+EHR Management System(4/5) 
+ 2. How to share EHR 
+ Then, we exploit the data grid as the EHR Center to 
+store and sharing EHR among hospitals 
+ 
+14 
+Outline 
+ Introduction 
+ Medicare-Grid Platform 
+ Applications 
+ Medical Decision Support System 
+ Mobile Intelligence System 
+ E-Texcare Health Care System 
+ Conclusions 
+16 
+Medical Decision Support 
+System(2/2) 
+ System Design 
+ Graphic user interface 
+ Query the EHR from the EHR data 
+warehouse by user specific parameters 
+ EHR data warehouse 
+ Collects all EHRs on the data grid and 
+import them to the data warehouse. 
+ Data mining 
+ Provide a number of data mining 
+techniques for users to select the type 
+of analysis they desire 
+ Use computing grid to speed up the 
+computation of data mining algorithm 
+18 
+Data Grid
+Data Warehouse
+EHR
+Data Model Results
+Transfer XML 
+Data
+Data Mining 
+algorithms
+Built Data 
+Model
+Store
+Users
+Query
+Store
+Mobile Intelligence System(2/2) 
+ System Design 
+ Middleware agent 
+ Write information 
+received from RFID 
+readers into a 
+database. 
+ Location agent 
+ Calculates positions of 
+those tags 
+ Map agent 
+ Incorporates location 
+information with map to 
+provide real-time 
+monitoring and tracking. 
+20 
+E-Texcare Health Care System 
+22 
+A prototype of e-Texcare®  
+Online analysis providing latest ECG 
+signal, heart rate, respiration rhythm 
+and PVC/APC detection 
+The analysis of heart rate variability. 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/10/21
+國科會補助計畫
+計畫名稱: 子計畫四：儲存虛擬化(雲端計算_安全技術)
+計畫主持人: 鍾葉青
+計畫編號: 99-2218-E-007-014- 學門領域: 資訊
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

@@ -1,0 +1,205 @@
+ I
+ 
+ 
+中文摘要 
+ 
+GPU(繪圖處理單元)已經發展成為運算能力非常強大且具有彈性的處理器，通
+常我們把在繪圖處理單元上所進行的通用運算稱為 GPGPU，在 GPU 的設計以
+及可程式化的改變使得我們有機會利用它來進行通用運算，然而因為 GPU 特
+殊的程式開發方式使得目前在撰寫 GPGPU 程式時仍存有許多的困難。 
+ 
+在本計畫中，我們從編譯器的觀點出發，提出一個全新撰寫 GPGPU 程式的方
+法，利用編譯器的 directives 來標示出程式中的哪個部分是使用者想交由 GPU
+去執行的，我們的編譯器會將這個部分的程式轉換成另一段含有 OpenGL 的 C
+語言程式碼，之後就可以利用系統本身的編譯器將它編譯成適用於 GPU 的執
+行檔。我們的編譯器是實作在 Open64 這套編譯器開發工具，我們修改它的前
+端使它能夠辨別我們編譯器的 directives，我們也在 Open64 裡加入新的最佳化
+來負責在 IR（Intermediate Language）階段的轉換，之後使用 Open64 所提供
+的 whirl2c 工具來得到最後轉換後的 C 程式碼。 
+ 
+我們針對具有陣列運算的 loop 結構提供 directives 的支援，對於所選用的效能
+評估程式，實驗結果顯示出我們的編譯器可獲得顯著的效能增進。 
+ 
+關鍵字：繪圖處理單元、編譯器 
+ 
+目 錄 
+ 
+中文摘要..................................................................................................... I 
+ABSTRACT............................................................................................. II 
+目 錄........................................................................................................III 
+1. 前言與研究目的..................................................................................1 
+2. 研究方法..............................................................................................1 
+3. 結果與討論..........................................................................................2 
+4. 文獻探討..............................................................................................4 
+5. 參考文獻..............................................................................................5 
+計畫成果自評 ............................................................................................6 
+ 
+ 
+ III
+             Texture[i][j].R = Array[4i × Y + 4j] 
+             Texture[i][j].G = Array[4i × Y + 4j + 
+1] 
+Texture[i][j].B = Array[4i × Y + 4j + 
+2] 
+Texture[i][j].A = Array[4i × Y + 4j + 
+3] 
+          END FOR 
+ 2
+      END FOR 
+  END IF 
+ 
+ 
+Algorithm 2 
+ 
+ARRAY[M][N] 
+IF directive  =  gpu luminance 
+    Texture size = M × N 
+    FOR i = 1 to M 
+        FOR j = 1 to N 
+            Texture[i][j].R = ARRAY[i][j] 
+        END FOR 
+    END FOR 
+ELSE directive  =  gpu_rgba 
+  X = (pad M to power of two) / 2 
+  Y = (pad N to power of two) / 2 
+    Texture size ← X × Y 
+    FOR i = 0 to X 
+        FOR j = 0 to Y 
+            Texture[i][j].R = ARRAY[2i][4j] 
+            Texture[i][j].R = ARRAY[2i][4j + 1] 
+            Texture[i][j].R = ARRAY[2i][4j + 2] 
+Texture[i][j].R = ARRAY[2i][4j + 3] 
+        END FOR 
+    END FOR 
+  END IF 
+ 
+ 
+Algorithm 3 
+ 
+ARRAY[M][N][O] 
+IF directive  =  gpu luminance 
+    Texture size = M × N × O 
+    FOR i = 1 to O 
+        Call Algorithm 2 to transfer ARRAY[M][N] 
+    END FOR 
+ELSE directive  =  gpu_rgba 
+  X = (pad M to power of two) / 2 
+  Y = (pad N to power of two) / 2 
+    Texture size ← X × Y × O 
+    FOR i = 0 to O 
+        Call Algorithm 2 to transfer ARRAY[M][N] 
+    END FOR 
+  END IF 
+ 
+我們的編譯器是實作在 Open64 [13]這
+套 compiler infrastructure 上，實作過程可以
+分為前端及後端兩個部分，在前端的部分，
+由於我們新增了自己特有的 compiler 
+directives，所以我們必需修改 Open64 的
+Lexical Analyzer 以及 Parser，使其可以認得
+我們的 compiler directives 並且產生相對應
+的 Intermediate form (IR)， 
+ 
+在後端的部分，我們必需增加一個
+optimization phase 來負責對 IR 做轉換的動
+作，轉換之後再利用 Open64 本身附的
+whirl2c 工具將 IR 轉回 C code，而這個轉換
+過後的 C code 便會含有 OpenGL 的程式在
+裡面，在這部分由於 Open64 本身已含有許
+多的 optimization phases，所以我們必需找一
+個最適合的部分來加入我們的 optimization 
+phase，經由 trace code 後我們將它加在
+WOPT 之前，如 Figure 1 黃色區塊所示。 
+ 
+ 
+Figure 1 
+ 
+3. 結果與討論 
+在這邊我們選用了兩種不同的 CPU 與
+兩種不同的 GPU 來做效能測試，所選用的
+CPU 與 GPU 列於 Table 1，分別用它們搭配
+    由實驗結果知目前常見於個人電腦中
+低階的 7300GT GPU 執行時間已經可以比
+高階 Workstation 所使用的 Xeon 5140 CPU
+來得快，若是與普通個人電腦 CPU 
+Pentium-D 930 比較的話則可以快上 4 ~ 5
+倍，因為在 SAXPY 測試項目中有 data reuse
+的特性，這對 GPU 來說是一種負擔，因此
+造成上一世代的 6600 GPU 表現不佳，在其
+他 benchmark 則無此問題。 
+4. 文獻探討 
+關於 GPGPU 的研究目前已有許多的成
+果發表 [2, 3, 4, 5, 6]，包含利用 GPU 來幫助
+Ray Tracing、Sorting、Linear Algebra 等方面
+的應用，其研究結果皆顯示出 GPU 可以有
+效的加速這些應用的計算。 
+ 
+另外在 GPU 的 programmability 方面的
+研究也有許多的成果發表，包括由史丹佛大
+學所開發的BrookGPU [7, 8]，它是專為GPU
+所開發的 stream programming language，利
+用 BrookGPU 可以很容易的表示出 GPU 特
+有的 stream data type，另外還有由 Nvidia 這
+間公司所開發的 Cg [9, 10]，它是一種與 C
+相似的程式語言，專門用來控制 GPU 的硬
+體，並且有 stream 以及不同 channels 的 data 
+types 可使用，其他還有目前較為熱門的
+CUDA [11]，它一樣是由 Nvidia 所發展的，
+它屬於 C 的 extension，但是使用上需搭配
+較新的 GPU 硬體才能正常執行。 
+ 
+不同於其他的研究，我們是第一個提出
+以 compiler directives 來幫助 GPGPU 的研
+究，利用這種方式有許多的優點，例如使用
+者不需大量改寫現有的程式，只需於當中適
+當的加入我們的 compiler directives 再用我
+們的編譯器編譯，便可達到使用 GPU 加速
+程式的目的，改寫後的程式在沒有使用我們
+編譯器的環境下亦可正常編譯，另一方面
+compiler directives 也目前 multi-core 環境下
+大家普遍能接受的 programming 方式，所以
+我們採用這種方式可以讓使用者易於上
+手，減輕學習新的程式語言的負擔。 
+ 
+ 
+ 
+    Figure 5 顯示整體測試結果，當 loops
+次數夠多以及 array elements 數目夠大時我
+們可以發現 7300GT 平均可以比 Pentium-D 
+930 快 8.16 倍，比 Xeon 5140 快 3.65 倍。 
+Iteration=100000, Array Size-512K
+1 1 1
+2.39 2.13 2.18
+-1.16
+5.3
+4.073.78
+11.37
+9.33
+-2
+0
+2
+4
+6
+8
+10
+12
+SAXPY Plank distribution Divide, multiply, add
+Sp
+ee
+du
+p
+P-D 930 Xeon 5140 6600 7300GT  
+Figure 5 
+ 
+    目前我們所使用的 Open64 為 3.0 版
+本，Open64 3.0 的 backend 只支援 IA64，因
+此我們需用 whirl2c 來幫忙轉換，近期釋出
+的 Open64 4.0 已有完整支援 X86-64，往後
+可將我們的實作移植到 Open64 4.0 便可直
+接得到 target assembly code，可以讓一般人
+更易於使用，初期我們研發的 compiler 
+directives 只能適用於具有 array 運算的 for 
+loop，將來可以再增加其他的 compiler 
+directives 來用於其他情形，讓整個 compiler
+的功能更加強大。 
+ 4

@@ -1,0 +1,406 @@
+ 2 
+catalog
+item 
+title descriptionauthor
+name
+Peter Rob
+10
+14 1615 22 23
+24
+1
+1.1
+1.1.1 1.1.8
+title description
+item 
+author
+name
+1.2
+1.2.1 1.2.81.2.2
+1.2.2.1
+87
+5251
+9
+56 57 58
+49 50
+59
+author
+name
+1.1.2 1.1.6
+1.1.2.1 1.1.6.1
+Carlos Coronel
+Peter Rob
+Elie Semaan
+1.2.6
+name
+1.2.6.1
+Peter Rob
+83 84
+Database
+We have developed countless 
+database ... web interface design
+1.3
+1.3.2.1
+1.3.41.3.21.3.1
+item 
+title author
+name
+description
+89 100
+88878685
+10199
+Database Systems: Design ... a market-leader
+for database texts, ... practical database design ...
+Robs Databases: Design, Development ...
+... through the use of Microsoft Access. 
+25 35343326 818079787776
+82
+Database Systems:
+Design, Implementation,
+and Management
+3
+65
+4
+21
+Databases: Design,
+Development, And 
+Deployment ...
+38 39
+4140
+42
+author
+ 
+圖一 XML樹 
+L01 
+L02 
+L03 
+L04 
+L05 
+For $p in document (“http://dblab.cs.ntou.edu.tw/book.xml”) 
+ /catalog/item 
+Where $p/description ftcontains (“database” and “design” ordered) ftand(“database” and “design” with 
+distance at least 2 words) and $p//name ftcontains (“Peter” and “Rob” ordered) 
+Return $p 
+圖二：XQuery Full-Text 語法之範例 
+ 
+         其次我們介紹在 W3C 定義的 XQuery 的 Use Case 中，如何針對 XML 文件下達具
+有結構和資訊檢索限制之查詢句。在圖二的範例中，for 子句讓變數可以遞迴取得一個
+運算式的結果、where 子句允許對變數做條件的限制、而 return 子句則可以建構新的
+XML 元素作為查詢的輸出。特別注意的是，在 L0-L07 的 Where 子句中，利用
+ftcontains 函數列舉利用關鍵字進行全文檢索的三個限制式，分別用小括弧括起來。其
+中，第一個限制式，利用“ordered”的語法，要求“database”出現在“design”之前。至於第
+二個限制式，則是利用  “with distance”語法，來規範關鍵字之間的距離，在此我們要求
+“database”和 “design”的距離至少 2 個字。此二限制式都是針對 description 元素的內
+容。至於 L06 行，則是對另一條路徑下達 ordered 的限制 。 
+因此，本計畫是希望能夠針對XQuery中所討論的資訊檢索語法 ， 提供有效率的查
+詢處理。其中包含對結構限制的處理，以及對關鍵字距離和順序限制的處理。本計畫
+提出兩種作法。第一種TJ_IR方法是將使用者輸入之查詢句結構建立成查詢樹，根據該
+查詢樹抓取符合節點的元素，接著處理關鍵字限制，再將符合的結果利用TJFast 的演
+算法[11] 合併。第二種SCU_Twig方法則是先透過SCU[4]的作法，抓取符合關鍵字限制
+的元素資料，再加入路徑的判斷，最後再套用TJFast的方式合併。以下我們將說明此兩
+種作法，並探討其效率。 
+ 
+三、文獻探討 
+針對XML的查詢處理，首先討論的是如何處理XML的結構限制，有些論文針對
+twig pattern的狀況，設計串接的stack，以簡潔地表達符合結構的資料[6]。 論文[8] 進一
+步改善 [6] 的作法，提出了兩層式（外層包內層）的stack。該論文結合其Bottom-up的
+方法以及PathStack的Top-down的想法，在產生符合query的結果時立即列舉出來並清空
+Hierarchical stack內的data，以節省大量的記憶體空間。 
+由於XML資料具有文件的特性，所以IR的技術也被考慮。在研究 [5] 中，作者給
+ 4 
+TJ_IR 的元素編碼表 
+在 TJ_IR 的系統中，我們會給予每個元素五項資訊，並將其以標籤分別儲存，如
+表一所示。前三項資訊為 Extended Dewey Code、Level、Tagname，是屬於結構的資
+料，後兩項則為了進行全文檢索的處理，其中，position 是該關鍵字在 XML 文件中出
+現的位置。注意到，我們會針對文數值內容做 stopword 處理，把 stopword 剔除掉，以
+免關鍵字資料太過於龐大。另外，為了允許使用者對非樹葉節點的元素，直接表示資
+訊檢索的限制式，我們會紀錄一個元素之下所有的關鍵字，包括直接包含和間接包含
+的。 
+表一：圖一中 title 的元素編碼表 
+Extended Dewey Code Level Tagname Keyword Position 
+1.1.1 3 title Database 1 
+1.1.1 3 title Systems 2 
+1.1.1 3 title Design 3 
+1.1.1 3 title Implementation 4 
+1.1.1 3 title Management 6 
+1.2.1 3 title Database 38 
+1.2.1 3 title Design 39 
+1.2.1 3 title Development 40 
+1.2.1 3 title Deployment 42 
+1.3.1 3 title Database 82 
+ 
+另外，我們會為元素編碼表建立一個索引，利用 tagname+level 為 key，以快速地
+取出某個 tagname 在 XML文件中某特定 level 的資料。 
+SCU_Twig 的關鍵字編碼表 
+  在 SCU_Twig 系統中，編碼方式與 TJ_IR 不同的是，我們只給予每個元素三項資
+訊，包含延伸杜威編碼 (Extended Dewey Code) ，關鍵字 (Keyword) 和位置 (Position)，
+第一項是屬於結構的資料，後兩項則為為了進行全文檢索的處理，如表二所示。不記
+錄標籤 (tagname) 和深度 (level) 的原因，是因為我們直接利用延伸杜威編碼產生符合路
+徑的節點，所以不需要標籤資訊。 
+ 
+表二：圖一中 database 的關鍵字編碼表 
+DeweyID global_position 
+1.1.1 1.1.1.1 
+1.1.8 1.1.8.14 
+1.1.8 1.1.8.25 
+1.1.8 1.1.8.34 
+1.2.1 1.2.1.38 
+1.2.8 1.2.8.57 
+1.3.1 1.3.1.82 
+1.3.4 1.3.4.89 
+ 
+TJ_IR 系統 
+TJ_IR 系統的作法整體架構如圖四所示。首先，當使用者輸入 XQuery 查詢句，我
+們會將其建立成查詢樹。接著，資料擷取模組會根據該查詢樹抓取符合個別標籤的元
+素。為了能夠快速的利用元素的標籤取出對應的 XML 元素，我們會事先建立 index。
+若該節點有關鍵字的限制，則由資訊檢索模組，分別處理 order 的限制和 distance 的限
+ 6 
+RightBoundary表示。若 distance 限制式要求的是 “<”或“＝”的限制，則第二個關鍵字必
+頇出現在該範圍內。若 distance 限制式要求的是 “>”的限制，則第二個關鍵字不能出現
+在該範圍內。如此可以縮小比對的範圍。以下作進一步的描述。 
+ L01 行到 L03 行將指標移動到第一個關鍵字 (T1) 和第二個關限字 (T2) 在 Termlist
+中第一個出現的位置，假使 T1 或 T2 有一個不存在，則在 L04 行到 L05 行回傳 false。
+L06 行到 L32 行為處理 distance 的主要演算法。因為論文空間的關係，在此只列出處理
+“<” 和“ > ” 的程式碼。L07 行到 L25 行為處理“<”的情況，L11 行到 L12 行首先計算
+出 T2 可以出現的範圍。 L13 行到 L17 行，表示目前 T2 的位置太前面，則必頇移動
+T2Position 再繼續判斷。L18 行到 L22 行，表示 T2 的位置已經超過目前應該出現的範
+圍，位置太後面，所以移動 T1Position 到下一筆資料，繼續處理。若滿足範圍 則在
+L24 行回傳 true。L26 行到 L39 行則是處理“>”的情況，由於兩者的距離越遠越好，所
+以我們只針對 T1 的第一個位置和最後的位置、T2 的第一個位置和最後的位置共 4 種
+情況做處理，符合限制則為 True。 
+ 
+演算法名稱：DistanceHandle 
+輸    入：TermList, DC   
+/* TermList 為紀錄 Term資訊的 list */ 
+輸    出：True/False 
+變數說明： 
+T1Cursor, T2Cursor                     /*對應 T1 和 T2 在
+Termlist 中的指標*/ 
+T1Position, T2Position              /*兩個關鍵字的位置*/ 
+LeftBoundary, RightBoundary    /*記錄第二個關鍵字
+間可能的範圍*/  
+L01 
+L02 
+L03 
+L04 
+L05 
+L06 
+L07 
+L08 
+L09 
+L10 
+L11 
+L12 
+L13 
+L14 
+T1Cursor = T2Cursor = TermList;  
+T1Position = GetPosition(T1Cursor, DC->T1); 
+T2Position = GetPosition(T2Cursor, DC->T2); 
+If (T1Position==0 or T2Position==0)   
+   return False;   /*有一個 term 沒找到*/ 
+switch(DC->operator){ 
+  case"<": 
+    while (T1Position !=0 and T2Position !=0)     /*
+兩個關鍵字都存在*/ 
+     { /*計算 t2 可以出現的範圍*/ 
+      LeftBoundary = T1Position - DC->number; 
+      RightBoundary = T1Position + DC->number; 
+     if (T2Position < LeftBoundary){  
+/*假使 t2 太前面*/ 
+L15 
+L16
+L17 
+L18 
+L19 
+L20 
+L21 
+L22 
+L23 
+L24 
+L25 
+L26 
+L27 
+L29 
+L30 
+L31 
+L32 
+L33 
+L34 
+L35 
+L36 
+L37 
+L38 
+L39 
+L40 
+        T2Position=GetPosition/*往下找 t2 的下一
+個位置*/(T2Cursor,DC->T2); 
+       continue;            /*繼續比較*/ 
+      }elseif (T2position > RightBoundary)     /*t2
+超過右邊的範圍*/ 
+      {  /*往下找 t1 的下一個位置*/ 
+        T1Position=GetPosition (T1Cursor, DC->T1); 
+        continue;             /*繼續比較*/ 
+      }else 
+        return true; 
+   } 
+  case ">": 
+   T1lastPosition=GetlastPosition(T1Cursor, DC-
+>T1); 
+   T2lastPosition=GetlastPosition(T2Cursor, DC-
+>T2); 
+   if(T1Position !=0 and T2Position !=0) /*兩個關
+鍵字都存在*/ { 
+    if(T2Position<T1Position-DC->number or      
+T2LastPosition>T1Position+DC->number or 
+      T2Position<T1LastPosition-DC->number or 
+T2LastPosition>T1LastPosition+DC->number) 
+        return true; 
+    } 
+}return False; 
+圖七：處理 distance 限制的演算法 
+ 
+ 因為空間的關係，在圖七中並無列出處理“＝”的情況，以下我們簡要說明之。首
+先同樣利用 T1 計算出 T2 的兩個邊界，但是在此情況中 T2 只有恰好在 LeftBoundary和
+RightBoundary 上才是符合結果。我們先判斷 T2Position 是否符合，若是則回傳 true，
+否則判斷該移動 T1Position 或 T2Position，這裡分成三種可能。前兩種可能和“<”的移
+動方式類似，第三種種可能是 T2 恰好在範圍內，則需再度判斷 T2 是否會和此範圍內
+的其他關鍵字符合距離限制，首先我們將 T1 指標指的資料暫時丟給 T3 指標使用，並
+取得 T3Position 的下一筆資料，接著判斷 T2 的位置是否太前面，若是則持續移動 T3
+的指標看能否與 T3 的邊界相等，若是則回傳 true。反之則持續移動 T2 的指標看能否
+與 T1 的邊界相等，否則繼續處理下一筆 T1 直到結束。 
+ 8 
+ 
+N  (node) P  (pattern) M  (match) 
+1.1.1 database 1.1.1.1 
+1.1.8 database 1.1.8.14 
+1.1.8 database 1.1.8.25 
+1.1.8 database 1.1.8.34 
+1.2.1 database 1.2.1.38 
+1.2.8 database 1.2.8.57 
+1.2.8 database 1.2.8.75 
+1.3.1 database 1.3.1.82 
+1.3.4 database 1.3.4.89 
+圖十：SCU Table 範例 
+ 
+演算法名稱：SCU_Twig 
+輸入：XQuery /*XQuery 解析模組所解析出的路徑
+表*/ 
+輸出：MTSet 
+變數：KO1,KO2 /*查詢句中需處理限制的第一個
+關鍵字和第二個關鍵字*/ 
+L01 
+L02 
+L03 
+L04 
+L05 
+L06 
+L07 
+L08 
+L09 
+XQueryTree=BuildingXQueryTree(XQuery); 
+For(each constraint in where_constraint){ 
+If KO1 in hashTable 
+  Get KO1.SCUTable using hashTable 
+Else 
+Get KO1.SCUTable from keywordfile 
+If KO2 in hashTable 
+  Get KO2.SCUTable using hashTable 
+Else 
+L10 
+L11 
+L12 
+L13 
+L14 
+L15 
+L16 
+L17 
+L18 
+L19 
+L20 
+L21 
+L22 
+L23 
+L24 
+Get KO2.SCUTable from keywordfile 
+  LCA.SCUTable = NULL;   
+  if(KO1.SCUTable and KO2.SCUTable 不為空) 
+LCA. SCUTable=DoingLCA(KO1. 
+SCUTable, KO2. SCUTable); 
+  if(LCA. SCUTable 不為空){ 
+ Match_DeweyidList= 
+Doing_predicate(LCA.SCUTable, 
+constraint); 
+ stream=Ismatch(Match_DeweyidList, 
+where 的路徑); 
+ T.stream=AddtoElement (stream); 
+ SavetoXqueryTreeNode(T.stream)} 
+}  
+}MTSet = TJFast(XQueryTree) 
+圖十一：SCU_Twig 之演算法 
+ 
+ 接下來說明主要的演算法。圖十一為 SCU_Twig 之主程式，在 L01 行先對 XQuery
+建查詢樹，在 L03 行到 L10 行利用 hash table 取出 where 限制式中的每個關鍵字對應的
+SCU Table，接著再依序處理限制。在 L12 行到 L14 行將取出的關鍵字透過 LCA 的方
+式合併處理，在 L15 行到 L22 行，我們處理資訊檢索的限制，接著將符合的結果放入
+XqueryTreeNode 的 stream 中。最後在 L24 行呼叫 TJFast 的演算法合併查詢樹，以輸出
+符合查詢限制的結果。 
+ 以下我們簡單說明處理 LCA 的演算法(Doing_LCA)，完整的演算法請參見論文
+[4]。該演算法首先針對兩個 SCUTable 給予各自的起始指標，計算出第一筆 LCA 資
+料，接著再根據兩個 Table 中杜威編碼的前序關係，線性移動指標，減少在做 LCA
+時，時間上的浪費，最後再將結果輸出。至於處理資訊檢索限制之演算法
+(Doing_predicate) 分成兩種處理方式。一種為直接處理限制，若是符合限制則輸出。若
+是不符合資料的杜威編碼，則會將其關鍵字資料加入至其最近的祖先，再測試祖先，
+如此遞迴下去。針對個別資訊檢索的限制處理，基本上我們直接取出對應個別關鍵字
+的位置，然後直接判斷。假設限制式是 order，我們直接判斷兩者間的順序是否符合限
+制。至於 distance 限制之演算法，則區分成 "<" 、 "=" 和 ">"的處理，方法也是類似。 
+五、結果與討論 
+以下我們將設計數個實驗來評估我們所提出之兩個系統的效能。我們以個人電腦
+做為實驗的環境，其 CPU 為 Intel Core 2 1.9 GHz，其記憶體為 1.5GB，而採用的作業
+系統則為 Windows XP。在此實驗中，我們將採用 XMark 之 Data Set，大小為 10MB 至
+50MB，其文件最大深度為 12。 
+ 
+ 
+ 10 
+結論與未來方向 
+在本計畫中，我們首先提出 TJ_IR 方法，該方法擴充 TJFast 的作法，讓使用者在
+取得符合結構限制的 XML 資料上，可以同時針對資訊檢索的限制做進一步的處置。其
+次，我們另外提出 SCU_Twig 方法，其方法擴充 SCU 的作法，使其在取出符合資訊檢
+索的限制上，並能對查詢句的結構限制做處理。我們針對此兩種方法進行一系列的實
+驗，得知在有複雜關鍵字限制的情況下適合使用 TJ_IR 方法，但就一般而言 SCU_Twig
+方法優於 TJ_IR 方法。 
+ 在本計畫中，我們完成了三位碩士論文[1-3]，同時也發表論文於一國際會議[7]，
+目前正在擴充論文的成果，預計發表於期刊中。整體而言，本計畫成果符合預期目
+標。未來，我們希望針對 XML資料不同的屬性事先做更適當的處理，以決定最佳的執
+行策略，另外也可以對查詢句中其他不同的限制，提出對應的處理演算法。 
+ 
+參考文獻 
+[1] 吳政儀, 支援複雜關鍵字限制之 XML查詢系統, 國立台灣海洋大學,  碩士論文, 
+2009 
+[2] 吳俊賢, 支援遞迴資料定義之 XQuery查詢句轉換系統, 國立台灣海洋大學, 碩
+士論文, 2009 
+[3] 黃治中 ,  XML資料分群與排序查詢之研究, 國立台灣海洋大學, 碩士論文, 
+2009 
+[4] Sihem Amer-Yahia, Emiran Curtmola, Alin Deutsch, "Flexible and Efficient XML 
+Search with Complex Full-Text Predicates", In Proceeding of the SIGMOD 
+Conference, Chicago, Illinois, USA, 2006. 
+[5] Shurug Al-Khalifa, Cong Yu, H. V. Jagadish, "Querying Structured Text in an XML 
+Database", In Proceedings of the SIGMOD Conference, Jun. 2003. 
+[6] Nicolas B, Nick K, Divesh S. Holistic Twig joins, "Optimal XML pattern matching", 
+In Proceedings of the SIGMOD Conference, 2002.  
+[7] Ya-Hui Chang, Chia-Zhen Lee, “Representing Multiple Mappings between XML 
+and Relational Schemas for Bi-directional Query Translation ”, Proceeding of the 
+APweb-WAIM conference, LNCS 5446, 2009. 
+[8] Songting Chen, Hua-Gang Li, Junichi Tatemura, Wang-Pin Hsiung, Divyakant 
+Agrawal, K. Selcuk Candan, "Twig2Stack: Bottom-up Processing of Generalized-
+Tree-Pattern Queries over XML Documents", In Proceedings of the VLDB 
+Conference, Pages:283–294, September 12–15, 2007. 
+[9] Lin Guo, Feng Shao, Chavdar Botev, Jayavel Shanmugasundaram, "XRANK: 
+Ranked Keyword Search over XML Documents", In Proceedings of the SIGMOD 
+Conference, San Diego, CA, June 9-12, 2003. 
+[10] Raghav Kaushik, Rajasekar Krishnamurthy, Jeffrey F. Naughton, "Raghu 
+Ramakrishnan: On the Integration of Structure Indexes and Inverted Lists", In 
+Proceedings of the ICDE Conference, 2004. 
+[11] Jiaheng Lu,Tok Wang,Ling Chee-Yong Chan,Ting Chen, "From Region Encoding 
+To Extended Dewey: On Efficient Processing of XML Twig Pattern Matching", In 
+Proceedings of VLDB Conference, Pages: 193–204, Norway, 2005. 
+[12] Martin Theobald, Ralf Schenkel, Gerhard Weikum, "An Efficient and Versatile 
+Query Engine for TopX Search", In Proceedings of the VLDB Conference, 2005. 

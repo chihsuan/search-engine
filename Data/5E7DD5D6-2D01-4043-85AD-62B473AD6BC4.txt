@@ -1,0 +1,140 @@
+目錄 
+摘要 I
+報告內容 1
+一 前言 1
+二 研究目的 1
+三 研究成果 2
+三、一 系統架構 2
+三、二 設計中的關鍵議題 4
+三、三 效能 5
+三、四 軟硬體平台的詳細說明 7
+三、五 實作 8
+三、六 困難與解決(最佳化)與系統資源的使用 11
+計畫成果自評 12
+參考文獻 13
+ 
+  II
+三 研究成果 
+三、一 系統架構 
+我們從 ClamAV (http://www.clamav.net) 免費而且開放原始碼的防毒軟體來
+設計我們的系統, 將病毒掃描的部份用硬體的方式來實現.。系統運行的平台為 
+Xilinx Vertex-II Pro ML310 Platform如圖二。我們的硬體設計在這個平台的
+on-board Xilinx Virtex II Pro (XCVP30) FPGA之內，稱為 Bloom Filter Accelerated 
+Sub-linear Time (BFAST) 架 構  ( 之 後 有 詳 細 說 明 ) 。  ClamAV 在 
+MontaVista( Linux kernel 2.4.20) 作業系統運行。MontaVista 儲存在256 MB Flash 
+disk之中，並且在開機時載入PowerPC 405 core 執行。這個系統的記憶體包括
+FPGA 的block RAM (BRAM) 還有256 MB 的external memory module。 前者儲
+存virus signatures和text buffers，後者儲存了MontaVista、ClamAV、和相關的driver 
+programs作為整個系統software part和hardware part的介面。 
+為了讓軟硬體整合的設計可以正常的運作，我們編寫驅動程式並且修改
+ClamAV 的子程式。在將 virus signatures 編譯進 Bloom filters 之中並且將 text 載
+入 FPGA memory blocks 的 buffer 之後，ClamAV 呼叫驅動 scanning engine 的子程
+式來掃描 text buffer。同時我們也修改了 ClamAV 可以有效的支援 signatures 之中
+限制重複次數的 wildcard 字元而不會有 false negatives(原本的 ClamAV code 有可
+能發生 false negatives)。使用 ClamAV 的 virus signatures 掃描，硬體引擎的 peak 
+throughput 將近 10 Gbps。 
+  ２
+三、二 設計中的關鍵議題 
+因為設計中的元件不能完全的符合我們的期望，它們在軟、硬體整合時將用
+以下的方式修正： 
+(1) 將text寫入BRAM中：  
+我們要掃描的text 儲存在FPGA的BRAM之中。因為將text透過CPU寫入RAM的
+過程相當耗費時間，故我們將DMA元件加入我們的design來節省CPU時間。除此
+之外，我們在BRAM之上使用兩個test buffer。當一個test buffer正被掃描時，另一
+個buffer就載入下一段將要掃描的text。這樣載入下一段將要掃描的text的時間就
+可以減少。 
+(2) 使用interrupt來通知掃描的完成： 
+ interrupt將會在text buffer的掃描完成後通知CPU，這樣CPU就能不必等待，
+先做其他的工作。 
+(3) BFAST 架構與驗證模組之間的溝通： 
+在我們的設計之中，我們使用BFAST架構來過濾text並且找出可疑的virus位
+置。這些位置會被送給驗證模組，驗證模組實現Aho-Corasick-like (AC-like)的資
+料結構來驗證是否是一個true match。為了不要阻礙text buffer的掃描，我們配置
+了一個queue來buffer驗證工作的descriptor，（descriptor包含了可疑位置的資訊）。
+BFAST只給queue派送工作並且持續不斷的掃描。驗證模組將會一個個的讀取job 
+descriptor做驗證。 
+(4) 設計新的資料結構來比對重複次數有限制的signatures： 
+原本的ClamAV設計只有紀錄每個signature的「部份」（被wildcard字元分開
+的子字串，並且重複次數有限）一次的比對符合與位置。 當這個部份出現了多
+次時，原本的資料結構將不足以紀錄全部的出現，這樣就有可能發生signature的
+false negative。我們使用一個array of linked lists來紀錄每個部份的出現，就可以
+避免掉match missed的狀況。 
+  ４
+Timing總結 
+--------------- 
+速度等級(Speed Grade)：-6 
+   最小週期：12.540ns (最大頻率：79.748MHz) 
+   在clock之前最小輸入到達時間：2.320ns 
+   在clock之後最大輸出需求時間：2.207ns 
+   最大組合路徑延遲(Maximum combinational path delay)：0.456ns 
+  ６
+三、五 實作 
+scanning module的演算法如下:圖四用一個簡單的例子來說明scanning 
+module的運作。pattern set {P1, P2, P3} 之中，每個pattern的substring被依照它在
+整個pattern中的位置區分成不同組，BF(Gj)為儲存Gj的Bloom filter。Parallel bloom 
+filters將被同時詢問與input字串的關係。priority encoder決定search window的shift 
+value如下：如果至少一個Bloom filter回報hit，shift s = min{j | BF(Gj) reports a 
+hit}，否則s = m，m為pattern length。因為cdef是G2的成員，所以BF(G2)將會回
+報hit。如果BF(G1)或BF(G0)沒有false positive，search window可以移動兩個字
+元。如果shift太短，這個設計可以從window suffix繼續向後檢查以便找到比較長
+的shift。圖五描繪了search engine 的function blocks。當一個可疑的match被找到
+之後，verification module將會執行驗證並且不會妨礙到 scanning module的
+scanning工作。 
+ 
+圖四 每個Pattern中的substring被依照可使search window移動(shift)的值分組。若
+search window中的substring在某個group Gj中，BF(Gj )必定會回報hit。Priority 
+encoder (PE)決定search window的shift值。 
+ 
+我們寫了三個驅動程式作為 ClamAV 和 scanning engine 的介面。它們的三個功能
+如下：. 
+(1)將 text 寫入 memory blocks 的 buffer 之中：系統使用兩個 buffer 交互掃描。當
+其中一個 text buffer 被掃瞄的時候，另一個 buffer 會載入下一段要掃描的 text。
+  ８
+兩個“ab”，資料結構只會紀錄兩個“ab”的第一個。 
+我們修改 ClamAV 的資料結構能夠正確的處理限制次數的重複。每個在
+signature 中的 occurrence 和 position 記錄在一個 array of linked lists，如此一來，
+任何可能的 match 都不會 miss。演算法的 pseudo-code 列在圖六。當 signature 的
+第一個“部分＂被找到時 (記為 partno == 1)，partno 與 offset position(regarding 
+the signature)將被插入 linked list。否則，搜尋 linked list 來檢查已經出現的“部
+分＂的下一個“部份＂是否出現 (cnt+1 == partno)。如果結果為真，檢查兩個部
+份的中間是否符合重複次數的條件限制(指重複次數的最小值與最大值)。如果兩
+者都符合，linked list 的這個節點( node )更新為新的 appearance 值。 如果 signature
+的最後一個“部分＂出現，就宣告一個 true match。由於保留了各個“部分＂的
+每次出現的資訊，將不會像 ClamAV 原有的設計一樣，出現該有的 matches 但卻
+miss 的情況發生。 
+When a new part pt is found…
+if (pt->partno == 1)
+append a new node (cnt(=1)+offset) to pt->sigid->oc_list;
+else {
+ptr = pt->sigid->oc_list;
+while (ptr) {
+if (ptr->cnt + 1 == pt->partno) {
+check maxdist mindistand constraints;
+if (satisfied) {
+if (ptr->partno == pt->sigid->last) { report a match; break; }
+update (cnt+offset) in ptr;
+}
+} 
+ptr = ptr->next;
+}
+}   
+圖六 限制重複次數功能的 ClamAV 操作特徵的 pseudo-code 
+  １０
+計畫成果自評 
+在軟體方面：修改 ClamAV，將其字串比對的部份分離出來，讓此部分交由
+硬體來負責。字串比對的方法部份，有精確比對(Exact Matching)與正規語言法比
+對(Regular Expression Matching)等兩種原型(Prototype)。在衡量過現有的 FPGA
+規格後，利用 Verilog HDL 將這兩種原型(Prototype)實現在 FPGA 上，經過驗證
+之後，已確認 Function 是正確無誤的。目前在精確比對的部分中，搭配著
+Bloom-Filter，將 ClamAV 中的 1000 個比對字串實作到板子上，其中字串比對需
+要的資料使用 1Mb 的 BRAM，在記憶體使用上面達到相當好的效能。 
+達成的目標： 
+(1) 硬體實現scalable design sub-linear time string matching。系統的效率來自於演
+算法的實現所以硬體複雜度中等。. 
+(2) 修改open source 軟體ClamAV將病毒掃描部分交給硬體負責。 
+(3) ClamAV與硬體之間的驅動程式，包含將text載入buffer，編譯Bloom filters，
+virus signatures的掃描與驗證。 
+(4) 支援signature之中有限制重複次數的wildcard字元避免false negatives。 
+※ DMA 與 interrupt 設計有效的降低 CPU 的負擔，提升整體的
+throughput。 
+  １２

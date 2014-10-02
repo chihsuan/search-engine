@@ -1,0 +1,689 @@
+II 
+ 
+圖目錄 
+圖 3.1、Teamster-G 系統架構 ............................................................................................. 2 
+圖 3.2、Workflow Editor...................................................................................................... 4 
+圖 3.3、Workflow Job 的工作需求資訊 ............................................................................. 4 
+圖 3.4、Workflow Deadline 的設定 .................................................................................... 4 
+圖 3.5、尚未完成的 Job 狀態 ............................................................................................. 4 
+圖 3.6、已經完成的 Job 狀態以及執行結果選項 ............................................................. 4 
+圖 3.7、找出所有路徑演算法 ............................................................................................. 6 
+圖 3.8、Job 的 deadline 設定演算法 ................................................................................... 7 
+圖 3.9、資源可用度預測的軟體架構圖 ............................................................................. 8 
+圖 3.10、CPU Workload chain-code.................................................................................... 8 
+圖 3.11、負載樣式 ............................................................................................................... 8 
+圖 3.12、在設定時段的資源可用度預測 ........................................................................... 8 
+圖 3.13、預測時間點的切割 ............................................................................................... 9 
+圖 3.14、請求 Reservation ID 時序圖............................................................................... 11 
+圖 3.15、Reservation table ................................................................................................. 11 
+圖 3.16、預訂資源的判斷條件 ......................................................................................... 11 
+圖 3.17、Agent Server 軟體架構....................................................................................... 12 
+圖 3.18、Condor Script File ............................................................................................... 12 
+IV 
+中文摘要: 
+本實驗室已經成功地為 Teamster-G 開發一個
+Workflow 的管理系統，讓使用者可以容易地在
+計算網格上管理與執行自己的 Workflow。然而
+Teamster-G 過去並不支援 QoS。但是對服務導
+向的系統，維護系統的 QoS 是一項重要的議
+題。為此本計畫第三年的工作目的即是在解決
+Teamster-G 的 QoS 問題。以往的相關研究經常
+採用預訂資源保留的方法來維護系統的 QoS，
+卻因其所提出的方法並沒有將資源未來的可用
+度納入考量，而導致系統的工作服務品質不
+佳。為此，我們設計了一套基於未來資源可用
+度的資源預留方法，並實現於 Teamster-G 的
+Workflow 管理系統中，以維護在 Teamster-G 上
+執行 Workflow 的服務品質。本報告主要內容在
+介紹完整的 Teamster-G 系統架構，以及為維護
+QoS 所開發的相關機制與演算法。 
+ 
+關鍵字: Teamster-G、服務品質、預留排程器、
+資源可用度 
+ 
+英文摘要: 
+We have successfully developed a workflow 
+management system on Teamster-G for users to 
+manage and execute their workflow jobs. 
+However, the problem of QoS on Teamster-G has 
+not been resolved. Since it is very important issue 
+for a service-oriented grid system, the goal of our 
+work in the third year of this project is aimed at 
+the problem of QoS problem in Teamster-G. 
+Although there are many related studies proposed 
+methods for the QoS problem of Grids, all of these 
+methods do not take future resource availability 
+into account. As a result, the QoS of user jobs was 
+not effectively maintained due to dynamic 
+resource availability. To overcome this drawback, 
+we are aimed at design and implementation of a 
+resource reservation scheme based on future 
+resource availability for the workflow jobs in 
+Teamster-G. In this report, we will introduce the 
+whole system framework of Teamster-G, and the 
+resource reservation scheme and algorithm 
+proposed for QoS of workflow jobs. 
+ 
+Keywords: Teamster-G、QoS、Reservation
+ Scheduler、Resource availability 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+2 
+連鎖的工作遷移而使整個 Workflow 的 Deadline
+大幅度延遲。 
+ 
+日本東京的 Grid Technology Research 
+Center 也 曾 提 出 的 一 套 支 援 Advance 
+Reservation 的 Local Scheduling System 機制，稱
+為 TORQUE[10][11]。它是基於 OpenPBS 而開
+發出來的，其架構是由多個 PBS 的 local 
+Scheduler、PBS Server 以及 Scheduler Module
+所組成。其 Scheduler 是一個簡單的 FIFO 排程，
+並實作一套 Scheduler Module 與 PBS Server 之
+間的溝通介面。此機制基於 GT4(Globus Toolkit 
+4)[12][13]的 container 實作了一個 Web Service
+系統。整體架構都遵循著 WSRF[15]的標準規範
+而增加其架構延展性，對於系統的擴展性幫助
+甚大。 
+相較之下，本研究所實現的 Workflow 管理
+系統提供了更完整的管理服務，包括 Workflow
+編輯、Workflow 監視以及 Resource Reservation
+的狀態訊息等功能，並基於 GT4 架構且遵循著
+WSRF[14]的標準規範建構而成。更重要的是我
+們所提出的 Advance Resource Reservation 排程
+機制能夠有效的配置較適當的 Deadline 長度給
+予 Workflow Job，並且基於資源未來可用度預
+測的機制，而更有效地維護系統的工作服務品
+質。 
+ 
+3 研究方法 
+在第一年的研究計畫中，本實驗室已經將
+Teamster-G 演進成為符合 OGSA 架構的計算網
+格系統，並且於第二年成功為 Teamster-G 系統
+設計與實現一個 Workflow 管理系統。此
+Workflow 管理系統主要包含 Workflow Editor、
+Workflow Monitor 與 Workflow Scheduler。使用
+者須登入 Teamster-G 的 Web Portal 並利用
+Workflow 編輯器來定義 Workflow 的各個 Job
+參數。在執行期間，Workflow Scheduler 會自動
+為使用者編輯的 Workflow 進行排程，並與
+Teamster-G 的 Broker 合作將工作分派至遠端的
+資源上執行。其執行期間，使用者可以透過
+Workflow Monitor 即時的追蹤其 Workflow 執行
+狀態。為了讓使用者的 Workflow 獲得更好的工
+作服務品質，本實驗室在第三年以維護
+Workflow 工作的 QoS 為首要目標。為了達到這
+個目的，我們採取本實驗室所開發的一套長時
+程資源未來可用度預測機制作為選擇預留資源
+的依據。圖 3.1 為整合三年研究成果的
+Teamster-G 系統架構圖。 
+ 
+圖 3.1、Teamster-G 系統架構 
+ 
+Teamster-G 是使用 Globus Toolkit 4 所開發
+出來的網格系統。此系統基於 OGSA 概念，並
+且遵循 WSRF 的標準規範。其中主要單元有
+Workflow System、Resource Broker、資源可用
+度預測、Reservation Server、Agent Server 與
+Local Scheduler。而整個系統流程步驟可分為下
+列項目: 
+ 
+1.1 使用者透過 Workflow 管理系統的 Portal 介
+面進行申請專屬的帳號密碼。 
+2.1 使用專屬帳密登入後，利用 Workflow 管理
+系統的 Workflow Edit 自行定義 Workflow 
+Job 參數與設定 Workflow Deadline。 
+3. 將編輯完的 Workflow 提交給 Workflow 
+System ， 此 時 系 統 會 透 過 Reservation 
+Scheduler 來為每個 Job 進行 Deadline 的配
+置。此 Reservation 排程器會根據 Workflow 
+Path 的權重值與 Job 的工作需求量來決定分
+配 Deadline 的優先權及大小，並且將配置完
+畢的 Workflow 提交至 Resource Broker。 
+4 
+ 
+圖 3.2、Workflow Editor 
+ 
+ 
+圖 3.3、Workflow Job 的工作需求資訊 
+ 
+ 
+圖 3.4、Workflow Deadline 的設定 
+ 
+ 
+ 
+3.2 Workflow Monitor 
+當使用者編輯完 Workflow 後，便可以由此
+介面來追蹤 Workflow 的執行情況。此 Workflow 
+Monitor可透過 Search與 Select按鈕來挑選過去
+曾經執行過的 Workflow 或目前正在執行的
+Workflow，然後從介面上觀看所有 Job 的狀態
+與執行結果，如圖 3.5 所示。當使用者想要更新
+資訊時，便可選擇 Refresh 按鈕將 Workflow 資
+訊更新為目前當下的 Workflow 情況。另外，使
+用者如果想查看 Job 的執行結果，選擇 Output
+按鈕即可，如圖 3.6。此 OutPut 按鈕只能在 Job
+狀態為 Finish 時才會列出，並且會開啟新視窗
+秀出 Job 執行結果。 
+ 
+圖 3.5、尚未完成的 Job 狀態 
+ 
+ 
+圖 3.6、已經完成的 Job 狀態以及執行結果選項 
+ 
+ 
+ 
+6 
+的路徑(例如:p[0]=>1/2/4、p[1]=>1/3/4，p[0]這
+條路徑有 Job1、Job2、Job3，p[1]則有 Job1、Job3、
+Job4，在 Job1 的資訊裡就會記錄路徑的索引值
+0 以及 1，Job2 則會記錄索引值 0，而 Job3 會記
+錄索引值 1)。 
+接著從 Q 佇列取出的索引值 e，對映至 Jp[e]記
+錄出現過該 Job 的路徑(其儲存的值為 vector p
+的索引值)。我們以 pathIndex 來暫時存放 Jp[e]
+的值，並且以迴圈方式針對 pathIndex 裡每一個
+索引值來繼續路徑的生成。如圖 3.7 的第 14-31
+行。各別為取出迴圈 pathIndex 的一個路徑索引
+值 path、得知此 Job 的所有 child 以及此路徑的
+工作需求量 s[path]。之後我們再將每個 child 加
+入此路徑，並且同時將 child 的工作需求量累加
+至記錄路徑工作需求量大小的 vector s。每當一
+個 child 加入至路徑之後，必須將此 child 的
+InDegree 值減 1，直到為零則將此 child 放入 Q
+佇列(表示此 child的所有parent生成的路徑都已
+經加入 child 了)。另外，程式碼也會判斷是否在
+此 Job 之後，會變成分叉路徑。我們藉由
+OutDegree 值來判斷此 Job 的路徑之後，是否必
+須生成另一條路徑(OutDegree 表示此 Job 的
+child。如果 OutDegree 值為 2 以上，則表示此
+Job 之後有兩條路徑)，直到所有 child 做完路徑
+生成以及 Q 佇列為空，則表示所有可能路徑已
+經全部生成。 
+ 
+圖 3.7、找出所有路徑演算法 
+B. 為每一個 Job 設定 Deadline 演算法 
+以下是 deadline 配置演算法的參數說明 
+1. T:_Workflow 的 Deadline 
+2. heap:_Binary Heap 的排序器 
+3. S:_路徑的工作需求量，為一個 Vector 
+4. P:_所有路徑組合的 Vector 
+5. PathSize:_從 Heap 取出的最大工作需求
+量 
+6. Path:_從 Heap 取出最大的工作需求量
+路徑，其記錄的索引值位子 
+7. Out:_存放 OutDegree 的 Vector 
+8. jobEndTime:_記錄 Job 的截止時間 
+9. jobFirstTime:_記錄 Job 的起始時間 
+10. foremost:_ 在此 Job 所有已經完成
+deadline配置的 child中，起始時間最 早
+的 first time 
+11. aftermost:_ 在此 Job 所有已經完成
+deadline 配置的 parent 中，截止時間最
+晚的 end time 
+12. jobDeadline:_記錄每個 Job 的 deadline
+時間長度 
+13. unFinishJob:_尚未完成 deadline 配置的
+job 數量 
+ 
+在進行 deadline 配置之前，程式會先執行 
+所有路徑的工作需求量排序工作，如圖 3.8 第
+2-4 行所示。我們採用 Binary Heap 的排序方式，
+亦即使用 binary tree 方式來進行排序的堆積資
+料結構。藉由此排序法可以更加快速地從大量
+的路徑組合中，挑選工作需求量最大的路徑。
+每次挑選出最大工作需求量的路徑時，此排序
+器便會進行調整，並且將目前排序器的最大工
+作需求量的路徑放至排序器的頂端 (意即
+root)，讓每次進行路徑組合取出時都會是目前
+排序器當中工作需求量最大的路徑。挑選出路
+徑組合之後，我們必須為這組路徑的 deadline
+以及 path size 進行調整。其調整方式是確認在
+此路徑組合中已經完成 deadline 配置的 job，將
+其 job deadline 以及 job size 的部分扣除掉，然
+後用路徑剩餘的 deadline 總數配合 path size 與
+8 
+為 free)，此 Job 才算是完成 resource reservation。
+反之，只要兩者其中一個條件不成立，則 Broker
+會挑選可用度次低的資源進行兩個條件比對。
+如果在這個資源可用度排列中並無同時滿足兩
+者條件的資源，則系統會拒絕使用者的資源預
+訂請求，且由 Broker 回覆資源預訂失敗訊息給
+Workflow 管理系統。 
+ 
+ 
+圖 3.9、資源可用度預測的軟體架構圖 
+ 
+以下我們將介紹此機制的預測方式並且舉例說
+明。此機制會根據每天收集的資源 load 狀態，
+將此 Load 狀態轉換成 Workload chain-code，如
+圖 3.10 所示。 
+ 
+圖 3.10、CPU Workload chain-code 
+ 
+然後由 chain-code 表找出每一個時段在過去的
+load 紀錄中，出現次數最多的 pattern，如圖 3.11
+所示。 
+ 
+ 
+圖 3.11、負載樣式 
+ 
+我們必須藉由 Resource Broker 的請求，從 Job
+起始時間至截止時間之間的時間長度以每小時
+為單位切割成片段。然後再針對每一個片段中
+的執行時段所佔的部份，從負載樣式中尋找相
+符合的 load pattern。再利用下圖所示(圖 3.12)
+的紅色公式算出此計算資源在這小時所能提供
+的可用度，直到累加完每個片段可提供的可用
+度為止。 
+ 
+圖 3.12、在設定時段的資源可用度預測 
+ 
+以下我們舉個例子說明，假設目前時間為
+12:00 且 Job 的 Start time 為 12:10，而 deadline 
+length 為 40 分鐘。依照假設條件，我們可將切
+割為一個時間片段(以小時為單位)，如圖 3.13
+所示。Deadline length 佔一小時的 2/3(40 分鐘/60
+分鐘)。另外，假設其第一小時的 load pattern 為
+10 
+ 
+我們舉例子來說明 Parallel Type Job 的資源
+配置方式，假設目前有一個工作需要 3 個
+Node、CPU 頻率為 1.5 GHz、總共需執行 50 回
+合以完成此工作。而在每一回合的計算時間與
+通訊時間將設定分別為 40(sec)與 30(sec)，以實
+際標準的網路傳輸率 50Mbps 為基準。依照此工
+作的需求，套入式 3-1 與式 3-2 的公式，即可計
+算出此工作的計算需求量（CP）和通訊需求量
+(CM)。 
+ 
+其中 CPU 頻率為 1.5GHz=1500MHz，假設
+CPI 值為１時，表示一個指令執行完成需要１個
+脈波（clock），由此可知 1500MHz=1500MIPS。
+則 計 算 結 果 以 工 作 一 回 合 的 需 求 為
+CP=180000(MI)、CM=3000(Mb)。 
+CP(MI)=CPU 計算能力*所需資源數量*總回合
+數*每回合的計算時間…[式 3-1] 
+CP(Mb)=網路傳輸率*總回合數*每回合通訊時
+間…[式 3-2] 
+CP=1500(MIPS)*3(node sum)*50(iteration)*40( 
+sec)=9000000(MI) 
+CM=100Mbps*50(iteration)*30(sec)=150000(Mb) 
+以表 3-4 所示為目前所提供的資源 CPU 可
+用度級數，主要表示預測的那個小時各個資源
+CPU 效能的可用度級數，然後從每一個 site 中
+挑選出可用度最高的 3 個 node 資源為一組合，
+並將每一個 site 的組合排序，如表 3-5。 
+ 
+表 3-4、預測一小時各個資源 CPU 可用度級數
+ 
+ 
+ 
+首先，計算出每一個組合的工作計算量與
+網路傳輸量，並且將最高可用度的組合回傳給
+Resource Broker，由 Broker 將可用度與工作需
+求量比較是否滿足。 
+表 3-5、預測一小時的所有配對組合（Load 
+Balance）執行後的結果 
+ 
+ 
+我們可以算出這個例子最低可用度的資源組
+合，其計算量與通訊量如下: 
+Site1: 
+計算量 =>0.8*[(6+5+4)×1600]÷9×3600（ sec）
+=7680000 (MI) 
+通訊量=>1*100Mbps×3600= 360000(Mb) 
+因 為 7680000(MI)<Job 的 工 作 需 求 量
+9000000(MI)，所以繼續挑選次高可用度的 Site2
+組合。 
+Site2: 
+計 算 量 =>1*[(9+9+6)×1800]÷9×3600 （ sec ）
+=17280000 (MI) 
+通訊量=>1*100Mbps×3600= 360000(Mb) 
+ 
+由 於 17280000(MI)>Job 的 工 作 需 求 量
+9000000(MI)，因此若 Site2 的 Node1、Node5、
+Node7 資源在 12:10-13:00 為 free，則資源預訂
+成功。 
+ 
+3.5 Resource Broker、Agent Server 與
+Reservation Server 
+在此，我們將介紹 Resource Broker、
+Reservation Server 以及 Agent Server 之間的關
+係，如圖 3.14 所示。系統會將 Reservation ID 以
+及預訂的資源名稱位置透過 Broker 回傳給
+Workflow Server，然後 Workflow Server 將 Job
+12 
+Scheduler 之間的溝通管道。GRAM 是網格環境
+中任務執行的中心，其負責遠端資源需求的處
+理、任務的分配、排程以及管理。它使用自己
+的 資 源 定 義 語 言 (Resource Specification 
+Language-RSL)與本地的 Local Scheduler 以及計
+算資源進行聯繫溝通。 
+ 
+在 Teamster-G 的架構下，Agent server 的工
+作主要再於啟動工作的執行並將執行狀態回報
+給 Workflow Monitor。其過程如圖 3.17 所示，
+Agents Server 會透過 Globus 的 High-Level 
+Services and Tools 階層的 GlobusRun 程序來啟
+動 Core Services 階層的 GRAM 服務，並藉由此
+服務與 Local Services 階層的 Local Scheduler 進
+行聯繫溝通，將任務提交給 Local Scheduler 執
+行與管理。在此，我們可以透過 GRAM 來挑選
+欲使用的 Local Scheduler，並且將任務轉置成
+Local Schulder 的專屬語法，如圖 3.18 的 Condor 
+script file。在此 Condor script file 語法會描述 Job
+的路徑、欲提交至指定的 Node 資源、Output 
+file、Error file、Log file 的存放路徑。 
+ 
+Condor script file 指令說明: 
+Universe:適用的版本 
+Executable:執行檔的路徑 
+Log:產生 Log file 的存放目錄 
+Output:執行結果的存放目錄 
+Error:錯誤訊息的存放目錄 
+Requirements:指定計算資源名稱 
+ 
+ 
+圖 3.17、Agent Server 軟體架構 
+ 
+圖 3.18、Condor Script File 
+4. 效能評估 
+在整個 Teamster-G 系統架構上，整個
+Workflow 執行效能的優劣，其關鍵取決於預測
+方式的準確度。表 4-1 為效能評估所執行的機器
+環境以及軟硬體配備的規格如下: 
+ 
+表 4-1、實驗環境規格表 
+中央處理器(CPU) Intel Xeon 3.2GHz 
+快取記憶體(L2 Cache) 1024K Byte 
+實際記憶體（Memory） 4 GB 
+作業系統(OS.) Windows XP Service Pack 2 
+軟體（Software） Visual C++ 6.0 
+ 
+4.1 預測準確度的評比結果 
+為了模擬環境更符合網格特性，本實驗室 
+去觀測資源在運作時 CPU 的負載走向、網路頻
+寬。CPU 負載波形記錄是以本校園多資源為觀
+察對象。而網路傳輸則以 NWS 監控軟體來監控
+國立高雄應用科技大學至國立成功大學之間的
+網路傳輸。我們將收集 30 天的資源負載波形轉
+換成 chain-code，再對前兩週的資料進行負載樣
+式探勘，而後兩週的負載資料作為預測比對的
+樣本。最後再透過平均方誤差值(MSE)作為預測
+準確度的標準。平均方誤差(Mean square error)
+的方程式如下: 
+∑
+=
+−=
+N
+i
+iif WWN
+tMSE
+0
+2)ˆ(1)(  
+其中 ith 為負載的時間點。 
+Wˆ i 為預測負載等級的情況。 
+14 
+ 
+表 4-4、Bandwidth N-Step 負載預測的 MSE
+統計 
+MINING 電機 電子 模具 機械 土木 成大
+3-Step 0.22 0.23 0.1 0.21 0.26 0.18
+5-Step 0.35 0.41 0.18 0.28 0.37 0.34
+10-Step 0.43 0.48 0.35 0.58 0.38 0.51
+20-Step 0.55 0.65 0.41 0.78 0.44 0.58
+ 
+4.2 資源選擇效能的評估結果  
+在實際的環境中取得大量的計算資源並不
+容易，所以本實驗使用工作排程的模擬程式來
+進行。表 4-5 所示為本實驗中模擬所使用的資源
+個數，主要分為九個 Site。每一個 Site 分配不同
+的資源數量，總共為 500 台資源。為了產生各
+個資源所需要的 CPU 負載波形，我們以實際觀
+測本校園幾台資源的 CPU 負載量變化，並歸納
+所觀測到的負載變化趨向。其所得到的結論是
+在某一段時間內，負載波形上下起伏相距不遠
+並且會連續持續幾個小時。藉此，由模擬程式
+為各個資源製造出三十天的 chain-code，然後經
+由資料探勘發掘出每一個資源的經常性負載樣
+式，並分別產生負載樣式表單，以作為資源選
+擇的依據。目前，模擬程式在進行資源選擇時
+只有考慮到未來 CPU 可用度與各個 site 之間的
+網路頻寬。 
+表 4-5、模擬各個資源的效能 
+Site ID 資源數
+量 
+計 算 能 力
+(MIPS) 
+通訊能力
+(Mbps) 
+S1 50 1700 100 
+S2 60 1800 100 
+S3 60 1600 100 
+S4 50 1800 100 
+S5 55 1600 100 
+S6 65 1800 100 
+S7 60 1700 100 
+S8 50 1800 100 
+S9 50 1700 100 
+ 
+在模擬程式的資源選擇方式，我們採用
+Mining 進行資源可用度的預測方式，然後與當
+下資源負載為下一個 Step 負載的預測方式做比
+較，觀測 Mining 的預測方式的改善幅度。再根
+據 NWS 預測方式與當下資源負載為下一個
+Step 負載的預測方式比較過後的改善幅度做統
+整，最後將全部的改善幅度進行比較。而測試
+模式所設定的參數為此工作“所需的 CPU 能
+力”、“所需的資源數量”、“總共需執行的回合
+數”，以及每一回合所需的計算時間與通訊時
+間。根據以上參數帶入我們所導出的公式，如
+式 5-1 與式 5-2 所示以計算此工作“需求計算量
+（CP）”與“需求通訊量（CM）”。 
+ 
+CP(MI)=CPU 計算能力*所需資源數量*總回合
+數*每回合的計算時間 
+CP(Mb)=網路傳輸率*總回合數*每回合通訊時
+間 
+在效能評估的模擬實驗中，參照表 4-5 所定義
+的內容，將資源分成為九組 Site，共總計 500
+台的資源以及 81 組的網路通訊組合。首先，將
+之前所訓練的出來的 CPU 與網路傳輸率負載樣
+式表格讀取至記憶體做為預測時參考的依據。
+此後在讀取自行定義的工作表單，依照表單內
+各個工作所需的條件以進行資源配置，表 4-6
+為工作需求表單。模擬程式會執行 25 個工作，
+其工作性質主要是以計算能力需求較高的模式
+進行測試，然後設定各個工作所扺達的時間，
+而各個工作會以先進先做的模式依序執行。以
+表示工作會在不同的時間點扺達。倘若有一工
+作在此時間點無法找尋到符合工作條件的資
+源，那麼就會先把此工作擱置下來，直到下次
+某個時間點能符合工作條件的資源，Broker 才
+會從中挑選一組適合的資源配置給予此工作來
+執行。而當工作執行完成後所分配的資源，將
+會被釋放出來以支援其它工作的需求。 
+ 
+16 
+表 4-9、CPU_10-BW_0、CPU_10-BW_10%、
+CPU_10-BW_20% 
+-10.00%
+0.00%
+10.00%
+20.00%
+30.00%
+40.00%
+50.00%
+60.00%
+改
+善
+幅
+度
+(%
+)
+CPU_10_BW_0 -3.01% 3.48% 27.57% 9.58% 17.97% 33.22% 20.09% 25.17% 52.34%
+CPU_10_BW_10 1.20% 5.67% 29.86% 7.03% 12.73% 38.84% 4.55% 19.32% 46.84%
+CPU_10_BW_20 1.20% 5.67% 29.86% 7.03% 12.73% 38.84% 4.55% 19.32% 46.84%
+SW GRAD Mining SW GRAD Mining SW GRAD Mining
+Arrive1 Arrive3 Arrive5
+ 
+ 
+表 4-10、CPU_20-BW_0、
+CPU_20-BW_10%、CPU_20-BW_20% 
+-10.00%
+0.00%
+10.00%
+20.00%
+30.00%
+40.00%
+50.00%
+60.00%
+70.00%
+80.00%
+改
+善
+幅
+度
+(%
+)
+CPU_20_BW_0 -1.98% -1.76% 21.17% 5.00% 7.61% 28.88% 31.22% 27.68% 73.27%
+CPU_20_BW_10 -1.98% -1.76% 21.17% 5.00% 7.61% 28.88% 31.22% 27.68% 73.27%
+CPU_20_BW_20 -1.98% -1.76% 21.17% 5.00% 7.61% 28.88% 31.22% 27.68% 73.27%
+SW GRAD Mining SW GRAD Mining SW GRAD Mining
+Arrive1 Arrive3 Arrive5
+ 
+ 
+5. 結論與未來工作 
+對服務導向架構(SOA)的計算網格而言，透
+過 Advance Resource Reservation 來維護系統的
+QoS，其最重要的關鍵為如何準確地預測資源未
+來可用度。為解決此問題，本實驗室成功開發
+一套基於可長時程預測資源未來可用度的
+Advance Resource Reservation 以及設定一個
+deadline 的保護值，讓系統可以透過此方式來維
+持服務工作的品質，並且提高在 Deadline 之前
+完成工作的機率。另外，本實驗室也已經驗證
+未來資源預測方式的準確度是較優於 NWS 的
+預測方式，而且從效能評估的結果可以得知將
+此預測方式應用在資源選擇上確實能改善工作
+執行效能。這對於 Resource Broker 進行資源配
+置時，比較能夠為 Job 挑選更合適的計算資源，
+而且我們所設計的Reservation Scheduler方式也
+確實能以少量的時間對大規模的 Workflow 進
+行 deadline 的設定與資源預留。 
+基於未來資源可用度預測上使用 Advance 
+Resource Reservation 機制來維護系統工作品質
+的方案，雖然可以有效地避免無資源可用的情
+況以及降低 deadline delay 發生的機率。但是在
+Grid 環境使用資源難免會出現無法預知的結果
+而造成工作延遲。為了讓系統能夠更完善的處
+理這些突發狀況，如何妥善解決 deadline delay
+的問題是一個很重要的議題。過去相關的研究
+方法會使用 Reschedule 的方式來彌補 deadline 
+delay 所造成的損失。然而，將工作重新配置資
+源所能彌補的幅度實在有限，因為這些相關研
+究所開發的 Reschedule 機制通常都是將 Delay
+的 Job 其後代所有 Child Job 重新配置資源。但
+是重新配置的結果依然會受 Grid 環境的資源負
+載動態性影響，而無法真正有效地解決 deadline 
+delay 的問題。為此，我們可以設計一套基於長
+時程資源未來可用度預測機制，實作一套 job 
+rescheduling 的演算法 ，將目前的工作進度遷移
+至其他資源上繼續執行工作，以更佳的方式彌
+補 deadline delay 造成的損失。 
+參考文獻 
+[1]  Tyng-Yeu Liang, Chun-Yi Wu, Jyh-Biau 
+Chang, Ce-Kuen Shieh, “Teamster-G : A 
+Grid-enabled Software DSM System”, In of 
+the Proceeding of The 2005 International 
+Workshop on Distributed Shared Memory on 
+Clusters at the IEEE International Symposium 
+on Cluster Computing and the Grid (CCGrid 
+2005), Cardiff, UK, May 9-12, 2005. 
+[2]  J. B. Chang, Ce-Kuen Shieh, Tyng-Yeu Liang, 
+“A Transparent Distributed Shared memory for 
+Clustered Symmetric Multiprocessors”, 
+Journal of Supercomputing, vol. 37, issue 2, 
+pp.145-160, August 2006. 
+[3]  Cristiana A., Alan L. C., Sandhya D., Pete K., 
+出席國際學術會議心得報告 
+計畫編號 NSC 96-2221-E-151-018-MY3 
+計畫名稱 一個基於開放式網格服務架構的共用記憶體多處理器系統（第3年） 
+出國人員姓名
+服務機關及職
+稱 
+梁廷宇副教授 高雄應用科技大學電機系 
+會議時間地點 Dec. 8~11 2009, Shenzhen, China 
+會議名稱 The Fifteenth International Conference on Parallel and Distributed Systems (ICPADS'09) 
+發表論文題目 A User-Level Remote Paging System for Grid Computing 
+ 
+一、參加會議經過 
+ 本次參加 ICPADS 2009 會議行程共五天。第一天、高雄出發經香港轉深圳。第
+二天發表論文。第三～四天參加會議議程與討論。第五天返回國門。 
+ 
+二、與會心得 
+本次參加的 ICPADS 2009 國際會議，為平行與分散式系統研究領域中最受到重
+視的學術研討會。此會議的論文集被 IEEE 訂為 EI 的等級，所以在學術上非常受到
+重視。今年很榮幸有機會參與次盛會，藉此與世界一流的學者交流，實在是非常難
+得的學習經驗。本次在會議上所發表的論文題目為『A User-Level Remote Paging 
+System for Grid Computing』，其目的是為網格計算開發一個使用階層的遠端分頁機制
+稱為 Grid Remote Pager (GRP)，藉以解決記憶體不足的問題。此篇論文主要的特色
+在此機制可以隨著資源擁有者本身的記憶體使用情形來調整使用者可利用的記憶體
+數量，以避免資源競爭的發生並提高記憶體的使用量。另一方面，此機制還支援記
+憶體資源的保留功能，以保障程式的執行效能。在論文發表中，很多人對於我們的
+研究成果感到興趣，其中包括中國大陸國防大學的學者，他們也是發表 Petaflops 超
+級電腦：天河一號的學者。他們給了我們一些寶貴的建議。例如，分析程式的資料
+存取行為，藉以改善 page replacement 的演算法，提高記憶體分頁命中的機會，進而
+減少遠端分頁置換的次數。未來我們將會在最短的時間內，根據會議中所獲得的建
+議，來對我們所發表的機制進行改善。相信經由後續的加強後，本篇論文將會成為
+一篇不錯的期刊論文。另一方面，我們在本次的會議中，亦參與多個其他 session 的
+研討。例如：Multicore、Parallel Computing with GPU 與 Cluster and Cloud computing
+等，得到有很多其他人的研究經驗，收穫頗為豐富。 
+在此次的會議，有一個重要的論壇『When Petaflops meet the Cloud』，其議題在
+討論：雲端計算(Cloud Computing)是否可以提供高效能計算的服務。在此論壇上，
+無研發成果推廣資料 
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+獲得 2009年全國計算機會議，『優秀論文』獎。 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

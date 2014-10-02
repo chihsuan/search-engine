@@ -1,0 +1,249 @@
+1中文摘要
+隨著各種應用的崛起，例如，網路流量分析、網頁點選串流探勘、網路入侵偵測、以
+及線上即時交易分析等，我們所面臨的資料不再是單純的靜態資料，而是一連串即時且連
+續的動態資料流。在不同應用中的資料流，其語意和架構有極大的差異，而目前研究所提
+出的查詢，主要是針對線上拍賣和流量監控的應用，尚未有針對交易資料流的查詢模式被
+提出來。在本論文中，我們以 “移動視窗模式”為基礎，考慮交易資料流與關聯表的 “視
+窗結合”運算和 “視窗聚合”運算，以符合實際應用上的需要。我們也利用 “摘要資訊”的
+觀念來解決資料流處理時 “one-pass”的問題，並且探究查詢最佳化的技巧，以期能夠更有
+效率地處理交易資料流的查詢。
+關鍵詞：資料流探勘、移動視窗、查詢語言、查詢最佳化
+英文摘要
+With the emergence of various applications, the data we need to process is not static, but the
+continuous dynamic data stream. Examples include network traffic analysis, Web click stream
+mining, network intrusion detection, and on-line transaction analysis. Data streams for various
+applications differ from each other in semantics and constructs. At present, researches about data
+stream query processing focus on online auctions and traffic monitoring. The study on
+transactional data stream query processing has not been proposed yet. In this paper, we design the
+data stream query language based on the sliding window model. We focus on transactional data
+streams, and consider “window join” operation and “window aggregate” operation for multiple
+data streams and relations. Moreover, we use the notion of “summary information” to achieve the
+goal of “one-pass” processing, andstudy the optimization techniques to efficiently process data
+stream queries.
+Keywords：data stream, sliding window, query language, query optimization
+1. 前言
+在許多實際的應用中，例如網路流量分析(network traffic analysis)、網頁點選串流探勘(Web click
+stream mining)、網路入侵偵測(network intrusion detection)、以及線上即時交易分析(on-line transaction
+analysis)等，我們所要處理的資料不再是靜態的資料，而是一連串即時且連續的動態資料流(dynamic
+data stream)。由於資料流是以極快速度的方式，大量且持續產生的一連串資料，因此對於資料流的
+處理必須滿足下列三個要求[19]：(1)資料流中的每一個資料項目最多只能被檢視一次。(2)雖然資料
+流中新資料不斷的產生，但是處理資料流所能使用的記憶體是有限的。(3)最新資料流的處理結果必
+須要能夠配合使用者的要求快速產生。由於傳統資料庫管理系統以“集合”(set)的概念處理記錄的方
+式無法直接應用在資料流的環境中，因此隨著資料流應用的興起，將使得資料管理系統面臨一個更
+大的挑戰。
+近年來，資料流管理系統(data stream management system, DSMS)的相關研究已逐漸受到重視，
+大致可區分為一般目的(general purpose)的資料流管理系統[1,2]以及為了監控某一特殊應用的資料
+流而產生的管理系統[6]。在許多研究中提出了以敘述性語言(declarative language)來表示連續查詢
+(continuous query)的例子[12]。連續查詢最早出現在 Tapestry[17]系統中，它的查詢語言被稱為
+TQL(Tapestry Query Language)，是一種以SQL結構化查詢語言為基礎所設計出來的語言，主要是用
+來處理 append-only 型態的資料庫之查詢。TQL查詢在每個時間點會對資料庫的 snapshot 執行一
+次查詢，並且使用 “set union”來合併這些 one-time queries 的結果。Tapestry沒有提供移動視窗的描
+述功能，而且在查詢的執行上也沒有考慮資料流的資料只能被讀取一次的要求。
+Arasu et al.[1] 提出了CQL語言(Continuous Query Language)，他們使用SQL語言的架構以及視
+窗(window)的概念，將資料流(streams)對應到關聯表(relations)，以呈現查詢的真實語意。CQL所使
+用的資料型態包含 streams 和 relations，另外它也提供三類主要的運算，包括從一個 stream 產生
+一個 relation 的 stream-to-relation 運算、從其它 relations 產生一個 relation 的 relation-to-relation
+運算、以及從一個 relation 產生一個 stream 的 relation-to-stream 運算。
+Gigascope[6]是一個為網路監控應用所建立的資料流管理系統，它也提供一個SQL-like的查詢語
+言，稱之為GSQL。GSQL 是一種 stream-only 語言，也就是說它的 input 和 output 都是資料流。
+Gigascope 在查詢處理方面使用兩層式(two layer)的架構，低層次(low level)的處理單元主要執行較
+簡單的運算，而在高層次的處理單元則負責 join 和 merge 運算。Gigascope 沒有使用移動視窗
+3然交易資料流的探勘研究受到極高的重視，但是尚未有針對交易資料流的查詢模式被提出來。在我
+們前一個階段的研究中[21]，以 “移動視窗模式”為基礎，設計了一套資料流查詢語言(data stream
+query language)，稱之為TSQL。接續這個研究成果，本論文以“加權移動視窗模式”[20]為基礎，進
+一步考慮交易資料流與關聯表的 “視窗結合”(window join)運算以及“視窗聚合”(window aggregate)
+運算，以符合實際應用上的需要。我們也利用“摘要資訊”(summary information)的觀念來解決資料流
+處理時 “one-pass”的問題，並且探究查詢最佳化的技巧，以提升交易資料流查詢處理的效率。
+2.資料流查詢語言
+在論文[21]中，我們以交易資料流為對象，設計一套資料流查詢語言，稱之為TSQL(Transactional
+data Stream Query Language)。 本論文進一步將 “加權”的概念結合在 “移動視窗模式”中，考慮資
+料流與關聯表的“視窗結合”運算以及“視窗聚合”運算。我們考慮“加權移動視窗”的目的是讓使用者
+可以根據資料的重要性，對各視窗設定不同的權重。通常，愈接近目前時間的資料對整體分析的結
+果具有較大的影響力，因此使用“權重”的指定可以讓查詢結果更符合使用者的需求。 TSQL的主要
+架構如下：
+資料流的設定
+OpenStream 資料流名稱
+Range 距離現在時間點所要觀察的視窗大小
+Slide 相鄰觀察點的時間間隔
+Start_time 資料流開始使用的起始時間
+End_time 資料流停止讀取的時間
+[Weight] 依 “Slide”將視窗範圍所劃分的區間給予權重，從距離現在最近的區間開始
+指定
+“Weight”的指定是 optional，使用者可以根據資料的重要性，對各區間設定不同的權重。尤
+其在尋找大型項目(large item 或稱之為 frequent item) 的應用上，距離現在時間愈近的資料應該
+具有較大的影響力，因此使用 “權重”的設定方式可以讓資料流的查詢結果更符合使用者的需求。
+查詢條件的設定
+Select 屬性名稱
+From 關聯表名稱或資料流名稱
+Where 條件設定
+Group by 建立群組的屬性名稱
+Having 設定群組的條件
+基本上，TSQL查詢架構是以SQL為基礎來建立的。針對交易資料流的應用，著重在 “結合” (join) 
+運算和 “聚合” (aggregate) 運算。假設交易資料流中的每一筆記錄包含 “交易編號”(tid)、 “日期”
+(date)、以及 “交易項目集”(<item, quantity>)。另外，假設資料庫中有一個相關聯的關聯表R(item,
+location, category, supplier)。下面的例子說明如何使用 TSQL 來描述查詢：
+範例一：查詢過去五天內在 DS 資料流中，交易量總和大於100的物品之 item、location、category、
+supplier、以及交易總量。每隔一天計算一次，所考慮的交易時間範圍從2006/03/01至 2006/03/30 為
+止。因為 “Range = 5天”且“Slide = 1天”，所以依 “Slide”將視窗分為五個區間。假設視窗所劃分的
+五個區間之權重分別為 0.4、0.3、0.1、0.1、0.1。以 TSQL 設定資料流與描述查詢的方式如下：
+OpenStream DS
+Range 5 days
+Slide 1 day
+Start_time 2006/03/01
+End_time 2006/03/30
+Weight 0.4, 0.3, 0.1, 0.1, 0.1
+Select R.*, sum(quantity)
+From DS, R
+Where DS.item = R.item
+5當處理某一個視窗範圍的查詢時，資料流仍持續在進行中。這個方法對於接收到的資料流都只
+需要讀取一次，再根據所對應的視窗區間將摘要資訊儲存起來，為下一階段的連續查詢作準備。
+圖 1. 資料流移動視窗模式
+表 1: T1 (2006/3/1)時 DS 的資料
+視窗 日期 項目集
+<C,2>
+<B,2><F,3>11w 2006/3/1
+<A,1><K,2>
+<C,1><F,1>1
+2w 2006/2/28 <A,2><B,3>
+<E,2><L,3>
+<B,1><C,1><J,2>13w 2006/2/27
+<K,1><L,1>
+<E,2><F,2>
+<C,2><J,1>
+<A,1>
+1
+4w 2006/2/26
+<F,1><L,2>
+<C,1><L,2>
+<J,2>15w 2006/2/25
+<B,3><E,1>
+表 2: T2 (2006/3/2)時 DS 的資料
+視窗 日期 項目集
+<C,1><E,1>
+<A,1><B,2>21w 2006/3/2
+<K,2>
+<C,2>
+<B,2><F,3>22w 2006/3/1
+<A,1><K,2>
+<C,1><F,1>2
+3w 2006/2/28 <A,2><B,3>
+<E,2><L,3>
+<B,1><C,1><J,2>24w 2006/2/27
+<K,1><L,1>
+<E,2><F,2>
+<C,2><J,1>
+<A,1>
+2
+5w 2006/2/26
+<F,1><L,2>
+4.範例
+考慮第 2 節的範例二，對 DS 資料流和關聯表 R 作查詢，將交易類別(category)屬於 “食品”且
+區域(location)在“北部”的物品之交易量總和大於或等於 5 者，列出其 item、supplier、以及交易總
+量。每隔一天計算一次。表 1 為在時間點 T1(2006/3/1)時 DS 的資料。表 2 為在時間點 T2(2006/3/2)
+時 DS 的資料。以表 1 為例，2006 年 3 月 1 日有 3 筆交易，其中第二筆交易包含項目 “B”的數量
+為 2，項目 “F”的數量為 3。
+我們使用符號 baw 表示資料流 DS 在時間點 Tb 時，編號為 a 的視窗區間。根據 one-pass 演算法
+的步驟一，掃描表 1 和表 2 的資料後，即可分別得到表 3 和表 4 的結果。以表 3 為例，在視窗 11w 中，
+7在步驟二，將 T1 時間點的摘要資訊轉換成關聯表 DS。以表 5 的項目 “A”為例，它會對應到
+關聯表 DS 中的五筆記錄，這五筆記錄的內容如表 7 所示。對關聯表 DS 執行下列的聚合運算，得
+到表 8 的結果，將結果儲存在 temp 表格中。
+select item, sum(quantity)
+from DS
+group by DS.item
+as temp(item,qty)
+類似的作法，在時間點T2將摘要資訊轉換後執行聚合運算，得到表9的結果。
+表 7：T1 時間點項目 “A”在關聯表 DS 中所對應的 5 筆記錄
+視窗區間編
+號
+item qty
+1 A 1
+2 A 2
+3 A 0
+4 A 1
+5 A 0
+在步驟三，根據步驟二的結果(temp 關聯表)和關聯表 R（表 10），找出交易類別屬於 “食品”
+且位於“北部”的物品之交易量總和大於或等於 5 者，列出其 item、supplier、以及交易總量。依範
+例二的查詢敘述，在步驟三轉換成下列敘述:
+select R.item, R.supplier,temp.qty as total
+from R,temp
+where R.category =“食品”and R.location=“北部”and R.item=temp.item and temp.qty ≧5
+表 8：T1 時間點對關聯表 DS 執行聚合運算的結果
+item qty
+A 4
+B 9
+C 7
+D 0
+E 5
+F 7
+G 0
+J 5
+K 3
+L 8
+表 9：T2 時間點對關聯表 DS 執行聚合運算的結果
+item qty
+A 5
+B 8
+C 7
+D 0
+E 5
+F 7
+G 0
+J 3
+K 5
+L 6
+9假設在DS資料流中所有可能出現的 item都記錄在摘要資訊中，因此在表 8和表 9中出現的 item
+是相同的。我們可以考慮下列兩種執行方案:
+(1) 依據傳統查詢最佳化的方法來處理，先執行 selection 再執行 join，執行方案如圖 2 所示。
+在時間點 T1，根據表 8 和表 10，得到表 11 的結果。在時間點 T2，根據表 9 和表 10，
+得到表 12 的結果。
+(2) 在執行方案(2)中，時間點T1時我們將 “qty≧ 5” 的條件計算延至 “join” 之後執行，如
+圖3所示。表13為執行 join 之後的結果。從表13選取 R.item 和 supplier 兩個欄位，儲
+存成 R’表格，如表14所示。接下來對表13執行 selection 和 projection，即可得到和表
+11相同的結果。在時間點T2執行查詢時，我們可以使用R’來減少執行的時間，如圖4的
+執行方案。之後的連續查詢也可以用相同的方式來完成。根據表9，執行 “qty ≧5” 的
+條件選取後，得到表15的結果。對表15和R’執行join和projection之後，即可得到和表12
+相同的結果。因為R’的資料量比R少，因此執行方案(2)會比執行方案(1)更有效率。
+圖3：時間點T1的執行方案（2）
+表 13：時間點 T1 對執行方案(2)執行 join 之後的結果
+R.item location category supplier temp.item qty
+A 北部 食品 統一 A 4
+E 北部 食品 光泉 E 5
+J 北部 食品 光泉 J 5
+K 北部 食品 統一 K 3
+表 14：關聯表 R’
+R.item supplier
+A 統一
+E 光泉
+J 光泉
+K 統一
+11
+[10] C. Jin, W. Qian, C. Sha, J.X. Yu and A. Zhou, Dynamically Maintaining Frequent Items Over a Data
+Stream, Proceedings of the Information and Knowledge Management (CIKM), 2003.
+[11] J. Kang, J.F. Naughton, and S.D. Viglas, Evaluating Window Joins over Unbounded Streams,
+Proceedings of the International Conference on Data Engineering, 2003.
+[12] Y. Law, H. Wang and C. Zaniolo, Query Languages and Data Models for Database Sequences and
+Data Streams, Proceedings of the VLDB Conference, 2004.
+[13] J. Li, D. Maier, K. Tufte, V. Papadimos, and P.A. Tucker, Semantics and Evaluation Techniques for
+Window Aggregates in Data Streams, Proceedings of ACM SIGMOD, pp. 311-322, 2005.
+[14] C. Luo, H. Thakkar, H. Wang, and C. Zaniolo, A Native Extension of SQL for Mining Data Streams,
+Proceedings of ACM SIGMOD, pp. 873-875, 2005.
+[15] A. Manjhi, V. Shkapenyuk and K. Dhamdhere. Finding (Recently) Frequent Items in Distributed
+Data Streams, Proceedings of the International Conference on Data Engineering, pp. 767-778, 2005.
+[16] G. Manku and R. Motwani, Approximate Frequency Counts over Data Streams, Proceedings of the
+VLDB Conference, pp. 346-357, 2002.
+[17] D. Terry, D. Goldberg, D. Nichols, and B. Oki, Continuous Queries over Append-Only Databases,
+Proceedings of ACM SIGMOD, pp. 321-330, 1992.
+[18] R. Zhang, N. Koudas, B.C. Ooi, and D. Srivastava, Multiple Aggregations over Data Streams,
+Proceedings of ACM SIGMOD, pp. 299-310, 2005.
+[19] Y. Zhu and D. Shasha, StartStream: Statistical Monitoring of Thousands of Data Streams in Real
+Time, Proceedings of the VLDB Conference, pp. 358-369, 2002.
+[20] 蔡秀滿,陳耀民, “在加權移動視窗模式中快速探勘資料流之研究”,第十二屆資訊管理暨實務研
+討會, 2006.
+[21] 蔡秀滿,彭雅筠,“移動視窗模式中資料流查詢處理之研究”,電子商務與數位生活研討會 ,
+2007.
+計畫成果自評
+本計畫之研究成果與原計畫之預期目標相符，已發表之研究成果如下:
+1. 蔡秀滿, 彭雅筠, “移動視窗模式中資料流查詢處理之研究”, 電子商務與數位生活研討
+會, 2007. (NSC 95-2221-E-159-017)
+2. 蔡秀滿, 彭雅筠, “在加權移動視窗模式中的資料流查詢最佳化”, 第十八屆國際資訊管
+理學術研討會, 2007. (NSC 95-2221-E-159-017)

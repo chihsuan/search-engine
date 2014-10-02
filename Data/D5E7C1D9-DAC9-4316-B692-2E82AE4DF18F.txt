@@ -1,0 +1,551 @@
+ 1 
+1 摘要 
+隨著三維繪圖技術與 3C可攜式產品的快速發展，三維圖形繪圖已經廣泛地應
+用在手持裝置上。一般而言，三維圖形繪圖需要複雜的運算，而大量的運算會快
+速消耗電池電力，因此滿足高運算量的代價將是顯著縮短電池的供電時間，但手
+持裝置的電池蓄電量是有限的，而且目前電池製造技術的發展遠不及處理器的發
+展速度。此外，可攜式產品核心處理器的供電電壓隨著製程技術的進步日漸下降，
+若要兼顧系統效能與電池壽命，將會額外增加電源管理的困難度，所以如何有效
+管理電源已成為手持裝置產品相當重要的設計關鍵之ㄧ。 
+對目前三維圖形系統而言，動態調整電壓與頻率 (Dynamic Voltage and 
+Frequency Scaling, DVFS)是實現電源管理的主要方法主之一，DVFS是使用一個有
+效的即時預測方法來預測畫面的工作量，據此適當地調整電壓與頻率以節省多餘
+的功率消耗。因此，許多相關文獻皆針對三維圖形系統提出不同的工作量預測方
+法，但大多數方法是將電源管理機制放在軟體層(中央處理器)，如此不但無法快速
+地預測圖形處理引擎的執行時間，同時也造成手持系統中央處理器的運算負擔。
+因此，本子計畫已經設計多種易於以硬體電路實現的工作量預測機制，包含 UW15
+預測器、適應性比例積分預測器、適應性模糊比例積分預測器以有效預測及調整
+三維圖形繪圖硬體加速電路之電壓與頻率。此外，本子計畫也發展數個低功率乘
+法功能元件，用於減少三維圖形繪圖引擎的功率消耗。 
+ 
+ABSTRACT 
+Due to the rapid development of 3D graphics technique and 3C portable product, 
+3D graphics have been widely applied to handheld devices. Generally, to process 3D 
+graphics applications in mobile devices, processor needs strong capability of handling 
+large computational-intensive workloads. Complex computation consumes a great 
+quantity of electric power. But the lifetime of handheld device battery is limited. 
+Therefore, the cost, to satisfy this demand, will be shortening the supply time of device 
+battery. But the lifetime of handheld device battery is limited. Therefore, the cost, to 
+satisfy this demand, will be shortening the supply time of device battery. Moreover, 
+Moore’ law said that the number of transistors in a chip is double in every eighteen 
+months. But these days the advance in manufacturing batteries still cannot get up with 
+the advance in developing processors. In addition, the improvement of chip size has led 
+to more small, supply voltage of kernel processor in portable device. Considering 
+system efficiency and battery lifetime simultaneously increase the difficulty of 
+designing power management scheme. So, how to manage power effectively has 
+become one of the important key for designing handheld products. 
+ 3 
+態調整電壓頻率(Dynamic Voltage and Frequency Scaling, DVFS)，二、使用低功率
+算術功能元件。DVFS研究方向可區分為預先的預測(off-line prediction)以及即時
+預測(on-line prediction)，預先的預測是在應用真正執行之前，先做一次不正式的
+執行，分析此遊戲的特性，藉此蒐集相關預測所需資訊，在正式執行時就可以以
+此已知資訊調整到最佳的電壓和頻率，所以預先的預測也稱為最佳的預測(optimal 
+prediction)。即時預測雖然無法得最佳解，但是針對第一人稱的射擊遊戲像是雷神
+之鎚(Quake)和絕對武力(Counter Strike, CS)，工作量隨著玩家的行為而劇烈變
+化，無法使用預先分析的方式來調整電壓頻率，因此使用一個有效的即時預測方
+法就變成必要的事情。本計畫即針對此類第一人稱遊戲，考量它的預測即時性，
+提出有效的預測方法，準確地調整電壓頻率，藉此降低功率消耗，達到省電之目
+的。此外，使用低功率算術功能元件可以減少三維圖形繪圖處理引擎一部分的功
+率消耗，而乘法器是三維圖形繪圖處理引擎中最重要的算術功能元件。因此，本
+子計畫也發展數個低功率乘法功能元件，用於減少三維圖形繪圖處理引擎的功率
+消耗。 
+ 
+3 三維圖形系統晶片電源管理 
+3.1. 三維圖形系統晶片架構 
+一般的繪圖處理器架構流程如圖 3.1及圖 3.2所示，可以分成三個階段，並且
+每一個階段的基本單位都是一個三角片，以類似切管線的方式去進行運算轉換，
+分別為幾何階段(Geometry Stage)、三角形架構階段(Triangle Setup)、和 Rasterization 
+Stage (RM)。 
+ 
+ 
+圖 3.1.  3D繪圖流程 
+ 5 
+values)、陰影值(shading value)、和構造索引(texture indices)來決定。 
+· Rasterization stage (RM)：計算每一個畫素實際的顏色，將每一個畫素著上顏色，
+並且做出貼圖材質，或是透明化等的特效，最後將結果傳至 frame buffer，再將
+結果表現出來。 
+ 
+在我們的三維圖形晶片系統架構中(圖 3.3)，主要可分為兩部份，分別為
+Geometry Stage (GM)和 Rasterization Stage (RM)，並且在 GM中有 Tile Divider，作
+用為將 GM 處理完後的三角片依照畫面分割成三百塊，判斷三角片位於那一塊區
+塊，當整個物件處理完之後並且分配完三角片，RM再依照 Tile Divider所劃分的
+區塊，依照順序一塊一塊的擷取其中的三角片，其中 GM 和 RM 是非阻塞式
+(non-blocking)的，也就是說畫面中的物件是分開處理的，一次處理一個物件，假
+如一個物件超過三萬個點(一萬個三角片)就分成兩次，即為一次最多處理三萬個
+點，當一個物件由軟體端輸出時，RM必須等 GM處理完之後才能接下去處理，而
+下一個物件的 GM 必須等前一次 RM 處理完之後才能接下去處理，否則會造成中
+間的 Tile Divider 重複覆蓋的現象，由於 GM 一處理完就將三角片傳送到 Tile 
+Divider 的記憶體中，所以無法同時進行，我們就可以利用這個特性去使用前面所
+提過的時脈閘控(clock gating)，當 GM運算的時候我們就可以將 RM的時脈關閉，
+同樣的當 RM運算的時候我們可以將 GM的時脈關閉，如此就可以節省 RM或是
+GM停止運算時所產生的靜態功率。不只如此我們還可以加入一套電源管理的策略
+(Power Management Policy)如圖 3.4所示，我們可以分別擷取 GM和 RM處理一個
+物件所需的工作量(Workload)也就是週期數(Cycle number)，或是由軟體端傳送到
+GM 和 GM 傳送到 RM 的參數去預測調整系統的電壓(頻率)，在我們的電源管理
+策略中我們使用 GM和 RM的工作量來預測調整 GM及 RM的電壓值，接下來我
+們會介紹其他的電源管理策略，最後再介紹我們的電源管理策略並比較我們和其
+他電源管理策略的功率和效能。 
+ 
+ 
+設定GM電壓值 設定RM電壓值工作量或參數值
+Power Management Policy
+(PM)
+Application
+(API)
+Geometry 
+Stage (GM)
+Rasterization
+Stage (RM)
+ 
+圖 3.4.  電源管理策略 
+ 
+ 7 
+態頻繁，浪費轉換時所需的額外功率消耗與時間，造成裝置效能低落，也可能因
+此增加額外的功率消耗，最壞的情況是裝置還未轉換至閒置狀態時就必須轉換回
+忙碌狀態，造成狀態錯亂，無法回覆系統要求。Predictive 策略是採用預測的方式，
+當裝置尚未轉換至閒置狀態前就先預測未來會有多少閒置的時間，也就是說，當
+裝置處於閒置狀態且預估的閒置時間大於損益帄衡時間(break-even time)馬上關閉
+裝置電源。但是若預測不準，也可能因此耗費多餘的功率消耗。上述三種方法皆
+可使用於三維圖形系統上，條件是必須先經過詳細的評估和測量，且所有裝置狀
+態轉換必須具有可預測性，並能找出適合的預測函數。 
+2006 年於 ACM/IEEE 設計自動化會議(Design Automation Conference, DAC) 
+發表的會議論文[4]，針對手持裝置的三維圖形系統提出一個有別於以往的低功
+率設計策略。作者認為三維圖形系統的功率變化無法以一個簡單的分析型效能
+模型(analytical performance model)描述，提出以記錄畫面特徵(signature)的方式預
+測下個擁有類似特徵畫面的工作量。signature-based預測方法是先找出畫面的工作
+量是否與其他參數有關係並存成表，優點是能快速準確的預測目前畫面的工作
+量，缺點是必須花費額外的空間去儲存參數與工作量的對應關係，並且必須動態
+更新可能會額外耗費過多的時間。作者使用了四個參數分別為：(1) 頂點數量，(2)
+三角形數量，(3)平均三角形高度，(4)平均三角形面積來作為基準，並且由公式 3.1
+來預測目前畫面的工作量。其中 si表示目前畫面的參數值，ti表示表中的參數值，
+如果 D(S, T)小於一定值就表示符合先前運算過的畫面，也就可以使用先前符合的
+畫面工作量來作為目前畫面工作量的預測值，最後在執行完目前畫面後得到的實
+際工作量來做更新。 
+1
+( , )
+i d
+i i
+i i
+s t
+D S T
+s
+=
+=
+-
+= å
+                        
+(公式 3.1) 
+ 
+設計第一人稱射擊遊戲像是雷神之鎚和絕對武力的功率管理單元，首要考量
+管理的即時性，歷史訊息預測法省去擷取特徵所耗費的時間，直接參考前數個畫
+面的工作量來預測目前未開始畫面的工作量（History-based預測方法）。參考的數
+量定義為window size，依照window size的不同，主要可分為兩種預測方法：Uniform 
+Window-size Predictor 1 (UW1) [5]和 Uniform Window-size Predictor 5 (UW5) [5]，
+UW1以前個畫面的實際工作量當作目前畫面的預估工作量；UW5以前五個畫面實
+際工作量的帄均值當做目前畫面的預估工作量。UW1的優點在於簡單易實作，紀
+錄量少，電路因此較小，缺點是無法適應於工作量高度變化的情況，也就是說當
+場景高度變化時，使用 UW1的預測準確度會大幅下降；UW5則可補足 UW1不足
+之處，因為將參考資訊取其帄均，會緩和震盪的幅度，因此可以應付場景變化大
+的情況，另外也因此緩和切換電壓的次數，但反觀缺點則是需要記錄較多的資訊，
+ 9 
+PID控制器主要由三種控制器所合成的分別為比例控制器(Proportional)、積分
+控制器(Integral)、和微分控制器(Derivative)。比例控制器主要是由前一次的輸入誤
+差來藉此修正系統的誤差值，並且會放大前一次系統的誤差值，其中放大的比例
+決定了系統調整的準確度。積分控制器是使用累計誤差的方式，主要效果在當系
+統震盪時能穩定系統，如果一個系統只有比例控制器則系統會在我們預定值附近
+震盪，因為系統無法消除多餘的誤差補償，所以我們加上一個額外的平均誤差值，
+而系統的平均誤差值就會慢慢減少，所以積分控制器可以用來讓系統穩定。如果
+單獨使用比例-積分控制器(PI controller)就可以讓系統進入到穩定的狀態並且無誤
+差。微分控制器是誤差的一階微分導數，當系統改變時就會針對系統改變的趨勢
+相對的做改變，微分參數主要是對系統短期改變時立即改變系統的狀態。在自動
+控制系統中如果存在較大慣性或是有延遲(Delay)的元件時，這些元件會抑制誤差
+的作用，這樣我們改變系統的速度就會永遠落後實際需要改變的值。所以我們必
+須額外加入微分控制器，主要功用就是預測之後的誤差先進行調整，在系統中如
+果存在有較大的慣性或是延遲元件就可以使用比例-微分控制器(PD controller)使系
+統達到穩定的效果。圖 3.6 [7]為加入 PID控制器後的回饋電路。公式 3.2即是一般
+比例-積分-微分控制器方程式，將三個控制器相加作為 PID控制器，當中的 t代表
+了時間。在[8]中提到了 PID方程式作為三維圖形的工作量預測方程式 (公式 3.3)。 
+ 
+ 
+輸出
+Process
+傳感器
+輸入
+P  
+Error I  
+D  
+ 
+圖 3.6. 加 PID控制器的回饋電路 
+ 
+ 
+ 11 
+表 3.2.  電壓頻率對應表 
+Actual Voltage level Handle workload（cycle number） 
+0 1000 
+1 800 
+2 600 
+3 400 
+4 200 
+ 
+ 
+表 3.3.  Modify電壓頻率對應表 
+Modify Voltage level Handle workload（cycle number） 
+0 1050 
+1 850 
+2 650 
+3 450 
+4 250 
+ 
+ 
+3.3. 提出的混合型電源管理策略 
+在這一節中我們將介紹本子計畫所提出的三維圖形系統電源管理策略，其中
+3.3.1節首先介紹 UW15預測器，3.3.2節描述適應性比例積分預測器，3.3.3節說明
+適應性模糊比例積分預測器的硬體架構。 
+3.3.1. UW15預測器 (第一年) 
+UW1 以及 UW5 是非常簡單且有效的 history-based 工作量預測方法，我們觀
+察到當工作量變動劇烈的時候，使用 UW5會有較準確的工作量預測結果。反之工
+ 13 
+ 
+subtractor and abs
+mux
+level_sel
+adders
+cmp
+Ci-2 Ci-3 Ci-4
+eiei-1ei-2ei-3ei-4
+workload of frame i
+Ci-1Ci
+K
+voltage level
+adders and /5
+ 
+圖 3.7.  UW15電源管理策略硬體電路圖 
+ 
+ 
+ 
+ 
+圖 3.8. 以移位器與加法器取代除法器 
+ 
+ 15 
+擇兩組參數都可以得到比較好的效果。 
+圖 3.9為我們適應性比例積分預測器的 Finite State Machine（FSM）圖，總共
+需要五個階段，start訊號表示新的三維圖形應用軟體輸入，new訊號表示新的畫面
+輸入，final訊號表示目前的三維圖形應用軟體結束。圖 3.10為適應性比例積分預
+測器的硬體電路圖，總共需要八個暫存器、四個多工器、兩個加減法器、兩個位
+移器、一個比較器、跟一組電壓對映器。表 3.4為適應性比例積分預測器和 UW15
+預測器硬體電路的面積比較。使用 TSMC 0.18 um製程，以及 Design Compiler做
+Gate-level 合成，可以得到適應性比例積分預測器（API）電路比 UW15 預測器電
+路面積（圖 3.7）小 15.456%。 
+ 
+ 
+ 
+圖 3.9 適應性比例積分預測器的 FSM圖 
+ 
+ 
+ 17 
+ 
+由於我們的三維圖形系統是使用 TSMC 0.18um製程，所以我們假設系統所能
+使用的最高電壓為 1.8 伏特，對應的頻率為 10MHz，我們參考[9]中所列的式子，
+由公式 3.6中只要我們擁有一組基準電壓以及頻率值，就可以推算出其他電壓其所
+對應的頻率值。 
+ 
+dd
+tdd
+Vdd V
+)V(Vkf
+2-
+×=                              (公式 3.6) 
+ 
+Vt為 threshold voltage，我們將一組設計好的電路跑 SPICE求得 Vt = 0.541。假設我
+們帶入基準電壓 1.8 伏特頻率 10MHz，則經由公式我們可以推導出 k ＝ 
+11.356e+06，接下來只要另外套入我們所選的其他電壓，就可以得到其他的頻率值。 
+ 
+2
+2
+2
+2
+( ) ( )
+( )( ( ) ( ))
+( ) ( )
+( )
+dd dd th
+dd dd th
+dd
+dd
+V V VP P ref
+V ref V ref V ref
+VE P T P ref T ref
+V ref
+-
+=
+-
+= × =
+                       
+(公式 3.7) 
+ 
+%100)( ×-= maxPMmaxs EEEE                               (公式 3.8) 
+ 
+公式 3.7為我們計算能量消耗的公式，其中 Vdd(ref)為參考電壓，P(ref)為參考
+功率，Vdd為選擇的電壓，假設系統在 Idle時所耗功率為零，T為系統忙碌的時間。
+畫面節省的能量百分比 Es可以用公式 3.8 來計算，其中 Emax為所有畫面都使用最
+高電壓和頻率執行的能量消耗，EPM為使用電源管理單元選擇的電壓和頻率去執行
+所消耗的能量。在三維圖形應用中，每一個畫面有其規定的 deadline，一般人眼對
+於每秒 30 張畫面的速度可以達到視覺暫留的效果，也就是說每一張畫面必須在
+1/30 秒內完成，否則畫面運算的時間過久，整體的畫面流暢度就會影響極大，我
+們訂定我們的 deadline為一張畫面在 0.035秒內執行完成。 
+另外在[10]中提到一個比較參數 Frame Rate Variance (FRV)，公式 3.9為 FRV
+方程式，如果 FRV的值越小表示我們預測出的畫面運算頻率離我們的 deadline越
+接近，相對來說也可以達到更省功率的效果，所以之後我們都使用 FRV這個參數
+來與其他預測方式來做比較。 
+ 19 
+ 
+(a)                               (b) 
+ 
+(c)                               (d) 
+ 
+(e)                               (f) 
+ 
+(g)                               (h) 
+ 21 
+表 3.6.  UW15、PID固定兩組參數、API的 FRV比較 
+FRV Constant 1 Constant 2 API UW15 
+Benchmark a 77.70  80.74 81.24  61.20 
+Benchmark b 6.35 8.37 6.86  16.61 
+Benchmark c 5.68 6.77 5.56 20.34 
+Benchmark d 9.45 8.16 7.51 21.21 
+Benchmark e 8.56 11.26 9.67 17.13 
+Benchmark f 14.41 10.71 9.88 16.65  
+Benchmark g 111.25 108.15 105.44 98.97 
+Benchmark h 78.08 77.93 75.42 69.09 
+Benchmark i 56.26 47.74 48.29 54.04 
+Benchmark j 41.38 39.79 36.94 39.91 
+Benchmark k 48.77 44.54 42.89 49.96 
+Benchmark l 44.65 41.58 37.75 42.88 
+Average 41.88 40.48 38.95 42.33 
+ 
+ 
+表 3.7.  UW15、PID固定兩組參數、API的 Power Saving比較 
+Energy 
+Saving(%) 
+Constant 1 Constant 2 API UW15 
+Benchmark a 46.02 46.01 46.11 46.57 
+Benchmark b 47.01  45.34 46.35 45.86 
+Benchmark c 38.26 38.05 38.34 36.50 
+Benchmark d 38.84 38.34 38.59 38.01 
+Benchmark e 36.19 35.52 35.97 35.42  
+Benchmark f 41.74 41.33 41.84 41.57  
+Benchmark g 42.45 42.37 42.63 43.29 
+Benchmark h 43.22 43.17 43.44 43.92 
+Benchmark i 43.17 43.23 43.38 43.69 
+Benchmark j 43.96 43.75 44.10 44.66 
+Benchmark k 43.73 43.49 43.82 44.10 
+Benchmark l 43.58 43.55 43.86 44.08 
+Average 42.35 42.01 42.37 42.31 
+ 
+ 23 
+ 
+圖 3.14.  模糊比例積分控制器之基本架構 
+ 
+整體架構以比例積分控制器為主要預測機制，所以預測公式即為 PI 預測公
+式。模糊控制器的功用在於參考三個與誤差相關的變數動態產生一個 3´3 的比例
+參數表 TableKp(t)，比例積分控制器再透過查表的動作找到適合的比例參數 KP，適
+時調整比例參數 KP，藉此改善傳統 PID 控制器需要用繁瑣的湊試法以找尋理想比
+例參數的缺點，同時也使得參數有更彈性的調整空間，以因應三維圖形系統工作
+量劇烈變化的速度。模糊比例積分控制器的整體預測流程如圖 圖 3.15所示。 
+ 
+ 
+圖 3.15.  模糊比例積分預測器運作流程圖 
+ 
+圖 3.16為預測器的硬體電路圖，總共需要 11 個暫存器、8 個多工器、2個加
+減法器、2 個比較器、1 個電壓對應器與兩個在於 ROM 的表格。和 Adaptive PI 預
+測器比較，共多了 2 個 1-bit 暫存器、1 個 9-bit 暫存器、1 個 32-bit 比較器與 3 個
+32-bit 多工器，並少了 2 個 32-bit 位移器，兩者的比較數據如面積與功率消耗等
+資訊顯示在表 3.8與表 3.9中，實驗數據說明本預測器在幾乎相同面積的情況下可
+以達到更精確的工作量預測結果。  
+ 25 
+表 3.8.  AFPI預測器與現有預測器之硬體面積比較 
+Policy UW15 API 
+AFPI 
+without 
+UW1 
+AFPI GM+RM 
+Area (gate 
+count) 5561.7 5186.8 5257.0 5589.3 424808.3 
+PM占
+GM+RM(%) 1.31 1.22 1.23 1.31 100 
+ 
+ 
+ 
+表 3.9.  AFPI預測器與現有預測器之平均功率消耗比較 
+Policy API AFPI without UW1 AFPI GM+RM 
+Average Power 
+(mW) 133.9 146.0 156.2 53514 
+PM占 GM+RM
+總功耗(%) 0.25 0.27 0.29 100 
+ 
+ 
+ 
+表 3.10.  Quake II的實驗結果 
+ 
+ 
+ 
+ 27 
+ 
+圖 4.2.  具規則部分乘積陣列之 8 ´ 8改良式布斯乘法器的部分乘積陣列 
+ 
+4.2. 具可規劃性之改良式布斯乘法器 
+彈性的處理能力、低功率消耗以及較短設計週期是今日多數可攜式多媒體及
+數位訊號處理系統需要具備的特性。而這些系統中經常具有極為耗電的乘法運算
+單元，因此使用具有可規劃（configurable）能力的低功率乘法器即可降低這些系
+統的功率消耗 [18, 19]。本論文中，我們提出一個 16´16低功率可規劃 Booth乘法
+器（如圖 4.3、4.4 所示），它可以進行單一 16 位元、單一 8 位元或是兩個平行 8
+位元的乘法運算。為了有效降低功率消耗，我們設計一個新穎的動態範圍偵測電
+路來偵測輸入的乘數與被乘數的動態範圍，動態範圍較小的輸入會被用來進行
+Booth編碼以提昇編碼為 0的機率，因而降低 Booth乘法器的功率消耗。此外，動
+態範圍偵測結果也被用來儘可能關閉不需要進行運算的元件，以減少不必要的訊
+號切換。此可規劃乘法器的輸出也可以被截短以節省更多的功率消耗。除了動態
+範圍偵測電路，本論文也提出許多其他電路以有效且正確地實現這些特性，包含
+修正向量產生器、調整器、符號位元產生器、符號擴展單元等等。實作以及實驗
+結果顯示，本論文提出的具有可規劃能力乘法器的面積和延遲時間比一般傳統型
+Booth乘法器大（大約增加 30%面積以及 12%延遲時間），但是功率以及能量消耗
+可以獲得重大的改善（功率最多可以減少 59%，能量最多可以減少 57%）。 
+ 
+ 
+ 
+圖 4.3.  16´16低功率可規劃 Booth乘法器之部分乘積陣列 
+ 29 
+ 
+圖 4.5.  可變延遲浮點乘法器架構圖 
+ 
+4.4. 多重精確度浮點乘法器 
+多重精確度乘法器具有多重精確度運算模式[23-25]，本子計畫提出的多重精
+確度浮點乘法器具有 5個運算模式，其架構如圖 4.6所示。當輸出圖形影像允許失
+真時，此乘法器即可進行能量消耗以及輸出圖形影像品質的折衷。我們提出的多
+重精確度乘法器透過使用一個重複式（iterative）改良布斯乘法器，可以執行 IEEE 
+754單精度浮點乘法或是產生 8, 14, 20, 26位元的有效數乘積。當使用較低精確度
+模式時，有效數乘法器的某些部分以及捨入邏輯電路將被關閉以降低能量消耗。
+再者，多重精確度乘法器在執行不同浮點乘法運算時可以動態改變乘數、被乘數
+以及輸出乘積的有效數位元寬度，因此可以進一步減少能量的消耗。實驗結果顯
+示多重精確度乘法器在降低 5%、10%、15%以及 20%輸出精確度的情況下，可以
+比傳統的 IEEE 754單精度乘法器減少 28.0%、53.5%、58.5%以及 63.5%的能量消
+耗。 
+ 31 
+6 參考文獻 
+[1] Yan Gu, S. Chakraborty, and Wei Tsang Ooi, “Games are up for DVFS,” Design 
+Automation Conference (DAC), 2006. 
+[2] G. A. Paleologo, L. Benini, A. Bogliolo and G. De Micheli, “Policy Optimization for 
+Dynamic Power Management,” IEEE Design Automation Conference, pp.182-187, 
+1998. 
+[3] Richard Golding and Peter Bosch, “Idleness is not sloth,” USENIX 1995 Technical 
+Conference, pp.17-17, 1995. 
+[4] Bren C. Mochocki, Kanishka Lahiri, Srihari Cadambi and X. Sharon Hu, 
+“Signature-Based Workload Estimation for Mobile 3D Graphics,” Design 
+Automation Conference, pp.592-597, 2006. 
+[5] B. Mochocki, K. Lahiri, and S. Cadambi, “Power Analysis of Mobile 3D Graphics,” 
+Design, Automation, and Test in Europe (DATE), 2006. 
+[6] Yan Gu and Samarjit Chakraborty, “Power Management of Interactive 3D Games 
+using Frame Structures,” 21st International Conference on VLSI Design, 2008. 
+[7] http://zh.wikipedia.org/w/index.php?title=File:Pid-feedback-nct-int-correct.png& 
+variant=zh-tw 
+[8] Yan Gu and Samarjit Chakraborty, “Control Theory-based DVS for Interactive 3D 
+Games”, Design Automation Conference, 2008. 
+[9] Jin-Lin Liu, Kun-Yi Wu, and Shiann-Rong Kuang, “Low Power Mapping and 
+Pipelined Scheduling Using Tabu Search”, National Computer Symposium, 2007. 
+[10] Kihwan Choi, Wei-Chung Cheng, and M Pedram, “Frame-based dynamic voltage 
+and frequency scaling for a MPEG player,” Journal of Low Power Electronics, 
+2005. 
+[11] 陳家偉, “適應性類神經補償之 PID控制系統,” 中華技術學院機電光工程研究
+所碩士論文, 台灣, 2005 
+[12] “自動控制系統中 PID整定,” http://www.symcukf.com 
+[13] E.H. Mamdani, “Application of fuzzy logic to approximate reasonling using 
+linquistic synthesis,” IEEE Trans. Computers, vol.c-26, 1977. 
+[14] P.M. Larsen, “Industrial applications of fuzzy logic control,” Int. J.Man, Mach, 
+Studies, vol.12, no.1, pp.3-10, 1980. 
+[15] J. Fadavi-Ardekani, “M×N Booth Encoded Multiplier Generator Using Optimized 
+Wallace Trees,” IEEE Trans. Very Large Scale Integration (VLSI) Systems, vol. 1, no. 
+ 33 
+[28] Shiann-Rong Kuang, Jiun-Ping Wang, and Hua-Yi Hong, “Variable-Latency 
+Floating-Point Multipliers for Low-Power Applications,” IEEE Transactions on 
+Very Large Scale Integration (VLSI) Systems, Vol. 18, No. 10, pp. 1493-1497, 2010.  
+(SCI, EI)  (NSC 97-2220-E-110-006) 
+[29] Jiun-Ping Wang, Shiann-Rong Kuang, and Shish-Chang Liang, “High-Accuracy 
+Fixed-Width Modified Booth Multipliers for Lossy Applications,” to appear in 
+IEEE Transactions on Very Large Scale Integration (VLSI) Systems, 2010.  (SCI, 
+EI) (NSC 97-2220-E-110-006) 
+[30] Kun-Yi Wu and Shiann-Rong Kuang, “Instruction Scheduling and Register 
+Relabeling Algorithms for Reducing Switching Activity between Instructions,” 
+International Computer Symposium, Vol. 1, pp.263-268, November 13, 2008.  
+(NSC 96-2220-E-110-007) 
+[31] Hao-Yi Jheng, Jia-Huei Ye, Shiann-Rong Kuang, and Chung-Nan Lee, “An 
+Adaptive PI Predictor for Power Management of 3D Graphics Processing Engine,” 
+The 20th VLSI Design/CAD Symposium, August 2009.  (NSC 97-2220-E-110-006) 
+[32] Kee-Khuan Yu, Kun-Yi Wu, and Shiann-Rong Kuang, “Multiple-Precision 
+Floating-Point Multiplier for Embedded Applications,” The 21th VLSI Design/CAD 
+Symposium, August 2010.  (NSC 98-2220-E-110-006) 
+[33] Da-Jing Zhang-Jian, Chung-Nan Lee, Ing-Jer Huang, and Shiann-Rong Kuang, 
+“Power Estimation for Interactive 3D Game Using an Efficient Hierarchical-Based 
+Frame Workload Prediction,” 2009 APSIPA Annual Summit and Conference, 
+October 2009. 
+ 
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：鄺獻榮 計畫編號：98-2220-E-110-006- 
+計畫名稱：具有即時效能/功率監控功能的高效率可程式化三維電腦繪圖晶片系統：軟硬體開發及整合
+--子計畫六：三維電腦繪圖晶片系統處理引擎之低功率系統架構設計(3/3) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 5 5 100%  
+博士生 2 2 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 1 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

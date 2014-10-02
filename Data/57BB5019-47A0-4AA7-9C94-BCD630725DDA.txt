@@ -1,0 +1,590 @@
+analytical and iterative image reconstruction 
+algorithms on the GPU and multi-core processing 
+systems. Then, we will further evaluate and compare 
+the execution performances obtained from the 
+different parallelism strategies proposed in this 
+project. 
+英文關鍵詞： Graphic Processing Unit (GPU), multi-core processors, 
+medical image reconstruction, hardware acceleration, 
+parallel processing 
+ 
+ 2 
+幾何處理後重建的三維(3D)放射線醫學影
+像，該技術主要利用通過單一軸面的 X 射
+線旋轉照射人體，X 光斷層面的數據是由
+X 光射源繞物體一圈得來，感應器是放置
+於射源的對角位置。在此，三維重建指用
+數學的方法從斷層成像儀測量到的信號（X
+射線通過人體後的衰減）還原重建出器官
+的 3D 影像，而重建後的影像即代表器官組
+織相對於 X 光的穿透特性，或稱衰減係數
+(attenuation coefficient)。由於不同的生物組
+織對 X 射線的吸收力 ( 或稱阻射率
+radiodensity)不同，可在 X 射源對角之感應
+器接收並記錄其強度，稱之為該角度之投
+影 ， 在 數 學 上 稱 為 雷 登 轉 換 (Radon 
+transform，如圖 1 所示)，收集完 180 度之
+一維(1D)投影圖之後即可利用數學模型，
+經由一系列的數字運算，也就是所謂的反
+投影法(backprojection)重建來得到 2D 斷層
+面影像；更進一步，如果將 2D 影像用電腦
+軟體堆疊，即可形成三維(3D)的立體影像。 
+ 
+圖 1 反投影法(backprojection)為基礎的二
+維影像重建 
+此外，有別於上述的斷層面掃描堆疊
+達成三維成像方式，還有一種稱為錐形投
+影(cone-beam projection)方式，錐形投影的
+原理乃是由點光源經不同角度得到的 2D
+投影資料，然後再直接重建出物體的 3D 影
+像，如圖 2 所示。相較於斷層面掃描的作
+法，吾人可知錐狀投影方式由於每次掃描
+的區域較廣，故對具相同運算能力的電腦
+而言，錐狀投影的 3D 重建較橫切面重建方
+式所花費的時間要來得更短。 
+ 
+圖 2 三度空間中的錐形投影幾何 
+事實上，目前的醫療大都以數位系統
+擷取影像，而由於數位資料在醫療行為上
+的日漸普及，以 CT、核磁共振造影
+(magnetic resonance imaging，簡稱 MRI)及
+超音波為主的醫學影像技術正由 2D 影像
+朝向 3D 影像，甚至邁向多重空間影像重建
+的發展。而無論是 CT 或者是 MRI 均十分
+依賴電腦去重建其影像的，在不同的數學
+模式中，有的利用線性矩陣運算，有的則
+通過濾波器後進行向量的相加等，在過去
+30 年中不斷的有新方法或者是現有方法的
+改良不斷被提出，但不管是數值逼近或是
+模型推算，其運算量都與其影像解析度均
+呈指數性的關係，故在要求高維度重建下
+影像的解析度提高以及滿足即時分析的需
+求等前提下，首先必須解決運算方面的問
+題。在這方面，無論是 GPU 或者多核心處
+理器的出現提供了一個新的可能性，由於
+其創新的運算架構，我們能快速的處理大
+量的資料，其運作方式對於矩陣的處理、
+向量的相加，特別是在 2D 或是 3D 影像的
+處理上，能提供傳統 CPU 所無法提供的運
+算效率；實用上來說，我們能以軟體的方
+式實現快速高解析度的影像即時重建，或
+用以結合新的應用與功能，甚至是重建完
+整即時的動態 3D 影像。而上述應用無論與
+現有的 DSP 晶片，或是專為重建影像所設
+計的 FPGA 硬體電路相比，GPU 與多核心
+處理器均可快速且有效率的實現複雜的重
+建運算功能，在系統的維護與更新方面也
+將更加便利，可有效降低成本，故針對此
+一課題進行深入研究確有其必要性。 
+ 4 
+此一效應相當於對影像作一低通濾波處理
+的效果，故可以發現原本的邊緣開始往外
+擴散造成模糊。 
+ 
+圖4 錐形投影幾何之座標示意圖 
+現今之CT多半不是平行光，而是點光
+源，其所形成的投影稱做錐狀投影
+(cone-beam projection)，如圖4所示。如前
+所述，橫切面2D CT影像主要可由平行或扇
+形X光束經不同角度照射所得的1D投影資
+料重建而得，而由連續切面所得之2D影像
+則可進一步堆疊成3D立體影像。至於錐狀
+投影重建的原理乃是由點光源經不同角度
+得到的2D投影資料重建而直接重建出物體
+的3D影像。相較於橫切面掃描的作法，吾
+人可知錐狀投影方式由於每次掃描的區域
+較廣，故對具相同運算能力的電腦而言，
+錐狀投影的3D重建較橫切面重建方式所花
+費的時間要來得更短。重建此種CT影像最
+常用的方法是由Feldkamp, Davis and Kress
+三人所提出的Feldkamp (FDK)演算法，主
+要步驟是先把錐狀投影類比出二維之扇型
+投影，在將扇型投影經過空間轉換成平行
+投影，之後就可以利用前面介紹之FBP來重
+建影像，利用座標轉換反投影回疊加至正
+確的重建三維位置，再乘上權重函數就可
+以得到重建截面，Feldkamp演算法的數學
+表示式如(2.3)-(2.10)所示： 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+根據(2.3)-(2.10)，吾人可歸納出Feldkamp
+演算法可分為下列三步驟進行： 
+ 
+1. 先求出加權後之投影資料(即錐狀投
+影資料轉換為平行投影資料) 
+2. 將加權後之投影資料通過一濾波器 
+3. 將濾波後的資料利用反投影法重建出
+3D的立體像素(voxel)值 
+考慮步驟1，如(2.3)所示為一投影資料
+P(u,v,β)經加權處理後可得P’(u,v,β)，在此加
+權函數由(2.4)決定；緊接著是步驟2，即加
+權後之投影資料P’(u,v,β)與一個濾波器h(u)
+進行迴旋積分運算，如(2.5)所示；最後根
+據步驟3，所欲求得之3D立體像素值I(x,y,z)
+可由濾波後的資料P*(u,v,β)經一如(2.8)所
+定義的加權因子W加權後，再將不同角度β
+所得的結果全部加總起來估計而得，如(2.6)
+所示。至於(2.7)、(2.9)與(2.10)則表不同座
+標系統的轉換關係，其中Dso表點光源與物
+體間之距離，Dsi則表點光源與X光屏幕間
+之距離。 
+3.3 將FDK重建移植到GPU與CPU平台上 
+在Feldkamp(FDK)中，可分為對於輸入
+資料，也就是投影影像做濾波以及加權等
+前處理運算，以及在前處理之後的反投影
+運算(back-projection)的部分，事實上，如
+前所述，前處理與反投影的運算複雜度相
+差甚大，典型的FDK重建過程大約有95%
+以上的時間都花在反投影運算的部分。故
+在此主要的研究方向均著重在反投影的平
+行與最佳化的探討，至於前處理的部分，
+我們將採用CUDA既有的平行最佳化函式
+庫，來進行濾波與加權運算，即可達到最
+佳效能(如圖5前半部所示)。 
+此外，在反投影(Back Projection)運算
+方面，由於每個輸出voxel值都是獨立的運
+算結果，故從輸出的voxel區域來做平行化
+的切割就顯得十分合理，在此我們可以把
+重建區域做如下劃分：先依照z軸來分片
+(slice)，而每片再進一步切成數行，若是每
+ 6 
+ 
+圖 9 由多核心 Core i7 搭配 GPU 在不同重
+建工作量分配百分比下的重建時間(引用
+自[14]) 
+ 
+五、 參考文獻 
+[1] X. Li, J. Ni and G. Wang, “Parallel 
+iterative cone-beam CT image 
+reconstruction on a PC cluster,” Journal 
+of X-Ray Science and Technology, vol. 13, 
+pp. 63-72, 2005. 
+[2] M. Sakamoto and M. Murase, “Parallel 
+implementation for 3-D CT image 
+reconstruction on cell broadband engine,” 
+Multimedia and Expo, 2007 IEEE 
+International Conference, pp 276-279, 
+July 2007. 
+[3] L. A. Shepp and Y. Vardi, “Maximum 
+likelihood reconstruction for emission 
+tomography,” IEEE Trans Med Imaging, 
+vol. 1, no. 2, pp. 113-122, 1982. 
+[4] H. M. Hudson and R. S. Larkin, 
+“Accelerated image reconstruction using 
+ordered subsets of projection data,” IEEE 
+Trans Med Imaging, vol. 13, no. 4, pp. 
+601-609, 1994. 
+[5] P. B. Noël, A. Walczak, K. R. Hoffmann, 
+J. Xu, J. J. Corso, and S. Schafer. 
+“Clinical evaluation of GPU-based cone 
+beam computed tomography,” in 
+Proceedings of High-Performance 
+Medical Image Computing and 
+Computer-Aided Intervention 
+(HP-MICCAI), 2008. 
+[6] K. Mueller and F. Xu. “Practical 
+considerations for GPU-accelerated CT,” 
+in Proceedings of IEEE 2006 
+International Symposium on Biomedical 
+Imaging (ISBI '06), pp. 1184-1187, 2006. 
+[7] T. R. Halfhill, “Parallel Processing with 
+CUDA,” Microprocessor Report, vol. 
+01/28/08-0, pp. 1-8. 
+[8] J. Ni, X. Li, T. He and G. Wang, “Review 
+of parallel computing techniques for 
+computed tomography image 
+reconstruction,” Current Medical 
+Imaging Reviews, vol. 2, pp. 405-414, 
+2006. 
+[9] M. Kachelrieß, M. Knaup and O. 
+Bockenbach, “Hyperfast parallel–beam 
+backprojection,” 2006 IEEE Nuclear 
+Science Symposium Conference Record, 
+pp. 3111-3114, 2006. 
+[10] J. Li, C. Papachristou, and R. Shekhar, 
+“An FPGA-based computing platform for 
+real-time 3D medical imaging and its 
+application to cone-beam CT 
+reconstruction,” The Journal of Imaging 
+Science and Technology, vol. 49, no.3, pp. 
+237-245, 2005. 
+[11] D. Rivera, D. Schaa, M. Moffie, D. 
+Kaeli, “Exploring novel parallelization 
+technologies for 3-D imaging 
+ 
+圖 8 由 128 張 256256 的錐狀投影影像重建出 2563 區域在不同硬體平台上所得之效能比
+較(引用自[14]) 
+ 1 
+國際學術會議報告 
+                                                        2011 年 9 月 25 日 
+報告人姓名 
+ 
+陳思文 
+ 
+服務機構 
+及職稱 
+ 
+長庚大學電子工程學系副教授 
+ 
+     時間 
+會議 
+     地點 
+2011/09/14-2011/09/18 
+Budapest, Hungary (匈牙利布達佩斯 ) 
+會議 
+名稱 
+ (中文) 第五屆歐洲國際醫學生物工程聯盟研討會 
+ (英文) The 5th European Conference of the International Federation for 
+Medical and Biological Engineering (IFMBE) 
+發表 
+論文 
+題目 
+Graphic Processing Unit (GPU) based Hardware Acceleration for High Speed 
+3D Cone-beam Computed Tomography (CT) Reconstruction 
+一、參加會議目的與經過 
+第五屆歐洲國際醫學生物工程聯盟研討會 (The 5th European Conference of the 
+International Federation for Medical and Biological Engineering (IFMBE))於九月十四日至
+九月十八日在匈牙利布達佩斯世界貿易中心(Budapest Congress & World Trade 
+Center)召開，前後共計五天，本人特前往與會。此行主要目的為發表一篇名為 Graphic 
+Processing Unit (GPU) based Hardware Acceleration for High Speed 3D Cone-beam 
+Computed Tomography (CT) Reconstruction 的論文，所發表的論文為 Poster Session。本
+人近年來的研究興趣主要為醫學影像的快速重建系統開發與相關應用，由於醫學影像在
+眾所周知的醫療診斷上面有其無可取代的價值與用途，其中電腦斷層掃描(CT)一直是非
+侵入性診斷醫學中的重要工具，而利用錐形投影(cone beam projection)原理所得的 CT 影
+像在臨床上的應用也愈來愈重要，因其可以從一組二維投影資料中直接重建出三度空間
+影像資料；且由於其每次掃描的區域較廣，故對具相同運算能力的電腦而言，錐形投影
+的三度空間重建較橫切面堆疊重建方式所花費的時間要來得更短。由於醫學影像的快速
+重建對於醫師在臨床上進行即時的診斷評估以及其他複雜組織結構變化分析日趨重
+要，然而無論是採用解析式或疊代式三維影像重建演算法均因需要大量的資料處理與運
+算，在時效上往往無法達到即時重建的需求。近年來，由於多核心處理器(multi-core 
+processors)或者繪圖處理器(Graphic Processing Unit，簡稱 GPU)等硬體加速器的快速演進
+與開發，為運算繁複的訊號、影像處理或科學計算等問題提供一個新的低成本解決方
+案。本論文主要目的在研究利用一系列包括上述所提之各項硬體加速器創新突破的高運
+算效能、高頻寬、以及高度平行化處理等多項特性，應用於 CT 三度空間影像的快速重
+建，並針對本計畫所提之各個不同硬體加速平台與平行化策略進行重建效能評估(圖一)。 
+ 3 
+(Rehabilitation)，儀器儀表和信號處理(Instrumentation and signal processing)，以及遠距醫
+療(Telemedicine)等共計 20 個主題(main topics)進行探討。此外，透過一些演講以及海報
+展示，更使吾人充分瞭解到國際上在上述各個領域目前的重點研究方向以及成果，可謂
+獲益良多。 
+值得一提的是，本次大會還安排若干個主題演講 (keynote lectures)，其中也邀請到知
+名的心率變異度國際級學者 S. Cerutti 本人來演講，講題為：心血管變異信號—自主控制
+系統的新式評估應用工具。心血管系統的調節機制相當複雜，此乃由於它們除了須針對
+不同的生理狀況進行反應，也對不同的病理情況下扮演至關重要的角色，為的是能在特
+定範圍內保持生命體徵，並兼容穩定的臨床狀態。此外，在運作的心血管系統與其他生
+理系統也有著直接的相互作用(如呼吸，中樞神經，內分泌代謝，腎功能系統等)，從而
+使得更複雜的網絡系統存在某種信息交流。在臨床研究中，由於直接挾帶心血管功能信
+息的主要信號不易取得，以心跳對心跳間的變異度為主的心血管參數（如心率，收縮壓
+和舒張壓，呼吸等）便成了一種間接用來測量調節機制的方法。因此，此一變異度信號
+便可用來表現正常或病理上的心血管行為。而在目前現行方法的基礎上，重要的新式應
+用性工具被廣為開發出來，例如智慧型可穿戴式設備等人性化的新技術。事實上，這個
+目標在過去幾年已由各國政府和研究機構在世界各地廣泛推行，且這些應用性的電子健
+康或信息和通信技術等主題也獲得來自於歐盟國家公共研究的明顯而廣泛的支持。整場
+演講座無虛席，令人印象深刻。 
+由於生醫電子相關領域及應用為本人的專長與研究興趣之一，故在此次會議中，本人對
+於心電圖、腦波等醫學訊號或其他醫學影像的相關研究主題特別感興趣，也分別聆聽了
+不少相關的口頭與海報論文的發表，上述這些領域的研究發表中有不少研究內容與成果
+均頗具實用性與前瞻性。例如有一個研究是探討在不同的心電圖(ECG)干擾程度下，利
+用獨立成分分析（ICA）的盲源分離技術(Blind source separation)收集豎脊肌的肌肉表面
+肌電圖（EMG）信號。該研究使用三個豎脊柱肌肉的肌電圖收集的信號，無論在真實或
+者模擬信號來源的情況下均能成功地分離心電雜訊，如圖二所示。 
+ 5 
+ 
+圖三 斜視測試儀系統架構與實體圖：(左)發射器；(右)接收器 
+另外，還有一些關於老化議題的研究也發表於本次研討會中，其中有一篇論文提到關於
+身體衰退的評估技術工具的設置令本人印象深刻。事實上，針對體弱中老年人的早期發
+現與偵測，確保可以進行適當的防治措施來改善衰弱的結果，在高齡化的社會中已經成
+為一個重要的問題。針對先前文獻上所提出的各式的衰弱性檢測指標的物理條件，本研
+究設計了一套可提供這些身體衰弱指標的測量技術工具。例如，由老化衰弱所導致的體
+重減輕，以及平衡能力的衰退可由一個如圖四所示的系統檢測出來，該系統亦可將檢測
+結果利用通訊技術傳送到遠端，長時間記錄下來之結果可用來進行老化程度趨勢分析。 
+ 
+圖四 以電子式體重計為基礎的體重和平衡能力的量測分析系統 
+另一方面，關於心血管問題的研究也有相當多的論文發表，例如，有一篇論文提到利用
+脈搏變異度分析來估算動脈的僵硬程度即頗具臨床應用價值。有鑑於人體心血管系統的
+血流動力學模型已經被提出，而吾人可以利用此一模式建立動脈僵硬度和脈搏變異度
+（PRV）之間的關係。該研究指出，心率變異度(HRV)和 PRV 的指標之間的差異可能與
+動脈僵硬度有關。結果顯示，HRV 和 PRV 的指標之間的差異減少可能暗示動脈僵硬度
+有增加的趨勢。此外，也有一篇研究論文指出，利用胸部表面的微振動可以檢視心臟的
+運動，此一技術可用來協助臨床醫生和病患者更加瞭解心臟疾病的病況。該技術是利用
+64 個感測器（含 63 個加速規和一個心電圖訊號）所蒐集之胸部表面微振動的量測結果
+來重建並展示出全面性和瞬時性的心臟運動。他們的結果展示出瞬時的心臟運動影像，
+這也包括了房室和心室的收縮與擴張，以及四個瓣膜的位置。該項測量裝置如圖五所
+示，使用一個含 64 個感測器的安裝板，其可以迅速的被固定在胸部與皮膚上，測量時
+間約為五分鐘，故在臨床的使用上極為容易。 
+ 7 
+論文被接受發表之大會證明文件(email)： 
+From: European IFMBE MBEC 2011 [mailto:europeanifmbembec2011@easychair.org]  
+Sent: Wednesday, May 04, 2011 1:37 PM 
+To: Szi-Wen Chen 
+Subject: European IFMBE MBEC 2011 notification for paper 84 
+ 
+Dear Author(s), 
+ 
+It is a pleasure to inform you that your paper: 
+Graphic Processing Unit (GPU) based Hardware Acceleration for High Speed 3D Cone-beam 
+Computed Tomography (CT) Reconstruction 
+ 
+has been accepted for presentation at 5th European Conference of IFMBE, 14-18 September, Budapest. 
+ 
+Reviewers' comments are attached. Please, revise your paper if necessary and resubmit it until 16th 
+May. 
+ 
+We remind you that each full or student registration fee entitles publication and presentation of only one 
+paper.  
+ 
+Early bird registration is possible until 17th May. 
+ 
+Looking forward to meeting you in Budapest! 
+ 
+Akos Jobbagy 
+conference chair 
+ 
+ 
+ 9 
+graphics, the highly parallel architecture of modern GPUs 
+makes them even more effective for a wide range of complex 
+HPC applications than general purpose CPUs. In fact, 
+computing intensity is growing much faster on GPU than on 
+CPU since most of the transistors in GPU are designed to 
+perform data calculations involving the computer graphics or 
+scientific computational algorithms rather than perform data 
+caching. Therefore, one may speculate that GPU would be 
+perfectly suitable to the problems that can be well formulated 
+and expressed as data-parallel calculations so that these 
+calculations may be simultaneously executed on many 
+processing units, referred to as the thread processors [9]. 
+Due to a degree of inconvenience and clumsiness in GPU 
+programming model, NVIDIA has created a C-like software 
+platform, called Computed Unified Device Architecture 
+(CUDA), for massively parallel high performance computing 
+on the GPUs produced by NVIDIA. In general, CUDA 
+includes C/C++ development tools, a number of function 
+libraries that simplify programming, and a hardware 
+abstraction mechanism [11]. With CUDA, a programmer first 
+needs to analyze the algorithm to be implemented as well as 
+the data, in order to determine the optimal numbers of threads, 
+blocks and grids (as defined below) so that the GPU may be 
+fully utilized. Then, the implementing solution can be 
+expressed simply by writing C/C++ code for CUDA. For the 
+current NVIDIA architectures, the resulting compiled CUDA 
+function (or alternatively known as “kernel” in CUDA‟s term) 
+can be called by multiple threads, thus the kernel can be 
+concurrently run in large blocks of threads. Note that here a 
+thread block is defined as a number of threads that can 
+synchronously execute on a cluster of thread processors and 
+manipulate on the same data in the shared memory. Moreover, 
+blocks that execute on the same kernel can be further grouped 
+together into a grid of blocks. Therefore, in a GPU the 
+maximum number of concurrent threads devoted to executing 
+a single kernel could be very large. 
+B. The Feldkamp/FDK Algorithm 
+Similar to the original filtered back-projection algorithm, the 
+Feldkamp algorithm [12], or alternatively known as the FDK 
+algorithm, was specifically developed for cone-beam CT 
+reconstruction. Fig. 1 shows a schematic picture of the 
+cone-beam CT system with a planar detector. Belonging to 
+the analytical reconstruction, the FDK algorithm conducts a 
+series of steps that transform a number of 2D projections 
+taken on the planar detector into a 3D reconstructed region. In 
+general, the FDK algorithm mainly consists of three steps 
+listed as below: 
+ 
+1. Weighting the projection data P(u,v,θ). 
+2.  Filtering the weighted projection image row by row. 
+3. Accumulating the back-projected data contributed by 
+each projection into the corresponding voxel r(x,y,z), 
+ 
+where P(u,v,θ) represents the projection image pixel indexed 
+by (u,v), and θ is the incident angle of X-ray. 
+ 
+First, the projection data P(u,v,θ) is weighted by a weighting 
+function, denoted as w, representing the variation in intensity 
+of each light due to the shape of cone-beam X-ray. Then, like 
+the original filtered back-projection reconstruction, in order to 
+reduce the average smooth effect caused by the accumulating 
+process each projection image has to be preprocessed by a 
+high-pass filter. Finally, the value of an individual voxel 
+r(x,y,z) is estimated by summing up the corresponding filtered 
+projection pixels Pf(u,v,θ) over all the projection angles θ, 
+where Pf(u,v,θ) denotes the weighted filtered 2D projection 
+data obtained from the projection angle θ. It should be noted 
+that the coordinates (x,y,z) and (u,v,θ) are related by a 
+two-step transformation: first rotating from (x,y) to (s,t) by an 
+angle θ, then projecting the 3D coordinate (s,t,z) onto a 2D 
+one (u,v) through a cone-beam projection, as illustrated in Fig. 
+1. Therefore, given a 3D coordinate (x,y,z), the FDK 
+algorithm allows one to find the corresponding projection 
+coordinate (u,v) for a given θ, and then accumulate its 
+associated projection data P(u,v,θ) into the reconstruction 
+voxel r(x,y,z).  
+C. GPU-based Implementation 
+As described previously, the FDK reconstruction method 
+consists of three steps: 1) weighting the projection images, 2) 
+ramp filtering the projection data row by row, and 3) 
+back-projecting the filtered projection data into the voxel 
+value. Since the third step is computationally intensive and 
+more than 95% of the total reconstruction time is devoted to 
+the back-projection algorithm, we here mainly focus on the 
+GPU-based implementation of this portion of the 
+ 
+Fig. 1. A schematic drawing of the cone beam CT system. 
+ 
+ 11 
+may inevitably increase, thus undesirably reducing the 
+execution speed. Therefore, we may further conclude from all 
+these performance results that the GPU may be considered the 
+best candidate for performing high-speed CT reconstructions, 
+in comparison to both the multi-core CPU and FPGA.  
+Table 1 The execution times in the back-projection step required for 
+reconstructing a 3D region with the size of 5123 voxels achieved by a number 
+of existing implementations 
+Hardware Time (s) 
+Processed 
+projections/second 
+(pps) 
+FPGA by Li et al. [14] 33.5 8.96 
+Multi-core CPU by Chu and Chen [5] 16.304 7.85 
+GPU (8800 GTX) by Xu and Muller [7] 8.9 40.45 
+GPU (8800 GTX) by Yang et al. [8] 8.7 41.38 
+GPU (GTS 250) by this work 2.177 58.80 
+IV. CONCLUSION 
+In this paper, a GPU based implementation of an analytical 
+cone-beam based 3D CT image reconstruction method, called 
+the FDK algorithm, is presented. The performance was 
+evaluated by comparing the results of our implementation 
+with those obtained from a number of previous related works 
+using different platforms including FPGA, multi-core CPU 
+and GPU, respectively. Consequently, it is revealed from our 
+performance results that the CUDA-based GPU actually 
+substantially outperforms the multi-core CPU and FPGA for 
+massively parallel HPC applications. Therefore, we may 
+conclude that nowadays the GPU is still considered the best 
+candidate for performing high-speed CT reconstructions, 
+compared to multi-core CPU and FPGA. 
+ACKNOWLEDGMENT 
+This work was supported by the National Science Council, 
+Taiwan, under Contract NSC 99-2221-E-182-020. 
+REFERENCES  
+1. Sakamoto M, Murase M (2007) Parallel implementation for 3-D CT 
+image reconstruction on Cell Broadband Engine. IEEE Proc., ICME, 
+Beijing, China, 2007, pp. 276–279. 
+2. Sakamoto M, Murase M (2009) A parallel implementation of 3-D CT 
+image reconstruction on the Cell Broadband Engine. International 
+Journal of Adaptive Control and Signal Processing 24:117–127. 
+3. Liang R, Pan Z, Krokos M et al. (2008) Fast hardware-accelerated 
+volume rendering of CT scans. Journal of Display Technolog  4: 
+431–436. 
+4. Cruvinel P, Pereira M, Saito J et al. (2009) Performance improvement 
+of tomographic image reconstruction based on DSP processors. IEEE 
+Trans. on Instrumentation and Measurement 58:3295-3304. 
+5. Chu C, Chen S (2009) Parallel implementation for cone-beam based 
+3D Computed Tomography (CT) medical image reconstruction on 
+multi-core processors. IFMBE Proc. vol. 25/IV, World Congress on 
+Med. Phys. & Biomed. Eng., Munich, Germany, 2009, pp. 2066–2069. 
+6. Chen C, Lee S, Cho Z (1990) A parallel implementation of 3-D CT 
+image reconstruction on hypercube multiprocessor. IEEE Trans. on 
+Nuclear Science 37:1333–1346. 
+7. Xu F, Mueller K (2007) Real-time 3D computed tomographic 
+reconstruction using commodity graphics hardware. Physics in 
+Medicine and Biology 52:3405–3419. 
+8. Yang H, Li M, Koizumi K et al. (2007) Accelerating backprojections 
+via CUDA architecture. Proc., 9th International Meeting on Fully 
+Three-Dimensional Image Reconstruction in Radiology and Nuclear 
+Medicine, Lindau, Germany, 2007, pp. 52–55. 
+9. Noël P, Walczak A, Hoffmann K et al. (2008) Clinical evaluation of 
+GPU-based cone beam computed tomography. Proc. High-Performance 
+Medical Image Computing and Computer Aided Intervention 
+(HP-MICCAI'08). 
+10. Scherl H, Keck B, Kowarschik M et al. (2007) Fast GPU-Based CT 
+Reconstruction using the Common Unified Device Architecture 
+(CUDA). IEEE Proc. Vol. 6, 2007 Nuclear Science Symposium 
+Conference Record (NSS „07), 2007, pp. 4464–4466. 
+11. Halfhill T (2008) Parallel processing with CUDA: Nvidia‟s 
+high-performance computing platform uses massive multithreading. 
+Microprocessor Report 22:1–8. 
+12. Feldkamp L, Davis L, Kress J (1984) Practical cone-beam 
+algorithm. J. Opt. Soc. Am. A1:612–619. 
+13. J. Müller-Merbach (1996) Simulation of X-ray projections for 
+experimental 3D tomography, ISSN 1400-3902, report no. 
+LiTH-ISY-R-1866. 
+14. Li J, Papachristou C, Shekhar R (2005) An FPGA-based computing 
+platform for real-time 3D medical imaging and its application to 
+cone-beam CT reconstruction. The Journal of Imaging Science and 
+Technology 49:237–245. 
+ 
+Author: Szi-Wen Chen 
+Institute: Dept. of Electronic Engineering, Chang Gung University 
+Street: 259 Wen-Hwa 1st Road 
+City: Kwei-Shan, Tao-Yuan 
+Country: Taiwan 
+Email: chensw@mail.cgu.edu.tw 
+ 
+ 
+Author: Chang-Yuan Chu 
+Institute: Dept. of Electronic Engineering, Chang Gung University 
+Street: 259 Wen-Hwa 1st Road 
+City: Kwei-Shan, Tao-Yuan 
+Country: Taiwan 
+Email: m9728201@stmail.cgu.edu.tw
+國科會補助計畫衍生研發成果推廣資料表
+日期:2012/01/29
+國科會補助計畫
+計畫名稱: 硬體加速應用於三度空間醫學影像重建之研究
+計畫主持人: 陳思文
+計畫編號: 99-2221-E-182-020- 學門領域: 醫用電子
+無研發成果推廣資料
+Tomography (CT) 
+reconstruction,’’ 
+in IFMBE 
+Proceedings, vol. 
+37, pp. 567–570, 
+2011. 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+其他成果 
+(無法以量化表達之
+成果如辦理學術活
+動、獲得獎項、重要
+國際合作、研究成果
+國際影響力及其他協
+助產業技術發展之具
+體效益事項等，請以
+文字敘述填列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

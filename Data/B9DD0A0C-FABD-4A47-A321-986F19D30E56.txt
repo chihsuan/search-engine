@@ -1,0 +1,191 @@
+時, Pixar用繪圖處理器來做即時預覽描繪,並據以即時調整光照及材質等參數,直至滿意為
+止,再用軟體做最後的描繪以節省製作的時間。)
+由於繪圖處理器的架構限制與即時描繪 (real-time rendering)的需求,著色模型 (shad-
+ing model) 多限於局部照明 (local illumination), 而材質則多限於多個紋理貼圖的組合
+(combination of multiple textures),如 bump, shininess, specular及 diffuse maps。
+然而, 上述的方法有其限制, 而無法模擬一些在視覺上的重要效果如 self-shadowing,
+masking 及 complex non-diffuse reflection 等, 因此並不能逼真地模擬複雜的材質,如樹
+皮、毛髮、纖維及草地等。然而,逼真地模擬複雜的材質對電影製作及工業的 prototyping越
+來越重要。 例如, 在電影 Matrix 中, 為了產生逼真的布料材質, 製作人員使用價值台幣兩千
+餘萬的 reflectometer去測量皮革布料的雙向反射分布函數 (bidirectional reflection distri-
+bution function, BRDF) [1], 並用於虛擬人物Agent Smith 衣物的描繪中。 因此, 我們需
+要有一個有效率且具一般性的材質描述法來達成即時擬真描繪的目標。雙向紋理函數 (bidi-
+rectional texture function, BTF)為一個較 BRDF更具一般性的材質描述法,其能描述更複
+雜的材質而且適合實作於繪圖處理器上,而可以被用於電影或遊戲的製作中來增加真實性。
+雙向紋理函數 F 為一個六維函數,描述一個材質在特定視角ωo及特定光照方向ωi下,貼
+圖座標 (texture coordinate)中每一個位置 p所呈現的顏色,
+F (p, ωi, ωo). (1)
+我們可以由兩個不同的角度來詮釋雙向紋理函數: (1) 我們可以將其視為一組與視角及光照
+方向相依的紋理貼圖 (a set of view-and-lighting-dependent texture maps),對一個特定視
+角 ωo 及特定光照方向 ωi,雙向紋理函數傳回一個紋理貼圖F
+ωi,ωo(p),此圖亦稱為雙向紋理
+函數影像 (BTF image)。 (2)我們也可將雙向紋理函數視為一個空間相關的雙向反射分布函
+數 (spatially variant BRDF),對一個空間點 p,雙向紋理函數傳回該點的雙向反射分布函數
+F p(ωi, ωo),即 per-pixel BRDF1。
+上述兩個雙向紋理函數的不同詮釋角度也導致了兩類不同的雙向紋理函數的表示法, 現
+存的雙向紋理函數表示法有下列缺點: (1) aliasing artifacts (2)在邊緣 (silhouette)處,無法
+表示幾何模型的細微變化,且無法編輯。本研究提出此兩類表示法: 細節層次表示法 (第 2節)
+與幾何及反射特性表示法 (第 3節)來改善這些問題。
+2 細節層次表示法
+要解決雙向紋理函數中的 aliasing 問題, 一個直覺的方法是使用傳統的紋理貼圖用做
+anti-aliasing 的 mipmap, 亦即對每一張雙向紋理函數影像F ωi,ωo(p)產生並儲存其對應的
+mipmap F ωi,ωok (p), 在此, k為細節層次。 在成像時, 則依據成像大小選擇適當的細節層次 k
+及對應的 F ωi,ωok 。
+上述方法雖然簡單且應該可以解決 aliasing 問題, 但是需要大量的儲存空間。 因此, 有
+必要利用雙向紋理函數的資料重複性 (data redundancy) 來發展一個同時具細節層次及資
+1在此, 除了 BRDF外, BTF 其實也描述了細微結構 (mesostructure) 對可視性 (visibility) 的影
+響。 亦即, F p(ωi, ωo)其實為 BRDF與可視性的乘積。
+2
+L0
+Y 5-8
+L0
+C b1-2 ,C r1-2
+L0
+Y 1-4
+L1
+C b1-2, C r1-2
+L1
+Y 5-8
+L1
+Y 1-4L 2L2
+x L 2
+L0
+Y 1-4
+L0
+Y 5-8
+L 0
+C b1-2
+C r1-2
+L 1
+Y 1-4
+L 1
+Y 5-8
+L 1
+C b1-2
+C r1-2
+L 2
+Y 1-4
+L 2
+Y 5-8
+L2
+C b1-2
+C r1-2
+L3
+Y 1-4
+L3
+Y 5-8
+L3
+C b1-2
+C r1-2
+F 4
+Y 1-4
+F 4
+Y 5-8
+F 4
+C b1-2
+C r1-2
+圖 2: LOD係數的排列
+original
+original original
+original
+LOD
+LOD
+LOD
+LOD
+renderings from a closer distance renderings from a farther distance
+w
+o
+o
+l
+co
+rd
+u
+ro
+y
+圖 3: 使用 LOD與不使用 LOD之比較。
+在成像平面上的大小決定一個實數 LOD參數 λ,最後我們就可以用下式計算所對應的顏色:
+λmax∑
+k=bλc
+wkdkj(p)ekj(ωi, ωo), (5)
+其中wk = min(max(1−λ+k, 0), 1)用以實現連續的細節層 (continuous LOD)。
+2.2 實做與結果
+我們使用德國波昂大學所公開的雙向紋理函數資料庫,在此資料庫中,每一個材質含6,561
+張256x256的影像 (81個視角與81個光照方向)。 如同大多數壓縮方法如 JPEG所建議,我
+們亦將試驗將雙向紋理函數影像轉到不同於RGB的顏色空間 (color space)如YCrCb, 並分
+配較多的頻寬給亮度 (illuminance), 而給彩度 (chrominance) 較少的頻寬, 以進一步增加
+壓縮比。 為將上述方法實做於GPU上,在進行上節所述之轉換,我們將所得之係數以如圖 2
+所示之方式排列並存於 texture 中, 在具1GB 記憶體及 NVIDIA GeForce 6800 GPU 的
+Intel Pentium 4 3.0GHz 機器上, 成像速度可達30fps以上。 圖 3展示了使用 LOD 表示法
+的優點。 圖 4則展示了一些 BTF繪製的結果。
+4
+Load BTF data
+BRDF 
+Parameters
+Recovering
+Normal 
+Recovering
+Shape and Reflectance 
+Recovering
+Data
+Selection
+Relief
+Rendering
+Rendering
+Manipulating
+圖 5: 幾何及反射特性表示法流程圖。
+3 幾何及反射特性表示法
+此一部份共分兩大部分。(1)參數還原: 由雙向紋理函式萃取出被拍攝物體的表面幾何起
+伏與表面的反射性質。 (2) 操作編輯與繪製: 提供簡易的操作介面給使用者作參數或幾何部
+分的編輯,並採用立體模型對應技術 (relief mapping) [6]作為繪製的方法。系統架構如圖 5。
+3.1 系統輸入
+整個系統的輸入為BTF 的一組影像資料, 將整組影像依據視點與光線為主, 依序由前至
+後排列成如圖 6之 data volume。而對應到的像素所形成的強度向量 (intensity vector)則代
+表該像素所觀測到的反射性質,我們使用 Bidirectional Reflectance Distribution Functions
+(BRDF) 來描述物質的反射性質, 因此每個強度向量就是該像素 BRDF 的測量值。 而接下
+來每步驟都以強度向量為運算的單位。
+圖 6: 系統輸入。
+3.2 資料篩選
+向量強度內的數值未必均為有效可用的,主要原因在於BTF本身有可能出現 self-shadow
+6
+圖 7: (a)單純遵守朗伯遜法則,(b)引入 ambient為圖中的截距
+其中(I1, I2, . . . It)為觀測到的強度向量,(Lx, Ly, Lz)為光線向量, 解上述之線性方程式, 我
+們可以得到ρamb與更精確的N。
+在計算完 normal初始值後,我們接著要給定反射性質的參數,一個簡單的想法就是對每
+個像素給予相同的初始值,但會造成不合理的結果,原因是每個像素反射性質各不同,一視同
+仁地給定初始值會讓某些像素在最佳化的過程中落入區域性的最佳解。 在觀測後, 我們認為
+被拍攝的物體表面大約分成幾種材質,而只有屬於同種材質的像素,才應該共用一組反射參
+數的初始值。 因此我們打算把物體表面分成幾群, 而將每群內的所有像素資料用來 fit 沃德
+模型來找出一組反射參數, 當作該群內每個像素的反射參數之初始值。 針對每個像素的強度
+向量為單位,採用 K-mean法來做分群。
+至此, 對每一點 p, 我們已求解出法向量 (nx(p), ny(p), nz(p))及它的沃德模型反射參
+數。 最後,藉由優化下列函數E(z)求出高度圖 z(p) [4]:
+E(z) =
+∑
+p
+(
+nz(p)
+∂z(p)
+∂x
++ nx(p)
+)2
++
+(
+nz(p)
+∂z(p)
+∂x
++ ny(p)
+)2
+. (6)
+3.4 繪製及操作
+我們採用立體模型對應技術(relief mapping) 來繪製細微的表面幾何。 立體模型對應要
+求的輸入為: 貼圖、 法向量圖與高度圖。 將輸入中的一般貼圖改為參數圖就可滿足立體模型
+對應的要求。 它可以正確的描述 self-shadow、self-occlusion 的狀況。 我們使用 Cg pixel
+shader實作此技術,並可達到15 ∼ 20fps的速度。
+我們可以針對還原出來的幾何部分與反射性質部分作有趣的操作,如圖 8
+• Direct manipulating: 直接針對反射性質作操作, 如將 Diffuse map 的色頻作變換,
+或將 specular map的數值增減,讓結果看起來更油亮或灰暗。
+• Material transfer: 對兩類材質所還原的資料作混合,如將 A的反射性質套用在 B 的
+表面幾何上
+• Geometry replacement: 將還原得到的幾何部分做簡單的操作,如將凹凸部分作反相,
+或直接套用現成的幾何部分 (normal、height map)。
+8

@@ -1,0 +1,675 @@
+第一章 前言 
+ 
+非法基地台的偵測在廉價基地台愈趨普及的今天，變得非常重要。本研究除了
+有部分成果已發表於「2011 ACM Symposium on Applied Computing」研討會上(全
+文如附件所示)，尚有成果在整理中。本報告除了將已發表的部分列於附件中，並將
+尚在整理待發表的部分，精要的陳述於本精簡版報告中。待全部彙整完畢後，我們
+會將其發表於相關期刊上。 
+1-1 動機與目的簡介 
+無線網路技術的快速發展及大量用戶對無線網路的需求，促使無線網路基地台
+（Wireless LAN Access Points, AP）的使用愈趨普及。其簡易安裝的特色讓網路
+管理者及用戶能簡單快速地連接上眾多機構的區域網路內，再經由簡單的操作對無
+線網路基地台進行各種設定，包括加密限制未經授權用戶使用等。但是同樣因為此
+特性，讓未經網路管理者授權的 AP也能快速地連接上機構的區域網路內。未經授權
+的 AP又稱為非法 AP，非法 AP為有心人士提供了進入區域網路的大門，讓區域網路
+曝露在危險的情境之下，對網路的安全性構成了嚴重的威脅，例如可以任意的存取
+內部網路。因此，非法 AP的偵測成了一個很重要的研究主題。 
+我們針對 AP廣播無線封包的特性設計此系統，AP偵測端監測管理區域內的無
+線網路封包，並將之記錄到系統資料庫中，再比對合法 AP白名單確認是否為可疑
+AP。另一邊，我們也將側錄所有經過核心交換器的有線封包。在一個加密的無線網
+路中，我們無法解析其封包內容，但我們可以將其封包長度構成的序列做比對，找
+出可疑 AP使用的 IP位址。最後再對此可疑 AP發送特定序列的封包，若 AP偵測端
+能監聽到同樣的序列封包意味著此可疑封包的確是非法 AP，而不是鄰居 AP。 
+1-2 軟、硬體需求 
+ 本系統的建置環境以開放源碼平台為主。伺服器以最流行的 Linux發行版
+Ubuntu 10.04 LTS為作業系統。在其上我們安裝了Apache2網頁伺服器以及MySQL 伺
+服器 5.0。為了讓我們的 python程式能正常執行，還需確認 paramiko與 scapy這
+兩個 python函式庫有被正確安裝到我們的系統環境中。 
+無線偵測端則採用嵌入式 Linux之一的 OpenWRT backfire作為其作業系統。我
+們將修改過的無線封包偵測軟體 kismet安裝在裡頭。系統規格如表列： 
+可透過此操作介面增刪合法基地台資訊，並檢查管轄網路內是否出現可疑基地台。 
+IV.封包解析模組：此模組為本系統中最核心的模組之一，負責比對有線與無線
+封包長度序列，以確定該無線封包是否進入管轄範圍內的有線網路。 
+V.有線封包側錄模組：此模組側錄通過核心交換器 (Core Switch) 的有線封包
+作為比對的參考資訊。 
+3-2 功能說明 
+ 
+透過部署多個 AP偵測端，系統能偵測到在管轄範圍內的所有基地台，而後系統
+將過濾出不在白名單上的可疑基地台。管理員可使用網頁介面下達分析基地台的要
+求。中央控制模組在接受來自網頁介面模組的要求後將截取無線與有線封包。收集
+足夠多的封包後，封包解析模組將以封包長度作為特徵進行特徵序列比對。 
+ 
+系統會在第一次比對後，向結果 IP發送特定序列封包，再進行第二階段的比
+對，以降低誤判的機率。若第二階段比對結果表示無線端亦偵測到特定封包序列，
+該 IP所連結的基地台即為非法基地台。 
+ 
+3-3 系統流程 
+ 
+ 除了常駐的網頁伺服器以及資料庫伺服器，我們需要手動啟動 console（亦可讓
+其常駐系統）。console啟動後會進行一系列的初始化作業，流程如下： 
+ 
+ 
+ 
+ 
+ console將等待管理員透過網頁介面提出分析的要求。console在接收到要求
+Wire-side packet sniffing
+DatabaseSniffex
+Start sniffex
+S1. connect to 
+database server  
+S2. Prepare for sniffing  
+S3. Open capture 
+source & set filter  
+S4. Initialize threads  
+S5. Start both sniff 
+thread & store thread  
+S6. Sniff  packets S7. Write into database  Store packets information
+sniffex.c    queue.c
+ 
+ 
+第四章 比對演算法與系統實做 
+封包特徵分析的關鍵是樣式比對的演算法。Boyer-Moore演算法（BM algorithm）
+是 Bob Boyer與 J Strother Moore在 1977年發展出來的一種針對單一樣式的比對
+演算法。BM演算法與一般的暴力搜尋演算法的不同點在於，暴力搜尋演算法在當前
+比對字元不相符時，會往下一個位子做比對，而 BM演算法則透過事先建立的一組錯
+誤字元位移表在搜尋過程中可以跳過大部分的輸入資料。因此 BM演算法在大多情況
+下比暴力搜索法要來得有效率。 
+Aho- Corasick 演算法則是一種多樣式比對的線性時間演算法。不同於較傳統
+的 KMP比對演算法，它不是採用 prefix的概念，而是在 Failure function的幫助
+下自動將多個字串逼近到一個集中的方式得到比對結果。不過，它可以被認為是 KMP
+演算法在多樣式搜尋的擴展。AC演算法在進行比對前，先將欲搜尋的序列串建構成
+trie樹，然後從樣本(sample)中開始位置與 trie樹做比對搜索。而 AC演算法真正
+的關鍵在於它的 failure function。Failure function會記錄 trie樹中比對結果
+不一樣的節點，當進行 trie樹上下一序列的比對時，將從此錯誤開始節點進行比
+ 
+不管檢查結果是非法 AP或鄰居 AP，都會把結果顯示在畫面上，R為 Rogue AP，
+N為鄰居 AP。 
+ 
+ 
+第七章 結論 
+ 非法無線網路基地台（Rogue AP）是未經網路管理單位授權而私自架設的無
+線網路基地台，它讓私有網路曝露在一個可能隨時會被入侵的資安隱患下。因此偵
+測非法 AP成了一個很重要的網路安全課題。未經加密的網路環境下，我們只要監聽
+空中的無線封包，即可透過比對其封包的 IP資訊，與白名單中合法 AP的 IP資訊，
+判別是否有非法 AP存在；但，在加密的網路環境下，我們無從得知封包的 IP資訊，
+<附件一> 
+A Location-aware Rogue AP Detection System Based on 
+Wireless Packet Sniffing of Sensor APs 
+Kuo-Fong Kao, Tau-Heng Yeo, Wai-Shuen Yong, Hui-Hsuan Chen 
+Dept. of Information Networking Technology, Hsiuping Institute of Technology, Taiwan. 
+11 Gongye Rd, Dali City., Taichung County,412-80,Taiwan,R.O.C 
+Tel：+886-4-2496-1100 
+Email: kfkao@mail.hit.edu.tw 
+ 
+ABSTRACT 
+For easy installation and increasing the use of wireless LAN 
+access points (AP), an unauthorized AP can be quickly plugged 
+into the LANs of most organizations. Unauthorized APs are also 
+termed rogue APs, and can seriously threaten network security. 
+Detecting the existence of rogue APs has become an important 
+research topic. A rogue AP should work by broadcasting wireless 
+packets. This paper proposes a rogue AP detection system based 
+on sensing the existence of AP packets. Once the MAC address of 
+the AP packets is not on a white list, the system will find the 
+location of the suspected AP. If the location of the suspected AP 
+is outside the managed area, this AP will be classified into be a 
+neighbor AP. Conversely, the suspected AP will be deemed a 
+rogue AP. The proposed system adopts the AP with an open 
+source firmware, OpenWrt, and an open source MAC layer 
+sniffing application, kismet, to monitor wireless packets. The 
+research demonstrated efficient detection of rogue APs and can 
+further strengthen the security of wireless networks.   
+Categories and Subject Descriptors 
+C.2.5 [Local and Wide‐Area Networks]   
+General Terms 
+Algorithms, Measurement, Experimentation, 
+Security. 
+Keywords 
+Rogue AP Detection, Packet Analysis, Network 
+Security, Wireless Packet Sniffing. 
+INTRODUCTION 
+The wireless LAN access point (AP) has become 
+increasingly popular because of its low price and easy installation. 
+An unauthorized AP is also termed a rogue AP, and can be 
+plugged into the LANs of most organizations quickly and easily. 
+An invader using the unauthorized AP can bypass the firewall, 
+resulting in a security breach of the Intranet. To detect an AP, one 
+approach is to use a centralized detection server to monitor and 
+analyze the transmitted network packets. The detection server is 
+connected to the mirror port of the core switch, and the 
+transmitted packets are logged for further analysis. Once a 
+wireless connection is detected, the detection server can determine 
+whether it is a rogue AP by checking the white list of authorized 
+APs. Any detected IP address which is not in the white list is 
+reported as a rogue AP. This scheme may result in the additional 
+loading of the core switch. Besides, this scheme has the drawback 
+of not detecting packets that do not go through the core switch. A 
+rogue AP may be plugged into the LAN port of the server pool, 
+and the invader only uses the rogue AP to connect to some critical 
+servers. The packets in such cases may not go through any switch 
+with a network mirror function, and cannot be detected by 
+centralized detection systems. 
+To overcome these drawbacks, this project proposes a 
+location-aware rogue AP detection system based on wireless 
+packet sniffing of sensor APs. A rogue AP should work by 
+broadcasting wireless packets. This project first creates a white 
+list containing the MAC addresses of legitimate APs, and then 
+setup a system to sense and record AP packets. Once the MAC 
+address of the AP packets is not on the white list, the system will 
+locate the location of the suspected AP. If the location of the 
+suspected AP is outside the managed area, this AP will be 
+classified into a neighbor AP. If not, the suspected AP will be 
+deemed a rogue AP. The proposed system adopts the AP with the 
+open source firmware, OpenWrt, and an open source MAC layer 
+sniffing application, kismet, to monitor wireless packets. The 
+results of this project show efficient detection of the existence of 
+rogue APs and can further strengthen the security of wireless 
+networks. 
+This paper gives an overview of the development of the 
+system. The rest of this paper is organized as follows: Section 2 is 
+related works. Section 3 summarizes the system architecture. 
+Section 4 describes the implementation details. The experiment is 
+presented in Section 5. Conclusions are finally drawn in Section 6. 
+Permission to make digital or hard copies of all or part of this work for 
+personal or classroom use is granted without fee provided that copies are 
+not made or distributed for profit or commercial advantage and that 
+copies bear this notice and the full citation on the first page. To copy 
+otherwise, or republish, to post on servers or to redistribute to lists, 
+requires prior specific permission and/or a fee. 
+SAC’11, March 21‐25, 2011, TaiChung, Taiwan. 
+Copyright 2011 ACM 978‐1‐4503‐0113‐8/11/03…$10.00. 
+ 
+Implementation   
+ 
+In this section, the implementation of the proposed system is 
+explained in two parts. One is the AP firmware and 
+RSS-monitoring software, and the other is the design of the rogue 
+AP detection server.  
+AP firmware and RSS­monitor 
+Software 
+Commercial APs can provide a stable and static 
+communication function. However, most do not allow users to 
+customize the device to suit specific applications. OpenWrt[8] is 
+an advanced project providing such flexibility. This project is 
+open-source licensed under GPL, and it can support APs from a 
+multitude of manufacturers, such as Linksys, ASUS, Buffalo, 
+D-Link, Zyxel, and 3Com. New software can be plugged into the 
+OpenWrt system using the Linux command opkg, and hundreds of 
+popular Linux packages have been ported to this embedded 
+system. 
+Figure 2: Web page for inputting the legal APs data 
+The legitimate AP management jobs are finished in the 
+preparing phase. In the online phase, the detected packet 
+information is continuously written into the OnlinePkt table and 
+the Network table; and a PHP program extracts the stored data to 
+compare with the data of the legitimate APs. Once the MAC 
+address is not on the white list, it will be input to the neighbor AP 
+distinguishing module. In the neighbor AP distinguishing module, 
+the system found the location of the suspected device. The 
+suspected AP inside the managed area is reported as a rogue AP. 
+Otherwise, the suspected AP may be the neighbor AP. 
+The first step to create a sensor AP is to replace the AP 
+firmware with OpenWrt. There are two methods to replace the 
+firmware. The easiest method is to use the built-in firmware 
+upgrade web page on the AP to upload the OpenWrt firmware. 
+The second method is to install the firmware via TFTP. Once the 
+firmware is replaced, the next step is to configure the wireless 
+card. An 802.11 wireless card can operate in: Master (access 
+point), Managed (client, or station mode), Ad-hoc, Mesh, 
+Repeater, or Monitor modes. The Monitor mode is also known as 
+the Radio Frequency Monitor (RFMON) mode, and a computer 
+with a wireless card in monitor mode can monitor all traffic 
+received from the wireless card. When a wireless card is in 
+RFMON mode, the wireless interface is unable to transmit packets. 
+For making an AP play both the monitor and the communication 
+roles, two interfaces are created on the hardware equipment by 
+setting the wireless configuration file.  
+The system estimates the location of an AP using the nearest 
+neighborhood method, which works in two phases: off-line 
+training and on-line location determination. To show the 
+localization algorithm, the following symbols are defined:  
+ : The set of locations. 
+ : The set of access points in the environment.  
+ : The RSS recorded by the access point  The final procedure of creating a sensor AP is to build the 
+function to detect packets of wireless devices. Kismet [5] is 
+installed in the APs as our detector of the proposed system. 
+Kismet is a well-known 802.11 layer2 wireless sniffer system that 
+can passively collect packets from any wireless card supporting 
+the RFMON mode. The source code of the Kismet was slightly 
+modified to record packet information, such as RSS, IP and MAC 
+address, to a database at a fixed frequency. The implementation 
+details of a sensor AP can be found in the paper [7]. 
+ : The RSS vector recorded by all 
+sensor APs 
+SV=   : The set of all signal vectors.  
+ : The k-nearest-neighbor classifier with  
+Once the system receives a RSS vector sv in the on-line 
+phase, the  localization algorithm can be formulated as 
+follows:  
+  Rogue AP Detection Server 
+The rogue AP detection server receives information from the 
+sensor-AP, and stores the information in the MySQL database. 
+Besides, two PHP components are run in the server, one for 
+white-list filtering and the other for neighbor AP distinguishing. 
+In the white-list filter module, network managers can login to the 
+system and input the legitimate APs data, as shown in Figure 2. 
+where D(.) is the Euclidean distance function, and  is the 
+mean of the RSS in the training data set at location . 
+Let   be the mean of the training RSS at location .  If 
+the distance between  and sv is larger than two standard 
+deviation of the training RSS at , the device is regarded as 
+neighbor AP.  
+        The snapshot of the detection result is shown in Figure 3. 
+In this case, about twenty APs were detected, and the system 
+located the suspected AP. Finally, seven APs were located inside 
+the managed area and were deemed to be rogue APs. 
+Room 
+Number 
+At the 
+center of the 
+classrooms 
+In the corners 
+of the 
+classrooms 
+At the center 
+with a 
+different 
+device 
+E402 100% 100% 100% 
+E403 100% 100% 100% 
+E404 80% 100% 85% 
+E405 100% 98% 100% 
+E407 100% 90% 100% 
+E408 100% 79% 100% 
+E409 92% 97% 100% 
+D302 
+(Neighbor) 100% 100% 
+100% 
+D306 
+(Neighbor) 100% 100% 
+100% 
+D506 
+(Neighbor) 100% 100% 
+100% 
+Average 97.2% 96.4% 98.5% 
+ 
+The first experimental result shows that the average accuracy 
+for the cases at the center of each classroom was about 97%. The 
+second one evaluates the accuracy in the corner of the classrooms, 
+and the third evaluates the accuracy at the center of classrooms 
+using different type of rogue AP, SAPIDO AU4622 with a 7dbi 
+antenna. Table 2 shows that the average accuracy for the corner 
+locations and different devices were 96% and 99%, respectively. 
+It shows that the proposed system is robust at different testing 
+locations and with different mobile devices. The error estimations 
+are classified by error distance, and the results are shown in Table 
+3. 
+Table 3: Error estimations classified by error 
+distance 
+                                Error 
+distance 
+Measured point 
+1 Room  2 Room  Neighbor 
+Center of the room  20  8  0 
+Corner of the room  33  3  0 
+Center (different device)  0  15  0 
+Total  53  26  0 
+We find that most errors are in one room distance, and none 
+is mistakenly estimated to neighbor building. Besides, all 
+experiments in the neighbor building are correct. Hence, the 
+proposed system can successfully distinguish a rouge AP form a 
+neighbor AP in the experiments. 
+ 
+Conclusions 
+This paper proposes a rogue AP detection system based on 
+sensing the existence of AP packets. Once the MAC address of 
+the AP packets is found not in a white list, the system will locate 
+the location of the suspected AP. If the location of the suspected 
+AP is outside the managed area, this AP will be deemed a 
+neighbor AP. The proposed system has the features of low 
+deployment costs without additional hardware and a web-based 
+interface for network manager. Once the system is deployed, the 
+network manager can easily detect and manage wireless APs.  
+In the future, we will work on the impact of the 
+communication performance of the proposed system and the 
+optimal AP placement for rogue AP detection. The proposed 
+system should set the APs to listen to all packets. It would affect 
+the device's ability to communicate. The impact to communication 
+performance will be studied in our further work. Besides, the 
+researches on AP placement usually focus on providing best 
+network connectivity, and this may not be optimal as to rogue AP 
+detection. This will be our important research topic in the further. 
+ACKNOWLEDGMENTS 
+This research was partially supported by National Science Council, 
+Taiwan, under contract no. NSC 98‐2221‐E‐164‐015‐ and    NSC 
+99‐2221‐E‐164‐014‐. The authors would like to thank the council 
+and the anonymous reviewers for their valuable comments. 
+REFERENCES 
+ 
+[1] AirDefense. Wireless LAN Security. http://airdefense.net 
+[2] AirMagnet. AirMagnet System. http://airmagnet.com. 
+[3] Bahl, P., Chandra, R., Padhye, J., and Ravindranath L. 
+Enhancing the security of corporate Wi-Fi networks using 
+DAIR. In Proceedings of the 4th international 
+conference on Mobile systems, applications and 
+services (MobiSys 2006), June 19-22, 2006, pp. 1-14. 
+[4] Beyah, R., Kangude, S., Yu, G., Strickland,B., and Copeland, 
+J. Rogue access point detection using temporal traffic 
+characteristics. In Proceedings of the IEEE GLOBECOM 
+2004. 
+[5] Kismet, What is Kismet?, http://www.kismetwireless.net 
+[6] Kao, K.F., Liao, I.E., and Li, Y.C. Detecting Rogue Access 
+Points Using Client-side Bottleneck Bandwidth Analysis. 
+Computers & Security, Vol. 28, Issues 3-4, May-June 
+2009, pp. 144-152. 
+[7] Kao, K.F., Liao, I.E., and Lyu, J.S. An Indoor 
+Location-Based Service Using Access Points as Signal 
+Strength Data Collectors. In Proceedings of 2010 
+International Conference on Indoor Positioning and Indoor 
+Navigation (IPIN), 15-17 September 2010, Zürich, 
+Switzerland. 
+[8] OpenWrt, What is OpenWrt, http://www.openwrt.org 
+[9] Wei, W., Suh, K., Wang, B., Gu, Y., Kurose, J., and Towsley 
+D. Passive online rogue access point detection using 
+sequential hypothesis testing with TCP ACK-pairs. In 
+Proceedings of the 7th ACM SIGCOMM conference on 
+Internet measurement (IMC 2007). New York, NY, USA: 
+ACM; 2007. 
+[10] Yan, B., Chen G.L., Wang, J., and Yin H.D. Robust 
+Detection of Unauthorized Wireless Access Points. Mobile 
+Networks and Applications, 14(4), 2009, pp. 508-522
+一、參加會議經過 
+The Fifth International Conference on Secure Software Integration 
+and Reliability Improvement(SSIRI)是一個新興的大型研討會，研討會的
+內容以最新發展的資訊安全及改善軟體可靠度的技術為主。在本年度的會議
+中總計有數百篇論文投稿，經過反覆的審查後，方才允許於本研討會發表。
+本研討會的論文集，並將由 IEEE Computer Society Conference Publishing 
+Services (CPS)出版，並可以在 IEEE digital library 查到發表的論文，
+同時本研討會論文也將列入 EI 之中。 
+本屆會議期間從 2011 年 6 月 27 日至 2011 年 6 月 29 日，為參加本會議，
+本人於六月二十六日即從台灣出發，經韓國首爾仁川機場、金浦機場、轉機
+到會議的所在地濟州島。會議結束後，一樣是經首爾轉機回台北，整個在韓
+國的時間約 6天。 
+二、與會心得 
+    本屆 SSIRI 分三天舉行，本人被安排在第二天的下午發表論文，論文的
+題目是 A SysML-based Requirement Supporting Tool for Embedded 
+Software。本論文，主要是針對嵌入式系統開發需求文件的撰寫，建立一個
+好用的輔助工具。嵌入式系統開發為了達到快速地在嵌入式平台上發展系統
+軟體，經常軟、硬體同時開發，而隨著硬體技術快術發展，嵌入式系統軟體
+開發反而成為開發時程的瓶頸，如何在維持軟體品質的同時，有效縮短開發
+時程，就成為嵌入式系統開發的重點。因此，我們需要好的系統設計整合工
+具來幫我們加快開發的速度。本系統便是建立一個使用 SysML 語法的需求文
+件建立工具。使用本工具，相關的需求將可透過 GUI 介面輕鬆的輸入，同時
+相關資料將透過 OCL 的檢查，以維護資料的品質。需求文件裡的量化數據，
+也可以透過 SysML 一系列的工具，引導入後面階段使用，不但可以維持軟體
+品質，同時有效縮短開發時程。 
+    在會場當中，除了聽取最新技術的發展，另外一項很重要的收穫是，可
+以與各領域的學術專家，有當面接觸互動的機會。除了可以加深彼此的了解，
+更可以引發往後跨國學術合作的可能。除此之外，會議所在的地點 JeJu 
+Grand Hotel，是濟州島數一數二的國際飯店，面積廣大。類似這樣大型的
+會議中心，並整合有旅遊飯店的功能，其規模及經營經驗，亦頗值得國內學
+習。 
+A SysML-based Requirement Supporting Tool for 
+Embedded Software 
+A SysML-based Requirement Supporting Tool for Embedded Software 
+Chih-Hung Chang, Chih-Wei Lu 
+Dept. of Information Management 
+Hsiuping Institute of Technology 
+Taichung, Taiwan(R.O.C.) 
+{chchang, cwlu}@hit.edu.tw 
+Kuo-Fong Kao 
+Dept. Information Network 
+Technology  
+Hsiuping Institute of Technology 
+Taichung, Taiwan(R.O.C.) 
+kfkao@hit.edu.tw 
+William C. Chu, Chao-Tung Yang 
+Dept. of Computer Science 
+Tunghai University 
+Taichung, Taiwan(R.O.C.) 
+{cchu, ctyang}@thu.edu.tw  
+Nien-Lin Hsueh 
+Dept. of Information Engineering and 
+Computer Science 
+Feng Chia University 
+Taichung, Taiwan(R.O.C.) 
+nlhsueh@fcu.edu.tw 
+Pao-Ann Hsiung 
+Department of Computer Science and 
+Information Engineering 
+National Chung Cheng University 
+Chia-Yi, Taiwan (R.O.C.) 
+pahsiung@cs.ccu.edu.tw 
+Chorng-Shiuh Koong 
+Dept. of Computer and Information 
+Science 
+Taichung University 
+Taichung City, Taiwan (R.O.C.) 
+csko@mail.ntcu.edu.tw
+ 
+ 
+Abstract—Maintaining uniformity of software requirement 
+documents with the artifacts of other phases of software 
+lifecycle is very important. However, it is a difficult and time-
+consuming task. Natural language usually contains uncertainty. 
+Most requirement documents were written in ambiguous 
+natural language which is less formal and imprecise. Without 
+proper modeling, the requirement knowledge is laboriously 
+captured informally and thus the following integration with 
+other artifacts is impracticable. In this paper, we propose a 
+requirements modeling tool based on SysML.  It assists users 
+to confirm and improve the exactness of the requirements 
+contents via the “Profile” of the requirements. Thereafter it 
+will help the uniformity throughout the phases of software 
+lifecycle.  
+Keywords- Requirement Engineering, SysML, Model-driven, 
+Requirement Modeling. 
+I.  INTRODUCTION  
+In practice, most of software requirement documents are 
+represented in natural languages, which are usually informal, 
+incomplete, and ambiguous; and only few of them may 
+contain some more formal documents such as use case 
+diagrams and descriptions. Without proper modeling to the 
+requirement documents, the knowledge of system 
+requirement is hard to be captured and the following 
+integration completeness with artifacts from other software 
+phases is impossible. However, the modeling processes of 
+software requirements cannot fend but face a challenge to 
+represent these informal and usually incomplete documents 
+into consistent formalization. If we can guide engineers to 
+write requirement documents in a well-defined model, the 
+modeled requirement content can be led into the integration 
+with much formal software artifacts through the 
+corresponding software lifecycle. 
+OMG SysML [2] is the standard modeling language, a 
+later extension and enhancement from the popular one UML, 
+for application and development of system engineering. It 
+offers a simple but powerful structure of modeling 
+applications and solves the system engineering problems in 
+an extensive range. In this paper, we use requirement 
+templates and SysML as the system requirements modeling 
+guides, and bring in a pre-built multi-core embedded system 
+requirement template during the process of requirement 
+analysis.  The template will guide users in incorporating the 
+proper embedded system hardware constraints when 
+analyzing the requirements.  In the end, this paper will 
+illustrate the working of the SysML template on a real 
+application case based on a multi-core embedded system. 
+II. RELEATED WORKS 
+A. XML 
+XML[5] is a standard and popular language supported by 
+W3C (World Wide Web Consortium). It offers application 
+neutrality (vender independence), user extensibility, ability 
+to represent arbitrary and complex information, validation 
+for data structure scheme, and human readability. 
+ 
+B. SysML and UML 
+UML [1], originally a software design and modeling 
+language, is now heavily and widely used in system design. 
+It is even more evident from the strong focuses on system 
+modeling in the latest UML version 2.0 and the much 
+acclaimed OMG’s System Modeling Language (SysML) [2]. 
+OMG SysML is the standard model language for application 
+and development of system engineering.  The design of 
+SysML technology is to offer a simple but powerful structure 
+of modeling and to solve the system engineering problems in 
+an extensive range.  SysML has continued to use some 
+subsets of UML 2.0.  Additionally, it adds some more figures 
+including nine kinds of elementary figures such as: 
+Classification diagram, Installation diagram, Use case 
+diagram, Requirements diagram, parameter diagram, order 
+diagram, activity diagram, state diagram, and time diagram.  
+Though SysML is a standard that OMG releases formally in 
+September of 2007, a lot of researches have begun to use 
+SysML for carrying out system modeling and standardization.  
+ 
+2011 Fifth International Conference on Secure Software Integration and Reliability Improvement Companion
+978-0-7695-4454-0/11 $26.00 © 2011 IEEE
+DOI 10.1109/SSIRI-C.2011.34
+202
+2011 Fifth International Conference on Secure Software Integration and Reliability Improvement - Companion
+ 
+Figure 3.  The user requirement interview GUI 
+ 
+Figure 4.  The requirement template 
+Firstly, requirements according user specifications are 
+collected by the requirement interview interface as Figure 3. 
+The quality of the requirement documents will influence the 
+progress of the project procedure.  We encourage users, in 
+the course of requirement modeling; attach each requirement 
+model with intact user requirement information. Following, 
+requirement engineer can build up the system requirement 
+from user requirement. The requirement template following 
+detailed input GUI is shown as Figure 4. In this requirement 
+template, some properties should be quantified, such as CPU 
+number, memory size, etc. User can refer related information 
+from the reference GUI as Figure 5.  
+When requirement engineer refines the user requirement 
+specification into system requirement specification, the 
+relationship can be recorded by system. When the process 
+finished, the result will be listed as Figure 6.  
+ 
+Figure 5.  Function and non-function requirement  
+reference GUI 
+ 
+Figure 6.  The system requirement lists  
+We make use of OCL to standardize user's narration way 
+at the time of Profiles input. In this way the requirements 
+contents user inputted can be verified against the OCL field 
+conditions, thus it would prevent user from answering 
+improper data for the requirements document content.  Table 
+I shows one example of employing the OCL on the terms 
+from one of the template. 
+204
+ 
+Figure 11.  Requirements profile template for multicore system 
+ 
+Figure 12.  Validate Profile content 
+ 
+Figure 13.  Incorrect attitude type warning example 
+ 
+IV. CONCLUSION AND FUTURE WORK 
+In this paper, we present a requirements modeling tool 
+based on requirement template and SysML.  This research 
+copes with model driven approach and requirements 
+definition template for precise, consistent requirements 
+specifications definition. MDA offers a procedure of 
+analyzing the requirements to prevent a specific project from 
+procrastinating, for that the wrong requirements would be 
+picked and fetched.  It assists users to confirm and improve 
+the exactness of the requirement contents via the “Profile” of 
+the requirements.  The requirement specification formation 
+time is thereafter shortened, and the credibility and 
+feasibility of requirements formulation are enhanced.  The 
+OCL leads users to write the template of the requirements, 
+and brings in the characteristics of multi-core embedded 
+system in the requirement documents through “profile”.  In 
+future work, we will study further SysML requirement 
+diagrams, the use case diagram and other SysML features.  
+The connection between SysML requirement charts will be 
+investigated with tracking methods. 
+ACKNOWLEDGMENT 
+This research was supported in part by National Science 
+Council, Taiwan R.O.C., under grants no. NSC98-2220-E-
+164-001, NSC99-2220-E-164-001, NSC99-2220-E-029-001, 
+and NSC99-2220-E-029-001. 
+ 
+REFERENCES 
+[1] Object Management Group (OMG), Unified Modeling 
+Language (UML), http://www.uml.org/. 
+[2] OMG SysML, http://www.omgsysml.org/ 
+[3] OMG Document, UML Profile for Enterprise 
+Distributed Object Computing. June 9, 2001. 
+[4] OMG adopted specification. “UML 2.0 OCL 
+Specification,” Oct 14, 2003. 
+[5] Extensible Markup Language (XML). http://www.w3. 
+org/XML/ [September. 2006] 
+[6] J. N. Mazón, J. Trujillo, M. Serrano, and M. Piattini, 
+“Applying MDA to the Development of Data 
+Warehouses” Proceedings of the 8th ACM international 
+workshop on Data warehousing and OLAP, 2005, pp. 
+57-66. 
+[7] J. Miller and J. Mukerji, “Model Driven Architecture 
+(MDA)”, January 2007, 
+http://www.omg.org/docs/ormsc/01-07-01.pdf 
+[8] S. Mellor, K. Scott, A. Uhl, and D. Weise, MDA 
+distilled: principles of Model Driven Architecture. 
+Addison-Wesley, 2004. 
+ 
+206
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/10/28
+國科會補助計畫
+計畫名稱: 植基於不同通訊協定在客戶端往返時間的非法AP偵測系統
+計畫主持人: 高國峰
+計畫編號: 99-2221-E-164-014- 學門領域: 資訊安全
+無研發成果推廣資料
+Kuo-Fong Kao, 
+William C. Chu, 
+Chao-Tung Yang, 
+Nien-Lin Hsueh, 
+Pao-Ann Hsiung, 
+Chorng-Shiuh 
+Koong, ’A 
+SysML-based 
+Requirement 
+Supporting Tool 
+for Embedded 
+Software,’ in 
+Proceedings of 
+The Fifth 
+International 
+Conference on 
+Secure Software 
+Integration and 
+Reliability 
+Improvement, 
+27-29 June 2011, 
+Jeju Island, 
+Korea. 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  科 
+教 課程/模組 0  

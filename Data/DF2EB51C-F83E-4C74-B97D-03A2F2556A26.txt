@@ -1,0 +1,337 @@
+code, but also the provision of a complete procedure 
+for automatic code generation of multi-core embedded 
+software. 
+英文關鍵詞： Automatic code generation, SysML models, Multi-core 
+embedded systems, Parallel programming 
+ 
+前言與研究目的 
+本計畫(VMC-SYN)為國科會自由軟體研發推動計畫的第三年計畫。第二年計畫以第一年度從
+bottom-up為設計主軸的數位影像串流(Digital Video Recording, DVR)系統為基礎，我們設計了相關
+的平行模型(Parallel Model)以及設計模式(Design Pattern)，以應用在程式碼生成器(Multi-Core 
+Embedded Software Code Generator)中，結合二大仲介軟體 Quantum Platform (QP) [5]及 Intel 
+Threading Building Blocks (TBB) [6-8]這兩套 Libraries 來實現 Parallelized C++ Code。在去年度完成
+大部分的 Code Generation 功能後，第三年度我們重點放在加入Monitoring Mechanism 來監控系統
+資源(Resource)與執行效能(QoS)，以期符合使用者給定的需求(User-specific Requirements)。我們也
+透過介面的制定說明與其他子計畫之間資訊的交換及所需的功能性互動，達到從上層 model，程式
+碼生成後到多核心目標平台上執行的完整性。 
+ 
+本團隊針對多核心嵌入式軟體的程式碼生成器設計了一套完整流程。根據第二年計畫的開發經驗，
+我們修改了程式碼生成器的流程，如圖 1所示。基本上還是沿用了前兩年計畫所使用的二大仲介軟
+體QP及TBB來輔助產生程式碼，第三年修正後的程式碼生成器的主要功能如下：Model Parser (MP)、
+Model Compiler (MC)、Parallelism Implementer (PI)、Monitor Generator (MG)、Tree Translator (TT)。
+圖 2 為次要功能的關係圖。 
+ 
+Model Parser主要負責從 High-Level Model 取得系統設計相關資訊，並將這些資訊建立出一個與程
+式碼生成相關的樹狀結構(XML Semantics Tree)。Model compiler負責追踨由 Model Parser產生樹狀
+結構的節點，從中擷取系統設計所產生的 State Machine Diagram 的資訊，並將這些資訊轉成相對應
+的 QP 程式碼附加到適當的節點之中，此時稱該樹狀結構為 QP-Annotated Tree。而 Parallelism 
+Implementer 則是負責在 QP-Annotated Tree 中找出使用者指定系統可平行化的 Model，並幫使用者
+轉出相對應的 TBB Code，並附加至相對應的節點之中，而完成該階段之後，我們稱此樹狀資料結
+構為 TBB-Annotated Tree。接下來的階段則是透過 Monitor Generator 來針對使用者需求，產生監控
+用的 Monitor Active Object 資訊，附加到相對應的節點中；完成這個步驟的樹狀結構，稱之為
+Monitor-Annotated Tree。最後一個階段則是由 Tree Translator走訪Monitor-Annotated Tree，產出平
+行化的 C++ Source Code。 
+ 
+ 圖2. 程式碼成生器次要功能關係圖 
+ 
+ 
+ 
+研究方法 
+  本計畫依照程式碼生成器流程來做設計，主要有 Model Parser (MP)、Model Compiler (MC)、
+Parallelism Implementer (PI)、Monitor Generator (MG)、Tree Translator (TT)五個功能，依序介紹如下： 
+ 
+    Model Parser (MP)主要使用現有的 libxml2 [6]這套 XML C Parser 負責從 High-Level SysML 
+Model 取得系統設計相關資訊，並將這些資訊建立出一個與程式碼生成相關的樹狀結構(XML 
+Semantics Tree)。 
+ 
+    Model Compiler (MC)，是將使用者設計的 state machine diagrams 和描述系統功能的 class 
+diagrams 翻譯成以 QP 程式架構的樹狀資料結構。每一個 state machine在 QP 裡分別用一個 Active 
+Object (AO)實現。為了要把 semantics tree翻譯成帶有 QP 的程式架構，就需要 QP Information Files
+的資訊，如此一來才能便於程式碼的自動生成。例如：使用者設計了一個 state machine，由 QP 
+Information Files 得知把 state machine 對應成 AO，就實作來講，即為把此 state machine宣告成 C++ 
+Class，並繼承 QActive。 
+  MC 的流程主要可分為以下三個部份：Tree Traverser、QP Transformer以及 QP-Annotated Tree 
+Generator。圖 3為MC 的架構圖。 
+  MC 走訪MP 所建的 semantics tree上的每個節點，之後由 QP Transformer根據每個節點的資訊
+來轉換出所相對應的 QP 程式碼。例如：遇到一個 state machine的節點，就可以產生 QP Initialization
+的程式碼來初始化AO和AO所需要用到的訊號；遇到 state machine上的 state，就根據QP Information 
+Files 來產生相對應的 QP 程式碼；遇到 state machine 上的 transition，則是將 transition 上的 event
+條件和 actions 依據 class diagram 所描述的功能，一併轉換成 QP 程式碼。 
+  最後，每個節點透過 QP Transformer 所轉換出來的 QP 程式碼，由 QP-Annotated Tree Generator
+生 Parallel C++ Code的階段。這也是我們 Code Generation子計畫的最後階段。TT包含了兩個部分：
+Monitor-Annotated Tree Traverser、Code Generator。圖 6為 TT的架構圖。 
+ 在整個 Code Generation 子計畫流程中，使用者所設計的 SysML檔案經過了 MP、MC、PI和
+MG等階段之後產生名為Monitor-Annotated Tree的樹狀結構，在此樹狀結構中已儲存了足夠的資
+訊，包括 QP、TBB和 Monitor 程式碼、使用者定義的程式碼和微調的參數等資訊，而 TT主要的
+目的就是要將這棵完整的 Code Tree 實際轉換成程式碼檔案，稱為 Parallelized C++ Code。 
+  
+Parallelism 
+Implementer
+(1.2.0)
+TBB-Annotated 
+Tree Traverser
+(1.3.1)
+Monitor Model 
+Translator
+(1.3.2)
+Monitor-Annotated 
+Tree Generator
+(1.3.3)
+Tree Translator
+(1.4.0)
+QP Information 
+Files
+Monitor 
+Generator
+(1.3.0)
+External 
+Interface
+External 
+Interface
+Internal 
+Interface
+Internal 
+Interface
+External 
+Interface Monitor Model
+Requirement 
+Diagrams
+ 
+圖 5. MG架構圖 
+Monitor Generator
+(1.3.0)
+Monitor-Annotated 
+Tree Traverser
+(1.4.1)
+Code Generator
+(1.4.2)
+Tree Translator
+(1.4.0)
+External 
+Interface
+External 
+Interface
+Internal 
+Interface
+Parallel C++ Code
+ 
+圖 6. TT 架構圖 
+ 
+介紹完整個設計流程後，本計畫以第一年度所設計的DVR系統為基礎，來實作程式碼生成器。
+目前以 DVR 系統中的 PVEEncoding 為例子來進行實作，圖 7 和圖 8 為 PVEEncoding 的 Block 
+Definition Diagram 和 State Machine Diagram。
+ 
+圖 7. PVEEncoding的 Block Definition Diagram 
+ 
+圖 8. PVEEncoding的 State Machine Diagram 
+  有了使用者定義的 PVEEncoding的 block definition diagram 和 state machine diagram 後，Model 
+Parser可產生 PVEEncoding的 semantics tree。MC 從 semantics tree中獲得關於 PVEEncoding model
+的相關資訊，在走訪每節點時，會根據 QP Information Files 貼上相對應的程式碼，例如：當遇到
+ 圖 10. PVEEncoding.cpp 
+ 
+ 
+ 
+  
+圖 11. Pipeline的 Parallel Model 
+ 
+QSTATE PVEEncoding::Encoding(QEvent* const e) { 
+  QEvent* pe; 
+  switch(e->sig){ 
+    case Q_ENTRY_SIG: 
+  /* user-given encoding code or TBB code goes here*/ 
+      pe = Q_NEW(QEvent, EncodeOneFrameDone_SIG); 
+      QF::publish(pe); 
+      return 0; 
+    case EncodeOneFrameDone_SIG: 
+      Q_TRAN(&PVEEncoding::Idle); 
+      return 0; 
+  } 
+  return (QSTATE)&PVEEncoding::top; 
+} 
+ 
+圖 12.動態可適性效能監視機制架構 
+ 
+在動態可適性效能監視機制中，共可分為三大部分，如圖 12所示，分別為Dispatcher、Monitoring 
+Task、Worker Pool。在 Dispatcher當中，監控執行緒(Monitor Threads)將會依照使用者所訂出的監
+視項目，將 Monitoring Task 加到一個具優先順序的工作堆疊當中，並且會依據系統的運作狀況，
+調整加入工作的數量，避免因為效能監視機制造成系統額外的效能負擔，導致監視所取得的資料失
+去準確性。在 Worker Pool 中，具有許多工作執行緒(Work Threads)，等待執行 Monitoring Task，當
+工作執行緒閒置時，便會檢查工作堆疊中是否有監試工作尚未被執行，如果有，則將工作取出並且
+執行，已取得所需要監控的資料。透過此動態可適性效能監視機制，使用者將可以軟體執行時，以
+最小的額外效能負擔，動態取得軟體運行的狀況及資訊，如此便能夠作為評估的依據，針對軟體的
+效能瓶頸做改善，提升軟體效能，充分利用硬體平台所提供的處理能力。 
+ 
+圖 13.監控執行緒工作分配方式 
+ 
+監控執行緒工作的分配方式，可分為兩種基本分配方式，分別為一對多模式(One-to-all)
+與一對一模式(One-to-one)，如圖 13 所示。不同的分配方示，將對系統產生不同的額外負擔
+(Overhead)，並且對於監視所取得的資訊之正確性(Accuracy)與即時性(Immediacy)，也有很大
+的關聯，例如採用一對多模式時，利用單一監控執行緒來監控所以監控目標，由於系統僅需額
+外執行一個執行緒，因此對於系統的額外運算負擔(Computation Overhead)很低，但是卻會引
+起額外的資料溝通負擔(Communication Overhead)，並且當使用者監視的資訊越多時，可能導
+致監控執行緒工作過於忙碌，導致正確性與即時性下降，而取得無效的資訊。 
+ 
+兩條曲線在時間區隔為 100us 時交叉，在時間區隔大於 100us 時，2T2M 所造成的額外負擔較
+大，但在時間區隔小於 100us 時，卻又是 2T1M 所造成的額外負擔較大，相同的情況在圖 15(a)
+當中也可以發現到，因此我們發現，針對不同的監控目標，必須使用不同的監測時間區隔，才
+能夠獲得最好的資訊。 
+ 
+我們的實驗也在 Digital Video Recording System(DVR)系統上運行，DVR 為一個多人多監
+視器之線上即時影像串流撥放系統，在這個實驗中發現，不當的的監測時間區隔，將為使得監
+控執行緒過度的過取資訊，甚至速度超越真實的資訊改變速率，因此會造成監測所取的資訊失
+去意義，如圖 16 所示，當監測時間區隔超越真實資料改變速率(30fps)時，將會導致監測所取
+得錯誤的資料，完全失去意義。 
+ 
+圖 16.不同的監測時間區隔所取得之資訊 
+ 
+在這篇論文當中，我們提出了一套基於多核心嵌入式系統之動態可適性效能監視機制，希望藉由此
+一機制來輔助程式設計人員，能更輕易地發現軟體效能的瓶頸，做出適當的修正來取得最大效能，
+充分發揮多核心平台的運算能力。在實驗中，我們針對監控執行緒的分配方式提出了分析，並且對
+於監控執行緒數量與分配方式做出了建議，並且發現在監測之資訊正確性與即時性之間的取捨，必
+須適當的設定監測時間區隔，才能夠獲得最準確的資訊。 
+ 
+    另一方面，除了 DVR 的例子之外，我們加入 ball detection and tracking [19]的例子，來驗證平
+行之後的效能提升程度，介紹如下： 
+以多核心系統偵測與追蹤籃球比賽視訊串流中的球 [19] 
+(A Multicore System Design for Basketball Detection and Tracking in Sports Competition Video Streaming) 
+由於籃球為熱門球類之一，且籃球比賽包含了動機之所有部分，因此我們將目標球類設定為籃
+球。而系統首要目的為正確追蹤籃球位置，唯有達到此目的才能實踐其餘目標。同時系統也將使用
+多核心之分散處理達到即時運算，得以跟上比賽節奏。另外，為了達到減少漏網鏡頭的目的，系統
+從兩方位錄製比賽，並自動切換攝影畫面。 
+圖 17為自動化球類即時追蹤系統之架構。架構中包含四個主要功能:球場邊線偵測、籃球位置
+偵測、籃球追蹤及影像切換。系統中，我們匯入 OpenCV 進行影像處理。 
+們將以 MBD為中心點重複運算 Step1，直至 MBD落在菱形之中心；如果 MBD位於菱形之中心，
+則進入第三步驟執行。第三步驟是 SDSP 搜尋:當判斷 MBD位於菱形中心時，系統會將搜尋範圍從
+LDSP 縮小為 SDSP(Small Diamond Search Pattern)，並重複執行 Step1，進行精準定位。而此步驟求
+得之 MBD即為籃球之最後所在之範圍。我們認定此次 MBD中權重最高之集合為籃球，計算平均
+座標並在影像中圈出。如果在 Step3 仍無法獲得籃球確切座標，經過三個影像之容忍期後，跳回
+Ball Detection 重新定位籃球。圖 18表示可以看到 MBD在角落或邊上時，演算法繼續以 LDSP(藍
+色圓形)為搜尋範圍，當MBD 在菱形中心時，將縮小為 SDSP(綠色正方)搜尋。 
+View Exchanging: 
+當近景影像偵測到籃球時，將影像輸出切換為近景；當近景影像連續無法偵測到籃球時，將影
+像輸出切為遠景。 
+ 
+ 
+圖 18. Diamond search algorithm(DSA)示意圖 圖 19. Task Parallelism 示意圖 
+ 
+以下是 TBB之平行化方法: 
+ 1)多台攝影機影像輸入之平行化 
+  <1>使用任務平行(Task Parallelism)方法實做平行化。 
+  <2>如圖 19所示，將多台攝影機拍攝之畫面交由不同處理 
+器平行處理。 
+ 2)切割畫面之平行化 
+  <1>使用資料平行(Data Parallelism)方式 
+  <2>將每單位輸入之畫面切割成數等份，配合 Ball Detection 
+和 Ball Tracking架構，利用 thread平均運算，即時追 
+蹤。如圖 20 所示。 
+獲得更多關於多核心嵌入式軟體的發展經驗與議題;第二年計畫的目標著重於多核心程式碼生成器
+的設計流程並支援更完整的平行模型(Parallel Model)提供系統更多平行化程式碼生成的能力;第三
+年則重點放在加入 Monitoring Mechanism 來監控系統資源(Resource)與執行效能(QoS)，以期符合使
+用者給定的需求(User-specific Requirements)。我們也透過介面的制定說明與其他子計畫之間資訊的
+交換及所需的功能性互動，達到從上層 model，程式碼生成後到多核心目標平台上執行的完整性。 
+    我們已經透過 DVR 系統這個例子和二大仲介軟體 QP、TBB Libraries，實作出自動化平行程式
+碼生成器，並也已發展出一套完整的自動化流程。 
+    目前的成果有兩大技術優越性，其一是使用 Model-driven的開發流程，特點是可以重複使用且
+容易作系統驗證，另一是多核心程式碼的開發，目前多核心系統愈來愈普遍，能自動產生多核心平
+行化程式碼勢必是一大優勢。目前成果可以提供業界一套多核心嵌入式系統的自動化平行程式碼生
+成流程，也可以提供學界一套在多核心嵌入式系統上的 Model-driven 開發流程，例如可以用在嵌入
+式軟體工程的課程教材上。 
+    三年計畫已告一個段落，當初我們規劃的目標已大部分實現，我們接下來會繼續延伸
+Monitoring Mechanism 的研究，朝著動態 monitoring並依使用者需求作系統效能調校的方向努力，
+之後也會繼續往異質多核心系統作研究。 
+ 
+參考文獻 
+1. P.-A. Hsiung, S.-W. Lin, C.-H. Tseng, T.-Y. Lee, J.-M. Fu, and W.-B. See, “VERTAF: An Application Framework for the 
+Design and Verification of Embedded Real-Time Software,” IEEE Transactions on Software Engineering, Vol. 30, No. 10, 
+pp. 656-674, October 2004. 
+2. Papyrus UML. http://www.papyrusuml.org/. 2009. 
+3. UML 2.0. http://www.omg.org/spec/UML/2.0/. 2005. 
+4. SysML 1.1. http://www.omgsysml.org/. 2008. 
+5. M. Samek. Practical UML StateCharts in C/C++, Second Edition: Event-Driven Programming for Embedded Systems. 
+Newnes, 2008. 
+6. Libxml2 (XML C Parser) http://xmlsoft.org/. 2010. 
+7. J. Reinders. Intel Threading Building Blocks: Outfitting C++ for Multi-core Processor Parallelism, O’Reilly Media, Inc., 
+2007. 
+8. Intel Threading Building Blocks. http://www.threadingbuildingblocks.org/. 2008. 
+9. J. Wagner, A. Jahanpanah, and J. Traff, “User-land work stealing schedulers: Towards a standard,” In Proceedings of the 
+International Workshop on Multi-Core computing Systems (MuCoCoS), 2008. 
+10. S. Akhter. Multi-Core Programming: Increasing Performance Through Software Multi-threading, Intel Press, 2006. 
+11. C.-H. Lien, Y.-W. Bai, and M.-B. Lin, “Estimation by Software for the Power Consumption of Streaming-Media Servers,” 
+IEEE Transactions on Instrumentation and Measurement, 56(5):1859–1870, 2007. 
+12. P.-A. Hsiung, C.-S. Lin, S.-W. Lin, Y.-R. Chen, C.-H. Lu, S.-Y. Tong, W.-T. Su, C. Shih, C.-S. Koong, N.-L. Hsueh, 
+C.-H. Chang, William C. Chu, “VERTAF/Multi-Core: A SysML-based Application Framework for Multi-Core 
+Embedded Software Development,” In Proceedings of the International Conference on Algorithms and Architectures for 
+Parallel Processing (ICA3PP), LNCS, Springer Verlag, June 2009. 
+13. C.-S. Lin, P.-A. Hsiung, S.-W. Lin, Y.-R. Chen, C.-H. Lu, S.-Y. Tong, W.-T. Su, W. C. Chu, C.-H. Shih, N.-L. Hsueh, 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。 
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+■ 達成目標 
+□ 未達成目標（請說明，以 100字為限） 
+□ 實驗失敗 
+□ 因故實驗中斷 
+□ 其他原因 
+說明： 
+ 
+ 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：■已發表 □未發表之文稿 □撰寫中 □無 
+專利：□已獲得 □申請中 □無 
+技轉：□已技轉 □洽談中 □無 
+其他：（以 100字為限） 
+ 
+ 
+ 
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以
+500字為限） 
+ 
+    可縮短多核心嵌入式軟體的開發時程，設計者僅需要輸入工業標準的
+SysML模型，其中遵循我們 VMC框架所訂的平行化之 stereotypes (標籤)，即
+可由 VMC框架自動生成適合於多核心嵌入式系統執行的平行程式碼。目前，
+支援 C++程式語言、quantum platform (QP)狀態機程式庫、Intel Threading 
+Building Blocks (TBB)多核心程式庫於 Intel 的多核心 CPU 以及 ARM 11 
+MPCore (4核心)微處理機上執行。 
+ 
+  
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/10/31
+國科會補助計畫
+計畫名稱: 子計畫四:多核心嵌入式軟體之合成與程式碼生成-VMC_SYN(2/2)
+計畫主持人: 熊博安
+計畫編號: 99-2220-E-194-013- 學門領域: 自由軟體暨嵌入式系統
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+(1) 舉辦過兩場多核心微處理器開發研討會： 
+2010 年的 Multicore Programming Workshop and  
+2011 年的 Formosa Multicore Programming Summer School and Workshop。
+ 
+ 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

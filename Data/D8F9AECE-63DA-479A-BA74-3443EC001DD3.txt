@@ -1,0 +1,196 @@
+  
+2. Design and Implementation of PowerMemo 
+PowerMemo has the following functionalities: (1) Produces per process energy consumption 
+results of CPU and WNIC. Produces per C-code-block energy consumption results of 
+CPU(Provided marker IOCTLs must be used to mark the beginning and end of a C-code-block) 
+(2) Calculates CPU power rating for each process. (3) Outputs total CPU time spent and number 
+of bytes transmitted and received by each process. (4) Emulates a user-defined mobility script by 
+controlling wireless channel conditions in an RF-isolated chamber. 
+The key design goals for PowerMemo were to provide a low-overhead and sufficiently 
+accurate energy profiling tool that can simultaneously profile energy usage and perform WLAN 
+field tests, and to have the highest portability and user-friendliness. 
+Our first design goal, low-overhead has always been one main criteria for tools that 
+instrument the target devices. The opposite of this, high-overhead, has the high risk of causing 
+tool to produce erroneous or less accurate results. This design consideration is especially critical 
+for embedded devices. Since they have quite limited hardware resources, a high-overhead tool 
+may prevent the target applications from running normally, thus causing to produce different 
+results from the cases when running without the profiling tool. To achieve the first goal, we 
+separated the process of profiling system activities and process of mapping power measurements 
+with profiled system activities into two different stages. We also provided a command line 
+argument in the user-daemon for users to adjust frequency of periodic file saves. Frequent file I/O 
+may cause large overhead at the cases when CPU is highly utilized, so we thought it could be 
+beneficial to have the frequency argument. Tool users can pick a proper frequency value that 
+minimizes user-daemon overhead. To meet the goal, we also minimized the clock cycles spent in 
+each instrumentation function of our kernel module. According to our measurements average 
+overhead of PowerMemo does not exceed 1%. 
+As the second design goal, kernel portability was considered to be important since our tool 
+targeted mobile embedded devices. PowerMemo was designed to produce per process and per 
+C-code-block energy consumption results that consist of individual energy results of some most 
+energy-hungry hardware components (CPU and WNIC). The existing energy profiling tools 
+which provide this level of detailed results instrumented the specific drivers in the kernel. We 
+considered that would restrict our tool to be ported to other hardware architectures. Of course it 
+would not be impossible, but would require tedious hours of driver code tracing and testing. Such 
+as for our WNIC, if we wanted to instrument the driver code, we would not only have to 
+understand the internals of physical layer, but also have to deal with the coding style and naming 
+conventions that driver developer used. So as a result, we managed to escape driver level 
+instrumentation by only modifying the new mac80211 subsystem [13] in the kernel. This 
+subsystem provides a framework for the soft-MAC or half-MAC wireless devices. In these type 
+of devices, the 802.11 frame management (MLME) is performed by software. This allows for a 
+finer control of the hardware, and provides valuable information that was once only available in 
+hardware logic or device driver. Because most of the 802.11 devices today are soft-MAC type, 
+our tool can be easily used with various types of WNIC devices  
+We put our best effort to provide the highest accuracy and user-friendliness possible while 
+striving to achieve above design goals. We started the design process by evaluating the existing 
+provides the instrumentation functions to collect kernel level data. We have a few instrumentation 
+points where we call the relevant functions from this kernel module. These functions basically 
+store time of system activities and some other parameters needed. A user-space daemon keeps 
+transferring these kernel level data from kernel-space to user-space as files, and at the end of the 
+profiling it automatically transfers these files to host side for the mapping process. An operational 
+overview of PowerMemo can be seen in Figure 1 and system architecture in Figure 2. 
+ 
+Kernel Module and User Daemon 
+To provide a modular interface that eases development and porting efforts, we developed a 
+Linux kernel module, “powermemo.ko”, which is a type of character device. Current 
+implementation was built against kernel version 2.6.28. This module is the so called “System 
+Monitor” that collects information about the system activities of our interest. These 
+instrumentation functions basically store the current time that is returned by “do_gettimeofday()” 
+and several other kernel parameters like Process ID, size of transmitted/received packet, etc. Our 
+user-daemon, “pmemo_client”, is responsible for several tasks. First of all it is responsible for 
+transferring profiling results from the allocated kernel-space buffer to user-space. It periodically 
+saves these results to files to prevent the limited buffer space from overflowing.  
+ 
+Recording System Activities 
+As known, energy is equal to power value multiplied by duration (E=P x ∆t), that’s, energy 
+of an activity is a function of duration. In measurement-based energy profilers, while power 
+values are obtained from measurement device, duration values (∆t) are generally obtained from 
+underlying operating system by recording begin and end time of activities. Since different 
+hardware components may be serving different processes at the same time slice, target hardware 
+components (in our case, CPU and WNIC) as well as processes must be distinguished during 
+profiling process. Then separate energy values of these hardware components and processes for a 
+given duration can be calculated by multiplying the power values measured between begin and 
+end time by the duration value.  
+  
+Recording CPU System Activities 
+Begin and end time of each process activity in a CPU can be easily obtained by modifying 
+the scheduler function of underlying kernel. The scheduler gives each process a time quantum to 
+use CPU exclusively. A process may or may not use the whole time quantum, and the interval it 
+uses is defined as CPU time slice. A process activity on CPU happens when this time slice is used. 
+Therefore we can add the instrumentation functions at the point where the current process is 
+scheduled out and a new one is scheduled in. Because this is the exact point where the previous 
+time slice ends and new one begins, we can correctly record begin and end time of activities here. 
+PIDs (Process ID) of processes which are given the time slices can be simply obtained by reading 
+task data structures of these processes. 
+ 
+Recording WNIC System Activities 
+To obtain begin and end time of process activities that cause energy consumption in the 
+WNIC, we have employed a novel technique that takes advantage of the new mac80211 
+ Figure 3: Mapping power measurements with system activities. 
+ 
+Time Synchronization between Host and Target 
+We collect power measurements and system activities at two different devices, and hardware 
+clock, thus system clock, of these two devices are not synchronized. We use time values to map 
+measurements with activities. Therefore we need to synchronize the clocks for correct mapping. 
+There are two common techniques to achieve clock synchronization. The first one is to use 
+external trigger mechanism of measurement device like in [1]. Although this technique produces 
+acceptable results, it requires one more trigger pin from the measurement device. Because we 
+have used the only available trigger pin of our measurement device, we were unable to employ 
+this technique. The second well-known technique is to use NTP (Network Time Protocol). An 
+NTP server runs in the host PC, and a NTP client in the target mobile device. Right before 
+measurement begins, host and target synchronizes system times using NTP service, then 
+measurement and profiling can begin. The NTP client periodically connects to NTP server for 
+re-synchronization.  
+ 
+Wireless Environment Emulator 
+Emulating wireless environment is achieved by using a wireless signal attenuator and a 
+RF-shielded chamber. A Wireless LAN (WLAN) channel model is employed to calculate the 
+signal attenuation caused by movement of the mobile device under test. Then attenuator is set to 
+this attenuation value. Since the mobile device is in a preserved volume that is filled with the 
+controlled wireless signal, it gradually senses the attenuation as if it was moving away/close 
+from/to wireless AP. We have designed a simple scripting language to allow users to run desired 
+scenario for a wireless field test. We call a script written with our language as a mobility script 
+We tested the usefulness of our energy profiling tool by using it to turn a simple email client 
+application into an energy-aware and network-aware one. The application (popmaildir) [21] is a 
+command line based application and does not have built-in TCP transport mechanism. That’s, it 
+needs external programs like netcat or tcpclient to be able to fetch or send emails. In this test case, 
+it connects to an email server on internet and receives one email with a 10MB attachment. 
+Energy consumption of an application can be reduced by applying numerous techniques, such 
+as by optimizing the algorithm to take less time to complete, or to consume less memory, etc. 
+Because our tool aims to combine energy profiling with emulation of wireless environment, in 
+this case study, we focused on the techniques that make applications aware of external conditions, 
+specifically wireless network conditions, that can cause them consume more or less energy. Being 
+able to test various optimization techniques and mobility scenarios in terms of energy 
+consumption and network behavior, we were able to successfully optimize the email client in a 
+way that it can adapt itself to changing wireless channel conditions, hence became an energy and 
+network aware application.  
+Our optimization method is based on the notion that the energy consumption of an application 
+is directly related with the amount of time that application uses CPU or WNIC device for. Such as, 
+if the application uses WNIC device for shorter time periods, the device can sleep for longer 
+durations, thus can conserve more energy. To use WNIC device for a shorter duration, application 
+must transmit or receive data, in our case one email with a 10MB attachment, with the highest 
+achievable bit rate, and highest bit rate can be achieved only when wireless signal quality is the 
+best. 
+Unmodified version of email client does not observe wireless signal level. It immediately begins 
+to download the email. On the other hand, modified version of the email client periodically 
+observes wireless signal level to receive the email at the highest bit rate possible. If the level is 
+below a certain threshold (-82dBm), it sleeps for a while. When it detects the level is above the 
+threshold, it begins to download the email at a high bit rate. In total, we ran 20 sets of 
+experiments for unmodified and modified versions of email client. Table 1 lists the results of 
+these experiments. 
+Table 1: Results of case study 
+Experiment 
+No
+CPU 
+Energy
+WNIC 
+Energy
+Total Energy 
+(Joule)
+Experiment 
+No
+CPU 
+Energy
+WNIC 
+Energy
+Total Energy 
+(Joule)
+1 11.82 12.27 24.09 1 7.9 8.98 16.88
+2 10.53 12.1 22.63 2 8.17 8.66 16.83
+3 9.97 12.87 22.84 3 7.64 8.34 15.98
+4 11.08 13.15 24.23 4 8.68 8.27 16.95
+5 11.3 12.76 24.06 5 8.02 9.03 17.05
+6 11.04 13.4 24.44 6 8.57 8.6 17.17
+7 10.99 13.89 24.88 7 8.3 8.19 16.49
+8 10.15 13.62 23.77 8 8.85 8.33 17.18
+9 9.93 13.35 23.28 9 8.24 9.17 17.41
+10 10.19 13.11 23.3 10 8.54 8.58 17.12
+23.752 16.906
+Unmodified popmaildir Modified popmaildir
+Average Average  
+ 
+As seen in Table 1, we saved in average 30% of energy with the modified email client. At 
+8. D. Brooks, V. Tiwari, and M. Martonosi, "Wattch: A framework for architectural-level power analysis and 
+optimizations," in Proceedings of International Symposium Computer Architecture (ISCA'00), pp. 83-94, 2000. 
+9. S. Gurumurthi, A. Sivasubramaniam, M. J Irwin, N. Vijaykrishnan, and M. Kandemir, "Using complete machine 
+simulation for software power estimation: the SoftWatt approach," in Proceedings of the 8th International 
+Symposium on High-Performance Computer Architecture (HPCA’02), pp. 141-150, 2-6 Feb. 2002. 
+10. V. Tiwari, S. Malik, and A. Wolfe, "Power analysis of embedded software: A first step towards software power 
+minimization," IEEE Transactions on Very Large Scale Integration (VLSI) Systems, Vol. 2, Issue 4, pp. 437-445, 
+Dec. 1994. 
+11. A. Sinha and A. P. Chandrakasan, "JouleTrack - A Web based tool for software energy profiling," in Proceedings 
+of Design Automation Conference, pp. 220-225, 2001.  
+12. H. Blume, D. Becker, L. Rotenberg, M. Botteck, and J. Brakensiek, T. G. Noll, "Hybrid functional and 
+instruction-level power modeling for embedded and heterogeneous processor architectures," Journal of Systems 
+Architecture, Vol. 53, Issue 10, pp. 689–702, 2007. 
+13. “mac80211 Framework for Soft-MAC Wireless Devices”, http://wireless.kernel.org/ 
+14. “NI PCI-6115 DAQ Card”, http://sine.ni.com/nips/cds/view/p/lang/en/nid/11886 
+15. “FLUKE i30s 30 AC/DC Current Clamp”, 
+http://us.fluke.com/fluke/usen/Accessories/Current-Clamps/i30s.htm?PID=56297 
+16. “EPA-400 Programmable Attenuator”,  
+http://e-channel.com.tw/zencart/index.php?main_page=product_info&products_id=1175 
+17. “D-Link DIR-600 Wireless AP”, http://www.dlink.com/DIR-600 
+18. “NI PCI-GPIB Interface Card”,  http://sine.ni.com/nips/cds/view/p/lang/en/nid/203786 
+19. “Microtime PreSOC with Create XScale-PXA270 Daughter Board”,  
+http://www.microtime.com.tw/English/PreSOC.htm 
+20. “D-Link DWL-G122 USB Wireless NIC - FW Version 3.0”,  
+http://www.dlink.com/products/?pid=334 
+21. “popmaildir – simple email client”, http://riemann.fmi.uni-sofia.bg/popmaildir/ 

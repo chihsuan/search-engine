@@ -1,0 +1,797 @@
+ 2 
+中英文摘要 
+在數位訊號處理過程中，常常會使用到可以運算特定函數的硬體單元，例如：求倒數、開根號、
+取指數或對數…等運算。一般說來通常採用以查表為主的函數近似方法來實作，如此可避免因為運算
+繁雜而導致效能不佳，但是隨著精準度提高，表格所占的面積卻將大幅增加。本計畫透過非等份切割
+法，切割表格後再將表格重排，以取得可較節省面積的對應方式，此方法針對函數近似演算法加以改
+良，可有效減少表格面積及額外的硬體負擔。  
+關鍵詞︰查表法為主之函數求值、分段式函數近似,等分切割、非等份切割 
+In many digital signal processing applications, we often need some special function units 
+that can compute complicated arithmetic functions such as reciprocal, logarithm, power of 
+2, trigonometric functions, etc. The most popular designs are based on look-up tables with 
+polynomial approximation. However, the table size will increase significantly in accordance 
+with precision. In this project, we propose a method called remapping to reduce the table 
+size using non-uniform segmentation. When we obtain the coefficients for all segments, we 
+do not store them in order. Instead, by sorting the coefficients in the ROM, we design an 
+efficient hardware mapping. The method can reduce the ROM size with lower area and delay 
+overhead in address mapping for non-uniform segmentation. 
+Keywords: Table-based function evaluation, piecewise function approximations,uniform 
+segmentation, non-uniform segmentation. 
+ 4 
+一、 前言 
+在多媒體、通訊和電腦繪圖等工程領域裡數學函數扮演著不可或缺的角色，例如在電腦繪圖應用
+中的座標轉換 (coordinate transformation)和打光 (lighting)等幾何運算，通常會用到大量的開根號
+(square-root)、倒數(reciprocal)、指數(exponential)、對數(logarithm)和三角函數(trigonometric)等函數運
+算，這些複雜的函數求值(function evaluation)計算是主要的核心運算，而這些運算往往決定整個系統的
+效能，因此如何將數學函數實作在硬體上是值得探討的方向。 
+二、 研究目的 
+特殊函數（reciprocal, logarithm, etc.）的運算在一些特殊領域中是很重要的，例如 3D 電腦圖學、
+通訊技術或其他 DSP（digital signal processing）的應用。 在這些領域中，如果使軟體來實作這些特殊
+函數的話，在大量數學運算或是及時運算下，執行速度將會很慢。由於這個缺點，所以大部分的高速
+函數計算之應用都是採用硬體導向的方案來解決，因此這些函數產生器的硬體設計的好壞將會決定
+DSP 系統的效能。 
+除了硬體的效率之外，對可攜式硬體來說，面積是另一項重要的考量因素，例如，手機和 PDA 
+（Personal Digital Assistance）。 在實作上，一般會使用查表法（Table- Look-up Methods）搭配乘法器、
+加法器和平方器做多項式逼近，如此可以將運算簡單化，提升其效能。查表法常被使使用在函數計算
+的單元中。在低精確度的計算下(例如 8-bit)，因為表格的大小很小，所以使用查表法實作是非常有效
+率的。但是在高精確度時，表格面積將會變得非常的巨大，使用查表法來實作就會變得非常不實際了。 
+(如圖[2-1]所示) 
+ 圖[2-2]顯示在高精確度下，表格面積佔整體函數面積超過 90%。查表法的優點為快速，但其缺點
+為隨著精準度的提高，表格也將隨之增加，在高精準度下甚至占據總面積的八成以上。因此，如何盡
+可能將表格面積及其他算術運算面積縮小為本計畫的探討重點。我們可以預期，如果能有效化簡表格
+面積的話，整體面積將會巨幅的減小。因此，本計畫的動機就是為函數運算的查表法尋找出一個有效
+的記憶體大小的化簡方法。 
+ 
+圖[2-1] Table size increases rapidly with respect to bit-precision. 
+ 
+圖[2-2] Percentage of ROM size in a functional unit that calculates arithmetic function of x2log . 
+ 6 
+多項式近似法使用乘法器、平方器等基本運算單元配合儲存係數的表格來計算特殊函數。假設 )(xf
+為想去逼近的目標函數，其數學通式可以表達如下： 
+k
+k
+k
+k xaxaxaxaaxf 
+
+
+1
+1
+2
+2
+1
+10)(                  (1) 
+式中的 k 值即為此多項式近似法的計算階數(degree, order)，表格所需要存下的內容為 kaaaa ,...,,, 210
+等係數。相同精準度底下，越高階的多項式近似法所需要存放在表格內的資訊越少，表格就可以越小。
+但是在所需求的硬體也會增加許多，因此其餘硬體面積跟整體延遲也會隨之大增。因此如何取得表格
+的縮減與硬體間的平衡是值得探討的方向，一般說來所要求的精準度越高，所需要的階數也越高，但
+是相對的高階時速度必然較慢，如式(1)中 k 階的多項式近似法，其最長路徑(Critical Path)，或需要經
+過 k 個乘法器(含平方器、立方器等)以及 k+1 個輸入的累加器。而目前絕大部分多項式近似法的研究上
+面所採用的，都是一或二階的架構。 
+Piecewise Table Methods 主要概念是將原本函數需要輸入所表達的範圍，切割成許多的子區間，這
+樣一來原本輸入的值域底下，可能需要高階多項式函數逼近法才能達到要求的精準度，而現在可能只
+需一階或二階方程式即可。如[圖 3-2]所示，原本的輸入拆成兩個部份，而針對每一個切割出來的子區
+間，其新的值域只需要用(n-m) bit 最低有效位元來表達，即 lx 。 
+ 
+[圖 3-2] Piecewise Table Methods 輸入分割 
+[圖 3-2]
+lx 所代表的涵義是該子區間的輸入值，而 m 代表最高有效位元 mx 共有
+m2 的數值，每一個
+數值就代表對應了一個子區間。因此總共擁有 m2 個子區間，每個子區間大小為 m2 再乘上輸入範圍 。
+其中每一個子區間都有對應的多項式函數作為逼近。如[圖 3-3]所示，左邊為 m=2 的情況，共有 4 個子
+區間，右邊為 m=3 的情況共有 8 個子區間。而因為每一個子區間中都有個別的多項式函數，即是每個
+子區間根據 mx 的值，有著不同的係數 ),...,,,( 210 kaaaa ，因此式(1)可改寫成下式: 
+
+
+
+k
+i
+i
+lmi
+k
+lmklmlmm xxaxxaxxaxxaxaxf
+0
+2
+210 )()(...)()()()(
+   
+(2) 
+ 8 
+實作 Piecewise Methods 中的逼近多項式運算（式(2)）會有許多不同架構，例如[19]採用的是 Horner’s 
+rule；[15]則是使用了捨棄式乘法器(Truncated Multiplier)與平方器；[16]是採用 Booth recoding 輸入加
+上 accumulation tree 去做化簡。 下面分別是各自的架構圖。 
+ 
+(a)                              (b) 
+[圖 3-5] (a) Horner’s rule  (b) Truncated 乘法器架構圖 
+ 
+ 
+[圖 3-6] accumulation tree 2 階架構圖 
+儘管 uniform segmentation 的硬體實作方法很簡單，但是在應用在非線性函數時，卻很沒有效率。
+因此，有幾種 Non-uniform Piecewise 的方法[19][20]被提出。如下所述： 
+非等份切割法(Non-uniform Piecewise Methods)定義為切割出來的子區間大小是不一致的，也就是每
+ 10 
+[20]提供了一個演算法來實做 non-uniform，首先第一個步驟:針對一個範圍，用一階多項逼近，找
+出一個最大誤差，若不能滿足所需要求，就由最大誤差的地方切割，將原本的範圍分成兩個子區間。
+第二個步驟:針對每個子區間範圍、重複第一個步驟，最後依此動作直到所有區間誤差都滿足要求。[20]
+所提供的演算法，對於子區間個數的縮減有著不錯的效果，但是[19] D-U Lee 提出數據指出，雖然對於
+子區間個數有著較好的效果，但是為了追求這效果，使得額外負擔產生的面積過大。所以切割方式，
+要能做到較好硬體對應，否則將會得不償失。[19]提出一個 Hierarchical Segmentation 切割方式，原始
+有著多層次切割的意思在，考量實做因此僅採取兩層切割。[19]提出的方式，被紅色方框框住的部份，
+視為額外增加的硬體，底下提到時稱之為 Encoder，雖然比起[20]，[19]提出的方法已經有著較小的面
+積，但是還是能有更好的硬體對應方式，下一章將提出一個新的 Non-uniform Segmentation 方式與硬體
+架構，對於 Encoder 部份有著較小的面積和較快的延遲。 
+四、研究方法 
+本節將介紹一個新的 Non-uniform Segmentation 的方法，[19]中提及 balance error 方式做切割，對於
+縮減 segment 個數有較佳的效果，但是卻完全失去硬體原本上的對應，導致額外增加的硬體面積過大
+反而得不償失。因此選取一個可以保留原本硬體對應，並且最大限度的降低 segment 個數的方式，將
+可以對於整體面積有比較好的效果。因此[19]提出了 Hierarchical Segmentation，比[20]有著更好的硬體
+對應。但是[19]所提及的方式其實還有改進的空間，這節將提出一個新的對應方式稱為 Remapping 
+Segmentation，來使得額外的負擔可以更為縮小。 
+定義 approx 為多項式近似法所產生的誤差，在做函數逼近的時候其值必須小於給定的 accept 。而為了
+達到更好的效果，求取係數及誤差的方法採取與[16]方法相同，使用 Minimax 的函式。而在 segment
+切割方面不同於[19]與[20]所採用的方式，是先用 uniform 的架構為基準，先求出一個基本的 m，依此
+m 得出一個最基本的區間單位( rangem 2 )，假設 ),[ bax 則 abrange  。在得出基本的區間單位後，
+才會進行 non-uniform 架構下的分割的動作。 
+底下將 r a n g em 2 稱為基底寬度，而 Uniform Segmentation 所切割出來的 segment 稱為
+base-segment ，其大小即為基底寬度；而 Remapping Segmentation 的切割出來的稱 segment 為
+merge-segment，大小為基底寬度的倍數、且倍數為 2 的指數次方。如[圖 4-1](b)所示，merge-segment
+的大小分別為 20 、21、22倍的基底寬度。而決定 merge-segment 寬度的方式，基本條件是能在較大的
+子區間內，找到 approx 小於 accept 的多項式。因應切割方式的演算法的不同，將[19]與[20]所使用演算法
+歸類為 Top-Down 的切割方式，而本計畫所使用的演算法的方式歸類為 Bottom-up 的切割方式。 
+[圖 4-2]為[圖 4-1]的例子轉換而來，底下節點中的數字代表了對應倍數的基底寬度，例如最底層節
+點中的 1 代表了 1 倍的基底寬度。灰色節點則代表了最後的合併結果(merge-segment)，最底層的 1 表
+示著 merge-segment 的最差狀況即為 1 的基底寬度，也就是說跟 Uniform Segmentation 有一樣的效果。 
+ 12 
+ 
+[圖 4-3] Max_merge 的程式碼 
+[圖 4-3]的演算法概念，是因為程式由左至右開始運算，可由前面已處理過的 base-segment 的個數，
+來判斷已經到了樹狀結構哪個位置，使得 base-segment 可依照樹狀結構合併。例如 base_counter=4，表
+示計算中的 merge-segment 起點為第 5 個 base-segment，左邊有顆 root 的為 4 的二元樹已被使用，不能
+進行合併。所以該 merge-segment 最多只能合併 4 個 base-segment、Max_merge=4。 
+Remapping Segmentation 的演算法可以由(5)做個小幅度的修整，就可以符合該演算法的需求，(5)
+中輸入範圍為 )2,[
+m
+mm xx
+ ，因為區間大小已不再固定為 m2 ，因此可將每個 merge-segment 範圍設定
+成 )_,[ rangetxx mm  ， mx 表示為該 merge-segment 的起始值。 ranget _ 為
+m2 的倍數。改寫可得下式： 
+pol:=minimax(log2( mx + x),x=0..t_range,[2,0],1,'err')          (6) 
+Remapping Segmentation 的演算法可以簡單用下面的流程圖來表達，首先要經過一次的 Minimax 求
+m 的相關流程，就可根據[圖 4-4]演算法得到 Remapping  Segmentation 的結果。Max_merge 為[圖 4-3]
+所表示的函式。 
+    m=uniform_m
+    range=[a,b]
+    xm=a
+    t_range=b-a
+minimax(f(x+xm),x=0..t_range, 
+degree,err)
+err <= accept_err t_range=t_range/2
+No
+xm= xm+t_range
+t_range=Max_merge(xm /2
+-m
+)*2
+-m
+xm==b
+No
+Yes
+End
+Yes
+Start
+ 
+[圖 4-4] Remapping Segmentation 切割流程圖 
+ 
+ 14 
+Remapping Segmentation 過後，為了進行接下來重排的動作，要對 merge-segment 進行分類。
+merge-segment 包含 base-segment 數目一樣且相連在一起先歸成同一群組，再將每一群組的個數依 2 的
+指數次方作分割，得出新的區塊。例如同一群組數為 7 個，就被分拆成 4、2、1 新的三個區塊。[圖 4-5] 
+中的範例依此原則先分割成四個群組，每個群組分別所擁有的 merge-segment 個數為 4、2、1、4，恰
+為 2 的指數次方不用在行分割，因此[圖 4-5]的例子將被分割成成四個區塊。 
+[圖 4-6]所蘊含的概念等同於 [19]中的架構。圖中將 segment 分成四個不同的區塊，每個區塊中被
+藍色圓框所框住的部份，可對應到 encoder 中的圓框中的部份，可視為 new_index 中的起始位置，即區
+塊中的第一個 merge-segment 所對應的位址。起始位置加上紅色框住的部份，可得出最後的 new_index。
+進一步觀察可以發現前面幾項，不需要使用到加法器。例如：0000+XX 得出來的值，跟 00XX 會有一
+模一樣的結果，但是到了後面的項目，卻沒辦法如此產生對應了，原因是區塊中的 segment 個數變動
+的問題，在最後一個區塊因為起始位置後兩位是 11，與紅框內容無法直接作鍊結。 
+當該區塊所含 merge-segment 的個數為 2k  ，下個區塊中 new_index 的後面 k 位元將會是由 0 做起
+始，例如 22 則下個區塊的起始位置後 2 位將會是 0。利用這樣的特性，不同於一般 uniform 架構中，
+係數存放的順序為由左至右存放，remapping 方法依照每個區塊所包含 merge-segment 個數，由大到小
+存放。這樣可以保證每個區塊可以和 mx 產生對應，藉此將數值直接由 mx 來的值作取代。 
+ 
+[圖 4-7]Remapping 後的位址對應 
+[圖 4-7]為重排後結果，讓 Address encoder 直接使用來自 mx 值，最大好處就是減少的加法器所帶來
+的面積和延遲。重排的基準，依照的是區塊中 merge-segment 個數，由大到小排列即可。每個區塊所包
+含merge-segment個數的必須為 2的指數次方的原因在於此，否則重新排列一樣無法避開加法器的使用。 
+程式實作必須記錄下重排前的所在位置，以及重排後的位置，每個區塊所包含的 merge-segment 個
+數等資訊，才能產生 Address encoder 的 RTL code。整體演算法流程可以分為下面四個步驟:第一步取得
+初始值 m、第二步進行  Remapping Segmentation 合併取得新的 merge-segment、第三步進行
+merge-segment 區塊分類與重排、第四步記錄下足夠的資訊，確保可以產生硬體 Address encoder。 
+ 16 
+五、結果與討論 
+5.1 演算法之分析比較 
+將切割的 entry 個數來作比較。[19]所提供的方法可以視為第三章提出的 Remapping 方法 中的特
+例 ， 切 割 後 完 成 後 的 segment 個 數 比 較 如 下 表 所 示 ： 定 義
+0373.0378.0348.196.1
+0002.00004.0
+_
+234 
+
+
+xxxx
+x
+funspec ，此式為自訂的函數主要是為了跟[19]比較而採用。 
+Function Method 162approx  
+242approx  
+Segment Reduction Segment Reduction 
+ 
+x1cos                        
+Uniform 32768 - 8388608 - 
+[19] 49 99.85% 347 99.99% 
+Remapping 40 99.88% 284 99.99% 
+ 
+x
+x
+2log
+2
+                        
+Uniform 4096 - 1048576 - 
+[19] 32 99.22% 191 99.98% 
+Remapping 28 
+99.32% 
+173 
+99.98% 
+ 
+funspec _  
+ 
+Uniform 512 - 2048 - 
+[19] 124 75.78% 736 64.06% 
+Remapping 111 
+78.32% 
+707 
+65.48% 
+ 
+)1/(1 x                           
+Uniform 16 - 128 - 
+[19] 11 31.25% 76  40.63% 
+Remapping 11 31.25% 76 40.63% 
+ 
+)1ln( x                           
+Uniform 16 - 64 - 
+[19] 9   43.75% 56 12.50% 
+Remapping 9 43.75% 56 12.50% 
+[表 5-1]  deg-2 架構 segment 切割結果
+ 18 
+的切法，一定將最後的一半視為同一區塊，而該區塊其實還是有辦法作更多的細分。而第一層採取 US
+的缺點在於，當函數的變動幅度比較大，就比較難達到較好效果。第一層使用 US 架構、當切割較細
+時，可以合併的區間會被分開，但是切割較大的時候，平緩程度不一的曲線、又會被劃分同一子區間
+內。上述狀況都是 Remapping 切割方式可以勝過[19]的地方。 
+5.2 面積以及速度之評估 
+non-uniform 的架構中除了上述的 segments 縮減外，額外硬體所增加的面積跟延遲也是個重點，下
+表列出 Remapping 與[19]的 encoder 合成數據的比較，本章所列數據皆採用 umc90 的製程。 
+ Requirement 162approx  
+242approx  
+function  
+(degree-2)  
+scheme Encoder 
+Delay(ns) 
+Encoder 
+Area(FA) 
+Encoder 
+Delay(ns) 
+Encoder 
+Area(FA) 
+x1cos                        [19]  4.09 26 4.92 51 
+Remapping 1.16 16 2.10 41 
+x
+x
+2log
+2
+                        
+[19]  3.60 21 5.02 45 
+Remapping 1.24 11 2.12 30 
+funspec _  [19]  2.30 29 3.73 83 
+Remapping 1.28 25 1.73 56 
+)1/(1 x                           [19] 0.55 4 0.91 10 
+Remapping 0.31 1 0.46 2 
+)1ln( x  [19]  0.54 4 0.81 4 
+Remapping 0.29 1 0.26 1 
+[表 5-2]  Encoder 面積以及速度的比較 
+由[表 5-2]得知 Remapping 架構的 Encoder 部分，不論是面積還是速度都遠勝於[19]所提出的架構，
+[表 5-1]也顯示對於表格面積的縮減Remapping也勝過[19]。綜上所述，目前已知發表論文的non-uniform
+架構中，Remapping Method 是最佳的選擇。 
+接著探討 uniform 架構跟 Remapping Method 的適用範圍，下表所列為不同函數，精準度到小數點
+以下 12 位的硬體合成數據，為[圖 5-1]的硬體架構合成。其中 x1cos 實做硬體的部份已經退化為直接
+查表法，因此只有 ROM size。 
+ Requirement 122total  
+function 
+(degree-2) 
+scheme Segment 
+Total 
+delay 
+(ns) 
+ROM 
+Size 
+(FA) 
+Logic 
+Area 
+(FA) 
+Encoder 
+Area 
+(FA) 
+Total 
+Area 
+(FA) 
+x1cos  
+Uniform 4096 6.29 984   984 
+Remapping 30 8.16 48 536 11 595 
+ 
+x
+x
+2log
+2
+  
+Uniform 1024 7.08 518 114  630 
+Remapping 18 7.15 30 459 7 494 
+funspec _  
+Uniform 256 6.29 298 227  525 
+Remapping 71 7.46 142 350 19 481 
+)1/(1 x  Uniform 8 6.16 14 304  318 
+ 20 
+Function Scheme 12-bit 16-bit 20-bit 24-bit 28-bit 32-bit 
+)1/(1 x      
+deg-1                       
+Uniform 154 387 1025 3909 15013 - 
+Remapping 146 320 841 3011 11450 - 
+Reduction 5.1% 17.3% 17.9% 22.9% 23.7% - 
+)1/(1 x      
+deg-2                 
+Uniform 318 475 716 1122 1832 3050 
+Remapping 390 539 797 1158 1654 2809 
+Reduction -22.6% -13.4% -11.3% -3.2% 9.7% 7.9% 
+[表 5-5]  1/x  uniform 跟 Remapping 的面積比較(FA) 
+Function Scheme 12-bit 16-bit 20-bit 24-bit 28-bit 32-bit 
+)1/(1 x      
+deg-1                       
+Uniform 4.49 6.21 8.03 11.78 14.58 - 
+Remapping 4.95 7.07 9.59 11.5 14.34 - 
+Reduction -10.2% -13.8% -19.4% 2.3% 1.6% - 
+)1/(1 x      
+deg-2                 
+Uniform 6.16 7.14 8.69 9.98 10.8 12.71 
+Remapping 6.39 7.51 9.09 10.79 11.42 14.12 
+Reduction -3.7% -5.1% -4.6% -8.1% -5.7% -11.0% 
+[表 5-6]  1/x  uniform 跟 Remapping 的速度比較(ns) 
+[表 5-5]、[表 5-6]的 deg-1 架構 32-bit 無法合成，所以數據沒有列出。deg-1 的架構在 12-bit 精確度
+時 Remapping 面積已有佔優勢，而 deg-2 架構則是到了 28-bit Remapping 的面積才贏過 uniform 的架構，
+速度方面 deg-1 架構到了 24-bit 反而有縮減，主要原因應該是表格太大時延遲也長，當縮減表格時速度
+也因此提昇不少。下圖是根據[表 5-5]製成，純以面積考量在 12-bit 至 16-bit 適用的架構為 deg-1 
+Remapping 架構、20-bit 至 24-bit 適用的架構為 deg-2 uniform 架構、28-bit 至 32-bit 適用的架構為 deg-2 
+Remapping 架構。 
+ 
+[圖 5-3] 12-20bit 綜合比較 
+   
+ 22 
+and Fused Accumulation Tree,” Proc. 15th IEEE Symp. Computer Arithmetic, pp. 40-47, Jun. 2001. 
+[14]  J.M. Muller, “Partially rounded Small-Order Approximations for Accurate, Hardware-Oriented, 
+Table-Based Methods,” Proc. IEEE 16th Symp. Computer Arithmetic, pp. 1-8,Jun. 2003. 
+[15]  E.G. Walters-III and M.J. Schulte, “Efficient Function Approximation Using Truncated Multipliers and 
+Squarers,” Proc. IEEE 17th Symp. Computer Arithmetic, pp. 232-239, Jun. 2005. 
+[16]  J.A. Pineiro, J.M. Muller, and J.D. Bruguera, “High-Speed Function Approximation Using a Minimax 
+Quadratic Interpolator,” IEEE Transactions on Computers, vol. 54, no. 3, pp. 304-318, Mar. 2005. 
+[17]  D-U Lee, W. Luk, J. Villasenor, and P.Y.K. Cheung, “Hierarchical Segmentation Schemes for Function 
+Evaluation,” Proc. IEEE Conf. Field-Programmable Technology, pp. 92-99, Dec. 2003. 
+[18] D-U Lee, W. Luk, J. Villasenor, and P.Y.K. Cheung, “Non-uniform Segmentation for Hardware Function 
+Evaluation,” Proc. 11th Int’l Conf. Field Proframmable Logic and Applications, pp. 796-807, Sep. 2003. 
+[19] D-U Lee, “Hierarchical Segmentation for Hardware Function Evaluation” IEEE Transactions on Very 
+Large Scale Integration (VLSI) Systems, vol. 17, no. 1,pp. 103-116 ,Jan.2009 
+[20]  T. Sasao, S. Nagayama, and J.T. Butler, “Numerical Function Generators Using LUT Cascades,” IEEE 
+Transactions on Computers, vol. 56, no. 6,pp. 826 - 838, Jun 2007. 
+[21]  D-U Lee, R.C.C Cheung, W. Luk, and J.D. Villasenor, “Hardware Implementation Trad-Offs of 
+Polynomial Approximations and Interpolations,” IEEE Transactions on Computers, vol. 57, no. 5, pp. 
+686-701, May. 2008. 
+[22]  D-U Lee, A.A. Gaffar, O. Mencer, and W. Luk, “Adaptive Range Reduction for Hardware Function 
+Evaluation,” Proc. IEEE Int’l Conf. Field-Programmable Technology, pp.169-176, Dec. 2004. 
+[23]  D-U Lee, A.A. Gaffar, O. Mencer, and W. Luk, “Optimizing Hardware Function Evaluation,” IEEE 
+Transactions on Computers, vol. 54, no. 12, pp.1520-1531 Dec. 2005. 
+[24]  Behroox Parhami, Computer Arithmetic (Algorithms and Hardware Designs), Oxford University Press, 
+2000 
+[25]  L-D. Van and C.C. Yang, “Generalized Low-Error Area-Efficient Fixed-Width Multipliers,” IEEE 
+Transactions on Circuits and System-I, vol. 52m no. 8, pp.1608-1619 , Aug. 2005. 
+七、計畫結果自評 
+此計畫已按原訂目標執行完畢，完成預期之成果，部分成果為碩士論文，也陸續投稿至在國際會
+議和期刊發表，且將之應用在算術單元和三維繪圖處理器設計。2009 年底 3D 電影「阿凡達」(Avatar)
+在全球上映並迅速成為影史上最賣座的電影，也標記了 3D 時代的正式來臨，如何提升 3D 影像處理器
+的執行速度是刻不容緩待解決的問題，因此本計畫所發展的算術運算單元很適合在 3D 影像流行的時
+代，做為 3D 影像處理器中的算術運算單元使用。另外，他也可以滿足使用者在多媒體、通訊和電腦繪
+圖等多方面的需求（Speed/Area/Power）和降低設計成本。
+ 24 
+ 
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+                                     日期：   年   月   日 
+                                 
+計畫編號 NSC－99－2221－E－110－055 
+計畫名稱 以查表法為主函數求值功能單元之設計最佳化 
+出國人員
+姓名 
+溫家聖 
+服務機構
+及職稱 
+中山大學 資訊工程學系 博士 
+會議時間 
+2010年 12月 6日至 
+2010年 12月 9日 會議地點 馬來西亞吉隆坡 
+會議名稱 
+(中文)2010年 IEEE亞太電路與系統學術大會 
+(英文)2010 IEEE Asia Pacific Conference on Circuits and Systems 
+發表論文
+題目 
+(中文)使用由下而上合併非等份區間法來縮減以查表為主之函數評估
+中之表格面積 
+(英文) Design of Table-Based Function Evaluators with Reduced 
+Memory Size Using a Bottom-Up Non-Uniform Segmentation Method 
+ 
+ 26 
+早便前往會場參與接連三天的會議，並於十二月九日馬來西亞吉隆坡當地時間下午三時三十分左右搭
+機返國。 
+ 
+二、 與會心得 
+參加了這次在馬來西亞吉隆坡所舉辦的 APCCAS 2010 會議，除了讓我再次參與體驗國際會議外，
+最重要的，也讓我對電路設計相關研究領域與資訊有更大的認知和視野，並且與在場各國學者的研究
+交流中，看到了不少嶄新的技術和研究的新方向。 
+學術研究和作學問是需深入專研的，但並非是閉門造車的方式，透過與他人的討論、或者是吸收
+瞭解其他相關知識，有時更能事半功倍的提供研究者一個嶄新的方向。而參與國際會議便達到了此等
+功能，大師們講演整個電路設計的未來該往什麼方向前進、目前應用面而言已做到了何等境界，而各
+國研究學者也提出許多關於處理器架構、SoC 電路設計、奈米的技術與省電技術的應用、嵌入式系統
+的研究、3D 模型的建立、電路的合成、訊號的分離、編碼理論、甚至將 3D 視覺相關技術實際落實在
+嵌入式系統的研究等，都讓自己對電路相關的研究有更寬闊的認識。自己在算術運算技術上的研究，
+也經由和與會的各國學者交流意見後，得到了更多的研究方向和目標。 
+此外，透過與外國研究學者的溝通與交談，除了能提升自己的英語能力外，也能廣為結識國外學
+者，以了解各國的文化。 
+感謝教育部補助得以參與此次 APCCAS2010 國際會議，於其間發表論文。這段期間所得知如學
+界及產業界對未來算術運算這個研究發展的見解與方向，都對自己未來的研究方向與視野有著重大的
+助益。並且能讓我個人在相關學術領域之研究上，得到更多的啟發和想法。 
+ 
+三、 考察參觀活動（無是項活動者省略） 
+    無 
+四、 建議 
+ 1 
+ 
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+                                      
+                                 
+計畫編號 NSC－99－2221－E－110－055 
+計畫名稱 以查表法為主函數求值功能單元之設計最佳化 
+出國人員
+姓名 
+溫家聖 
+服務機構
+及職稱 
+中山大學 資訊工程學系 博士 
+會議時間 
+2010年 12月 6日至 
+2010年 12月 9日 會議地點 馬來西亞吉隆坡 
+會議名稱 
+(中文)2010年 IEEE亞太電路與系統學術大會 
+(英文)2010 IEEE Asia Pacific Conference on Circuits and Systems 
+發表論文
+題目 
+(中文)使用由下而上合併非等份區間法來縮減以查表為主之函數評估
+中之表格面積 
+(英文) Design of Table-Based Function Evaluators with Reduced 
+Memory Size Using a Bottom-Up Non-Uniform Segmentation Method 
+ 
+ 3 
+早便前往會場參與接連三天的會議，並於十二月九日馬來西亞吉隆坡當地時間下午三時三十分左右搭
+機返國。 
+ 
+二、 與會心得 
+參加了這次在馬來西亞吉隆坡所舉辦的 APCCAS 2010 會議，除了讓我再次參與體驗國際會議外，
+最重要的，也讓我對電路設計相關研究領域與資訊有更大的認知和視野，並且與在場各國學者的研究
+交流中，看到了不少嶄新的技術和研究的新方向。 
+學術研究和作學問是需深入專研的，但並非是閉門造車的方式，透過與他人的討論、或者是吸收
+瞭解其他相關知識，有時更能事半功倍的提供研究者一個嶄新的方向。而參與國際會議便達到了此等
+功能，大師們講演整個電路設計的未來該往什麼方向前進、目前應用面而言已做到了何等境界，而各
+國研究學者也提出許多關於處理器架構、SoC 電路設計、奈米的技術與省電技術的應用、嵌入式系統
+的研究、3D 模型的建立、電路的合成、訊號的分離、編碼理論、甚至將 3D 視覺相關技術實際落實在
+嵌入式系統的研究等，都讓自己對電路相關的研究有更寬闊的認識。自己在算術運算技術上的研究，
+也經由和與會的各國學者交流意見後，得到了更多的研究方向和目標。 
+此外，透過與外國研究學者的溝通與交談，除了能提升自己的英語能力外，也能廣為結識國外學
+者，以了解各國的文化。 
+感謝教育部補助得以參與此次 APCCAS2010 國際會議，於其間發表論文。這段期間所得知如學
+界及產業界對未來算術運算這個研究發展的見解與方向，都對自己未來的研究方向與視野有著重大的
+助益。並且能讓我個人在相關學術領域之研究上，得到更多的啟發和想法。 
+ 
+三、 考察參觀活動（無是項活動者省略） 
+    無 
+四、 建議 
+2010 Asia Pacific Conference on Circuits and Systems (APCCAS 2010) 
+6 – 9 December 2010, Kuala Lumpur, Malaysia 
+ 
+Design of Table-Based Function Evaluators with 
+Reduced Memory Size Using a Bottom-Up Non-
+Uniform Segmentation Method 
+Shen-Fu Hsiao, Chia-Sheng Wen, and Kun-Chih Chen 
+Department of Computer Science and Engineering, National Sun Yat-sen University, Taiwan 
+sfhsiao@cse.nsysu.edu.tw, {sheng, image}@garfield.cse.nsysu.edu.tw 
+ 
+Abstract—One category of table-based arithmetic function 
+evaluators is to partition the input interval into uniform 
+segments of equal width where each segment is approximated by 
+a polynomial. This paper presents a non-uniform segmentation 
+method in order to reduce table size that usually increases 
+rapidly with respect to precision. Our approach employs a 
+bottom-up approach that merges neighbouring uniform 
+segments obtained in conventional piecewise polynomial 
+interpolation. The proposed non-uniform segmentation scheme is 
+applied to computing some elementary functions under different 
+bit accuracies. Analytical comparison and experiential results 
+show that the proposed method leads to smaller table size 
+compared with other previous methods due to the efficient 
+segmentation algorithm. 
+ 
+Index Terms— table-based function evaluation, polynomial 
+approximation, computer arithmetic, non-uniform segmentation. 
+I. INTRODUCTION 
+Function evaluation is essential to the design of datapath 
+components in many processors, including multi-core CPU, 
+graphics processing units (GPUs), digital signal processors 
+(DSPs), and multimedia processor [1]. A popular approach to 
+evaluate function is based on lookup tables plus some basic 
+arithmetic components. Depending on the size of lookup 
+tables, table-based arithmetic designs can be divided into three 
+categories: table-bound methods such as adder-only 
+multipartite [4], compute-bound methods such as polynomial 
+approximation [3][5-6], and in-between methods such as 
+CORDIC [7-8]. In this paper, we will focus on the polynomial 
+approximation methods because they represent a good 
+compromise between area and speed, and have been used in 
+many recent graphics processor designs. 
+Polynomial approximation methods partition the input 
+interval into uniform segments of equal width and interpolate 
+the function values of each segment by a polynomial. Thus 
+they are also called piecewise interpolation methods in this 
+paper. Fig. 1 shows the architecture for the degree-2 
+polynomial approximation method. The input x with n 
+fractional bits is split into two parts: the m most significant 
+bits (MSB), mx , and the (n-m) least significant bits (LSB), lx . 
+The function values f(x) in a segment is approximated as by a 
+polynomial of degree 2: 
+ )()()()()( 2210 lmlmm xxaxxaxaxPxf ++=≈           (1) 
+where mx is used to select the coefficients of the polynomial 
+from the coefficient table for the uniform segment  
+)2,[ mmm xx
+−+ determined by mx . The values of m that 
+satisfies the target precision can be found analytically [6] or 
+experimentally [3]. 
+0α 1α 2α
+ 
+Fig.1: Overall architecture of degree-2 piecewise polynomial approximation. 
+ 
+In the conventional uniform piecewise methods, the 
+number of segments is determined by the smallest segment 
+width needed to achieve the acceptable error. A more 
+sophisticated approach [9][10], non-uniform segmentation 
+scheme, is to allow for different segment widths in order to 
+use fewer segments to achieve the same precision. In this 
+paper, we will present a bottom-up non-uniform segmentation 
+method to reduce the number of segments and the coefficient 
+table size.  
+The paper organization is as follows: the algorithm and 
+architecture of the proposed non-uniform segmentation is 
+described in Sec. II. The error analysis and bit width 
+optimization is discussed in Section III. Then, experiential 
+results and comparisons are presented in Sec. IV. Finally, we 
+give the conclusion. 
+II. PROPOSED NON-UNIFORM SEGMENTATION 
+A. Proposed Algorithm 
+2010 Asia Pacific Conference on Circuits and Systems (APCCAS 2010) 
+6 – 9 December 2010, Kuala Lumpur, Malaysia 
+ 
+once the number of most significant bits m is determined. 
+However, in our non-uniform approach, the LSB part varies 
+from segment to segment because each non-uniform segment 
+has a different size. Thus, we use the segment number jb  of 
+the non-uniform segment to adjust the LSB part.  lx′   denotes 
+the LSB of the input data x after adjustment. In addition to the 
+two tables, a squarer, two multipliers and a 3-input adder are 
+required to perform the degree-2 polynomial approximation. 
+In the practical implementation, we usually realize the 
+multipliers with products in carry-save (CS) representations, 
+i.e., a sum output and a carry output, and thus a 5-input adder 
+is required. Note the squarer is not needed in degree-1 
+piecewise polynomial scheme. 
+The size of the index table in Fig. 4 can be calculated as 
+⎡ ⎤ ⎡ ⎤ bits   )loglog(2 max22 bsm +×               (2) 
+where s denotes the total number of non-uniform segments. 
+The size of the coefficient table is: 
+bits   
+0
+∑
+=
+×
+p
+i
+is α                              (3) 
+where iα  denotes the maximum bit-width of the polynomial 
+coefficient  *
+, jiα  after quantization for all s uniform segments  
+sjVj ,,2,1, "= . In the next section, we will discuss how to 
+select the bit-width. The total memory size is: 
+⎡ ⎤ ⎡ ⎤ bits    )loglog(2
+0
+max22 ∑
+=
+×++×
+p
+i
+i
+m sbs α        (4) 
+0α 1α 2α
+ 
+Fig.4:  Architecture of the proposed non-uniform segmentation method. 
+III. ERROR ANALYSIS 
+We will examine the errors for degree-2 polynomial 
+approximation in this section in order to determine the upper 
+bound of bit widths for polynomial coefficients, to be used as 
+the initial values for bit width optimization in Fig. 3 of the 
+non-uniform algorithm. The similar analysis can be 
+generalized to other degrees.  There are three types of errors in 
+our proposed non-uniform segmentation: approximation error 
+.apxε , rounding error and truncation error trε . Approximation 
+error 
+.apxε is from the non-uniform segmentation algorithm of 
+Fig. 3 where the function in each non-uniform segment is 
+approximated using a polynomial. Rounding error is bringed 
+after final adder. Truncation error trε  is introduced during the 
+coefficient quantization for the coefficient table and during the 
+interpolation operations of Eqn. (1). Using a degree-2 
+polynomial, the function in each segment is approximated by  
+2
+210
+2*
+2
+*
+1
+*
+0)()( llll xaxaaxaxaaxPxf ′+′+≈′+′+=≈      (5)  
+where *ia of infinite precision are quantized to ia with iα  
+fractional bits using the round-to-nearest scheme and then 
+stored in the coefficient table. Therefore, the quantized 
+coefficients can be expressed as: 
+2,1,0,2  ,  )1(* =≤+= +− iaa iiiii
+αεε        (6) 
+where iε  are the quantization errors associated with ia .  
+Assume the input data x has n fractional bits. The LSB 
+part for polynomial interpolation is adjusted from lx with 
+mn − nonzero bits to lx′  with μ+− mn  nonzero bits where 
+⎡ ⎤max2log b=μ . Since )(2 μ−−≤′ mlx ,  we have 
+)1('
+1
+'
+1
+'*
+1
+'
+1
+'*
+1
+'
+1
+12, μαεεε −++−≤+=+= mllll xaxxaxa      (7) 
+where '1ε is the rounding error associated with the degree-1 
+product term lxa ′1 . Afterward, this product lxa ′1  with n+1α  
+fractional bits is truncated to 1t  fractional bits, which 
+introduces an extra truncation error 12 t− . Thus, the range of 
+the round off error becomes  
+      1111 2222 )1(1
+)1( tm
+tr
+tm −−++−−−++−
+−≤≤−− μαμα ε   .     (8)  
+Here, we choose  
+μα −++= mt 111 ,                                 (9) 
+and the error after the truncation for the first-order product 
+term  becomes 
+02 1
+)( 1 ≤≤−+− tr
+m εμα    .                       (10) 
+Similar inequality can be derived for the truncation error of 
+the product term 22 lxa ′ . 
+Thus, the total error including the approximation error and 
+rounding error becomes 
+rounding
+mum
+apx
+roundingtrtrapxtotal
+εε
+εεεεεε
+μααα ++++<
+++++=
+−+−−+−+− ))(2()()1(
+210
+210 222        
+  .   (13) 
+If the target output precision is b fractional bits, i.e., 
+b
+total
+−< 2ε , we can make the following error assignment: 
+)1(
+)4())(2(
+2
+)4()(
+1
+)3()1(
+0
+)2(
+2
+22
+22
+22
+2
+2
+1
+0
++−
++−−+−
++−−+−
++−+−
++−
+<
+=<
+=<
+=<
+<
+b
+rounding
+bm
+tr
+bum
+tr
+b
+b
+apx
+ε
+ε
+ε
+ε
+ε
+μα
+α
+α
+ .                       (14)  
+IV. EXPERIENTIAL RESULTS AND COMPARISON 
+In this section, we will compare our proposed bottom-up 
+segmentation algorithm with other previously proposed 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/10/29
+國科會補助計畫
+計畫名稱: 以查表法為主函數求值功能單元之設計最佳化
+計畫主持人: 蕭勝夫
+計畫編號: 99-2221-E-110-055- 學門領域: 計算機結構與計算機系統
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

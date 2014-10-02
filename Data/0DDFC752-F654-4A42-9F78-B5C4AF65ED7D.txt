@@ -1,0 +1,393 @@
+ 摘要： 
+一般的運動競賽影片檢索系統大都先採用換鏡偵測（Shot Detection）將影片切割成片
+段，再藉由分析影片片段的內容來建立索引，讓使用者根據這些索引來做查詢。然而站在
+使用者角度，真正讓使用者感興趣的其實是影片中的特定事件，這些事件可能橫跨數個片
+段，抑或隱身在某一片段之中。因此，僅僅以影片片段為基礎的註釋方式並不能貼近使用
+者的需求。 
+本計畫提出一個自動偵測保齡球競賽影片事件的方法，偵測影片中的特定事件，包含：
+投球瞬間、投球軌跡、投球結果…等等事件，並對這些事件加入註解，讓使用者可以藉由
+將感興趣的事件做布林結合來搜尋保齡球競賽影片中感興趣的片段。 
+關鍵詞：保齡球競賽影片; 事件偵測; 投球軌跡 
+ 
+Abstract 
+Most of the existing sport game video retrieval systems adopt shot detection technology to 
+cut the video sequence to several pieces then index them by analyzing the video shots. Users 
+query the video content by the indices. For users what interest them are specific events, usually 
+these events either across several shots or just occupy part of one shot. 
+To meet user’s real necessity, we propose an event based approach to analyzing the bowling 
+game video. The specific events include ball throwing, bowl trajectory, delivery time and results 
+etc. Users can combine these events to query the desired event in the bowling game video. 
+Keywords: bowling game video; event detection; bowl trajectory. 
+ 
+ 
+ 
+ 
+2. 研究方法 
+一般保齡球比賽的影片拍攝的順序大至為：球場眺望、球員特寫、選手投球、保齡球
+追蹤、球瓶特寫、選手歡呼、觀眾歡呼。其中，球場眺望，和觀眾歡呼不一定會出現。一
+般使用者感興趣的事件大多包含在選手投球、保齡球追蹤以及球瓶特寫中。 
+ 
+2.1球道偵測 
+ 
+ 
+圖2. 球道偵測子系統流程圖 
+ 
+由於球道的灰階亮度比球溝的灰階亮度來得亮，因此先將畫面轉成灰階，以灰階來做
+處理。利用Otsu計算灰階臨界值之後將圖片二值化即可粗略的分割出球道，以morphological 
+opening除去畫面中的雜訊後，取畫面中間的物件，當作主要判斷的物件，再以 morphological 
+closing修補破損的物件。 
+由於臉部的特寫或是遠距離拍攝球道的畫面都不是我們想要偵測的畫面，因此為了提
+升系統辨識的正確率，加入了幾個簡單的判斷來過濾這些類型的畫面。針對臉部特寫的畫
+面，因為近距離特寫的關係所選出來的主物件，面積會比較大，因此利用所選出來的主物
+件面積佔二值化後前景面積比例，即可過濾此類畫面。針對遠距離鏡頭，由於遠距離的關係，
+比較沒有受到球溝的影響，因此初步切割出來的二值化圖片和後來所選的主物件面積大小差別不
+大，因此可以利用一開始二值化的圖片和所選擇的主物件面積大小的比例判斷是否為遠距離球道畫
+面。如果判斷不是特寫鏡頭也不是遠距離拍攝鏡頭，則將主物件內的像素移除，保留物件
+的邊，作為 Hough 轉換的主物件。再對前處理步驟所得到的主物件做 Hough 轉換，可以從
+Hough 轉換的累加器中找出可能是球道的線段。由於球道拍攝的角度有一個固定的範圍，
+因此不需要找出所有線段，只需要找出-35°～25°（垂直方向為 0°）範圍的直線線段即可。 
+利用 Hough 轉換找出可能為球道的直線之後，找到的線段可能不只兩個，因此需要做
+進一步的過濾。因為只針對主物件偵測，而主物件已經是一個完整球道，因此取最外面兩
+個線段來當作球道即可，最後經過一些相對位置的過濾，即可判斷是否為真正的球道線段
+前處理 
+Hough 轉換 球道過濾 
+球道分析子系統 
+影音輸入 
+軌跡分析子系統 
+結果分析子系統 
+球道資訊 
+畫面資料 
+投球分析子系統 
+偵測出此畫面，以 Eq. (2)和 Eq. (3)為偵測條件找出保齡球掉落球道的畫面: 
+ 
+( ) 01.0>nf  (2) 
+( ) 0>′nf  (3) 
+初步搜尋後，可能會找到許多球撞擊球道的畫面，包含正確的和不正確的畫面，我們
+利用球道的資訊來輔助過濾不正確的球落地道畫面。當球撞擊球道後，保齡球開始滾動，
+攝影機開始追蹤保齡球的軌跡，也就是開始會出現球道畫面，因此球落地的畫面應該會出
+現在第一個球道畫面之前，所以只有在第一個球道畫面之前的二十張畫面之內所偵測到的
+球落地畫面才是正確的。 
+過濾掉不正確的球落地畫面後，我們利用聲音變化的特性來切割出完整的投球片段。
+選手在出手前，全場會保持安靜，音框之間差異 ( )nf 不會有太大的變化，等到球落地，突
+然出現聲音，差異會開始變大，再來觀眾歡呼，播報員轉播即時結果，因為聲音持續出現，
+所以差異又會再度變小。所以選手投球的片段會有下列的特性，從差異小（出手前安靜），
+差異慢慢提高（球落地，此時出現一個反曲點），然後差異又慢慢降低（觀眾歡呼，播報員
+播報賽況，此時在出現另外一個反曲點）。為了可以正確的切割出投球片段，先將原始的聲
+音差異訊號 ( )nf 平滑化得到 ( )nsf 。因此將訊號平滑化之後，以球落地畫面為基準，往前找
+出最近的反曲點當作投球片段的開始畫面，往後找出最近的反曲點當作投球片段的結束畫
+面。 
+2.3軌跡偵測 
+ 
+ 
+圖 6. 軌跡偵測子系統流程圖 
+ 
+前處理的部分，和球道偵測的前處理類似，主要目的是希望選出主物件，縮小搜尋範
+圍，增加正確率，也減少計算量。利用 Circle Hough 轉換，找出最類似圓形的物件當作球
+球道分析子系統 
+保齡球切割 
+軌跡分析 
+軌跡分析子系統 
+球道分析結果 
+球心定位 
+球心修正 
+前處理 
+影音標記 
+ 圖9. 投球軌跡例子 
+ 
+描繪出投球軌跡後，利用 Polynomial curve fitting找出投球軌跡的一次方程式參數，以
+及二次方程式的參數。並分別計算一次方程式、二次方程式和所描繪的軌跡的誤差，如果
+一次方程式的誤差小於二次方程式誤差，則註釋為直球，反之則註釋為曲球。 
+2.4結果偵測 
+要知道投球的結果，首先必須要知道選手投球是否為第一次出手，如果不是第一球，
+表示為解球，亦即即使最後沒有殘留任何一支球瓶，也不算是 Strike。在保齡球比賽中，球
+道上方會有紅色的解球提示燈（如圖 10 與圖 11），來提示選手是否是第一次投球。 
+ 
+ 
+圖10. 投球提示燈位置 
+ 
+圖11. 投球提示燈近照 
+ 
+在保齡球比賽中，當選手投球之後，攝影機會跟著保齡球移動，直到保齡球撞擊球瓶，
+並將鏡頭的焦點放在撞擊球瓶後的結果。因此如果等到球瓶撞擊之後再偵測提示燈，可能
+會因為攝影機拍攝殘留球瓶的關係，無法正確偵測出提示燈的位置。反之如果在投球之前
+就偵測提示燈，會因為距離太遠無法正確偵測出提示燈位置。因此選在選手出手後，保齡
+球撞擊球瓶之前的畫面，也就是在最後一個可以偵測到保齡球的畫面，用此畫面來搜尋紅
+色提示燈的位置。因為解球提示燈在球瓶上方的位置，所以首先利用 Hough 轉換，找出在
+畫面二分之一高度中的最下面水平線段當作收尋範圍的上下界的下限。再來利用球道的資
+ 圖16. 第一次投球畫面 
+ 
+ 
+圖 17. 搜尋範圍 
+ 
+圖 18. 搜尋範圍的 YUV-V 成分 
+ 
+ 
+圖 19. 可能為解球提示燈的部分 
+ 
+圖 20. 最後偵測解球提示燈的位置 
+ 
+在 Wen Wen Hsieh[1] 計畫中，偵測結果畫面的部分，利用保齡球撞擊球瓶的聲音來
+偵測是否為結果畫面，但有可能會因為觀眾的歡呼聲而造成誤判，針對此缺點，改採用球
+道偵測的結果，來做為偵測結果畫面的依據。一般保齡球影片中，拍攝的順序為：選手投
+球、拍攝球道（攝影機追保齡球）、保齡球撞擊球瓶（出現結果，偵測不到球道），這三部
+分。因此針對此特性我們可以知道，當一個連續的鏡頭裡，連續偵測到幾張球道畫面時，
+則最後一個球道畫面為結果畫面。 
+ 
+ 
+圖21. 對應的結果畫面 
+ 
+在 Wen Wen Hsieh[1] 計畫中，偵測結果部分，是先計算畫面的邊緣，在固定的 ROI
+範圍內用 FILL 填滿並計算垂直統計（vertical projection）的結果。由於完整球瓶的邊緣偵
+測並不是非常容易，很容易產生不完整的邊緣造成 FILL 失敗，無法統計出正確的 Vertical 
+Projection，因此本計畫改採用比較穩定的球瓶色彩資訊，利用偵測球瓶上的紅色標記的方
+71
+8 9 10
+2 3
+4 5 6
+ 
+圖24. 球瓶編號示意圖 
+ 
+如果有紅色標籤，但是僅有比較少的球瓶區域，則表示僅有一根殘留的球瓶，因此接
+下來再判斷是屬於前面的球瓶還是後面的球瓶。此部分的判斷是根據球瓶標記曲線（如圖
+25）來決定此紅色標籤是屬於前面球瓶還是後面球瓶，如果球瓶位置在球瓶標記曲線上方
+則表示是後面的球瓶反之則是前面的球瓶。  
+ 
+0 50 100 150 200 250
+0
+20
+40
+ 
+圖 25. 球瓶標記曲線 
+ 
+當保齡球沒有擊出全倒（Strike）時，就會有殘留下來的球瓶。而有些特別困難的，或
+外型特別的球瓶排列方式就會被給予特別的命名[15] 。本研究希望除了可以偵測出殘留的
+球瓶個數之外，也希望可以偵測出這些特殊的球瓶排列方式。灰色部分表示被擊倒的球瓶，
+白色表示殘留下來的球瓶。當十支球瓶定位好之後，可以將球瓶定位的結果和這些特殊事
+件互相比對，即可以知道投球後的剩餘球瓶的排列方式是否屬於特殊的排列方式。下面是
+幾個投球結果偵測的例子。 
+Table 1. The recall and precision for each target event. 
+Event Recall Precision 
+Throwing Clip 83% 99% 
+Bowl Trajectory 93% 98% 
+Delivery Time 90% 97% 
+Result 95% 98% 
+ 
+ 
+ 
+圖30. 片段示意圖 
+ 
+下圖為限定曲球、非解球、殘留四支球瓶的完整片段的例子： 
+ 
+ 圖33. 利用殘留球瓶模型搜尋的結果 
+4. 結論 
+在本計畫中，我們首先利用 Hough 轉換找出擁有球道資訊的畫面，利用球道資訊，在
+畫面中切割出保齡球並計算軌跡以及得到最後投球的結果畫面，另外利用球道資訊配合聲
+音的資訊，也可以找出選手的整個投球片段。對於投球片段偵測部分，先計算音框之間的
+差異，找出選手投球後保齡球落地的畫面，將差異訊號經過平滑化後，再往前往後找出訊
+號的反曲點，就可以得到整個出手的片段。對於投球軌跡偵測部分，利用 Circle Hough 轉
+換找出可能為保齡球的物件，再利用 Distance Map 校正球心位置，最後利用球道資訊，計
+算出球心距離整個球道的相對比例，進得推得整個投球的軌跡。對於結果畫面的偵測部分，
+首先偵測解球提示燈，利用 Hough 轉換找出水平線段，訂定搜尋範圍，因為解球提示燈都
+是紅色的，因此在搜尋範圍內利用YUV 轉換的V 成分，找出紅色的區塊，然後再利用YUV
+轉換的Y 成分，判斷是否兩個解球提示燈都有亮起，如果只有一個亮起表示第一次投球，
+如果兩個都亮起，表示為解球。在剩餘球瓶定位部分，利用 Hough 轉換找出的水平線段和
+球道的資訊來訂定搜尋範圍，在這搜尋範圍內利用YUV 轉換的V 成分，找出可能是保齡球
+球瓶的紅色標籤，再利用事先定義的球瓶標記曲線將十支加以定位，以方便日後搜尋球瓶
+的特殊排列方式名稱。偵測出投球片段、投球軌跡、解球提示、殘留球瓶排列等事件之後，
+可以對影片建立索引，日後使用者就可以搜尋保齡球競賽影片中所感興趣事件的影片片
+段。經由實驗驗證，本系統能夠快速而且有效的偵測出使用者感興趣的事件，這證明本系
+統極具實用性，也具有商品化之潛力。 
+參考文獻 
+[1]  Wen Wen Hsieh, Arbee L.P. Chen, “Constructing a Bowling Information System with Video 
+Content Analysis,” Multimedia Tools and Applications, vol. 26, Number 2, Pp.s 207 ~ 220, 
+Springer Netherlands, June 2005. 
+ 
+ [13]  Sujit Kuthirummal, C.V. Jawahar, P.J. Narayana, “Video Frame Alignment in Multiple 
+Views,” IEEE ICIP 2002, vol. 3, pp. 357 ~ 360. 
+ 
+[14]  Stamatia Dasiopoulou, Vasileios Mezaris, Ioannis Kompatsiaris, Vasileios-Kyriakos 
+Papastathis, Michael G. Strintzis, “Knowledge-Assisted Semantic Video Object Detection,” 
+IEEE TRANSACTIONS ON CIRCUITS AND SYSTEMS FOR VIDEO TECHNOLOGY, 
+vol. 15, No. 10, pp. 1210 ~ 1224, October 2005. 
+ 
+[15]  Matlab® Central，http://www.mathworks.com/matlabcentral/。 
+ 
+[16]  維基百科，http://zh.wikipedia.org/wiki/。 
+ 
+行政院國家科學委員會補助國內專家學者出席國際學術會議報告 
+                                                          97 年 12 月 25 日 
+報告人姓名 李建樹 
+服務機構及
+職稱 
+國立臺南大學資訊工程學系 
+副教授 
+     時間 
+會議 
+     地點 
+97/8/15-97/8/17 
+ 
+大陸 哈爾濱 
+本會核定
+補助文號 NSC 96-2221-E-024-016 
+會議 
+名稱 
+ (中文) 第四屆智慧型資訊隱藏及多媒體訊號處理國際研討會 
+ (英文) The Fourth International Conference on Intelligent Information Hiding 
+and Multimedia Signal Processing 
+發表 
+論文 
+題目 
+ (中文) 整合下巴輪廓之人臉辨識 
+ (英文) Face Recognition by Integrating Chin Outline 
+???
+ 
+表 Y04 
+表 Y04 
+ 
+三、考察參觀活動(無是項活動者省略) 
+ 
+四、建議 
+希望國科會能建立國內學者參加國際研討會的登錄窗口，以便讓參加同一研討會的
+學者能彼此聯繫，比如：有人無法出席，可委託他人報告，以避免 no show情形發
+生；再者，學者們也能相約一同組團前往，一方面能節省差旅支出，同時也能彼此
+照應。 
+ 
+五、攜回資料名稱及內容 
+ 
+IIHMSP 2008論文集一本。 
+ 
+六、其他 
+ 
+ 
+from the center of nose to the boundaries of face, 
+which are judged based on the magnitude of the 
+Gaussian first-order differential convolution. The 
+detected two points are taken as the first face boundary 
+points, 1_FBPs. The width of face is thus defined as 
+the distance between the two 1_FBPs. The pixels of 
+1/6 face width are extracted from the left corner of 
+mouth to the slope slanting outward at 45 degree. We 
+apply the Gaussian first-order differential kernel to 
+convolve with these pixels to look for the maximum 
+absolute value corresponding to the face boundary 
+point. Similarly, we can obtain the right boundary 
+point. These two points are denoted as 2_FBPs. We 
+then employ the 4 points of 1_ABPs and 2_ABPs, 
+extending from both left and right sides to the 
+intersection, and sketch the triangle containing the area 
+below mouth and the tip of chin, as shown in Fig. 1(b). 
+Since the tip of chin is not at the lowest of the triangle, 
+we limit the range between mouth and 1/2 of face 
+width below it. Then, we utilize the histogram 
+equalization on this trapezoid area, as shown in Fig. 
+1(c). We also take the mean for every row and obtain 
+the average brightness distribution. The tip of chin is 
+located somewhere below the mouth and above the 
+neck, where the brightness turns from bright to dark. 
+Therefore, the minimum value of the first-order 
+derivative of the average brightness distribution will be 
+the chin tip. 
+The profile of the chin outline can be drawn with 
+curve fitting after the five boundary points are 
+determined, as shown in Fig. 1(e). How to determine 
+the chin features from the chin outline? We have first 
+to find the two junction points of the chin. The tangent 
+angle of every point on the chin outline is calculated, 
+and then the maximum and minimum values of the 
+second-order derivative of these tangent angles are 
+calculated to determine the junction points. The 
+distance between the two junction points is defined as 
+the chin width, see Fig. 1(f). 
+Four sets of information can be found with the chin 
+outline: 1. Face width; 2. chin curvature; 3. face length 
+(from the midpoint between eyes to the tip of chin); 4. 
+the chin width. The Pearson correlation coefficient in 
+Eq. (1) is calculated to avoid highly correlated features. 
+The chin curvature and chin width has a -0.97 
+correlation coefficient, which implies the two features 
+essentially provide the same information. Since the 
+chin curvature is easier to obtained, we discard the 
+chin width. The values of the remaining three features 
+are distance-dependent, namely they are dependent on 
+the distance between the face and the camera. In order 
+to eliminate the influence of the distance factor, we 
+composed three distance-independent features: 
+Curvature × face width, curvature × face length, and 
+face width / face length. We then try to find the most 
+effective feature combination. Since there are only 
+three features, we take exhaustive combinations for 
+feature selection, a total of seven combinations are 
+tested. We adopt K-means to group the feature clusters. 
+To evaluate the clustering effectiveness and find the 
+highest one, Silhouette index is applied to assess the 
+effectiveness of clustering. The experimental results 
+reveal that when cluster number is 2 in the 
+combination of curvature × face length and face width 
+/ face length, the maximum value of Silhouette index is 
+achieved. To classify the chin outline automatically, 
+we capitalize the back-propagation Neural Network as 
+the classifier. 
+
+
+−−
+−−
+=
+22 )()(
+)()(
+yyxx
+yxxx
+ii
+ii
+xyγ  (1) 
+3. Face recognition 
+Gabor Wavelet Transform (GWT) is a common 
+method for feature extraction. It is in accord with 
+human’s visual sense on texture features, and contains 
+the distinct feature of direction selection and frequency 
+selection. Hence, it is widely used in image recognition 
+and classification. In this paper, we use GWT as the 
+feature extraction method. The most common Gabor 
+wavelet filters have 8 directions and 5 scales, thus 40 
+filters in total. We perform GWT by convolving the 
+image I(x,y) with the 40 Gabor wavelet filters, 
+respectively. And, the result images are then arranged 
+to get Gabor Faces (GFs). Because the dimensionality 
+of the GFs is too large, it has to be reduced for further 
+processing.  Principal Component Analysis (PCA) is a 
+common method to reduce dimension numbers.  PCA 
+can not only reduce the numbers of dimension for 
+easier calculation but also eliminate the dimensions 
+with noises. However, the disadvantage is that the GF 
+need to be arranged into a row vector when performs 
+PCA such that the relations between rows in the 
+original image may be neglected. Therefore, we 
+employ the 2D-PCA to avoid this disadvantage. At last, 
+we apply the SVM to perform human face recognition. 
+4. Experimental results 
+With regard to the efficiency of human face 
+recognition, we use Yale face database in addition to 
+our own to evaluate the rate of human face recognition 
+for our system. There were three experiments 
+conducted to test the performance of the proposed 
+system. 
+568
+Authorized licensed use limited to: National University of Tainan. Downloaded on January 7, 2009 at 22:54 from IEEE Xplore.  Restrictions apply.
+(a) (b) (c)
+(d) (e) (f)
+Fig. 3.  The recognition rates at different numbers 
+of dimension for the combination: 8 GFs and PCA. 
+Fig. 1. (a) One facial feature image; (b) the 
+bounding area used to locate the chin tip; (c) the 
+trapezoid area cropped from the triangle bounding area; 
+(d) the trapezoid area after histogram equalization; (e) 
+the interpolated chin outline; (f) the detected chin 
+width. 
+Fig. 4.  The recognition rates at different numbers 
+of dimension for the combination: 40 GFs and 2D-
+PCA.
+Fig. 2.  The recognition rates at different numbers 
+of dimension for the combination: 40 GFs and PCA. 
+Fig. 5.  The recognition rates at different numbers 
+of dimension for the combination: 8 GFs and 2D-PCA. 
+570
+Authorized licensed use limited to: National University of Tainan. Downloaded on January 7, 2009 at 22:54 from IEEE Xplore.  Restrictions apply.

@@ -1,0 +1,836 @@
+query performance ranging from 30 to ten thousand 
+times than TripleT. 
+ 
+英文關鍵詞： Semantic web, Resource Description Framework, RDF 
+Indexing, Query Optimization 
+ 
+2 
+ 
+ 
+目錄 
+中文摘要........................................................................................................................ 3 
+英文摘要........................................................................................................................ 4 
+1. 前言........................................................................................................................... 5 
+2. 相關研究................................................................................................................... 8 
+2.1. Extensible Markup Language (XML) ............................................................. 8 
+2.2. Resource Description Framework (RDF，資源描述框架) ........................... 8 
+2.3. SPARQL ........................................................................................................ 10 
+2.4. RDF索引 ...................................................................................................... 11 
+3. 有效率的 RDF索引方法 ....................................................................................... 14 
+3.1. 系統架構...................................................................................................... 14 
+3.2. RDF解析與編碼 .......................................................................................... 14 
+3.3. 建立霍夫曼編碼.......................................................................................... 15 
+3.4. 建立 B+ Tree及其索引 .............................................................................. 16 
+3.5. 建立改良的 Payload .................................................................................... 17 
+3.6. 建立改良的 Payload .................................................................................... 17 
+4. 實驗結果與討論..................................................................................................... 19 
+4.1. 開發工具與實驗環境.................................................................................. 19 
+4.2. 實驗資料集.................................................................................................. 19 
+4.3. 索引大小比較.............................................................................................. 20 
+4.4. 查詢效能比較.............................................................................................. 22 
+5. 結論......................................................................................................................... 25 
+6. 計畫成果自評......................................................................................................... 25 
+參考文獻...................................................................................................................... 25 
+ 
+  
+4 
+ 
+英文摘要 
+With the rapid increase of resources over the Internet, it is essential to have computer 
+software that can automatically store and exchange machine-readable information 
+distributed throughout the Web. The Resource Description Framework (RDF) that is 
+published by W3C as a recommendation for semantic web in 1999 is the mechanism 
+for describing resources on the Web.  
+This project proposes an indexing method for supporting efficient query processing of 
+RDF documents. In the proposed method, the index size was reduced by using 
+Huffman encoding scheme which encodes the RDF elements into binary format 
+depending on frequencies. A new algorithm is also proposed to speed up the process 
+of sort-merge-join operations performed during query processing. 
+The experimental results show that the proposed method can have an average of 
+76% of the compression ratio for the index size of several RDF documents compared 
+to that of TripleT, and it can speed up query performance ranging from 30 to ten 
+thousand times than TripleT.  
+ 
+Key words：Semantic web, Resource Description Framework, RDF Indexing, Query 
+Optimization 
+  
+6 
+ 
+圖 1-1. RDF Graph示意圖 
+PREFIX foaf: <http://xmlns.com/foaf/0.1/> 
+SPARQL(Sparql Protocol and RDF Query Language)是一個在RDF上的查詢語
+言。使用AND、OR以及一些選項組合而成，以提供方便的查詢。以下是一個
+SPARQL的範例，用來查詢每位使用者的名字與E-Mail匹配結果：  
+SELECT ?name ?email 
+WHERE { 
+  ?person a foaf:Person. 
+  ?person foaf:name ?name. 
+  ?person foaf:mbox ?email. 
+} 
+    根據W3C的規範[3]，SPARQL除了支援 Select … WHERE…語句外，亦如
+SQL般支援 Order by、Projection、Distinct、Limit。更特別支援 Reduced，用來
+刪除查詢結果中某些重複的值。SPARQL查詢模式主要分為：(1) SELECT：找
+出查詢結果中，相符的結果。(2) CONSTRUCT：回傳查詢結果的 RDF對應圖。
+(3) ASK：回答是否得到查詢結果。(4) DESCRIBE：回傳 RDF圖的詳細資源內
+容。 
+ 我們可以利用 RDF技術來描述網路上的各式資源，配合 SPARQL，進而利
+用 Semantic Web Stack來建置 Semantic Web[5]，如圖 1- 2[6]。 
+ 
+◎Statement 
+DM-KE Lab is the creator of resource http://dmlab.cs.nchu.edu.tw 
+◎Structure 
+Subject                http://dmlab.cs.nchu.edu.tw 
+Predicate               creator 
+Object                 DM-KE Lab 
+DM-KE Lab 
+creator 
+http://dmlab.cs.nchu.edu.tw 
+8 
+ 
+2. 相關研究 
+2.1. Extensible Markup Language (XML) 
+IBM (International Business Machine) 於 1960 年代開始發展 GML 
+( Generalized Markup Language)， 並將其標準化，命名為 SGML ( The Standard 
+Generalized Markup Language)[11]，這個語言成為了可擴展標記語言 
+XML(eXtensible Markup Language)的前身[12]。 
+在 1995 年起，XML 逐漸有了雛形，其產生是由 SGML 簡化而成，且在
+1998年二月發佈 1.0版，成為 W3C 的標準[12]。XML 主要的目的是作為資訊
+的標記語言，因此也從網頁訊息傳遞的用途外，被廣為運用在跨平台資料交換，
+其範例如圖 2-1。 
+<Lab> 
+  <WebSite url=" http://dmlab.cs.nchu.edu.tw "  bagID=”D_01”> 
+     <LabName>DM-KE Lab </LabName> 
+     <professor>I-En Liao</professor> 
+  </WebSite> 
+ </Lab> 
+圖 2-1 XML範例 
+在圖 2-1 XML範例中，我們看到了 <Lab>、<WebSite>、<LabName> 等標
+籤，這些標籤描述了一些有關實驗室的網址，指導教授等相關資訊。然而這些標
+籤和 Html (Hyper Text Markup Language) 有些不同的地方，例如標籤必須要有起
+始標籤和結束標籤同時存在、每一個屬性值都必須用雙引號(") 標示起來、巢狀
+結構需要完整等。這些都是 XML 所規範的一些特性。 
+由於 RDF的基礎來自於 XML，本實驗室在 XML索引處理的研究已耕耘多
+年，對於 XML複雜查詢的處理，我們發展了 PCIM(Path Cluster Index Method)
+演算法[13]，透過路徑群聚(path clustering)與內容索引的方式，有效降低索引資
+料量過大的問題，並能支援複雜的 XML查詢語法。另外，我們針對 PCIM索引
+建構時間過長問題上，提出了 NCIM(Node Clustering Index Method)演算法[14]，
+有效克服上述問題。 
+2.2. Resource Description Framework (RDF，資源描述框架) 
+RDF全文為 Resource Description Framework，中譯為「資源描述框架」，於
+World Wide Web Consortium (W3C) 在 2004年將其納入標準，成為語意網
+(Semantic Web)的一部分[3]。最早定義為用來作為網路資訊交換的機制，主要用
+來描述Web上的資源的框架，為一種機器可讀(Machine Readable)的資料結構，
+並不是用來顯示給人類讀取的。 
+10 
+ 
+ 
+圖 2-3 RDF 範例文件 
+以下的例子說明以 RDF Basic Model表達敘述句“DM-KE Lab is the creator 
+of the resource http://dmlab.cs.nchu.edu.tw”， 並以圖形表示法呈現，其呈現方式
+如圖 2-4。 
+ 
+圖 2-4 RDF Graph示意圖 
+2.3. SPARQL 
+PREFIX foaf: <http://xmlns.com/foaf/0.1/> 
+SPARQL(Sparql Protocol and RDF Query Language)是一個在RDF上的查詢語
+言。使用AND、OR以及一些選項組合而成，以提供方便的查詢。以下是一個
+SPARQL的範例，用來查詢每位使用者的名字與E-Mail匹配結果：  
+SELECT ?name ?email 
+WHERE { 
+  ?person a foaf:Person. 
+  ?person foaf:name ?name. 
+  ?person foaf:mbox ?email. 
+12 
+ 
+ 
+圖 2-5. GRIN索引[21] 
+Cathrin Weiss等人[8]於 2008年，提出 Hexastore的架構，根據 Subject , 
+Object, Predicate 分別建立 SPO、 SOP、 POS、 PSO、 OSP、 OPS等索引樹，
+利用大量的索引空間來換取有效的查詢效能提升，但缺點為耗用大量的儲存空
+間。 
+George H.L. Fletcher 與 Peter W. Beck等人[9]於 2009年提出了基於 B+ Tree 
+Index的解決方案，稱之為 Three Way Triple Tree Index(TripleT)，針對 Subject、
+Predicate、Object等關係做預先處理，將相關資料使用 HexTree[8]的結構，以不
+同於以往 HexTree[8]只儲存於主記憶體，而是把相關資料放入第二儲存體(如：
+硬碟)以節省空間。並透過發展的查詢演算法，利用建立的索引，加快 join查詢
+速度。其整體搜尋演算法如圖 2-6。 
+ 
+圖 2-3 TripleT Join 演算法[9] 
+14 
+ 
+3. 有效率的 RDF索引方法 
+3.1. 系統架構 
+整個系統分為兩大部分，系統流程圖如圖 3-1 所示，第一個部分是索引的
+建立階段，我們將讀取的 RDF 文件，先建立霍夫曼編碼，然後再將編碼結果建
+立索引樹。第二個部分則是查詢的部分，我們利用 LUBM Benchmark[22]所提供
+的查詢語句，結合的一部分的索引樹以及改良的查詢演算法，進行查詢語句的執
+行，並將結果顯示出來。
+ 
+圖 3-2 系統流程圖 
+本計畫方法的索引建立，依照下列步驟，並逐一分項說明： 
+1. 解析 RDF資料並編碼 
+2. 建立霍夫曼編碼之 B+ Tree索引 
+3. 建立改良式 Payload  
+並提出我們改良的查詢演算法。 
+3.2. RDF解析與編碼 
+根據我們先前的定義，網路上有著許多符合 RDF規範的資料集存在，如
+Uniport[23],WordNet[24]等這些以 XML為格式的 RDF文件，都可以當作我們的
+資料集，另外 Lehigh University 也提供了一個 UBA Generator[22]，讓我們可以
+16 
+ 
+文方法中的索引和 Payload 結構的內容值。 
+在編碼結構的部分，由於有大多數的元素，會有部分的 Bucket 是空結構，
+沒有任何值的存在，因為我們修改了 Payload的結構，使其一個 Payload僅包含
+一個 Bucket，若有同一元素分屬不同的類型，例如同時屬於 Subject和 Object時，
+我們便分別的計算處理之，在實驗測試中，證明有效可以減少 Bucket 空值的產
+生，因此在研究計畫的方法中進行了這些問題的改善。 
+利用霍夫曼編碼樹，修改原本儲存字元的程式，使其能夠在每一個節點儲存
+字串值，以利儲存 Triple的每一個元素值。我們將 Subject，Object，Predicate 分
+別計算，一一加入霍夫曼編碼樹的結構，依照每個元素發生的頻率，產生出編碼
+值。 
+3.4. 建立 B+ Tree及其索引 
+在 George H.L. Fletcher等人[9]的方法中，有效的將原本要多個索引結構才
+能加速查詢的方法[8]，改良成只要一個索引結構加上 Payload 結構的方式。我
+們改良這個方法，將整份文件的元素，轉換成霍夫曼編碼，然後建立起 B+ Tree，
+取代原本將每一元素的字串值直接存入 B+ Tree 中，造成整個 B+ Tree 文件過
+大的困擾。 
+在 B+ Tree的節點中，TripleT的方法是把 RDF內的不重複元素一一新增，
+在這個時候，如果字串值長度比較大的話，整份結構的內容就會占用較多的記憶
+體，因此我們在新增到樹的結構前，先利用霍夫曼編碼樹的編碼程序，將取得的
+元素值編碼後，把編碼值加到 B+ Tree的結構中。如此一來，整個 B+Tree 結構
+變成為了以霍夫曼編碼值為內容的結構。 
+另外，我們改良葉節點的儲存結構，將整份 RDF文件中，與該葉節點元素
+有關的 Triple，逐一加入到葉節點所對應的改良式 Payload 中，如圖所示，Payload
+架構於下一節介紹。 
+ 
+圖 3-4 B+ Tree Index with Payload 
+18 
+ 
+我們針對查詢演算法的改良如下所述: 
+參考 TripleT[9] 的定義，我們對 SAP(Simple Access Pattern)的定義說明如下：
+ SAP = (A ∪ V) × (A ∪ V) × (A ∪ V) 
+A 是 RDF中的元素(atom)，V 是變數(Variable)。BGP (Basic Graph Pattern) 
+則是多個 SAP的交集。在我們的研究方法裡，我們僅討論兩個 SAP的交集，並
+進行 Sort Merge Join 的演算過程。 
+假設我們要查詢的 BGP P = S1∧ S2，其中 S1= (s1,p1,o1)， S2= (s2,p2,o2)， 
+s1, s2, p1, p2, p2, o1, o2 為 RDF的元素或變數。步驟如圖 3-10所示。 
+在圖 3-6的演算法中，第 1行先針對要找尋的元素集合進行霍夫曼編碼。第
+2~6行，我們改良了 TripleT演算法取任意元素的缺點，因為若取到的出現頻率
+較大的元素，會增加查詢時的時間成本，所以我們會事先利用霍夫曼編碼長度來
+比較確認元素出現頻率的多寡，選擇發生較小的元素進行 Sort Merge Join。因此
+分別計算每個元素的編碼長度，由 S1的元素和 S2的元素挑出發生頻率較少的
+元素，並在索引樹 IG內查找兩個元素，取得各自的 Payload，最後進行兩個集
+合的 Sort Merge Join。在第 7行，把找到的資料進行霍夫曼編碼的解碼。最後，
+回傳找到的資料。 
+ 
+Input: 
+P : a basic graph pattern P = S1 ∧ S2  
+IG : an Index for RDF Graph G 
+H : Huffman encoding Tree 
+Output:  
+P (G)  an evaluation of P on G 
+Begin 
+1. HuffmanEncode each ai ∈ A(S1) ∩ A(S2) 
+2. Compare frequencies from atom of S1 and S2 
+3. Get a lowest frequent atom a1 ∈ A(S1) and s2 ∈ A(s2) 
+4. Lookup a1 and a2 from IG 
+5. Evaluate S1(G) and S2(G) on retrieved payload, respectively 
+6. Compute P (G) = S1(G) ⋈ S2(G) using sort merge join 
+7. HuffmanDecode (P (G)) 
+8. Return the result 
+End 
+圖 3-6. 查詢演算法 
+  
+20 
+ 
+體論 (Ontology)[25]產生出我們所需要的測試資料，圖 4-3為我們執行資料產生
+器的過程。 
+  
+圖 4-3 UBA產生器執行畫面 
+本研究方法和 George H.L. Fletcher等人的 TripleT方法[9]進行比較，針對產
+生的索引大小和查詢耗費時間兩個實驗，結果分別於下兩小節描述。 
+4.3. 索引大小比較 
+本部分實驗討論研究方法所提的壓縮索引方法和 TripleT的索引建構方法做
+比較。 
+表 4-2 索引實驗資料集為我們進行索引建立實驗的資料集，我們分別列出
+資料集的大小，Triples 的筆數，以及 Subject、Pedicate、Object 的分布情形。 
+  
+22 
+ 
+由以上實驗得知，當我們的索引結構充分利用霍夫曼編碼時，可以將索引的
+大小大幅度的降低，減少記憶的消耗，主要的原因是利用霍夫曼編碼時，bit 編
+碼所佔的記憶體空間很小，然而 Payload的架構需要儲存到大量的元素的資料，
+所以編碼可以解決記憶體耗用的問題。 
+對於 RDF文件動輒數百MB到數十 GB的檔案大小，若能夠節省到 76%的
+索引空間，勢必在相關方面的研究上，有著不過錯的幫助。 
+4.4. 查詢效能比較 
+查詢效能比較的實驗分為兩個部分，第一個部分是在未加以壓縮時的效能比
+較，第二部分則為採用本研究壓縮方法後的查詢效能改善比較。 
+我們利用了 LUBM所提供的查詢語句[26]，如表 4-4所示，來進行我們的
+查詢實驗。 
+表 4-3 查詢實驗用語句 
+Query1 Select graduate students who take a specific course. 
+Query2 List professors who advise a particular student. 
+Query3 Select professors who wrote any publication. 
+在實驗的資料集，我們利用的 LUBM 所提供的產生器產生如的資料內容，
+大配我們查詢語句進行實驗。 
+表 4-4 查詢資料集 
+資料集代號 檔案大小 Triple筆數 元素個數 Subject個數 Predicate 
+個數 
+Object個數 
+R10 5,277,590  63,483  20,551  11,242  18        9,291  
+R20 
+    
+11,154,911  
+132,709  40,347  22,471  18      17,858  
+R30 
+    
+16,217,519  
+192,610  57,358  32,217  18      25,123  
+R40 
+    
+21,831,021  
+258,715  76,172  42,989  18      33,165  
+Query1是要我們查詢出“找出有修某個指定課程的研究生”，因此，我們
+以 LUBM DBA 產生的資料集為查詢資料集，找出屬性為類型，且屬性值為研究
+生的 Subject，並和屬性為修課，且屬性值為 Course0的資料，再將兩個資料集進
+行 Sort Merge Join。 
+我們將 Query1 的查詢分解成 BGP P = S1∧ S2，其中 S1= 
+24 
+ 
+S2的 Subject、Predicate為已知的值。相同的，我們分別從 S1的 Predicate和 Object 
+計算出發生頻率較少的元素，並取得 Payload 資料，再與 S2取得的 Payload 資
+料進行 Sort Merge Join，計算出結果。我們的實驗結果如表 4-7。 
+表 4-6 Query2時間比較表 
+Query2 
+資料集 ID 
+  
+TripleT Join 
+(millisecond) 
+本研究方法 
+(millisecond) 
+R10 753                   13  
+R20 1,717                   39  
+R30 2,553                   47  
+R40 3537 66 
+Query3 則是要列出“有任何發表著作的教授”。我們將這個查詢語句分解
+成列出型態是教授的集合與列出發表的著作，因此令 S1=(v1,type,Professor)，
+S2=(v2, publicationAuthor, v3)。其中 Subject v1、v2 和 Object v3 為變數，其餘
+為已知的值。根據我們的演算法決定元素並取出 Payload 內對應的 Bcuket 集合
+後，計算出我們所需要的結果，實驗數據如表 4-8。 
+表 4-7 Query3 時間比較表 
+Query3 
+資料集 ID 
+  
+TripleT Join 
+(millisecond) 
+本研究方法 
+(millisecond) 
+R10             411,100              4,720  
+R20          1,845,767            21,147  
+R30          4,052,791            46,299  
+R40 7721643 88841 
+綜觀上述三個查詢的實驗，我們可以發現，Payload 集合的大小嚴重地影響
+到執行 Sort Merge Join 的效能。因此，挑選一個最佳的元素作為 Sort Merge Join 
+資料比對的元素是相對重要的。在資料量越龐大時，本研究的方法相對的能夠提
+供較佳的結果。 
+26 
+ 
+[6] Wikipedia, “File:Semantic-web-stack.png.”  Available: 
+http://en.wikipedia.org/wiki/Semantic_Web_Stack 
+[7] D. J.  Abadi, A.  Marcus, S. R.  Madden, and K.  Hollenbach, “Scalable 
+semantic web data management using vertical partitioning,” in Proceedings of 
+the 33rd international conference on Very large data bases, 2007, pp. 411–422. 
+[8] C.  Weiss, P.  Karras, and A.  Bernstein, “Hexastore: sextuple indexing for 
+semantic web data management,” Proc. VLDB Endow., vol. 1, pp. 1008–1019, 
+Aug. 2008. 
+[9] G. H. L.  Fletcher and P. W.  Beck, “Scalable indexing of RDF graphs for 
+efficient join processing,” in Proceedings of the 18th ACM conference on 
+Information and knowledge management, 2009, pp. 1513–1516. 
+[10] P.  Mika, “Distributed indexing for semantic search,” in Proceedings of the 3rd 
+International Semantic Search Workshop, 2010, pp. 3:1–3:4. 
+[11] W3C, “Overview of SGML Resources.” W3C. 
+[12] W3C, “Extensible Markup Language (XML).” W3C. 
+[13] I-En Liao Su-Yu Wu Wen-Chiao Hsu and K.-F.  Kao, “An Efficient XML 
+Indexing Method based on Path Clustering,” in Proceedings of 20th IASTED 
+International Conference on Modeling and Simulation, 2009, pp. 339–344. 
+[14] I.-E.  Liao, W.-C.  Hsu, and Y.-L.  Chen, “An Efficient Indexing and 
+Compressing Scheme for XML Query Processing,” in Networked Digital 
+Technologies, vol. 87, F.  Zavoral, J.  Yaghob, P.  Pichappan, and E.  
+El-Qawasmeh, Eds. Springer Berlin Heidelberg, 2010, pp. 70–84. 
+[15] W3C, “SPARQL Query Language for RDF.” Available: 
+http://www.w3.org/TR/rdf-sparql-query/ 
+[16] C.  Liu, H.  Wang, Y.  Yu, and L.  Xu, “Towards Efficient SPARQL Query 
+Processing on RDF Data,” Tsinghua Science &amp; Technology, vol. 15, pp. 
+613–622, 2010. 
+[17] B.  Quilitz and U.  Leser, “Querying distributed RDF data sources with 
+SPARQL,” in Proceedings of the 5th European semantic web conference on The 
+semantic web: research and applications, 2008, pp. 524–538. 
+[18] S.  Sakr and G.  Al-Naymat, “Relational processing of RDF queries: a survey,” 
+SIGMOD Rec., vol. 38, pp. 23–28, Jun. 2010. 
+[19] M. F.  Husain, L.  Khan, M.  Kantarcioglu, and B.  Thuraisingham, “Data 
+Intensive Query Processing for Large RDF Graphs Using Cloud Computing 
+Tools,” in Cloud Computing (CLOUD), 2010 IEEE 3rd International 
+Conference on, 2010, pp. 1–10. 
+[20] K.  Wilkinson, C.  Sayers, H.  Kuno, D.  Reynolds, and J.  Database, 
+“Efficient RDF Storage and Retrieval in Jena2,” in EXPLOITING 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 NSC 100-2221-E-005 -070 
+計畫名稱 一個支援快速 SPARQL 查詢的 RDF 索引方法 
+出國人員姓名 
+服務機關及職稱 
+廖宜恩 
+中興大學資訊科學與工程學系教授兼系主任 
+會議時間地點 2012年 3月 26日至 3月 29日在日本福岡 
+會議名稱 he Eighth International Symposium on Frontiers of Information Systems and Network Applications (FINA 2012) 
+發表論文題目 Supporting Efficient XML Query Evaluation Using Double Indexes 
+ 
+一、參加會議經過 
+ 
+    本次研討會於 2012年 3月 26-29日，在日本福岡的 Fukuoka Institute of Technology (FIT)
+舉行。這次會議是和 The 26th IEEE International Conference on Advanced Information 
+Networking and Applications (AINA-2012)一起舉辦，聚集了來自世界各國專研網路、通訊與資
+訊系統的專家學者作論文發表。 
+ 
+ 
+二、與會心得 
+ 
+    本研討會每天都安排主題演講，第一天由Dr. Shoichi Noguchi, Sendai Foundation for 
+Applied Information Sciences, Japan主講” The Design Principle of the Robust Information and 
+Communication System under the Great Natural Disaster (Learning from East Japan Great 
+Disaster)”，演講內容主要在探討日本於311大地震後，災區通訊系統大部份都被摧毀，以致嚴
+重影響救援工作，因此，如何設計與建立一個能耐受巨大災難的資通訊系統，是一個重要的
+課題。第二天的主題演講由Dr. David Taniar, Monash University, Australia主講” High 
+Performance Database Processing”，演講內容在討論面對巨量資料(Big Data)的產生，如何儲存、
+處理、查詢、分析這些巨量資料是一個急迫的問題，Dr. Taniar介紹如何使用平行化方式處理
+資料密集之應用。第三天的主題演講由由Dr. Fatos Xhafa, Universitat Politecnica de Catalunya, 
+Spain主講” Data Replication and Synchronization in P2P Collaborative Systems”， 演講內容主要
+在探討大型的P2P super-peer collaborative systems的資料複製與同步問題的解決方法。這些主
+題演講都給我很多啟發。除了這些主題演講外，我也參加了多場的論文發表會，並參予討論。 
+ 
+    我報告論文後，也引起蠻熱烈的討論，成果受到與會者的肯定。本人對於能出席這次會
+議發表論文，並和來自不同國家的學者交換意見，深覺獲益良多。所發表之論文附錄如下： 
+ 
+ 
+[14]. The ViST [15] encodes nodes in pre-order traversals.
+Wang and Meng’s method [16] is similar to ViST but uses a 
+more cleaver sequencing method. PRIX [17] transforms 
+XML documents and twig queries into Prűfers sequences 
+that are mapped to a virtual trie tree. Because the structural 
+information had been included in sequences, twig queries 
+and partial matching can be preformed efficiently without 
+any join operation. 
+B. The Query Indexing Methods 
+The query indexing methods can be classified into 
+automata-based [18, 19, 20], sequence-based [21, 22] and 
+grammar-based [23, 24] filtering methods.  
+The automata-based methods transform path queries into 
+automata, which are then used to check with incoming XML 
+documents and identify the matched queries.  For example, 
+XFilter [18] is an FSM (Finite State Machine) based 
+approach. Each node of query is ultimately converted into an 
+FSM that react to XML parsing events. YFilter [19]
+combines multiple queries into a single NFA (Non-
+deterministic Finite Automaton) by merging their common 
+prefixes to enhance query efficiency. AFilter [20] uses a 
+stack structure to organize the data and states while filtering 
+the XML document against user profiles. It exploits both 
+prefix-caching and suffix-clustering simultaneously across 
+filter statements to save the execution time. However, 
+automata-based filters are inefficient for twig queries. The 
+twig query is processed by combining all individual single-
+path queries in a post-processing procedure. 
+The sequence-based methods transform XML documents 
+and twig queries into sequences. The filtering is performed 
+by sequence matching. For example, FiST [21] works in a 
+bottom-up fashion by encoding XML documents and twig 
+patterns into Prűfer sequences. The post-processing phase is 
+avoided, and the matched nodes are retrieved in a single 
+parse of the document. Based on the Prüfer sequence, XFIS 
+[22] utilizes a new string representation for tree structures, 
+called Tree-Structure Sequence (TSS). The matching 
+algorithm is holistic and more effective in terms of time and 
+space complexities. However, the sequence-based methods 
+restrict on ordered twig pattern matching, where the nodes in 
+a twig pattern follow the document order in XML.
+The grammar-based methods employ a grammar to 
+define an XML data transformation and build a parser for 
+parsing an XML stream. TransformX [23] is a framework for 
+syntax directed transformations of XML streams using
+attribute grammar on the type schema for input. Koch and 
+Scherzinger [24] introduce the notion of XML Stream 
+Attribute Grammars (XSAGs). XSAGs are the first scalable 
+query language for XML streams that allows for actual data 
+transformations rather than just document filtering. However, 
+grammar-based methods define the grammar on regular tree 
+of DTD or schema that is difficult to change for optimization. 
+C. The NCIM: Node Clustering Indexing Method 
+The NCIM [2] is an XML indexing method based on 
+node clustering approaches. Each element node of an XML 
+data tree is labeled with 3-tuple (level, n├, n┤) for non-leaf 
+node and a 2-tuple (level, n├ )  for leaf node, where “level” is 
+the depth of the node n with the root as level 1, “n├” (start 
+number) is the serial number of node n derived from a depth-
+first traversal of the data tree (the root node is assigned 1 
+also), and “n┤” (end number) is the serial number after 
+visiting all child nodes of n. The data is clustered with same 
+(tag, level) pair and stores them in four hash-based tables, 
+two for node indexes and two for level indexes. The 
+advantage of using hash tables is to gain fast accesses on the 
+needed data. Moreover, clustering the nodes with the same 
+tag name and level reduces the index space and accelerates 
+the processing of queries. NCIM can deal with single-path 
+query as well as complex query patterns. The experimental 
+results show that NCIM can compress XML documents with 
+high compression rate and low index construction time.
+III. METHODOLOGY OF THE PROPOSED DOUBLE INDEXES
+A. The Architecture of the Proposed System 
+The proposed system, as shown in Fig. 1, consists of two 
+subsystems. The first one is the preprocessor that parses 
+XML documents and builds NCIM index, which is then 
+stored in the disk after the construction is finished. The 
+second subsystem is the query processor that accepts queries 
+from users and does query evaluation. Only the query index 
+is loaded into memory while the system is activated. When a
+query is initiated, the system checks query index first. If the 
+query is indexed in the query index already, the result is 
+returned directly. Otherwise, the system loads the required 
+data from NCIM index and executes query evaluation. 
+Finally, the result is returned to the user and added to the 
+query index along with the query pattern. 
+B. XML Index Construction 
+The indexing method used in the proposed system is 
+NCIM, in which each document will generate four hash-
+based tables. The original design in [2] is to keep these hash-
+based tables in the memory for fast access. However, the 
+NCIM index will only be used when it is necessary in the 
+proposed system. Therefore, we write the indexes into files. 
+Each XML document has a corresponding folder. Each hash 
+entry forms a file storing the data in the linked list to which 
+the entry points. Data in two Level indexes are stored in two 
+files separately. Using this data storage strategy, it is easy to 
+load needed part of NCIM index.  
+C. Query Index Construction 
+The query index is empty at the initial stage and will be 
+increased as queries accumulated. In practice, we can 
+generate a set of queries as query load and construct query 
+index in advance to avoid cold-start problem. Although the 
+methodology of the proposed query index adopts the concept 
+from XML filtering system, there are some differences in 
+between. In XML filtering system, a large collection of 
+query expressions are indexed and applied to the XML 
+document streams. The purpose is to identify if the received 
+XML document contains substructure that matches 
+expressions in the query index. However, the query index in 
+this paper is used to compare with the input query that is 
+similar to the task of string comparison.
+198
+Figure 3. Algorithms of query processing 
+IV. EXPERIMENTAL RESULTS
+In this section, we report the experimental results of the 
+proposed system by comparing it with the NCIM and the 
+TwigList [13]. All algorithms are implemented in Java, and 
+the experiments have been performed on a Windows XP 
+system with a 1.99GHz AMD Turion™ 64 Mobile 
+Technology ML-37 CPU and 1GB RAM. We choose three 
+datasets DBLP [26], SwissProt [26], and XMark [27] 
+because they are widely used in benchmarking XML 
+indexing methods and have different scales and 
+characteristics. The statistical data of datasets are shown in 
+Table II. 
+The query generator in YFilter [19] is used to create P-C
+and A-D queries.  We also implemented a program to create 
+twig queries. We designed three types of query workloads.
+Type I contains only P-C single path queries. Type II mixes 
+half of P-C and half of A-D single path queries. Type III
+contains twig queries with the ratio of P-C to A-D queries to 
+be 1:1. 500 queries are created for each type as query pools,
+which are used to construct query index. Some of the queries 
+are no-result queries. We performed the experiments by 
+using query workloads ranging form 5,000 to 30,000 queries 
+in an increment of 5,000. Each query is randomly chosen 
+from one of the three query pools. Duplicates are allowed. 
+Figs. 4-6 show the results of the execution time on three 
+datasets for three types of workloads, respectively.  
+In the above experiments, all the queries can be found in 
+the query index using the proposed double index method. To 
+explore the applicability of the proposed system in handling 
+new queries that are not indexed in the query index, we 
+performed experiments based on the hit ratio of queries. The 
+hit ratio is the percentage of queries that the results can be 
+retrieved directly from the query index.  
+TABLE II. THE STATISTICAL DATA OF DATASETS
+Datasets Sizes (MB)
+Number of Nodes Max. 
+DepthElement Attribute
+DBLP 127 3332130 404276 6
+SwissProt 109 297031 2189859 5
+XMark 11 1666315 381870 12
+The query pools are used here again. However, only 
+portion of the queries are indexed in the query index 
+according to the hit ratio. We designed two different hit-miss 
+ratios: 20%-80%, and 80%-20%. For example, while the hit-
+miss ratio is 20%-80%, only 20% of queries in a query pool 
+are indexed at the beginning of the experiments. A query is 
+randomly chosen from the query pool, the chance to hit is 
+20%. The results of experiments, as shown in Figs. 7-8,
+indicate that the double index method is still steady as query 
+workloads increase multiplicatively in contrast to other two 
+methods. This is because the query index is updated after 
+each missed query is executed. Even though the hit ratio is 
+set at the beginning, the ratio increases as queries coming in 
+and processed. There is a little surprise that the variances in 
+hit-miss ratios did not show significant differences in terms 
+of query time using double index method. After a detailed 
+analysis, we found that there are two phenomena causing 
+such results. First, there is no significant difference in the 
+amount of data read from disk under different hit-miss ratios. 
+Factors for this phenomenon include a limited set of distinct 
+tag names of datasets, duplication of queries, etc. Another 
+phenomenon is the time spent on query evaluation is very 
+low comparing to the time spent on I/O. Therefore, there is 
+no obvious increase in execution time with the increase of hit 
+ratio.
+We also examined the required index sizes in main 
+memory. Because only the structural part of XML is indexed, 
+we filter out the contents (plain texts) from XML datasets in 
+order to measure the compression ratio more accurately. Fig. 
+9 shows the size of original XML structure and the required 
+memory size for different methods. In the proposed system, 
+query index is kept in the memory while the NCIM is stored 
+in the disk. Therefore, only query index is compared in Fig. 9.
+However, the total index size required in disk is the size of 
+NCIM and query index. We performed the experiment by 
+using 5000 queries to construct query index. Although the 
+query index size will vary with the volume and complexity 
+of input query patterns, we assume only few of possible 
+query patterns are invoked in practice.
+We can see the proposed query index requires the 
+smallest size in main memory comparing to other three 
+methods. Using the compression ratio defined in equation (1), 
+the query index can compress an XML document with 
+compression ratio from 86% to 91% as shown in Fig. 10.
+V. CONCLUSIONS AND FUTURE WORK
+In this paper, we proposed a double-index system that 
+creates indexes for both XML document and queries. 
+Queries that had been processed and their results were 
+recorded in the query index. The XML index NCIM that is 
+Input: A path expression, q; A pointer of index node, p
+Output: A set of results
+Function QueryEvaluation(q){
+p = QueryMatch(q); 
+if ( p is not null )
+          return p.Result;
+else {
+          do query processing using NCIM;
+          update query index;
+          return results;    }
+}
+Function QueryMatch(q){
+decompose q into segments (0…n) by delimiters
+return RecQM( seg0, root->next index node);
+}
+Function RecQM( Segi, ptr){
+if (i>n) return ptr; //end of matching
+ptr = hash(Segi); //get the pointer of the entry
+if (ptr is null) return null; //no match
+else   RecQM (Seqi+1); //check next index node
+}
+200
+0
+10000
+20000
+30000
+40000
+50000
+60000
+70000
+80000
+DBLP SWISSPROT XMARK
+Si
+ze
+(M
+B)
+XML structure TwigList NCIM Query index
+Figure 9. Size of XML structure vs. in-memory index sizes of different 
+methods 
+
+
+0
+20
+40
+60
+80
+100
+DBLP SWISSPROT XMARK
+Co
+m
+pr
+es
+sio
+n 
+Ra
+tio
+%
+TwigList NCIM Query index
+Figure 10. Compression ratio of different methods 
+REFERENCES
+[1] G. Gou and R. Chirkova, “Efficiently querying large XML data 
+repositories: A survey,” IEEE Trans. on Knowl. and Data Eng. vol.19
+issue 10, 2007, pp. 1381-1403, doi: 10.1109/TKDE.2007.1060. 
+[2] I-E. Liao, W.-C. Hsu, and Y.-L. Chen, “An efficient indexing and 
+compressing scheme for XML query processing,” Proc. 2nd 
+International Conference on Networked Digital Technologies  (NDT 
+2010), Springer press, 2010, pp. 70-84, doi: 10.1007/978-3-642-
+14292-5_8. 
+[3] B. Catania, A. Maddalena, and A. Vakali, “XML document indexes: 
+A classification,” IEEE Internet Computing, vol.9, issue 5, 2005, pp. 
+64-71, doi: 10.1109/MIC.2005.115. 
+[4] R. Goldman and J. Widom, “DataGuides: Enabling query formulation 
+and optimization in semistructured databases,” Proc. 23rd 
+International Conference on Very Large Data Bases, 1997, pp. 436-
+445. 
+[5] C.-W. Chung, J.-K. Min, and K. Shim, “APEX: an adaptive path 
+index for XML data,” Proc. 2002 ACM SIGMOD International 
+Conference on Management of Data, Sep. 2002, pp.121-132. doi: 
+10.1016/j.is.2004.04.003. 
+[6] B. Zhang, Z. Geng, and A. Zhou, “SIMP: efficient XML structural
+index for multiple query processing,” Proc. 9th International 
+Conference on Web-Age Information Management (WAIM '08), 
+IEEE Computer Society, 2008,  pp.113-118, doi: 
+10.1109/WAIM.2008.25. 
+[7] Q. Chen, A. Lim, and K.W. Ong, “D(K)-Index: an adaptive structural 
+summary for graph-structured data,” Proc. ACM SIGMOD 
+International Conference on Management of Data (SIGMOD '03) , 
+ACM Press, 2003, pp. 134-144, doi: 10.1145/872757.872776. 
+[8] R. Kaushik, D. Shenoy, P. Bohannon, and E. Gudes, “Exploiting local 
+similarity for indexing paths in graph-structured data,” Proc. 18th 
+International Conference on Data Engineering (ICDE '02), IEEE 
+Press, 2002, pp.129-140. 
+[9] T. Milo and D. Suciu, “Index structures for path expressions,”  
+Lecture Notes in Computer Science, vol.1540 , 1999, pp. 277-295. 
+[10] S. Al-Khalifa, H. V. Jagadish, N. Koudas, J. M. Patel, D. Srivastava, 
+and Y. Wu, “Structural joins: a primitive for efficient XML query 
+pattern matching,” Proc. 18th International Conference on Data 
+Engineering (ICDE '02), IEEE Press, 2002, pp. 141-152. 
+[11] N, Bruno, N. Koudas, and D. Srivastava, “Holistic twig joins: 
+Optimal XML pattern matching,” in Proceddings of the 2002 ACM 
+SIGMOD International Conference on Management of Data 
+(SIGMOD '02), ACM Press, 2002, pp. 310-321, doi: 
+10.1145/564691.564727.
+[12] S. Chen, H. G. Li, J. Tatemura, W. P. Hsiung, D. Agrawal, and K. S. 
+Candan, “Twig2Stack: Bottom-up processing of generalized tree-
+pattern queries over XML documents,” Proc. 32nd International 
+Conference on Very Large Data Bases (VLDB '06), 2006, pp. 283-
+294. 
+[13] L. Qin, X. J. Yu, and B. Ding, “TwigList: Make twig pattern 
+matching fast,” Proc. 12th International conference on Database 
+systems for advanced applications (DASFAA '07), Springer press, 
+2007, pp. 850-862.
+[14] S.-C. Haw and C.-S. Lee, “Data storage practices and query 
+processing in XML databases: A survey,” Knowledge-Based Systems, 
+vol. 24, Jun. 2011, pp.1317-1340,  doi:10.1016/j.knosys.2011.06.006. 
+[15] H. Wang, S. Park, W. Fan, and P. S. Yu, “ViST: a dynamic index 
+method for querying XML data by tree structures,”  Proc. ACM 
+SIGMOD International Conference on Management of Data 
+(SIGMOD '03), ACM Press, 2003, pp.110-121, doi: 
+10.1145/872757.872774. 
+[16] H. Wang and X. Meng, “On the sequencing of tree structures for 
+XML indexing,” Proc. 21st International Conference on Data 
+Engineering (ICDE '05), IEEE Computer Society, 2005, pp.372-383, 
+doi:10.1109/ICDE.2005.98. 
+[17] P. Rao and B. Moon, “PRIX: Indexing and querying XML using 
+Prufer sequences,” Proc. 20th International Conference on Data 
+Engineering (ICDE '04), IEEE Computer Society, 2004, pp.288-299, 
+doi: 10.1109/ICDE.2004.1320005. 
+[18] M. Altinel and M. J. Franklin, “Efficient filtering of XMLdocuments 
+for selective dissemination of information,” Proc. 26th International 
+Conference on Very Large Data Bases (VLDB '00) , 2000, pp. 53̽64.
+[19] Y. Diao and M. J. Franklin, “High-performance XML filtering: an 
+overview of YFilter,” IEEE Data Engineering Bulletin, vol. 26, 2003, 
+pp.41-48.
+[20] K. S. Candan, W.-P. Wang, S. Chen, J. Tatemura, and D. Agrawal, 
+“AFilter: Adaptable XML filtering with prefix-caching and suffix-
+clustering,” VLDB, pp. 559-570, 2006
+[21] J. Kwon, P. Rao, B. Moon, and S. Lee, “FiST: scalable XML 
+document filtering by sequencing twig patterns,” Proce. 31st 
+International Conference on Very Large Data Bases (VLDB '05),
+2005, pp. 217̽228. 
+[22] P. Antonellis and C. Makris, “XFIS: an XML filtering system based 
+on string representation and matching,” International Journal of Web 
+Engineering and Technology, vol. 4 issue 1, 2008, pp. 70̽94, doi: 
+10.1504/IJWET.2008.016105. 
+[23] S. Scherzinger and A. Kemper, “Syntax-directed transformations of 
+XML streams,” in Workshop on Programming Language 
+Technologies for XML (PLAN-X) , 2005, pp. 79-90. 
+[24] C. Koch and S. Scherzinger, “Attribute grammars for scalable query 
+processing on XML streams,” The Very Large Data Bases Journal,
+vol. 16 issue 3, Jul. 2007, pp.317-342, doi: 10.1007/s00778-005-
+0169-1. 
+[25] XMLData Repository,
+http://www.cs.washington.edu/research/xmldatasets/, Accessed 14
+Oct. 2011. 
+[26] XMark- An XML benchmark project, http://www.xml-
+benchmark.org/, Accessed 14 Oct. 2011. 
+202
+100年度專題研究計畫研究成果彙整表 
+計畫主持人：廖宜恩 計畫編號：100-2221-E-005-070- 
+計畫名稱：一個支援快速 SPARQL 查詢的 RDF索引方法 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 3 3 100%  
+博士生 1 1 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

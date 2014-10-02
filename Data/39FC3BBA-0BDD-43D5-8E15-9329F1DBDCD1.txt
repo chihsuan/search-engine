@@ -1,0 +1,971 @@
+1. 中、英文摘要及關鍵詞(keywords)。 
+ 
+本子計畫主要設計與實作多核心嵌入式軟體之平行程式優化支援。今日，處理器研發
+業者已不再依賴提高時脈速度方法來增進效能，因絕對的效能、增加的耗電量、以及攀高
+的成本使邊際效益呈現逐漸遞減的趨勢，目前，多數產業都已體認多重核心(Multi-core)
+是未來的發展方向，其主要設計挑戰已逐漸被成功克服，實際的建置行動更已經展開。多
+處理技術存在著三大挑戰，程式分割、程式平行和最佳化。目前最需要的是一個編譯模型
+，使其得以開發平行應用程式，將這些應用程式映射到平行硬體並進行最佳化，以及彙集
+資料以作出最佳化的決策。有效的平行迴圈切割與排程可以顯著地減少程式在多核心處理
+器系統環境中的整體回應時間，特別是針對具有許多迴圈的應用程式與針對新興的多核心
+嵌入式系統環境，其優化處理也更為困難。本子計畫第一年(2009/8~2010/7)，將使用編譯
+器技術如資料相依性分析與軟體管線化技術，完成指令階層平行化與平行迴圈切割與迴圈
+排程優化支援。本子計畫第二年(2010/8~2011/7)，將擴充 VMC 平行程式優化介面支援至
+更多的架構平台與應用，如支援多核心程式庫例如OpenMP及 Intel Threading Building Block 
+(TBB)及強化與其他子計畫的介面。同時將建置一套在多核心嵌入式系統上平行程式優化
+支援模式適用於 OpenMP 及 Intel Threading Building Block 應用程式介面。 
+ 
+關鍵詞：平行程式、優化支援、資料相依性分析、指令階層平行化、平行迴圈 
+ 
+ 
+The main goal of this sub-project is to design and implement the parallel program optimization 
+supporting for VERTAF/Multi-Core (VMC) embedded software. Today, the processor researcher 
+is not dependent on the method of enhanced clock speed to improve performance. Because of 
+absolute performance, the increase of power consumption, as well as the rising cost of 
+marginal benefit to make a gradually descending trend. At present, most industries have been 
+considered multi-core is the future of development. The main design challenge has succeeded 
+gradually overcomes, the actual operations have already started to build. The multiprocessing 
+and multi-core technology has three major challenges, program partition, and program 
+parallelization and program optimization. The most important need is a compiler model, which 
+enables to develop parallel applications. Using these applications mapped to the parallel 
+hardware and run the action of optimization, as well as to collect information in order to make 
+the best decision. Effective parallel loop splitting and scheduling can obviously reduce the 
+program response time in the multiple processor environment, especially that optimize process 
+is also more difficult when aims at a many circle application programs and emerging multi-core 
+embedded system environment. First year, we will use compiler technology, such as the data 
+dependency analysis and software pipelining that implement parallel instruction, parallel loop 
+partitioning, and loop scheduling and optimization. Second year, we will extend the interface of 
+VMC parallel program and support more architecture and applications, such as multi-core 
+library like OpenMP and Intel Threading Building Block(TBB), and strengthen the interface of 
+other sub-projects. At the same time, we will build a set of multi-core embedded systems 
+which support parallel program optimization model for OpenMP and Intel Threading Building 
+Block API. 
+ 
+Keywords: Parallel Program, Optimization Supporting, Data Dependence Analysis, ILP, Parallel Loop 
+ 
+  
+I 
+ 
+國科會自由軟體專案『系統期中報告書』 
+ 
+Middle Report 
+of 
+NSC Open Source Project 
+ 
+ 
+多核心嵌入式軟體設計工具系統之平行程式優化支援
+實作-VMC_PPO (I) 
+Implementation of Parallel Program Optimization 
+Supporting for VMC – VMC_PPO (I) 
+ 
+NSC 98-2220-E-029-004 
+ 
+ 
+ 
+ 
+ 
+楊朝棟 教授 
+東海大學 資訊工程學系 
+ 
+ 
+ 
+Department of Computer Science 
+Tunghai University, Taichung, Taiwan 
+  
+1 
+ 
+1 版次變更記錄(Change History) 
+Version Author Description of Version Data Completed 
+0.1 All Member Discuss May 01, 2010 
+0.3 Keng-Yi Chou First draft May 04, 2010 
+0.5 Keng-Yi Chou Second draft May 08, 2010 
+0.8 Keng-Yi Chou Third draft May 17, 2010 
+1.0 Keng-Yi Chou Fourth draft May 23, 2010 
+ 
+  
+ 3 
+ 
+ 
+ 
+ 
+圖 2-1 
+2.4 背景與相關工作(Background and Related work) 
+2.4.1 ROSE 
+ROSE 是一個建立 source-to-source 轉換器與分析工具。ROSE 是好用在構建客製
+化的工具去做下列分析與優化： 
+ static analysis 
+ program optimization 
+ arbitrary program transformation 
+ domain-specific optimizations 
+ complex loop optimizations 
+ performance analysis 
+ cyber-security 
+可支援的程式碼為 C、C + +、f77/95/2003、OpenMP 與 UPC。我們使用 ROSE 主
+要是專注於開發優化 source-to-source 的工具，以支持與發展大型的科學應用（應
+用程序通常約 100 萬行代碼的大小）。 
+ROSE 是分為前端、midend 與後端元件，其後端元件可以產生 ROSE 相容的
+原始碼，所以ROSE是一個 source-to-source的編譯工具。 中介表示法(intermediate 
+representation, IR)在 ROSE 中是用來建立 high level 的抽象語法樹(abstract syntax 
+tree, AST)可以更好的符合 source-to-source，所以 ROSE 並沒有丟失原本原始碼結
+構中的任何資訊。midend 包括了一套分析與優化的方法。愛迪生設計群(Edison 
+Design Group, EDG) 是前端用來剖析 C 與 C++的應用程式。雖然 EDG 的源始碼是
+被保護的，但還是可以二進位行是免費取得。對 Fortran 2003 或著更早的版本，
+如: Fortran 90/95, F77, F66, 與 Fortran 4 是由 Los Alamos National Laboratory 開發
+的 Open Fortran Parser (OFP) 支援。 
+在 ROSE 中包含了一些開發好的程式分析與轉換，為了讓使用者透過使用者
+介面更簡單的使用函式呼叫，去實現 source-to-source 的分析與優化。可用的程
+式分析包含下列分析： 
+ call graph analysis 
+ control flow analysis 
+ data flow analysis (live variables, def-use chain, reaching definition, alias 
+analysis, etc.) 
+ class hierarchy analysis 
+ data dependence and system dependence analysis 
+ MPI communication pattern analysis 
+Code Optimization 
+ 5 
+ 
+Series 60、Sparc Solaris、VMS、VxWorks、Windows CE 或 Pocket PC、Sharp Zaurus、
+MorphOS 等。可擴充性可說是 Python 作為一種編程語言的特色。新的內置模組
+（module）可以用 C 或 C++寫成。而我們也可為現成的模組加上 Python 的介面。
+Python 可以使使用者避免過分的語法的羈絆而將精力主要集中到所要實作的程
+式任務上。 
+適用於 Python 的整合式開發環境（IDE）軟體，除了標準二進位發布包所附
+的 IDLE 之外，還有許多其他選擇。其中有些軟體設計有語法著色、語法檢查、
+執行偵錯、自動補全、智慧感知等便利功能。由於 Python 的跨平台出身，這些
+軟體往往也具備各種作業系統的版本或一定的移植性。 
+專門為 Python 設計的 IDE 軟體： 
+ IDLE：Python「標準」IDE 
+ Komodo 和 Komodo Edit：後者是前者的免費精簡版 
+ PythonWin：ActivePython 軟體包的 IDE，僅適用於 Windows 
+ SPE（Stani's Python Editor）：功能較多的自由軟體，依賴 wxPython 
+ Ulipad：功能較全的自由軟體，依賴 wxPython；作者是中國 Python 高手
+limodou 
+ WingIDE：可能是功能最全的 IDE，但不是自由軟體 
+ Eric：基於 PyQt 的自由軟體，功能強大 
+有相應外掛程式的通用 IDE 軟體（使用難度往往較大）： 
+ eclipse + pydev 外掛程式：穩定性欠佳 
+ emacs + 外掛程式 
+ Vim + 外掛程式 
+ Visual Studio .NET 2003 + VisualPython：僅適用 Windows，已停止維護，功能
+較差 
+ SlickEdit 
+ TextMate 
+ 
+ 
+2.4.3 Microsoft Visual C# 
+是美國微軟公司開發的 C#程式語言規格之集成開發環境使用者介面。 
+其中 Visual 這個術語是微軟相關產品的一致性的「品牌名稱」，一如微軟其它的
+產品一樣：Visual Basic，Visual FoxPro 和 Visual C++。所有這些產品都與一個圖形
+化的集成開發環境打包在一起，並且支持基於 Windows 的應用程序的快速開發。 
+ Visual C#是微軟爲了實現.NET Framework 中最有效率地進行開發的編程語言而
+被開發。Visual C#與 Java 一樣，是中間碼型的語言。不過，如果是對 Write once, run 
+anywhere 作為詞句的話，Java 基本地支持了 Windows。C#和共通語言基礎自體作為
+開放協議的跨平台，而在開放源代碼項目 Novell 支援下成爲了適合 Mono 項目開發
+UNIX 的語言。 
+ 7 
+ 
+件程序。該函式庫包含的資料結構和演算法，可以使程序員在使用執行緒時，避
+免一些併發症產生，比如 POSIX 執行緒，Windows 執行緒，或便攜式啟動執行緒
+在單執行緒執行創建、同步和終止手動。允許運行時將其視為“tasks”代替函式庫
+抽象存取多處理器，也就是利用函式庫在執行階段可以動態分配給各個內核和自
+動高效率的使用暫存器。根據演算法，即 High-level 並行編程模式（即 Algorithmic 
+Skeletons ），TBB 程式的創建、同步和破壞與 tasks 資訊有關係。執行 tasks 依照
+其資訊依賴性。 
+TBB 有提供一系列程式給平行程式： 
+Basic algorithms Advanced Algorithms 
+parallel_for 
+parallel_reduce 
+parallel_scan 
+parallel_while 
+parallel_do 
+pipeline 
+parallel_sort 
+Containers Scalable memory allocation 
+concurrent_queue 
+concurrent_vector 
+   concurrent_hash_map 
+scalable_malloc 
+scalable_free 
+scalable_realloc 
+scalable_calloc 
+scalable_allocator 
+   cache_aligned_allocator 
+Mutual exclusion Atomic operations 
+mutex, spin_mutex 
+queuing_mutex 
+spin_rw_mutex 
+queuing_rw_mutex 
+   recursive mutex 
+fetch_and_add 
+fetch_and_increment 
+fetch_and_decrement 
+compare_and_swap 
+   fetch_and_store 
+Timing Task Scheduler: 
+portable fine grained global time 
+stamp 
+direct access to control the creation and 
+activation of tasks 
+3 系統架構（System Architecture) 
+本子計畫所開發，結合了平行技術與程式碼優化演算法，提供程式碼優化的基本
+功能和學習模式。本計畫建置一多核心嵌入式軟體之高效能平行編譯器 (PPO)，
+載入既有之程式碼，透過逐行逐段分析，輔以高效能平行演算法，基於 OpenMP 
+及 Intel Threading Building Block 多核心函式庫，產出平行程式碼，使其達到多核
+心同步執行，加速其運算速度，並達到最大之產出。有鑒於以往程式優化系統的
+全面性，我們採取了區塊優化，也就是經過學習模式就每個迴圏區塊做一次優化
+ 9 
+ 
+ 
+ 
+ 
+圖 3-2 系統流程示意圖 
+圖 3-2 為系統執行流程，當程式碼由子計畫四接收後，中間共會經過八道處理程
+序，以下一一列舉說明： 
+ 
+1. Control flow analysis 
+ 分析程式中的內部區塊為階層式與計算迴圏影響值。 
+2. Data flow analysis 
+分析程式中變數的生命周期。 
+3. More Control flow analysis 
+ 分析程式中控制相依性。 
+4. Static-single assignment 
+ 常數影響係數、靜態單一賦值。 
+5. Global Optimizations 
+ 迴圏不變碼的移動、常見子表示消除與簡化。 
+6. Array dependence analysis 
+ 整數線性程式化、相依性抽象化。 
+7. Loop transformation 
+ 線性迴圏轉換、迴圏的融合/分裂與增加平行化和局部化。 
+8. Self-optimizing programs 
+ 根據預先分系的效能記錄自動添加 OpenMP 標籤。 
+本系統可區分為四個子部份系統，其個子系統之間的關係如下圖 3-3 所示。 
+Source Program 
+Parsing 
+Subsystem
+Parallelism 
+Subsystem
+Optimization 
+Subsystem
+Logging Subsystem
+Source 
+Code
+Output 
+Code
+ 
+圖 3-3 各子系統關係圖 
+ 11 
+ 
+ 
+圖 3-5 為 PS 子系統架構圖 
+3.3 優化子系統(Optimization Subsystem, OS) 
+將上一個子系統所產生出來的程式碼，更進一步去做最佳化。就是在除了平行化
+的程式碼外，再去尋找可以使之增進執行效率的程式碼區塊，加以最佳化並產出
+最後的完成碼。圖 3-6 為 OS 子系統架構圖，本子系統之組成如下： 
+A. Scanning：提供程式碼掃視  
+B. Analysis：程式碼優化區塊分析  
+C. Modify：處理欲優化程式區塊行為 
+ 
+圖 3-6 為 OS 子系統架構圖 
+ 
+3.4 紀錄子系統(Logging Subsystem, LS) 
+LS  功能為紀錄程式編譯優化過程中，所標記之程式碼行號以及所加入之程式導
+引器，並將之輸出以做檢驗或查詢用途。圖 3-7 為 LS 子系統架構圖，本子系統
+之組成如下： 
+A. Markup code log：紀錄程式碼被剖析時的所有 SPPS 行為 
+B. Parallel code log：紀錄程式碼在平行化時所有 PS 行為 
+C. Optimize code log：紀錄程式碼優化其間 OS 的所有行為 
+ 13 
+ 
+ 
+圖 4-1 Auto Parallel 執行畫面 
+Loop Optimizer 在迴圏優化中主要使用三種不同的演算法： 
+ Loop fusion 
+ 將有相依性的 Loops 做結合 
+ Loop splitting 
+ 將 Loop 分裂成其他 loops 
+ Loop unrolling 
+ 直接將 Loop 展開 
+圖 4-2 為執行 Loop Optimizer 的畫面，呼叫的參數定義為： 
+     -i   指定為優化/平行原始碼的資料夾位置 
+     -o  指定優化/平行過後原始碼輸出的資料夾位置 
+     -optimize 是否執行優化功能 
+ 15 
+ 
+ 
+圖 4-3 C#使用者圖形介面 
+Reference 
+[1] Chunhua Liao, Daniel J. Quinlan , Thomas Panas and Bronis de Supinski, A 
+ROSE-based  OpenMP 3.0 Research Compiler Supporting Multiple Runtime Libraries, 
+international Workshop on OpenMP (IWOMP) 2010, accepted in March. 2010 
+LLNL-CONF-422873 
+[2] Chunhua Liao, Daniel J. Quinlan, Jeremiah J. Willcock and Thomas Panas, 
+Semantic-Aware  Automatic Parallelization of Modern Applications Using 
+High-Level Abstractions, Journal of Parallel Programming, Accepted in Jan. 2010 
+[3] Robison, A.  Voss, M.  Kukanov, A.  Intel Corp., Santa Clara, CA, Optimization via 
+Reflection on Work Stealing in TBB, Parallel and Distributed Processing, 2008, 
+pages: 1 – 8 
+ I 
+國科會自由軟體專案『系統設計報告書』 
+ 
+System Design Document 
+of 
+NSC Open Source Project 
+ 
+ 
+多核心嵌入式軟體設計工具系統之平行程 
+式優化支援實作-VMC_PPO (I) 
+Implementation of Parallel Program Optimization 
+Supporting for VMC – VMC_PPO 
+ 
+NSC 98-2220-E-029-004 
+ 
+ 
+ 
+ 
+ 
+楊朝棟 教授 
+東海大學 資訊工程學系 
+ 
+ 
+ 
+ 
+ 
+ 
+Department of Computer Science 
+Tunghai University, Taiwan 
+ 
+2010/03/08 
+ III 
+Components and Interfaces) ..................................................................................... 9 
+2.3.1 功能性需求(Functional Requirements) ........................................... 9 
+2.3.2 OS 部界面分析(OS Context Diagram and Interface) .................... 10 
+2.4 LS 功能性需求分析(Decomposition of LS Functional Requirement to 
+Components and Interfaces) .................................................................................... 11 
+2.4.1 功能性需求(Functional Requirements) .......................................... 11 
+2.4.2 LS 內部界面分析(LS Context Diagram and Interfaces) ................ 11 
+3. 設計議題與解決方案(Design Issue and Solutions) .............................................. 13 
+3.1 程式剖析子系統(Source Program Parsing Subsystem) ........................ 13 
+3.1.1 子系統特徵(Subsystem Characteristics) ....................................... 13 
+3.1.2 建立技術解決方案之準則(Establish Technical Solution Criteria) 13 
+3.1.3 所選之子系統解決方案(Selected Subsystem Solution) ............... 15 
+3.1.4 錯誤偵測與回復(Error Detection and Recovery) ......................... 16 
+3.2 平行子系統(Parallelism Subsystem) ..................................................... 16 
+3.2.1 子系統特徵(Subsystem Characteristics) ....................................... 16 
+3.2.2 建立技術解決方案之準則(Establish Technical Solution Criteria) 17 
+3.2.3 所選之子系統解決方案(Selected Subsystem Solutions) ............. 18 
+3.2.4 錯誤偵測與回復(Error Detection and Recovery) ......................... 18 
+3.3 優化子系統(Optimization Subsystem) .................................................. 19 
+3.3.1 子系統特徵(Subsystem Characteristics) ....................................... 19 
+3.3.2 建立技術解決方案之準則(Establish Technical Solution Criteria) 19 
+3.3.3 所選之子系統解決方案(Selected Subsystem Solutions) ............. 20 
+3.3.4 錯誤偵測與回復(Error Detection and Recovery) ......................... 21 
+3.4 紀錄子系統(Logging Subsystem) .......................................................... 21 
+3.4.1 子系統特徵(Subsystem Characteristics) ....................................... 21 
+3.4.2 建立技術解決方案之準則(Establish Technical Solution Criteria) 22 
+ V 
+Components) ................................................................................................... 40 
+ 
+ 
+ 1 
+1. 系統模組與架構（System Models／System 
+Architecture） 
+1.1 PPO 功能性需求分析(Decomposition of PPO 
+Functional Requirement to Subsystem Requirements 
+and Interfaces) 
+  本子計畫所開發，結合了平行技術與程式碼優化演算法，提供程式碼優化的
+基本功能和學習模式。本計畫建置一多核心嵌入式軟體之高效能平行編譯器 
+(PPO)，載入既有之程式碼，透過逐行逐段分析，輔以高效能平行演算法，基於
+OpenMP 及 Intel Threading Building Block 多核心函式庫，產出平行程式碼，使
+其達到多核心同步執行，加速其運算速度，並達到最大之產出。有鑒於以往程式
+優化系統的全面性，我們採取了區塊優化，也就是經過學習模式就每個迴圏區塊
+做一次優化並記錄下來，以迴圏執行效率做為比較，去判定運算迴圏是否需要程
+式優化，因此本系統利用 Intel TBB 與 OpenMP 以及 ROSE 來達到程式碼平行與
+優化的效果。本系統的主要功能可區分為四個部份，分別敘述如下： 
+ 程式剖析子系統(Source Program Parsing Subsystem, SPPS) 
+SPPS 接受使用者輸入之原始程式碼，逐行進行剖析，主要鎖定多數可
+平行運行之迴圈，以平行程式撰寫時常用的關鍵字與平行化之架構為基
+礎，針對輸入程式之上下文，以及各種區塊符號，判斷出各個程式區塊，
+最後交付後端之平行優化子系統。 
+ 平行子系統(Parallelism Subsystem, PS) 
+PS 接受前端程式剖析子系統之結果，針對剖析子系統所判斷出各個可
+平行化之標記部份，予以新增符合 TBB 或 OpenMP 之函式庫導引器，
+ 3 
+1.2 建立技術解決方案準則(Establish Technical Solution 
+Criteria) 
+  本計畫針對 PPO 擬定了各種標準，以因應軟體開發上可能遭遇到的限制，
+各標準條例如下： 
+ 使用性：所選軟體是否易於操作開發 
+ 可攜性：各種作業系統之移植可攜 
+ 擴充性：系統後續擴充是否容易 
+ 支援性：對於周邊設備是否具備足夠支援度 
+ 維護性：系統是否易於維護與測試 
+ 
+1.3 替代方案描述(Describe Alternative Solution) 
+1.3.1 系統(System) 
+架構(Architecture) 
+  PPO 系統之可行架構為：主從式系統(Client-Server System)以及中央管理系
+統(Mainframe System)， 
+本系統架構設計之評估如下所示，其中 1 代表最差，而 5 代表最佳。 
+ 主從式系統 中央管理系統 
+使用性 3 3 
+可攜性 3 4 
+擴充性 5 4 
+支援性 4 3 
+維護性 2 5 
+總和 17 19 
+ 
+ 5 
+1.4 所選之系統解決方案(Selected System Solution) 
+  綜合以上比較，開發人員決定採用之軟體開發如下：採用 Ubuntu 為開發環
+境，由於採用 GNU/Linux 為開發環境，因此使用 C++進行程式開發，而占整份
+專案最重要部分的程式優化與平行則是考慮由於 OpenMP 較易為大眾所使用，
+而其跨平台的特性也可滿足不同使用者的需求，再者 OpenMP 附加在程式中，
+可以清楚的知道標記語法的作用之優點，故開發人員希望以此軟體函式庫做一開
+發主軸。 
+ 
+1.5 系統內外部界面(System Internal／External 
+Interface) 
+1.5.1 內部介面(Internal Interface) 
+需求編號 優先順序 需求描述 
+PPO-N-001 1 SPPS 必須能夠偵測出迴圏且註記 
+PPO-N-002 1 PS 必須能夠正確的將目標程式碼平行化 
+PPO-N-003 1 OS 必須能將程式碼確實優化 
+PPO-N-004 1 LS 必須能夠紀錄子系統之間的行為 
+ 
+1.5.2 外部介面(External Interface) 
+需求編號 優先順序 需求描述 
+PPO-N-005 1 開發人員能夠輸入 Source code 
+PPO-N-006 1 開發人員能夠輸入 Parallel code 
+ 
+ 
+ 
+ 
+ 7 
+迴圈，以平行程式撰寫時常用的關鍵字與平行化之架構為基礎，針對輸入程式之
+上下文，以及各種區塊符號，判斷出各個程式區塊，最後交付後端之平行優化子
+系統。SPPS 子系統架構圖如圖 2-1 所示，其中虛線代表內部界面，而實線代表
+外部界面。 
+ParsingInput 
+Source code
+Analyzing
+Parallelism 
+Subsystem
+ 
+圖表 2-1 SPPS 子系統架構圖 
+ 
+介面需求 
+內部需求 
+需求編號 優先順序 需求描述 
+SPPS-N-001 1 Internal delivering process。 
+ 
+外部介面 
+需求編號 優先順序 需求描述 
+SPPS -N-002 1 Getting User Input Program Codes 
+SPPS -N-003 1 Output Parsing Result Tags。 
+ 
+使用者介面 
+需求編號 優先順序 需求描述 
+SPPS -N-004 1 使用者可以透過 Linux terminal 去執行 
+ 
+ 
+ 9 
+介面需求 
+內部介面 
+需求編號 優先順序 需求描述 
+PS-N-001 1 Compiler inner paralleling process。 
+ 
+外部介面 
+需求編號 優先順序 需求描述 
+PS-N-002 1 輸入 parallel code。 
+PS-N-003 1 Output Directive Tags。 
+ 
+使用者介面 
+需求編號 優先順序 需求描述 
+PS-N-004 1 可供判斷 code 為 TBB 或 OpenMP。 
+ 
+2.3 OS 功能性需求分析(Decomposition of OS Functional 
+Requirement to Components and Interfaces) 
+2.3.1 功能性需求(Functional Requirements) 
+  將上個子系統的輸出檔案，再一次經過掃描、分析與修正，以達到程式最佳
+化的目的。。OS 之功能性需求如下所示： 
+需求編號 優先順序 需求描述 
+OS-F-001 1 The correctness of the optimized code must be 
+ensured. 
+OS-F-002 2 The speedup of the front end parallel code must be 
+efficient 
+ 11 
+2.4 LS 功能性需求分析(Decomposition of LS Functional 
+Requirement to Components and Interfaces) 
+2.4.1 功能性需求(Functional Requirements) 
+LS 功能為紀錄程式編譯優化過程中，所標記之程式碼行號以及所加入之程
+式導引器，並將之輸出以做檢驗或查詢用途。 
+需求編號 優先順序 需求描述 
+LS-F-001 1 The correctness of the tags be ensured. 
+LS-F-002 1 Accessing the tags form Database or File System. 
+ 
+2.4.2 LS 內部界面分析(LS Context Diagram and Interfaces) 
+子系統架構 
+  在 LS 中，於編譯程式執行過程中，紀錄程式分析紀錄，包含所標記之行號，
+新增加之平行函式導引器及其位置，最後分別輸出 TXT、XML、以及 SQLlite
+等格式，供日後追蹤分析。LS 子系統架構圖如圖 2-4 所示，其中虛線代表內部
+結構，實線代表外部結構。 
+ 
+Markup 
+code log
+Markup code
+Parallel 
+code log
+Optimize 
+code log
+TXT/XML/SQ
+Lite log file
+Parallel code
+Optimize code
+ 
+圖表 2-4 SLRS 子系統架構圖 
+ 
+ 13 
+3. 設計議題與解決方案(Design Issue and Solutions) 
+3.1 程式剖析子系統(Source Program Parsing Subsystem) 
+3.1.1 子系統特徵(Subsystem Characteristics) 
+  本子系統接受使用者輸入之原始程式碼，逐行進行剖析，主要鎖定多數可平
+行運行之迴圈，以平行程式撰寫時常用的關鍵字與平行化之架構為基礎，針對輸
+入程式之上下文，以及各種區塊符號，判斷出各個程式區塊，最後交付後端之平
+行優化子系統。SPPS 包含下列兩個子系統： 
+ UI：提供使用者操作與設定介面 
+ Parsing：程式碼語意整理 
+ Analysis：程式碼語意分析 
+以下是本系統發展之篩選限制(Screening Criteria)，其中 1 代表最重要，而 6
+代表較不重要。 
+編號 限制 優先順序 
+CRI1-001 容易使用(Easy to Use) 1 
+CRI1-002 效率(Performance) 2 
+CRI1-003 開發成本(Develop Cost) 3 
+CRI1-004 維護成本(Maintenance Cost) 4 
+CRI1-005 整合成本(Integration Cost) 5 
+CRI1-006 實作速度(Implementation Speed) 6 
+ 
+3.1.2 建立技術解決方案之準則(Establish Technical Solution 
+Criteria) 
+  SPPS 必須具有使用者介面與剖析程式碼工具之功能，以下討論之： 
+ 15 
+ 
+3.1.3 所選之子系統解決方案(Selected Subsystem Solution) 
+使用者介面 
+ QT GTK+ C# 重要性 
+容易使用 5 5 7 10 
+效率 8 8 6 8 
+開發成本 6 6 7 7 
+維護成本 5 8 8 4 
+整合成本 8 7 5 4 
+實作速度 6 6 8 4 
+重要性加權 232 240 251  
+ 
+剖析程式碼工具 
+ ROSE Coins 重要性 
+容易使用 8 7 10 
+效率 9 8 8 
+開發成本 9 4 7 
+維護成本 8 5 4 
+整合成本 7 6 4 
+實作速度 9 6 4 
+重要性加權 311 230  
+  根據上述分析，在 SPPS 中，UI 將以 C#處理使用者介面，而 Parsing 以及
+Analysis 將採用 ROSE 處理程式碼的迴圏複雜度。 
+ 
+ 
+ 17 
+CRI2-005 整合成本(Integration Cost) 5 
+CRI2-006 容易使用(Easy to Use) 6 
+ 
+3.2.2 建立技術解決方案之準則(Establish Technical Solution 
+Criteria) 
+  PS 必須能夠正確接受前端輸入為剖析子系統之剖析紀錄檔，針對使用者指
+定之平行函式目標(TBB或 OpenMP)，於各個可平行化之部份，增加函式導引器，
+最後產生平行程式碼。；以下針對 PS 之篩選限制進行分析： 
+ 
+平行程式函式庫 
+ Intel TBB OpenMP 
+效率 中 高 
+開發成本 中，函式庫難懂 低，函式庫夠明確 
+實作速度 快，提供良好的介面 快，文件豐富 
+維護成本 高，函式庫較難理解 低，完善的文件與說明 
+整合成本 中，系統整合良好 低，易處理 
+容易使用 中，豐富的資源 高，函式庫易以理解 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 19 
+3.3 優化子系統(Optimization Subsystem) 
+3.3.1 子系統特徵(Subsystem Characteristics) 
+   OS 負責將平行子系統產生之程式碼進行最佳化，並將之輸出。本子系統之
+組成如下： 
+ Scanning：提供程式碼掃視 
+ Analysis：程式碼優化區塊分析 
+ Modify：處理欲優化程式區塊行為 
+  以下是本系統發展之篩選限制(Screening Criteria)，其中 1 代表最重要，而 6
+代表較不重要。 
+編號 限制 優先順序 
+CRI3-001 效率(Performance) 1 
+CRI3-002 開發成本(Develop Cost) 2 
+CRI3-003 實作速度(Implementation Speed) 3 
+CRI3-004 維護成本(Maintenance Cost) 4 
+CRI3-005 整合成本(Integration Cost) 5 
+CRI3-006 容易使用(Easy to Use) 6 
+ 
+ 
+ 
+3.3.2 建立技術解決方案之準則(Establish Technical Solution 
+Criteria) 
+  OS 必須提供將上個子系統的輸出檔案，再一次經過掃描、分析與修正，以
+達到程式最佳化的目的。其輸出檔案會在交與子計畫七去做測試檢驗。 
+程式碼優化工具 
+ 21 
+3.3.4 錯誤偵測與回復(Error Detection and Recovery) 
+OS 將在下列情形處理異常，並通知各子系統狀態。 
+ 
+無法針對程式碼進行優化動作 
+OS 必須通知使用者此程式碼無法被進行優化。 
+ 
+無法保證程式碼之加速量化 
+當程式優化後執行無法被保證有加速時，OS 必須顯示此之程式為不優化一類。 
+ 
+ 
+ 
+3.4 紀錄子系統(Logging Subsystem) 
+3.4.1 子系統特徵(Subsystem Characteristics) 
+    LS 功能為紀錄程式編譯優化過程中，所標記之程式碼行號以及所加入之程
+式導引器，並將之輸出以做檢驗或查詢用途。本子系統之組成如下： 
+ Markup code log：紀錄程式碼被剖析時的所有 SPPS 行為 
+ Parallel code log：紀錄程式碼在平行化時所有 PS 行為 
+ Optimize code log：紀錄程式碼優化其間 OS 的所有行為 
+  以下是本系統發展之篩選限制(Screening Criteria)，其中 1 代表最重要，而 6
+代表較不重要。 
+編號 限制 優先順序 
+CRI4-001 效率(Performance) 1 
+CRI4-002 開發成本(Develop Cost) 2 
+CRI4-003 實作速度(Implementation Speed) 3 
+ 23 
+維護成本 3 8 6 6 
+整合成本 6 8 5 4 
+容易使用 6 8 7 4 
+重要性加權 300 310 290  
+  根據上述分析 LS 將使用 XML 來進行紀錄檔處理，並提供相關說明文件以
+供參考。 
+ 
+3.4.4 錯誤偵測與回復(Error Detection and Recovery) 
+LS 將在下列情形處理資料異常，並通知各子系統 
+資料接受異常 
+根據來源往回通知 SPPS、PS 或 OS 無法辨識，並經由 PPO 的 UI 顯示資料異常。 
+ 
+ 25 
+Front 
+Class Name： CommandLineProcessor ID： 1 Type： Concrete, Domain 
+Description：使用者可以透過去做選擇資料所在、資料輸出
+的位置、執行平行優化、紀錄行為紀錄的方式。 
+Associated Use Case：1 
+Responsibilities Collaberators 
+generateArgListFromString(std: :string commandline) 
+generateStringFromArgList(Rose_STL_Container< std: :string > &argList) 
+generateOptionList(Rose_STL_Container< std: :string > &argList, 
+std: :string inputPrefix) 
+isOption(std: :vector< string > &argv, string optionPrefix, std: :string 
+option, bool removeOption) 
+removeAllFileNamesExcept(vector< string > &argv, 
+Rose_STL_Container< string > filenameList, std: :string exceptFilename) 
+generateSourceFilenames(Rose_STL_Container< std: :string > argList, bool 
+binaryMode) 
+ 
+Back 
+Attributes： 
+isSourceFilename  (1….1)  (String) 
+isExecutableFilename   (1….1)  (String) 
+initObjectFileSuffixList  (1….1)  (String) 
+Attribute6  (1….1)  (String) 
+initExecutableFileSuffixList  (1….1)  (String) 
+Relationships： 
+    Generalization(a-kind-of)： 
+    Aggregation(has-parts)： 
+    Other Associations： 
+ 
+Front 
+Class Name： LanguageParser ID： 2 Type： Concrete, Domain 
+ 27 
+process LanguageParser
+yyparse()
+annlex
+ 
+圖表 4-2 SPPS Sequence diagram 
+ 
+Behavior Model 
+本文件以狀態機(State Machine)來表示 SPPS 之狀態變化，其變化如圖 4-3 所示。 
+receive source code parse source code build AST tree and scan omp directives
+ 
+圖表 4-2 SPPS Behavior Model 
+4.1.2 子系統內外部介面需求與設計(Subsystem Internal／External 
+Interface Requirement and Design) 
+ 
+內部界面需求(Internal Interface Requirements) 
+需求編號 優先順序 需求描述 
+SPPS-N-001 1 Internal delivering process。 
+ 
+外部介面需求(External Interface Requirements) 
+需求編號 優先順序 需求描述 
+SPPS -N-002 1 Getting User Input Program Codes 
+SPPS -N-003 1 Output Parsing Result Tags。 
+ 29 
+ 
+圖表 4-4 PS Class Diagram 
+Dynamic Model 
+PS 運作程序以循序圖表示，如圖 4-5 所示。 
+process AutoPar
+autopar_command_
+processing
+initialize_analysis()
+Parallelize 
+OutermostLoop()
+ 
+圖表 4-5 PS Sequence Diagram 
+Behavior Model 
+本文件以狀態機(State Machine)來表示 PS 之狀態變化，其變化如圖 4-6 所示。 
+receive source code and AST tree and OpenMP directive info
+parallelization
+If loop has no 
+dependency problem
+generate result
+find next loop
+If end of file
+no
+no
+圖表 4-6 PS Behavior Model 
+ 
+類別對照(Class Dictionary) 
+以下使用表格描述圖 4-3 中之物件，說明物件之設計與功能。 
+Front 
+Class Name： CommandLineProcessor ID： 1 Type： Concrete, Domain 
+Description：使用者可以透過去做選擇資料所在、資料輸出
+的位置、執行平行優化、紀錄行為紀錄的方式。 
+Associated Use Case：1 
+ 31 
+*annot) 
+GetLiveVariables(SgNode *loop, std: :vector< SgInitializedName * > &liveIns, std: :vector< 
+SgInitializedName * > &liveOuts, bool reCompute) 
+getLoopInvariant(SgNode *loop) 
+CollectVisibleVaribles(SgNode *loop, std: :vector< SgInitializedName * > &resultVars, 
+std: :vector< SgInitializedName * > &invariantVars, bool scalarOnly) 
+CollectVariablesWithDependence(SgNode *loop, LoopTreeDepGraph *depgraph, vector< 
+SgInitializedName * > &resultVars, bool scalarOnly) 
+AutoScoping(SgNode *sg_node, OmpSupport: :OmpAttribute *attribute, LoopTreeDepGraph 
+*depgraph) 
+RecognizeReduction(SgNode *loop, OmpSupport: :OmpAttribute *attribute, std: :vector< 
+SgInitializedName * > &candidateVars) 
+CollectScopedVariables(OmpSupport: :OmpAttribute *attribute, std: :vector< 
+SgInitializedName * > &result) 
+DependenceElimination(SgNode *sg_node, LoopTreeDepGraph *depgraph, std: :vector< 
+DepInfo > &remainings, OmpSupport: :OmpAttribute *att, ArrayInterface *array_interface, 
+ArrayAnnotation *annot) 
+ParallelizeOutermostLoop(SgNode *loop, ArrayInterface *array_interface, ArrayAnnotation 
+*annot) 
+Back 
+Attributes： 
+AutoParallelization: :enable_debug  (1….1)  (String) 
+AutoParallelization: :defuse = NULL   (1….1)  (String) 
+AutoParallelization: :liv = NULL (1….1)  (String) 
+Relationships： 
+    Generalization(a-kind-of)： 
+    Aggregation(has-parts)： 
+    Other Associations： 
+ 
+ 
+ 
+ 
+ 33 
+其中設計細節。 
+ 
+Static Model 
+OS 之 Static Model 如圖 4-7 所示。 
+ 
+圖表 4-7 OS Class Diagram 
+Dynamic Model 
+OS 運作程序以循序圖表示，如圖 4-8 所示。 
+process LoopOptimze
+commandLineproce
+ssing()
+optimize
+ 
+圖表 4-8 OS Sequence Diagram 
+ 
+行為模型(Behavior Model) 
+OS 運作程序以循序圖表示，如圖 4-9 所示。 
+receive source code and AST tree and OpenMP directive info
+opmization
+generate result
+find next loop
+If end of file
+no
+ 
+圖表 4-9 OS Behavior Model 
+ 35 
+    Aggregation(has-parts)： 
+    Other Associations： 
+ 
+ 
+ 
+Front 
+Class Name： LoopOptimize ID： 4 Type： Concrete, Domain 
+Description：執行程式碼的迴圏優化 Associated Use Case：1 
+Responsibilities Collaberators 
+DebugAnnot() 
+FixFileInfo(SgNode *n) 
+unparseProject(SgProject *project, UnparseFormatHelp *unparseHelp, 
+UnparseDelegate *repl) 
+PrintUsage(char *name) 
+GenerateObj() 
+command_processing(vector< string > &argvList) 
+optimize() 
+ 
+Back 
+Attributes： 
+isFussion  (1….1)  (String) 
+isUnrolling  (1….1)  (String) 
+isSplitting  (1….1)  (String) 
+Relationships： 
+    Generalization(a-kind-of)： 
+    Aggregation(has-parts)： 
+    Other Associations：CommandLineProcessor {1..1} 
+ 
+4.3.2 子系統內外部介面需求與設計(Subsystem Internal／External 
+ 37 
+Static Model 
+LS 之 Static Model 如圖 4-10 所示。 
+ 
+圖表 4-10 LS Class Diagram 
+Dynamic Model 
+LS 運作程式以程序圖表示，如圖 4-11 所示。 
+process Logsystem
+sysMsg()
+InsertMsg()
+ 
+圖表 4-11 LS Sequence Diagram 
+行為模式(Behavior Model) 
+本文件以狀態機(State Machine)來表示 LS 之狀態變化，其變化如圖 4-12 所示。 
+run program print message write into log file
+If debug mode
+no
+圖表 4-12 LS Behavior Model 
+ 
+ 
+ 
+ 39 
+Front 
+Class Name： LogSystem ID： 5 Type： Concrete, Domain 
+Description：紀錄 SPPS、PS 與 OS 子系統執行過程的紀錄，
+方便日後做查詢。 
+Associated Use Case：1 
+Responsibilities Collaberators 
+SysMsg() 
+InserMsg() 
+ 
+Back 
+Attributes： 
+level   (1….1)  (String) 
+subsystem  (1….1)  (String) 
+Relationships： 
+    Generalization(a-kind-of)： 
+    Aggregation(has-parts)： 
+    Other Associations：CommandLineProcessor {1..1} 
+ 
+ 
+4.4.2 子系統內外部介面需求與設計(Subsystem Internal／External 
+Interface Requirement and Design) 
+內部界面需求(Internal Interface Requirements) 
+需求編號 優先順序 需求描述 
+LS-N-001 1 Mcl 必須完整的紀錄 SPPS 的行為 
+LS-N-002 1 Pcl 必須完整的紀錄 PS 的行為 
+LS-N-003 1 Ocl 必須完整的紀錄 OS 的行為 
+ 
+ 3. 計畫成果自評部份，請就研究內容與原計畫相符程度、達成預期目標情況、研
+究成果之學術或應用價值、是否適合在學術期刊發表或申請專利、主要發現或
+其他有關價值等，作一綜合評估。 
+ 
+Publication list 
+Journal papers 
+[1] Chao-Tung Yang*, Chao-Chin Wu, and Jen-Hsiang Chang, “Performance-based Parallel 
+Loop Self-Scheduling Using Hybrid OpenMP and MPI Programming on Multicore SMP 
+Clusters”, Concurrency and Computation: Practice and Experience, Manuscript 
+#CPE-09-0168R3, May 2010. (ISSN: 1532-0626, SCI JCR IF=1.791, EI) 
+[2] Chao-Chin Wu*, Chao-Tung Yang, Kuan-Chou Li, and Po-Hsun Chiu, “Designing parallel 
+loop self-scheduling schemes using the hybrid MPI and OpenMP programming model 
+for multi-core grid systems”, Journal of Supercomputing, Springer Netherlands, 2010. 
+(ISSN: 1573-0484, SCI JCR IF=0.615, EI) 
+[3] Chao-Chin Wu*, Lien-Fu Lai, Chao-Tung Yang, and Po-Hsun Chiu, “Using Hybrid MPI and 
+OpenMP Programming to Optimize Communications in Parallel Loop Self-Scheduling 
+Schemes for Multicore PC Clusters”, Journal of Supercomputing, Springer Netherlands, 
+2010. (ISSN: 1573-0484, SCI JCR IF=0.615, EI) 
+[4] Chao-Tung Yang* and Kuan-Chou Lai, "A Directive-based MPI Code Generator on Linux 
+PC Clusters," Journal of Supercomputing, Springer Netherlands, Volume 50, Number 2, 
+pp. 177-207, Nov., 2009. (ISSN: 1573-0484, SCI JCR IF=0.615, EI) 
+Conference papers 
+[1] Chao-Tung Yang and Chih-Lin Huang, “Hybrid CUDA, OpenMP, and MPI Parallel 
+Programming on Multicore GPU Clusters”, Conference on Computational Physics 2009 
+(CCP09), Kaohsiung, Taiwan, Dec. 15-19, 2009. 
+[2] Chao-Tung Yang*, Chien-Hsiang Tseng, Keng-Yi Chou, and Shyh-Chang Tsaur, “A 
+Virtualized HPC Cluster Computing Environment on Xen with Web-based User Interface”, 
+The second International Conference on High Performance Computing and Applications, 
+HPCA 2009, Lecture Notes in Computer Science, vol., 5938, pp. 503–508, Springer, 
+Shanghai, China, August 10-12, 2009. 
+[3] Chao-Tung Yang*, Jen-Hsiang Chang, and Chao-Chin Wu, “Performance-based Parallel 
+Loop Self-Scheduling on Heterogeneous Multicore PC Clusters”, The second 
+International Conference on High Performance Computing and Applications, HPCA 2009, 
+Lecture Notes in Computer Science, vol., 5938, pp. 509–514, Springer, Shanghai, China, 
+August 10-12, 2009. 
+ 
+英文： 
+The main goal of this sub-project is to design and implement the 
+parallel program optimization supporting for VERTAF/Multi-Core 
+(VMC) embedded software. Today, the processor researcher is not 
+dependent on the method of enhanced clock speed to improve 
+performance. Because of absolute performance, the increase of power 
+consumption, as well as the rising cost of marginal benefit to make a 
+gradually descending trend. At present, most industries have been 
+considered multi-core is the future of development. The main design 
+challenge has succeeded gradually overcomes, the actual operations 
+have already started to build. The multiprocessing and multi-core 
+technology has three major challenges, program partition, and 
+program parallelization and program optimization. The most 
+important need is a compiler model, which enables to develop parallel 
+applications. Using these applications mapped to the parallel 
+hardware and run the action of optimization, as well as to collect 
+information in order to make the best decision. Effective parallel loop 
+splitting and scheduling can obviously reduce the program response 
+time in the multiple processor environment, especially that optimize 
+process is also more difficult when aims at a many circle application 
+programs and emerging multi-core embedded system environment. 
+First year, we will use compiler technology, such as the data 
+dependency analysis and software pipelining that implement parallel 
+instruction, parallel loop partitioning, and loop scheduling and 
+optimization. Second year, we will extend the interface of VMC parallel 
+program and support more architecture and applications, such as 
+multi-core library like OpenMP and Intel Threading Building 
+Block(TBB), and strengthen the interface of other sub-projects. At the 
+same time, we will build a set of multi-core embedded systems which 
+support parallel program optimization model for OpenMP and Intel 
+Threading Building Block API. 
+可利用之產業 
+及 
+可開發之產品 
+本子計畫所開發，結合了平行技術與程式碼優化演算法，提供程式
+碼優化的基本功能和學習模式。本計畫建置一多核心嵌入式軟體之
+高效能平行編譯器 (PPO)，載入既有之程式碼，透過逐行逐段分
+析，輔以高效能平行演算法，基於 OpenMP 及 Intel Threading 
+Building Block 多核心函式庫，產出平行程式碼，使其達到多核心同
+步執行，加速其運算速度，並達到最大之產出。有鑒於以往程式優
+化系統的全面性，我們採取了區塊優化，也就是經過學習模式就每
+個迴圏區塊做一次優化並記錄下來，以迴圏執行效率做為比較，去
+判定運算迴圏是否需要程式優化，因此本系統利用 Intel TBB 與
+OpenMP 以及 ROSE 來達到程式碼平行與優化的效果。 

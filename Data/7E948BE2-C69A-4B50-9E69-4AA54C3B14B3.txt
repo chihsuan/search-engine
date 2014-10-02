@@ -1,0 +1,739 @@
+2position of the reference point receives a vote. The maxima in the accumulator array correspond to the positions of the instances of
+the template in the image.
+Based on the success of the GHT, several extensions of the GHT have come out. One kind of extension includes more information
+into the GHT. Lo and Tsai [13] included color information into the GHT. Chau and Siu [14] used the region of homogeneous
+color instead of the boundary point as the primitive feature for the GHT. Cantoni and Carrioli [15] used the local subpattern as
+the primitive feature. Tsai [16] extended the GHT by utilizing the concavity, radius, and normal direction of the curve segment in
+the neighborhood of a boundary point. Artolazabal et al. [17] used a set of invariants based on Fourier descriptors as the index to
+retrieve the displacement vector.
+Some extensions of the GHT are focused on particular types of shape transformations. Samal and Edwards [18] modified the GHT
+for identifying “similar” shapes. Lo and Tsai [19] extended the GHT for detecting a planar shape under the perspective transformation.
+A more intensive study of the GHT is on identifying the target shape of arbitrary positions, orientations, and scale factors. Some of
+the researches are aimed at reducing the storage requirement; the others are aimed at developing fast algorithms.
+Lee et al. [20] proposed a technique to reduce the storage requirement of the GHT for identifying the target shape at an arbitrary
+position from a proportion to the image size to a proportion of the number of edge points in the input image. Jeng and Tsai [21]
+voted for the possible position of the target shape on half lines and circles in a two-dimensional space to identify shapes of arbitrary
+scale factors, positions, and orientations. Thomas [22] and Kassim et al. [23] stored the vector relative to the edge normal in a
+modified R-table, and voted for the possible position in a two-dimensional space. Some approaches utilize local properties to derive
+possible orientations, scale factors, and positions of the target shape with respect to the element in the R-table. Ser and Siu [24]
+used the pair of edge points with the same gradient direction to compute possible orientations and scale factors of the target shape
+and voted for the possible positions of the shape in a two-dimensional space. Chau and Siu [25] proposed an adaptive scheme to
+optimize the R-table for the dual-point GHT. Similarly, Ma and Chen [26] used the slope and curvature of a boundary point to derive
+the possible orientation and scale factor of the target shape, and voted for the possible position, and the possible orientation and
+scale factor in two two-dimensional parameter spaces independently.
+On the other hand, Ulrich et al. [27] developed a fast coarse-to-fine approach to locating the target shape of arbitrary orientations,
+scale factors, and positions accurately. They used the brute-force approach in the coarsest resolution to roughly locate the target
+shape, and progressively refined the result in finer resolutions. Jeng and Tsai [28] proposed a fast algorithm for the GHT which
+reduces the amount of data for processing by the coarse-to-fine approach.
+To use the GHT for multiple template shapes, a direct implementation may apply the GHT or an extension of the GHT for each
+template one by one to identify the instance of the template having a higher-ranked support. When most of the templates have no
+instances in the input image, this direct implementation may waste a lot of computation time on voting for the template having
+no instances in the input image. In fact, in addition to the coarse-to-fine approach, the total computation time can also be possibly
+shortened by stopping the voting process for the template impossible to have an instance with a higher-ranked support as soon as
+possible. Based on this concept, a novel approach to accelerating the GHT for multiple templates is proposed.
+To estimate the support of a template shape before completing the whole voting process for the template, the voting process is
+accomplished by multiple stages instead of the original single stage. To achieve this goal, a template shape is represented by an
+R-table series. The R-table series organizes the boundary point of the template according to the importance of the boundary point
+to the overall aspect of the template, which is defined through the kernel principal component analysis (PCA) [29]–[31] and the
+QR factorization with column pivoting [32]. In addition, the voting process of the GHT is altered so that it can switch across all
+templates. Each stage only votes for the template which seems to have the instance with the highest-ranked support. Here, the A*
+search [33] is proposed to control such a voting scheme.
+The remainder of this section is organized as follows. Section II-B describes an implementation of the GHT which is the basis
+of the proposed method. Section II-C defines the problem of using the GHT with multiple template shapes for object recognition.
+Section II-D introduces the proposed series representation of the R-table. Section II-E presents how to utilize the A* search with
+the proposed series representation of the R-table to avoid unnecessary votes, and analyzes the space and time complexities of the
+proposed approach. Section II-F shows the experimental results.
+B. An Implementation of the GHT for a Single Template Shape
+To use the GHT for a single template, an R-table for the template should be constructed beforehand. Here, an R-table is implemented
+by a lookup table with b bins. For every boundary point x, the displacement vector r− x is stored in the q(θ)th bin of the R-table,
+where r is a selected reference point on the template, θ is the gradient direction of x (in degrees), and the function q(θ) is defined
+as q(θ) = b b×(θ mod 360)360 c, which partitions the range of the gradient direction into b regions. Let T (i), i = 0, ..., b− 1, denote the b
+bins of the R-table T .
+Figure 1 shows an implementation of the GHT for a single template, which is the basis of the proposed approach and called the
+standard GHT. For convenience, the position of the edge point of the input image is stored in a lookup table T with b bins in a
+4Algorithm 2: Identification of the instance of the template λ.
+Input.
+1) µ˜λ for the template λ;
+2) The accumulator array A;
+3) The parameters α, β, and δ;
+4) The set L of identified shapes.
+Output.
+The set L.
+Steps.
+1) For each cell p in sumc(A) with support ρ =
+sumc(A)(p)
+µ˜λ
+not less than β, if |L| < α, or |L| = α and ρ is larger than
+the least support of the element in L, then perform the following steps.
+a) If the instance (ρ, λ,p) does not conflict with the element in L; that is, ‖p − p′‖∞ > δ is held for every element
+(ρ′, λ′,p′) in L, then perform the following steps.
+i) If |L| = α, remove the element in L with the least support.
+ii) Add the instance (ρ, λ,p) to L.
+b) If the instance (ρ, λ,p) conflicts with some of the element in L and ρ is larger than the support of every conflicting
+element, then remove all of the conflicting elements from L and add (ρ,λ,p) to L.
+Fig. 2. The algorithm for identifying the instance of a template in the accumulator array.
+an upper bound of the value of the cell in sumc(Aλ), ρ =
+sumc(Aλ)(p)
+µ˜λ
+, with Aλ the accumulator array for the template λ, and µ˜λ
+an upper bound of the value of the cell in sumc(Aλ). µ˜λ is related to the number of elements in the R-table of the template λ, and
+will be derived later.
+The identified shapes are required to satisfy the following three constrains specified by thresholds α, β, and δ. First, the number
+of identified shapes should be not larger than α. Second, every identified shape should receive a support not less than β. Third, the
+chessboard distance (the maximum norm) between every pair of the identified shapes should be longer than δ. The third constrain
+is to ensure that the detected shapes cannot overlap each other much and can be relaxed for the templates which could be stacked
+together.
+One might pursuit a set of identified shapes satisfying these three constrains, and having the maximum total support or including
+as many instances as possible. However, finding such an optimal set is equivalent to finding the (weighted) maximum independent set
+in the intersection graph of the axis-aligned unit squares in the plane which is an NP-hard problem [34]. Hence, the set of identified
+shapes is required to meet these three constrains only.
+By applying the standard GHT for each template one by one, a set of identified shapes can be obtained in the following manner.
+Let L denote the set of identified shapes and be empty initially. In order to avoid examining every pixel of the image repeatedly
+during the whole process, the edge points of the input image are stored in a lookup table T. Then, the next step clears the accumulator
+array, applies the standard GHT, and executes Algorithm 2 shown in Figure 2 for every template one by one. Algorithm 2 includes
+into L the instance of a template if the instance receives a support not less than β and does not conflict with any element in L.
+Otherwise, if the support of the instance to be included is larger than that of the conflicting element, then Algorithm 2 removes
+every conflicting element from L and adds the instance to be added into L. At last, the set L contains the identified shape, and the
+position of the identified shape in the input image can be determined by the step described in Section II-B. However, the standard
+GHT for multiple shapes may waste a lot of computation time on the template having no instances and a more efficient approach
+should be developed.
+D. The Proposed Series Representation of the R-table
+As our perceptual experience shown, the overall aspect of a shape may be captured by a few properly selected boundary points.
+Hence, the element in the R-table of a template which corresponds to the boundary point important to overall aspect of the template
+could carry a larger weight for the support of the template. In addition, the element carrying a large weight should participate in the
+voting process earlier than that carrying a small weight so that whether or not the template has an instance with a support above the
+threshold β could be determined sooner. Accordingly, a series representation with l terms for the R-table T˜ of a template is defined
+as
+T˜ (i) = ∪l−1j=0Tj(i), i = 0, ..., b− 1,
+6orthonormal basis formed by the columns of XUΛ−
+1
+2 can be obtained by
+H = Λ−
+1
+2UTXTX = Λ−
+1
+2UTG. (2)
+Provided that U includes m eigenvectors of G, H is an m × n matrix. It should be noticed that the matrix H can be obtained
+without forming the matrix X. Now, the QR factorization with column pivoting is applied to H so that we have
+QR = HE,
+where Q is an orthogonal matrix, E is a permutation matrix, and R is an upper triangular matrix with the magnitudes of the diagonal
+entries in non-increasing order, |R1,1| ≥ ... ≥ |Rm,m|, and moreover |Ri,i| ≥ ‖Ri:j,j‖2 , j = i + 1, ..., n with Ri:j,j denoting the
+ith to the jth entries of the jth column of R. In addition, the columns of XUΛ−
+1
+2Q is an orthonormal basis spanning H because
+Q is an orthogonal matrix.
+Define xˆ1,...,xˆn with gradient directions θˆ1, ..., θˆn, respectively, as the ordered boundary points which relate to the boundary points
+x1,...,xn by [xˆ1, ..., xˆn] = [x1, ...,xn]E. Hence, R1:m,i is the coordinate of the mapped vector associated with xˆi with respect to
+the orthonormal basis formed by the columns of XUΛ−
+1
+2Q. Due to the property of the upper triangular matrix R, the degree of
+the linear independence of the mapped vector associated with xˆi to the mapped vectors associated with the ordered boundary points
+prior to xˆi is related to |Ri,i|, xˆ1,...,xˆn are in fact ordered by the importance of their mapped vectors to spanning H. Furthermore,
+the first i columns of Q form an orthonormal basis spanning the subspace formed by the first i columns of QR because R is upper
+triangular. Hence, the total squared norm of the projections of the mapped vectors onto the subspace spanned by the mapped vectors
+associated with the first i ordered boundary points, denoted by P (i), is
+P (i) =
+{∑n
+k=1
+∑i
+j=1R
+2
+j,k if i ≤ m;
+P (m) if i > m.
+In this study, P (i) is regarded as an index for the global aspect of the shape captured by the first i ordered boundary points. The
+index P (i) is non-decreasing and at most n because the norm of the mapped vector associated with the boundary point is one. This
+index will be used to define a partition of the R-table in the next section.
+3) The Construction of the Series Representation of the R-table: According to the index P for the ordered boundary points, the
+R-table T˜ for the standard GHT is partitioned up to lmax R-tables to form the series representation of T˜ , T˜ =
+⋃l−1
+j=0 Tj , in such a
+way that each of the ordered boundary points satisfies the following relation
+r− xˆi ∈ Tj(q(θˆi)) if ij < i ≤ ij+1, (3)
+where ik, k = 0, ..., l, are distinct and determined by the following formula in order:
+ik =
+
+0 if k = 0;
+ik−1 +4k−1 if there exists a positive integer 4k−1 satisfying
+ik−1 +4k−1 ≤ n and P (ik−1 +4k−1 − 1) <
+n
+2min{k,lmax−1} + P (ik−1) ≤ P (ik−1 +4k−1);
+n elsewhere,
+(4)
+with il the least item equal to n, and l is determined accordingly. That is, the R-table T˜ is partitioned in accordance with the ordered
+boundary points by preserving the total squared norm of the mapped vectors in a dyadic manner.
+Figure 3 shows a traffic sign and two R-table series of this shape generated with σ2 = 25 and σ2 = 49, respectively, in which
+every series has five terms. This traffic sign shape has 1236 boundary points. The numbers of the elements in the terms of the series
+generated with σ2 = 25 are 102, 70, 60, 69, and 935, and those generated with σ2 = 49 are 77, 51, 47, 49, and 1012. The first
+terms of these two series have about eight percent and six percent of the elements, which roughly capture the aspect of this traffic
+sign shape. In addition, the low-order term of the series generated with σ2 = 49 describes the shape less detailed than that of the
+series generated with σ2 = 25.
+When a template contains thousands of boundary points, however, the above global approach cannot be easily carried out due to
+the high time complexity of determining the index P for all boundary points of the template, which is cubic in terms of the number
+of boundary points. In this circumstance, a local approach, which is more feasible but less effective than the global approach, is
+adopted. Specifically, the image of the template is partitioned into non-overlapped 8×8 blocks. By starting from the top left block, a
+group of blocks grows in the manner like the breadth-first search [35] until the total number of boundary points in the blocks of this
+group plus the block to be included into this group is larger than a predefined threshold ν. Then, the steps described in Section II-D2
+is executed to determine the index P for the boundary points in the blocks of this group, and the displacement vector associated
+8N2,l
+N1,0 N1,1
+Ns,0 Ns,1 Ns,2
+N1,2 N1,l-1
+Ns,l-1...
+...
+... N1,l
+Ns,l
+.
+.
+.
+.
+.
+.
+N2,0 N2,1 N2,2 N2,l-1
+N0,0
+Terminal nodes
+The start 
+node
+The voting process for 
+template 1
+T1,0 T1,1 T1,l-2T1,2 T1,l-1
+T2,0 T2,1 T2,l-2T2,2 T2,l-1
+Ts,0 Ts,1 Ts,l-2Ts,2 Ts,l-1
+Voting with accumulator array A1, 
+R-table T1,0 and weight w0
+The voting process for 
+template s
+Voting with accumulator array A1, 
+R-table T1,1 and weight w1
+Voting with accumulator array As, 
+R-table Ts,0 and weight w0
+Voting with accumulator array As, 
+R-table Ts,1 and weight w1
+1
+11
+1
+22
+2 2
+s
+s
+s
+s
+Fig. 5. The state-space graph G.
+E. The A*-Guided Voting Process
+Suppose that we have s templates represented by s R-table series, T˜i =
+⋃li−1
+j=0 Ti,j , i = 1, ..., s, respectively, where li denotes
+the number of terms of the ith R-table series. Here, the s templates have individual accumulator arrays denoted by Ai, i = 1, ..., s,
+respectively. In the following, the first shows that identifying the target shape by the GHT with the s R-table series can be regarded
+as a problem of finding the optimal terminal node in a state-space graph based on a mapping between the state transition of the
+state-space graph and the operation about the voting process. The second introduces the A* search and the evaluation function for
+finding the optimal terminal node. The third presents the A*-guided voting process. The last discusses the complexity of the proposed
+approach.
+1) The Definition of the State-Space Graph: A state-space graph G with
+∑s
+i=1(li+1)+1 nodes and s+
+∑s
+i=1 li edges is defined
+for object recognition by the GHT with T˜i =
+⋃li−1
+j=0 Ti,j , and wi, i = 1, ..., s, as follows.
+(1) The node N0,0 is the start node, nodes Ni,li , i = 1, ..., s are terminal nodes, and nodes Ni,j , i = 1, ..., s, and j = 0, ..., li − 1,
+are intermediate nodes.
+(2) The s+
+∑s
+i=1 li edges are from N0,0 to Ni,0, and from Ni,j to Ni,j+1 for i = 1, ..., s, and j = 0, ..., li − 1.
+In addition, a mapping between the state transition of the state-space graph G and the operation about the voting process is established
+as follows.
+(1) The state transition from N0,0 to Ni,0 corresponds to the task which clears the accumulator array Ai to initialize the voting
+process for the template i.
+(2) The state transition from Ni,j to Ni,j+1 corresponds to the task which executes the weighted voting process for the template i
+with the R-table Ti,j and weight wj for each vote.
+An illustration of this mapping is given in Figure 5. Hence, traversing the path from N0,0 to Ni,li and executing the task associated
+with the path in fact correspond to the whole weighted voting process for the template i. Now, the problem of object recognition by
+the GHT with T˜i =
+⋃li−1
+j=0 Ti,j , and weights wi, i = 1, ..., s, becomes that of intelligent traversal of the state-space graph G from
+the start node to the terminal node corresponding to the template having the instance receiving the highest-ranked support.
+2) The A* Search and the Evaluation Function for the A* Search: The A* search is a well known state-space search method
+capable of finding the terminal node with the maximum profit accumulated from the start node generally without exhaustively
+enumerating all terminal nodes. An evaluation function f(N) is needed to estimate the accumulated profit of the terminal node
+reachable from the node N . The evaluation function f is defined as a sum of two functions: f(N) = g(N) + h(N) where g(N)
+computes the profit accumulated from the start node to the node N , and h(N) outputs zero if N is a terminal node and does not
+underestimate the profit accumulated from the node N to the terminal node reachable from N . With the evaluation function f , the
+A* search guarantees to find the terminal node with the maximum profit [33].
+The A* search can be described briefly as follows. First, the A* search puts the start node into a priority queue, which contains
+the node ready to be explored. Next, the A* search removes the node with the largest value of f from the priority queue, explores
+the node, computes the function f for the immediate successors of the node, puts these immediate successors into the priority queue,
+and repeats this step until some terminated conditions are satisfied. Since the node removed from the priority queue always has
+10
+because each vote needs seven or nine operations described in the following.
+(1) In case d is larger than zero, each vote needs nine operations for the following four items: (i) two operations of integer addition
+for computing the possible position of the reference point; (ii) two right shift operations to map the possible position of the
+reference point to the corresponding accumulator cell; (iii) four comparisons for checking whether or not the corresponding cell
+is inside the accumulator array; and (iv) one operation for updating the accumulator cell.
+(2) In case d is equal to zero, each vote needs seven operations for the above four items except the second item.
+Obviously, if ρ is equal to one, this alternative rule is identical to the original rule. Since this alternative rule just looks ahead a few
+nodes more than the standard A* search does, the property of the A* search for finding the optimal terminal node is still held.
+Third, in case Ni,j is a terminal node, the voting process for the template i has been completed in fact, and the instance of the
+template i can be identified now. Algorithm 2 is then applied to identify at most α − |L| instances for the template i because a
+template may have multiple instances in the image, and store the identified instance for the template i in an individual instance queue
+Qi. The instance with the largest support in Qi is then removed from Qi, and added into L if this instance does not conflict with the
+element already in L. If Qi remains some instances, this terminal node is pushed into P again with the value of f of Ni,j changed
+to the largest support of the instance in Qi. It should be pointed out that Algorithm 2 is needed to be executed for a template only
+when the terminal node corresponding to this template is removed from P at the first time.
+The above steps are repeated until some of the terminated conditions defined as follows are satisfied.
+(1) The first condition is that the largest value of the function f of the node in P is less than β, which indicates that no more
+instances have supports larger than or equal to β.
+(2) The second condition is that the desired number of target shapes are detected.
+(3) The third condition is that P is empty. This situation occurs when every terminal node and every instance identified by Algorithm 2
+are encountered.
+Figure 6 summarizes the voting process. At last, for every identified shape in L, the position of the identified shape in the image is
+determined by the step described in Section II-B.
+4) Time and Space Complexities: The proposed approach demands more memory space than the standard GHT because every
+template must have its own accumulator array. On the other hand, the main computation costs of the standard GHT and the proposed
+approach for s templates include the following three items: (a) voting for the cell in the accumulator array corresponding to the
+possible position of the template; (b) executing Algorithm 2 to identify the instance; and (c) determining the position of the detected
+instance in the image if d is larger than zero. The standard GHT needs a total of
+∑s
+j=1
+∑b−1
+i=0
+∑1
+k=−1 |T(i)|×|T˜j((i+k+b) mod b)|
+votes for s templates, and executes Algorithm 2 s times while the proposed approach has the same amount of computation costs
+for Items (a) and (b) in the worst case. For Item (c), both of the two approaches have the same amount of computation overheads.
+However, the instruction for the weighted vote used by the proposed approach may take more instruction cycles than the increment-
+by-one instruction used by the standard GHT.
+The proposed approach also has three additional computation overheads. First, determining the parameter e defined in Corollary
+1 needs the time complexity O(nrow × ncol). Second, adjusting the data structure of the priority queue for every stage in the voting
+process takes the time complexity O(log(s)) to maintain the priority queue P because P is implemented by the max-heap data
+structure [35]. Third, evaluating the function f for the node to be added into the priority queue in the A*-guided voting process,
+which is the main additional overhead, needs to evaluate two functions g and h. Evaluating the function h requires at most one
+operation of floating point substraction, and evaluating the function g needs 5×dnrow
+2d
+e×dncol
+2d
+e operations explained in Section II-E3.
+Hence, the proposed approach is not effective to the application in which the numbers of edge points of the input image and the
+templates are a few times the row and column numbers of the accumulator array.
+F. Experimental Results and Discussion
+The proposed approach was implemented by the Borland C++ Builder with the standard template library and the Intel Math Kernel
+library on a Windows XP-based PC with an Intel Pentium 4 3.0 GHz CPU and four gigabytes of RAMs. Five dinosaur shapes shown
+in Figure 7 were the target shapes. To identify these target shapes of arbitrary orientations, 360 training samples were generated for
+every target shape by rotating a training image of the target shape at a step of one degree, and thus 1800 templates were created in
+total. The Canny edge detector [36] was used for edge detection. Ten real images of each target shape of an arbitrary position and
+orientation in a cluttered environment were collected. Accordingly, the proposed approach and the standard GHT were tested against
+a total of fifty images. The performance of the proposed approach in comparison with that of the standard GHT was evaluated by
+the following indices:
+(1) the ratio of matching rates: the ratio of the proportion of the boundary points of the template identified by the proposed approach
+12
+Fig. 7. Five dinosaur shapes.
+TABLE I
+THE PARAMETERS FOR THIS EXPERIMENT.
+parameter value
+α 1
+β 0.2
+δ 32
+b 8
+c 1
+ν 256
+ρ 1
+² 1
+size of the test image 320× 240
+The R-tables of the 1800 templates contained a total of 598,965 displacement vectors, and each test image had 4,393 edge points
+on average. Figure 8 shows one of the test images. The standard GHT recognized the target shape in every test image correctly.
+Table II presents the detailed results of the standard GHT, where the standard GHT with d = 0 is the better because the standard
+GHT with d = 0 needs fewer total operations and the standard GHT with d = 1 is less accurate because quantizing the accumulator
+array coarsens the Hough parameter space. Hence, the result of the proposed approach was compared with that of the standard GHT
+with d = 0.
+(a) (b) (c) (d)
+Fig. 8. A test image: (a) is the test image; (b) is the edge map of the test image; (c) is the test image overlapped with the template which was identified by the
+standard GHT in 12.39 seconds; and (d) shows the template with the ratio of matching rates 0.98 which was identified by the proposed approach with σ2 = 49,
+γ = 8, and d = 1 in 1.48 seconds.
+TABLE II
+THE EXPERIMENTAL RESULTS OF THE STANDARD GHT WITH RESPECT TO THE FIFTY REAL TEST IMAGES.
+d = 0 d = 1
+Average matching rate 0.93 0.91
+Average computation time (second) 12.92 15.32
+Average number of votes 988,645,637 988,645,637
+14
+average ratio of matching rates
+0.92
+0.94
+0.96
+0.98
+1
+1.02
+1 2 4 8
+γ
+d=0
+d=1
+(a)
+average speed-up factor
+0
+2
+4
+6
+8
+1 2 4 8
+γ
+d=0
+d=1
+(b)
+average ratio of voter turnouts
+0
+0.2
+0.4
+0.6
+0.8
+1 2 4 8
+γ
+d=0
+d=1
+(c)
+average positional difference (pixel)
+0
+0.2
+0.4
+0.6
+0.8
+1
+1 2 4 8
+γ
+d=0
+d=1
+(d)
+average angular difference (degree)
+0
+0.5
+1
+1.5
+1 2 4 8
+γ
+d=0
+d=1
+(e)
+average ratio of matching rates
+0.9
+0.92
+0.94
+0.96
+0.98
+1
+1.02
+1 2 4 8
+γ
+d=0
+d=1
+(f)
+average speed-up factor
+0
+2
+4
+6
+8
+10
+1 2 4 8
+γ
+d=0
+d=1
+(g)
+average ratio of voter turnouts
+0
+0.2
+0.4
+0.6
+0.8
+1 2 4 8
+γ
+d=0
+d=1
+(h)
+average positional difference (pixel)
+0
+0.5
+1
+1.5
+1 2 4 8
+γ
+d=0
+d=1
+(i)
+average angular difference (degree)
+0
+0.5
+1
+1.5
+1 2 4 8
+γ
+d=0
+d=1
+(j)
+Fig. 9. The results of the proposed approach tested against the fifty real images: (a), (b), (c), (d) and (e) are the results of the proposed approach with σ2 = 25;
+(f), (g), (h), (i), and (j) are the results of the proposed approach with σ2 = 49.
+shapes detected.
+III. GEOMETRIC ACTIVE CONTOURS WITH SHAPE SUPPORT REGIONS
+Geometric active contours have several advantages over the parametric active contours. First, the topology of the active contour
+can change during the evolution. Second, the level set function always allows efficient numerical scheme [37]. Furthermore, modern
+geometric active contour models are based on the variational level set method which is more convenient to incorporate additional
+shape information than the level set method driven by partial differential equations.
+In the level set formulation of active contours, the active contours C are represented by the zero level set C(t) = {(x, y)|φ(t, x, y) =
+0} of a level set function φ(t, x, y). The evolution of the level set function can be written in the following form, which is known as
+16
+average ratio of matching rates
+0.92
+0.94
+0.96
+0.98
+1
+1.02
+1 2 4 8
+γ
+d=0
+d=1
+(a)
+average speed-up factor
+0
+2
+4
+6
+8
+1 2 4 8
+γ
+d=0
+d=1
+(b)
+average ratio of voter turnouts
+0
+0.2
+0.4
+0.6
+0.8
+1 2 4 8
+γ
+d=0
+d=1
+(c)
+average positional difference (pixel)
+0
+0.2
+0.4
+0.6
+0.8
+1
+1 2 4 8
+γ
+d=0
+d=1
+(d)
+average angular difference (degree)
+0
+0.5
+1
+1.5
+1 2 4 8
+γ
+d=0
+d=1
+(e)
+average ratio of matching rates
+0.9
+0.92
+0.94
+0.96
+0.98
+1
+1.02
+1 2 4 8
+γ
+d=0
+d=1
+(f)
+average speed-up factor
+0
+2
+4
+6
+8
+10
+1 2 4 8
+γ
+d=0
+d=1
+(g)
+average ratio of voter turnouts
+0
+0.2
+0.4
+0.6
+0.8
+1 2 4 8
+γ
+d=0
+d=1
+(h)
+average positional difference (pixel)
+0
+0.2
+0.4
+0.6
+0.8
+1
+1 2 4 8
+γ
+d=0
+d=1
+(i)
+average angular difference (degree)
+0
+0.5
+1
+1.5
+1 2 4 8
+γ
+d=0
+d=1
+(j)
+Fig. 13. The results of the proposed approach tested against the fifty test images corrupted by random noise: (a), (b), (c), (d), and (e) are the results of the proposed
+approach with σ2 = 25; (f), (g), (h), (i), and (j) are the results of the proposed approach with σ2 = 49.
+(a) (b) (c) (d)
+Fig. 14. A test image with a synthetic black rectangle: (a) is the test image; (b) is the edge map of the test image; (c) is the test image overlapped with the template
+which was identified by the standard GHT in 12.8 seconds; and (d) shows the template with the ratio of matching rates 0.82 which was identified by the proposed
+approach with parameters σ2 = 49, γ = 8, and d = 1 in 1.58 seconds.
+18
+(a) (b) (c)
+Fig. 17. An image of five target shapes in a cluttered environment: (a) shows the test image; (b) shows the edge map of (a); and (c) shows the identified shapes.
+15
+15.5
+16
+16.5
+17
+17.5
+18
+1 2 3 4 5
+number of target shapes
+co
+m
+pu
+ta
+tio
+n
+ 
+tim
+e
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+(se
+co
+n
+d)
+(a)
+0
+0.5
+1
+1.5
+2
+2.5
+3
+1 2 3 4 5
+number of target shapes
+co
+m
+pu
+ta
+tio
+n
+ 
+tim
+e
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+(se
+co
+n
+d)
+(b)
+Fig. 18. Illustrations of the relation between the computation time and the number of identified shapes: (a) is for the standard GHT; (b) is for the proposed approach.
+the level set equation:
+∂φ
+∂t
++ F |∇φ| = 0,
+where the function F is known as the speed function.
+Traditional level set methods need to re-initialize the level set function to a signed distance function for every a few rounds of
+evolution. However, the re-initialization is crucial and has high computational cost. In this study, the scheme of level set evolution
+proposed by Li et al. [37] is adopted because this scheme does not need re-initialization. However, in a cluttered environment, it is
+not easy for the geometric active contour to segment the target object with a particular shape. In this study, the shape support region
+derived by the kernel-based deformable model [9] is adopted to constrain the region for curve evolution to make the active contour
+to segment the target shape accurately.
+In the following, Section III-A reviews Li’s approach. Section III-B describes the geometric active contour based on shape support
+regions and shows preliminary experimental results.
+A. A review of Li’s approach
+Li’s approach minimizes the following total energy functional E(φ):
+E(φ) = µP(φ) + Eg, λ, ν(φ),
+where Eg, λ, ν(φ) describes the external force which drives the zero level set toward the object boundary, and P(φ) is a penalty
+function which forces the level set function φ to be a signed distance function. Since any function φ satisfying |∇φ| = 1 is a signed
+distance function plus a constant, P(φ) can be defined as
+P(φ) =
+∫
+Ω
+1
+2
+(|∇φ| − 1)2dxdy.
+The external energy function Eg, λ, ν(φ) is defined as
+Eg, λ, ν(φ) = λLg(φ) + νA(φ),
+where Lg(φ) and A(φ) are defined as
+Lg(φ) =
+∫
+Ω
+g(x, y)δ(φ)|∇φ|dxdy
+and
+A(φ) =
+∫
+Ω
+g(x, y)H(−φ)dxdy,
+20
+Fig. 21. The result of the geometric active contour without shape support regions.
+GHT for multiple shapes. The A* search has been used to solve this search problem. In order to facilitate the A* search to guide
+the voting process, a series representation of the R-table has been developed. The series representation of the R-table organizes the
+boundary point of a template shape according to the importance of the boundary point to the overall aspect of the shape, which is
+defined through the kernel PCA and the QR-factorization with column pivoting in a kernel feature space. Experimental results have
+shown that the proposed approach is faster than the standard GHT for multiple shapes and proven the feasibility of the proposed
+approach. The storage requirement is the main weakness of the proposed approach. Fortunately, with the advent of computer hardware,
+the off-the-shelf personal computer with several gigabytes of memories is common and the restriction on memory space becomes
+less critical. However, applying the space-saving search technique such as the recursive best-first search [38] for this problem is
+still worth of studying. Integrating the proposed technique with the extension of the GHT is also a promising research direction.
+Furthermore, the optimal design of the series representation of the R-table in terms of robustness and efficiency is another future
+work.
+The second approach is based on geometric active contours with shape-prior information provided by a kernel-based deformable
+model. Thanks to the shape support regions provided by the kernel-based deformable model, the geometric active contours can be
+applied with good initializations and the shape information into the energy functional. Preliminary experimental results have shown
+the promising of the proposed approach.
+Some of the results of this study have been published in a conference [39]. We have also submitted more complete results of our
+work to an international journal for publication.

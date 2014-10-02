@@ -1,0 +1,366 @@
+ 2 
+An OpenGL/GPGPU Compiler with 
+Optimizations, Language Extensions, 
+and Automated/Profiled Object Analysis 
+for a Novel Multi-core GPU 
+ 
+1.  INTRODUCTION 
+The field of 3D Graphics Processor Units (GPUs) is the focus of much current research. Most of 
+this research, however, focuses on desktop systems. GPUs for these systems may have hundreds of 
+processors, to take advantage of the parallelism present between the vertices and the fragments used 
+in 3D graphics rendering. In contrast, our multi-laboratory research targets a reduced-size 
+multi-core GPU, suitable for mobile embedded systems. Such mobile devices have limited power 
+budgets and smaller screens.  
+Within the multi-core GPU project, our subproject involves developing the compiler. This compiler 
+is an extension of one we have been developing for a single-core GPU, under previously funded 
+research with the same collaborative team members. Work over the past year has involved bug fixes, 
+robustness improvements, and improved performance through better instruction selection, register 
+allocation and memory usage.  
+In our proposed GPU, each core has a cache and an SPM (scratchpad memory, an address-mapped 
+form of SRAM). Each core’s SPM can store instructions or data. Our compiler must determine 
+which variables should be assigned to the SPM. Currently, we have developed an allocator that we 
+are attempting to publish. In the next step, we will extend this allocator to consider cache. 
+When seen as just a piece of the collaborative research effort, the most important contribution of the 
+compiler is the ability to compile the benchmarks from subproject 2 onto our new GPU.  When 
+seen as an exploration of hardware/compiler tradeoffs, however, then the research promises to have 
+more general relevance to the fields of compiler optimization and hardware/software co-design.   
+Beyond the compiler, we also have been developing a simulator for our GPU binaries. In future 
+years, we will look at the problems of OpenGL extensions, compiler hints through profiling, 3-D 
+display optimizations, and rendering-order optimizations. 
+Since our research focuses on OpenGL, it is helpful to understand some of its basic features. 
+OpenGL allows the programmer to define 3-dimensional objects as a set of flat polygons. These 
+polygons can then each be converted into a set of triangles.  The polygons are specified by the 
+coordinates of their vertices, in 3 dimensions.  Along with the 3D coordinates (x, y, and z), a 
+fourth coordinate that represents a scaling factor is often also present.  Many of the computations 
+that must be performed on these vertices can be applied to all four coordinates in parallel, using 
+SIMD operations to perform various matrix transformations.  Since a scene is often composed of 
+thousands of vertices, real-time rendering requires that the vertex processing be pipelined.   
+Figure 1 presents the basic steps of the OpenGL pipeline. First, the processor sends the objects into 
+the display list. Second, an evaluator determines object locations.  Since the 3-dimensional vertex 
+coordinates of each object are relative to the object, they must be mapped into the scene to 
+determine their coordinates relative to the eye of the viewer. Third, per-vertex operations determine 
+the true color of the vertex based on lighting effects. Vertices that lie outside the viewspace may 
+ 4 
+The problem of compiling shader code is well understood by industry, since each GPU architecture 
+must supply a compiler as well. Among GPU compilers, CUDA [2] from NVIDIA is famous. The 
+problem with these compilers is that they are not open source. There is therefore no way to retarget 
+these compilers to our new GPU. Moreover, these companies are in competition, and so much of 
+their compiler technology is kept secret.  
+Some information is available for MacOS 10.5.[3] (The operating  system gets involved in shader 
+compilation if the shader needs to run on the CPU rather than the GPU. This occurs if the GPU is 
+not powerful enough to support the shader; the result will run slowly, however.) For MacOS 10.5, it 
+is known that the compiler backend rolls OpenGL functions into the shader’s IR. 
+In academia, shader compilation has been little-studied. In [4] objects are analyzed by the compiler 
+in order to subdivide the objects into pieces of fixed shape or texture. In [5], the specific issue of 
+instruction selection on a GPU is tackled. The trouble is that this is an older work focusing on a 
+nearly, but not quite, fixed function pipeline. The instruction scheduling problem on a modern, fully 
+programmable GPU is not similar. In [6] a complex shader code is broken into smaller shader 
+programs which must be run as separate passes. This approach is the only way to run programs that 
+are larger than the GPU memory can hold. But it also has many unfortunate aspects, such as 
+increasing the number amount of CPU interrupts and actions per frame, increasing the overall 
+workload of the GPU, and reducing data locality on the GPU. 
+Another problem with conventional GPU compilers is that desktop GPUs are so different than our 
+low-power embedded GPU. For instance, in [7], the basic approach of desktop GPU compilation is 
+explained. Such GPUs rely on thread switching for their performance benefits. They offer 
+single-cycle context switching. Therefore, as [7] illustrates, the compiler’s goal is to find many 
+threads in the application. All of these desktop GPU solutions are unhelpful for an embedded GPU. 
+When discussing GPU compilation, most papers are really referring to GPGPU compilation, which 
+involves running not non-graphical (i.e., General Purpose) programs on a GPU; as for example in 
+[8]. These papers are not really about compiler design. Instead they look at how to map general 
+purpose algorithms into a GPU program, such as one using CUDA. Of course, these papers are 
+unrelated to our work – both because general-purpose programs are not our focus, and because 
+these work almost exclusively targets massively parallel desktop GPUs. 
+Since our research over the past year has involved four key areas: compiler robustness, register 
+allocation, memory usage, and GPU simulation, we will now discuss existing works related to each 
+of these areas, in turn.  
+2.1  Instruction Selection 
+When this new project began, a year ago, our compiler had many limitations. Although it could 
+compiler simple programs, such as the Red Cube benchmark, it could not compile more complex 
+programs, so it was not robust. Most of the robustness problems were in our instruction selection.  
+Instruction selection is a much-studied problem. One popular approach to instruction selection, which 
+we also use, is tree rewriting.[9] We do not need to go into the details of this algorithm here, but one 
+of our previous theses [10] (derived from work on our earlier GPU) describes how our compiler was 
+designed by changing the rewriting rules of the LLVM compiler for the PowerPC target. [11] 
+Beyond these simple rewriting rule changes, we had to deal with a number of problems related to 
+the vector architecture of our GPU. As described in another earlier thesis from our lab, [12], the 
+PowerPC architecture has a very limited form of vector registers. Called AltiVecs, these registers 
+were designed only for multimedia applications; they are a separate register set on which only a few 
+operations are allowed. Our GPU, in contrast, allows all instructions to be performed with vector 
+registers, including element extraction and reordering. In fact, vector registers are the only registers 
+in our GPU; scalar-valued registers are obtained by simply accessing an individual element of a 
+vector register.  
+ 6 
+2.3  Memory Allocation 
+Our GPU contains an internal, address-mapped SRAM, often called a scratchpad memory (SPM). 
+SPM allocation is an active research field.  Most methods can be divided among static methods and 
+dynamic methods.  In static methods, a particular variable is given a single, static assignment: either 
+to SPM or DRAM. [15] is an early static method that uses an ILP formulation to determine which 
+global and stack objects will produce the most benefit in SPM. To allow stack objects to use the SPM, 
+[15] introduces a second stack pointer. 
+A dynamic SPM allocation strategy swaps objects between SPM and DRAM.  The simplest dynamic 
+allocation strategy is a software-managed cache, as proposed in [16, 17].  By converting all memory 
+loads and stores into function calls, the contents of the cache may be checked (and updated, on misses) 
+before the memory access is allowed to process.  All memory accesses are therefore converted to 
+SPM accesses.  The problem with this approach is that the speed of an SPM cache hit is slower than 
+that of a regular cache hit, because all memory accesses must be converted into function calls. 
+In [18], global variables, stack variables, and code segments are all able to dynamically allocate to 
+SPM.  Like a cache, all variables have a home address in DRAM and are only brought into the 
+SRAM when needed.  Also like a cache, bringing a variable into SRAM may evict another variable 
+that must be sent back to DRAM.  Unlike a cache, however, variables that are dead do not need to be 
+copied back to memory.  Also unlike a cache, the compiler manages the SRAM contents by inserting 
+instructions into the executable; these instructions perform the moving of data between SRAM and 
+DRAM.  So, even though the location of a variable changes between DRAM and SRAM during 
+execution, its memory location is well-defined at any point in the object code. 
+Another group, [19], has considered the challenging problem of SPM allocation for multi-processor 
+systems on a chip (MPSoCs).  In their framework, a set of processors are connected by a system bus.  
+Each processor has its own local SPM.  Access to the local SPM is fastest, access to another 
+processor’s SPM is slower, and access to main memory (DRAM) is slowest.  They propose a static 
+ILP formulation.  This work will be relevant if the hardware design teams wish to implement shared 
+SPM schemes between the processors.  Shared SPMs can provide performance benefits, but they 
+will be difficult to compile for. 
+Our own research group has also been considering SPM allocation for some years, as part of our 
+earlier project. A recent thesis [20] describes a novel allocation strategy that maintains two 
+pseudo-stacks in the SPM (one for escaping variables and the other for non-escaping). They are 
+pseudo-stacks because they do not use a stack pointer (and thus, they do not need to claim a new 
+register for a new stack pointer. Instead, they perform a static allocation, based on the expected 
+sequence of function calls. Having a static location, this method cannot support recursion. The method 
+also suffers if there are multiple call sites to the same function. One of the advantages of this approach, 
+however, is that it allows bottom portions of the non-escaping pseudo-stack to be safely sent out to 
+memory. allowing for more SPM usage. Another key aspect of [20] is its focus on real-time systems. 
+The user can choose the acceptable percentage of missed deadlines, and the allocator will optimize 
+accordingly.  
+Our current memory allocator is built upon [20]. But we have solved a number of technical problems 
+that prevented its publication. Most importantly, we have provided a way to support recursion, 
+expanded our benchmark set, included an accurate memory model, and expanded the variables and 
+instruction space under consideration for SPM allocation. 
+2.4  GPU simulation 
+Our original proposal called for the development of a non-cycle accurate simulator for our GPU. We 
+have chosen to develop this simulator based on the GPU simulator called ATTILA. [21] ATTILA is an 
+open source simulator of several GPU targets. It currently supports applications that use DirectX or 
+OpenGL 1.4. Therefore, we must modify it to work for our system and our input language. 
+ 8 
+ 
+Figure 2. A basic example of packing scalars into 
+vectors to obtain code speed-ups. In this case, the four 
+additions have become a single-cycle vector addition. 
+The subscripts denote the slots of the vector register 
+ 
+ 
+Figure 3. A slightly more complex example. Swizzling 
+is indicated by the reordered subscripts. Note that this is 
+just one of many allocations that can yield a single-cycle 
+vector instruction for this set of original code.
+ 
+Figure 4. A very complex example. In this example, we suppose that the compiler has discovered that variable D is 
+dead after its use in the expression “C=E+D”. This knowledge is taken advantage of to allow variable A to move to the 
+slot previously owned by D. By doing this, the original value of A (indicated by Ao in the ending allocation figure) is 
+maintained. This removes the anti-dependency from “F=F+A” to “A=A+E” to be removed. The removal of this 
+dependency allows the instruction reordering which is necessary to achieve a two-instruction vector solution.  
+ 
+To understand why, let us consider some of the unique optimizations that are possible for our GPU, 
+as illustrated in the progressively more complex examples shown in Figures 2-4. 
+As can be seen from Figure 4, the register allocation problem can become quite complex. Values 
+can copy into new locations and can replace dead values. Instructions can be reorder and operands 
+can be reordered, to obtain better code. Although the above examples are for scalar values, this 
+work can also be used to fill in the extra slots when a vector only has 2 or 3 elements. 
+But there are limitations. First, the instructions to be combined must perform the same operation. Second, 
+swizzling only applies to a single vector. If several instructions are to be combined, then their operands’ 
+vector-registers must match, and they must both write to the same vector-register. This requirement 
+can be loosened by making copies of variables in different vector-registers. Third, the instructions 
+must exist within a single basic block. Our hardware does not currently (or possibly ever) support 
+predication. Fourth, register spills affect the entire vector-register (at least for our current hardware). 
+Observing these possibilities is not too difficult. The real challenge is to come up with an intelligent 
+register allocator to exploit them. The complexities can make an exhaustive search prohibitively 
+expensive. We are trying a greedy approach followed by simulated annealing and hill-climbing. We 
+do not yet have results to report. 
+3.3  Memory Allocation 
+In the past year, we have added six major improvements to our previous allocator: support for 
+recursion, support for instruction code, support for library variables, accurate tracking of the stack in 
+the presence of unusual control flow within library functions, allocator awareness of DRAM latencies 
+for hit versus miss and sequential versus nonsequential accesses, and our own light-weight simulator 
+for fast but accurate measure memory delays. 
+Support for recursion within the SPM is tricky, because the SPM has a limited size, but recursive calls 
+can grow the stack by an unlimited amount. At the same time that recursion is hard to solve, it might 
+also seem unimportant to solve: it does not seem likely that many people will write recursive shaders 
+for rending 3D graphics. This is true, and yet recursion is very important. First, it is useful for GPGPU 
+applications. Even though our GPU is low power (and thus low parallelism), it is still an important 
+research problem to attempt to let the embedded device use it for other things when not running a 
+graphics application. Second it is useful when advocating our register allocation technique to the 
+ 10
+information from that simulator We would like to use this for our work, since ATTILA runs real-world 
+applications. (The toy applications that we currently have are insufficient in their complexity; the 
+shaders do not have such large codes as could really allow for significant compiler optimizations – as 
+compared, for example, to [22].) We are currently working out whether it might be possible to convert 
+the assembly into low-level – but legal – GLSL code. We also consider creating a converter from our 
+GPU assembly into the assembly for their GPU. With these converters, we could insert (albeit 
+awkwardly) our compiler into ATTILA’s execution flow. This would go some distance towards 
+verifying our compiler. 
+We note that the converter of our assembly to ATTILA assembly is a temporary concern. Ultimately, 
+we are retargeting ATTILA to understand our assembly. 
+4. Results Status 
+The SPM allocation strategy is implemented. There are a few bugs that we need to catch before the 
+numbers can make sense. But the work is partially drafted and will be submitted to a journal within a 
+month. This work is a collaboration with Professor Barua at the University of Maryland. If published 
+(although journals take time to respond), then I will post a copy to my NSC information page.  
+After this paper is completed, there are two more papers in progress (both of them are held up by 
+student theses which were intended to finish this summer, but which the students postponed until the 
+end of the fall semester). 
+First is a follow-up paper on the SPM allocator, considering real-time aspects. This work is currently 
+held up because it awaits a student thesis on the topic of static WCET analysis, which this allocator 
+needs to use.  
+Second is our paper on register allocation. We have the infrastructure, but the actual allocation 
+strategy is not yet agreed upon. It is a complex problem, with a large solution space, so aggressive 
+pruning is needed. 
+5. Self-Appraisal of Progress 
+Looking at the proposal for this NSC project, I see that I had anticipated two papers by the end of this 
+first year: one on memory allocation, and one as a joint paper with the other team members, 
+introducing the single-core GPU.  
+The first of these papers, on SPM allocation is only slightly behind schedule (the current year is still 
+going on for me, since there is a three month extension on last year’s project). The paper will 
+definitely be submitted by that time. Moreover, in appraising that paper, I think it is an important 
+paper to the real-time embedded system community. Such systems often use SPM. But previous 
+researchers have never fully considered the interactions between DRAM and SPM. This may be 
+because traditional DRAM cannot be easily optimized; a desktop system can use arbitrary DRAM 
+chips. This may have lead designers of more-constrained systems to not consider the effect. 
+Not only is it a work of wide interest, but it also has several areas for further study. Of course, the first 
+follow-up area is the one mentioned in Section 4. This research also (when finished) makes an 
+important contribution, because it opens up a new direction of memory study – how the worst-case 
+execution time (WCET) is affected. Both measurement-based and statically-derived WCET values are 
+important and worthwhile to reduce by a our WCET-targeted memory allocator. 
+The other paper that the proposal anticipated was on the compiler/hardware co-design problem; it was 
+visualized as part of a collaboration between all teams, introducing the single-core GPU from our 
+previous work. I do not think that the delay is due to my team (although our compiler does need 
+improvements). Instead, the hold up is that some of the hardware groups are still having issues before 
+赴國外研究心得報告 
+                                                             
+計畫編號 NSC 99-2220-E-110-004 
+計畫名稱 An OpenGL/GPGPU Compiler with Optimizations, Language Extensions, and 
+Automated/Profiled Object Analysis for a Novel Multi-core GPU 
+出國人員姓名 
+服務機關及職稱 
+Steve W. Haga, Assistant Professor, Dept. Computer Science & Engineering, 
+National Sun Yat-Sen University 
+出國時間地點 Oct 22 –Nov 3, 2010, at the University of Maryland, College Park, MD 20742 
+國外研究機構 Systems & Computer Architecture Laboratory (SCAL) at the University of MD 
+ 
+工作記要： 
+Travel Report  
+ 
+ In October, I attended the CASES conference. Since it was held in America, I took the 
+opportunity to save travel expenses by visiting Professor Barua at the University of Maryland, 
+while in the region. Professor Barua and I have been in collaboration on memory allocation 
+research for some years. 
+ 
+Our discussion was well-timed, since a student had just completed a thesis on memory 
+allocation. We discussed the thesis and the potential for publication. The discussion was 
+fruitful, paving the way for several improvements. The thesis had several shortcomings that 
+we decided to address: 1) not handling library variables which led to a significantly reduced 
+the improvement, 2) not allowing general recursion, 3) not integrating with existing methods 
+that allocate instructions and other data types, 4) not having enough variation in the 
+WCET-tuning feature of the benchmarks. Many of these problems were already known; the 
+focus of the discussion was on means of addressing them. 
+In this past year, we have implemented solutions to these and other shortcomings of our 
+allocator.  
+ 
+ 
+ 
+ 
+ 
+ 
+赴國外研究心得報告 
+                                                             
+計畫編號 NSC 99-2220-E-110-004 
+計畫名稱 An OpenGL/GPGPU Compiler with Optimizations, Language Extensions, and 
+Automated/Profiled Object Analysis for a Novel Multi-core GPU 
+出國人員姓名 
+服務機關及職稱 
+Steve W. Haga, Assistant Professor, Dept. Computer Science & Engineering, 
+National Sun Yat-Sen University 
+出國時間地點 Oct 25 – Oct 27, 2010, in Phoenix-Scottsdale, Arizona 
+國外研究機構 The International Conference on Compilers, Architecture, and Synthesis for 
+Embedded Systems (CASES 2010) 
+ 
+工作記要： 
+Travel Report  
+ 
+The CASES conference is a premier research conference in my field. Of course, the 
+funding which provided for this research trip is for a compiler of an embedded system – an 
+embedded GPU. GPUs are not generally thought of as embedded systems, although ours is. It 
+was therefore surprising to see the amount of discussion at ESWEEK pertaining to GPUs (and 
+also pertaining to clouds, another area of my research.) 
+The most relevant papers to this presently funded research project were: “Balancing 
+Memory and Performance through Selective Flushing of Software Code Caches,” “Automatic 
+Memory Partitioning: Increasing Memory Parallelism via Data Structure Partitioning,” 
+“Improving Scratchpad Allocation with Demand-Driven Data Tiling,” “Fine-grain Dynamic 
+Instruction Placement for L0 Scratch-pad Memory,” “Improved Procedure Placement for Set 
+Associative Caches,” “Minimizing Inter-Task Interferences in Scratch-Pad Memory Usage for 
+Reducing the Energy Consumption of Multi-Task Systems,” and “A Performance Model and 
+Code Overlay Generator for Scratchpad Enhanced Embedded Processors.” From these talks I 
+learned what related topics are being handled at other universities. One of the poster sessions, 
+regarding process scheduling was also related to our WCET SPM allocation. 
+The conference was also a good opportunity to interact with other researchers. In 
+particular, I met again Dr. Vincent Mooney III from Nanyang Technology University and 
+Georgia Tech. I hope that a collaboration might develop at some point. 
+ 
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：希家史提夫 計畫編號：99-2220-E-110-004- 
+計畫名稱：用於互動式三維多視角顯示系統之智慧型綠能多核心圖形處理器技術--子計畫三：用於多
+核心 GPU 之具有最佳化、語言擴充及自動物件分析功能之 OpenGL/GPGPU 編譯器(1/3) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 12 9 100%  
+博士生 1 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

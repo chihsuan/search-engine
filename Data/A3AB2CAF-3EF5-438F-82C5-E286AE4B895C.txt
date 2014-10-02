@@ -1,0 +1,444 @@
+ 2 
+包，我們希望能達成鏈結頻寬使用率較穩定且可快速收斂，解決一般回授機制不易控制
+的震盪及收斂問題。此法以傳統OSPF為基礎，且保證路徑無回流(loop-free)。 
+ 
+三、文獻探討 
+ 
+IP協定是網際網路的基礎，傳送IP封包的路由協定其效率直接影響整個網路使用效
+率及通訊品質。優良之IP路由演算法設計須具備下列特性：正確性、簡單性、韌性、穩
+定性、一致性、公平性、有效率[1,2]。目前網際網路中較常被使用的內部路由協定（Interior 
+Gateway Protocol，IGP）為RIP (Routing Information Protocol)及OSPF (Open Shortest Path 
+First)，二者皆為分散式(distributed)最短路徑優先(Shortest Path First, SPF)路由機制。RIP
+使用距離向量（Distance vector）路由演算法，通常使用Bellman-Ford演算法計算最短路
+徑，透過與直接相鄰的路由器之間定期彼此交換「路由更新通告（routing update packet）」
+來交換通往各目的位址之最短路徑距離、連線權值等路由資訊，以計算自己最新通往各
+目的節點之最佳路徑、更新路由表。其優點是簡單、系統中傳送之路由資料較少。缺點
+是有狀態更新時收斂時間較長的問題、有路徑上中繼路由器數目的限制(小於16)，及負
+載易集中於某些網路鏈結(link)的現象，適於較小型網路採用。 
+     OSPF協定使用鏈結狀態（link-state）路由法，採用OSPF的路由器會把所有與自身
+直接相連的網路連結狀態放在鏈結狀態宣傳（link state advertisement，LSA）封包，然
+後透過廣播送給其他路由器，路由器收到所有LSA即能建構出整個網域之網路拓僕
+（topology）資料庫，然後執行Dijkstra’s 演算法以求得最短路徑樹。OSPF不像距離向
+量路由法必須不斷與鄰接路由器交換資訊，它只要維持其鏈結狀態資料庫的正確性即
+可。但是Dijkstra’s 演算法的複雜度會隨網路節點的增加而升高，CPU計算的負載因此
+會增加，所以OSPF被設計成是一種階層式（Hierarchical）路由協定，如此可減輕路由
+器負擔且更具擴充性。OSPF因不須不斷與鄰接路由器交換資訊，沒有RIP”計數至無限
+大”(Count to infinity)問題，也不會有狀態收斂時間過長問題，且階層式架構更具擴充性，
+因此成為目前網際網路上最常被使用之網路內部路由協定。 
+SPF在網路負載低時可使資料的傳送使用最少網路資源而有較佳效率，且其具有好
+的彈性及反應（flexible and responsive），因此在IP網路分散式路由環境中普遍使用SPF
+作為路由器選定路由時共同使用的演算法。但是因它只選最佳的一條路徑，在網路負載
+稍高時會因為某些鏈結(link)同時屬於多個連線(connection)之最短路徑之中而產生壅塞
+(congestion)現象。若採用的link cost為固定的link bandwidth capacity，訊務會走固定路徑
+而造成固定的擁塞點，若採用的link cost為link delay或link bandwidth utilization (以求最小
+系統平均delay)，則會因鏈結上負載量不斷變動使得link cost不斷變動、shortest path跟著
+不斷變動而使擁塞點不斷變動，產生壅塞點振盪(oscillation)情況。固定或動態 link cost 
+二種做法皆會造成壅塞而加大延遲（delay），甚至造成封包漏失，嚴重影響網路效率及
+通訊品質，而此時其他可用路徑可能空閒卻未被使用，造成網路資源使用率失衡現象，
+無法有效使用珍貴的網路資源。 
+     ECMP (Equal cost multi-path) 的路由分流演算法隨後被提出以減輕壅塞程度，它平
+均分散負載於兩節點間cost相等的路徑，一些文獻討論ECMP的效果[3,4]，但是在一般IP
+網路上兩節點間路徑cost相等的機率很低，所以ECMP的效果有限。 
+另外，其它多路徑(multi-path)分流技術也被提出用以增加訊務對（traffic pair or 
+Source-destination pair）間有效頻寬及延緩壅塞情況。在文獻 [5]中提到一個使用
+distance-vector架構的分散式多路徑、無回流(loop-free)分流演算法，文中提出一個可提
+供較多路徑且演算較快收斂的方法，但未提出負載分配的方法。 
+如果網路利用中央伺服器集中管理整個網路路由資源，我們可用最佳化理論之方法
+計算得最佳之多路徑分流負載分配。最佳化多路徑分流分配法適用於初期網路規劃或
+Traffic Engineering，並不適於用在目前分散式運作的網際網路上。而且它具有計算無法
+ 4 
+各自的最高頻寬，各節點訊務(traffic)假設為獨立Poisson arrivals，封包長度為exponential 
+distribution，且在相鄰的節點封包的服務時間是獨立的。所有流入任一節點之訊務不必
+考慮它是從何而來，都用相同的準則轉送至目的地節點(Destination Routing)，因此節點
+上訊務分配只要遵守守衡定理（流入訊務量等於流出訊務量）及鏈結上總訊務量小於鏈
+結頻寬即可。最佳化要達成的objective是讓總平均延遲為最小。其數學模型如圖一所示。 
+N為網路上所有節點的集合，L為網路上所有節點間鏈結的集合， dnIL 與
+d
+nOL 為往目
+地節點d做路由考量時，節點n的鏈結所成的集合，其中 dnIL 為節點n的輸入鏈結所成的集
+合， dnOL 為節點n的輸出鏈結所成的集合，
+d
+nf 為節點n本身送往目地節點d的訊務量， eC
+為鏈結e的頻寬容量， dex 為在鏈結e上目地節點為d的的訊務量， ey 為鏈結e上的總訊務量。 
+目標函數為求最小總延遲時間，限制條件第一條表示：流往目的節點d的訊務中流
+入任一節點n的總訊務量加此節點本身流往節點d的訊務量等於流出此節點且往目的節
+點d的總訊務量。限制條件第二條表示：各節點本身產生送往節點d的訊務量總和等於流
+入目的節點d的總訊務量。限制條件第三條、第四條表示：鏈結上流往各目的節點的訊
+務量總和必須小於鏈結之頻寬容量。 
+ 
+sets
+       : set of nodes
+       : set of links (edges)
+       :set of incoming links to node  for traffic destined for 
+       :set of outgoing links from node  for traffic destined for 
+co
+d
+n
+d
+n
+N
+L
+IL n d
+OL n d
+nstants
+       : traffic demand from source node  to destination 
+       : capacity of link 
+variables
+       : traffic on link  for destination 
+       : total traffic on link        
+objec
+d
+n
+e
+d
+e
+e
+f n d
+c e
+x e d
+y e
+tive
+        minimize  delay        
+constraints
+                 ,   
+                                                    ,   ,   
+          
+i oi o
+i
+e
+e
+e e
+d d d d d
+e n e i n o ne e
+d d
+n en e
+y
+e L
+c y
+x f x e IL e OL
+n N d N n d
+f x
+= ∑ ∈
+−
++ = ∈ ∈
+∈ ∈ ≠
+=
+∑ ∑
+∑ ∑                  ,  ,  
+                                  ,  
+                                          
+d
+i d
+d
+e ed
+e e
+n N d N e IL
+x y e L d N
+y c e L
+∈ ∈ ∈
+= ∈ ∈
+< ∈
+∑
+ 
+ 
+圖一 Formulation of optimal hop-by-hop destination routing. 
+ 
+上述Optimal Hop-by-hop Destination Routing (OHDR)可算出在每一節點的最佳路由
+負載分配(or最佳分流)，適用於網路拓樸及訊務量較固定的中央管理式網路，但是它具
+ 6 
+sets
+       : set of nodes
+       : set of links (edges)
+        : set of incoming links to node 
+       :  set of incoming links to node  from its downstream nodes for traffic destined for nod
+d
+d
+n
+N
+L
+IL d
+DIL n e 
+       :  set of incoming links to node  from its upstream nodes for traffic destined for node 
+       :  set of outgoing links from node  to its downstream nodes for traffic destined for
+d
+n
+d
+n
+d
+UIL n d
+DOL n  node 
+       :  set of outgoing links from node  to its upstream nodes for traffic destined for node 
+constants
+       : traffic demand from source node  to destination 
+       : capacity o
+d
+n
+d
+n
+e
+d
+UOL n d
+f n d
+c f link 
+variables
+       : traffic on link  for destination 
+       : total traffic on link   
+objective
+        minimize  delay           
+constraints
+        0                     
+d
+e
+e
+e
+e
+e e
+d
+e
+e
+x e d
+y e
+y
+e L
+c y
+x
+= ∑ ∈
+−
+=              (   ),  ,  
+                  ,   
+                                                    ,  ,  
+                           
+i oi o
+d d
+n n
+d d d d d
+e n e i n o ne e
+d d
+n en e
+e DIL or UOL n N d N
+x f x e UIL e DOL
+n N d N n d
+f x
+∈ ∈ ∈
++ = ∈ ∈
+∈ ∈ ≠
+=
+∑ ∑
+∑ ∑   ,  ,  
+                                   ,  
+                                          
+d
+d
+e ed
+e e
+n N d N e IL
+x y e L d N
+y c e L
+∈ ∈ ∈
+= ∈ ∈
+< ∈
+∑
+ 
+ 
+圖二 Formulation of optimal acyclic multi-furcation routing. 
+ 
+N為網路上所有節點的集合，L為網路上所有節點間鏈結的集合， dnDIL、
+d
+nUIL、
+d
+nDOL
+與 dnUOL 為往目地節點d做路由考量時，節點n的鏈結所成的集合，其中
+d
+nDIL 是往目地節
+點d的SP-cost (最短路徑代價)比節點n低的下游節點往節點n的輸入鏈結的集合， dnUIL 是
+往目地節點d的SP-cost比節點n高的上游節點往節點n的輸入鏈結的集合， dnDOL 是由節點
+n往下游節點的所有輸出鏈結的集合， dnUOL 是由節點n往上游節點的所有輸出鏈結的集
+合。 
+ 限制條件第一條表示：為免於回流，往目的節點d的訊務中，由較低SP-cost鄰接節
+點(下游節點) 流入節點n之訊務量為零，且由節點n流往較高SP-cost節點(上游節點)之訊
+務量也為零。限制條件第二條表示：經由節點n流往目的節點d的訊務中，由各上游鄰接
+節點流入的總訊務量加上節點n本身流往目的節點d的訊務量等於節點n流往各下游鄰接
+節點的總訊務量。其他限制同Optimal hop-by-hop destination routing algorithm狀況所述。 
+Optimal Shortest-Path based Acyclic Multi-furcation (OSPAM) 比Optimal Hop-by-hop 
+Destination Routing (OHDR) 有較多限制，所以其所得解應該比較差，但它是在有
+Shortest-Path based directed acyclic net限制時之最佳解，我們可以藉由OSPAM與最佳解
+(OHDR) 間的差距檢視OSPAM的效能並評估此loop-free演算法的可行性。 
+在第五節，我們以14節點的NSFNET網路為例，比較OSPAM與OHDR，模擬數據顯
+示，OSPAM的平均延遲只比OHDR高不到1%，但其計算非常有效率。 
+ 
+ 8 
+ 盡量保留OSPF協定架構。  
+ 以降低系統平均延遲(系統擁塞程度)為目標。  
+ 為使系統穩定以固定的link capacity為link cost計算基礎使路徑穩定以避免震盪。
+但也考慮link bandwidth使用率，以反應link負載。 
+ 最短路徑法(SPF)之平均延遲時間在不擁塞時相對於其他方法仍是較小的也是最
+簡單的，因其他路徑此時延遲時間皆大於最短路徑，所以不擁塞時仍盡量採用
+SPF。  
+ 在其他link之使用率並未過大時，若某link之使用率過大則只在此link之上游節點
+改變分流率即可，以盡量接近SPF，簡化路由。 
+ 最短路徑代價反應使用路徑之延遲時間代價，link bandwidth使用率反應link延遲
+時間，所以訊務分流時除考慮最短路徑代價之外也考慮link bandwidth使用率。最
+短路徑代價越大者分配到的負載應越少，另一方面使用率越大者分流率要越小，
+以平衡負載而降低平均延遲時間。此外，我們令各link頻寬使用率趨向區域平均
+頻寬使用率，以減小震盪、加速收斂。  
+ 若某節點負載分流後所有下游輸出link之使用率都過大，表示只調整分流率是無
+效的，此時需同時調整這些link之link cost以加大此節點至目的節點之最短路徑代
+價，減小上游節點送往此節點之link的分流率，以達真正減小傳往此節點之負載
+的目的。並令各link cost之調整可使link之頻寬使用率趨向整個網路系統之平均
+link頻寬使用率，以減少路徑變化、減小震盪、加速收斂。 
+ 各節點記憶分流率，若下游連線並未壅塞則訊務依目前分流率分流即可，以減少
+計算並避免震盪且加速收斂。  
+ 
+五、結果與討論 
+ 
+我們考慮網路環境為14節點NSFNET網路如圖3，21條鏈結（link）皆為雙向等頻寬，
+其頻寬由200K至450K不等。連線代價（Cost）值依OSPF標準定為 810 /BW(bps)。依M/M/1
+模型網路連線之average delay 正比於 Σ[ /( )e e ey c y− ]。每個節點都有資料流往其他節
+點，其資料量考慮10K, 15K, 20K, 22K, 23K, 24K等六種情形。 
+ 
+圖三 NSFNET 
+ 
+表一結果顯示OSPAM與最佳解(OHDR) 間在鏈結頻寬使用率平均值與delay等
+metric的差距皆低於0.5 %。因此我們引進directed acyclic net的觀念只花費少許效能的代
+價卻能獲得無回流的重要效益。 
+ 
+0 
+1 
+3 
+2 
+4 
+6 
+5 
+7 
+9 
+12 
+11 
+8 
+13 
+10
+ 10 
+[3] T. W. Chim and K. L. Yeung, “Traffic distribution over equal-cost-multi-paths,” Proc. 
+IEEE International Conference on Communications, Paris, France, 2004. 
+[4] W. Lin; B. Liu; Y. Tang, “Traffic Distribution over Equal-Cost-Multi-Paths using 
+LRU-based Caching with Counting Scheme,” Proc. Advanced Information Networking 
+and Applications (AINA), Vol. 1, pp. 579-584, April 2006. 
+[5] M. Pascal, P. Jean-Jacques, and C. Stephane, Path Computation for Incoming Interface 
+Multipath Routing, Proc. IEEE 4th European Conference on University Multiservice 
+Networks, 2007. 
+[6] S. Mao, S. S. Panwar, and Y. T. Hou, On Minimizing End to End Delay With Optimal 
+Traffic Partitioning, IEEE Transactions on Vehicular Technology, Vol. 55, No. 2, March 
+2006. 
+[7] S. Mao, S. S. Panwar, and Y. T. Hou, “On optimal traffic partitioning for multipath 
+transport,” in Proc. IEEE INFOCOM, Miami, FL, Mar. 2005, pp. 2325–2336. 
+[8] Z. Wang and J. Crowcroft, Shortest Path First with Emergency Exists, Proc. ACM 
+SIGCOMM, 1990. 
+[9] D. Sidhu, R. Nair and S. Abdallah, Finding Disjoint Paths in Networks. Proc. ACM 
+SIGCOMM, 1991. 
+[10] S. Bahk and, M. E. Zarki, Dynamic Multi-path Routing and How it Compares with other 
+Dynamic Routing Algorithms for High Speed Wide Area Network, Proc. ACM 
+SIGCOMM, Vol. 22, Oct. 1992. 
+[11] J. A. Cobb and M. G. Gouda, Balanced Routing, Proc. IEEE International Conference on 
+Network Protocols, 1997. 
+[12] W.T. Zaumen and J.J. Garcia-Luna-Aceves, Loop-Free Multipath Routing Using 
+Generalized Dijjksing Computations, Proc. IEEE INFOCOM '98, San Francisco, 
+Califomia, Mar. 1998. 
+[13] T. Nesson and S. L. Johnson, ROMM Routing on Mesh and Torus Networks, Proc. ACM 
+Symposium on Parallel Algorithms and Architectures, July 1995. 
+[14] R. Cole, et al., Randomized Protocols for low- congestion circuit routing in multistage 
+interconnection networks, Proc. ACM Symposium on the Theory of Computing, pp. 
+378-388, May 1998. 
+[15] K.C Kwan and P. Ramanathan, Multiple Route Real-Time Channels in Packet-Switched 
+Networks, Proc. IEEE Real Time Systems Symposium, pp. 74-83, 1994. 
+[16] S. Bak and J. A. Cobb, Randomized Distance-Vector Routing Protocol, Proc. ACM 
+Symposium on Applied Computing, San Antonio, Texas, Feb. 1999. 
+[17] S. Bak, A. M.K. Cheng, J. A. Cobb, E.L. Leiss, Load-Balanced Routing and Scheduling 
+for Real-Time Traffic in Packet-Switch Networks," Proc. Local Computer Networks 
+(LCN), pp. 634-643, Nov. 2000. 
+[18] S. Bahk, M. El Zarki, Dynamic Multipath Routing and How it Compares with other 
+Dynamic Routing Algorithms for High Speed Wide Area Networks, Computer 
+Communication Review, Vol. 22, Issue 4, October 1992.   
+ 12 
+ 
+ 1 
+ 
+ 
+摘 要 
+ 
+  2010 年國際電機電子工程師學會所舉辦的無線通訊與網路會議(WCNC)在
+澳大利亞雪梨市會議中心舉行，會議為期四天，自四月十八日至四月二十一日。
+本次會議由 IEEE Communications Society主辦，另有 Huawei、Telcordia、LG、
+CSIRO等廠商贊助。今年會議主軸為 The Future of the Wireless Communications、
+The Future of the Mobile Internet、以及 Towards a New World of Cognitive and Agile 
+Networks。WCNC 是 IEEE 無線通訊領域的旗艦會議，Main Conference 從來自
+58個國家 1474篇投稿論文中接受少於 37%的 548篇論文，以分佈於 13個 parallel 
+sessions 的方式於三天內完成論文成果發表。參與此會議有機會與學界業界之專
+家學者進行交流討論，除了增進實務經驗外，亦可瞭解最新無線通訊工業與相關
+研究之進展。 
+ 
+ 3 
+壹、目的 
+2010 年國際電機電子工程師學會所舉辦的無線通訊與網路會議在澳大利亞
+雪梨市會議中心舉行，會議為期四天，自四月十八日至四月二十一日。本次
+會議由 IEEE Communications Society主辦，另有 Huawei、Telcordia、LG、
+CSIRO 等廠商贊助。主辦單位邀請了 Telcordia CTO&先進技術部門總裁、
+Telstra CTO、香港科技大學院長以及全世界各地無線通訊菁英專家及學者等
+發表專題與論文。參與此會議有機會與學界業界之專家學者進行交流討論，
+除了增進實務經驗外，亦可瞭解最新無線通訊工業與相關研究之進展。 
+ 
+貳、過程 
+2010 年國際電機電子工程師學會(IEEE)所舉辦的無線通訊與網路會議
+(Wireless Communications and Networking Conference)在澳大利亞雪梨市會
+議中心舉行，整個會議劃分為 13 個 Parallel Sessions、3 個 Keynotes、2 
+half-day Workshops、8 half-day Tutorials、and 3 panels。這是 IEEE無線通訊
+領域的旗艦會議，Main Conference從來自 58個國家 1474篇投稿論文中接
+受少於 37%的 548篇論文，以分佈於 13個 parallel sessions的方式於三天內
+完成論文成果發表。2 個Workshops 及 8 個 Tutorials則在前一天舉行。本
+次會議場地位於澳大利亞雪梨市之會議及展覽中心，本人發表兩篇論文，被
+安排於 4 月 20 日上午 14:00 至中午 15:30 時之 Performance Evaluation I 
+session，題目為 A suburban Femtocell Model for Evaluating Signal Quality 
+Improvement in WiMAX Networks with Femtocell Base Stations，主要內容為
+提出一郊區極微小細胞模型以探討極微小基地台對訊號品質之影響，以及 4
+月 21日上午 11:00至中午 12:30時之 Mesh Networks II session，題目為 A 
+Transport Layer Mechanism for Fair TCP Throughput Over 802.11 Multi-hop 
+Wireless Mesh Networks，主要內容為提出一個能保證 TCP吞吐量公平性的
+排程機制。 
+ 
+參、心得 
+本次會議之主軸分別為 The Future of the Wireless Communications、The 
+Future of the Mobile Internet、以及 Towards a New World of Cognitive and 
+Agile Networks。經由參與了多場專題演講與論文發表會，發現合作式通訊、
+Cognitive Radio、MIMO/OFDM、Relay Networks、Wireless Sensor Networks
+以及Mesh Networks已為現代無線通訊與網路之主流議題。對亟於重視網通
+工業之我國，確實有諸多值得參考之處。經過這次會議經驗，收集非常多最
+新資料，個人的確受益良多，也相信對未來研究計畫的執行會有重大助益。 
+ 
+肆、建議 
+1. 無線通訊受到各國相當重視，我國得加強研究與落實相關技術發展。 
+無衍生研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

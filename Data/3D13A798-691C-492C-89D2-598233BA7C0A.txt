@@ -1,0 +1,445 @@
+2 
+ 
+高階圖形顯示卡才有的配備，逐漸變成可以普遍應用於許多嵌入式平台的基本模
+組。為了達到這個目的，如何解決一般可程式化著色器龐大、高功率消耗，或是
+受限於嵌入式環境之執行效能問題，乃是本計畫所要探討之議題。   
+一個具有可程化著色功能之加速呈像引擎主要建構於內部一個主要的執行
+核心：圖形處理運算單元（GPU: Graphic Processing Unit）。GPU 可執行著色程
+式，與一般處理器在架構上的主要差別在於具有 SIMD (Single Instruction Multiple 
+Data)的特性。而處理三維圖形呈像過程，一般可分為前端幾何處理及後端像素
+處理兩階段。相對上著色器架構也分為頂點著色器(Vertex Shader)及像素著色器
+(Pixel Shader)，加入可程式化著色器的三維繪圖流程的示意圖如下：圖 2-1 為傳
+統三維繪圖流程，圖 2-2 為使用可程式化著色器後的三維繪圖流程。 
+ 
+圖 2-1 傳統三維繪圖流程 
+ 
+ 
+圖 2-2 加入可程式化著色器後的三維繪圖流程 
+頂點著色器與像素著色器兩者可以採用相同的指令集架構，也可以採用各別
+最佳化的指令集。本計畫所要實現的主要是支援後端可程化的像素著色功能的加
+速引擎，因此在硬體設計上會針對圖形後端像素處理的流程進行探討及最佳化其
+模組。而後端像素著色所採用之 GPU 架構與前端幾何處理上主要的差異在於提
+供彈性化貼圖材質處理與著色，藉此一方面可以實現複雜著色演算法，另一方面
+藉由程式化著色功能的使用，經常可以使用較少的三角形數量達到與固定管線化
+呈像流程同樣的效果。由於 GPU 負責執行使用者所撰寫的像素著色程式，在執
+行像素運算的過程當中，難免會有資料相依的問題而造成處理器的閒置，如果在
+這些處理器閒置的時間內，能夠讓處理器去處理其他像素的運算工作，勢必能提
+升整體呈像引擎的效能，這種類似於傳統處理器上多執行緒的技術也列入我們硬
+體設計的考量之一。 
+Geometry 
+System Texture UnitSet-up Rasterization
+Per-fragment 
+operation
+RMGM
+Object file display
+Vertex Info Pixel Info
+Geometry 
+System Set-up Rasterization
+Pixel 
+processing
+Per-fragment 
+operation
+displayObject file
+Vertex Shader Pixel Shader
+Vertex Info Pixel Info
+4 
+ 
+ 
+圖 2-4 手機支援紅藍立體圖形輸出(http://chinese.engadget.com) 
+第三章 文獻探討 
+為了能利用程式化的方式來實現各種更為進階複雜的呈像效果，可程式化著
+色器(Programmable Shader)的運用日益普及。透過撰寫所謂 shading language [1]
+程式，可描繪更多傳統固定呈像流程無法輕易做出的效果及繪圖特性，如陰影
+(shadow)和折射(refraction)等。傳統著色器分兩種，其中頂點著色器主要是提供
+三角形頂點(vertexes)縮放(scaling)、平移(translation)、旋轉(rotation)等的座標轉
+換、照明亮度的計算與產生貼圖座標的對應位置，並為下一階段著色流程做一些
+前置處理；而像素著色器則是專門針對貼圖座標的計算、材質影像混合的方式和
+霧化(fog)效果進行處理，例如：水波特效等。而描述繪圖效果所撰寫的程式是以
+著色器的指令集在組合語言的層級開發著色程式。在傳統繪圖上為了達到某些特
+效，經常須要多次的後端像素處理以達到特殊的呈像效果。而多次重複的執行整
+個繪圖流程，並將每次處理完的像素資訊記錄下來，十分的沒有效率。透過可程
+式化著色器的架構，這種重複性的後端處理，可利用繪圖指令的重新編排與一些
+額外的後端處理資訊儲存空間(K buffer)以達到硬體加速的效果[2]。由於著色器
+提供使用者極大的彈性去決定想要的繪圖流程，因此未來其在嵌入式系統之應用
+非常被看好，因此有越來越多的相關著色器或 GPU 的研究被提出。這些研究多
+都著重於如何設計更佳的 GPU 的指令集及其處理器架構來降低執行運算時在硬
+體上的負擔，例如[3]設計了一個能有效率管理晶片內部記憶體的低功率硬體電
+路稱為 RAMP (RAM Processor)，透過大量的晶片內部記憶體配合快取記憶體
+(cache)來提升記憶體存取效率，而[4]則是在 GPU 上的算數處理單元進行改進，
+設計一個新的對數處理硬體架構，增加 GPU 的運算能力，使 GPU 能更有效率的
+使用硬體。[5]強調低功率設計，透過暫存器共享，來減少 GPU 執行指令時必須
+使用的暫存器數目，並在晶片進行運算時，讓未進行運算處理的硬體電路與內部
+記憶體進行休眠的動作，減少晶片運算時的功率消耗。此外，相對於傳統分離式
+6 
+ 
+thread 而言，效能相對的變差。Blocked context switch 沒有 fine-grained context 
+switch 的缺點，但在切換不同 thread 時的成本相對提升。上述兩種 multi-thread 
+context switch 的機制與不同的處理器架構的組合，如下圖 3-2 所示。 
+ 目前市面上的 GPU 提供程式設計師撰寫三種類型的 shader 程式，分別為
+vertex shader、geometry shader 和 pixel shader。對 unified GPU 來說，如何有效的
+排程上述三種類型的 thread 是個值得研究的議題。[7]中採用 PVMT (pixel-vertex 
+multithreading)這個排程機制。當 pixel shader 執行貼圖運算時，若發生 texture 
+cache miss 時，由於會花費許多的 cycle，即切換執行 vertex shader 以提升效能。
+[8][9]是將同種類型並具有相同的程式起始位置的多個 thread 組成一個名為 Warp
+的基本單位(如：32 個 threads 組成一個 warp)，利用類似 fine-grained switch 的方
+式切換不同的 warp。如圖 3-3 所示。 
+[a] scalar         [b] fine-grained scalar       [c] blocked scalar 
+[d] superscalar     [e] fine-grained superscalar  [f] blocked superscalar 
+[g] VLIW         [h] fine-grained VLIW     [i] blocked VLIW 
+[j] SMT processor  [k] chip multiporcessor 
+ 
+圖 3-2.處理器類型 
+8 
+ 
+實際佔有的位置，但是實際上輸出的顯示裝置卻只能表示二維且離散的座標點，
+所以就必須經由掃描轉換的動作把頂點所描述的範圍轉換成螢幕上所對應的像
+素位置。除了決定哪個位置的像素要被畫出之外，還必須計算出該位置相對於原
+始頂點的深度、顏色以及貼圖座標等資訊，這部份就需要大量的內插計算。而隨
+著使用不同的像素掃描方法，也可以使用不同的內插方式。若是使用不規律移動
+的掃描，可以配合使用乘加運算的內插計算。若是使用循序的掃描，就可以只使
+用累加的方式來達到內插計算。這個步驟是由頂點為主的處理轉換到像素為主的
+重要階段，加上轉換後的像素數量將會遠比原來的頂點多出非常多，所以這個轉
+換處理的效率是非常重要的，這也是後端處理中影響整體繪圖系統效能最大的部
+份。影響效率的一大因素是掃描的演算法，有許多研究提出各種不同的作法，例
+如：循序掃描(圖 3-5)、Centerline traversal algorithm[11]、描繪邊界掃描法(圖 3-6)。 
+                    
+    圖 3-5.循序掃描法         圖 3-6.描繪邊界掃描法 
+3D 圖形繪圖引擎的設計議題，除了包含各個加速模組硬體處理單元的設計
+外，如何減少龐大的記憶體頻寬也是一個很重要的課題。例如，針對龐大的緩衝
+區資料搬移，大部分的呈像加速系統乃採用了快取記憶體的方式以減少包含畫面
+及深度緩衝區資料外部資料搬移量。甚至，有些設計因此採用了一種特別的繪圖
+流程稱之為 tile-based rendering [12]-[14]，其為將場景當中的所有構成三角形按
+位置排序，插入各個 tile 藉由指標所建構的三角形資料串列。爾後按不同 tile 順
+序來處理相關的三角形呈像。因為這種方法一次著色一個區塊，可以透過在晶片
+內的小型畫面緩衝區和深度緩衝區以避免晶片外部的資料流量。除了 tile-based 
+rendering 和相關的減少貼圖記憶體存取次數的技巧之外，由於深度緩衝區的記憶
+體頻寛佔了所有頻寛的主要比例，因此許多記憶體頻寛的減少方法乃考慮如何減
+少深度緩衝區的存取操作。 [15]提出了一個快速的緩衝區清除方法以減少清除
+動作所需的記憶體存取次數。[16]-[21]則提出了壓縮深度緩衝區，可以同時減少
+10 
+ 
+以及(4)呈像系統對外溝通之匯流排 wrapper 單元。整體架構如下圖 4-1 所示，以
+下將針對各個單元的設計一一介紹。 
+ 
+ 
+圖4-1 呈像引擎架構圖 
+ 
+ 圖形處理運算單元：(GPU) 
+GPU是採用SIMD的處理架構支援平行的資料處理，能夠處理一系列的貼圖與算
+術運算指令。傳統的GPU只提供資料運算的指令，進階的GPU則已包含資料搬移
+及程式執行流程控制指令。在電路設計上，為了提高處理器處理速度，本計畫發
+展的GPU架構被管線化為以下數個執行階段：Instruction Fetch(IF)、Instruction 
+Decode(ID)、Execution(EX)以及Write Back(WB)。其中執行繪圖指令EX的部分又
+被劃分為五個階段(EX硬體設計架構如下圖4-2.)，硬體架構包含特殊函數指令所
+需要的查表，以及乘加器、四維向量的內積處理單元和判別大小的硬體。此外，
+像素著色器主要支援可程式化貼圖功能， GPU需要支援貼圖指令，在呈像引擎
+內會有一個貼圖單元，負責處理貼圖相關的記憶體讀取動作及執行相關材質的濾
+波處理。 
+ GPU記憶體 
+如同CPU運算時需要暫存器，著色器執行程式亦需要暫存器來暫存運算結果；另
+外著色程式一般也會存放於GPU內，因此也需要一個記憶體空間，所以在著色器
+執行指令時所需要的記憶體可分成指令記憶體(instruction memory)和資料記憶體
+(data memory)兩個部份。 
+ 後端像素處理單元(Fragment operation unit) 
+後端處理單元由三個模組構成，深度比較(Z-compare)、混色（Blending）、以及
+12 
+ 
+ 
+圖 4-3.Unified GPU 之指令集 
+ 
+圖 4-4.指令附加操作 
+    上述定議之指令的編碼，如圖 4-5 所示，主要設明如下： 
+ DST 表示為目標暫存器 , SRC 表示為來源暫存器 (6 位元) 
+ Immediate_value 表示為即時資料 (32 位元) 
+ FXL 決定運算型態(浮點數/定點數) (1 位元) , SV 決定來源暫存器的維
+度 (2 位元) 
+ IF 決定寫入哪個儲存元件(register file/interface register) (1 位元) 
+ M 決定 stereo 功能開啟時的模式 (1 位元) 
+14 
+ 
+ 
+圖 4-7.採用多執行緒的 GPU 架構 
+在這個多執行緒的技術當中，我們最多可以同時處理 6 條執行緒，理論上需要 6
+組暫存器(Register file)來記錄執行緒相關的運算資訊，考量硬體面積與硬體的擴
+充性，本計畫採用三組獨立的記憶體來取代執行緒暫存器，以降低硬體之成本。
+但由於記憶體同時間可讀寫資料數受限於其支援之埠數，而埠數增加也會提高記
+憶體模組的面積，因此計畫中乃將記憶體切割成三個區塊記憶體以降低記憶體埠
+數需求，其所造成之管線化操作影響如圖 4-8 所示。 
+ 
+圖 4-8.多執行緒處理時序圖 
+在繪圖呈像流程中，Setup 與 Rasterization 需要對經過幾何轉換後的頂點資
+訊進行大量的運算，消耗整個繪圖流程中極大的執行時間，特別是 Rasterization
+必須針對繪圖物件構成的每一個三角形的頂點，進行內插運算，以產生內部所有
+涵蓋像素的座標、顏色、深度、貼圖座標等資訊。而由於 Setup 與 Rasterization
+16 
+ 
++
++
++
++
++
+e
+e
+e
+d x /d y
+d x /d y
+d x /d y
+x /y
+1 /-1
+co u n t_ x /co u n t_ y
+1 /-1
+3  s tag e  
+ad d e r
+>  0 ?
+>  0 ?
+>  0 ?
+>  0 ? <  m ax X ? <  m ax Y ?
+圖 4-10.Rasterization 的硬體輔助運算處理 
+本計劃中除了將像素著色前的前置動作 Setup 與 Rasterization 進行改良，與
+GPU 共用硬體，提高整體硬體使用效率外，也針對像素著色完成後所進行的後
+端像素處理模組設計了新的硬體架構。下圖 4-10 為 Opengl ES 所制定的像素後
+端處理流程 per-fragment operations，圖4-10(a)為Opengl ES 1.0版本提供的功能；
+圖 4-10(b)為 Opengl ES 2.0 版本。Opengl ES 2.0 可支援可程式化著色器的使用，
+在 Opengl ES 2.0 中，後端像素處理單元不再需要 Scissor test、Alpha test 與 Logic 
+operation 等的像素處理步驟。僅有深度測試，模版測試，模板運算與透明度混色
+四種像素處理，分別描述如下圖 4-11： 
+ 
+圖4-11. Per-fragment operation pipeline (a)OpenGL ES 1.0 (b) OpenGL ES 2.0 
+ 深度測試(Depth test) 
+深度資訊是3D繪圖才有的特性，它代表像素與觀察者的距離。深度測試是以像
+18 
+ 
+ 2個test circuit - 根據使用者設定的比較模式判斷像素是否通過測試 
+ 1個factor selector - 根據使用者設定來決定像素混色的係數，其輸出為4個
+8-bits ALU的input data與控制訊號 
+ 1個stencil update - 根據使用者設定來決定更新stencil buffer的方式，其輸出
+為4個8-bits ALU的input data與控制訊號 
+ 4個8-bits的ALU – 三個提供乘法與加法運算，一個提供乘法、加法、AND
+運算 
+ 2個32-bits的加法器 
+ 
+圖4-12. Per-fragment operation狀態機 
+ 
+圖4-13. Per-fragment operation硬體架構 
+20 
+ 
+轉換成一維的序列，如圖 4-14 所示之掃描轉換的順序。除了第一行之外，其餘
+皆以水平的方向作掃描。 
+ 
+圖 4-15.8x8 深度值方塊的掃描順序 
+ 
+經過了前兩個步驟的轉換之後，得到的深度差值會經過稱為 run-length 的編
+碼方式。此編碼結果會產生一連串標示為(dZ,rlen)的符號，其中的 dZ 代表深度
+差值，而 rlen 代表在一維深度值串列中連續出現相同深度差值的個數。 
+16 31 42 63 84 104 144 184
+20 35 54 75 96 117 135 175
+(a)
+- 15 11 21 21 20 40 40
+4 15 19 21 21 21 18 40
+ 
+圖 4-16.計算深度差值的例子(a)原來的深度值 (b)計算深度差值之後的值 
+ 
+以圖 4-15(a)為例，假設圖中數值表示圖 3-1 中第二及第三列原來的深度值。
+圖 4-15(b)則表示經過深度值相減運算後的結果，除了第一行之外，其深度差值
+在經過掃描轉換後可以用下列的一維序列來表示：15, 11, 21, 21, 20, 40, 40, 15, 19, 
+21, 21, 21, 18, 40。再經由 run-length 的編碼方式，可以將連續出現相同的深度值，
+以較簡單的方式編碼，其編碼結果可以用方程式 4-2 來表示： 
+ 
+
+
+0,40,0,18,2,21,0,19                
+,0,15,1,40,0,20,1,21,0,11,0,15[.]rlenDZ  
+方程式 4-2.經過 run-length 編碼的輸出結果 
+ 
+22 
+ 
+欄位 編碼 描述 
+dZ 
+[0][0b8 b7…b0] 用 9 個位元來代表深度差值 dZ 的二補數表示方式 
+[0][1b16b15…b0] 用 17 個位元來代表深度差值 dZ 的二補數表示方式 
+[1][0] RTB(ind+1) 儲存的值等於 dZ 
+[1][1] RTB(ind+2) 儲存的值等於 dZ 
+rlen 0...11111
+rlen
+ 
+連續出現且相同的 dZ 值數目的單位元編碼 
+表 4-1.符號編碼的格式說明 
+本計畫除了提出上述之深度緩衝區區塊壓縮技術外，也將這項技術結合快速
+清除緩衝區的技術，提升整體繪圖呈像的記憶體使用效能。快速緩衝區清除技術
+也是以像素區塊為基本清除單位，其基本精神乃是將畫面分割成固定大小的區塊，
+針對被繪圖物件覆蓋到的區塊，並不須要做事先外部記憶體清除的動作，而是與
+後來物件在此區塊處理時再一併清除。也就是直接先將清除值寫入一個系統內部
+的緩衝區，等到三維繪圖運算完畢之後再寫回外部記憶體。在三維物件繪製完成
+之後，才針對那些尚未被三維物件覆蓋的區塊進行畫面清除的動作，相關示意圖
+如下： 
+ 
+圖 4-18 .Rendering process order(a) Original process,(b)Proposed 
+process,(c)Process of continuous frame 
+ 
+完整的緩衝區管理機制的設計如在圖 4-19 所示，其中主要會須要一個特殊
+的記錄表格來記錄各個區塊的使用狀況，包含區塊的壓縮狀況還有區塊上面是否
+有被三維物件所覆蓋，根據表格記錄的結果對像素區塊進行相關清除與壓縮的動
+作。 
+除了基本的三維圖形呈像效果，近年來三維立體影像的應用愈來愈普遍，如
+何支援立體三維圖形的呈像，也成為一個注目的題目。因此本計劃除了一般三維
+圖形的呈像之外，也將延伸到立體圖形的呈像功能。立體呈像的作法眾多，最基
+本的做法乃是基於左右眼不同的視點位置，分別產出對應於左右兩眼視點的圖形，
+但這樣的作法卻需要兩倍的執行時間來產生影像。實際上如圖4-20所示之視點、
+24 
+ 
+只會有兩種顏色，一個顏色屬於左眼，另一個右眼。由於繪圖動作進行兩次，且
+視點不同，最終結果需要存在不同的視訊緩衝區，然而由於最後紅藍眼鏡只會通
+過左圖中的藍色以及右圖中的紅色資訊，各個像素並不會記載完整的RGB顏色，
+因此可以將兩個不同的呈像結果整合在同一個緩衝區內，以節省一份視訊緩衝區
+(見下圖 4-22.)。 
+ 
+圖 4-21.紅藍眼鏡下的圖形 
+R G B
+Frame buffer
+Render
+ Left pixel / 
+right pixel
+Left pixel Right pixel  
+圖 4-22.視訊緩衝區存放兩張圖的像素 
+ 
+第五章研究成果與討論 
+ 為了能夠充份驗證本計畫所實現的著色引擎，首先撰寫 SystemC 的行為程
+式碼，以實現系統層級軟硬體共同的驗證。完成系統層級的驗證後，再將撰寫之
+26 
+ 
+ 
+圖 5-3. 後端像素處理執行週期數 
+ 對於呈像著色器前置處理的部分，本計畫將傳統固定管線流程的 Setup 交由
+GPU 處理，而 rasterization 的處理，則提出由 GPU 處理及 GPU 加上輔助硬體兩
+種執行方式。圖 5-4 比較本計畫所提出的處理方式與傳統固定管線流程專門硬體
+做比較。其中在 rasterization 部分，若只透過 GPU 運算，則每個處理的像素，無
+論是有效或是無效的像素都須要花同樣的週期數，而透過輔助硬體的方式，則可
+以將無效像素所須時間降到最低。此外，圖 5-4 中傳統固定流程所須的邏輯閘個
+數是只考量產生基本的 attribute，但若考慮在可程式著色中所須可能的最多
+attribute 個數，則所須硬體數量將更多。若僅考慮基本之 attribute，透過 GPU 的
+處理，可以大約可節省 100K 的硬體面積。 
+ Latency Area 
+Setup  
+Fixed-pipeline 45 54215 gates 
+GPU only 94+90N N/A 
+Rasterization  
+Fixed-pipeline 1 cycle 38358 gates 
+GPU only 12+44N N/A 
+GPU/dedicated HW codesign 4 (invalid) 
+8+44N (valid)
+5 adders 
+圖 5-4. 前端像素點陣化處理執行週期數 (N：attribute 個數) 
+ 
+ 本計畫提出一個智慧型緩衝區管理架構，其中主要採用了一個特別的深度資
+訊的壓縮技術，此一技術隨著壓縮區塊變大，可以得到更佳的壓縮比率。圖 5-5
+顯示了針對不同的測試圖形物件及區塊大小的壓縮結果，藉著所提的方法可以達
+到 10:1 的壓縮比。 
+28 
+ 
+參考文獻 
+[1]. R. J. Rost, “OpenGL Shading Language 2nd Version” 
+[2]. V. Moya, C. Gonzalez, J. Roca, A. Fernandez, and R. Espasa “Shader performance 
+analysis on a modernGPU architecture,” in Proceedings of the 38th annual 
+IEEE/ACM International Symposium on Microarchitecture, pp.355-364, 
+November 12-16, 2005, Barcelona, Spain 
+[3]. J.H. Sohn ,Y.H. Park ,C.W. Yoon ,R. Woo ,S.J. Park and H.J. Yoo, “Low-Power 
+3D Graphics Processors for Mobile Terminals,”in Proc. IEEE Communications 
+Magazine, pp. 90-99, Dec. 2005 
+[4]. B.G. Nam ,H. Kim and H J. Yoo “A Low-Power Unified Arithmetic Unit for 
+Programmable Handheld 3-D Graphics Systems,” in Proc. IEEE Custom\ 
+Integrated Circuits Conf., pp. 535-538. 10-13 Sept. 2006, San Jose, CA  
+[5]. C. H. Yu, K. Chung, D. Kim, and L.S Kim “A 186Mvertices/s 161 Mw Floating 
+Point Vertex Processor for Mobile Graphics Systems,” In Proc of 2007 Custom 
+Integrated Circuits Conference, pp. 579–582, 16-19 Sept. 2007, San Jose, CA 
+[6]. L. Bavoil ,S. P. Callahan ,A. Lefohn ,J. L. D. Comba ,and C. T. Silva. 
+“Multi-fragment effects on the gpu using the k-buffer,” in Proceedings of the 
+2007 Symposium on Interactive 3D graphics and games, pp.97–104, April 
+30-May 02, 2007, Seattle, Washington 
+[7]. J. H. Woo, J. H. Sohn, H. Kim, J. Jeong, E. Jeong, S. J. Lee and H. J. Yoo , “A 
+Low Power Multimedia SoC with Fully Programmable 3D Graphics and 
+MPEG4/H.264/JPEG for Mobile Devices,” In Proc. ACM/IEEE International 
+Symposium on Low Power Electronics and Design (ISLPED), pp. 238-243,  
+27-29 Aug. 2007, Portland, OR   
+[8]. E. Lindholm, J. Nickolls, S. Oberman, J. Montrym, “NVDIA TESLA: A Unified 
+Graphics and Computing Architecture,” in Proc. IEEE Micro pp. 39–55, 
+March-April 2008 
+[9]. W. W. L. Fung, I. Sham, G. Yuan, and T. M. Aamodt, “Dynamic warp formation 
+and scheduling for efficient GPU control flow” In Proc. 40th Annual IEEE/ACM 
+International Symposium on Microarchitecture, pp. 407-420, 1-5 Dec. 2007, 
+Chicago, IL 
+[10].  K. Chung, D. Kim, and L. S. Kim, “A 3-way SIMD engine for programmable 
+triangle setup in embedded 3D graphics hardware,” in IEEE International 
+Symposium on Circuits and Systems, 2005, pp. 4546 - 4549 Vol. 5, 23-26 May 
+2005. 
+[11]. J. McCormack, and R. McNamara, “Tiled Polygon Traversal Using Half-Plane 
+Edge Functions,” in Proceedings of the ACM SIGGRAPH/EUROGRAPHICS 
+國科會補助計畫衍生研發成果推廣資料表
+日期 2010年11月01日
+國科會補助計畫
+研發成果名稱
+發明人
+(創作人)
+技術說明
+技術移轉可行性及
+預期效益
+技術/產品應用範圍
+產業別
+計畫名稱:
+計畫主持人:
+計畫編號: 學門領域:
+(中文)
+(英文)
+成果歸屬機構
+(中文)
+(英文)
+子計畫五：具進階著色功能之可程式化圖形呈像引擎設計(3/3)
+張雲南
+98 -2220-E -110 -005 - 晶片科技計畫--整合型學術研
+三維圖形深度資料壓縮機制
+國立中山大學 張雲南
+此項技術應用於三維圖形呈像系統晶片電路之設計。將呈像過程所須之深度資
+料切割成許多小區塊，基於同一三角形內之相鄰相素相差固定深度之特性，每
+個區塊可以藉由整合多項資料壓縮方法，包含差值編碼、可變長度編碼及字典
+編碼等技術，以壓縮成較小的資料單元，可以得到10:1的壓縮率。藉由資料壓
+縮的處理一方面減少深度資料所佔系統記憶體空間，也可以減少呈像過程中資
+料在系統匯流排移動量以節省匯流排頻寛，有助於提高圖形呈像速度。
+This technique can be applied for the design of three-dimensional
+computer graphics rendering system.  The depth data used for graphics
+rendering can be divided into blocks.  Based on the feature that the
+neighboring pixels belonging to the same triangle have the same depth
+difference, each depth block can be compressed by this compression
+scheme by integrating several coding methods including difference,
+variable-length and dictionary codings.  It can help reducing the
+required size of system memory, and the bus bandwidth.  This
+compression scheme can lead to 10:1 compression ratio.
+研究發展服務業
+圖形呈像系統電路設計
+可以提高三維圖形晶片之呈像效能。
+註：本項研發成果若尚未申請專利，請勿揭露可申請專利之主要內容。
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

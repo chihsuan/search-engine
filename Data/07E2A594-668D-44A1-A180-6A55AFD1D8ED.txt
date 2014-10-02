@@ -1,0 +1,498 @@
+Moreover, the project proposes a dynamic kernel model, which can 
+automatically adjust the kernel bandwidth of mean shift trackers 
+according to the probability of each state by improving the 
+searching effectively. 
+ 
+2 
+ 
+二、 研究目的 
+在計畫中，我們擬建立一個 3D Virtual Human Model(VHM)並結合了結構與
+運動學上限制的機制，用以比對及模擬輸入影片中人體動作，在 Human Motion 
+Tracking 中為了節省運算量並且維持準確度，我們將試著結合 Particle Filter 與
+Mean Shift 此兩種追蹤方法的優點，利用互補的方式克服彼此可能產生的缺點，
+首先我們將人體分成九個部份，其各部份皆存在一個 particle filter。各部位僅需
+預測少量的 particles，再利用 Mean Shift 搜尋，使得各 particle 皆為移至各自的
+local maximum，給予 weight 後再 Re-sampling，經由此兩種演算法的結合，各部
+位只須少量的 particles，而大大的降低計算量，並仍保留了 Particle Filter multiple 
+hypotheses 的特性，另外由於各 particles 經過 Mean Shift search 後皆為 local 
+maximum 則可以保證每個 particles 皆為區域範圍內的最佳解，又由於每個 state
+的決定方式是透過從各 particles 裡選出相似的機率值最高的 particle，所以應可
+以維持追蹤的準確率。 
+三、 文獻探討 
+從單一視角中擷取 3D human motion pose 將產生許多的困難點，有些是由於
+single camera 所產生的問題，有些是特徵擷取的問題，其他則是一般計算上所可
+能發生的問題，相關的問題包含：（1）3D-2D Projection Ambiguities 由單一 camera
+所得到的影像，由於僅為單一角度下將 3D 的世界的物件投影至 2D 的平面，將
+難以從拍攝後的影像中去還原深度的資訊(depth information)，在系統 VHM 重建
+過程中，有可能造成在所得影像 2D 平面上 fit 良好，但是在真實 3D 位置中卻是
+不對的姿勢。即所謂的”forward-backward ambiguities”。(2) High Dimensional 
+Representation 計算人體動作的參數不可避免的問題就是人體的動作維度相當高，
+如果要整體全部都運算的話，其計算量將相當大，這也造成了重建 3D-human 
+motion上很大的問題。為了符合一般人體可以做的動作，這本研究中系統的model
+至少需要 30 個以上的 DOF。(3) 衣物影響問題(Clothing Problem) 由於在一般的
+情況下，人身上都會穿著衣物或是戴上一些飾品，在擷取使用者特徵上也會造成
+影響，使得 fitting 的效果不佳。(4) 遮蔽問題(Self-Occlusion ) 由於在單一視角的
+拍攝下，或是拍攝角度的變化，將造成人體部分的肢體將被身體或是其他肢體遮
+蔽。關於遮蔽的問題，又可以在細分成完全遮蔽與部分遮蔽，其中完全遮蔽的問
+題在於完全無法得知被遮蔽肢體的資訊對重建人體動作上最為困難，另外部分遮
+蔽的問題由於深度未知的影響，則會造成前後肢體辨識上的困難。(5)人體動作
+的多變性及複雜度(General Unconstrained Motions) 一般人體的動作相當的複雜，
+4 
+ 
+distribution利用單一移動的 Camera，同時也擷取了人體移動速度及方向的特徵，
+來當作預測動作的依據，VHM 最終會收斂到一個最佳的結果。Deutscher 發展出
+Annealed Particle Filtering 的方法，特徵選取上則利用 3 台校正過的 camera 並採
+用 edge 與 silhouette 當作 cost function 比對的依據，而 Annealed Particle Filtering
+主要與傳統 particle filter 最大的不同即其方法成功的降低 particles 的需求量，並
+且增加了準確度，Annealing 使用了 importance sampling distribution 的概念在每
+個 step 遞迴 n 次的 re-sampling，作者重建人體走路的效果非常好。 
+四、 研究方法 
+本系統主要目的在處理（1）如何做出有效率的 sampling，（2）如何降低 particles
+的數目且不失去其準確度。在如何做出有效 sampling 的問題上，我們採用我們
+提出的 Modified Particle Filter，在考慮 state 時間軸動作的連續性下，將 particles
+以上一個時間點的 state當作起始點，在其附近刻意擴大範圍的 random sampling，
+以維持 Particle 可以 recover from failure 以及 temporal distraction 的特性，另外我
+們為了降低 Particles 數且希望維持在大量 particles 下的準確率，因此我們將每個
+particles 內都裝置一個 Mean Shift Tracking Device，使用的方法為以下: 
+Step1：  從 t-1 的時間點透過 posterior distribution 1 0: 1( | )t tp X Z  和 transition 
+probability 1( | )t tp X X  取出選出 1tw  最高的
+( )Ms 。 
+( ) ( )
+1 1 1, arg max( )
+M j j n
+t t t
+w
+s s w w                              
+Step2： 將所有的 particle 的 parameter 設為 ( )Mpara ，透過系統中的 dynamic model 
+sampling 
+1 1t t tX AX                                     
+Step3：接著各個 Particles 再利用本身內的 Mean Shift Tracking Devices，找出各
+自鄰近端的 local maximum。 
+01
+0
+01
+( )
+( )
+( )
+x
+x
+n
+ii
+r n
+i
+Ker m x
+M m
+Ker m
+
+
+
+
+
+                             
+0
+0
+1
+-1ˆ ( )
+xn
+i
+d
+ix
+x m
+f m Ker
+n r r
+ 
+    
+ 
+                         
+Step4：最後再利用 Likelihood Function 求出各 Particles 機率的 weights，並求出
+決定此時的 state。 
+6 
+ 
+五、 結果與討論 
+本節介紹計畫的實驗驗證結果，視訊資料的 Ground Truth 數據我們採用人工
+手動去定位各關節上的位置，並求出各關節的位置旋轉的夾角，並以追蹤出來的
+結果與 ground truth 的數據做出誤差分布圖。系統程式介面的部份，我們分成兩
+個部份，第一個部份分主要用以設定核心 tracking 參數設定的部份，包含特徵解
+取，Particle Filter以及Mean Shift參數的設定，第二部份(Fig 4)則是用以調整VHM
+身上所有的參數，包含局部肢體的比例以及 pose 的改變。 
+ 
+ 
+(a)                                      (b) 
+Fig 2: Ground Truth System: (a)為 Ground Truth System Interface，(b)Ground Truth 
+Motion Points。 
+ 
+ 
+Fig 3: Ground Truth Data(Waving Hand): 利用所取得的 Ground Truth data，由這張
+圖片可以看出前臂所擺動的角度通常都大於後手臂。 
+ 
+-200
+-150
+-100
+-50
+0
+50
+100
+150
+200
+1 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31 33 35 37 39 41 43
+Frame#
+A
+ng
+le
+Left Upper Arm
+Left Lower Arm
+Right Upper Arm
+Right Lower Arm
+8 
+ 
+ 
+Fig 6: Waving Angle 估算出來的 Angle 分布。 
+R Upper Arm
+0
+2
+4
+6
+8
+10
+12
+14
+16
+18
+20
+1 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31 33 35 37 39 41 43
+Frame#
+E
+rr
+or
+L Upper Arm
+0
+5
+10
+15
+20
+25
+1 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31 33 35 37 39 41 43
+Frame#
+A
+ng
+le
+ 
+(a)                                            (b) 
+R Lower Arm
+0
+5
+10
+15
+20
+25
+1 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31 33 35 37 39 41 43
+Frame#
+E
+rr
+or
+L Lower Arm
+0
+5
+10
+15
+20
+25
+1 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31 33 35 37 39 41 43
+Frame#
+E
+rr
+or
+ 
+(c)                                            (d) 
+Fig 7: Error Angle: (a)(b)(c)(d)分別為左上臂、右上臂、左下臂、右下臂估算出的
+angle 與 ground truth 在各 frame 中的差距(error angle)。 
+ 
+本計畫結合 Particle Filter 與 Mean Shift 演算法來針對 3D Human Motion 
+tracking，由我們實驗的結果可以明顯看出追蹤的效果準確度的確比傳統 particle 
+filter 的結果準確許多，另外由於採用結合 mean shift 演算法的方法，因此系統中
+所需的 particles 數可以有效的降低，而 Mean Shift 演算法也使其追蹤結果更佳，
+另外我們也提出了一個 modified particle filter 的概念，因考慮了時間軸的關係，
+使 sample 的方式更有效率。 
+ 
+-200 
+-150 
+-100 
+-50 
+0 
+50 
+100 
+150 
+200 
+1 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31 33 35 37 39 41 43 
+A
+ng
+le
+ 
+Frame# 
+Left Upper Arm 
+Left Lower Arm 
+Right Upper Arm 
+Right Lower Arm 
+10 
+ 
+Transactions on Pattern Analysis and Machine Intelligence (PAMI), vol. 28, no. 1, pp. 44-58, January 
+2006. 
+[9]R. Zhang, C. Vogler and D. Metaxas, “Human Gait Recognition”, In IEEE Computer Society 
+Conference on CVPR, 2004. 
+[10]J-C Cheng and J. M. F. Moura, “Capture and representation of human walking in live video 
+sequences”,  IEEE Transactions on Multimedia, 1999. 
+[11]H. Moon, R. Chellappa and A. Rosenfeld, “Tracking of Human Activities Using Shape-Encoded 
+Particle Propagation”, In IEEE Proceedings of International Conference on Image Processing, 2001 
+[12]T. Yamamoto and R. Chellappa, “Shape and Motion Driven Particle Filtering for Human Body 
+Tracking”, In IEEE ICME, 2003. 
+[13]S. Kim, C-B Park and S-W Lee, “Tracking 3D Human Body using Particle Filter in Moving 
+Monocular Camera”, In Proceedings of the 18th International Conference on Pattern 
+Recognition(ICPR’06), 2006. 
+[14] L. Raskin, E. Rivlin and M. Rudzsky, “Dimensionality Reduction for Articulated Body Tracking”, 
+In IEEE 3DTV Conference, 2007. 
+[15]J. Saboune and Charpillet, “Factored Interval Particle Filtering for Gait Analysis”,  In Conf Proc 
+IEEE Eng Med Biol Soc. 2007 
+[16] Maricor Soriano, Birgitta Martinkauppi, Sami Huovinen, and Mika Laaksonen, “Using the skin 
+locus to cope with changing illumination conditions in color-based tracking ”, In Proceeding of IEEE 
+Nordic Signal Processing Symposium, pp.383-386, Jun.2000. 
+
+
+
+
+ 
+ 
+  The Sixth International Conference on Intelligent Information 
+Hiding and Multimedia Signal Processing 
+IIH-MSP-2010 
+ 
+  October 15-17, 2010, Darmstadt, Germany 
+http://bit.kuas.edu.tw/~iihmsp10 
+ 
+Dear Prof./Dr./Ms./Mr. I-Cheng Chang, 
+Thank you for your submission to the Sixth International Conference on Intelligent Information Hiding and 
+Multimedia Signal Processing (IIH-MSP-2010), to be held on October 15-17, 2010, in Darmstadt, Germany. 
+We are pleased to inform you that your paper 
+ID No.: IIH-MSP-2010-IS24-06 
+Title: Human Activity Linkage Recording for Multiple Cameras with Disjoint Views 
+Author(s): I-Cheng Chang, Chieh-Yu Liu, and Chung-Lin Huang 
+has been accepted for presentation in IIH-MSP-2010. Your paper will be published in the conference 
+proceeding with the Conference Publishing Services of the IEEE CPS. Please do take the comments and 
+suggestions of the reviewers into account in the revision to further improve the quality of your paper. Please 
+refer to http://bit.kuas.edu.tw/~iihmsp10 for further information regarding the conference registration and to 
+the online Author Guide at http://bit.kuas.edu.tw/~iihmsp10 for detailed procedures in the preparation of your 
+camera-ready copy and copyright release form. Both deadlines are July 2nd, 2010. 
+We are looking forward to meeting you in Darmstadt. Further information on IIH-MSP-2010 can be obtained 
+from the conference web sites: 
+http://bit.kuas.edu.tw/~iihmsp10 
+Sincerely Yours, 
+ 
+ 
+ 
+Jeng-Shyang Pan, Program Committee Chair 
+National Kaohsiung University of Applied Sciences, Taiwan 
+Xiamu Niu, General Chair 
+Harbin Institute of Technology, China 
+Alexander Nouak , Conference executive Chair
+Fraunhofer IGD, Germany 
+Isao Echizen, Program Committee Chair 
+National Institute of Informatics, Japan 
+ 
+Figure 1.  The flowchart for activity linkage recording. 
+ 
+III. TRACKING ACROSS MULTIPLE CAMERAS 
+To track a moving object, we use an observation model 
+of the object for correspondence analysis. The color 
+histogram is a robust model for the condition for the variant 
+object scaling and orientation. In our system, we adopt a HS 
+(Hue-Saturation) color histogram model. A similarity 
+measurement between two distributions can be described by 
+the Bhattacharyya coefficient (Comaniciu et al. [12]). 
+Furthermore, the light condition seriously influences the 
+color feature because ambient light may change the color of 
+the image. For this reason, the color calibration is required 
+for searching the correspondence between different camera 
+views.  
+To find the spatiotemporal relationship in the camera 
+network, we compute the transition time which depicts the 
+time duration of an object moving from one exit zone to the 
+other entry zone, and the transition probability between two 
+observations at two different zones. In order to improve the 
+estimations of spatiotemporal relationships in our system, we 
+employee the prior knowledge of camera network topology 
+(Chen et al. [11]): (1)Information of all the adjacent camera 
+pairs.(2)The blind regions, which are not monitored by any 
+camera, is closed or open. A blind region is closed if there 
+are no unknown entries or exits; on the other hand, it is open. 
+Tracking between multiple cameras is to establish a set of 
+correspondence between the object observations. Assume 
+that a person A enters the view of one camera, of which the 
+observation is denoted as OA. The observation OA is 
+composed of two cues, the spatiotemporal cue OA (st) and the 
+appearance cue OA(app). The OA (st) includes the 
+information about the camera id and entry/exit zone where A 
+entered, the position OA (x, y), and time of entry OA (time). 
+Then we may search the best corresponding person with the 
+observation Oh in the handover list, and employee the 
+spatiotemporal relationships between cameras to find the 
+best one. If the probability is the highest probability which 
+exceeds the threshold, we label the newly arrival observation 
+OA and the observation Oh in the handover list as the same 
+person. Otherwise, object A is a new person entering in our 
+system. The probability of the observation OA belonging to 
+Oh in the handover list is described as ( , )A hp O O . 
+The most likely correspondence could be obtained as 
+follows: 
+( , )A hh Harg max p O Oϕ ∈=                      (1) 
+where H is the handover list. Assume that the 
+spatiotemporal cue and the appearance cue are independent. 
+We take the log likelihood and merge them with a weight w. 
+According to Bayes Theorem, the most likely 
+correspondence can be described as follows:  
+ln ( , )A hh Harg max p O Oϕ ∈=  
+1( ) ( ) ( ) ( )(ln ( , ) ln ( , ) )w wA h A hh H st st app apparg max p O O p O O
+−
+∈
+= ×  
+( ) ( )[ ln ( , )A hh H st starg max w p O O∈= × +  
+( ) ( )(1 ) ln ( , )]           (2)A happ appw p O O− ×  
+where the ( ) ( )( , )A happ appp O O  is the probability of color 
+histogram similarity and the ( ) ( )( , )A hst stp O O  is the 
+probability of spatiotemporal similarity. 
+ 
+IV. MISSING LINKAGE CONNECTION 
+In real applications, some abnormal conditions may 
+result in miss tracking of the object. To cope with the 
+problems, we integrate the dynamic programming process to 
+backward tracking based on the spatiotemporal relationships. 
+Furthermore, we apply Hidden Markov Models to search the 
+missing linkage which cannot be found in dynamic 
+programming process. 
+A. Missing Object Tracking 
+To find the missing tracking path, we employ dynamic 
+programming algorithm, a stepwise back-tracking process, to 
+find the highest probability path. We record the maximal 
+probability and maximal path at each step and re-use them 
+step by step. 
+Assume that an object O1 enters Zone A in the view of 
+camera Ci. The condition probability 1O (   )p zone B zone A  
+of the same object will be focus on another zone B in the 
+view of camera Cj. We then calculate the most probable path 
+from zone A to zone B by using the following equation : 
+1O 1
+(   ) (   )                            (3)zone zone zone zonep B A p B S= …    
+(   )  kzone zonep S A  
+where the sequence 1 2{ , , }kS S S……  is the path of the 
+highest probability from zone A to zone B.  
+The miss-tracking problem is most due to two issues: (a) 
+the color feature of the same people changed between 
+different cameras, and (b) some people may stay on the blind 
+[3] F. Porikli and A. Divakaran, “Multi-Camera Calibration, Object 
+Tracking and Query Generation,” IEEE Conference on Multimedia 
+and Expo, 2003. 
+[4] O. Javed, Z. Rasheed, K. Shafique, and M. Shah, “Tracking across 
+Multiple Cameras with Disjoint Views,” IEEE Conference on 
+Computer Vision and Pattern Recognition, 2005. 
+[5] A. Dick and M. Brooks, “A Stochastic Approach to Tracking Objects 
+across Multiple Cameras,” Australian Conference on Artificial 
+Intelligence, 2004, pp.160-170. 
+[6] T. J. Ellis, D. Makris, and J. Black, “Learning a Multi-Camera 
+Topology,” Joint IEEE Workshop on Visual Surveillance and 
+Performance Evaluation of Tracking and Surveillance (VS-PETS), 
+2003, pp. 165-171. 
+[7] C. Stauffer, “Learning to Track Objects through Unobserved 
+Regions,” IEEE Computer Society Workshop on Motion and Video 
+Computing, 2005, pp. 96-102. 
+[8] K. Tieu, G. Dalley, and  W. Grimson, “Inference of Non-overlapping 
+Camera Network Topology by Measuring Statistical Dependence,” 
+IEEE Conference on Computer Vision, 2005, pp. 1842-1849. 
+[9] A. Gilbert and R. Bowden, “Tracking Objects Across Cameras by 
+Incrementally Learning Inter-camera Colour Calibration and Patterns 
+of Activity,” Proc European Conference Computer Vision, 2006, pp. 
+125-136. 
+[10] N. Yunyoung, R. Junghun, C. Yoo-Joo, and C. We-Duke, “Learning 
+Spatio-Temporal Topology of Multi-Camera Network by Tracking 
+Multiple People,” Proceedings of World Academy of Science, 
+Engineering, and Technology, Vol. 24, Oct 2007. 
+[11] Kuan-Wen Chen, Chih-Chuan Lai, Yi-PingHung and Chu-Song 
+Chen, “An Adaptive Learning Method for Target Tracking across 
+Multiple Cameras ,” IEEE Conference on Computer Vision and 
+Pattern Recognition, 2008. 
+[12] D. Comaniciu, V. Ramesh, and P. Meer, “Real-time tracking of 
+nonrigid objects using mean shift ,” IEEE Conference on Computer 
+Vision and Pattern Recognition, 2000. 
+ 
+ 
+(a)                                    (b) 
+ 
+(c) 
+ 
+ 
+                                          (d) 
+Figure 4.  (a) Placement of cameras. (b) Walking path on the layout.        
+(c) Individual tracking paths. (d) Object-based people tracking result. 
+ 
+ 
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：張意政 計畫編號：99-2221-E-259-022- 
+計畫名稱：以粒子濾波器及均值移動法為基礎之階層式人體動作追蹤系統 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 3 0 100% 
+發 表 期 刊 為
+Pattern 
+recognition, 
+Intelligent 
+Automation and 
+Soft Computing，
+均為 SCI 期刊。 
+研究報告/技術報告 0 0 100%  
+國外 論文著作 
+研討會論文 2 0 100% 
+篇 
+1. 
+International 
+Conference on 
+Machine Learning 
+and Cybernetics 
+(ICMLC 2011), 
+Guilin, Guangxi, 
+China, July 
+10~13, 2011. 
+[EI] 
+2.The 6th 
+I i l

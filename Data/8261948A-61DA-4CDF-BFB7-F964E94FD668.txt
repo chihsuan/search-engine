@@ -1,0 +1,795 @@
+2一、前言
+在過去三年的計畫中，子計畫一主要的工作項目是開發新的分散式視訊編碼的技
+術。由於點對點 (Peer-to-Peer, P2P) 即時通訊系統的通訊應用有越來越廣泛的趨勢，而
+且進行對等視訊傳輸的兩個終端設備(Peers)的種類也變得多樣化。因為傳統視訊編碼
+演算法在編碼端的計算量遠大於解碼端，如果在 P2P 的即時視訊傳輸應用中，傳送端
+設備（如手機）比接收端設備（如桌上電腦）的計算能力小很多時，傳統的即時視訊
+編碼演算法就不符應用。比較適合 P2P 應用的視訊編碼演算法則是分散式視訊編碼演
+算法(Distributed Video Coding, DVC)，因為 DVC 可以在維持一定的編碼效率的前提
+下，根據兩個終端設備的計算能力來調整編碼及解碼所需的運算量。而本計畫在過去
+三年最主要的成果，就是開發了一套新的 DVC 編碼演算法。跟目前國外所提出的效能
+最佳的 DVC 演算法(DISCOVER codec)相較，實驗結果顯示，我們所提出的技術可以
+把 DVC 編碼效率提升多達 1dB，而且跟 AVC/H.264 zero motion 的 inter-coding 效能相
+近。
+二、研究目的
+近年來，分散式編碼演算法相關研究相當踴躍，針對無線視訊網路、Mobile 2.0…
+等壓縮端資源有限的應用，分散式編碼提供一個可行的架構。由於在 Mobile 2.0 的應
+用中，使用者必須透過計算能力和電力都受限的手持裝置進行數位內容製作，並透過
+行動網路上傳到遠端的伺服器。因此所採用的編碼技術必須是計算量小（減少編碼消
+耗的電力）而且編碼壓縮效能高（減少資料上傳消耗的電力）。而傳統的視訊編碼法雖
+然壓縮效果已經很不錯，但是在編碼端的計算量確也相對的高。因此，過去幾年，視
+訊編碼專家一直在尋找一種新的編碼法，目標是在編碼端運算複雜度較小的情形下，
+編碼效率能達到跟 MPEG-4 AVC 一樣好。
+在 2006 年的幾次 MPEG 國際會議，在一些可能發展新一代編碼法的方向下，有人
+提出一個提案，也就是分散式視訊編碼法(Distributed Video Coding, DVC)。過去慣用的
+視訊壓縮演算法會利用模型預測的方式來計算出一個接近原始資料 X 的估測值 Y，以
+改變原始資料的統計分佈、降低資料間的相依性，以方便後端的熵編碼法進行資料壓
+縮。Y 完全是由壓縮器根據原始資料經過複雜的計算得出，並透過網路把 |X–Y|傳到
+解壓縮器(||代表量化運算)。而在分散式視訊編碼法中，雖然我們仍舊採用模型預測編
+碼原則，但在編碼器端，我們不進行複雜的計算來求出 Y，而是透過簡單的計算求出 X
+跟 Y 之間的誤差 |X–Y|。由於在編碼端 Y 其實不存在，因此我們必須用某種統計模型
+來估測 S|X–Y|，將其傳到解壓縮器端，再由解解壓縮器透過複雜的計算求出 Y（這
+是所謂的 side information），然後利用從編碼端傳來的 S，我們就可以算出 X。不過目
+前大家所熟知的 DVC 計算法方法，壓縮效率都不佳，一般而言只能跟 H.264 In-
+tra-coding 的效能相當。
+4與者的地位都是相等的。既可以作為伺服器提供服務，也可以發出要求請求服務。一般
+的 P2P 網路在架構上可以根據拓撲關係分為幾種形式︰1) 分散式非結構化網路：這種
+網路在組成上使用了隨機的方式，不進行集中管理，因此可以提供較好的擴充性與容錯
+能力。2) 分散式結構化網路：其網路的構成是經由大量節點共同維護的 Hash Table 作
+管理。因為對於網路的架構做了管理，因此可以提供良好的可擴充性與效能。3) 混合
+式網路：保留了集中式網路快速搜尋資源的特性，並且使用了 P2P 網路的其他優點，例
+如提供 mp3 下載 Napster，利用 Server 提供了快速的收尋方法，並且在取得資源位置
+後利用點對點的傳輸直接做檔案的傳輸。
+目前研究中分散式編碼典型的架構如下圖(一)，首先編碼端會將視訊分為兩部分，
+一部分用傳統的壓縮法作 intra 壓縮，這些資料傳到解碼端解碼後會提供解碼端運動模
+型當作可用來重建的資料。編碼端再將剩下的第二部份視訊資料利用低複雜度的預估誤
+差模型產生誤差修正碼傳到解碼端，(最簡單的方式就是假設固定的誤差分佈，利用傳
+統錯誤更正碼去編碼誤差修正資訊)，除了上述誤差修正碼之外，編碼端也可以針對設
+計的解碼端模型傳送影像提示幫助解碼端作運動預估。編碼端將影像資料編碼成：關鍵
+圖壓縮資訊碼、W-Z 圖影像提示碼和 W-Z 預估誤差修正碼，解碼端移動模型會根據關
+鍵圖壓縮資訊碼和 W-Z 圖影像提示碼作移動預估，在透過接收到的 W-Z 預估誤差修正
+碼進一步修正預估誤差。
+圖一、 分散式壓縮編碼理論的概念
+由上述討論可以看出分散式編碼的關鍵在於：如何在解碼設計一個好的移動模型和
+如何在編碼端以低複雜度的方式計算出解碼端的模型預估誤差。關於解碼端移動模型目
+前大抵上分為兩種設計方法，一種是根據移動投影的模型來作移動預估，另一種是根據
+編碼端額外傳送的影像提示作預估，針對這兩種理念，我們系統中設計兩種不同移動模
+型：投影補洞法和以邊界為基礎的移動搜尋法，在下面章節會詳述設計細節。
+四、結果與討論
+本計畫以分散式編碼原則嘗試設計一套新的編解碼系統，目標是在編碼端運算複雜
+度相當的情形下，達到相當於 MPEG-4 AVC 的壓縮率。根據之前的討論我們針對解碼端
+SI 影像生成模型和誤差預測模型進行討論和設計，以協助編碼端做出更好的效果。在
+6圖四、 投影式 SI生成演算法
+由上圖結果可以看到，在背景部分投影式方法可以產生不錯的 SI，然而在臉部等運
+動較為複雜的像素，投影式的效果相當有限。單純用投影式方法所產生的 SI 在某些狀
+況下誤差非常大，尤其是原本就不符合區塊運動模型的影像資料，太大的誤差使用傳統
+渦輪編碼法或是低密度奇偶校驗碼來作編碼時，所需要的位元率遠高於傳統的視訊編碼
+法。許多研究提出由編碼端傳送少量資訊，以輔助解碼端的影像模型做更精確的運動預
+估來產生品質夠好的 SI，我們考慮到角點是影像中的重要特徵之一，而且也是移動估測
+中誤差較大的部份，所以我們曾嘗試選擇角點作為 SI 生成的輔助資訊（圖三）。不過，
+我們發現幾個待解問題，第一，角點周圍 4×4 的像素送至解碼端，這個部份資料量太多
+且不易編碼，要想辦法降低資料量。第二，部份宏塊用這種方法並不能得到比前述投影
+式 SI 生成演算法還好的效果。第三，角點通常聚集在某些宏塊，有很多宏塊內部的角
+點並不足以使用角點來作運動預測。所以我們要重新思考角點資訊的使用方法。
+圖五、 角點輔助 SI生成
+本架構中最後採用的 SI 生成方式是基於前述的線性區塊運動模型，利用相鄰的兩
+張 Key frame 造出 SI。在真實運動偵測的過程中，我們利用階層性的移動偵測法來尋找
+真實運動，再透過線性內插產生 SI。至於演算法細節請參閱附錄一。
+II. SI誤差估測技術研究
+分散式編碼系統利用 SI 生成模組來偵測視訊中冗餘資訊。一般 SI 生成演算法是基
+8III.以誤差特性決定W-Z編碼優先權的方法
+根據前述分析，我們提出一個新的分散式視訊編碼架構。如圖七所示：影片首先
+被分為 KEY frames 和 WZ frames，KEY 經過傳統 intra-coding 壓縮，WZ 則是經過 WZ
+encoder編碼。在解碼端，SI生成模組根據KEY的資訊產生SI，接下來利用SI和WZ bit
+進行解碼。在架構中，我們提出一個新的壓縮工具：動態群組 (adaptive grouping)。在
+WZ code 之前，我們將資料根據特性進行分組，盡量使得每一組有相同的錯誤特性，
+接下來針對不同的組設計對應的WZ code。這樣的架構下，基本的WZ code單位從 frame
+變為 group，新的編碼工具有如下好處：
+[1] 每個 group 裡的資料有相同的 error特性，因此同一個 code block 裡的資料更符
+合 i.i.d.的特性，可以提升 channel code 的效能
+[2] 每個 group 都有不同的 error 強度，可以真的根據每個 group 作較佳的資源分配
+[3] 不同 group 的 error 特性不同對視覺效果造成的影響也不同，將每個 group 的
+error 特性區分開，在相同頻寬編碼條件下，我們提出的方法可以達到更好的視
+覺上的畫質
+Intra Encoder Intra Decoder
+Bit-plane
+Splitter
+Key Frame
+Buffer
+SI Generator
+BufferLDPCAEncoder
+LDPCA
+Decoder
+MB
+Classifier
+MB
+De-grouping
+Reconstruction
+Video
+Sequence
+Adaptive Grouping
+WZ Frames
+Key Frames
+Classify Result
+Request
+Intra Bits
+Decoded
+WZ Frames
+Decoded
+Key Frames WZ Bits
+DVC Encoder DVC Decoder
+Decoded
+Key Frames
+圖七、 DVC with Adaptive Grouping
+IV.位元流量控制
+根據之前分析，可以發現在 Key frame 上配置資源可以有效增加 Key 和 WZ 的品質，
+因此在 rate control 時，系統會盡量將頻寬優先給予 Key，這樣會提升整體的 RD 表現。
+優先將資源分配給 Key 可能會造成 Key 和 WZ 品質不一的情形，不過在 grouping 的架
+構下，我們可以優先 deocode 會造成視覺瑕疵的部分，而忽略在視覺上並不易發現的錯
+誤，因此本計畫提出了一個對應的 rate control 演算法。我們假設一個線性 bit allocation
+模型：每個 group 所需要花的 bits 數和 MPSAD 成正比。
+Bi =Ei ,
+10
+2. 可擴充性 (Scalability)：在 P2P 網路中，所需的需求會隨著用戶的增加而大幅的
+上升，系統整體的資源和服務能力也必須做相對的擴充。
+3. 可靠性 (Reliability)：P2P 網路本身為一具備高可靠性、高容錯性的網路。由於
+整個網路是由許多節點構成，系統之服務並不會因為單一節點的破壞受影響，
+因此對於網路之可靠性提供了相當好的效果。
+4. 省頻寬 (Low Bandwidth)：在 P2P 網路中，不同的節點要求相同的資源時，可
+以利用其網路之特性，將整個網路的頻寬作最有效率之分配。
+根據之前的討論，我們選取了分散式非結構化網路的 Gnutella Protocol 作為我們的
+P2P 系統架構方式，因為 Gnutella protocol 具有下列之優點與特性：
+1. Gnutella 是 Decentralized 的。Gnutella 允許節點加入網路不必經由網路的管理
+方式，而是經由點與點間直接的連結，快速的對 SERVENT 需求作回應。
+2. Gnutella 是開放的協定。此協定為一搜尋資源的協定，其開放性與相容性最高，
+自由性較大。
+3. Gnutella 可以搭配下層的傳送協定可以幫助系統做資源的快速搜尋，並且可以
+將搜尋後的資源位址透過多種傳輸協定作正確的傳送。尤其需要將影像的大量
+資料串流作傳輸時，如 RTP/RTCP 檔協定便可以與之結合當作點對點時傳輸的
+方式。
+接下來我們先介紹 Gnutella 的協定定義與原理，Gnutella 的起源是 2000 年 Nullsoft
+的工程師 Justin Frankel and Tom Pepper 所發展，並且由 Nullsoft’s server 提供下載，雖
+然馬上停止提供下載，但是其相關協定已完全被大量的下載。Gnutella 是一個自由與開
+放，並且幾近單純的 P2P 網路架構協定，就目前而言很多的相容協定也正不斷的產生。
+以下為一些 Gnutella 相關的名詞定義：
+ SERVENT：Gnutella Network 中的節點稱為 SERVENT (SERVER+CLIENT)
+ Gnutella Protocol：SERVENT 間的溝通協定
+ Neighbor Table：為一 SERVENT 內之 Buffer, 儲存其他 SERVENT IP
+另外 Gnutella 定義了五種的訊息名稱
+Descriptor Types 內容說明
+Ping 指令 使用於偵測網路節點
+Pong 指令 對於 Ping 訊息的回應
+Query 指令 在分散式網路上作資料的搜尋檢索
+QueryHit 指令 對於 Query 訊息的回應
+Push 指令 允許位於防火牆內的節點提供檔案傳輸機制
+以下為一 Gnutella Protocol 的步驟:
+1. Join the network
+2. Communication Protocol
+3. Searching
+4. Downloading
+12
+Hops：紀錄此訊息封包已經過的節點數目，經過一個節點便將 Hops 加一。
+其中 TTL 和 Hops 需滿足以下條件： TTL(0) = TTL(i) + Hops(i)
+Payload Length：描述 Descriptor Payload 的長度。
+Descriptor Payload 會依據封包的類型不同而有不同的長度與內容，主要是根據
+Payload Descriptor 的封包類型而有不同的格式：
+Ping，使用於偵測網路節點
+Descriptor ID Payload Descirptor TTL Hops Payload length
+Payload Descirptor = 0x00 (PING)
+Payload Length = 0x00
+Pong，對於 Ping 訊息的回應
+Descriptor ID Payload Descirptor TTL Hops Payload length
+Payload Descirptor = 0x01 (PONG)
+Port IP Address Number of Files shared Number of Kilobytes shared
+Port：對方 SERVENT 之埠。
+IP Address：對方 SERVENT 節點之位址。
+Number of Files Shared：本機提供分享的檔案數量。
+Number of Kilobytes Shared：本機提供分享的檔案大小(單位為 Kilobytes)。
+Query，在分散式網路上作資料的搜尋檢索
+Descriptor ID Payload Descirptor TTL Hops Payload length
+Payload Descirptor = 0x01 (PONG)
+Minimum Speed Search Criteria NUL Terminator
+Minimum Speed：SERVENT 的最小回應速度必須在此速度之上（ 以 kb/s 為單位）。
+Search criteria：查詢的關鍵字串。 EX:“Peercast.txt”
+NUL Terminator：以 0x00 當作此封包的結束。
+QueryHit，對於 Query 訊息的回應
+Descriptor ID Payload Descirptor TTL Hops Payload length
+Payload Descirptor = 0x81 (QUERYHIT)
+Number of Hits Port IP Address Speed Result set Servent Identifier
+Number of Hits：符合搜索條件的 SERVENT 數目。
+Port：回應搜索請求之 SERVENT 埠。
+14
+這種演算法類似 Breadth First Search (BFS) 方式。SERVENT 會給定 Descriptor
+Header 中的 TTL 欄位 (default：7) 之值，將訊息封包傳遞給其 Neighbor Table 中的其
+他 SERVENT。當其他 SERVENT 接收到訊息封包時會先將訊息封包內的 TTL 欄位
+-1 ，同時將 Hops 欄位 +1 。若 Descriptor Header 中的 TTL-1 後等於 0，那麼該封包
+便不會再被轉發到其他 SERVENT（再轉發到直接相連的 Gnutella 節點便是 Neighbor
+Table 內紀錄的 SERVENT）。而每個 SERVERNT 在接收到訊息封包後，若需回應便會依
+循相反路徑回傳給訊息封包的發送端。
+因為 Gnutella Network 上的 SERVENT 並沒有一個統一個管理機制， 因此對
+於 SERVENT 的加入與離開必須要有一個機制來做 SERVENT 的偵測，偵測此
+SERVENT 存在與否。此偵測的進行會利用定時的發送 PING 封包的方式去探測
+SERVENT 內的 Neighbor Table 內是否有 SERVENT 無法連結，當發現有無法連結的
+SERVENT 出現時，便會將其從 Neighbor Table 移除，並且從內部的 Cache 或是其他選
+擇的機制選取適當的 SERVENT 加入 Neighbor Table 內。
+4. Downloading
+當 SERVENT 利用 Gnutella protocol 得到搜尋的結果資訊時，便會依據搜尋的結
+果資訊做下載的傳輸動作。其方式是在發出要求的 SERVENT 與目標 SERVENT 之間
+建立一個直接連接。下載檔案所使用的協定預設是 HTTP 協定，但是在計畫中會將其更
+改為 RTP/RTCP 當作 distributed video coding streaming 的傳輸協定。
+VI.串流傳輸的最佳化資源分配策略
+這部份，我們延續過去所研究的自動隨視訊內容重要性和即時封包掉失率來調整
+FEC 保護強度的機制。並將其發表出一篇期刊論文及一篇研討會論文。在我們所開發出
+的技術中，Reed-Solomon 的強度保護機制可以很精確地隨著視訊內容的重要性進行相
+當精確的修改[1]。另外我們也發表了一篇期刊論文，開發了有效率的碼率失真最佳化的
+多重視訊資料流調整的方式[5]。
+實驗結果
+我們根據上述架構設計實驗，下圖是 foreman 和 hall 的 RD 表現。如圖所示，藍色
+的線是 DISCOVER 的表現，黑色的線是完全不將 bit 放在 WZ 上的表現，紅色的線是基
+於我們提出的架構去更正視覺誤差的表現。由圖可以發現，我們所提出的架構比
+DISCOVER 有更好的 RD 表現，也較 AVC Intra/Zero Motion 好。並且因為我們優先更正
+為對視覺產生影響的 group，因此可以達到較佳的視覺效果。
+16
+Video over IP Networks,” EURASIP Journal on Image and Video Processing, Volume 2007, Ar-
+ticle ID 45201, 2007.
+[5] Ya-Huei Yu, Chien-Peng Ho, and Chun-Jen Tsai, “Multiple Adaptations and Content-Adaptive
+FECUsing Parameterized RD Model for Embedded Wavelet Video,” EURASIP Journal on Ad-
+vances in Signal Processing, Accepted, 2007.
+[6] Chien-Peng Ho and Chun-Jen Tsai, “Content-Adaptive Packetization and Streaming of Wavelet
+Video over IP Networks,” Proc. of Workshop on Consumer Electronics and Signal Processing
+(WCEsp) 2006, Hsinchu, Taiwan, 2006.
+[7] S. Lee, E. S. Jang, M. Mattavelli, C.-J. Tsai, Working Draft 3 of ISO/IEC 23001-4: Codec Con-
+figuration Representation, MPEG Output Document N8762, Marrakech, Jan, 2007.
+[8] Jar-Shen Chen and Chun-Jen Tsai, “Investigation of B Frame Support using CAL/Moses for 
+Configurable Video Coding,” MPEG Input Document m14152, Marrakech, Jan, 2007.
+[9] S. Lee, Euee S. Jang, M. Mattavelli, C.-J. Tsai, Working Draft 4 of ISO/IEC 23001-4: Codec
+Configuration Representation, MPEG Output Document N8979, San Jose, Jan, 2007.
+[10] Jar-Shen Chen and Chun-Jen Tsai, “Implementation of B Frame Support in RVC CAL Model,” 
+MPEG Input Document m14416, Marrakech, Jan, 2007.
+[11] 蕭哲民，支援 MPEG 可重組視訊編碼運作模式之系統單晶片架構設計，國立交通大學碩士論文，
+2007。
+[12] 蔡雅婷，利用方向小波轉換分析進行視訊編碼之位元分配，國立交通大學碩士論文，2007。
+[13] 廖珮晴，在異質雙核心平台上設計與分析動態分工的串流播放器，國立交通大學碩士論文，2008。
+[14] 連曉玉，解碼端影像誤差估測用於分散式視訊編碼法校正優先權的設計，國立交通大學碩士論文，
+2009。
+[15] B. Girod, A. Aaron, S. Rane and D. Rebollo-Monedero , "Distributed video coding," Proceed-
+ings of the IEEE, Special Issue on Video Coding and Delivery, vol. 93, no. 1, pp. 71-83, Jan.
+2005.
+[16] A. Aaron, S. Rane and B. Girod, "Wyner-Ziv video coding with hash-based motion compensa-
+tion at the receiver," Proc. IEEE Int. Conf. on Image Proc., Singapore, Oct. 2004.
+[17] A. Aaron, E. Setton and B. Girod, "Towards practical Wyner-Ziv coding of video," Proc. IEEE
+International Conference on Image Processing, Barcelona, Spain, Sept. 2003.
+[18] A. Aaron, R. Zhang and B. Girod, "Wyner-Ziv coding of motion video," Proc. Asilomar Con-
+ference on Signals and Systems, Pacific Grove, CA, Nov. 2002.
+[19] S. S. Pradhan and K. Ramchandran,“Distributed source coding using syndromes (DISCUS):
+design and construction,”Proc. IEEE Data Compression Conf., Snowbird, UT, March 1999.
+[20] R. Puri and K. Ramchandran, "PRISM: A new robust video coding architecture based on dis-
+tributed compression principles," 40th Allerton Conference on Communication, Control and
+Computing, Allerton, IL, October 2002.
+[21] P. Ishwar, V.M. Prabhakaran and K. Ramchandran, "Towards a theory for video coding using
+distributed compression principles," Proc. IEEE International Conference on Image Processing,
+Barcelona, Spain, Sept. 2003.
+[22] R. Puri and K. Ramchandran, "PRISM: A "reversed" multimedia coding paradigm," IEEE Inter-
+national Conference on Image Processing, Barcelona, Spain, Sept. 2003.
+[23] L. W. Kang and C. S. Lu, "Low-complexity Wyner-Ziv video coding based on robust media
+18
+Domain Wyner–Ziv Video Coding,”IEEE Transactions on Circuits and Systems for
+Video Technology, vol. 18, issue 9, 2008.
+[41] Xin Huang and Forchhammer, S., “Improved virtual channel noise model for transform 
+domain Wyner-Ziv video coding”IEEE International Conference on Acoustics, Speech
+and Signal Processing, 2009.
+[42] Jinrong Zhang; Houqiang Li; Qiwei Liu; Chang Wen Chen,“A Transform Domain 
+Classification Based Wyner-Ziv Video Codec,”IEEE International Conference on Mul-
+timedia and Expo, 2007.
+[43] Yu-Chen Sun and Chun-Jen Tsai,“Low Complexity Motion Model Analysis for Distrib-
+uted Video Coding,”International Symposium on Multimedia over Wireless 2008
+[44] Yu-Chen Sun, Shiau-Yu Lian and Chun-Jen Tsai,“Prioritized Side Information Correc-
+tion for Distributed Video Coding,”Picture Coding Symposium 2009.
+[45] Z. Li, L. Liu and E.J. Delp, “Rate distortion analysis of motion side estimation in
+Wyner–Ziv video coding,” IEEE Transactions on Image Processing 16 (11) (2006)
+98–113.
+[46] Areia J.D. Pereira, F. Fernando, W.A.C., “Impact of the key frames quality on the over-
+all Wyner-Ziv video coding performance”50th International Symposium ELMAR,
+2008.
+[47] A. Aaron, R. Zhang, and B. Girod, “Wyner-Ziv coding of motion video,” Proc. Asilomar
+Conference on Signals and Systems, pp. 240–244, vol.1, 2005.
+[48] Cheng, Yizong, "Mean Shift, Mode Seeking, and Clustering". IEEE Transactions on Pat-
+tern Analysis and Machine Intelligence (IEEE) 17 (8): 790-799, 1995.
+七、附錄一： DVC 編碼法研究成果細節
+In several DVC implementations [3][4][5], a video source sequence would be separated into two
+interleaving sub-sequences: key frame subsequences and Wyner-Ziv (W-Z) frame subsequences. Key
+frames would be encoded using a traditional low-complexity encoder (such as the motion JPEG encoder
+or the intra-coder of any video codecs). For W-Z frames, the decoder first applies sophisticated
+algorithm to construct a predictor (called side information) from the previously received data (typically
+key frames). On the encoder side, it takes the original video frames as input and applies a low-
+complexity algorithm to generate error-correction bits (refer to as the W-Z bits) that can help the decoder
+correct any side information (SI) prediction errors such that the resulting W-Z frames are close to the
+original frames on the encoder side. The key components in a DVC framework are the SI generator and
+the W-Z bits generator. For SI generator, many works adopt motion compensated frame interpolation
+method [6][7]. In [6], advanced true motion estimation is proposed to improve SI quality; in [7], motion
+estimation and WZ decoding are further combined.
+For W-Z encoding, modified channel codes are adopted in several implementations [8]. Note that the
+efficiency of the channel codes is highly dependent on the side information error statistics. In [10][11],
+the SI error model is well studied, and a MAP based coding method is proposed. In this paper, a new
+coding strategy with adaptive source grouping for prioritized, unequal error correction is proposed. In
+short, the proposed technique classifies side information data into several groups based on estimated
+prediction error statistics. Different groups of video data are channel-coded together at the encoder side.
+The decoder requests W-Z bits to correct corresponding groups of SI data out-of-order, based on their
+error levels.
+Another similar idea is coding tool selection. As traditional close-loop codec, dynamic coding tools
+selection according to data characteristic can improve coding efficiency. [12] proposes to implement
+such selection at the encoder side. Based on difference of co-located pixel, suitable tool are selected
+between zero motion skip and WZ code. However, the challenge is how to analyze SI error and efficient
+classification. For example, difference of co-located pixel would mislead error estimation in textual
+region with smooth motion. In [13], we try to use optical flow to get rough motion field with low
+complexity and chose suitable coding tools. But, after studying, we find that it still fails in some
+sequence. Due to encoder complexity constraint, solid error estimation and classification can not be
+adopted. Therefore, in [14], accurate SI error estimation is performed at the decoder side.
+key frames. Since key frames are compressed with quality loss, the distortions in key frames will
+propagate to the SI.
+The second type of error is from the uncertainty of estimated motions. Unlike traditional closed-loop
+coding where true motions may not be critical to achieving good compression efficiency, motion
+compensated frame interpolation based SI generation requires estimation of true motion fields between
+reference (key) frames to reduce SI prediction error. The third type of error is due to the assumption that
+objects move in constant velocity. In case of non-translational motion, linear interpolation would
+produce texture position shift which would cause large PSNR degradation in textural region. However,
+such position shift may not degrade visual quality since human visual system is insensitivity to
+consistent pixel-wise image shift.
+Fig. 1 shows some side information generated by a motion projection based method. It is obvious
+from Fig. 1 that the error distribution is not spatially invariant. The SI error characteristics are affected
+by both the texture and the motion complexities in video content. Since both texture and motion fields
+are not spatially invariant, it is ineffective to assume a spatially invariant i.i.d. SI error model and try to
+use channel code to correct these errors in a uniform manner. A possible solution is to estimate prior
+probability of each pixel using error statistics derived from the side information generation process and
+to adjust likelihood function before decoding procedure at the decoder side [10]. In addition, different
+types of errors have different visual impact, which can be used in bit allocation policy to improve visual
+quality.
+Fig. 1. SI of 70th frame of FOREMAN (left), and its error image (right).
+In existing rate-adaptive DVC schemes[3][4][5], the decoder continuously requests parity bits to
+correct SI errors in a uniform manner until the bit budget is empty. Since some pixels in SI are close to
+3. DVC WITH ADAPTIVE GROUPING
+In the proposed DVC framework, key frames are coded using an intra video codec and transmitted to
+the decoder. The decoder uses motion-projection based algorithm to generate SI for a W-Z frame using
+the received key frames. SI prediction errors are estimated by the decoder and transmitted back to the
+encoder using an uplink channel. To reduce uplink bandwidth, error model is computed macroblock-
+wise. The encoder then groups original video macroblocks into different coding blocks based on their
+error model. The proposed coding framework has the following advantages:
+Step 1. Since video data in the same coding block has similar error characteristics, the corresponding
+hypothetical virtual channel noises can be more accurately modeled as i.i.d. noises. In addition,
+grouping allows large coding block length and improves channel code efficiency.
+Step 2. Grouping enables unequal error correction on the decoder side. When combined with proper bit
+allocation algorithm, one can achieve better rate-distortion (R-D) performance.
+Step 3. Based on our experiments, unequal error correction of SI prediction error also reduces visual
+quality variation between key frames and W-Z frames. Without adaptive grouping, enforcing constant
+quality constraint across all coded video frames degrades R-D performance noticeably.
+The detail design of the proposed DVC framework is described in the following sections.
+3.1 System Architecture
+The system block diagram of the proposed DVC codec with adaptive grouping is illustrated in Fig. 2.
+The basic structure of the codec is based on the DISCOVER DVC codec [5]. At the encoder side, the
+video sequence is divided into odd frames (key frames) and even frames (W-Z frames). Key frames
+would be encoded by H.264/AVC main profile intra encoder. W-Z frame would be encoded by
+transform domain W-Z codec. The encoder will receive macroblock error model information from the
+decoder. Before W-Z encoding, it will reorder and group macroblocks according to this information.
+Then, each group of macroblocks form a basic LDPCA coding block and parity bits are encoded into the
+bitstream. At the decoder side, for every two received key frames, a motion-compensated frame
+interpolation procedure is used to generate the SI of the W-Z frames. The decoder will classify
+macroblocks into several groups based on an error model estimator. The group index (of the error model)
+ LDPCA Encoder: The LDPCA channel code proposed in [8] is used to encode the coding
+blocks. Note that at this point, each coding block contains bit-plane data bits from
+macroblocks with similar estimated error characteristics.
+16 8 0 0
+8 0 0 0
+0 0 0 0
+0 0 0 0
+32 8 0 0
+8 0 0 0
+0 0 0 0
+0 0 0 0
+32 8 4 0
+8 4 0 0
+4 0 0 0
+0 0 0 0
+32 16 8 4
+16 8 4 0
+8 4 0 0
+4 0 0 0
+32 16 8 4
+16 8 4 4
+8 4 4 0
+4 4 0 0
+64 16 8 8
+16 8 8 4
+8 8 4 4
+8 4 4 0
+64 32 16 8
+32 16 8 4
+16 8 4 4
+8 4 4 0
+128 64 32 16
+64 32 16 8
+32 16 8 4
+16 8 4 0
+QM=1 QM=2 QM=3 QM=4
+QM=5 QM=6 QM=7 QM=8
+Fig. 3. Quantization Matrix for WZ Frequence Component
+ Side Information Generator: After intra decoding of key frames, side information is predicted
+from neighboring key frames using motion compensated frame interpolation based techniques
+proposed in [6]. The implementation details will be presented in section 0.
+ Error Model Estimator: The SI prediction error of each 16x16 macroblock will be estimated
+using an estimator to be described in section 0. Exact error model can not be obtained because
+decoder does not have the original video data. This is the key reason why all existing DVC
+schemes perform worse than closed-loop codecs in practice. With a sophisticated error model
+estimator, one can improve the performance of DVC significantly.
+ LDPCA Decoder: Using grouped WZ bits received from the encoder and SI generated in the
+decoder, LDPCA decoder can correct side information errors. The LDPCA decoder uses the
+belief propagation technique and the SI error statistic for each coding block is modeled as a
+Laplacian distribution during the LDPCA decoding process.
+motion refinement process really does is the refinement of the motion vectors produced in step 1 (and
+step 3) so that the constraint that one of the matching block is located at macroblock grid positions is
+removed. The motion estimation process is still uni-directional, from one key frame to another. The
+refinement search is conducted around each initial motion vector. A small search ranges on both ends of
+the initial motion vector (from one key frame to another), as shown in Fig. 4, are select for the
+refinement process. The iterative search method and cost function are the same as those described in step
+1. The search range is adaptively calculated based on the motion vectors of neighboring blocks. The
+method used to calculate search range will be discussed later. Bi-directional motion refinement improves
+SI quality significantly.
+Step 3. Hierarchical motion estimation:
+A coarse-to-fine motion search strategy is also adopted in our implementation. At the coarsest level
+of motion search, initial search block size is 1616. After the first bi-directional motion refinement, the
+resulting motion field would then be used to drive the second level motion estimation for each 88
+blocks. The initial motion vectors for the second-level search is computed from the top-level motion
+vectors using an affine model, as illustrated in Fig. 5. As Fig. 5 shows, three neighboring MVs (shown as
+solid lines) are used to estimate local affine parameters, and compute the 88 motion vector (shown as
+dashed line). During this process, new search ranges will be calculated for another iteration of bi-
+directional motion refinement. Finally, a third-level of hierarchical motion search will be performed to
+obtain motion fields at the density of one vector for each 44 block.
+MV Refinement
+MV Refinement
+Fig. 4. Motion refinement using bi-directional search.
+(a) Error estimator distribution
+0 5 10 15
+x 10
+4
+0
+1
+2
+3
+Group 1, Error Mean=31.183
+Pixel Error
+B
+lo
+ck
+N
+um
+be
+r
+0 5 10 15
+x 10
+4
+0
+1
+2
+3
+Group 2, Error Mean=69.7522
+Pixel Error
+B
+lo
+ck
+N
+um
+be
+r
+0 5 10 15
+x 10
+4
+0
+1
+2
+3
+Group 3, Error Mean=117.9103
+Pixel Error
+B
+lo
+ck
+N
+um
+be
+r
+0 5 10 15
+x 10
+4
+0
+1
+2
+3
+Group 4, Error Mean=200.148
+Pixel Error
+B
+lo
+ck
+N
+um
+be
+r
+(b) True error distritution
+Fig. 6. Side informaton error histogram.
+0 0.2 0.4 0.6 0.8 1
+0
+0.2
+0.4
+0.6
+0.8
+1
+Foreman, Optimal Rate Allocation
+A
+llo
+ca
+te
+d
+R
+at
+e
+(k
+b/
+pi
+xe
+l)
+Error Estimator
+Fig. 8. Optimal rate allocation of Foreman under 200 kbps.
+Fig. 8 shows the result of optimal rate allocation for each group in Foreman sequence under 200
+kbps. Each plot is a group in Foreman sequence. Horizontal axis is normalized error estimator for each
+group; vertical axis is allocated rate for each group. In other word, plots in Fig. 8 show the relation
+between best rate allocation and error estimator. Simulation result shows that allocating resource to
+groups with higher error level would indeed achieve better R-D performance. Therefore, a first-order
+rate model is used in the implementation:
+ii EaR  1 . (3)
+Ri is the allocated rate, and Ei represents the estimated error level of group i. Ideally, distortion
+should be used in order to achieve R-D optimal rate allocation. Unfortunately, for DVC this is not
+feasible since the encoder does not have side information, and the decoder does not have the original
+video frames. Ei is the sum of motion matching measure (SAD of each motion pair) of group i. Before
+decoding of group i in a WZ frame, the decoder use Eq (3) to determine the required bit budget Ri and
+send requests to the encoder for Ri amount of LDPCA parity bits.
+To evaluate overall impact to coding efficiency, eight sequences are encoded over all combination of
+encoder setting, Key QP=25~40 and WZ QM=1~8 (16×8=128 WZ rate settings in total). TABLE I
+shows maximum, minimum, and mean of bit rate saving by proposed coding tool over these 128
+decoding rates.
+TABLE I Bit Rate Saving with Adaptive WZ Code
+Sequence Maximum Minimum Mean
+Foreman -5.10% 0.47% -2.68%
+Hall -22.33% -0.82% -9.73%
+Coastguard -12.64% 0.86% -3.21%
+Soccer -15.38 0.8% -4.85%
+Carphone -13.43% -0.17% -4.92%
+Mobile -5.66% 1.48% -1.24%
+Table Tennis -20.59% -1.85% -8.24%
+Mother and Daughter -8.97% -0.39% -4.05%
+As result shown, adaptive WZ coding can fundamentally improve coding efficiency about 5%.
+Especially in Hall and Table Tennis sequence, average of bit rate improvement is about 10%. The reason
+is that the data content can be easily classified. For other sequences, about 4% bit rate saving is also
+gained by proposed coding tool. The range of improvement is 9.73%~1.24%; the variation is due to
+classification accuracy. In other word, more accuracy classification method proposed in future would
+further improve WZ coding efficiency.
+4.3 RD performance
+To evaluate RD performance, following curves are compared:
+ H.264/AVC Intra: H.264/AVC intra is state-of-the-art intra-coding codec. Although no
+temporal correction is exploited, but flexible data partition is used to deeply exploit spatial
+correlation. This comparison in order to compare efficiency of deeply intra correlation
+exploitation at the encoder side and temporal correlation exploitation at the decoder side.
+sequence, the reason of worse performance is that side information error is large and widely distributed.
+In such sequence, block level classification is useless. However, Comparing with original DISCOVER
+codec, DISCOVER curve, RD improvement is decrease. The reason is that current baseline
+implementation still can not compete with DISCOVER.
+In addition to above discussion, it is important to note that since groups of WZ frame is un-equally
+corrected, it might lead to un-balance of PSNR quality between KEY frames and WZ frames. However,
+considering visual quality, ignoring non-apparent error to human eye is a tradeoff solution to improve
+visual quality. Following section would show some visual result for illustration.
+4.4 Visual Quality Comparison
+For deep analysis visual quality, 4th frame of Foreman sequence is taken as an example. Fig. 9(a) is
+the decoded result obtained by DISCOVER executable, Fig. 9 (b) is decoded by proposed system. Two
+sequences are both encoded under 150 kbps. Right part is decoded frame, and left part is related error
+image. Observing error image, it can be found that proposed system has larger error than DISCOVER,
+especially on the region of wall. Because having lower priority to decode, position shifting error are
+ignored. However, zooming in the region of wall as Fig. 9 (c) (d), it can e found that proposed system
+has better visual quality. The reason is that under grouping, resource can be allocated suitable visual
+quality more. As result shown, separating different error type and encoding by different strategy, the
+perceptual quality can be improved under the same bit rate.
+5. CONCLUSIONS AND FUTRUE WORK
+In this paper, a new coding tool, adaptive WZ code, is proposed. Based on a scheme of prioritized
+channel coding based on SI error statistics, the proposed tool is suitable for general DVC frameworks.
+Several SI macroblock error classification algorithms are also presented and studied. Experimental
+results show that coding efficiency could be improved considerably by grouping source data and perform
+prioritized channel coding on W-Z frames. Experimental result shows that proposed coding tool can
+fundamentally improve WZ coding efficiency about 5%. Comparing with DISCOVER, the RD
+performance can also be improved about 0.5db.
+In the past, researches of side information usually focus on improvement prediction quality. Based
+on this paper, another issue is highlighted that providing accuracy SI error estimation and efficient
+0 50 100 150 200 250 300
+24
+26
+28
+30
+32
+34
+36
+38
+40
+Rate (kb/s)
+P
+S
+N
+R
+(d
+b)
+RD curve:Hall Monitor
+DISCOVER
+DISCOVER*
+Proposed DVC
+AVC Intra
+AVC Zero Motion
+0 50 100 150 200 250 300
+24
+26
+28
+30
+32
+34
+36
+38
+40
+Rate (kb/s)
+P
+S
+N
+R
+(d
+b)
+RD curve:Foreman
+DISCOVER
+DISCOVER*
+Proposed DVC
+AVC Intra
+AVC Zero Motion
+0 50 100 150 200 250 300
+24
+26
+28
+30
+32
+34
+36
+38
+40
+Rate (kb/s)
+P
+S
+N
+R
+(d
+b)
+RD curve:Coastguard
+DISCOVER
+DISCOVER*
+Proposed DVC
+AVC Intra
+AVC Zero Motion
+0 50 100 150 200 250 300
+24
+26
+28
+30
+32
+34
+36
+38
+40
+Rate (kb/s)
+P
+S
+N
+R
+(d
+b)
+RD curve:Soccer
+DISCOVER
+DISCOVER*
+Proposed DVC
+AVC Intra
+AVC Zero Motion
+0 50 100 150 200 250 300
+24
+26
+28
+30
+32
+34
+36
+38
+40
+Rate (kb/s)
+P
+S
+N
+R
+(d
+b)
+RD curve:Carphone
+DISCOVER
+DISCOVER*
+Proposed DVC
+AVC Intra
+AVC Zero Motion
+0 50 100 150 200 250 300
+24
+26
+28
+30
+32
+34
+36
+38
+40
+Rate (kb/s)
+P
+S
+N
+R
+(d
+b)
+RD curve:Table
+DISCOVER
+DISCOVER*
+Proposed DVC
+AVC Intra
+AVC Zero Motion
+0 50 100 150 200 250 300
+24
+26
+28
+30
+32
+34
+36
+38
+40
+Rate (kb/s)
+P
+S
+N
+R
+(d
+b)
+RD curve:Mother and Daughter
+DISCOVER
+DISCOVER*
+Proposed DVC
+AVC Intra
+AVC Zero Motion
+0 50 100 150 200 250 300 350 400 450 500
+20
+22
+24
+26
+28
+30
+32
+34
+36
+38
+40
+Rate (kb/s)
+P
+S
+N
+R
+(d
+b)
+RD curve:Mobile
+DISCOVER
+DISCOVER*
+Proposed DVC
+AVC Intra
+AVC Zero Motion
+Fig. 10. R-D performance.
+Pattern Analysis and Machine Intelligence
+(IEEE) 17 (8): 790-799, 1995
+[19] H.264/AVC reference software (JM 16.0).

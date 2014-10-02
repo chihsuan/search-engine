@@ -1,0 +1,573 @@
+ 1
+目錄 
+一、中英文摘要.......................................... 2 
+二、報告內容............................................ 4 
+(一) Introduction.................................................................................................................. 4 
+(二) Research Objectives ..................................................................................................... 4 
+(三) Background .................................................................................................................. 4 
+(四) Research Methods ........................................................................................................ 5 
+4.1 MCJITC Architecture ............................................................................................. 5 
+4.2 MCJITC Optimizations........................................................................................... 8 
+4.3 ARM/Thumb Instruction Set Selection................................................................ 10 
+4.4 Load/Store-Multiple Instruction Utilization........................................................ 11 
+4.5 Method Inlining for MCJITC ............................................................................... 14 
+(五) Results ........................................................................................................................ 21 
+三、參考文獻........................................... 27 
+四、計畫成果自評 ....................................... 28 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 3
+英文摘要 
+Because of the rapid development of the communication industry, the requirement of 
+Personal Digital Assistants (PDA), and many small electronic devices is increasing rapidly. The 
+small-dedicated processor and operation system are needed in these products, and the certain 
+program language will be used to develop applications on these devices. Since the operation 
+system and execution platform among these products are widely different, many enterprises use 
+Java language to develop applications for platform independency and security consideration. 
+In order to execute Java programs, Java Virtual Machine (JVM) needs to be executed in the 
+miniature system. The well-known technology platform specification is J2ME. The K Virtual 
+Machine/C Virtual Machine (KVM/CVM) execution engine of Java interprets bytecodes into 
+native code for execution. However, this kind of execution style will degrade execution 
+performance seriously. Therefore, under the consideration of both execution performance and 
+portability, the execution engine of Virtual Machine is considered to be the Just In Time compiler 
+(JIT). 
+In the past three years, our project focused on the following research topics about the 
+integration of Memory-constrained JIT Compiler and various optimizations: 
+(1)  Design and implementation of architecture of Memory-constrained JIT Compiler 
+(2)  Design and implementation of cost-effective optimizations 
+(3)  Application of dual instruction set selection 
+(4)  Evaluation of load/store multiple instruction 
+(5)  Design and implementation of method inlining for Memory-constrained JIT Compiler 
+ First, we have implemented the Mix-Mode Memory-Constrain JIT Compiler (MCJITC) 
+based on version 1.0.4 of Sun's KVM, and employ some optimizations including instruction 
+folding of stack operations and rule-based null point check elimination in our MCJITC. 
+Simulation results show that our MCJITC is average 2.09 faster over the pure interpreter. 
+In the second year, we have implemented a code generator of Thumb instruction set based 
+on the original ARM code generator of MCJITC. We have also implemented an optimization 
+technique utilizing load-store-multiple instructions. Our experiments showed that the ARM 
+interpreter and thumb JIT compiler is the most cost-effective configuration among the all. It 
+achieves near speed and reduces 32% code size. By applying load-store-multiple instructions, it 
+achieves 3.3% speedup and further reduces 6% code size. 
+Last, we have adopted and implemented a heavy optimization - method inlining for MCJITC. 
+By carefully design callee selection policy, we successfully achieve speed improvement without 
+too much memory overhead. In addition, with guard test code patching which is designed for 
+virtual method, we improve 8% speed performance further. 
+Keywords：JIT compiler, Java Virtual Machine, KVM/CVM, ARM, Thumb, J2ME 
+ 5
+JITC Optimizations [2-4] 
+Since JIT compilers perform compilation at run time, the restriction of compilation time is 
+more severe than that in traditional static compilers. As a result, only cost-effective optimization 
+techniques can be suitably applied during JIT compilation. 
+Dual Instruction Set 
+ARM provides its 16-bit instruction set extension called Thumb since its ARM7 processors 
+in 1995. Experiment results exhibit with 32-bit memory Thumb trades off 30% - 40% speed 
+performance for 30% code size reduction [5]. This serves as a reason that motivates us to conduct 
+this optimization. 
+Load/Store Multiple Instruction 
+Some embedded architecture, such as the ARM processors support load multiple (LDM) or 
+store multiple (STM) instructions to perform multiple register data transfers from/to memory [5]. 
+The benefits of utilizing load/store multiple to replace several load/store instructions are code size 
+reduction and pipeline stall cycles reduction. 
+Method Inlining 
+Method inlining is an effective optimization technique that replaces method callsites with 
+the bodies of methods. This technique reduces the overhead resulted from method calls but 
+increase the code size of the original caller. Besides, there are some difficulties for inlining virtual 
+methods that are resolved at runtime. Some approaches such as guard test [6], direct inlining with 
+recompilation [7] and direct inlining with code patching [8] have been proposed. By carefully 
+designing callees selection policy and virtual method inlining mechanism, we successfully 
+improve speed performance without increasing too much code size. 
+ 
+(四) Research Methods 
+4.1 MCJITC Architecture 
+In this section, we detail the design of the IR generator and the native code generator in the 
+MCJITC. In addition, in order to reduce compilation cost and to keep the MCJITC 
+small-footprint, several design decisions are made based. These decisions are: 
+z Two-pass Compiler Architecture 
+We confine our compiler to two passes. The first pass is for IR generation, and the second 
+pass is for native code generation. Figure 4-1 gives a more detailed overview of functions 
+and optimizations of the two passes. This decision is based on the fact that fewer passes take 
+less compilation time and that two passes seem to be reasonable for portability. The IR 
+generator is responsible for translating Java bytecode into machine-independent 
+three-address IR, and therefore is portable across platforms. 
+ 7
+operand stack are addressed by using the starting address of local variable array as the 
+implicit base address plus corresponding word-offsets encoded in instructions. 
+z Bytecode to IR Translation 
+After the design of IR format is decided, bytecode can be easily translated into 
+semantically-equivalent IR. Much of the work involves translation from implicit stack 
+addresses into explicit local-variable-based addresses. A semantically-rich bytecode 
+instruction may be decomposed into several simple IR instructions. For example, bytecode 
+instructions for array access involve implicit exception checks, and therefore their 
+decomposed IR instructions contain explicit exception checks. 
+z IR Generation Workflow 
+The detailed workflow is listed as the following steps. 
+1. The IR generator takes a hotspot method as input. 
+2. The IR generator linearly parses each bytecode instruction of the method and generates 
+corresponding IR for compile-able bytecode. During the linear pass, the IR generator 
+also updates the PC (program counter) and SP (stack pointer) information for each 
+bytecode instruction. 
+3. Consecutively generated IR instructions are collected in a IR block. 
+4. After IR generation completes, all IR blocks are managed by a IR group. The IR group 
+is then passed to native code generator for code generation. Since a program has 
+branch-type instructions, its control flow is not always sequential. In order to overcome 
+this problem, it is necessary to discover the control structure of the program by 
+control-flow analysis. However, we reduce the extra cost of control- flow analysis by 
+utilizing the StackMap attribute which is specified in the CLDC specification [5]. The 
+StackMap attribute records (PC offset, SP offset) tuples for all branch targets in a 
+method. Therefore the IR generator can use the information to identify extended basic 
+blocks. This also implies the maximum range of an IR block is its corresponding 
+extended basic block, provided that there are no intervening non-compile-able 
+bytecode. 
+ 
+4.1.2 Native Code Generator 
+The main responsibility of the native code generator is to perform register allocation/ 
+assignment and instruction selection/generation. Also some optimizations are applied in this stage. 
+Since the native code generator is designed for one pass, it implies that register 
+allocation/assignment is done within one pass and instruction selection/generation must be 
+performed at the same time. To be more specific, the native code generator assigns registers as 
+machine instructions are generated. The design of the register allocation/ assignment scheme is 
+simple, but highly customized for the JVM environment. 
+After the IR generation phase, the native code generator receives an IR group as input for 
+code generation. However, the basic unit for code generation is confined to an IR block. In fact, 
+ 9
+4.2.2 Rule-based Null Pointer Check Elimination 
+Due to its architectural design, the JVM consists of many bytecode instructions that 
+introduce null pointer checks. For example, in KVM "GETFIELD_FAST", "PUTFIELD_FAST" 
+are for object field access and "IALOAD", "IASTORE" for array element access, which overall 
+impose much runtime overhead. To reduce such overhead, we propose a rule-based method 
+which is employed in our IR generator. It can eliminate a great portion of IR instructions for null 
+pointer checks in a cost-effective manner, in contrast to other methods employing data-flow 
+analysis. 
+Now the basic design of the method is described as follows. 
+z Definition 
+1. Full Set: (F-Set) 
+All compile-able bytecode instructions in the MCJITC constitute this set. 
+2. Un-eliminated Set: (U-Set) 
+All bytecode instructions in F-Set, which introduce null pointer checks by examining 
+associated object references, constitute this set. 
+3. Target Set: (T-Set) 
+A predetermined subset of U-Set. 
+4. Dominance Set: (D-Set) 
+All bytecode instructions in F-Set, which produce object references that are later used 
+by bytecode instructions in T-Set, constitute this set. 
+5. Influential Set: (I-Set) 
+All bytecode instructions in F-Set, which may alter object references that are later used 
+by bytecode instructions in T-Set, constitute this set. 
+z Data Structure 
+1. A n-height stack (L-Stack) 
+This is a tiny stack used to simulate stack operations. n poses a limit to the maximum 
+stack height that can be tracked. This stack is implemented as a n-element array. 
+2. A m-bit-mask array (B-Array) 
+This array, say array[0:m-1], is used to track whether the local variable 0 through local 
+variable m-1 is null pointer checked or not. 
+z Algorithm 
+1. Select some bytecode instructions from U-Set as T-Set 
+2. Find the corresponding D-Set, I-Set 
+3. Upon an IR block entrance, initialize all n elements of L-Stack as "Not_Tracked". 
+When some bytecode instruction in D-Set is encountered, mark the corresponding 
+element in L-Stack with the corresponding local variable number. 
+4. Upon an IR block entrance, initialize all m bits of B-Array as "Un-Checked". When 
+some bytecode instruction in I-Set is encountered, mark the corresponding bit in 
+B-Array with "Un-Checked". 
+ 11
+Instructions Type Immediate Field 
+In Thumb 
+Immediate Field 
+in ARM 
+MOV imm8 imm8 
+MUL N/A N/A 
+ADD 
+SUB 
+imm8 imm8 
+LSR 
+LSL 
+imm5 imm5 
+CMP imm8 imm8 
+B s_imm11  
+(+-2048 bytes) 
+imm24  
+(+-32 Mbytes) 
+LD (PC-relative) 
+ST (PC-relative) 
+imm8  
+(+-1024 bytes) 
+imm12 
+(+-4096 bytes) 
+LD (base addressing) 
+ST (base addressing 
+imm5  
+(+-128 bytes) 
+Imm12  
+(+-4096 bytes) 
+Table 4-1 Immediate Fields of Major Instruction Types 
+ 
+4.4 Load/Store-Multiple Instruction Utilization 
+In order to deal with the constraints of replacing load/store by LDM/STM, we propose some 
+useful strategies. The major constraints and possible solution are listed below: 
+z Accessed memory locations must be contiguous 
+The local variable accesses are more likely to be random accesses, but it is possible to adjust 
+or permute the local variable array for each method to make more load/store instructions 
+access to contiguous address and become replaceable [11][12]. 
+z The DST/SRC register numbers and accessed memory addresses are in the same order 
+Allocate larger register number for larger memory address access to make the order of 
+register numbers right. 
+z Load/store instructions only can be grouped together without affecting dependences 
+Name dependences can be avoided by adjusting register numbers of instructions. This also 
+can be realized by applying register renaming or modifying the register allocator to be aware 
+of it. 
+In this report we will focus on local variable relocation to solve constrain one because of 
+complexity and effeteness of it. Other two are relatively trivial to implement in MCJITC.  
+ 
+ 
+ 
+ 
+ 13
+3001502(LD)a-ba, b
+4004001(ST)c-d, d-e, c-ec, d, e
+2001002(LD)b-c, c-d, b-db, c, d
+1001001(ST)a-c, c-e, a-ea, c, e
+Grouping T(G) F(G) F(G) × T(G)group pairs
+a
+b
+c d
+e
+300,1
+200,1
+100,1
+400,1
+100,1
+500,2
+600,2
+200,1
+Access Grouping Info. of a method transform to 
+access graph
+Weight: stall cycles reduction, code size reduction
+vj> is the benefit of vi and vj group together in a method. The benefit can be either one 
+below: 
+¾ Stall cycles reduction = Sum(F(Gn) × T(Gn)) , where Gn containing both vi and vj  
+¾ Code size reduction = number of grouping that contain both vi and vj 
+A simple example of transforming grouping information to access graph is showed in Figure 
+4-4. 
+Figure 4-4 An Example of Transforming Grouping Information to Access Graph 
+z Decide the layout of local variable 
+In fact, any memory layout of local variables can be mapped to a path cover in the graph, 
+and finding the optimal memory layout is equivalent to finding the path cover with 
+maximum weight. The problem of finding the path cover with maximum weight is called 
+maximum weighted path cover problem (MWPC), and it has been proved to be 
+NP-complete. Therefore, a heuristic algorithm called “Largest Weight First” is used to solve 
+it. The algorithm is described below. 
+ 
+A simple example is illustrated in Figure 4-5. The path cover obtained by “Largest Weight 
+First” in this example is “a-b-d-c-e”, which is also the optimal path cover in this graph. 
+According this path cover, the memory layout local variables will be changed from 
+“a-b-c-d-e” to “a-b-d-c-e”. 
+ 
+Step 1: Initialize the path cover P = { }; 
+Step 2: Sort the edges of the access graph according to their weights (in 
+descending order) into set E; 
+Step 3: Pick up the edge e in E with the largest weight and remove it from E. 
+If adding the edge e to P (i) does not form a cycle in P , and (ii) does 
+not increase the degree of any node in P to more than 2, then it is 
+included in P . 
+Step 4 Repeat Steps 2 and 3 until E is empty 
+ 15
+In order to inline virtual methods and make the inlined code still have chance to be executed 
+in case the monomorphic assumption is violated, we employ “guard test code patching 
+mechanism” which generates inlined code along with “guard test backup code”. When the 
+monomorphic assumption is violated, the MCJITC compiler then makes “guard test backup 
+code” executed subsequently, so the inlined code could be re-entered after recovery. Figure 4-8 
+illustrates this mechanism, and we will describe it in more detail later. 
+ 
+Figure 4-8 Direct Inlining with Guard Test Code Patching – Recovery 
+There are two main components in our system – method inliner and CHA manager. When 
+the JVM starts executing, it loads system classes. After loading each method of a class, the CHA 
+manager will construct the inlining table and record monomorphic information. After executing a 
+period of time, the hotspot detector detects a hotspot and delivers it to the method inliner. When 
+inlining is completed, the hotspot goes through MCJITC to be compiled to target machine code. 
+ 
+4.5.1 Method Inliner 
+Method inliner consists of three parts – code expansion control mechanism, callsite selector 
+and inliner. 
+z Code Expansion Control Mechanism 
+In order to limit the code size overhead within a range we can tolerate, two parameters are 
+employed to control code expansion, an inline cache and an expansion factor - α. The inline 
+cache provides the limit of total code size expansion, while α constrains the code expansion 
+within α times the original caller. When the hotspot detector sends a hotspot to the method 
+inliner, the inline cache will be checked first: 
+if ((Inline Cache – codesize(hotspot) * α) > 0)  (Enough Inline Cache Space?) 
+If there is not enough space for inlining, this hotspot will be refused to do inlining and 
+directly sent to MCJITC; otherwise, the hotspot will go through the callsite selector and the 
+ 17
+the operand stack and stored into the local variables. Accordingly, the inliner has to 
+insert instructions which pop the arguments and store them into the local variables at 
+the beginning of the inlined callee body. 
+2. Local Variable Operand Renumbering 
+Because the caller and callee both have their own local variables, it would lead to 
+confliction if the inlined callee body has the same local variable operand as the caller. 
+Hence, the inliner has to renumber the local variable operands in the callee body. 
+ 
+Figure 4-9 Inlining Patterns and the Design of Two Pseudo Bytecodes 
+ 
+3. Constant Pool Operand Renumbering 
+The caller and callee may belong to different classes, and it would lead to constant pool 
+reference confliction. So we have to adjust the caller’s constant pool and renumber the 
+constant pool operands in the inlined callee body. We just append the necessary 
+constant pool entries to the caller’s constant pool instead of appending the whole 
+constant pool of the callee. 
+4. Return Substitution 
+Executing RETURN bytecode causes the interpreter to pop the stack frame of the 
+callee from the Java stack, and execution will be returned to its caller. The inliner uses 
+the bytecode, GOTO, to substitute RETURN. But if the RETURN instruction is the 
+last of the callee method, and the substituted GOTO instruction will just jump to the 
+next one. It is redundant, so if RETURN is the last instruction, no substitution will be 
+applied. 
+5. Synchronization and Exception Handling 
+If the callee method is a synchronization method, the inliner should insert instructions 
+ 19
+ 
+Figure 4-10 A Snapshot of Inlining Table 
+z Inlining Table Construction 
+When a new class is loaded, the class loader requests the CHA manager to record 
+information about each method of the loaded class into the inlining table. If a method hasn’t 
+appeared in the inlining table, a new entry will be added and its monomorphic information 
+will be marked as monomorphic. Otherwise, the entry with the same method ID will be 
+marked as polymorphic. Figure 4-11 gives an example for illustration. 
+ 
+Figure 4-11 inlining Table Construction 
+z Class Hierarchy Analysis 
+When the inliner starts to inline a virtual method, it will first demand the CHA manager to 
+run class hierarchy analysis to judge if the method is monomorphic or not. Then, the CHA 
+manager will look for the corresponding entry and report its monomorphic information back. 
+Figure 4-12 illustrates that the inliner would like to inline h() at callsite 1 and that h() is 
+monomorphic is reported back. 
+z Recovery Information Recording 
+After getting the monomorphic information through class hierarchy analysis, if the method 
+is monomorphic, the callee will be inlined in “guard test code patching” style and the 
+ 21
+ 
+Figure 4-13 Snapshot of Inlining Table–After Recovery 
+ 
+(五) Results 
+This section presents the experiment results showing the effectiveness of the major 
+optimizations employed in our Memory-Constrained JIT Compiler (MCJITC). In addition, 
+memory saving of dual instruction set selection and load/store-multiple instruction utilization is 
+presented. Finally, the result of method inlining is showed. We outline the experiment 
+environment and benchmarks first, then present and discuss our measurement results. 
+ 
+5.1 Experiment Environment 
+ Our MCJITC is designed and implemented based on version 1.0.4 of Sun's KVM, the 
+reference implementation of J2ME CLDC. For our research usage, the KVM is ported to ARM's 
+ADS1.2. For compiling Java benchmark programs and KVM's class libraries, the version of the 
+Java compiler adopted is Sun's J2SDK1.4.2_03. For compiling KVM and our MCJITC, 
+maximum optimization is specified with -O2 option, and other options remain default. Last but 
+not least, our target architecture is ARM7TDMI. 
+ 
+5.2 Experiment Benchmarks 
+We choose Embedded CaffeineMark 3.0 [13] for our experiments. The Embedded 
+CaffeineMark 3.0 uses 6 tests to measure embedded JVM performance in various aspects. 
+ 23
+Figure 5-1 shows the speedup of the optimization setups over the pure interpreter, for ease 
+of understanding. The key observation is that instruction folding for stack operations has more 
+impact than null pointer check elimination. Also to be noted is that due to their program 
+characteristics, logic and method tests exhibit little speed performance improvement. 
+ 
+Figure 5-1 Effects of Optimizations 
+ 
+5.4 Effects of Dual Instruction Set Selection 
+To evaluate the impact of dual instruction set selection, we measure the total execution 
+cycles of the following six configurations in Table 5-3. 
+1. Pure Thumb Interpreter (T) 
+2. Pure ARM Interpreter (A) 
+3. Thumb JVM + Thumb Compiled Code (T + T) 
+4. Thumb JVM + ARM Compiled Code (T + A) 
+5. ARM JVM + Thumb Compiled Code (A + T) 
+6. ARM JVM + ARM Compiled Code (A + A)  
+Most important observations is that based on either interpreter (ARM or Thumb), 
+mixed-mode configurations with ARM Compiled Code and Thumb Compiled Code achieve near 
+performance because there is no significant register pressure and the immediate field width is 
+already enough for most cases. 
+Benchmarks Total Cycle 
+Counts (T) 
+Total Cycle 
+Counts (A) 
+Total Cycle 
+Counts (T + A)
+Total Cycle 
+Counts (T + T)
+Total Cycle 
+Counts (A + A) 
+Total Cycle 
+Counts (A + T)
+Sieve 
+Loop 
+Logic 
+String 
+Method 
+1,463,577,888 
+1,567,619,254 
+1,553,416,759 
+1,522,786,128 
+1,501,301,783 
+944,892,616 
+995,035,635 
+984,611,450 
+996,478,059 
+1,019,476,798 
+276,376,632 
+171,504,497 
+1,190,226,734 
+257,126,996 
+1,038,239,460 
+279,233,790 
+174,753,164 
+1,190,223,173 
+260,129,554 
+1,038,237,506 
+250,356,226 
+165,995,052 
+812,846,706 
+246,306,962  
+884,634,144 
+253,212,290 
+169,242,089 
+812,842,222 
+249,308,107 
+884,631,615 
+Average 1,521,740,362 988,098,912 586,694,864 588,515,437 472,027,818 473,847,265 
+Table 5-3 Execution Cycles of Six Configurations 
+ 
+ 25
+programs, code size ratios are in the range 86.4%~97.5% while all optimizations are enabled for 
+code size. 
+ 
+Figure 5-3 The Speedup of JIT Compilation       Figure 5-4 The JIT Compiled Code Size Ratio 
+of All Configurations                          of All Configurations 
+ 
+5.6 Effects of Method Inlining for MCJITC 
+In this section, the performance speedup over original MCJITC is presented. Additionally, 
+different method inlining mechanisms were compared. 
+z Performance Results 
+Table 5-5 lists performance results with code expansion and overhead for inlining table. On 
+average, we can improve the performance by a factor of 1.08 with 4.4 Kbytes space overhead. 
+4.436 3.548 0.888 108.22%Average
+5.0193.5641.455132.42%Method 
+5.9553.5482.407108.63%String 
+3.6673.5400.127100.05%Logic 
+3.6693.5400.12999.99%Loop
+3.8723.5480.324100.00%Sieve
+Total (Kbytes)Inlining Table (Kbytes)Code Expansion (Kbytes)SpeedupCaffeineMark
+ 
+Table 5-5 Performance Results 
+ 
+ 
+ 
+ 27
+三、參考文獻 
+[1] O. Agesen and D. Detlefs, "Mixed-mode Bytecode Execution", TR-2000-87, Sun 
+Microsystems, June 2000 
+[2] T. Suganuma, T. Ogasawara, M. Takeuchi, T. Yasue, M. Kawahito, K. Ishizaki, H. Komatsu 
+and T. Nakatani, "Overview of the IBM Java Just-In-Time Compiler", IBM Systems Journal, 
+Java Performance Issue, Vol 39, No 1, Februrary 2000 
+[3] Ali-Reza Adl-Tabatabai, M. Cierniak, G. Y. Lueh, V. M. Parikh and J. M. Stichnoth, "Fast, 
+Effective Code Generation in a Just-In-Time Java Compiler", Proc. of ACM SIGPLAN’98 
+Conference on PLDI, June 1998 
+[4] K. Ishizaki, M. Kawahito, T. Yasue, M. Takeuchi, T. Ogasawara, T. Suganuma, T. Onodera, 
+H. Komatsu and T. Nakatani, "Design, Implementation, and Evaluation of Optimizations in 
+a Just-In-Time Compiler",  Proc. of ACM Java Grande Conference, June 1999 
+[5] "Connected Limited Device Configuration Specification", Verison 1.1, Sun Microsystems, 
+March 2002 
+[6] Jeffrey Dean, David Grove and Craig Chambers, "Optimization of Object-Oriented 
+Programs Using Static Class Hierarchy Analysis", 1999 
+[7] David Detlefs and Ole Agesen, "Inlining of Virtual Methods", 1999 
+[8] Sunil Soman and Chandra Krintz, "Efficient On-Stack-Replacement for Aggressive 
+Specialization of Java Programs", 2004 
+[9] www.webfayre.com, 1997S. Furber, "ARM System-On-Chip Architecture", 2nd Edition, 
+Addison Wesley, 2000 
+[10] D. Seal, "ARM Architecture Reference Manual", 2nd Edition, Addison Wesley, December 
+2000 
+[11] Ziang Hu, "Code Size Oriented Memory Allocation for Temporary Variables", 2003 
+[12] V Krishna Nandivada, "Efficient Spill Code for SDRAM", 2003 
+[13] Pendragon Software Corporation, Embedded CaffeineMark 3.0 benchmark, 
+http://www.webfayre.com, 1997 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+表 Y04 
+出席國際學術會議報告 
+                                                           96年  06 月 28日 
+報告人姓名  
+蔣昆成 
+ 
+服務機構 
+及職稱 
+國立交通大學資訊工程學系 
+博士生 
+時間 
+會議 
+     地點 
+2007年 06月 25日-28日 
+ 
+美國 — 拉斯維加斯 
+會議 
+名稱 
+The 2007 International Conference on Engineering of Reconfigurable 
+Systems and Algorithms 
+發表 
+論文 
+題目 
+Selecting Heterogeneous Computation Blocks for Reconfigurable JPEG 
+Codec Computing 
+報告內容應包括下列各項： 
+一、參加會議經過 
+ 
+  此次參加的會議為 The 2007 International Conference on Engineering of 
+Reconfigurable Systems and Algorithms，是隸屬於 The 2007 World Congress in 
+Computer Science, Computer Engineering, & Applied Computing的其中一個研討會。
+此會議於 06月 22日至 28日在美國拉斯維加斯舉行。相關會議有以下二十五個： 
+ 1. Bioinformatics and Computational Biology 
+  2. Computer Design 
+  3. Computer Graphics and Virtual Reality 
+  4. Communications in Computing 
+  5. Scientific Computing 
+  6. Data Mining 
+  7. e-Learning, e-Business, Enterprise Information System, and e-Government 
+  8. Engineering of Reconfigurable Systems and Algorithms 
+  9. Embedded Systems and Applications 
+  10. Foundations of Computer Science 
+  11. Frontiers in Education: Computer Science and Computer Engineering 
+  12. Grid Computing and Applications 
+  13. Genetic and Evolutionary Methods 
+  14. Artificial Intelligence 
+ 15. Internet Computing 
+ 16. Wireless Networks 
+ 17. Information and Knowledge Engineering 
+ 18 Image Processing, Computer Vision, and Pattern Recognition 
+ 19. Machine Learning; Models, Technologies and Applications 
+ 20. Multimedia Systems and Applications 
+ 21. Modeling, Simulation and Visualization Methods 
+ 22. Parallel and Distributed Processing Techniques, and Applications 
+ 23. Security and Management 
+ 24. Software Engineering Research and Practice 
+ 25. Semantic Web and Web Services.  

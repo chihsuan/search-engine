@@ -1,0 +1,1240 @@
+ I
+目錄 
+目錄 ............................................................................................................................................................... I 
+中文摘要 ...................................................................................................................................................... II 
+英文摘要 .....................................................................................................................................................III 
+1. 前言 .......................................................................................................................................................1 
+2. 研究動機 ...............................................................................................................................................1 
+2.1. 路由器的架構與運作 ...............................................................................................................1 
+2.2. TCAM Cell ................................................................................................................................2 
+2.3. TCAM 搜尋時的功率消耗......................................................................................................3 
+3. 研究目的 ...............................................................................................................................................4 
+4. 文獻探討 ...............................................................................................................................................4 
+4.1. Hierarchical Search-Line Design [1] .........................................................................................4 
+4.2. 分段式搜尋線設計(Segmented Search-Line Design) [3] ........................................................4 
+4.3. Pre-Computation CAM （PB-CAM）[4]................................................................................5 
+4.4. Static Divided Word Matching Line [5] ....................................................................................6 
+4.5. Bank Selection Scheme [7]........................................................................................................7 
+5. 研究方法 ...............................................................................................................................................8 
+5.1. 精細化的搜尋致能技術（Refined Search Enable Technique, RSE） ...................................8 
+5.2. 單一搜尋線設計（Single Search-Line Design, SSL） ...........................................................9 
+5.3. TCAM 中 “don’t care” (“X”) 垂直連續的特性 ...................................................................11 
+5.4. 二階層“don’t care”閘控（DCG）： 第一層 “X” 閘控技術.............................................12 
+5.5. 二階層“don’t care”閘控（DCG）： 第二層 “X” 閘控技術.............................................13 
+6. 結果與討論 .........................................................................................................................................14 
+6.1. 搜尋效能的比較 .....................................................................................................................14 
+6.2. 功率消耗評估 .........................................................................................................................15 
+6.3. 能量消耗評估 .........................................................................................................................15 
+7. 參考文獻 .............................................................................................................................................15 
+8. 國科會補助專題研究計畫成果報告自評表 .....................................................................................17 
+9. 國科會補助計畫衍生研發成果推廣資料表 .....................................................................................18 
+ 
+ 
+ III
+英文摘要 
+Ternary content addressable memory (TCAM) is widely used in the forwarding table of the 
+network router. Due to the parallel comparison feature and frequent lookup, however, the power 
+consumption of TCAM is usually considerable. In this two-year research project we proposed three 
+circuit-level techniques that can be combined to minimize the TCAM power dissipated in search-line 
+switching activity. 
+In the first year, we proposed two techniques to minimize the search-line switching activity. The 
+first technique, called refined search enable (RSE), aims to eliminate the unnecessary search-line 
+switches in the quiet search pattern. The second technique, called single search-line (SSL), aims to 
+further reduce the search-line switches in the switch search pattern. In the second year, we proposed 
+two-level “don’t care” gating (DCG) scheme to minimize the search-line power consumption per 
+switch. Based on the vertically continuous “don’t care” feature, the two-level DCG scheme uses the 
+additional gating nodes to conditionally prevent the search data from being broadcasted over the 
+entire search-line. By decreasing the search-line effective capacitance, the two-level DCG scheme can 
+largely reduce the average power dissipated in the lightweight search-line switches. 
+We use TSMC 0.18μm to implement various TCAM designs. For a 128x32 TCAM array, the 
+simulation results show that when the L1 and L2 granularities are 16 and 8, respectively, our design 
+can achieve more than 90% search-line energy reduction with a 13.5% performance improvement. 
+ 
+ 2
+儲存的 IP 資料做平行比對，若一整列的比對無誤的話，則該列 IP 的相符線 (match line, ML) 就會
+維持在高電位的狀態，當然每一次的搜尋不會只有一個 IP 相符，極可能有多個 IP 相符，所以還必
+須經過一個最長字首比對 (Longest Prefix Match, LPM) 的步驟，來決定擁有最長相符字首的 IP，
+再將其儲存在動態隨機存取記憶體中對應的目的 IP 輸出，即完成一次路由表的查詢動作。 
+2.2. TCAM Cell 
+如圖（2）所示，一個傳統的 TCAM cell 包含三個部份。(1) 第一部分是 XOR-type 的 CAM cell，
+不僅可以儲存 prefix 資料，也可以進行搜尋資料與 prefix 資料的比對。第二部份是儲存 mask 的
+ 
+ 
+圖（1）：使用 TCAM 之路由器組織架構圖 
+ 
+ DWL 
+ML
+B 
+(1) XOR-type
+CAM 
+MWL 
+SS 
+D D 
+M M 
+(2) SRAM
+(3) Control
+B
+N1 
+N2 
+M D S State ML
+0 0 0 0 H
+0 1 1 1 H
+0 0 1 0 L
+0 1 0 1 L
+1 0 0 X H
+1 1 1 X H
+1 0 1 X H
+1 1 0 X H
+wild match
+normal
+match
+mismatch
+ 
+圖（2）：傳統的 TCAM cell，及其狀態表 
+ 4
+3. 研究目的 
+綜合以上的討論，我們知道網路路由表中 TCAM 記憶體的整體功率有相當大的部分是搜尋線
+上頻繁的充放電動作所貢獻的。由於網際網路 IPv6 的普及，以及高效能路由器與日俱增的需求，
+都將導致路由表的尺寸愈來愈大，因此路由表中 TCAM 記憶體的功率消耗也會愈來愈可觀，基於
+節能以及能量效率的考量，本研究計劃的目的就是要提出一種新的 TCAM 搜尋線架構，藉由整合
+電路層次（circuit-level）的技術，降低搜尋線在搜尋動作時的功率消耗，在不影響搜尋效能的前提
+下，達到降低整體 TCAM 記憶體功率消耗的最終目標。 
+在這個二年期的研究計畫中，第一年我們提出的技術，稱為「具精細化搜尋致能的單一搜尋線
+架構」，其主要目的就是將搜尋線不必要的充放電動作降到最低；而第二年提出的技術，稱為「二
+階層 “don’t care” 閘控技術」，其目的就是降低搜尋線一次充放電動作的平均功率消耗，與第一年
+提出的設計相互搭配應用，可以達到 TCAM 記憶體之搜尋線功率消耗最佳化的目標。值得一提的
+是，我們提出的這二種設計分別有其特點，但是都可以達到高效能低功耗的設計目標，而且互不相
+衝突，在探討過相關的研究之後，我們將詳細的敘述有關這二種設計的研究方法與進行步驟。 
+4. 文獻探討 
+4.1. Hierarchical Search-Line Design [1] 
+在相關研究 [1] 中，作者提出一種階層式的搜尋線架構，在他們的設計中搜尋線被切割成全
+域搜尋線 (global search-line, GSL) 和區域搜尋線 (local search-line, LSL) 二種，全域搜尋線上的電
+壓振幅較小，而區域搜尋線採用全擺幅的電壓，有較大電容的全域搜尋線並沒有直接與 TCAM cell
+連接，而是透過區域搜尋線，在區域接收器接收到全域搜尋線所傳送過來的搜尋資料後，會有條件
+的將訊號放大以驅動區域搜尋線進行數量較少的 TCAM cell 搜尋比對，因為區域搜尋線所連結的
+TCAM cell 個數較少，所以寄生電容較小，消耗的功率就會跟著減少。根據研究 [1] 的方法，相關
+研究 [2] 更提出了以 “don’t care” 資訊作為區域接收器要不要放大訊號的依據，如圖（4）所示，
+此種方法稱為“don’t-care” based hierarchical (DCBH) search-line design，與研究 [1] 一樣，DCBH 的
+設計也能達到同樣降低搜尋線功率消耗的目的。 
+4.2. 分段式搜尋線設計(Segmented Search-Line Design) [3] 
+利用 “don’t care” 連續的特性，相關研究 [3] 提出了一種分段式搜尋線的設計，他們使用分
+段 cell (segment cell, SC) 把搜尋線均分成數個等長的分段，每一個分段 cell 都是由一個空殼 cell
+和一個路徑控制的開關所組成，如圖（5）所示，dummy cell 是一個額外增加的 SRAM cell，它的
+作用就在在偵測連續 “don’t care” 的特性，當在分段 cell 上方的 TCAM 所儲存的是 “X” 狀態的
+時候，分段 cell 中的 dummy cell 就會保持 0 值，用來切斷搜尋資料的傳遞路徑， 如此一來，搜尋
+線上需要充放電的電容量就能有效的減少，而搜尋線上的功率消耗也會跟著降低。 
+ 6
+進行第二階段比較，此階段才是真正資料比對。在第一階段相符線被充電到 1 的字組，如果與搜尋
+資料相符，其相符線電位會保持在 1，不相符的則會被拉降到 0。而第一階段相符線就被拉降到 0
+的字組，不管第二階段比較結果為何，其電位都會保持在 0。最後相符線電位保持在 1 的字組即為
+真正相符的資料。 
+雖然 PB-CAM 的設計不需要預先充電控制，但是卻需要額外的時間來比對 “1＂ 的個數，而
+比對完後才會決定是否打開 pMOS1 來對相符線做充電動作，而充電動作也需要一定的時間，所以
+PB-CAM 雖然避免了預先充電的動作但確需要更多的時間來完成同樣的充電動作。除此之外，更
+關鍵的是 Parameter Comparison Circuit 的電路是硬體一個很大的額外花費，會對面積及功率消耗造
+成相當嚴重的影響。 
+4.4. Static Divided Word Matching Line [5] 
+圖（7）為 Static Divided Word Matching Line 的電路架構圖，此設計最大的特色是每一個字組
+(CAM word)固定被分成二個分段。如圖所示，在第一個分段中有效位元(Valid bit)控制 MNV 與 MPV
+二個電晶體：(1)第一種狀況，當有效位元為 “0＂，或是其中有任何位元不相符，MPV 或 MP2
+電晶體就會被導通，使得 NM1 的閘極電壓會拉升到 VDD，而相符線的電位就會透過被導通的 MN1
+ 
+D-Latch D-Latch D-Latch
+Parameter 
+Comparison 
+circuit
+pMOS1
+nMOS1
+Data Match
+nMOS2
+nMOS3
+Cell0Celln-1 Celln-2
+nMOS2nMOS2
+nMOS3 nMOS3
+BLn-1 Qn-1 BLn-2 Qn-2 BL0 Q0
+ 
+圖（6）：PB-CAM 的電路架構圖 
+ 
+Valid bit Valid bitValid bit
+Valid bit Valid bit
+MP2 MP2MPV
+MNV MN2 MN2
+MP1
+MN1 MN3 MN3
+Match 
+line
+First 
+comparison
+process
+Second
+comparison
+process
+XNOR XNOR 
+XOR XOR 
+ 
+圖（7）：Static divided word matching line 的電路架構圖 
+ 8
+5. 研究方法 
+5.1. 精細化的搜尋致能技術（Refined Search Enable Technique, RSE） 
+針對一個位元，如果我們只考慮連續二次的搜尋資料，則總共會有下列的 4 種資料樣式，分別
+為 0→0, 1→1, 0→1 和 1→0。由於沒有資料的改變，我們可以把 0→0 和 1→1 歸類成靜態的搜尋
+資料樣式；相反的，0→1 和 1→0 就歸類為動態的搜尋資料樣式。傳統的 TCAM 架構是採用二條
+搜尋線的設計，一正一反分別為 S 和S，如前所述，搜尋動作的第一步是將相符線預先充電至高
+電位，此時 S 和S必須放電至 0 以確保沒有短路狀況的發生，但是這種二條搜尋線都必須放電至 0
+的動作，在靜態的資料樣式中就會造成不必要的轉換動作，而增加多餘的功率消耗。圖（9）是一
+個連續搜尋五次 0 的範例，灰色框內的值就是表示 S 和S在預先充電階段的值，在 Case A 傳統的
+TCAM 設計中，0→1 的變換次數總共有 4 次，顯而易見的這些變換其實都是多餘的，所以在預先
+充電階段 S 和S都必須放電至 0 的這個動作會大幅的增加 TCAM 的功率消耗。 
+針對這個問題，傳統上最直接的解決方法就是增加一個額外的控制電晶體，在預先充電階段的
+期間切斷相符線到地的拉降路徑，然後在評估階段導通這顆額外的控制電晶體，致能搜尋動作，如
+圖（10）所示，這個概念就是所謂的搜尋致能的機制，其中額外增加的 N3 電晶體是由預先充電的
+訊號 PRE 所控制，而且為同一個字組上所有的 TCAM cell 所共享。在預先充電的階段，PRE=0 會
+將相符線充電至 1，此時拉降路徑是被 N3 所截斷的，接著在評估階段，PRE=1 會導通 N3 電晶體，
+而相符線則會依據資料比較的結果來決定是否放電至 0，從圖（9）中的 Case B 明顯的看出， 此
+一搜尋致能的效果，可以將靜態的搜尋資料樣式中不必要的轉換動作完全消除。 
+從圖（10）中可以看出，如果使用傳統的搜尋致能電路，當相符線必須被放電至 0 時，則拉降
+路徑 P1 長度會從原來的二個串接的電晶體（N1, N2）增加到三個串接的電晶體（N1, N2, N3），所
+以無可避免的會導致搜尋效能的降低。為了改善這個效能降低的缺點，我們提出了一個精細化的搜
+ 
+0 0 1 0 1
+0 0
+0 0 1 0 1
+0 0
+0 0 1 0 1
+0 0
+0 0 1 0 1
+0 0
+0 0 1 0 1
+search 
+data S S S S
+Case A:
+without SE
+Case B:
+with SE
+N0→1=4 N0→1=0  
+圖（9）：連續搜尋五次 0 的範例。Case A 沒有搜尋致能，Case B 具有搜尋致能。 
+ 10
+尋線上0→1的轉換次數，這是因為傳統的TCAM 採用的是二條搜尋線的設計，只要搜尋資料一有
+變動，就會造成 S 和S二條搜尋線當中的一條發 生 0→1 的轉換，因此 0→1 的轉換次數仍然維持
+在 4 次，與沒有搜尋致能技術的傳統 TCAM 的 轉換次數一樣。所以，針對這種動態的搜尋資料
+樣式，我們會提出一種單一搜尋線的設計，如圖 （12）中 Case B 的範例所示，採用單一搜尋線
+的設計就能有效的把 0→1 的轉換次數從 4 次減 少到 2 次。 
+因為在我們所提出來的單一搜尋線的設計中只有一條搜尋線，所以使用在傳統 TCAM 設計中
+的 XOR 的電路架構勢必要做修改，才能完成正確的比較動作，圖（13）就是我們修改的 XOR 電
+路圖，其中整合了單一搜尋線的設計與之前提出的精細化搜尋致能技術，與需要四個輸入資料的傳
+統 XOR 電路比較，很明顯的我們修改過的 XOR 電路只需要 S, D 和 三個輸入資料即可。 
+為了評估我們的所提出的二種技術，對於降低搜尋線轉換次數的影響，我們使用了計算機中心
+ 
+0 0 1 0
+1 1 0 1
+0 0 1 0
+1 1 0 1
+0 0 1 0
+search 
+data S S S
+Case A:
+SE+DSL
+Case B:
+SE+SSL
+N0→1=4 N0→1=2  
+圖（12）：動態的搜尋資料樣式範例。Case A 為傳統二條搜尋線的設計，Case B
+為單一搜尋線的設計。 
+ 
+M
+S 
+D D
+X 
+ML 
+N1
+N2M
+N4
+Z
+ 
+圖（13）：整合精細化搜尋致能技術(RSE)與單一搜尋線(SSL)的電路設計，灰色區
+塊是修改過的 XOR 比較邏輯。 
+ 12
+5.4. 二階層“don’t care”閘控（DCG）： 第一層 “X” 閘控技術 
+如前所述，為了要達到搜尋線上資料的閘控，我們提出的設計會在搜尋線上插入閘控節點
+（gating node, GN），利用這些閘控節點我們可以把原來一整段的搜尋線均分成數個等長的分段，
+如圖（15）所示，第一層的閘控節點（GNL1）可以用一個可控制的反向器來實做，也就是說這個
+反向器的功能是否開啟或關閉，完全由所在位置的 cell 當中的 “X＂ 狀態來控制。舉例而言，假
+ 
+X
+X
+X X
+X X X
+X X X
+X X X
+X X X X
+X X X X
+X X X X
+X X X X
+X X X X
+X X X X
+X X X X
+X X X X
+X X X X
+X X X X
+X X X X
+X X X X
+X X X X
+1
+2
+3
+4
+5
+6
+7
+N
+32-bit prefixes
+31-bit prefixes
+30-bit prefixes
+29-bit prefixes
+28-bit prefixes
+8-bit prefixes
+32 bits 
+ 
+圖（14）：一般包含 N 個字首（prefix）的 TCAM 陣列架構。 
+ 
+GNL1 
+S 
+S 
+S 
+S
+Mi Mi
+S
+GNL1 
+ 
+圖（15）：第一層的閘控節點（GNL1）。 
+ 14
+時如果第一層的閘控間隔為 16 的話，則每一個第一層分段，都會被均分成 4 個第二層分段。跟第
+一層的閘控節點一樣，第二層閘控節點的功用也是依據分段中第一個 cell 的“X＂狀態，來決定阻
+止或是傳遞第一層分段中的搜尋資料，此功能可以用傳輸閘（transmission gate, TG）來施做，但是
+當資料被閘控阻止時卻會發生一個致命的缺點，因為此時的 Q 點會呈現一個浮接（floating）的狀
+態，而在修改過的 XOR 電路中 Q 點又是決定二個通過電晶體的開啟/關閉的狀態，所以浮接的 Q
+點會導致 D 和 之間的短路，除了會有短路功率消耗外，也會擾亂所儲存的資料。因此我們使用圖
+（16）的電路，（1）如果第一個 cell 不是“X＂，則 M0=0 會導通 P1，此時第二層閘控節點就是一
+顆反向器，Q 點就會被驅動完成搜尋比較的動作。（2）另一種狀況，如果第一個 cell 是“X＂，則
+M0=1 會切斷 VDD 的電源供應，導通 N2 強迫 Q 點放電至 0，而不管輸入的搜尋資料為何，因此
+可避免 Q 點浮接所引發的問題。 
+6. 結果與討論 
+在本研究計畫中，我們使用了台積電 TSMC 0.18μm 的製程模擬驗證二種不同的 IPv4 路由表設
+計，分別為傳統的 TCAM 設計（以 Conv 表示），與我們所提出整合 RSE、SSL、與二階層閘控的
+TCAM 設計（以 TLG 表示），表格尺寸均為 132 列 x 32 行。 
+6.1. 搜尋效能的比較 
+在此研究計畫中，我們使用 match delay (MD) 做為搜尋效能比較的標準，其定義為不相符的
+狀況下，將搜尋資料放上搜尋線到相符線被拉降到 0 的延遲時間。圖（17）所示即為二種設計的
+MD 值的結果，其中 X-Y 表示第一層與第二層的分段間隔，在我們的模擬中總共有九種合理的組合，
+分別為 8-2, 8-4, 16-2, 16-4, 16-8, 32-2, 32-4, 32-8 與 32-16 ，從圖（17）中我們可以觀察到，因為
+沒有分段的作用，所以傳統的 TCAM 設計其 MD 值是固定的 1.608ns。相較之下，在我們所提的
+TLG 設計中，共有 16-4, 16-8, 32-4, 32-8, 32-16 五種分段的組合，其 MD 值是優於或等於傳統的
+TCAM 設計，因此在功率消耗的結果中，我們只會針對這五種分段組合進行評估。 
+ Match Delay (ns)
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+8-2
+8-4
+16-2
+16-4
+16-8
+32-2
+32-4
+32-8
+32-16
+TLGSS
+ConvConv.
+SSL
+        
+MD (ns) Red.
+Conv. 1.608
+8-2 2.039 -26.8%
+8-4 1.719 -6.9%
+16-2 1.804 -12.2%
+16-4 1.467 8.8%
+16-8 1.391 13.5%
+32-2 1.696 -5.5%
+32-4 1.436 10.7%
+32-8 1.384 13.9%
+32-16 1.359 15.5%
+ 
+圖（17）：傳統的TCAM設計與我們所提的TLG設計之 Match Delay (MD) 值的比較 
+ 16
+Pipelined Hierarchical Search Scheme,” IEEE Journal of Solid-State Circuits, Vol. 39, No. 9, Sept. 
+2004, pp. 1512-1519. 
+[2] P. T. Huang, S. W. Chang, W. Y. Liu and W. Hwang, “A 256x128 Energy-Efficient TCAM with 
+Novel Low Power Schemes,” in Proc. of International Symposium on VLSI Design, Automation and 
+Test (VLSI-DAT), 2007, pp. 1-4. 
+[3] J. S. Wang, C. C. Wang and C. Yeh, “TCAM for IP-Address Lookup Using Tree-style AND-type 
+Match Lines and Segmented Search Lines,” International Solid-State Circuits Conference, 2006, 
+pp.577-586. 
+[4] C. S. Lin, J. C. Chang, B. D. Liu, “A Low-Power Precomputation-Based Fully Parallel 
+Content-Addressable Memory,” IEEE J. Solid-State Circuits, 2003, pp. 654 - 662. 
+[5] K. H. Cheng, C. H. Wei and S. Y. Jiang, “Static Divided Word Matching Line for Low-Power 
+Content Addressable Memory Design,” in Proc. of International Symposium on Circuits and 
+Systems, 2004, pp. 629-632. 
+[6] C. A. Zukowski and S. Y. Wang, “Use of Selective Precharge for Low-Power Content-Addressable 
+Memories,” in Proc. of International Symposium on Circuits and Systems, 1997, pp. 1788-1791. 
+[7] G. Kasai, Y. Takarabe, K. Furumi, and M. Yoneda, “200MHz/200MSPS 3.2W at 1.5V Vdd, 9.4Mbits 
+Ternary CAM with New Charge Injection Match Detect Circuits and Bank Selection Scheme,” in 
+Proc. of IEEE Custom Integrated Circuits Conference, 2003, pp. 387-390. 
+ 
+quite pattern switch pattern
+(0->0 / 1->1) (0->1 / 1->0)
+Conv. energy 6.035E-05 6.072E-05
+energy 1.273E-07 3.304E-05
+reduction 99.8% 45.6%
+energy 9.996E-08 2.751E-05
+reduction 99.8% 54.7%
+energy 1.131E-07 3.404E-05
+reduction 99.8% 43.9%
+energy 9.721E-08 3.037E-05
+reduction 99.8% 50.0%
+energy 9.211E-08 3.024E-05
+reduction 99.8% 50.2%
+32-16
+16-4
+16-8
+32-4
+32-8
+ 
+表（3）：傳統的TCAM設計與我們所提的TLG設計之能量消耗的值 
+ 
+0->0 1->1 % 0->1 1->0 % Conv ConvSE TLGSSL
+comp. to
+Conv
+comp. to
+ConvSE
+Trace 1 675,933 8,334,211 7,546,089 73% 2,874,761 2,874,763 27% 1307 349 81 94% 77%
+Trace 2 833,075 9,539,549 8,720,329 68% 4,199,241 4,199,249 32% 1612 510 117 93% 77%
+Trace 3 401,423 4,507,844 4,369,775 69% 1,983,942 1,983,943 31% 777 241 55 93% 77%
+Trace 4 899,094 10,659,887 9,544,938 70% 4,283,077 4,283,074 30% 1739 520 120 93% 77%
+Trace 5 630,977 6,948,901 6,433,579 66% 3,404,376 3,404,376 34% 1221 413 95 92% 77%
+Trace 6 514,122 6,923,026 5,399,356 75% 2,064,745 2,064,745 25% 994 251 58 94% 77%
+Ave. 659,104 7,818,903 7,002,344 70% 3,135,024 3,135,025 30% 1275 381 88 93% 77%
+Reductionquite pattern switch pattern
+Lookups
+Total Energy (nJ)
+ 
+表（4）：六組路由資料的能量消耗總和 
+ 18
+9. 國科會補助計畫衍生研發成果推廣資料表 
+日期：   年  月  日 
+國科會補助計畫 
+計畫名稱：使用在網路路由器中低功率三元內容定址記憶體
+（TCAM）設計 
+計畫主持人： 張延任 
+計畫編號：NSC 98-2221-E-005-047-MY2 領域：資訊學門 
+（中文）低功率二階層閘控 TCAM 設計 
+研發成果名稱 （英文）Low-Power Two-level Gated TCAM Design 
+成果歸屬機構 國科會 發明人 (創作人) 張延任 
+技術說明 
+（中文） 
+我們提出了二種技術，將搜尋線上訊號的轉換次數降到最
+低。第一種技術稱為「精細化搜尋致能」（Refined Search Enable, 
+RSE）技術，在搜尋資料維持不變的樣式中，RSE 能將搜尋線上不
+需要的訊號轉換完全消除，而且不會影響搜尋效能。第二種技術
+稱為「單一搜尋線設計」（Single Search-Line, SSL），在搜尋資料
+不斷改變的樣式中，SSL 能有效的減少搜尋線上訊號轉換的次數。
+除此之外，我們更進一步的提出了「二階層 “don＇t care＂ 閘控
+（DCG）技術」，將每一次搜尋線轉換動作的平均功率消耗降到
+最低，利用路由表中 TCAM 具有的 “X＂ 垂直連續的特性，二
+階層 DCG 技術能阻止資料在整條搜尋線上傳遞，藉著寄生電容量
+的降低，而有效的減少每一次搜尋線轉換動作的平均功率消耗。
+根據我們使用台積電 TSMC 0.18μm 製程的模擬結果指出，針對一
+個 128×32 的 TCAM 陣列而言，與傳統不分段的雙搜尋線的設計
+比較，在第一層與第二層的分段大小分別為 16 個一段與 8 個一段
+的條件下，則我們的設計可以降低 90%的搜尋線能量消耗，並且
+改善 13.5%的搜尋效能。 
+IEEE TRANSACTIONS ON VERY LARGE SCALE INTEGRATION (VLSI) SYSTEMS, VOL. 18, NO. 11, NOVEMBER 2010 1599
+Don’t-Care Gating (DCG) TCAM Design
+Used in Network Routing Table
+Yen-Jen Chang, Member, IEEE
+Abstract—This paper presents a low-power ternary content
+addressable memory (TCAM) design, in which we propose the
+don’t-care gating (DCG) scheme that aims to reduce the TCAM
+power dissipated in the search-line (SL) switching activity. By
+exploiting the vertically continuous “don’t-care” feature, the DCG
+scheme can effectively reduce the average SL power consumption
+per switch. In addition, we also develop the refined search en-
+able (RSE) technique to eliminate the unnecessary SL switching
+activity in the quiet pattern. By reducing both the SL switching
+activity and the average switching power, the proposed design
+can minimize the TCAM SL power consumption. For a 128
+32 TCAM, the best configuration we examined shows that when
+the gating granularity is 16, with a 1.3% search performance
+improvement, the DCG scheme combined with the RSE technique
+can achieve 72% 79% SL energy reduction.
+Index Terms—Don’t-care gating (DCG), low-power ternary
+content addressable memory (TCAM) design, search-line (SL)
+switching power reduction, TCAM.
+I. INTRODUCTION
+N ETWORK routers are the critical devices to support hugeand fast data communication on the Internet. The function
+of the router is to forward each incoming packet to its final des-
+tination. Due to the adoption of classless interdomain routing
+(CIDR) [1], routing an incoming packet requires that the router
+must find the longest routing prefix that matches the destination
+IP address. Such operation is referred to as the longest prefix
+matching (LPM). Various software-based schemes have been
+proposed to speed up the forwarding table lookup [2]–[4], but
+they all suffer from the multiple memory accesses. Therefore,
+the content addressable memory (CAM) is the most popular
+hardware solution to support the high lookup speed.
+CAM is a kind of storage, which is addressed by the content
+(or data) rather than the memory address. Since CAM is a hard-
+ware table and can compare the search data with all the stored
+data in parallel, the speed of CAM lookup is much faster than
+the software lookup. Therefore, CAM is widely used in transla-
+tion lookaside buffer (TLB), high associative cache, image pro-
+cessing, database and network routers, etc., all require fast table
+lookup. There are two types of CAM: binary CAM and ternary
+Manuscript received October 13, 2008; revised April 02, 2009. First pub-
+lished September 15, 2009; current version published October 27, 2010.
+The author is with the Department of Computer Science and Engineering,
+National Chung Hsing University, Taichung 402, Taiwan (e-mail: ychang@cs.
+nchu.edu.tw).
+Digital Object Identifier 10.1109/TVLSI.2009.2025951
+CAM (TCAM). The major difference is that TCAM has an ad-
+ditional “don’t care” state to perform the wild match, such that it
+is specifically suitable for the LPM task in the network routers.
+However, the power consumption of TCAM is usually consid-
+erable due to the parallel comparison feature in which a large
+amount of transistors and wires are active on each lookup.
+There are three major power consumers in the TCAM,
+including the clock and control, match lines (MLs), and search
+lines (SLs). As revealed in [5] and [6], the SLs consume
+about 16% 31% of total TCAM power. Moreover, after the
+match-line power is reduced largely, the SLs even contribute
+54% 82% to the total power consumption [7]. The power
+consumption of the SLs can be reduced by several methods,
+including the use of the hierarchical SL scheme [8], [9], mini-
+mizing the switching activity [10], segmenting the SL [7], and
+recycling the SL charge [11]. However, they suffer from either
+performance penalty [7], [8] or complex control circuitry [8],
+[9], [11]. In contrast, this paper introduces a low-power TCAM
+design that consists of two new developed schemes, i.e., the
+refined search enable (RSE) and “don’t care” gating (DCG)
+schemes. Without any performance penalty and complex con-
+trol circuitry, our design can largely reduce the TCAM power
+dissipated in the SLs by minimizing both the SL switching
+activity and the average power consumption per SL switch.
+The most distinct features of the proposed low-power TCAM
+design are summarized as follows. 1) In the RSE scheme, since
+the ML pull-down path is disconnected from the ground during
+the precharge phase, it is unnecessary to discharge all the SLs
+to prevent the unexpected short-circuit power consumption.
+Thus, the SL switching activity can be eliminated completely
+in the quiet pattern. 2) By taking advantage of the vertically
+continuous “don’t care” feature, the DCG scheme uses gating
+nodes (GNs) to conditionally prevent the search data from
+being broadcasted over the entire SL. By decreasing the SL
+effective capacitance, the DCG scheme can largely reduce the
+average power dissipated in the SL switches. 3) In our design,
+there are two strategies to prevent the possible performance
+loss. First, by removing the mask-controlled transistor from the
+ML pull-down path, the RSE scheme ensures that the length of
+critical path in our design is the same as that in the conventional
+design. Second, instead of the simple transmission gate, the
+DCG scheme uses the inverter chain circuit to accelerate the
+transmission of search data. By combining the aforementioned
+two strategies, our design can achieve almost comparable or
+even better performance than the conventional TCAM design.
+The proposed TCAM design with size of 128 32 was im-
+plemented with the TSMC 0.18- technology, and all the ex-
+perimental results were measured from the HSPICE postlayout
+1063-8210/$26.00 © 2009 IEEE
+CHANG: DON’T-CARE GATING (DCG) TCAM DESIGN USED IN NETWORK ROUTING TABLE 1601
+Fig. 3. Conventional NAND-type TCAM.
+dissipated in search operation. Fig. 3 shows the schematic of the
+traditional NAND-type TCAM, in which the CAM cell is imple-
+mented as XNOR-type instead of XOR type. Compared to Fig. 2,
+note that the pull-down transistors N1 and N2 of the TCAM cell
+are placed in parallel, and N1 is controlled by M instead of .
+The ML is first precharged to high. Because the control logic
+of each TCAM cell are arranged in NAND type, the ML is dis-
+charged to 0 only when all TCAM cells are matched. Since the
+load capacitance of ML is small and only a few MLs are dis-
+charged to 0 during a search, the ML power consumption is min-
+imal. However, the pull-down path is too long, so that the ML
+discharge is very slow in case of a match. Thus, the NAND-type
+TCAM trades the performance degradation for a large power
+saving.
+B. Power Distribution During a TCAM Search
+In the conventional NOR-type TCAM design, the search op-
+eration is initiated by discharging all SLs to 0, i.e., all
+, and then, precharging all MLs to . Refer to Fig. 1(a),
+the discharge of both S and SL is to ensure that no shortcut
+path exists during the ML precharge. After precharging ML, the
+search data and its complement are then put on S and SL, re-
+spectively, to perform the search operation. Depending on the
+TCAM state, the search operation is described as follows.
+1) If the TCAM is in “X” state, then is 0 that turns off
+the N1 transistor to prevent the ML from being discharged to
+0. From Fig. 1(a), it can be concluded that no matter whether
+the N2 transistor is turned on or not, the ML always maintains
+a high voltage as in the precharge phase. This is a wild match.
+2) If the TCAM is either in “0” or “1” state, will turn
+on the N1 transistor. Thus, the comparison result of the XOR
+CAM determines whether the ML is discharged to 0 or not. If
+the search data are equal to the stored data, i.e., , the
+pull-down transistor N2 is turned off to prevent the ML from
+being discharged to 0; otherwise, will turn on N2 to
+conduct the pull-down path. In Fig. 1(b), the ML is discharged
+to 0 only in case of mismatch in which and the XOR
+result of CAM cell is 1.
+As shown in Fig. 1(a), besides the wire capacitance, each
+TCAM cell would contribute the drain capacitance of the XOR
+logic and the gate capacitance of N2 to the total load capaci-
+tance of SL. Certainly, the SL capacitance will increase with the
+TCAM column size, which is defined as the number of TCAM
+cells connected to an SL. Due to large table size, in general, there
+is a large amount of SL switching activities during a search. As
+SLs are long wires coupled with large capacitance, clearly, they
+are the major power-consuming sources.
+Fig. 4. Single SL and ML power distribution during a TCAM search.
+To further analyze the search power consumption, an example
+TCAM array with size of 128 32, i.e., column size is 128 cells
+and word size is 32 cells, was implemented in a TSMC 0.18-
+technology with a 1.8-V supply. Fig. 4 shows the single SL and
+ML power distribution during a TCAM search. Clearly, there
+are two power-consuming phases. 1) The first power-consuming
+phase is the precharge phase, in which one ML is precharged to
+high. Note that since both S and must be discharged to 0 be-
+fore ML precharge, the power curve presents a saw wave. 2)
+The second power-consuming phase is the evaluation (or com-
+parison) phase, in which one SL is driven to the search data
+to perform the comparison with the stored data. In this exper-
+iment, since the word size is 32, which is less than the column
+size, i.e., 128, the SL power consumption during the evaluation
+phase is much larger than the ML power consumption during
+the precharge phase.
+C. Related Work
+Including our previous work [12]–[14], there are many re-
+searches on TCAM power reduction, particularly ML power re-
+duction [15]–[20]. Since this paper aims at reducing the TCAM
+power dissipated in the SL switching activity, we only focus
+on the work related to the SL power reduction. To save SL
+power, one can simply reduce the SL voltage swing. However,
+it comes at the performance penalty of matching due to a lower
+gate over-drive voltage on the pull-down transistor N2 shown in
+Fig. 1.
+Pagiamtzis et al. [8] introduced a hierarchical SL design in
+which the SLs are broken into the global SLs (GSLs) and local
+SLs (LSLs). Instead of directly connecting to the CAM cells, the
+GSLs with low-swing signals are fed into the LSLs, and then, the
+local receivers would conditionally amplify the signals to drive a
+subset of CAM cells. By combing the pipelined ML scheme [8],
+only a few LSLs with reduced capacitance would be activated,
+so that the CAM power dissipated in the SLs can be reduced
+effectively.
+Based on [8], an alternative “don’t-care” based hierarchical
+(DCBH) SL design [9] was proposed to reduce the TCAM
+power consumption on the SLs. Since TCAM used in the net-
+work routing table exhibits a vertically continuous “don’t-care”
+(or “X”) pattern on the SL, DCBH scheme uses the “X” bit
+stored in the bottom word of each block to control whether the
+search data on GSL should be broadcasted to the corresponding
+LSL. The GSLs are active every cycle, but the LSLs are active
+only when the bottom word is not “X.” The only difference
+between [8] and [9] is the LSL control strategy.
+CHANG: DON’T-CARE GATING (DCG) TCAM DESIGN USED IN NETWORK ROUTING TABLE 1603
+Fig. 7. RSE circuitry.
+equal to D. Since the length of the conducted pull-down path
+(P1) is 2, our design can achieve the same search performance
+as the conventional TCAM design without the SE scheme.
+IV. DCG SCHEME
+Since the TCAM provides the “don’t care” state to perform
+the wild match, it is widely used in the forwarding table of
+the network routers. An entry in the forwarding table is a
+pair, where is the IP address of
+a router or end host that is a neighbor of this router. A prefix is
+represented like an IP address, but may contain the aggregation
+of several destination IP addresses. Note that the width of an
+IP address is fixed 32 bit, since the IP version 4 (IPv4) is used
+throughout this paper. For example, the aggregation of 256
+addresses 140.120.13.0 through 140.120.13.256 is represented
+by the prefix 140.120.13/24, where 24 is the length of the
+prefix, and the last 8 bits are wild bits (or “X”).
+A. Vertically Continuous “Don’t-Care” Feature
+Fig. 8 shows the general configuration of a prefix array that
+contains prefixes implemented with TCAM. Particularly, we
+list four low-order bits of each prefix. The most important func-
+tion of the routing table lookup is to find the longest one in all the
+prefixes that match the incoming packet’s destination address.
+This is commonly known as the LPM problem [21]. In order
+to simplify the resolution of the LPM problem, the stored pre-
+fixes are traditionally arranged in the decreasing order of prefix
+length. By using only a priority encoder, the LPM can be easily
+performed. In particular, there are no prefixes of a length less
+than 8 bits, because they are typically not found in forwarding
+tables [21].
+From the feature that the prefixes are sorted by decreasing
+length, it is clear that if the th cell is a “X” bit, then all the cells
+below the th cell, i.e., th cells, must be “X”. It is referred
+to as vertically continuous “don’t care” feature. For example,
+consider the grayed column shown in Fig. 8. Since the 6th cell
+is a “X” bit, the th cells are all “X” bits. This scenario
+implies that the comparisons between the search data and the
+prefix data stored in the th cells are redundant. If we can
+gate the search data at the 6th cell, only the capacitances before
+the 6th cell are needed to be charged during the 0 1 transition.
+Fig. 8. General configuration of a prefix array.
+Fig. 9. Implementation of GN.
+Such capacitance that needs charge in reality is referred to as
+effective capacitance. In this example, due to the decrease of
+effective capacitance, the power consumption of the SL can be
+reduced.
+B. DCG Implementation
+In order to gate the search data from being broadcasted over
+the entire SL, our design inserts the GNs to break the entire
+SL into several segments. As shown in Fig. 9, the GN can be
+easily implemented as a controllable inverter whose function is
+enabled/disabled by the corresponding mask bit. For example,
+if the GN is located on the th cell, the mask value of the th cell
+will determine whether the search data can be propagated
+forward or not. When the th cell is in “X” state, will cut
+off both the power and ground sources to deactivate the inverter
+to further transmit the search data. Otherwise, the inverter will
+take effect in case of , i.e., “0” or “1” state. Note that
+the search data are opposite after the GN. In S segment, the
+CHANG: DON’T-CARE GATING (DCG) TCAM DESIGN USED IN NETWORK ROUTING TABLE 1605
+TABLE I
+THE COLUMN POWER CONSUMPTION (IN WATT) FOR THREE TCAM DESIGNS: (A) CONV VERSUS   ; (B)  VERSUS  
+From Fig. 10, we summarize the most important aspects as
+follows. 1) The MD of the scheme
+will increase as G becomes smaller. It is expected because
+small G implies that the search data propagation path from
+the driver to the last segment consists of many GN inverters.
+According to the RC delay model, these inverters would con-
+tribute a significant resistance to increase the MD. (2) One
+interesting observation from Fig. 10 is that is
+worse than (and ) if the gating granularity
+is smaller than 16. In other words, without performance loss,
+the maximum number of the GNs used in the is 8.
+Particularly, both designs have almost the same MD in the case
+of , where is still 1.3% (4.2%) better than
+.
+B. Column Power Consumption for Various Search Patterns
+As defined earlier, the search patterns 0 0 and 1 1 are
+classified as quiet pattern, and 0 1 and 1 0 are classified
+as switch pattern. Since the power consumption of quiet pat-
+tern (quiet power) is hardly notable for our design, Fig. 11 only
+shows the column power dissipated in switch pattern (switch
+power). Note that the column size is 128, such that the contin-
+uous “X” number is varied from 0 to 128, e.g., case
+means the continuous “X” number is 32. From Fig. 11, we con-
+cluded that since the breaks the entire SL into several
+segments, the column power of shows a step wave.
+Fig. 11. Column power dissipated in switch pattern for both the conventional
+and   TCAM designs.
+The detailed power data of three TCAM designs are summa-
+rized in Table I, in which the worst and best values are for
+and cases, respectively. Particularly, the av-
+erage value is obtained by averaging the results of all 129 cases,
+i.e., , if every case has the same occurrence
+probability.
+There are several observations that can be made from Table I.
+1) For design due to the need of presetting both S and
+to 0, the quiet power is almost equal to the switch power.
+As shown in Table I(a), they are always 3.836E-05W and
+CHANG: DON’T-CARE GATING (DCG) TCAM DESIGN USED IN NETWORK ROUTING TABLE 1607
+reduce the energy dissipated in the switch pattern, the effect
+of on total SL energy reduction is especially pro-
+nounced. As shown in Table III, compared to the conventional
+TCAM design, the design can reduce the total SL
+energy consumption by 72% 79% for these six traces. Even
+compared to the design, which uses the traditional SE
+scheme, our design still achieves 24% SL energy reduction.
+Area overhead: The proposed design can largely
+reduce the SL energy consumption, but the additional RSE con-
+trol and DCG GNs will increase the transistor count from 65 792
+to 71 456, i.e., 8.6% increase. Since the area cost is proportional
+to the transistor count, from layout measurement, the
+design will result in a 9.8% area overhead.
+VI. CONCLUSION
+In this paper, we propose a low-power TCAM design that not
+only reduces the SL power consumption, but also improves the
+search performance. We first introduce the RSE technique to
+eliminate all unnecessary SL switches in the quiet pattern, and
+then use the proposed DCG scheme to reduce the SL switch
+power in the switch pattern. By using the vertically continuous
+“don’t care” feature, without any performance penalty, our
+design can achieve at least 71% and 23% reduction in total
+SL energy consumption compared to the conventional TCAM
+without/with SE scheme, respectively. However, the additional
+transistors used in the proposed design would result in about
+10% area overhead compared to the conventional TCAM
+design.
+REFERENCES
+[1] Y. Rekhter and T. Li., “An architecture for IP address allocation with
+CIDR,” Tech. Rep. RFC 1518, 1993. [Online]. Available: http://rfc.net/
+rfc1518.html.
+[2] S. Nilsson and G. Karlsson, “IP-address lookup using LC-tries,” IEEE
+J. Sel. Areas Commun., vol. 17, no. 6, pp. 1083–1092, Jun. 1999.
+[3] M. Waldvogel, G. Varghese, J. Turner, and B. Plattner, “Scalable high-
+speed IP routing lookups,” Comput. Commun. Rev., vol. 27, no. 4, pp.
+25–36, Oct. 1997.
+[4] A. Brodnik, S. Carlsson, M. Degermark., and S. Pink, “Small for-
+warding tables for fast routing lookups,” Comput. Commun. Rev., vol.
+27, no. 4, pp. 3–14, Oct. 1997.
+[5] H. Noda, K. Inoue, M. Kuroiwa, F. Igaue, K. Yamamoto, and H.
+Mattausch, “A cost-efficient high-performance dynamic TCAM with
+pipelined hierarchical searching and shift redundancy architecture,”
+IEEE J. Solid-State Circuits, vol. 40, no. 1, pp. 245–253, Jan. 2005.
+[6] B. Agrawal and T. Sherwood, “Ternary CAM power and delay model:
+Extensions and uses,” IEEE Trans. Very Large Scale Integr. (VLSI)
+Syst., vol. 16, no. 5, pp. 554–564, May 2008.
+[7] J. S. Wang, C. C. Wang, and C. Yeh, “TCAM for IP-address lookup
+using tree-style AND-type match lines and segmented search lines,” in
+Proc. Int. Solid-State Circuits Conf., 2006, pp. 577–586.
+[8] K. Pagiamtzis and A. Sheikholeslami, “A low power content-address-
+able memory (CAM) using pipelined hierarchical search scheme,”
+IEEE J. Solid-State Circuits, vol. 39, no. 9, pp. 1512–1519, Sep. 2004.
+[9] P. T. Huang, S. W. Chang, W. Y. Liu, and W. Hwang, “A 256   128
+energy-efficient TCAM with novel low power schemes,” in Proc. Int.
+Symp. VLSI Des., Autom. Test (VLSI-DAT), 2007, pp. 1–4.
+[10] I. Arsovski, T. Chandler, and A. Sheikholeslami, “A Ternary Con-
+tent-Addressable Memory (TCAM) based on 4T static storage and in-
+cluding a current-race sensing scheme,” IEEE J. Solid-State Circuits,
+vol. 38, no. 1, pp. 155–158, Jan. 2003.
+[11] B. D. Yang and L. S. Kim, “A low-power CAM using pulsed
+NAND-NOR match-line and charge-recycling SL driver,” IEEE J.
+Solid-State Circuits, vol. 40, no. 8, pp. 1736–1744, Aug. 2005.
+[12] Y.-J. Chang, “Two-layer hierarchical matching method for energy-ef-
+ficient CAM design,” Inst. Electr. Eng. Electron. Lett., vol. 43, no. 2,
+pp. 80–82, Jan. 2007.
+[13] Y.-J. Chang, Y.-H. Liao, and S.-J. Ruan, “Improve CAM power effi-
+ciency using decoupled match line scheme,” in Proc. IEEE/ACM Des.
+Autom. Test Eur. (DATE), Apr. 16–20, 2007, pp. 1–6.
+[14] Y.-J. Chang and Y.-H. Liao, “Hybrid-type CAM design for both
+power and performance efficiency,” IEEE Trans. Very Large Scale
+Integr. (VLSI) Syst., vol. 16, no. 8, pp. 965–974, Aug. 2008.
+[15] H. Miyatake, M. Tanaka, and Y. Mori, “A design for high-speed
+low-power CMOS fully parallel content-addressable memory macros,”
+IEEE J. Solid-State Circuits, vol. 36, no. 6, pp. 956–968, Jun. 2001.
+[16] I. Arsovski and A. Sheikholeslami, “A mismatch-dependent power al-
+location technique for match-line sensing in content-addressable mem-
+ories,” IEEE J. Solid-State Circuits, vol. 38, no. 11, pp. 1958–1966,
+Nov. 2003.
+[17] C. A. Zukowski and S. Y. Wang, “Use of selective precharge for
+low-power content-addressable memories,” in Proc. Int. Symp. Cir-
+cuits Syst., 1997, pp. 1788–1791.
+[18] K. H. Cheng, C. H. Wei, and S. Y. Jiang, “Static divided word matching
+line for low-power content addressable memory design,” in Proc. Int.
+Symp. Circuits Syst., 2004, pp. 629–632.
+[19] A. Efthymiou and J. D. Garside, “An adaptive serial-parallel CAM ar-
+chitecture for low-power cache block,” in Proc. Int. Symp. Low Power
+Electron. Des., 2002, pp. 136–141.
+[20] C. S. Lin, J. C. Chang, and B. D. Liu, “A low-power precomputation-
+base fully parallel content addressable memory,” IEEE J. Solid-State
+Circuits, vol. 38, no. 4, pp. 654–662, Apr. 2003.
+[21] D. Shah and P. Gupta, “Fast updating algorithms for TCAMs,” IEEE
+Micro, vol. 21, no. 1, pp. 36–47, 2001.
+[22] National Chung Hsing University, Taichung, Taiwan, [Online] Avail-
+able: http://www.nchu.edu.tw.
+Yen-Jen Chang (M’02) received the M.S. degree
+from Chung-Yuan Christian University, Jhongli City,
+Taiwan, in 1997, and the Ph.D. degree from National
+Taiwan University, Taipei, Taiwan, in 2003, both in
+computer science and information engineering.
+In February 2004, he joined the Faculty of De-
+partment of Computer Science and Engineering,
+National Chung Hsing University, Taichung, Taiwan,
+where he is currently an Associate Professor. His
+research interests include computer architecture,
+low-power very-large-scale integration design, and
+embedded system and system-on-chip design.
+A Low-Power TCAM Design 
+Using Mask-Aware Match-Line (MAML) Technique 
+ 
+Yen-Jen Chang 
+Department of Computer Science and Engineering 
+National Chung-Hsing University 
+No. 250, Kuo Kuang Road, Taichung, 402 Taiwan 
+886-4-22840497 
+ychang@cs.nchu.edu.tw 
+ 
+Tung-Chi Wu 
+Department of Computer Science and Engineering 
+National Chung-Hsing University 
+No. 250, Kuo Kuang Road, Taichung, 402 Taiwan 
+886-4-22840497 
+phd9704@csmail.nchu.edu.tw 
+ 
+ABSTRACT 
+The ternary content addressable memory (TCAM) is widely used 
+in the network router to speed up the forwarding table lookup, but 
+it usually consumes a large amount of power. This paper 
+introduces a low-power TCAM design, in which we propose the 
+mask-aware match-line (MAML) technique to reduce the TCAM 
+power dissipated in the match-line (ML) switching activity. 
+Depending on the mask data, the MAML design can prevent the 
+entire ML from being charged/discharged during the search 
+operation, such that the average ML power consumption can be 
+reduced effectively. For a 256128-bit IPv6 TCAM array, based 
+on TSMC 0.18m technology the simulation results show that the 
+refined MAML design with the granularity of 32 can achieve 58% 
+ML energy reduction compared to the conventional TCAM 
+design, and the search performance improvement is about 25%. 
+Categories and Subject Descriptors 
+B.3.1 [Memory Structures]: Semiconductor Memories – Static 
+memory (SRAM).  
+General Terms 
+Design 
+Keywords 
+Ternary content addressable memory (TCAM), low-power, mask-
+aware, match-line. 
+1. INTRODUCTION 
+The network routers are particularly critical to the high 
+performance network. According to the routing information stored 
+in the equipped forwarding table, the router can forward each 
+incoming packet to the next hop on its way to the final 
+destination. In general, the forwarding table is implemented with 
+the ternary content addressable memory (TCAM), which is a kind 
+of hardware storage and 0can compare the search data with all the 
+stored data in parallel. Because of high-frequent lookup and the 
+parallel comparison feature where a large amount of transistors 
+and wires are active on each lookup, the power consumption of 
+TCAM is usually considerable. In the TCAM, the major power 
+consumers include the clock (or control), match lines (MLs), and 
+search lines (SLs). The ML is long wire with large capacitance, 
+and every search will cause a large amount of ML switching 
+activities. Thus, the TCAM power dissipated in the MLs is 
+largest. As revealed in [1], the MLs contribute 73%~88% to the 
+total TCAM power consumption. Because the large power 
+consumption would be vital for the advanced applications with 
+large TCAM, this paper aims to develop a low-power TCAM 
+design which can minimize the ML power consumption. 
+From the related work [2]-[12], the ML power consumption can 
+be reduced by several methods, including reducing the ML 
+switching activity [4]-[6], pipelining search scheme [7][8], 
+reducing the ML voltage swing [9][10], and the ML segmentation 
+[11][12]. These low-power designs can be used alone, or used 
+together. However, they usually suffer from either performance 
+penalty or complex control circuitry. In contrast, this paper 
+introduces a low-power ML architecture, called mask-aware ML 
+(MAML), which aims to minimize the effective capacitance 
+during the ML precharge phase. By taking advantage of the 
+continuous “X” feature, the MAML uses the simple gated nodes 
+to conditionally prevent the entire ML from being charged during 
+the precharge phase. Thus, the average ML power consumption 
+can be reduced effectively. In addition, because the ML voltage 
+swing of MAML design is constrained within 0~VDD-VTn, the ML 
+power reduction and search performance would be further 
+improved. 
+Compared to the related work, without any performance penalty 
+and complex control circuitry, the MAML design can largely 
+reduce the TCAM power dissipated in the ML switching activity. 
+The proposed TCAM design with size of 256128-bit was 
+implemented with the TSMC 0.18m technology. By examining 
+all possible configurations, the results show that the refined 
+MAML design can achieve the best energy and performance 
+improvement. Compared to the conventional NOR-type TCAM, 
+the ML energy reduction is 22%~58%.  
+The rest of this paper is organized as follows. Section 2 reviews 
+the conventional TCAM design and the previous work on TCAM 
+ML power reduction. Section 3 describes the circuitry developed 
+for the MAML design in detail. Besides, we refine the MAML 
+design to further improve the search performance. The simulation 
+results and analysis are given in Section 4, and Section 5 offers 
+some brief conclusions. 
+ 
+Permission to make digital or hard copies of all or part of this work for 
+personal or classroom use is granted without fee provided that copies are 
+not made or distributed for profit or commercial advantage and that 
+copies bear this notice and the full citation on the first page. To copy 
+otherwise, or republish, to post on servers or to redistribute to lists, 
+requires prior specific permission and/or a fee. 
+GLSVLSI’11, May 2–4, 2011, Lausanne, Switzerland. 
+Copyright 2011 ACM  978-1-4503-0667-6/11/05...$10.00. 
+ 
+109
+precalculation that decides if the ML needs to be precharged, i.e., 
+conditional (or selective) precharge. The same concept was used 
+in the pulsed NAND-NOR ML [5] and ripple-precharge ML [6] 
+designs. 
+The pipelined search scheme was proposed in [7][8], where a 
+CAM word is divided into several segments. Each segment is 
+evaluated sequentially in a pipeline fashion. Only the words that 
+match a segment can proceed with the search in their subsequent 
+segments. In [9], the segmented ML architecture (SMA) was 
+introduced, which partitions the entire ML into four segments 
+fixedly. These four segments are classified into two types; one is 
+the precharged type, and the other is the charge-shared type. First, 
+only the precharged segments are charged, and then the charge-
+shared segments share the charges during the match evaluation 
+phase. By reducing the total ML capacitance charged by the 
+power source, the ML power consumption can be reduced. 
+Note that the techniques described above are basically NOR-type 
+ML architecture. In contrast, the PF-CDPD AND-type ML 
+scheme [11] was proposed to mainly improve the performance of 
+conventional NAND-type ML design. Actually, the PF-CDPD 
+gate [11] is a variant of domino gate. When the search data fully 
+matches with the stored data, it behaves like an inverter chain in 
+the worst case. The PF-CDPD AND-type ML design [11] can 
+largely improve the performance of the conventional NAND-type 
+ML, but its performance is still worse than that of the 
+conventional NOR-type ML. 
+To further improve the performance of PF-CDPD AND-type ML 
+scheme [11], besides reducing the critical path of PF-CDPD 
+AND-type ML design from 12 segments to 6 stages, the butterfly-
+style ML scheme [12] has two design features for ML power 
+saving. First, it connects two independent MLs as a butterfly style 
+that will turn off more segments when one of the TCAM segment 
+is mismatch. Second, the don’t-care based power gating PMOS is 
+used, where the power-gating PMOS is connected to the MSB of 
+the TCAM segment. If the MSB is “X”, the power-gating PMOS 
+will be turned off to disable the unnecessary segment 
+precharge/discharge. Thus, the ML power consumption can be 
+further reduced compared to [11]. 
+3. MASK-AWARE MATCH-LINE (MAML) 
+DESIGN 
+In contrast to the binary CAM, because TCAM provides an 
+additional “don’t care” state to perform the wild match, it is 
+widely used to implement the forwarding table of the network 
+routers. A forwarding table entry contains at least two fields: 
+prefix and nextHop. The prefix is the destination IP address along 
+with its corresponding mask value. The nextHop is the IP address 
+of another host or router that is a neighbor of this router, i.e., it is 
+directly reachable via an Ethernet, serial link, or some other 
+physical connection. During the routing process, the destination 
+address of an incoming packet is compared with all the stored 
+prefixes. Then the best match with longest prefix length (LPM) 
+will be determined to forward the incoming packet to the 
+corresponding nextHop. 
+3.1 Continuous “don’t-care” Feature 
+A major challenge for routing table construction is how to use the 
+limited storage to record a large number of routing information. In 
+the Internet, the currently dominant address aggregation 
+technology is a bitwise prefix matching scheme, called classless 
+inter-domain routing (CIDR) [13], which was introduced in 1993 
+to slow the growth of routing tables on routers across the Internet, 
+and to prevent the rapid exhaustion of IPv4 addresses. CIDR can 
+facilitate routing by grouping a block of destination IP addresses 
+to a single routing table entry, i.e., CIDR prefix. These grouped IP 
+addresses share an initial sequence of bits in the binary 
+representation. As the entry A shown in Fig. 3, the aggregation of 
+256 addresses 140.120.13.0 through 140.120.13.256 is 
+represented by the prefix 140.120.13/24, where 24 is the length of 
+the prefix, and the last 8 bits are wild bits (or “X”). 
+According to the CIDR convention, it is clear that in a given 
+routing prefix if the ith cell is “X”, then all the cells from 0 to ith 
+must be “X”. In contrast, the i+1~n-1 cells are all “care”. Such 
+feature is referred to as bipartite feature that splits the mask data 
+into two sequences. One is “care” sequence where the mask data 
+are all “0”, and the other is “X” sequence where the mask data are 
+all “1”. As example shown in the entry B of Fig. 3, because the 
+11th cell is “X”, 0~11th cells are all “X”, as well as the 12th~31st 
+cells must be “care”. 
+3.2 Basic Idea of MAML Design 
+As described in Section 2, the TCAM match evaluation is 
+traditionally implemented as NOR-type dynamic logic for high 
+performance. Thus, the entire ML will be charged to VDD during 
+the precharge phase. If one or more TCAM cells are mismatched, 
+then the entire ML is discharged to 0 during the evaluation phase. 
+Because there is a lot of drain capacitances coupled to the ML, 
+the entire ML switching will causes a significant dynamic power 
+consumption. 
+As illustrated in Fig. 4, the continuous “X” feature breaks a 
+TCAM word into two sequences. One is “X” sequence, i.e., 0~11, 
+and the other is “care” sequence, i.e., 12~31. Because “X” cell 
+must result in wild match, the data comparisons occurred within 
+0~11th TCAM cells are all redundant, such that the “X” sequence 
+does not pull down the ML. This implies that only the “care” 
+sequence needs to be precharged and then evaluated. If we can 
+gate the precharge at the 11th cell instead of broadcasting over the 
+entire ML, only the parasitic capacitances of “care” sequence are 
+needed to be charged during the 0→1 transition. Thus, the 
+dynamic power dissipated in the ML switching can be reduced 
+effectively. Such design is referred to as the mask-aware ML 
+(MAML) design. In [14], a prefix length statistic showed that 
+more than 90% of IPv6 IP addresses are shorter than 64-bit. 
+Therefore, the MAML design is expected to have a large power 
+reduction on the MLs. 
+31 24 16 8 0
+entry A 1 0 0 0 1 1 0 0 0 1 1 1 1 0 0 0 0 0 0 0 1 1 0 1 X X X X X X X X 140.120.13 / 24
+entry B 1 0 0 0 1 1 0 0 0 1 1 1 0 0 0 0 0 0 1 0 X X X X X X X X X X X X 140.112.32 / 20  
+Figure 3. Continuous “don’t-care” (“X”) feature. 
+111
+4.1 Search Performance 
+The metric used to evaluate the TCAM search performance is the 
+match delay (MD). In this paper, the match delay is defined as the 
+elapsed time from driving the search data to the ML discharged to 
+0 in the mismatch case. Note that for a fair comparison all match 
+delays must be measured in the worst case. Thus, we have to 
+identify the worst case before determining the match delay. 
+For all designs the match delay is affected by the number of 
+mismatched cells. As the number of mismatched cells increases, 
+the speed of ML discharge tends to get fast, i.e., the match delay 
+is reduced. Therefore, the worst match delay for all TCAM 
+designs occurs when only one cell is mismatched. Besides, the 
+location of mismatched cells is another impact factor in 
+determining the match delay. Particularly, in the MAML design, 
+the length of ML pull-down path varies with the location of 
+mismatched cell. The worst case is that all the GNs are turned on 
+and only one mismatched cell that is located in the last segment. 
+Unlike the MAML design, the match delay of conventional 
+TCAM design is location independent. 
+Fig. 8 shows the match delay results for various TCAM designs, 
+where G is the segment granularity of MAML, i.e., the number of 
+cells in a segment. In this simulation, G is constrained within a 
+reasonable range from 8 to 64. Thus, there are 4 configurations 
+for MAML design. From Fig. 8, we summarize the most 
+important observations as follows. 
+(1) Due to no segmentation, the match delay of the conventional 
+TCAM design is independent of G value and fixed at 1.635ns. (2) 
+As expected, for a given G value, the MD of MAMLR is always 
+better than that of MAML. Such performance offset is incurred by 
+the use of refined TCAM cell. (3) In the MAML design, the 
+length of ML pull-down path increases with the GN number (in 
+the worst case), such that the match delay increases with the 
+segment number. As shown in Fig. 8, particularly, the match 
+delay will increase largely when the segment granularity is 
+smaller than 32, where the length of ML pull-down path is larger 
+than 6 NMOS transistors. Compared to the conventional TCAM, 
+the MD increases for G=16 and G=8 configurations are about 
+14% and 65%, respectively. (4) As discussed in Section 3.3, the 
+segment ML would be precharged to VDD-VTn not full VDD. This 
+will speed up the ML discharge. Thus, in the configuration G=32 
+and G=64, where the pull-down path is larger than 2, the MD of 
+both MAML and MAMLR is better than the conventional MD. 
+Even in MAMLR with G=16, its MD is still better than the 
+conventional MD due to the use of refined TCAM cell. 
+4.2 Average ML Power Consumption 
+Fig. 9 shows the single ML power consumption for the 
+conventional and MAML TCAM designs. Because MAML and 
+MAMLR have the same power result, Fig. 9 only shows the 
+MAML power result. In order to clearly demonstrate the power 
+feature of MAML design, we only provide the results of G=32 
+and G=8 configuration. In this simulation, the single ML power 
+consumption is the average power dissipated in a single ML 
+during a search. It clearly depends on the ML capacitance, and 
+varies with the continuous “X” number. Similar to the inspection 
+of search performance, these power results are measured in the 
+worst case for a fair power evaluation. In particular, the IPv6 
+prefix (or word) size is 128 bits, but there are no IP whose prefix 
+length is less than 8 bits [15]. Thus, the possible continuous “X” 
+number is varied from 0 to 120. For example, X=32 means the 
+continuous “X” number is 32. 
+(1) From Fig. 9, the ML power consumption of Conv is fixed at 
+1.6E-05W which is independent of the continuous “X” number. (2) 
+In the MAML design, the segment does not be precharged unless 
+the corresponding GN is turned on, i.e., the precharge unit is 
+segment. Thus, the ML power result of MAML displays a ladder 
+shape varied with the continuous “X” number, where one step 
+represents one segment. (3) Regardless of the continuous “X” 
+number, the ML power consumption of MAML is always less 
+than that of the conventional design. There are two reasons for 
+this result. (a) Compared to Conv, in most cases the ML effective 
+capacitance of MAML is smaller due to the insertion of gated 
+nodes. In this paper, the effective ML capacitance is defined as 
+the capacitance that needs to be charged during the ML precharge 
+phase. (b) In the MAML design, the voltage swing of segment 
+ML is constrained within 0~VDD-VTn. Thus, the ML power 
+consumption of MAML is much smaller than that of the 
+conventional design, where the voltage swing is full VDD. 
+The single ML power results are summarized in Table 1, in which 
+the worst and best values are for X=0 and X=120 cases, 
+respectively. In particular, the average value is obtained by 
+averaging the results of all 121 cases, i.e., X=0~120, if every case 
+has the same occurrence probability. For the MAML design, the 
+ML Power Consumption (Watt)
+0.0E+00
+2.0E-06
+4.0E-06
+6.0E-06
+8.0E-06
+1.0E-05
+1.2E-05
+1.4E-05
+1.6E-05
+1.8E-05
+X=
+0
+X=
+10
+X=
+20
+X=
+30
+X=
+40
+X=
+50
+X=
+60
+X=
+70
+X=
+80
+X=
+90
+X=
+10
+0
+X=
+11
+0
+X=
+12
+0
+Conv.
+G=32
+G=8
+ 
+Figure 9. The single ML power consumption for the 
+conventional and MAML (MAMLR) designs. 
+ 
+Match Delay (ns)
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+3.0
+G=64 G=32 G=16 G=8
+Conv
+MAML
+MAMLRR
+ 
+Figure 8. Match delays for various TCAM design. 
+113
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/06/15
+國科會補助計畫
+計畫名稱: 使用在網路路由器中低功率三元內容定址記憶體（TCAM）設計
+計畫主持人: 張延任
+計畫編號: 98-2221-E-005-047-MY2 學門領域: 計算機結構與計算機系統
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

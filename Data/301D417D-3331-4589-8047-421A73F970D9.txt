@@ -1,0 +1,641 @@
+network application, RUBiS, and showed that 
+CloudGuide can choose 
+cloud configuration that guarantee QoS and provide 
+cost estimation. 
+ 
+英文關鍵詞： cost estimation； cloud service； infrastructure as a 
+service； performance prediction 
+ 
+when and how to provision so that service level objec-
+tive (SLO) is maintained when workload increases. In
+this work, we define application SLO as response time
+or throughput. CloudGuide models Web applications
+using queuing model to predict the number of instances
+required to meet SLO when workload increases and
+updates the cost so that the user can know in advance
+given a workload forecast which kind of operation cost
+is expected.
+We begin with a problem statement in Section II. Next,
+we describe how CloudGuide predict the performance of a
+migrated application in Section III followed by CloudGuide
+design in implementation in Section IV. In Section V we
+evaluate the effectiveness of CloudGuide and review related
+work in Section VI. Finally, we conclude in Section VII.
+II. PROBLEM STATEMENT
+Consider a user with a legacy application that she would
+like to know the estimated cost and performance were the
+application migrated to the cloud. She is faced with N
+providers with various computing instance types and storage
+options; each provider has a pricing scheme that differs
+slightly from each other.
+The configuration for each computing instance may be ar-
+bitrary, with each provider naming their instance in different
+terms. For example, Amazon uses the term EC2 computing
+unit [2] while HiCloud uses HiCloud computing unit [4] to
+specify the computing power their instance. It is not clear
+given a legacy application, what the expected performance
+on a instance type would be.
+On top of different instance type, the pricing of in-
+stances may not be linear within a cloud provider. Illustrated
+in KingFisher [6], the pricing for both EC2 cloud and
+NewServer (NS) cloud platform is convex, meaning the
+cost per-core increases sub-linearly as the number of cores
+increases.
+Given different predict performance and pricing scheme,
+our goal is to determine an estimated cost and performance
+given a user-specified policy, such as minimized cost or
+maximal performance within budget. Our tool can be in-
+voked in initial planning or be executed whenever observed
+performance deviates from a priori goal.
+A. Cost calculation
+The cost of running an application at a stable state in the
+cloud can be roughly divided into two parts: (1) computing
+resources cost cost paid to finish the actual application
+work, which depends on the performance requirements for
+the application and (2) service cost, additional service to
+improve the application execution and is often optional.
+Table I shows an example of the different cost type we
+include when estimating deployment cost for applications in
+the cloud. Since service cost is optional and often is incurred
+to improve managing the application, we omit service cost
+in cost estimation but it can be easily included.
+Computing resource cost is expressed as followed:
+Costrunning = CostCompute instances + CostNetwork +
+CostDisk . We calculate CostComputing instances based on
+the number of instances required to host an application and
+the time t elapsed to run the workload. The number and type
+of instance required is subject to performance requirements
+which selected based on the SLO from users.
+Both network and disk cost can be calculated using a
+linear formula. Specifically, network cost Costnetwork =∑
+(Data ratei ∗ t ∗ Pricenetworki), where data rate
+as average data rate received/transmitted from/to the In-
+ternet/Intranet per second (in Gb/sec),t as total elapsed
+time in seconds, and Pricenetwork as unit price of
+data transfer in $/per GB. Storage cost is calculated
+using: CostDisk = CostStorage + CostTransaction,
+where CostStorage = TotalDataSize ∗ UnitPrice and
+CostTransaction = RateTransaction∗t∗CostPertransaction,
+where RateTransaction is the average disk transaction rate
+in transactions per second and t is the total elapsed time.
+One key factor determining computing resource cost is
+the performance requirements. As more computing resources
+can usually provide better or more stable performance,
+requesting more resources can provide better performance.
+Since cloud resources is charged in a pay-as-you-go fashion,
+the charge on over-provisioned resources brings little perfor-
+mance benefit. Therefore, the goal for CloudGuide is to help
+user determine the right provision size: meaning it is not
+over-provisioned, resulting in monetary waste, nor under-
+provisioned, hurting application performance.
+B. Performance requirements
+CloudGuide needs to predict application performance in
+the cloud to ensure performance requirement is met. Since
+we focus on web applications, we define performance as
+both response time within a time threshold, say two second,
+while supporting a given throughput. This prediction prob-
+lem can be rephrased as “how many resources should a user
+request from a provider so that the performance requirements
+can be met?”
+Since cloud resources can be divided into: computing
+resources (including memory), network, and storage. Esti-
+mating the amount of resources required is reduced three
+subproblems; that is, determining the number of instances
+of a specific type, which type of storage and which type of
+network. In this work, we focus on the first subproblem.
+Determine the suitable type of storage is non-trivial and
+often requires application modification as demonstrated in
+work by Kossmann et. al [7], where they compare perfor-
+mance of running database under different architecture in
+cloud. In this work, we assume the most basic local storage
+option that usually comes default with a computing instance,
+such as elastic block storage (EBS) in Amazon and default
+To solve the above ILP problem for a policy, a perfect
+solution can be obtained using a solver, such as CPLEX
+solver. However, as the problem sizes grows, it takes quite
+long time to obtain a perfect solution. We map the problem
+into a 0-1 min knapsack problem and implement an approx-
+imate greedy algorithm which is worst-case bound of 2 [6],
+[8]. We will describe how we find the parameters required
+to solve this problem in Section IV.
+III. MEETING PERFORMANCE REQUIREMENTS
+For each instance type, CloudGuide needs to estimate
+the capacity it can sustain for the targeted application. This
+information is very important for CloudGuide to provision
+sufficient but not wasteful resources to the targeted applica-
+tion. Thus, the more accurate the estimated server capacities
+are, the more precise resource provisioning can be done.
+To capture the application performance on a unseen
+platform, one simple way is to run the application in
+that platform, drive with test workload, and observe the
+performance. Previous work such as Kingfisher [6] adopted
+this empirical approach to determine server capacities. We
+argue that, however, in cloud environment where providers
+tend to offer multiple instance configurations, this can incur
+high cost because without knowing the suitable computing
+instance size, one needs to try all. With each provider
+offering at least three to four computing configurations, the
+number of instance types adds up quickly, not to mention
+that extra effort is required in order to run the application
+on every candidate cloud provider.
+We need to estimate how much application-level capacity
+a cloud instance type can sustain without actually migrating
+the application in the cloud. Users have control of their
+local clusters and published benchmark results on each cloud
+instance. The difficulty lies in how to translate benchmark
+results into application-specific performance.
+Queuing theory has been applied in previous work to
+model Internet applications [9], [10], [11], [12]. We also
+make similar assumption that network application can be
+modeled by queuing system. We start by using G/G/1 queu-
+ing system to model the server capacity on a known platform
+(e.g. machine which hosts the targeted application from
+local cluster ), by doing so we establish the server capacity
+baseline. Then we model each type of instance which can
+serve requests m times faster than baseline system, where
+0 < m , by applying G/G/m queuing system. Here we refer
+m as a speedup factor
+Our idea to estimate server capacity for each cloud
+instance from publically-available benchmark results.
+CloudGuide first derives local server capacity from local
+machine based on user-specified SLO assuming web appli-
+cation follows queueing model. Then, CloudGuide estimates
+cloud server capacity. Even though both follow queueing
+model, there is a speedup factor between local server capac-
+ity and cloud server capacity. CloudGuide applies techniques
+to cross-platform performance estimation to derive such
+factor. Other possibilities for deriving this speedup is to
+take benchmark performance scores, such as SpecJVM,
+or clockspeed. However, previous work shows that this
+method works well for applications that uses one resource
+intensively [13]. The three steps taken in our approach to
+estimate server capacity can be summarized as followed:
+1) Establish server capacity from local server using
+G/G/1 queuing model.
+2) Calculate speedup factor for each cloud instance type
+3) Derive estimated server capacity for each cloud in-
+stance type by combing local server capacity and
+speedup factor using G/G/m queuing model.
+A. Establishing base capacity
+We applied the following formula from G/G/1 queuing
+system [14] to calculate the server capacity baseline
+λi ≥ [si +
+σ2a + σ
+2
+b
+2 ∗ (di − si)
+]−1 (8)
+here di is the mean response time for tier Ti, si is the
+mean service time of requests at tier Ti, σ2a and σ2b are the
+variance of inter-arrival time and variance of service time,
+respectively. Note that di is the response time requirement
+defined in SLO and rest of the parameters can be obtained
+from application logs. Here, di can be specified either as
+average response time or high percentile of response time
+distribution (e.g. the end-to-end response time of 95% of the
+requests should be below 2 seconds). Finally, we can derive
+λi to be lower bound of input request rate that can be served
+by a single server of tier Ti.
+B. Determining capacity for different instance type
+After establishing the server capacity baseline, we ap-
+proximate server capacities of different instance types by
+modeling them as G/G/m queuing system. First, we replace
+the service time to be m times speed-up in equation 8 to
+derive capacity [14] as followed:
+λi ≥ [
+si
+m
++
+σ2a +
+σ2b
+m
++ (m−1
+m2
+)s2i
+2 ∗ (di − si)
+]−1 (9)
+Here we reuse all parameters di, si, σ2a, σ2b from equa-
+tion 8, except we need to find the speed-up factor m. To
+find m we need to estimate how the application service
+time might change on a unseen platform. We describe our
+methodology of finding m in next section.
+C. Finding speed-up factor
+In this thesis, we focus on finding speed-up factor m
+for business logic tier because it is generally computing
+intensive that might benefit from instance type changes. On
+the other hand, from our observation, front-end web tier that
+serves small static files is very lightweight comparing to
+business logic.
+C
+lo
+u
+d
+G
+u
+id
+e
+ U
+se
+r (o
+n
+-p
+re
+m
+ise
+) 
+C
+lo
+u
+d
+G
+u
+id
+e
+ (clo
+u
+d
+ p
+la
+tfo
+rm
+) 
+Resource profile 
+CPU event profile 
+Component graph 
+RUBiS 
+Olio 
+TPC-W 
+Provider Service 
+Provided 
+Pricing 
+Options 
+Amazon EC2, S3, … Small: $/hr 
+Large: $/hr 
+Windows 
+Azure 
+Compute, DB, 
+… 
+… 
+CloudGuide Suggestion Engine 
+• Sever Capacities estimation 
+• Configuration selection 
+• Hosting cost estimation 
+Cloud 
+services 
+suggestion
+and cost 
+estimation 
+Cloud services and pricing options 
+Benchmark Results 
+Cloud Providers 
+Survey Engine 
+SLO and 
+policy 
+Application Profiler and 
+Log Collector 
+Application logs 
+log..
+log 
+log 
+log 
+log..
+log 
+log 
+log 
+log..
+log 
+log 
+log 
+Step 2 
+(first part) 
+Step 1 
+Step 2  
+Step 3 
+Step 4 
+Figure 3. CloudGuide tool suite overview
+We develop a series of handy tools to accomplish steps
+above. Figure 3 depicts each tool from CloudGuide tool
+suite and describes simple relationships between these tools.
+Cloud providers survey engine contains a web crawler to
+obtain service and pricing information from cloud providers’
+website, and a benchmark suite to establish performance
+comparison baseline among cloud providers (step 1). This
+process can be configured to either re-run periodically (e.g.
+after weeks or months) or triggered manually by users
+(e.g. upon new service update or price change). The results
+obtained from this step are reusable for any CloudGuide
+user. Users do not need to participate in this step to use
+CloudGuide, but users can also conduct their own survey
+and benchmarks if necessary.
+To use CloudGuide, users need to run application profiler
+and log collector to profile the targeted application and
+collect application logs in the users’ on-premise computing
+environment.
+Finally, all output from above two tools (e.g. service
+and pricing survey report, benchmark results, application
+profile and application logs) serve as input files to sugges-
+tion engine. Suggestion engine, which is also the heart of
+CloudGuide, completes the remaining steps (step 2, 3, and
+4). Users also need to specify two parameters for suggestion
+engine: SLO (i.e. application response time) and policy.
+If SLO is not explicitly specified, the default behavior of
+suggestion engine is to use the hardware specification of
+the local cluster as a reference and search across virtual
+hardware options from all cloud providers for configurations
+that offer similar performance to host the targeted applica-
+tion. Policy is what impacts suggestion engine directly on
+making choice among configurations. CloudGuide currently
+supports two polices: minimize deployment cost, and max-
+imize throughput under given monetary budget. We plan
+to extend CloudGuide by adding more supported policies,
+for example minimum average response time . If users are
+interested in exploring what-if scenario, they can leverage
+suggestion engine by specifying different SLO for potential
+development preferences, such as reduce response time by
+20% or increase throughput by half while keeping minimal
+cost.
+B. Cloud Providers and Their Pricing Schemes
+When choosing which cloud platform to move one’s appli-
+cation to, we first need to decide which type of cloud service
+based on the common characterization of infrastructure-,
+platform- and software-as-a-service (i.e. IaaS, PaaS, and
+SaaS). For users developing new applications, they have
+the freedom to choose the appropriate level since they are
+starting from a clean-state design; however, others may not
+be so lucky. In our case, we target on migrating legacy net-
+work application to the cloud, so we choose cloud providers
+who provide IaaS service, which provide virtual machine
+abstraction that imposes least limitations.
+Table III
+CONFIGURATION SUGGESTED BY CLOUDGUIDE FOR RUBIS BUSINESS
+LOGIC (PEAK WORKLOAD EQUIVALENT TO 1000 ACTIVE SESSIONS).
+Cloud Providers Configuration
+Hicloud two xs servers
+Amazon EC2 three c1.medium servers
+logic, and a back-end database. We host the application on
+three Dell R310 servers in local environment, with each tier
+deployed on a machine. The web server tier run on Apache
+2.2, the business logic run on the JOnAS 5.3.0 application
+server, and the back-end database is MySQL 5.1.58. All tiers
+run on the Linux kernel 2.6.18.
+In all our experiments, we use the client workload gen-
+erator that bundled with the application. Client workload
+generator allows us to decide the mix of operations and
+active sessions we use to exercise the web application. We
+use two typical workload in our experiments: 1.) Bidding-
+mix with 80% read requests and 20% write requests, 2.)
+Browse-only with 100% read requests. For simplicity we
+show results for experiments conducted under bidding-mix
+workload by default.
+B. The Validness of Configurations Determined by
+CloudGuide
+We evaluate the validness of configurations by the fol-
+lowing criteria: 1.) If SLO does not continuously be sat-
+isfied under peak workload, then the application is under-
+provisioned, 2.) After removing a cloud instance that offers
+minimum server capacity from the original configuration,
+if SLO is still continuously satisfied, then the application
+is over-provisioned. If the application is neither under-
+nor over-provisioned, then it is well-provisioned. That is,
+resources provided to host the application is sufficient yet
+not wasteful.
+1) Case Study I: capacity Planning for Migrating Legacy
+Network Application to the Cloud: We first evaluate the
+validness of configurations for the case of using CloudGuide
+for capacity planning for migrating legacy network applica-
+tion to the cloud. We use CloudGuide to find a deployment
+plan (i.e. configuration) before we migrate RUBiS from local
+environment to the cloud. We set SLO to the average re-
+sponse time of the application must below 2 seconds, and our
+strategy to minimize hosting cost. For simplicity, we choose
+five types of instance from two cloud providers (identical
+to instances listed in figure 1) as candidate. CloudGuide
+observes the peak workload (in this case is 1000 active
+sessions) RUBiS receive during the past, and suggests cloud
+configuration for each cloud provider, as shown in table III.
+Figure 4 plots request response time against active ses-
+sions variation for RUBiS hosting on Hicloud. According to
+CloudGuide, we need to provide two xs instances to RUBiS
+business logic in order to meet SLO. From the figure we
+can see that the SLO is continuously met if we deploy
+two instances for RUBiS business logic as CloudGuide
+suggested. If we remove one instance that offers minimal
+server capacity (in this case, two xs instances offer identical
+server capacities), the SLO will be violated. Thus, RUBiS is
+not under- nor over-provisioned, i.e., it is well-provisioned.
+Figure 5 plots request response time against active ses-
+sions variation for RUBiS hosting on Amazon EC2. In
+this case, we need to provide three c1.medium instances
+to RUBiS business logic in order to meet SLO. From this
+figure, we learn that two c1.medium servers are sufficient to
+sustain workload of 1000 active sessions. Thus, CloudGuide
+over-provision one c1.medium server to RUBiS. Recalling
+from section III, G/G/m queuing model finds a lower bound
+on server capacity, so the actual server capacity of a cloud
+instance might be under-estimated.
+2) Case Study II: Capacity Planning for Dynamic Provi-
+sioning: Next, we study the case that leveraging CloudGuide
+to do capacity planning for dynamic provisioning. Users are
+able to leverage G/G/1 queuing model for scaling out (e.g.
+provide same type of new instance), and leverage G/G/m
+queuing modeling for scaling up (e.g. provide different type
+of new instance). Figure 6 depicts the result that we use
+CloudGuide to determine when and how many number of
+instances to scale out RUBiS business logic. As shown
+in the figure, as the active sessions increased over time,
+CloudGuide triggered an alert of resource shortage at 800
+active sessions. If the number of active sessions continue
+to raise and the tier is not scaled out as suggested by
+CloudGuide, the SLO is violated.
+C. The Importance of Estimating Cloud Deployment Cost
+To the end of our goal, we want to help users to choose
+among cloud providers for hosting their applications. As
+shown in table III, CloudGuide outputs the most preferable
+configuration of each cloud provider. In this case, since our
+strategy is to minimize deployment cost, we will choose
+Hicloud because it offers cheaper computing resources than
+Amazon EC2. However, as mentioned in section II-A, the
+deployment cost not only consists of the cost of computing
+instance, but also consists of the cost for network and
+storage activities. We estimate deployment cost as depicted
+in figure 7. We breakdown the deployment cost into the cost
+of computing instance, storage, and network. As one can see,
+the estimated deployment cost of Hicloud is much higher
+than Amazon EC2, because the price of network bandwidth
+between these two providers differentiate drastically. The
+network-intensity of Internet application emphasize the im-
+pact of this pricing difference. Hence, given the estimated
+cloud deployment cost, we will choose Amazon EC2 over
+Hicloud in the end.
+ 0
+ 500
+ 1000
+ 1500
+ 2000
+ 2500
+ 3000
+ 3500
+ 4000
+ 4500
+ 5000
+ 0  100  200  300  400  500  600  700  800  900  1000
+95
+th
+ R
+es
+po
+ns
+e 
+Ti
+m
+e 
+(M
+illis
+ec
+on
+d)
+Number of Active Sessions
+Alert! Need extra server
+one c1.medium server
+two c1.medium servers
+95
+th
+ R
+es
+po
+ns
+e 
+Ti
+m
+e 
+(M
+illis
+ec
+on
+d)
+SLO=2000 ms
+Figure 6. Dynamic provisioning using CloudGuide
+ 0
+ 500
+ 1000
+ 1500
+ 2000
+ 2500
+ 3000
+ 3500
+ 4000
+ 4500
+ 5000
+Hicloud AWS EC2
+Compute Instance
+Network
+Storage
+Figure 7. Pricing breakdown of the estimated cloud deployment cost.
+to cloud vendor offerings.
+Tak et al. [24] applies Net Present Value (NPV) method to
+estimate and compare the cost of owning a local data center
+vs. renting cloud resources. They take Amazon AWS as an
+example of cloud provider and include detailed cost calcu-
+lation for deploying locally. Their work is complementary
+to ours as we compare among multiple cloud providers, and
+we examine different applications.
+Conductor [25] considers the computation model based on
+MapReduce [26] and address resource management issues,
+such as dynamic pricing and resource diversity. Our work
+takes application resource requirement as an black-box and
+finds the best cloud provider based on the policy and
+requirements from users.
+Garfinkel [27] and Walker [20] documented their expe-
+riences in using Amazon for grid computing service and
+scientific computing respectively. Both of their work inves-
+tigates scientific computing on one specific cloud service
+provider, while this proposal plans to across multiple cloud
+service providers and compare many types of applications.
+Ward [28] compared the performance and pricing of using
+UBUNTU Enterprise Cloud, a private cloud software suite,
+with services offered by Amazon EC2.
+Finally, Teregowda et al. [29] closely documented their
+migration process for a mature large-scale CiteSeer into
+the cloud and provided many insights on how application
+[24] B. C. Tak, B. Urgaonkar, and A. Sivasubramaniam, “To move
+or not to move: The economics of cloud computing,” in
+Proceedings of 3rd USENIX Workshop on Hot Topics in Cloud
+Computing, Portland, OR, June 2011.
+[25] A. Wieder, P. Bhatotia, A. Post, and R. Rodrigues, “Con-
+ductor: Orchestrating the clouds,” in Proceedings of the 4th
+Workshop on Large Scale Distributed Systems and Middle-
+ware (LADIS), Zu¨rich, Switzerland, July 2010.
+[26] J. Dean and S. Ghemawat, “Mapreduce: Simplified data
+processing on large clusters,” in Proceedings of the 6th Sym-
+posium on Operating Systems Design and Implementation,
+San Francisco, CA, December 2004.
+[27] S. L. Garfinkel, “An evaluation of amazon’s grid computing
+services: Ec2, s3, and sqs,” Harvard University, Tech. Rep.,
+2007.
+[28] J. S. Ward, “A performance comparison of clouds: Amazon
+ec2 and ubuntu enterprise cloud,” in Proceedings of SICSA
+DemoFEST ’09, 2009.
+[29] P. B. Tergowda, B. Urgaonkar, and C. L. Giles, “Citeseerx: A
+cloud perspective,” in Proceedings of HotCloud 2010, Boston,
+MA, June 2010.
+100年度專題研究計畫研究成果彙整表 
+計畫主持人：蘇雅韻 計畫編號：100-2219-E-002-025- 
+計畫名稱：雲端服務之品質保證、服務選擇與定價策略--子計畫二：以使用者為出發點之雲端效能預
+測與服務選擇(I) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 3 3 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100% 撰寫中 
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

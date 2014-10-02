@@ -1,0 +1,759 @@
+ 2
+ 
+設計與實作一個利用跨階層資訊且具備自我調整的硬碟排程演算法 
+ 
+計畫編號：NSC 99－2221－E－005－076 
+執行期限：99 年 8月 1日至 100 年 7月 31 日 
+主持人：張軒彬 
+國立中興大學資訊科學與工程學系 
+ 
+摘要―混合式硬碟是由硬碟以及 SSD 組成，具有傳統
+硬碟的大儲存空間，也同時利用 SSD 作為快取來提高效
+能。在本論文中，首先，我們提出一個應用於混合式硬碟
+的資料快取策略，此策略分析資料的讀寫次數、循序或隨
+機存取以及最近是否被存取等特性，優先將較常隨機讀取
+的資料寫到 SSD，以提高 I/O 效能。其次，目前 Linux 預
+設的 I/O Scheduler 為 CFQ，它會在同步請求服務完成後，
+等待一小段時間，期待有緊鄰的請求到來。我們修改 CFQ
+演算法以應用於混合式硬碟，如果目前完成的同步請求所
+存取的資料是位於 SSD 上，則修改 CFQ 為不等待，避免浪
+費等待時間。我們已實作於 Linux 作業系統，根據實驗結
+果，我們提出的資料快取策略計算成本很低，並且可以同
+時利用 SSD 與硬碟的優點來改善 I/O 效能。 
+關鍵詞―混合式硬碟、硬碟排程演算法、資料快取策
+略、Linux 
+1. 簡介 
+長久以來，硬碟一直是電腦系統的重要儲存裝置，但
+是硬碟存取資料時是機械動作，無法像電子元件可以遵循
+摩爾定律的速度增長。因此，硬碟的 I/O 一直是電腦效能的
+主要瓶頸。為了改善此問題，出現了以 NAND Flash 為基礎
+的固態硬碟(SSD: Solid State Disk)。NAND Flash 不需仰賴
+電力維持所儲存的資料，也沒有傳統硬碟機械式存取資料
+的動作，因此，SSD 比傳統硬碟更省電，同時也提供更高
+的存取速度。 
+固態硬碟雖然具有以上的優點，但它有成本以及寫入
+壽命的缺點。此外，固態硬碟的讀取與寫入速度以及負擔
+(overhead)是不一樣的，除了寫入速度比讀取慢之外，如果
+寫入資料的位置已經有資料，那麼必須將此位置所屬於的
+區塊(block)進行抹除(erase)的動作後，才有辦法進行寫入，
+因此固態硬碟如果有許多寫入動作，尤其是隨機寫入的
+話，那麼可能會因為必須做很多次區塊抹除的動作而導致
+性能下降。 
+基於固態硬碟的成本問題，因此有許多研究探討利用
+SSD 結合硬碟，將 SSD 作為硬碟的快取，利用 NAND flash
+的優點來改善 I/O 效能。例如 RAF(Random Access First)系
+統[3]，利用硬碟循序存取速度與 SSD 循序存取速度類似，
+以及 SSD 的隨機存取快較硬碟快等特色，將隨機存取的資
+料放置於 SSD，循序存取的資料則由硬碟存取，但是 RAF
+並沒有考慮 SSD的讀取與寫入速度以及負擔(overhead)是不
+一樣的，換言之，RAF 沒有考慮利用資料的讀取與寫入的
+特性，以進一步提昇系統效能。  
+在本篇論文中，我們也是著重在利用 SSD 做為硬碟存
+取的快取。不過，與之前的研究不同，我們著重於混合式
+硬碟架構。混合式硬碟是由大容量的傳統硬碟以及小容量
+的 SSD 所組成，除了傳統硬碟提供大容量的儲存空間外，
+同時也能透過 SSD 作為快取來提高 I/O 效能，因此可以在
+成本與效能間取得平衡。我們在混合式硬碟上設計資料快
+取的策略，考慮到資料的讀取、寫入次數、為隨機還是循
+序存取，優先將隨機讀取、不常被寫入的資料放入 SSD 作
+為快取，一來提昇隨機存取的速度，也可延長 SSD 的寫入
+壽命；對於循序存取的資料我們則由硬碟服務，以發揮硬
+碟對於循序存取比隨機存取快的優點。此外，我們也修改
+CFQ(Completely Fair Queuing)排程演算法，根據目前完成的
+同步 request 為存取混合式硬碟中的 SSD 還是硬碟，決定
+CFQ 是否需要等待緊鄰的 request，避免不需要的等待時
+間。。 
+   在第二章中，我們會介紹混合式硬碟的資訊以及快取策
+略的相關研究。第三章會描述本論文的系統架構、設計，
+第四章為實驗數據統計與分析，第五章為結論與未來工作。 
+ 
+2. 相關研究 
+2.1 FlashCache 
+FlashCache[1]的快取策略很簡單：如果讀取的資料在
+SSD 中，則從 SSD 讀取，否則 FlashCache 會將這份資料從
+硬碟讀取後，並寫入到 SSD 中；當寫入的資料在 SSD 中，
+FlashCache 會覆寫原本在 SSD 上的資料，否則則將資料直
+接寫入 SSD 中。由上可知，FlashCache 的快取策略就是希
+望SSD能吸收所有workload的 I/O request。但是，FlashCache
+的快取策略過於簡單。例如：對於循序存取的資料而言，
+硬碟的處理速度和 SSD 是差不多的，如果資料都從 SSD 存
+取，則會加速 SSD 耗損(wear)的速度；此外，讀取和寫入對
+於 SSD 的存取成本是不同的。寫入資料到 SSD 不僅需要比
+較長的時間，也會產生失效的 page(invalid page)，加速 SSD
+的耗損。上述特色 FlashCache 都沒有考慮。 
+ 
+2.2 RAF 
+2.2.1 RAF 的架構 
+    RAF 也是利用 SSD 作為硬碟快取，相較於 FlashCache，
+RAF 只會選取隨機的資料放入 SSD 中作為快取。圖 1 所示
+為 RAF 的架構。Monitor 會攔截 I/O request 以及從 buffer 
+cache 中要被回收的 page，之後將這些 request 導向給
+user-level 的 dispatcher 處理。 Dispatcher 內部有一個
+sequence detector 會記錄每一筆循序存取(稱為 SD: Sequence 
+Descriptor)開頭的 LBA(Logical Block Address)、timestamp、
+循序的長度。當 sequence detector 接收到 request 後，sequence 
+detector 會產生一個 SD，並記錄 request 起始的 LBA 為 SD
+開頭的 LBA，目前的時間為 SD 的 timestamp，request 的長
+ 4
+模 組 會 以 『 循 序 LBA 序 列 』 為 單 位 ， 使 用
+CPN(Candidate Prize Node)描述每一個循序 LBA 序列
+的 metadata：包含起始 LBA、長度、讀寫次數…等資
+訊，當 CPN 對應的資料被存取時，系統則會更新其讀
+寫次數。 
+另外 CPNMgr 模組會進行循序存取的判斷，類似
+RAF，我們也是利用 LBA 作為判別循序存取的依據，
+如果一個 request 包含的 LBA 與系統中的任何一個
+CPN 包含的 LBA 相鄰，我們會更新 CPN 的開頭
+LBA、延伸循序 LBA 序列的長度。 
+ APNMgr 模組：當 ReqAnalyzer 收到從 ReqInterceptor
+送來的 request，如果此一 request 所要求的資料在 SSD
+上，則會交給 APNMgr 模組管理。APNMgr 模組同樣
+以循序 LBA 序列為單位，使用 APN(Approval Prize 
+Node)描述序列的 metadata：包含開頭 LBA、長度、
+讀寫次數、每個 LBA 硬碟區塊存放在 SSD 上的 LBA
+位址…等資訊。同時，當 APN 對應的資料被存取時，
+系統會更新 APN的讀寫次數，並重新計算 Prize值 (計
+算方式在 3.2.3 節會介紹)，作為判斷將資料寫到 SSD
+或是從 SSD 踢出的依據。 
+ LBAMgr 模組：為了加快搜尋速度，LBAMgr 模組會
+維護以 LBA 為鍵值的二元樹。因此，可以透過
+LBAMgr 找到資料的 metadata，而 metadata 的類型則
+分成 CPN 與 APN。 
+3.2.2 切割 request 
+從 ReqInterceptor 攔截的 request 可能有部分存取
+SSD，其餘則是存取硬碟，因此我們依據存取目標將一個
+request 切割成多個 request segment，之後則以 request 
+segment 為單位進行處理。 
+ 
+圖 3:request 切割的例子 
+圖 3 是 request 切割的例子，此例子會將 request 分成 6
+段 request segment，request segment 編號 1、5 屬於 APN，
+表示資料已經在 SSD，request segment 編號 3、6 屬於 CPN，
+表示資料在硬碟上，而 request segment 編號 2、4 是沒有被
+系統記錄的資料，代表這些資料可能是第一次存取或是雖
+然存取過，但是存取間隔太長，超過 CPN 結點數目的上限。
+當然，編號 2、4 資料也一定在硬碟上。因此快取策略將決
+定是否將這兩個 request segment 的資料寫到 SSD，如果是，
+則新增 APN 的 metadata，否則則新增 CPN 的 metadata。 
+3.2.3 Prize Caching 
+ 我們的快取策略稱為 Prize Caching (PC)，系統依據資
+料的 Prize 值決定是否寫到 SSD 或是從 SSD 回收資料，Prize
+的計算如式(1)所示。因為資料具有空間區域性，同時為了
+減少系統維護 metadata 的記憶體使用量，所以我們以循序
+LBA 序列為單位來計算 Prize 值，而不是以每一個 LAB 為
+單位。以下將說明我們計算 Prize 值考量到的因素。  
+ 
+ rCnt：記錄此循序 LBA 序列至今被讀取的次數，假如
+rCnt 越高，代表此循序 LBA 對應的資料越常被讀取，
+因為 SSD 讀取的速度遠大於比寫入的速度，因此，我
+們應該優先將這些資料寫到 SSD 中。 
+ wCnt：記錄此循序 LBA 序列至今被寫入的次數，假
+如 wCnt 越高，代表此序列對應的資料越常被寫入，
+因此將這些資料寫到 SSD 是不適當的，因為 SSD 的
+寫入比讀取慢，同時寫入 request 一般為非同步，對寫
+入速度的要求就不如讀取 request 高，在者寫入也會導
+致 garbage collection，並且加速 SSD 耗損，所以我們
+將 wCnt 放在的分母，wCnt 越大，Prize 的值就越小。 
+ seqLen：代表此循序 LBA 序列的長度，如果長度越
+長，表示此一序列為循序存取的機率越高；相反的，
+如果長度越短，表示隨機存取機率越高。如果能將循
+序存取的資料由硬碟服務，而隨機存取的資料由 SSD
+服務，便能利用硬碟的循序存取比隨機存取快的優
+點，所以我們將 seqLen 置於分母。 
+ BasePrize：Prize 值除了考慮資料的存取特性，另外也
+必須資料是否最近被存取(recency)的特性，因此我們
+在 Prize 的公式中加入 BasePrize。BasePrize 的計算方
+式為：最後一次從 SSD 踢出的資料其 Prize 值即設為
+BasePrize。因此，BasePrize 的值會隨著資料踢出而增
+加。在一般的情況下，當需要寫入資料到 SSD 時，因
+為 SSD 的容量有限，我們必須回收 Prize 值為最小的
+資料，並將此一最小 Prize 值設為 BasePrize。同時，
+新寫入的資料其 Prize 的計算都會加上此一 BasePrize
+值。我們利用此特色，使得最近被存取的資料擁有較
+高的 BasePrize。換言之，我們 Prize 的計算也同時能
+夠考慮資料 recency 的因素。 
+ α 與 (1-α)：調整 α值可以讓我們設定資料的存取特性
+以及最近被存取特性的比例。 
+ 
+從 Prize 的公式可以得知，我們考慮到資料的存取特
+性，藉由 rCnt 除以 wCnt 得知平均將資料寫入一次到 SSD
+上，可以獲得多少的讀取效益；同時我們也考慮到資料是
+否為循序或是隨機存取，因此我們會再把 rCnt 除以 wCnt
+後的值再除以 SeqLen，表示我們在此循序 LBA 序列中，平
+均每一個 LBA 資料可以分得多少的讀取效益，換言之，隨
+機存取的序列會比循序存取的序列分得更多讀取效益；最
+後，我們加上 BasePrize 的值考量到資料最近是否被存取的
+特性。Prize 值較高的資料則會被優先寫到 SSD 作為快取。 
+ 
+ 6
+SSD，如果還是等待緊鄰的 request 到來是沒有意義的，硬
+碟讀寫頭的位置並不會因為存取 SSD 而移動。如果不等待
+這段時間，直接服務下一個 request，便可節省這段浪費的
+時間。 
+ 因此，對於 CFQ 送出給混合式硬碟的 request，當 CFQ
+決定等待緊鄰的 request 到來時，ReqHandler 會依據目前完
+成的 request 存取裝置類型決定是否讓 CFQ 等待，如果
+request 是存取 SSD，則不讓 CFQ 進行等待；相反的，則讓
+CFQ 等待緊鄰的 request。 
+3.4 整體運作流程 
+ 首先 ReqInterceptor 模組攔截 I/O Scheduler 發出的
+request 以及從 buffer cache 中要被回收且為 clean 的資料，
+然後將這些資料送給ReqAnalyzer模組分析，而ReqAnalyzer
+模組以 LBA 為鍵值將 request 分割成 CPN、APN、或是沒
+有被系統記錄到等三種 request segment，然後 ReqAnalyzer
+模組依序分析 request segment。在分析完後，ReqAnalyzer
+模組將分析結果送給 ReqHandler 模組，由 ReqHandler 模組
+發送 request 給硬碟或是 SSD，以下將說明 ReqAnalyzer 模
+組分析 request 的情形。 
+ Request segment 型態為讀取 request 
+ request segment 的 metadata 為 APN：表示 request 
+segment 的資料在 SSD，所以對 APN 的讀取次數
+加 1、更新 APN 的 Prize，接下來從 APN 得知要
+讀取的資料在 SSD 上的 LBA 位置，最後從 SSD
+讀取資料。 
+ request segment 的 metadata 為 CPN：表示 request 
+segment 的資料沒有存在 SSD，因此從硬碟讀取
+資料，並對 CPN 的讀取次數加 1。 
+ request segment 的 metadata 是系統沒有記錄到：
+表示 request segment 的資料沒有存在 SSD，因此
+新增 CPN 的 metadata，並對 CPN 的讀取次數加
+1，之後從硬碟讀取資料。  
+ Request segment 型態為回收的 clean page 或為寫入的
+request  
+ request segment 的 metadata 為 APN：表示資料在
+SSD，因此將 request segment 的資料寫到 SSD，
+如果 request segment 型態為寫入 request，則將
+APN 的寫入次數加 1，最後則更新 Prize。 
+ request segment 的 metadata 為 CPN：如果 request 
+segment 型態為寫入 request，則將 CPN 的寫入次
+數加 1，之後使用 Prize Caching 快取策略決定是
+否將 request segment 的資料寫到 SSD，如果為
+否，則將 request segment 的資料寫到硬碟；如果
+為是，則新增 APN 的 metadata，並將算出的 Prize
+值放入 APN，同時分配 SSD 的 LBA，代表 request 
+segment 的資料要寫入 SSD 的位置，並且根據
+request segment 型態為回收的 clean page 或為寫
+入 request 來記錄 request segment 的資料為 clean
+或是 dirty，使得之後在回收資料時，可以判斷是
+否需要資料寫到硬碟上。最後，就可將 request 
+segment 的資料寫到 SSD。 
+ request segment 的 metadata 是系統沒有記錄到：
+表示 request segment 的資料沒有存在 SSD，因此
+依據 Prize Caching 快取策略決定是否將資料寫
+到 SSD，如果為真，則將資料寫到 SSD，並新增
+APN 的 metadata，否則將資料寫到硬碟，並新增
+CPN 的 metadata。最後如果 request segment 型態
+為寫入 request，則對這兩種 metadata 的寫入次
+數加 1。 
+3.5 應用 Prize Caching 於混合式硬碟 
+ 此節將說明如何應用 Prize Caching 快取策略於混合式
+硬碟上。由於目前的混合式硬碟並沒有提供介面由作業系
+統控制資料要由混合式硬碟中的傳統硬碟或是 SSD 作讀
+寫。為了能夠讓 Prize Caching 快取策略應用在混合式硬碟
+上，我們建議修改混合式硬碟和作業系統之間的介面如下：  
+ 混合式硬碟能接受讀寫混合式硬碟中的SSD或是傳統
+硬碟的命令：命令內容包含讀寫資料的開頭 LBA、長
+度、類型(讀取或寫入)、目的裝置(SSD 或傳統硬碟)。 
+ 混合式硬碟能提供將 SSD 的資料寫到傳統硬碟的命
+令：命令內容包含要從 SSD 讀取的開頭 LBA、長度，
+以及寫到傳統硬碟的開頭 LBA、長度。因此當需要回
+收 SSD 的資料時，我們就使用此命令將要回收的資料
+從 SSD 讀取，之後寫到傳統硬碟。 
+ 
+4. 實驗與結果 
+4.1 環境設定 
+ 表 1 顯示我們為實驗對象，我們已於 Linux 上實作本
+論文中提出的機制，並且也實作 RAF 以及 FlashCache(FC)
+兩種快取策略。但是，我們沒有實作 RAF 的 FTL 層，這是
+因為 FTL 事實上是由 SSD 內部自行管理，我們也沒有實作
+FC 中除了依照 LRU 也會參考刪除次數來決定回收的機
+制，這是刪除的處理事實上也是由 SSD 內部自行管理。表
+2 為實驗環境，因為目前的混合式硬碟沒有提供介面讓作業
+系統決定資料要存取硬碟或是 SSD，因此我們自行撰寫一
+個混合式硬碟模擬器。一開始我們先在 Linux 上執行 PC、
+RAF-Like、FC-Like 等三種資料的快取策略，並記錄在收到
+workload 發出的 request 後，各個快取策略發送給混合式硬
+碟的 request 資訊：包括開始 LBA，循序 LBA 序列的長度，
+存取的類型、存取的裝置。之後將根據記錄的 request 資訊
+輸入我們的混合式硬碟模擬器。以下說明我們的混合式硬
+碟模擬器中對於存取傳統硬碟以及 SSD 時間的算法方法。  
+ 
+表 1:實驗對象 
+名稱 說明 
+PC 我們所提出來的資料快取策略：Prize Caching 
+RAF-Like 類似 RAF 的方法，但不自行管理 FTL 層 
+FC-Like 類似 FlashCache 的方法，但只採用 LRU 的方
+式回收 Flash 的資料 
+表 2:實驗環境 
+CPU Intel Pentium E5300 (2.60 GHz) 
+RAM 512 MB 
+作業系統 Ubuntu 10.04 
+Linux 版本 2.6.3.41 
+檔案系統 Ext 4 
+檔案系統的區塊大小 4 KB 
+儲存裝置 混合式硬碟 
+(146G 10000 rpm 硬碟 + 1G SSD) 
+ 
+由於檔案系統的區塊大小為 4KB，表示存取混合式硬
+碟的最小單位為 4KB，因此我們計算存取 4KB 大小的資料
+所需的時間，SSD 是以表 3 Mrton SSD 規格為參考來計算存
+取時間，同時假設 SSD 內部 channel 數量為 8，而傳統硬碟
+ 8
+ 
+圖 7(c) m_r55s30 存取硬碟的循序長度分布 
+ 
+ 
+圖 7(d) p_r50a50 存取硬碟的循序長度分布 
+ 
+ 
+圖 7(e) p_r80a20 存取硬碟的循序長度分布 
+4.2.1.2 Flash 的 Read Hit Ratio 比較 
+ 
+圖 8:讀取 request 在 Flash 中的命中率 
+ 
+ 圖 8 是在系統所有發出的讀取 request 中，可以從 SSD
+讀取到的比例。從圖中，可以看出對於所有的 workload，
+命中率最高的為 PC，其次是 FC-Like，最後是 RAF-Like。
+這是因為 PC Prize 的計算方式考慮到資料的讀取與寫入的
+特性，使得命中率高於其他兩種方法；其次， FC-Like 會
+將所有的存取的資料全部寫到SSD，因此能提高讀取 request
+在 SSD 中找到的機率；而 RAF-Like 不會考慮資料讀取或寫
+入的特色，只有考慮將隨機資料寫到 SSD，這樣的方式雖
+然可以讓硬碟服務循序存取的資料，但 read request 可在
+SSD 找到的比例就比其他兩種方法低，因此就無法充分利
+用 SSD 讀取比寫入快，並且較無負擔的特性。 
+4.2.2.3 Response Time 與 Throughput 比較 
+ 
+圖 9(a):各種快取策略的 throughput 
+ 
+ 
+圖 9(b):各種快取策略的 average response time 
+ 
+圖 9(a)和 9(b)分別測試三種快取策略在五種 workload
+下的效能差異，從 average response time 與 throughput 來看，
+FC-Like 皆比 PC 與 RAF-Like 差，這是由於 FC-Like 無論是
+讀取或是寫入，只要無法在 SSD 中找到，便將此份資料寫
+到 SSD，因此對於讀取 request 而言，當 FC-Like 無法從 SSD
+讀取到該筆資料時，便將資料從硬碟寫到 SSD，但如果讀
+取到的資料在 buffer cache 中被修改，之後系統發送寫入此
+份資料的 request 給混合式硬碟，此時 FC-Like 又必須再覆
+寫一次資料到 SSD 中，而另外一個原因在於 FC-Like 只有
+考慮到資料是否最近被存取的特性，而沒有考慮到資料的
+讀取、寫入、循序或隨機存取的特性，無法同時利用 SSD
+與硬碟的特性。另外，PC 在這五種型態的 workload 中皆贏
+過 RAF-Like，這是由於 PC 是以 Prize 值決定資料是否寫到
+SSD 以及如何從 SSD 回收資料，而 Prize 的計算同時考慮到
+循序與隨機存取、讀寫的特性；相反的， RAF-Like 只考慮
+到資料是否為循序存取，沒有考慮 SSD 讀取比寫入快的特
+性。 
+4.2.2 CFQ 等待的時間 
+表 8:在不同 Workload 下 PC 的計算成本 
+ 10
+中   華   民   國  100 年  09 月  30 日 
+ 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。 
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+■  達成目標 
+□ 未達成目標（請說明，以 100 字為限） 
+□ 實驗失敗 
+□ 因故實驗中斷 
+□ 其他原因 
+說明：本計畫目標為設計並實作一個利用跨階層資訊的硬碟存取系統，並藉此
+改善以往的硬碟排程演算法。在計畫執行的過程中，首先，我們提出一個跨階層
+資訊的架構，讓層與層之間可以跨過彼此間介面的限制，共享彼此的資訊；基於
+此一架構，我們利用跨階層資訊取得的資料的讀寫次數、循序或隨機存取特色以
+及最近是否被存取等資訊，提出一個應用於混合式硬碟的資料快取策略。其次，
+目前 Linux 預設的 I/O Scheduler 為 CFQ (Completely Fair Queuing)，CFQ 會在同
+步(synchronous)請求服務完成後，等待一小段時間，期待有緊鄰的請求到來。我
+們也藉由跨階層混合式硬碟的資訊，提出一個新的硬碟排程演算法。我們修改
+CFQ 演算法，(1)如果目前完成的同步請求所存取的資料是位於 SSD 上或是；(2)
+如果目前請求所存取的資料是位於硬碟，但是下一個請求所存取的資料是位於
+SSD 上，在上述兩種情況下，我們修改 CFQ 演算法為不等待，避免浪費等待時
+間。我們已實作於 Linux 作業系統，根據實驗結果，我們提出的資料快取策略計
+算成本很低，並且可以同時利用 SSD 與硬碟的優點來改善 I/O 效能。我們初步
+的成果已被 2011 年的全國計算機會議接受，並將改寫投稿到相關期刊。因此本
+計劃的目標已圓滿達成。 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：■已發表 □未發表之文稿 □撰寫中 □無 
+專利：□已獲得 □申請中 □無 
+技轉：□已技轉 □洽談中 □無 
+其他：（以 100 字為限） 
+附件二 
+ 12
+ 
+國科會補助計畫衍生研發成果推廣資料表 
+日期：100 年 9 月 30 日 
+國科會補助計畫 
+計畫名稱：設計與實作一個利用跨階層資訊且具備自我調整的硬
+碟排程演算法 
+計畫主持人：張軒彬 
+計畫編號：NSC 99－2221－E－005－076 領域：Linux 推動計畫 
+研發成果名稱 
+（中文）(1) 應用於混合式硬碟的資料快取策略; (2) 應用於混
+合式硬碟的硬碟排程演算法 
+（英文）(1) A Data Caching Policy for Hybrid Disks, (2) A 
+Disk Scheduler for Hybrid Disks 
+成果歸屬機構 中興大學 發明人 (創作人) 
+張軒彬、廖軒佑、張大緯 
+技術說明 
+（中文）(1)我們利用跨階層資訊取得的資料的讀寫次數、循序或
+隨機存取特色以及最近是否被存取等資訊，提出一個應用於混合
+式硬碟的資料快取策略。(2) 其次，目前 Linux 預設的 Scheduler
+為 CFQ (Completely Fair Queuing)，CFQ 會在同步(synchronous)請
+求服務完成後，等待一小段時間，期待有緊鄰的請求到來。我們
+也藉由跨階層混合式硬碟的資訊，提出一個新的硬碟排程演算
+法。我們修改 CFQ 演算法，(1)如果目前完成的同步請求所存取的
+資料是位於 SSD 上或是；(2)如果目前請求所存取的資料是位於硬
+碟，但是下一個請求所存取的資料是位於 SSD 上，在上述兩種情
+況下，我們修改 CFQ 演算法為不等待，避免浪費等待時間。 
+（英文）(1)On the basis of the cross-layer information, including read 
+count, write count, sequential access or random access, and recency, 
+we propose a data caching scheme for hybrid disks. (2) The default 
+Linux I/O scheduler is CFQ. In CFQ, it allows a process queue to idle 
+at the end of synchronous IO to anticipate further close IO from that 
+process. We modified the CFQ scheduler that in the following two 
+cases, (1) the current request data is on the SSD; (2) the current 
+request data is on the disk while the next request data is on the SSD, 
+the CFQ does not idle to avoid unnecessary waiting time.  
+產業別 產業：電腦週邊，嵌入式系統產業 
+技術/產品應用範圍 (1) 生產混合式硬碟的廠商 (2) 應用混合式硬碟的產品 
+技術移轉可行性及預期
+效益 
+我們已在 Linux 作業系統上實作我們提出方法，技術移轉上可以達
+到無縫轉移。在預期效益上，利用我們提出的跨階層資訊，一來
+可以提升混合式硬碟的存取效率，二來可以提供良好的管理，避
+免 SSD 因為過多的 write 次數而快速縮短其壽命。 
+     註：本項研發成果若尚未申請專利，請勿揭露可申請專利之主要內容。 
+附件三 
+The experiment results are shown in Section 3. Finally, 
+Section 4 gives conclusions and future work. 
+II. SYSTEM DESIGN AND IMPLEMENTATION 
+A. Architecture 
+Figure 1 shows our dual-motes system architecture. We 
+connect two motes, one is the primary and the other is the 
+backup, via an UART link. At deployment, both nodes have 
+the same set of application modules. At usual times, the 
+backup node is in power saving mode and only the primary 
+node takes the routine job. We implement a checkpointing 
+module in the primary node that periodically checkpoints the 
+application modules’ states, wakeups the backup node, and 
+sends the checkpoint data to the backup. After receiving the 
+checkpoint data, the backup node saves it in the external 
+flash memory. In the event of a hardware failure at the 
+primary node, backup node reads the checkpoint file to 
+restore the application modules’ states. 
+ 
+ 
+Figure 1. Dual-Motes System Architecture 
+ 
+B. Base Checkpoint Scheme 
+At startup, the first checkpoint is a base checkpoining 
+that takes a complete snapshot of all modules running at the 
+primary node. After the first base checkpointing, the 
+following checkpoints are incremental. Normally, a 
+checkpoint of a process consists of the process’s address 
+space, CPU registers, and kernel state related to this process. 
+Since SOS adopts the FIFO-based scheduling scheme, it is 
+unnecessary to save the CPU registers. Besides, since we 
+proposed the dual-motes architecture, some kernel data 
+structures for an application module on the primary node, 
+including the FCB and module headers, can also be found in 
+the backup node. Therefore, the base checkpointing only 
+needs to save all the application modules’ memory areas and 
+a few kernel data structures. 
+An application module’s memory area includes two parts: 
+one is the module state and the other is the dynamically 
+allocated memory. Consequently, we first parse the mod_bin 
+data structure to save all the modules’ states. Then, we parse 
+the malloc_heap data structure, which is used by SOS to 
+maintain the heap area, to saves the dynamically allocated 
+memory. However, not only the heap memory content, but 
+also the malloc_heap data structure is saved during 
+checkpointing. This is because the malloc_heap at the 
+primary node is changed when modules dynamically allocate 
+and free memory at run time while the malloc_heap at the 
+backup node is still in its initial state. By contrast, we do not 
+have to save the module_bin data structure, since if a new 
+module is dynamically added into the systems, it will be 
+uploaded to both the primary and backup nodes. Thus, the 
+two module_bin structures in primary and backup nodes are 
+always the same. 
+Finally, messages that are queued in the message queue 
+and timers that have not yet been expired are also saved. 
+Consequently, the malloc_heap, the messages and the timers 
+are the only kernel data structures that have to be saved 
+during checkpointing. 
+C. Incremental Checkpointing 
+In this subsection, we show our proposed three 
+incremental checkpointings for MMU-less WSNs. 
+Method 1: Scheduler-Based Scheme: During a 
+checkpointing period, some of the modules may not be 
+executed. Nevertheless, as stated above, the base 
+checkpointing saves the memory area of all of the modules, 
+no matter they are executed or not. Consequently, the first 
+incremental checkpointing intercepts the message scheduler 
+to keep track of the modules that are executed. We maintain 
+a module_bit_map data structure with each bit corresponding 
+to a module. If a module is selected to run by the message 
+scheduler, the bit that is corresponding to the module is set.  
+Nevertheless, in addition to the message passing, a 
+module can also be invoked when another module calls its 
+exported functions. In SOS, functions that are provided and 
+subscribed by a module are all maintained in the module’s 
+module header. Consequently, when a module is selected to 
+run by the message scheduler, we also check the module 
+header of this module to see if it also calls other modules’ 
+provided functions. If it does, we also set the bits of these 
+modules called by this module and the process is continued 
+until the bits of modules that are called either directly or 
+indirectly by this module are all set. 
+Method 2: iCALL-Based Scheme: Nevertheless, not all 
+subscribed functions will be invoked during execution. To 
+address this problem, we intercept all module calls and insert 
+a new kernel function call called module_called(unsigned 
+module_id) in all provided functions of all modules. The 
+module_called() is passed with the module’s identifier as the 
+parameter. When the module_called() function is invoked, 
+we set the bit corresponding to the module’s identifier in the 
+module_bit_map and also checkpoint this module during the 
+checkpointing. 
+Compared with method 1, method 2 can correctly 
+checkpoint the modules that are indeed executed. 
+Nevertheless, method 2 pays the extra execution overhead 
+due to the inserted module_called() statement in all provided 
+functions. 
+Method 3: Store-Based Scheme: The checkpoint unit in 
+both method 1 and 2 is the complete address space used by a 
+module, i.e, the all memory area occupied by a module is 
+checkpointed. Nevertheless, not all variables in either the 
+module state structure or the dynamically allocated memory 
+are modified during a checkpoint period. In other words, the 
+checkpoint unit in both method 1 and 2 is too coarse. 
+Then, we compare the energy consumption of each 
+module under each checkpoint scheme and the results are 
+shown in Table 2. The result is similar to the Table 1. 
+Method 3 consumes the most significant energy consumption. 
+Table 1. Comparisons of run time overheads (ms) 
+ Original Method 1 Method 2 Method 3 
+Blink 0.27137 0.27137 0.27137 0.407056 
+Surge 2.161872 2.225237 2.587056 2.786024 
+Neighbor 2.496608 2.686567 2.618725 4.966079 
+Tree routing 1.139756 1.166893 1.248304 1.940299 
+DVM 13.30841 13.31967 13.37626 24.72863 
+Table 2. Comparisons of energy consumption (microJ)  
+ Original Method 1 Method 2 Method 3 
+Blink 6 6 6 9 
+Surge 47.7999 52.2 57.20001 61.5999 
+Neighbor 55.2 57.9 62.4 109.8 
+Tree routing 25.2 25.8 27.6 42.9 
+DVM 294.50001 294.24999 295.74999 546.75 
+ 
+Finally, we measure the checkpoint performance. Firstly, 
+we measure the checkpoint sizes by each checkpoint method. 
+The experimental result is shown in Table 5. For blink 
+module, since the module state of blink is only 2 bytes, the 
+checkpoint size by method 1 and 2 is thus 2 bytes. 
+Nevertheless, in method 3, the checkpoint size is 4 or 8 bytes 
+when the micro block size is 4 or 8 bytes, which is larger 
+than that in method 1 and 2. This is because the module state 
+of blink is too small (only 2 bytes) that the size of a micro 
+block may be larger than that of the blink module state. 
+ 
+Table 3. Comparisons of checkpoint sizes (bytes) 
+ Blink 
+modules 
+Surge + Photo_temp 
++ Tree_routing + 
+Neighbor modules 
+DVM module + 
+CntToLed 
+scripts 
+ Base Inc. Base Inc. Base Inc. 
+Method 1 2 2 26  26  552 552 
+Method 2 2 2 26  26  552 552 
+Method 3 
+(2 bytes) 
+2 2 26  16  552 38 
+Method 3 
+(4 bytes) 
+2 4 26  24  552 44 
+Method 3 
+(8 bytes) 
+2 8 26  40  552 48 
+ 
+For photo_temp, tree routing, and neighbor modules, the 
+checkpoint sizes of method 1 and method 2 are the same 
+since tree routing and photo_temp modules are called each 
+time when the surge module executes. In method 3, when the 
+micro block size is 2 or 4 bytes, the checkpoint size is 
+smaller than that of method 1 and 2. Nevertheless, similar to 
+the blink module, when the micro block size is 8 bytes, the 
+checkpoint size is larger than that of both method 1 and 2. In 
+other words, the size of a micro block is too big such that it 
+covers the memory areas that are not used by the 
+checkpointed modules. 
+Finally, for CntToLed script running on the DVM virtual 
+machine, since DVM does not invoke any exported functions, 
+the checkpoint sizes of both method 1 and 2 are the same. 
+Beside, compared with blink and surge modules, the module 
+state size of DVM is very large. Consequently, no matter the 
+micro block size is set to 2, 4, or 8 bytes, method 3 always 
+drives the highest performance. 
+Finally, we use the avrora [7] simulator to measure the 
+energy consumption of each method during checkpointing. 
+The result is shown in Table 4.  From Table 4, for both blink 
+and surge modules, method 2 derives the least energy 
+consumption during checkpointing. This is because, as 
+shown in Table 3, for both modules, method 2 has the least 
+checkpoint size. Nevertheless, for the DVM module, method 
+3 (with block size is set to 2 bytes) consumes the least energy. 
+This is because, from Table 3, it has the smallest checkpoint 
+size. Consequently, method 3 is the best scheme for DVM 
+module in terms of energy consumption. 
+ 
+Table 6.  Comparison of energy consumption during checkpointing 
+(micro joule) 
+ Blink modules Surge + Photo_temp + 
+Tree_routing + 
+Neighbor modules 
+DVM + 
+CntToLed 
+scripts 
+Method 1 916.059 959.521 3222.725 
+Method 2 894.444 943.026 3174.396 
+Method 3 
+(2 bytes) 922.084 966.353 951.414 
+Method 3 
+(4 bytes) 925.156 970.013 1052.815 
+Method 3 
+(8 bytes) 965.597 980.93 1062.45 
+IV. CONCLUSIONS 
+In this paper, we design and implement a base and three 
+incremental checkpointing for MMU-less sensor nodes. 
+From the experimental results, adopting which method 
+depends on the characteristics of the application modules. In 
+the future work, we will derive formulas to calculate the 
+energy consumption of each method to automatically select a 
+proper method used for a particular module. Besides, since 
+method 3 must insert a program block for each store 
+instruction, it thus causes significant execution overhead. In 
+the future work, we will investigate how to optimize the 
+method 3 to reduce the run time execution overhead. 
+REFERENCES 
+[1] Berkeley mica motes, http://www.xbow.com/ 
+[2] Rahul Balani, et. al., “Multi-level software reconfiguration for sensor 
+networks,” in EMSOFT, pp. 112 - 121, 2006. 
+[3] Shekhar Borkar, “Designing Reliable Systems from Unreliable 
+Components: The Challenges of Transistor Variability and 
+Degradation”, IEEE Micro, Vol. 25, No. 6, 2005. 
+[4] S. Guo, Z. Zhong, and T. He, “FIND: Faulty Node Detection for 
+Wireless Sensor Networks,” in SenSys;09, 2009. 
+[5] C. C. Han, et. al., "SOS: A dynamic operating system for sensor 
+networks", in MobiSys, pp. 163-176, June 2005. 
+[6] J. S. Plank, “An Overview of Checkpoint in Uniprocessors and 
+Distributed systems, Focusing on Implementation and Performance,” 
+Technical Report UT-CS-97-372, Department of Computer Science, 
+University of Tennessee, Knoxville, TN. July 1997. 
+[7] J. Plank, Y. Chen, M. B. K. Li, andG. Kingsley, "Memory Exclusion: 
+Optimizing the Performance of Checkpointing System," Software 
+Practice and Experience, Vol. 29, No. 2, pp. 125-142, 1999. 
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：張軒彬 計畫編號：99-2221-E-005-076- 
+計畫名稱：設計與實作一個利用跨階層資訊且具備自我調整的硬碟排程演算法 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 1 1 100%  
+研討會論文 1 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 4 4 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 1 100% 目前正在撰寫期刊論文 
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 4 3 100%  
+博士生 0 1 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+■達成目標 
+□未達成目標（請說明，以 100 字為限） 
+□實驗失敗 
+□因故實驗中斷 
+□其他原因 
+說明： 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：■已發表 □未發表之文稿 □撰寫中 □無 
+專利：□已獲得 □申請中 ■無 
+技轉：□已技轉 □洽談中 ■無 
+其他：（以 100 字為限） 
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以
+500 字為限） 
+本計畫有以下成就以及技術上的創新：(1) 跨階層資訊的架構，讓層與層之間可以跨過彼
+此間介面的限制，共享彼此的資訊；基於此一架構，我們利用跨階層資訊取得的資料的讀
+寫次數、循序或隨機存取特色以及最近是否被存取等資訊，提出一個應用於混合式硬碟的
+資料快取策略。(2) 其次，目前 Linux 預設的 I/O Scheduler 為 CFQ (Completely Fair 
+Queuing)，CFQ 會在同步(synchronous)請求服務完成後，等待一小段時間，期待有緊鄰的
+請求到來。我們也藉由跨階層混合式硬碟的資訊，提出一個新的硬碟排程演算法。我們修
+改 CFQ 演算法，(1)如果目前完成的同步請求所存取的資料是位於 SSD 上或是；(2)如果目
+前請求所存取的資料是位於硬碟，但是下一個請求所存取的資料是位於 SSD 上，在上述兩
+種情況下，我們修改 CFQ 演算法為不等待，避免浪費等待時間。我們已實作於 Linux 作業
+系統，根據實驗結果，我們提出的資料快取策略計算成本很低，並且可以同時利用 SSD 與
+硬碟的優點來改善 I/O 效能。 
+   基於本計畫，進一步發展的發展方向為：(1)將本計畫提出跨階層資訊的架構應用於
+buffer cache 的管理上；事實上，這也正是個人 100 年度正在進行的國科會；(2)本計畫
+的底層假設為混合式硬碟(hybrid disk)，在一個傳統硬碟中同時包含一個小容量的 SSD；
+我們正在思考延伸本計畫的成果應用於異質行的儲存裝置(由許多獨立的硬碟和 SSD 組成
+的儲存裝置)；(3)本計畫主要著重於提昇存取效率，不過，在伺服器系統，驚人的電力消
+耗已是所有資料中心必須克服面對的問題，我們也正在研究延伸本計畫的成果，以省電為
+考量的儲存裝置設計方式。 

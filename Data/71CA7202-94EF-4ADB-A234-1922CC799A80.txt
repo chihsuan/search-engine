@@ -1,0 +1,460 @@
+controller)、電壓偵測(Voltage detection)、三相轉二相
+系 統 (abc-dq transformation) 、 磁 通 計 算 (Flux 
+calculation)、合成磁通大小與位置計算(Flux magnitude 
+& angular Calculation)、轉矩計算(Torque calculation) 
+及防止短路保護時間設計(Dead time)等功能，各項功
+能經 FPGA 驗證後，即可接上三相感應馬達，確認各
+項參數的正確性。 
+ 
+ 
+圖 2：電壓空間向量調變直接轉矩控制系統架構圖。 
+ 
+2.2 切換時間計算電路 
+在得到三相電壓與直流電壓(Vd)的關係後，依據合
+成電壓向量的區域，選擇相鄰的電壓向量與零向量，
+則可計算出各區域電壓向量的切換時間[1]，表 1 所示
+為各切換區域用以計算電壓向量切換時間的總表。 
+ 
+表 1：各區域電壓向量切換時間計算表 
+ 
+ 
+配合各區域電壓向量的切換時間計算表，可以算出
+各臂開關切換時所需的維持時間 UT 、 VT 和 WT ，其計
+算公式如下所示： 
+0 / 2UT T=                            (1) 
+0 / 2V nT T T= +                            (2) 
+0 1/ 2W n nT T T T += + +                       (3) 
+ 
+最後將 UT 、 VT 和 WT 與一個三角波作比較，即可得到
+各臂開關的切換波形[2-3]。若切換時間大於三角波
+時，輸出為低位準；反之，若切換時間小於三角波時，
+輸出為高位準，如圖 3 所示。 
+ 
+ 
+ 
+圖 3：S1 區域的上臂開關之脈波切換示意圖。 
+ 
+2.3 防止短路設計 
+    直接轉矩控制系統的防止短路設計上，是針對一
+個非週期性的方波信號來設計防止短路時間電路。先
+行分析方波狀態，其有二種狀態，一是由 1→0 和 0→
+１，其設計概念如圖 4 所示。當方波信號是負緣狀態
+(1→0)時，直接輸出上臂信號，同時啟動防止短路時
+間，等到短路時間結束時，即可輸出反相信號至下臂
+信號；而當方波信號為正緣狀態(0→1)時，則會先將信
+號反相輸出至下臂信號，待防止保護時間結束後，再
+把信號輸出至上臂，藉此完成非週期性且具有防止短
+路之電路，採用該電路的優點是短路時間容易調整。 
+ 
+圖 4：利用方波信號來加入防止短路時間的設計概念。 
+ 
+2.4 模擬與驗證 
+    本研究係使用硬體描述語言來完成所有的
+系統模組，即先以 QuartusII 軟體進行硬體架構的分析
+與模擬驗證，並且使用 ModelSim 軟體，配合寫好的測
+試信號(testbench)來進行暫存器轉換階層(RTL)模擬，
+正確無誤後再將程式燒錄至 FPGA 開發板，進行實際
+的硬體驗證，並使用邏輯分析儀(Logic Analyzer)以及
+示波器等儀器去分析輸出之數位訊號，並將其接至馬
+達與變頻器輸入端，做最後的硬體實作驗證，圖 5 所
+產生出來的亂數雜訊封包時，要如何解決；這些不正
+常情況都是由封包檢查模組來處理的。封包檢查模組
+只有兩個輸入路徑，一個輸入路徑是從封包控制模組
+傳送過來的資料封包，另一個輸入路徑是差額循環執
+行模組(DRR)所接收到的資料封包，兩者比較是否一
+樣，一樣則表示資料正確，則封包檢查模組會傳送訊
+號給差額循環執行模組(Check=0)，告知差額循環執行
+模組(DRR)所接收到的封包資料是正確或是沒有遺失
+的。若兩個路徑所傳送過來的資料出現比較不同的情
+形時，會進行封包類型分類；若是雜訊封包就丟棄，
+若是遺失封包的話，則會傳送指令訊號給差額循環執
+行模組(Check=1)，告知差額循環執行模組(DRR)，封
+包已遺失，請再度傳送封包。 
+ 
+3.4 差額循環執行排序模組(DRR) 
+    重置時，變成初始狀態，差額計數器(DC，Deficit 
+Counter)設為零，餘額(Remain)設為零，迴圈數為零。
+接著，先把差額循環執行模組所接收到的資料封包先
+傳送給封包檢查模組，確認是否為先進先出排序模組
+傳送出來的資料，不是就丟棄，遺失就從封包檢查模
+組再度讀取，並進行傳送；倘若封包大過當下的服務
+量時，傳送訊號給調度程序模組要求增加定額服務
+量，並進行下一個資料流量，差額計數器歸零，迴圈
+數遞增。若輸入的資料封包正常的經過封包檢查模
+組，回報正確無誤(Check=0)，此時也要判斷封包是否
+大過當下的服務量；若為否時，就把資料封包進行傳
+送，直到服務量不足以傳送封包時，再傳送訊號指令
+給調度程序模組，進行下一個資料流量的服務工作。 
+E. 調度程序模組(Scheduler Module) 
+    該模組主要是接收差額循環執行排序模組(DRR)
+的指令，並根據差額循環執行排序模組所發出的指令
+訊號做調度，調度過程中會傳送訊號給資料流控制模
+組(Flow Control Module)，讓控制模組知道現在要如何
+控制先進先出排序模組(FIFO)內的流量讀寫動作，所
+以整體控制操作訊號的核心主體就是調度程序模組，
+由其給予指令到各個模組，控制資料封包的傳送動
+作。圖 8 所示為該調度程序模組的內部流程圖，如果
+資料流控制模組傳送訊號回報說，這個流量資料已傳
+送完畢或是空封包，調度程序模組會換下一個流量的
+指令給封包控制模組；如果差額循環執行模組傳送訊
+號回報說，服務量不足時，要求給服務量傳送封包資
+料時，調度程序模組會換下一個流量的指令給差額循
+環執行模組，並把當下已進入差額循環執行模組卻未
+傳送出去的封包，從封包檢查模組裡再讀取一次，並
+傳送出去。 
+ 
+3.5 電路模擬與 FPGA 實現 
+圖 9 所示為差額循環執行排序法則以 FPGA 所完
+成的系統電路架構圖，其可用以進行資料封包的模擬
+與硬體測試工作。惟在進行封包的模擬與測試工作之
+前，本研究特別將接收到的封包分成兩種型態，一種
+是資料封包尺寸大小不固定的形態，另一種是資料封
+包大小固定的形態，並分別使用不同的服務定量來看
+資料封包的服務結果。 
+ 
+ 
+圖 8：調度程序模組的內部流程圖。 
+ 
+ 
+圖 9：差額循環執行排序法則以 FPGA 所完成的系統
+電路架構圖。 
+ 
+ 
+圖 10：DRR 依據封包尺寸大小，服務定量依序遞減的
+情形。 
+ 
+ 
+圖 11：依據封包服務情況，迴圈數增加的情形。 
+ 
+ 
+圖 12：依據封包服務情況，差額計數器的累計情形。 
+ 
+A. 資料封包尺寸大小不同形態 
+資料封包大小依序為 40、200、120、210、240、
+  
+圖 18：經數位消除電路而得的數位輸出波形。 
+ 
+    為求得信號雜訊比與有效位元數，隨即將輸出結
+果的8192個資料以布萊克曼窗描繪出相對應的快速複
+立葉 FFT 圖形，進而計算頻寬內信號雜訊比與換算而
+得的有效位元數，如圖 19 所示；最後，為了評估在不
+同輸入訊號振幅情況下相對應的信號雜訊比，描繪出
+如圖 20 所示的動態輸出範圍。表 3 所示為該調變器在
+各種不同製程參數下所模擬得到的結果，該模擬結果
+為佈局後的模擬結果。為了評估在不同輸入訊號振幅
+情況下相對應的信號雜訊比，將輸入訊號振幅依序遞
+減模擬並將相對應運算出來的訊號雜訊比結果描繪成
+如圖 21 所示的佈局後動態輸出範圍。 
+ 
+表 3：調變器在各種不同製程參數下所模擬得到的結
+果。 
+   Corners TT FF FS SF SS 
+   SNDR (dB) 90.15 91.34 72.20 90.83 72.67 
+  ENOB (bits) 14.68 14.88 11.70 14.80 11.78 
+ 
+ 
+ 
+圖 19：功率頻譜密度圖形。 
+ 
+ 
+圖 20：佈局前的動態輸出範圍。 
+ 
+ 
+圖 21：佈局後之動態輸出範圍。 
+ 
+五、結論 
+ 
+本計畫以傳統直接轉矩控制法作為主要架構，實
+現具空間電壓向量調變之直接轉矩控制系統，將直接
+轉矩控制因為僅有六個電壓向量與兩個零電壓向量可
+選擇，而造成轉矩及磁通漣波過大的缺點加以改進，
+使用結合空間向量調變的原理，詳細計算出各臂開關
+切換時間，合成出任何我們所需之電壓向量：如此一
+來，不僅改善了漣波現象，更善用了硬體計算速度快
+速的優點。在未來的研究上，我們將採用模糊理論
+(Fuzzy theory)來改良比例-積分控制器，以改善傳統的
+PI 控制器設計過於依賴被控對象的精準數學參數的缺
+點 [4]。 
+接著，我們提出了一個有效率且善用服務定量的
+封包排序機制做為公平分配頻寬管理的一個重要系
+統，它結合了先進先出與差額循環執行兩個排序機制
+的優點，並且提供快速而有效率的封包排程。先進先
+出排序機制能以同步的方式分配各個流量內的資料封
+包，並能保證每個流量都能獲得的差額循環執行排序
+機制的公平服務；此外，差額循環執行以分享式的服
+務準則讓每個流量有公平使用頻寬的能力，當每個循
+環的固定服務定量未使用完，差額循環執行排序機制
+內的餘額暫存器會存取，並累計到下一個循環服務時
+繼續使用。先進先出與差額循環執行兩個排序機制相
+SNR=85.0399dB @ 
+OSR=128 
+行政院國家科學委員會補助團隊參與國際學術組織會議報告 
+                                               99 年 6 月 25 日 
+ 
+報告人姓名 宋國明 
+ 
+服務機構 國立台北科技大學
+電機工程系 
+ 
+職稱 副教授 
+中文：2010 年第二屆網路與數位組織國際會議(2010 ICNDS)  
+會議正式名稱 
+英文：2010 The 2nd International Conference on Networking and Digital 
+Society 
+會 議 時 間       自 99 年 5 月 30 日 至 99 年 5 月 31 日 地點（國、州、城市） 
+中國 
+溫州 
+報告內容應包括下列各項： 
+ 
+一、 參加會議經過： 
+余於 5/29(日)搭乘立榮航空公司班機至廈門，接著轉機到溫州機場，於傍晚五
+點多到達溫州機場，隨後即搭車前往大會舉辦地點－溫州新南亞大酒店（Wenzhou 
+New Southasia Hotel)參加第 2 屆國際網路與數位組織會議(2010 ICNDS)，由於到達
+飯店的時間已經很晚，報到時間也已經截止，加上晚上很黑，街道又不熟悉，故匆
+匆買包“泡麵＂充飢，早早盥洗就寢了。 
+第二天(5/30)早上八點先到大會報到處報到，隨後前往大會開幕地點－溫州新
+南亞大酒店 7 樓百花廰會議室，會議係由大陸貴州大學(Guizhou University)教授吳
+雲(Wu Yun)主持，與會主要人士有：IEEE 香港分會主席 Liu Y. W.、IEEE 香港
+CAS/COM 分會主席 Cheung S. W. 及美國德州大學 Aria Nosratinia 教授等，會中並
+安排 IEEE 香港分會主席 Liu Y. W. 針對“IEEE and Section in China”主題進行專題
+演講，主要介紹 IEEE 在香港與大陸地區的分佈與工作現況，其中也包含台北分會；
+其次，大會也安排美國德州大學 Aria Nosratinia 教授進行演講，其題目為”An 
+introduction to cooperative communication, its present state and potential future”，內容
+相當豐富且投影片製作精美，演講生動活潑，同時會與台下學者互動與討論，是一
+場相當值得稱許的高水準演出；Aria Nosratinia 教授本人也是 IEEE Fellow，身兼數
+個國際期刊的主編與副主編，學術地位崇高，惟其年紀不大，好玩且待人和善，我
+曾與他一同出去逛街，其相當和藹可親，若有關於網路領域的國際會議在台舉行，
+建議可以邀請他來台灣，相信對國內學術研究會有很大的幫助。 
+第二天下午是重頭戲，我的論文發表被安排在溫州新南亞大酒店 3 樓 331 會議
+室，由密蘇里大學 George Yang 教授主持；惟因開幕時間過長，下午的會議受到波
+及而時間延後，與會人士姍姍來遲，故主席建議我先進行口頭報告，論文名稱為”A 
+New Architecture of Broadband Network System Suitable for Asymmetric Digital 
+Subscriber Line Application”。會議開始時，參加人員不多，且大部份都是當地的學
+者，因此英文能力較差，討論不是很踴躍；但值得注意的是，中國大陸的學者，雖
+然在英文能力與回答能力方面較為遜色，但其對本業技術仍是相當專精，部份論文
+的限制下，是否有能力辦好一次成功的國際會議，應該多三思；個人認為，該
+會議辦得不好，改進空間相當大，不是一個夠水準的會議。 
+2. 會議地點的選擇相當重要，否則與會人數會大打折扣，參與意願偏低；個人在
+溫州就遇到外國人問路，他表示要到會場開會，但搭不到計程車且大會没有提
+供交通車，實在很不方便；加上溫州的國際化不足，外國人來此會怕，有些人
+甚至表示不會再來溫州，足見其反效果極大，不可不慎。 
+3. 大會的晚宴相當豐富，但與會人士很少，只有三桌而已，造成食物的浪費，實
+有改進空間。 
+4. 舉辦國際會議應提供較多的交流活動，以促進與會人士相互認識與互動，如此
+才會留下美好的回憶，對我國的印象才會加分，才有意義。 
+5. 大陸的研究水準與研究人力日益壯大，如何有效提高台灣在國際學術地位的能
+見度是台灣學者需要深思的一大課題，期待台灣學者一同努力。 
+ 
+五、 攜回資料名稱及內容： 
+攜回第 2010 年國際網路與數位組織會議議程與論文集各乙本，內含本會議發表之
+所有論文。 
+ 
+六、 其他 
+謹此感謝國科會補助本人參加此次研討會，個人獲益良多。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+II. RESEARCH AND ARCHITECTURE 
+ATM is becoming the most accepted network 
+technology for Broadband ISDN. So the basic architecture 
+of the circuit tries to comply with the basic characteristics 
+for the system between A TM and Ethernet in the Fig. 2. The 
+main function is described as following: Receiving the 
+packages from the Ethernet network in the first bus 
+(Ethernet MIl Bus) and transferring them to ATM cells (53 
+bytes) in the second bus, and vice versa. 
+Ibernel 
+Pori 
+NO,lIO 
+.. 
+"' MA( 
+(5 Contruller " 
+�lhernN Mil Bus 
+.... 
+d " 
+;j 
+NO.111 
+onlrolk'r 
+-----------J RISC L-----� L __ C�. n _'ro�II'_' � 
+Fig 2. The system etween A TM and Ethernet. 
+In Fig. 2, it includes the interface of ATM and operation 
+physical layer (number 211) that is ATM PHY controller, 
+and the interface of Ethernet switch and the media access 
+control (MAC) (number 210) and the RISC controller, 
+respectively. The goal is to merge numbers 210 and 211 and 
+add FIFO into the single chip and to give up the RISC 
+controller in this paper. This integration will enhance the 
+system stability and increase the operating speed. The 
+operating frequency is set to 50 MHz. 
+'1 HI! RCV DAT4 � Dab; Collector � UTO_DATA_lOI PIIY Catcher 
+'1.:. 
+E �i 
+ETII_RCV_CNTL3 
+'" ...l u 
+U � 
+� 
+RXFF ell RCV 
+G� CL"!Ilral Controlle, � PIIY Coli d';;'odo, 
+� � 
+w ... 
+... 
+� mo 
+UTa_Rev 
+T raflie Mangment � PITY Receiw, 
+� "" 
+Fig. 3. The system block diagram of the receiver. 
+Fig. 3 presented the receiver's circuit block. As the 
+receiver's circuit, it could divide into five regions: first 
+region was RCV _ CLK, and second region was included 
+RXFF_CLL_RCV, UTO_RCV, UTO_DATA_LCH, and 
+third region was included ETH RCV CNTL 
+ETH_RCV _OAT, and the fifth region
+-
+was
+-
+clock 
+management system we also called it first in first out (FIFO) 
+system. 
+The first region (I) is similar to the frequency-division 
+circuit in the receiver's circuit, which also provides the sub­
+system with two kinds of frequencies, 25MHz and 
+12.5MHz, respectively. The second region (2) was 
+constructed from three sub-regions, in this region all the 
+625 
+ATM cells will be sorted out valid and invalid cells by 
+judging those headers and payloads. After deleting the 
+invalid cells, the remainder valid cells will be locked and 
+send to the next block. In the third region (3), it was a 
+control core in the receiver's circuit, which is mainly used 
+to control the Ethernet packages. Furthermore, the fourth 
+region (4) will receive the packages from the third region (3) 
+and rearrange them into the format of Ethernet package as 
+the standard independent interface (Multiple of multimedia 
+of Ethernet MIl from the circuit Independence Interface). 
+The overall FSM is shown in Fig. 4. 
+Inlll:.llzo on 
+phlil t t 
+____ _____________ J 
+Fig. 4. Receiver's FSM. 
+We proposed the system block of receive that was 
+simply to say a bridge between of ATM Layer and Ethernet 
+MIl. shown in Fig. 5. When the system received the 
+physical layer (ATM layer) signals by serial interface, 
+system will be encoded these signals to lOb encode byte 
+format (rx_code_group<9:0». The signal of 
+rx _code _group<9:0> through parallel interface to the top 
+level, synchronous block could permit a little error at 
+encode byte format. If it produced a great quantity error that 
+synchronous block would be stop transmitting signals to 
+RCV. block and recheck the boundary of encode byte 
+format. The auto proportion block tested the link that could 
+be operation yes or no, and controlled the package flow rate. 
+Authorized licensed use limited to: National Taipei University of Technology. Downloaded on June 10,2010 at 06:32:43 UTC from IEEE Xplore.  Restrictions apply. 
+Fig. 7. The FIFO reading/writing data block diagram. 
+When the block of system RXFF _ CLL _ RCV circuit 
+writing the data to the FIFO (rxffwy = 1), the FIFO 
+writing action following three steps: 
+g. 
+J) If the system of FIFO was not full then writing the 
+data to the FIFO. 
+2) If the data quota in the FIFO reach threshold, the 
+system sent a signal (rtp 1) to the 
+RXFF _ CLL _ RCV circuit notifY the bus to use. 
+3) If the system of FIFO was full and writing data to 
+FIFO that did not write data, and FIFO controller 
+generated a "FIFO Full error" message. 
+, , 
+E� t 
+.',,111111'11 , , 
+(j), 
+, 
+cl>! , , .1_-4--�=F����====� v�::§=� Empty Flag reg. \ " ' _=' 
+'c°>=. d::_o:.;.n'--__ +.-J-!-_-+_+----' � , 
+vc'>,l :.:.._='."'-n __ --+-'[-__ -'--+ __ ....I\ A space Flag reg. 
+F II Flag reg. 
+act-twrit e ory 
+rull 
+Fig. 8. The circuit of the traffic management system. 
+III. DESIGN METHODOLOGY AND SIMULATIONS 
+Such a complex circuit requires a lot of simulations in 
+order to achieve an adequate level of confidence in the 
+design. Therefore very strict requirements were settled for 
+the quality of the tests the simulations would perform. 
+Verilog HDL was chosen because of several reasons: It is 
+an easy to learn and write language very well suited to IC 
+design. The code is very compact. The same simulator has 
+been used in the whole design process down to post-layout 
+simulations, easing simulation results comparison. The 
+same test bench has been used at all levels of complexity. 
+After constructing of the system by Verlog HDL, we 
+verified the result in CPLD demo board. The RT-Level and 
+627 
+Gate-Level verified by the CAD tool, and final result were 
+exhibited in Fig. 9 and Fig. 10. It could see that comparison 
+between RT-Level and Gate-Level were the same. 
+Fig. 9. RT-Level simulations. 
+Fig. 10. Gate-Level simulations. 
+IV. LAYOUT AND TEST PATTERN 
+After finishing the following procedures, such as the 
+auto placing and routing, determining the 10 pads of chip, 
+calculating out the chip size ofiength and height, and so on, 
+the real chip area and plane figure can be made by Cadence 
+SOC encounter software automatically. Finally, the outputs 
+and inputs of the core will be connected to the 10 PADs. 
+After connecting to the power supply, the whole chip is 
+finished. 
+As this circuit was design to run as close as possible to 
+50MHz, a careful flooplanning was need. The design is 
+prototyped in a 6 layer 0.18 II m COMS process to result in a 
+l.4 X 1.4 ".,( die size. Figure 11 shows a picture of the chip 
+layout. A hierarchical layout approach was followed to 
+separate the circuit block. 
+Authorized licensed use limited to: National Taipei University of Technology. Downloaded on June 10,2010 at 06:32:43 UTC from IEEE Xplore.  Restrictions apply. 
+無研發成果推廣資料 
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

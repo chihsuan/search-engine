@@ -1,0 +1,1557 @@
+摘要
+由於效能上的需求，越來越多多重核心(multi-core)的產品被發展出來，然而多重處
+理器系統晶片(MPSoC)的發展環境與相關的工具鍊仍未成熟。甚且多重處理器系統
+晶片的複雜度隨著加入的系統晶片的處理器數量成指數成長，不論是採用對稱式
+多重處理器(SMP)、同質或異質系統架構。雖於2009年已有植基於QEMU和SystemC
+的MPSoC虛擬平臺被發表，但是其模擬僅限於探討模型化處理器的快取(cache)。為
+此，我們將開發基於QEMU和SystemC較具彈性的架構用於MPSoC發展，除了能做
+為整合快取模型之基礎外，還能做為處理器模型用於目標平臺的軟硬體效能量測。
+Keywords: 多重處理器系統晶片模型、軟硬體協同模擬、平臺式設計、電子系統層級
+設計流程、QEMU-SystemC、SystemC模型化
+i
+1 前言
+Due to the performance requirements, many multi-core processors have been developed. Al-
+though state-of-the-art electronic design automation (EDA) tools [1, 2] have been well devel-
+oped for the electronic system level (ESL) design flow for SoC, the development environments
+and toolchains for Multi-Processor System-on-Chip (MPSoC) are still far from mature [3].
+Moreover, MPSoC is much much more complex than SoC as far as the hardware/software
+co-design is concerned such as MPSoC verification and debugging and software development
+for MPSoC. No matter which of the two core technologies, symmetric multi-processor (SMP)
+homogeneous architecture, or heterogeneous architecture, is used, the system architecture of
+MPSoC is still a challenge, which requires the support of design tools, compiler tools, and
+many other tools.
+As far as the hardware/software co-simulation is concerned, the requirements of hardware and
+software designers generally are very different. In general, the hardware designers require
+highly accurate information for the hardware design and debugging while the co-simulation
+time, as far as it is acceptable, is less a concern. On the other hand, the software designers
+express a strong desire that the co-simulation speed has to be fast for the software validation
+on the target platform. To meet the requirements of different designers, transaction level mod-
+eling (TLM) [2, 4, 5] using SystemC provides a flexible solution. The un-timed TLM can be
+simulated very fast even combined with instruction-set simulator (ISS). On the other hand, the
+cycle-accurate TLM can provide more details to facilitate the hardware design and debugging.
+Therefore, many researchers [6, 7, 8, 9, 10, 11] use the SystemC TLM and ISS to simulate the
+MPSoC platform even though some tools use ISS of a specific processor. For instance, MPARM
+only supports the ARM ISS simulation [8]; Benini et al. [6], Fummi et al. [7], and STARSoC
+[11] only support MIPS architecture. In addition, Meyr et al. [9] exploit a retargetable ISS gen-
+erated by LISA, although only the MIPS processor is used in the demonstration. Other MPSoC
+platforms proposed by Chung et al. [12] and Yi et al. [13] only support the ARM architecture.
+A MPSoC simulation based on QEMU and SystemC was proposed in 2009 [14]; however, it
+can only model cache. On the other hand, QEMU-SystemC [15], proposed in 2007, integrates
+QEMU and SystemC. However, it can only support software and device drivers development
+on SoC, but not MPSoC.
+As reported by SiCortex in May 2007 [16], booting up Linux with all the Register-Transfer
+Level (RTL) models simulated using Verilog simulator takes 28 hours; booting up Linux with
+SystemC models converted from RTL takes 14 hours and 17 minutes. Although Gligor et al.
+[14] proposed a QEMU and SystemC platform, which takes only 31 seconds to boot up Linux
+compared to 3.3 hours using SoCLib [17], only statistics for cache model instead of all the
+information generally needed by a hardware designer are provided.
+In practice, the cycle-accurate level model is the slowest of the transaction-level modeling but
+the most useful in co-simulating the software and hardware at the register-transfer level. For
+this reason, many researchers work on co-simulating the instruction set simulator (ISS) with the
+RTL models. For instance, in [18], Yuyama et al. propose a co-modeling methodology for sim-
+ulating the RTL/ISS. In [19], Pouillon et al. propose an ISS that provides both the instruction-
+and cycle-accurate simulation for eight different instruction set architectures. However, no
+co-simulation with operating system and hardware models is reported.
+1
+3.1.1 Dynamic Binary Translation in QEMU
+In short, the DBT used by QEMU can be divided into two steps: (1) preparation and (2)
+translation. The first step is responsible for generating the DCG off-line while the second step
+is responsible for actually translating each of the target instructions into the host code—by first
+translating the target instructions into a sequence of indices to Tiny Functions (TFs) and then
+from the sequence of indices into the host code. In other words, if we think of the sequence of
+indices as the intermediate code or the watershed of the front end and the back end, then DCG
+plays the role of the back end of a compiler.
+From the viewpoint of QEMU, the target instructions to be executed have to be loaded into
+memory first and then translated instruction by instruction to the host code at run-time up to the
+next branch, jump, or instruction that interrupts the flow of execution. Then, the translation will
+be suspended, and the host code in the Translation Block Cache (TBC)—which is composed of
+one or more Translation Blocks (TBs)1 chained together—is executed. The purpose of chaining
+TBs together is so that they can be executed together without returning the control to the QEMU
+monitor. In addition, to speed up the performance, QEMU does not check at every TB if a
+virtual hardware interrupt is pending. Instead, the virtual interrupt hardware needs to call a
+specific function asynchronously to announce that an interrupt is pending.
+3.1.2 Hardware Emulation Features in QEMU
+QEMU provides two execution modes: the user mode and the system mode [25]. The user
+mode is provided to execute programs directly. The system mode is provided to execute an OS
+of the target CPU with a software memory management unit (MMU). Since our goal is to build
+a full-fledged system simulation framework, we will focus on the system mode with a software
+MMU. The way the load and store instructions of the target CPU access the memory depends on
+how the virtual address of the target OS is mapped to the virtual address of the host processor.
+As for the I/O, QEMU has defined a set of callback functions in C to act as the I/O interface,
+which can be used to model the virtual hardware device for the virtual platform of QEMU.
+Most of the hardware interrupt sources will be connected to the virtual interrupt controller
+modeled by the I/O interface of QEMU. Then, the virtual interrupt controller will ultimately
+be connected to the virtual CPU, which will in turn call a specific function asynchronously to
+inform the CPU main loop of QEMU that an interrupt is pending.
+3.2 QEMU and SystemC Based Framework
+QEMU-SystemC [15] is an open source software/hardware emulation framework proposed in
+2007 for the SoC development. It allows devices to be inserted into specific addresses of QEMU
+and communicates by means of the PCI/AMBA bus interface as shown in Figure 1 [15].
+The advantage of QEMU-SystemC is that the hardware designers need not worry about the de-
+1The basic block of QEMU.
+3
+ITC
+QEMU
+CPU 1
+Timer NTimer 1
+Shared
+Memory
+NoC
+SystemC Wrapper
+Other
+peripherals
+QEMUQEMU
+CPU 2 CPU N· · ·
+· · ·
+· · ·
+· · ·
+Figure 2: The block diagram of MPSoC simulation platform based on QEMU and SystemC
+[14].
+Communication (IPC) is often used for the framework that needs to be communicated with
+GDB or the external devices, such as GDB remote debug interface (RDI) [6, 26, 7, 27] and
+board-based Ethernet interface [28] suitable for different simulation environments. On the
+other hand, the pipe-based IPC can be performed on the ISS with or without GDB support [26,
+10]. The shared memory remapping provides still another communication mechanism between
+QEMU and SystemC [29], and most of the memory address translations of this communication
+mechanism have been taken care of internally by the software MMU of QEMU [25].
+3.3 Challenges of MPSoC
+Although the multi-processor products have been existing for decade, the tools and methodolo-
+gies for their design and development are not as matured, especially when the MPSoC develop-
+ment is concerned. The lesson we learned from the existing MPSoCs, such as Intel IXP2850TM,
+Philips NexperiaTM, TI OMAPTM, and ST NomadikTM [30] is what kind of challenges we con-
+front. From the viewpoint of system architects, the ESL tools need to provide the flexibility
+for MPSoC platform construction, acceptable simulation speed, and statistical analysis [31, 3].
+The platform construction needs to support variant flexible connection or communication in-
+terfaces between hardware models, even when encountering the non-standardized immature
+processor-to-processor communication mechanism.
+On the other hand, as described in [31], the fast functional model at instruction-accurate level
+can be made 1000–100000 times, and the transaction model at cycle-accurate level can be made
+1000 times faster than full cycle-accurate RTL simulation. Most of the processor-based plat-
+forms need to take into account the instruction simulating techniques of the selected ISS, and
+most of the fastest ISSs use the dynamic binary translation to increase their simulation speed.
+Apparently, the simplest way to model the MPSoC platform is to combine a certain number of
+ISSs and use shared memory as the bridge to communicate with each other. However, QEMU
+takes a different approach in the sense that the symmetric multi-processor architecture is sim-
+ulated by providing a fixed number of processor internal states and uses Round-Robin (RR) to
+switch between the processors [14].
+5
+4 研究方法
+4.1 Proposed Framework for MPSoC Development
+The original idea behind QEMU is to provide a virtual machine that can do whatever a physical
+machine can. In other words, the virtual machine should be able to run a full-fledged OS and
+all the applications that can be run on the OS and run them fast. Therefore, most of the design
+considerations of QEMU are on enhancing the performance of the QEMU itself, especially
+when emulating an OS is considered. As such, several tricky techniques are used. However,
+such a design choice also increases the difficulty on making QEMU an instruction-accurate or
+even a CA-ISS we propose herein as a processor model for the MPSoC development.
+4.1.1 QEMU-SystemC for MPSoC Development (QSCMP)
+Our purpose is to provide a framework for the MPSoC design and development. The require-
+ment of such a framework is that it has to be flexible in the construction of MPSoC platform,
+the simulation speed has to be acceptable, and it has to provide all the information for statistical
+analysis. More details for each of the features are as given below.
+1. Flexible in the construction of MPSoC platform. The conventional virtual platform for
+the SoC development only needs to take into account the processor-centric infrastruc-
+ture, such as the wiring between processor and memory and the interconnects between
+processor to other peripherals. For MPSoC, the new additional communication mech-
+anism between processor and processor has made its design much more complex—in
+terms of either the physical design or the platform construction—as far as ESL tools are
+concerned. Therefore, one of our goals is to investigate the MPSoC virtual platforms pro-
+vided by QEMU and to abstract their communication and synchronization mechanisms
+between processors for a more flexible platform construction, which also includes the
+memory and I/O interfaces.
+2. Acceptable simulation speed. Our goal is to ensure that the hardware/software co-simulation
+speed with OS up and running is acceptable for the MPSoC platform, especially when
+compared to the general ISS and SystemC solutions or the full RTL simulation.
+3. Statistical analysis. The shortcomings of state-of-the-art QEMU and SystemC based
+solutions are basically the same. They all provide insufficient statistics as far as a system
+architect is concerned. To overcome these drawbacks, our goal is to provide all the
+information required by the designer of an MPSoC platform.
+From the system perspective, QEMU can be considered as a virtual platform consisting of
+four fundamental functional blocks—processor model, software Memory Management Unit
+(MMU), memory-mapped I/O, and interrupt handler—as shown in Figure 3. For the MPSoC,
+we need to pay special attention to the communication mechanism, the interrupt controller
+design, and so on used by the multi-processor system. To make QEMU an instruction- or
+7
+TLM 2.0 [42], OCP modeling kit [43] and GreenBus [44]. Basically, OCP modeling kit and
+GreenBus are built on OSCI TLM 2.0. However, as far as the cycle-accurate level [24] is con-
+cerned, OSCI TLM 2.0 is the best to follow, at least from our point of view. Therefore, we will
+base the interconnects of our proposed framework on OSCI TLM 2.0, which ensures that all
+hardware components modeled based on it will be interoperable.
+4.2 The Main Loop of Multiprocessor in QEMU
+Before converting a multiprocessor model that is incapable of tracing instructions into a multi-
+processor model that is capable of tracing instructions, we need to investigate the multiproces-
+sor main loop in QEMU first. Then, the helper function technique can be applied directly to
+the virtual platform we proposed for performance estimation.
+A highly simplified view of the multiprocessor main loop of QEMU is as given in Fig. 5 as-
+suming that the virtual machine is just powered on or reset. After all the virtual processors
+are initialized, three conditions may cause the multiprocessor main loop to switch to the next
+CPU: (1) the current CPU cannot run, (2) no GDB debug is requested, and (3) the VM can run.
+In the case that the CPU can run, the interrupt signals of the virtual machine are all disabled,
+and the TBC, which is composed of a collection of TBs, is empty. Then, as the block named
+“Single processor main loop” enclosed in Fig. 5 depicts, the very first thing the CPU main
+loop of QEMU does is to process all the pending interrupts, if any, by setting up calls to the
+corresponding interrupt service routines (ISRs) so that they will get translated by the so-called
+Dynamic Binary Translation (DBT) to the host code. Then, it will start executing whatever host
+code in the TBC. However, if it is a TBC miss, then the DBT will be launched. After that, the
+CPU main loop will be re-entered, and the execution of the host code will be re-started. This
+time, it will be a TBC hit because some of the host code just get dynamically translated into the
+TBC. The CPU main loop will loop forever until the stop condition is met, which will in turn
+change to the next processor or halt all the processors according to the running status.
+4.3 Instruction Explorable ISS for the MPSoC Simulation
+Most of the conventional ways to model the MPSoC platform is to combine a certain num-
+ber of ISSs and use shared memory as the bridge to communicate with each other. However,
+QEMU takes a different approach in the sense that the symmetric multiprocessor architecture
+is simulated by providing a fixed number of processor internal states and uses Round-Robin
+(RR) to switch between the processors described in Section 4.2. As Fig. 5 shows, instead
+of changing the main loop of a single processor model, the multiprocessor model simply
+adds an outer loop to change the state of processors and the corresponding TBCs if certain
+conditions are met. Thus, the technique we proposed to extract transactions from the sin-
+gle processor model can be applied directly to the multiprocessor model without any change.
+The remaining problem is how to distinguish the generated transactions between processors.
+By analyzing several multiprocessor models, such as ARM11 MPCore tile [38, 39] on Re-
+alView Emulation Baseboard [40] and IBM’s dual-core POWER4 microprocessor 970MP [41]
+in PowerPC Mac G5, we conclude that it is the field cpu index that is used to keep track
+9
+19 case 3:
+20 gen_insn_fetch_3(s->pc, insn);
+21 ++get_tr_info.disas_arm_insn[env->cpu_index];
+22 break;
+23 }
+24 · · ·
+25 }
+26 · · ·
+5 結果與討論
+In this section, we turn our discussion to the experimental results of ARM11MPCore tile with-
+out cache as the instruction explorable multiprocessor model on the virtual RealView Emula-
+tion Baseboard platform with an ARM PrimeCell PL081 DMAC [45] modeled in SystemC,
+the details of which are as shown in Figure 6. Also notice that the interrupt cascaded by the
+distributed interrupt controller (DIC) shown in Figure 6 is initialized and connected by the
+functions arm pic init cpu() and sysbus connect irq() pre-defined in QEMU. Because
+PL081 has only one master port, we use the master port to read and write data in turn. Be-
+cause Linux kernel dose not provide the device driver for PrimeCell PL081 of the RealView
+Emulation Baseboard platform, we need to write our own device driver as a char device for the
+purpose of testing, and its behavior can be controlled by an application program by calling the
+ioctl() function defined within the driver.
+The performance of the target virtual platform is evaluated based on two different measures:
+(1) the time it takes to boot up a full-fledged Linux kernel, and (2) the statistics that can be
+collected while the system is being boot up. For all the experimental results given in this
+section (see Tables 3, 4, and 5), a 2.40GHz Intel Core 2 Quad Q6600 processor machine with
+4GB of memory is used as the host, and the target OS is built using the BuildRoot package
+[46], which is capable of automatically generating almost everything we need, including the
+cross-compilation tool chain, the target kernel image, and the initial RAM disk. The Linux
+distribution is Fedora 10, and the kernel is Linux version 2.6.31.3. QEMU version 0.12.4 and
+SystemC version 2.2.0 (including the reference simulator provided by OSCI) are all compiled
+by gcc version 4.3.2.
+QEMU and SystemC-based virtual platform is capable of tracing all the transactions generated
+by the multiprocessor model and estimating its performance at the instruction-accurate level
+with an OS up and running. The technique proposed to convert a multiprocessor model that is
+incapable of tracing into one that is capable of tracing is to combine the so-called helper func-
+tion and the capability to switch between processors. Furthermore, the capability to distinguish
+the I/O operations controlled by different CPU cores are valuable for the system designers to
+explore the system actions. Although in terms of the co-simulation time, there is a slowdown
+by a factor of 94.05 compared with the single processor model, the multiprocessor model is an
+enabling technology for the instruction explorable virtual platform for MPSoC development.
+Optimizing the simulation time of MPSoC will be the future work.
+11
+Ta
+bl
+e
+5:
+Si
+m
+ul
+at
+io
+n
+tim
+e
+of
+bo
+ot
+in
+g
+up
+th
+e
+L
+in
+ux
+ke
+rn
+el
+w
+ith
+D
+M
+A
+te
+st
+be
+nc
+h
+on
+a
+4-
+co
+re
+m
+ul
+tip
+ro
+ce
+ss
+or
+sy
+st
+em
+(i
+.e
+.,
+SM
+P
+=
+4)
+fo
+r5
+tim
+es
+.
+St
+at
+is
+tic
+s
+C
+o-
+si
+m
+tim
+e
+C
+PU
+nu
+m
+be
+r
+N
+T
+I
+N
+L
+D
+N
+ST
+N
+D
+M
+A
+R
+N
+D
+M
+A
+W
+N
+R
+D
+N
+W
+T
+N
+T
+X
+m
+in
+31
+9m
+22
+.5
+88
+s
+C
+PU
+0
+5,
+41
+3,
+94
+5,
+75
+0.
+00
+1,
+67
+9,
+66
+4,
+13
+9.
+00
+59
+5,
+98
+6,
+19
+0.
+00
+-
+-
+8.
+00
+0.
+00
+7,
+69
+1,
+64
+4,
+07
+9.
+00
+(2
+7.
+21
+%
+)
+(8
+.4
+4%
+)
+(3
+.0
+0%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(3
+8.
+65
+%
+)
+C
+PU
+1
+99
+2,
+31
+8,
+08
+0.
+00
+52
+,2
+44
+,6
+17
+.0
+0
+24
+,2
+01
+,4
+20
+.0
+0
+2,
+00
+0.
+00
+8,
+00
+2.
+00
+1,
+07
+0,
+81
+2,
+11
+7.
+00
+(4
+.9
+9%
+)
+(0
+.2
+6%
+)
+(0
+.1
+2%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(5
+.3
+8%
+)
+C
+PU
+2
+9,
+02
+3,
+73
+7,
+67
+2.
+00
+1,
+54
+7,
+28
+3,
+97
+5.
+00
+31
+,4
+59
+,0
+83
+.0
+0
+0.
+00
+0.
+00
+10
+,6
+04
+,5
+28
+,7
+30
+.0
+0
+(4
+5.
+35
+%
+)
+(7
+.7
+8%
+)
+(0
+.1
+6%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(5
+3.
+29
+%
+)
+C
+PU
+3
+11
+3,
+05
+6,
+17
+9.
+00
+33
+3,
+05
+0,
+99
+6.
+00
+83
+,0
+59
+,8
+29
+.0
+0
+0.
+00
+0.
+00
+53
+1,
+21
+5,
+00
+4.
+00
+(0
+.5
+7%
+)
+(1
+.6
+7%
+)
+(0
+.4
+2%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(2
+.6
+7%
+)
+Pe
+r-
+C
+PU
+3,
+88
+5,
+76
+4,
+42
+0.
+25
+90
+3,
+06
+0,
+93
+1.
+75
+18
+3,
+67
+6,
+63
+0.
+50
+50
+2.
+00
+2,
+00
+0.
+50
+4,
+97
+4,
+54
+9,
+98
+2.
+50
+(1
+9.
+53
+%
+)
+(4
+.5
+4%
+)
+(0
+.9
+2%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(2
+5.
+00
+%
+)
+To
+ta
+l
+15
+,5
+43
+,0
+57
+,6
+81
+.0
+0
+3,
+61
+2,
+24
+3,
+72
+7.
+00
+73
+4,
+70
+6,
+52
+2.
+00
+1,
+02
+4,
+00
+0.
+00
+1,
+02
+4,
+00
+0.
+00
+2,
+00
+8.
+00
+8,
+00
+2.
+00
+19
+,8
+98
+,1
+99
+,9
+30
+.0
+0
+(7
+8.
+11
+%
+)
+(1
+8.
+15
+%
+)
+(3
+.6
+9%
+)
+(0
+.0
+1%
+)
+(0
+.0
+1%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(1
+00
+.0
+0%
+)
+m
+a
+x
+11
+93
+m
+22
+.5
+6s
+C
+PU
+0
+36
+,9
+28
+,6
+28
+,1
+08
+.0
+0
+8,
+92
+2,
+71
+7,
+87
+0.
+00
+61
+4,
+34
+4,
+48
+3.
+00
+-
+-
+8.
+00
+0.
+00
+46
+,4
+67
+,7
+38
+,4
+61
+.0
+0
+(4
+6.
+17
+%
+)
+(1
+1.
+16
+%
+)
+(0
+.7
+7%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(5
+0.
+10
+%
+)
+C
+PU
+1
+11
+,7
+67
+,6
+85
+,0
+04
+.0
+0
+1,
+96
+0,
+97
+8,
+16
+5.
+00
+24
+,2
+26
+,8
+47
+.0
+0
+2,
+00
+0.
+00
+8,
+00
+2.
+00
+13
+,7
+54
+,9
+38
+,0
+16
+.0
+0
+(1
+4.
+71
+%
+)
+(2
+.4
+5%
+)
+(0
+.0
+3%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(1
+7.
+20
+%
+)
+C
+PU
+2
+13
+3,
+14
+8,
+45
+5.
+00
+42
+,5
+02
+,6
+14
+.0
+0
+14
+,4
+59
+,4
+78
+.0
+0
+0.
+00
+0.
+00
+19
+2,
+15
+8,
+54
+7.
+00
+(0
+.1
+7%
+)
+(0
+.0
+5%
+)
+(0
+.0
+2%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(0
+.2
+4%
+)
+C
+PU
+3
+11
+,0
+10
+,8
+84
+,4
+64
+.0
+0
+8,
+17
+7,
+03
+8,
+39
+4.
+00
+38
+0,
+03
+1,
+82
+9.
+00
+0.
+00
+0.
+00
+19
+,5
+70
+,0
+02
+,6
+87
+.0
+0
+(1
+3.
+77
+%
+)
+(1
+0.
+22
+%
+)
+(0
+.4
+8%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(2
+4.
+47
+%
+)
+Pe
+r-
+C
+PU
+14
+,9
+60
+,0
+86
+,5
+07
+.7
+5
+4,
+77
+5,
+80
+9,
+26
+0.
+75
+25
+8,
+26
+5,
+65
+9.
+25
+0.
+00
+0.
+00
+19
+,9
+96
+,2
+09
+,4
+27
+.7
+5
+(1
+8.
+70
+%
+)
+(5
+.9
+7%
+)
+(0
+.3
+2%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(2
+5.
+00
+%
+)
+To
+ta
+l
+59
+,8
+40
+,3
+46
+,0
+31
+.0
+0
+19
+,1
+03
+,2
+37
+,0
+43
+.0
+0
+1,
+03
+3,
+06
+2,
+63
+7.
+00
+1,
+02
+4,
+00
+0.
+00
+1,
+02
+4,
+00
+0.
+00
+2,
+00
+8.
+00
+8,
+00
+2.
+00
+79
+,9
+84
+,8
+37
+,7
+11
+.0
+0
+(7
+4.
+81
+%
+)
+(2
+3.
+88
+%
+)
+(1
+.2
+9%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(1
+00
+.0
+0%
+)
+µ
+70
+5m
+32
+.1
+39
+s
+Pe
+r-
+C
+PU
+8,
+57
+6,
+93
+8,
+82
+2.
+35
+2,
+17
+9,
+55
+2,
+06
+5.
+75
+20
+9,
+80
+4,
+40
+5.
+75
+-
+-
+50
+2.
+00
+2,
+00
+0.
+50
+10
+,9
+66
+,8
+07
+,2
+94
+.7
+5
+(1
+9.
+55
+%
+)
+(4
+.9
+7%
+)
+(0
+.4
+8%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(2
+5.
+00
+%
+)
+To
+ta
+l
+34
+,3
+07
+,7
+55
+,2
+89
+.4
+0
+8,
+71
+8,
+20
+8,
+26
+3.
+00
+83
+9,
+21
+7,
+62
+3.
+80
+1,
+02
+4,
+00
+0.
+00
+1,
+02
+4,
+00
+0.
+00
+2,
+00
+8.
+00
+8,
+00
+2.
+00
+43
+,8
+67
+,2
+29
+,1
+75
+.4
+0
+(7
+8.
+21
+%
+)
+(1
+9.
+87
+%
+)
+(1
+.9
+1%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(0
+.0
+0%
+)
+(1
+00
+.0
+0%
+)
+σ
+39
+7m
+03
+.4
+35
+s
+To
+ta
+l
+31
+,6
+86
+,3
+86
+,1
+35
+.3
+4
+11
+,5
+72
+,3
+67
+,8
+04
+.5
+7
+25
+1,
+83
+5,
+32
+3.
+01
+0.
+00
+0.
+00
+0.
+00
+0.
+00
+43
+,3
+47
+,3
+87
+,5
+71
+.8
+8
+13
+[14] M. Gligor, N. Fournel, and F. Pe´trot, “Using Binary Translation in Event Driven Simu-
+lation for Fast and Flexible MPSoC Simulation,” in Proceedings of the 7th IEEE/ACM
+International Conference on Hardware/Software Codesign and System Synthesis, 2009,
+pp. 71–80.
+[15] M. Monto´n, A. Portero, M. Moreno, B. Martı´nez, and J. Carrabina, “Mixed SW/SystemC
+SoC Emulation Framework,” in Proceedings of IEEE International Symposium on Indus-
+trial Electronics, June 2007, pp. 2338–2341.
+[16] SiCortex. Hardware-Software Co-development. [Online]. Available: http://www.edac.
+org/downloads/events/07 east coast/EDAC East 07 SiCortex 20070511.pdf
+[17] SoCLib. [Online]. Available: https://www.soclib.fr/trac/dev/wiki
+[18] Y. Yuyama, M. Aramoto, K. Kobayashi, and H. Onodera, “RTL/ISS Co-Modeling
+Methodology for Embedded Processor Using SystemC,” in Proceedings of the 2004 In-
+ternational Symposium on Circuits and Systems, ISCAS ’04, vol. 5, May 2004, pp. V–
+305–V–308.
+[19] N. Pouillon, A. Becoulet, A. de Mello, F. Pecheux, and A. Greiner, “A Generic Instruc-
+tion Set Simulator API for Timed and Untimed Simulation and Debug of MP2-SoCs,” in
+Proceedings of IEEE/IFIP International Symposium on Rapid System Prototyping, RSP
+’09, June 2009, pp. 116–122.
+[20] Open SystemC Initiative (OSCI). [Online]. Available: http://www.systemc.org/
+[21] IEEE Standard System C Language Reference Manual, Design Automation Standards
+Committee, 2005. [Online]. Available: http://standards.ieee.org/getieee/1666/download/
+1666-2005.pdf
+[22] T. Gro¨tker, S. Liao, G. Martin, and S. Swan, System Design with SystemC. Kluwer
+Academic Publishers Group, 2002.
+[23] D. C. Black and J. Donovan, SystemC: From The Ground Up. Springer Science+Business
+Media, 2004.
+[24] N. Dhanwada, R. A. Bergamaschi, W. W. Dungan, I. Nair, P. Gramann, W. E. Dougherty,
+and I.-C. Lin, “Transaction-Level Modeling for Architectural and Power Analysis of Pow-
+erPC and CoreConnect-Based Systems,” Design Automation for Embedded Systems, vol.
+10, no. 2-3, pp. 105–125, September 2005.
+[25] F. Bellard, “QEMU, a Fast and Portable Dynamic Translator,” in Proceedings of USENIX
+Annual Technical Conference, June 2005, pp. 41–46.
+[26] L. Benini, D. Bertozzi, D. Bruni, N. Drago, F. Fummi, and M. Poncino, “SystemC Co-
+Simulation and Emulation of Multiprocessor SoC Design,” IEEE-Computer Society, vol.
+36, pp. 53–59, April 2003.
+[27] L. Formaggio, F. Fummi, and G. Pravadelli, “A Timing-Accurate HW/SW Cosimulation
+of an ISS with SystemC,” in Proceedings of International Conference on Hardware/Soft-
+ware Codesign and System Synthesis, September 2004, pp. 152–157.
+15
+[44] W. Klingauf, R. Gu¨nzel, and M. Burton. (2008) GreenBus: a TLM Fabric and
+Interoperability Standard Proposal for SystemC. [Online]. Available: http://www.
+greensocs.com/en/filemanager/active?fid=50
+[45] ARM Ltd., PrimeCell Single Master DMA Controller (PL081) Technical Reference Man-
+ual, 2005, http://infocenter.arm.com/help/index.jsp.
+[46] BuildRoot. [Online]. Available: http://buildroot.uclibc.org/
+17
+面包括人工智能、生物科技、控制與自動化、計算機科學、通信、影像處理等相
+關議題，各種議題之間的差異性不小，但也是一個好機會去了解其他領域目前的
+研究趨勢及一些更深入的細節。 
+ 研討會由 3月 16號到 18號，3天的時間或許不能夠讓所有的學者以及研究
+人員完全了解各種 paper 所要探討的東西，但卻能夠有一點新的概念或事新的想
+法，我想這是其中一個很重要的收穫。這次的會議總共分成了 13個 sessions，以
+及會議本身的 Keynote Speech，而這些 session 基本上都是同時進行的，也因此
+不太可能全程參與所有的 session，我主要是參與了 IAENG International 
+Conference on Computer Science (ICCS) 這一個 session。很明顯的這是一個以
+Computer Science 為主的 session，從 3 月 17號到 3月 18號都有 ICCS 的 session，
+其中我所要報告的 paper 是 3月 18號那一場。Session chair 是 Dr. Pierluigi Cau，
+它不只主持這場 session，同時也是報告者之一，還蠻特別的。 
+ IMECS 是一個國際性的研討會，因此有來自世界各地的優秀人才是很平常
+的，但我所參與的那一場 session 似乎只有我一個來自台灣的學生，也許其他台
+灣的學生在其他的 session 吧。這個 session 有來自日本、美國、巴基斯坦…等不
+同的優秀人才，大家似乎都有備而來，反而是我自己感覺比較緊張，果然還是需
+要更多的磨練才行。 
+  
+二、與會心得: 
+ Session 的主要目的就是為自己所發表的 paper 作一個簡單的報告，並針對有
+疑問的聽者作簡單的解釋。第一個報告得是一個來自日本的同學，年紀看起來跟
+我差不多，主題是利用一些高頻率的 pattern 作 data screening。或許是日本人本
+身口音的關係，聽他們講英文就是有一點不大一樣的感覺，雖然本身英文不是好
+到能夠了解對方所說的每一句話，但很明顯的日本人講英文就是蠻奇特的。並且
+英文好不好也是很直接的表現在報告上面，其他一些英語體系的報告聽起來就是
+比較自然，也比較口語化，整個報告的節奏就掌握得比較好。這次 session 令我
+印象比較深刻的是一個黑人，我猜是巴基斯坦人，它所發表得有點像是一個
+tool，a PDF text extractor，透過這個東西，能夠更有效的管理許多 paper 並分類，
+首先他提出目前已存在市面上得一些 tool，並分析它們有哪些限制。最後將自己
+本身的 tool 及 extract 的演算法拿來跟這些 tool 作比較。報告時間超過每個報告
+者所擁有的 15分鐘，但由於最後他還實際 demo 了那個 tool，這點很特別，第一
+次看到有人報告然後還有實際的成品 demo 給大家看。雖然報告時間有點超過，
+但大家還是不吝惜的給予掌聲。我覺得能夠實際看到 paper 的成果應該還是最能
+讓人有印象的吧，這也是一個研討會帶給我的心得。 
+ 除了 session 本身之外，最重要的還是自己本身的英文程度，在 session 結束
+後，有個外國朋友來詢問剛剛我報告的一些相關細節，由於他說得很快，對於他
+的問題有點不大能了解，最後是請他寫在紙上，然後再進行討論。我想我的英文
+程度還是必須再加強。 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/10/25
+國科會補助計畫
+計畫名稱: 以QEMU與SystemC為基礎之多重處理器系統晶片架構之前瞻研究
+計畫主持人: 江明朝
+計畫編號: 99-2221-E-110-052- 學門領域: 計算機結構與計算機系統
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

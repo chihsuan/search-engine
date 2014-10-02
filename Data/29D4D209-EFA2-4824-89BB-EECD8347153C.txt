@@ -1,0 +1,1169 @@
+the system architecture of CMP brings new challenges 
+in system development and increases complexity in 
+developing embedded software especially at the level 
+of kernel or operating system. This report presents 
+our experience and results from implementing a one-
+year project which intends to develop and implements 
+a high performance Inter-Process Communication (IPC) 
+mechanism for application software running on a 
+multi-kernel embedded system platform. A demo example 
+is implemented on the embedded system platform of a 
+newly developed multi-core SOC, namely PAC Duo SOC, 
+which is the latest product from the PAC (short for 
+Parallel Architecture Core) Project implemented at 
+Industry Technology Research Institute (ITRI) in 
+Taiwan. PAC Duo SOC is a heterogeneous multi-
+processor SOC composed of one ARM926 core serving as 
+the general purpose processor (GPP) and two ITRI PAC 
+DSP cores serving as the special purpose processors 
+(SPP). We ported Linux operating system to run on the 
+ARM926 processor and ported the real-time kernel 
+uC/OS-II to run on one PAC DSP core, leaving the 
+other PAC DSP core with the option of running either 
+another uC/OS-II or a different kernel. To address 
+the issues in IPC, a high performance message-passing 
+mechanism is developed. Its design not only takes 
+application-specific requirements into account but 
+also takes advantages of hardware features. 
+英文關鍵詞： embedded system, embedded software, IPC, multicore, 
+operating system, Linux, uC/OS-II. 
+ 
+- 2 - 
+ 
+The Design and Implementation of a Symmetric IPC Mechanism for 
+ Non-Symmetric Heterogeneous Multi-Core Embedded Systems 
+ 
+ 
+Abstract 
+Many consumer embedded system products nowadays are built on platforms with System-On-a-Chip 
+(SOC) in which two or more processor cores, which are not necessarily of the same type, are put into a single 
+chip and form the architecture of Chip-level Multi-Processor (CMP). Although such platform is capable of 
+achieving high performance at relatively low cost, the system architecture of CMP brings new challenges in 
+system development and increases complexity in developing embedded software especially at the level of 
+kernel or operating system. This report presents our experience and results from implementing a one-year 
+project which intends to develop and implements a high performance Inter-Process Communication (IPC) 
+mechanism for application software running on a multi-kernel embedded system platform. A demo example 
+is implemented on the embedded system platform of a newly developed multi-core SOC, namely PAC Duo 
+SOC, which is the latest product from the PAC (short for Parallel Architecture Core) Project implemented at 
+Industry Technology Research Institute (ITRI) in Taiwan. PAC Duo SOC is a heterogeneous multi-processor 
+SOC composed of one ARM926 core serving as the general purpose processor (GPP) and two ITRI PAC 
+DSP cores serving as the special purpose processors (SPP). We ported Linux operating system to run on the 
+ARM926 processor and ported the real-time kernel C/OS-II to run on one PAC DSP core, leaving the other 
+PAC DSP core with the option of running either another C/OS-II or a different kernel. To address the issues 
+in IPC, a high performance message-passing mechanism is developed. Its design not only takes application-
+specific requirements into account but also takes advantages of hardware features. 
+ 
+Keywords - embedded system, IPC, multicore, operating system, Linux, C/OS-II. 
+ 
+ 
+ 
+I.  INTRODUCTION 
+Many modern consumer embedded system products, such 
+as smart phones, portable media players (PMP), mobile internet 
+devices (MID), personal navigation devices (PND), are desired 
+to have sophisticated functionality with high performance yet 
+to keep low power consumption and small in size and two 
+trends have emerged. One is adopting operating system in the 
+development of embedded software, and the other is deploying 
+SOC (System-On-a-Chip) as the main hardware component [1]. 
+There are more and more products using an SOC in which two 
+or more processor cores, which are not necessarily of the same 
+type, are put into one single silicon chip. OMAP [11] and 
+DaVinci [12] are well-known examples and both are composed 
+of an ARM9 core and a DSP (Digital Signal Processing) core 
+to form a platform of chip-level heterogeneous multiprocessor 
+architecture. Typically, the SOC consists of one GPP (General 
+Purpose Processor) and one SPP (Special purpose Processor) to 
+co-operate, in addition to performing their dedicated functions. 
+Such a configuration of multiple processor cores has been used 
+in many consumer embedded system products. 
+While embedded system products with multi-core SOC can 
+effectively meet the requirements imposed from some possibly 
+conflicting restrictions, such as high performance and low cost, 
+the architecture of chip-level heterogeneous multiprocessor not 
+only brings new challenges but also increases complexity in 
+developing embedded software, especially at the level of kernel 
+or operating system software. In this paper, we present our 
+experience and some preliminary results from a 3-year project 
+of building a multi-kernel embedded system on the platform 
+which is equipped with a multi-core SOC, namely PAC Duo 
+SOC [22-25] or, for short, PAC Duo. PAC Duo is a chip-level 
+heterogeneous multiprocessor SOC composed of an ARM926 
+core as the GPP and two PAC DSP cores as the SPP [15]. It is 
+the successor of PAC Solo [14, 15] and the latest product of the 
+PAC Project (PAC stands for Parallel Architecture Core) which 
+is implemented by the Industry Technology Research Institute 
+(ITRI) in Taiwan [14-16]. 
+Aside from following the common approach of developing 
+an operating systems for multi-processor system [2-8, 10], in 
+which the SPP is usually treated as a special device of the GPP, 
+this project takes the option of building multi-kernel embedded 
+system environment on the PAC Duo platform, in which each 
+processor core has a kernel running on it. The project started 
+from porting Linux operating system to run on the ARM926 
+processor core and porting C/OS-II real-time kernel [17] to 
+one of the two PAC DSP cores. The objective is to provide a 
+basic execution environment at the earliest stage so that some 
+existing application software might be ported to run on the 
+platform. For the other DSP core of PAC Duo, we built another 
+- 4 - 
+ 
+EMDMA SRAM
+SM
+External
+Flash SMI
+S
+MPU
+VIC*2
+S
+Mailbox
+S
+DDR2
+Controller
+SD/MMC/
+SDIO*2
+S
+SAHB2
+AXI
+GPIO TP_SPI
+Timer * 8 I2C_master*3
+I2S *2 Watchdog
+S
+M
+MAXI2
+AHB
+M
+S
+S
+PAC Duo V1.0
+M
+DSP2
+M S
+DSP1
+M S
+AXI BUS System (4M6S)
+DSP1
+VIC
+S
+DSP2
+VIC
+S
+LCD
+M S
+AHB
+monitor
+S
+Ethernet
+M S
+DW-
+DMA
+M S
+Camera
+M S
+MPU
+M M
+10 layer AHB-lite BUS
+AHB2APB
+S
+M
+LCD_SPI UART*2
+Conf
+slave
+S
+PWM
+APB BUS
+Sys ctrl 
++PMU
+Off 
+chip
+USB
+interface
+S
+Ext. AHB
+M S
+Entropy
+SM
+SRAM
+S
+128KB128MB
+32MB 256KB
+SDRAM
+controller
+S
+128MB
+ 
+Figure 2.  The architecture of PAC Duo SOC [25] 
+There are four banks of shared memory on the platform. 
+Two banks of the shared memory (128KB SRAM and 128MB 
+DDR2 DRAM) reside on the AXI bus while the other two 
+(256KB SRAM and 128MB SDRAM) reside on the AHB bus. 
+ 
+ 
+Figure 3.  Software architecture of the multi-kernel embedded system on the 
+PAC multi-core platform 
+IV. THE MULTI-KERNEL EMBEDDED SYSTEM 
+This section presents the work of building a multi-kernel 
+embedded system on the PAC Duo multi-core platform. An 
+overview which describes the whole picture of our design and 
+implementation comes first. The descriptions of important parts 
+then follow. Due to space limitation, the details are skipped and 
+readers may consult [30]. Note that, unless otherwise needed, 
+in the following, the generic name of PAC DSP is used to refer 
+any the two DSP cores. When it is necessary, the names DSP1 
+and DSP2 will be used. 
+A. Overview 
+Figure 3 depicts the software architecture of our intended 
+multi-kernel embedded system on the PAC multi-core platform. 
+There are three kernels running on the three processor cores of 
+PAC Duo. In accordance with the processor types, the kernels 
+can be categorized into the one on the ARM side and the ones 
+on the PAC DSP side. Communication among the kernels is 
+achieved through an inter-processor communication (IPC) me-
+chanism. The main parts of this multi-kernel architecture are 
+thus the ARM side, the PAC DSP side, and the IPC. 
+In Figure 3, a Linux kernel is shown to run on the ARM 
+side as the ARM926EJS is the GPP and Linux is a general 
+purpose operating system. On the PAC DSP side, the real-time 
+kernel C/OS-II runs on DSP1 and a dataflow kernel runs on 
+DSP2. This multi-kernel architecture allows an application to 
+- 6 - 
+The upper layer of the IPC is composed of application level 
+message passing interfaces which include functions of sending 
+and receiving messages, functions of status query, and some 
+supporting functions. Both non-blocked and blocked operations 
+are supported by the functions of sending/receiving messages. 
+When properly used [3], synchronization between tasks can be 
+achieved via blocked message passing. These functions are 
+listed in Table III and Table IV respectively for tasks running 
+on the ARM side and the PAC DSP side. Their implementation 
+shows symmetry in the sense that, for most functions, the 
+argument list used on the ARM side is the same as that on the 
+PAC DSP side. For instance, when using ARM_Send function, 
+the argument list includes the processor ID and the task ID of 
+both the sending task and the receiving task, message type, and 
+the message content. These arguments are also required when 
+DSP_Send is invoked. 
+TABLE III.  MESSAGE PASSING INTERFACES OF IPC FOR ARM SIDE 
+Function Name Operation 
+ARM_Send_Blocked Blocked sending a message 
+ARM_Send Non-blocked sending a message 
+ARM_Receive_Blocked Blocked receiving a message 
+ARM_Receive Non-blocked receiving a message 
+ARM_Send_and_Wait Sending a message and wait for response 
+ARM_Send_Response Sending response for a received message 
+ARM_Query_Sent Enquiring the status of sent message 
+ARM_MsqQ_Reset Resetting the message queue 
+ARM_MsgQ_Status Enquiring the status of message queue 
+ARM_MsgQ_Peek Receiving a message without dequeuing 
+ARM_MsgQ_Discard Discarding a message from message queue
+ 
+TABLE IV.  MESSAGE PASSING INTERFACES OF IPC FOR PAC DSP SIDE 
+Function Name Operation 
+PAC_Send_Blocked Blocked sending a message 
+PAC_Send Non-blocked sending a message 
+PAC_Receive_Blocked Blocked receiving a message 
+PAC_Receive Non-blocked receiving a message 
+PAC_Send_and_Wait Sending a message and wait for response 
+PAC_Send_Response Sending response for a received message 
+PAC_Query_Sent Enquiring the status of sent message 
+PAC_MsqQ_Reset Resetting the message queue 
+PAC_MsgQ_Status Enquiring the status of message queue 
+PAC_MsgQ_Peek Receiving a message without dequeuing 
+PAC_MsgQ_Discard Discarding a message from message queue
+ 
+With this IPC mechanism integrated into the kernel, a task 
+running on the ARM side can effectively send a message to a 
+task running on the PAC DSP side and vice versa. The process 
+of message delivery is very efficient because all the required 
+information is encoded into the 64-bit content of the hardware 
+mailbox and delivered by a hardware interrupt signal. When 
+the size of message is not more than 32 bits, the message itself 
+is carried as the content in the mailbox. To send a message 
+longer than 32 bits, the message will be put into a block of 
+shared memory and the 32-bit address of this block is sent as 
+the pointer in the message. Note that, although the presentation 
+here is focused on communication across processor boundaries, 
+the communication among tasks running on the same processor 
+can be easily achieved by the same IPC mechanism. 
+V. EVALUATION 
+For the presentation here, the performance of writing shared 
+memory and delivering messages are evaluated. To measure 
+the performance of writing shared memory, a 100K-byte data 
+block is copied from the SDRAM on the AHB bus to different 
+shared memory banks, and the throughputs (in Mbytes/second) 
+are shown in the left four bars in Figure 4. From the figure, 
+there is no much performance difference among the four banks. 
+The results show that copying a small block of data in the PAC 
+platform is not efficient since the throughput is only about 10 
+Mbytes/second. Figure 4 also shows the throughput of copying 
+a larger block of data (i.e., 512K bytes) and copying the same 
+data via DMA. From the figure, higher performance can be 
+achieved when a larger data block is copied. Moreover, DMA 
+transfer could achieve an 8-fold throughput improvement than 
+moving data via the processor on the PAC platform.  
+Table V shows the performance of message passing. In the 
+table, the message sending row gives the measured time of 
+sending a message from the ARM processor to one of the PAC 
+DSPs, via the interrupt-based mailbox mechanism supported by 
+the PAC platform, and inserting the message in the message 
+queue of the target task running on the PAC DSP, while the 
+message receiving row gives the measured time of removing a 
+message from the target message queue. Since the latter mainly 
+involves simple manipulation on data structure of message 
+queue and triggers no interrupts, it takes less time. Sending and 
+receiving a message from one PAC DSP demonstrates similar 
+performance and thus the results are not shown in this paper. 
+ 
+Figure 4.  Throughput of Shared Memory Access (MB/s) 
+TABLE V.  PERFORMANCE OF MESSAGE PASSING 
+Message Passing Functions Time 
+Message Sending  6.4 us 
+Message Receiving 3.8 us 
+ 
+VI. APPLICATION EXAMPLES 
+Two example applications were built to demonstrate the 
+multimedia implementation based on multi-kernel embedded 
+- 8 - 
+Processors”, Proc. IEEE International Conference on Multimedia and 
+Expo, July 2006, pp. 289-292. 
+[17] Jean J. Labrosse, “Micro-C/OS-II”, 2nd ed., CMP Books, 2002, ISBN 
+1578201039. 
+[18] Wataru Kanda, Yu Murata and Tatsuo Nakajima, “SIGMA System: A 
+Multi-OS Environment for Embedded Systems”, Journal of Signal 
+Processing Systems, September 2008. 
+[19] Silas Boyd-Wickizer, Haibo Chen, Rong Chen, Yandong Mao, Frans 
+Kaashoek, Robert Morris, Aleksey Pesterev, Lex Stein, Ming Wu, 
+Yuehua Dai, Yang Zhang, Zheng Zhang, “Corey: An Operating System 
+for Many Cores”, Proc. 8th USENIX Symposium on Operating Systems 
+Design and Implementation, December 2008. 
+[20] R. Liu, K. Klues, S. Bird, S. Hofmeyr, K. Asanovic, and J. Kubiatowicz, 
+“Tessellation: Space-Time Partitioning in a Manycore Client OS”, Proc. 
+First USENIX Workshop on Hot Topics in Parallelism, March 2009. 
+[21] Andrew Baumann, Paul Barhamy, Pierre-Evariste Dagandz, Tim Harrisy, 
+Rebecca Isaacsy, Simon Peter, Timothy Roscoe, Adrian Schupbach, and 
+Akhilesh Singhania, “The Multikernel: A New OS Architecture for 
+Scalable Multicore Systems”, Proc. ACM Symposium on Operating 
+Systems Principles, October 2009. 
+[22] Industrial Technology Research Institute (ITRI), “PACDSP3S0001-
+Processor Architecture”, 2008. 
+[23] Industrial Technology Research Institute (ITRI), “PACDSP3S0003-
+Programming Guide”, 2008. 
+[24] Industrial Technology Research Institute (ITRI), “PACDSP V3 Software 
+Developer’s Manual-Volume 1: Processor Architecture”, 2009. 
+[25] Industrial Technology Research Institute (ITRI), “PAC Duo Program-
+ming’s Reference”, 2009. 
+[26] Industrial Technology Research Institute (ITRI), “ARMBA-Compliant 
+IP Target Specifications”, Version 1.0, 2008. 
+[27] Graham, R. L., G. M. Shipman, et al. “Open MPI: A High-Performance, 
+Heterogeneous MPI”, Proc. IEEE International Conference on Cluster 
+Computing, 2006. 
+[28] Gropp, W., E. Lusk, et al. “A high-performance portable implementa-
+tion of the MPI message passing interface standard”, Parallel Computing 
+22(6): 789-828, 1996. 
+[29] Robinson, J., S. H. Russ, et al. “A task migration implementation of the 
+Message-Passing Interface”, Proceedings of 5th IEEE International 
+Symposium on High Performance Distributed Computing, 1996. 
+[30] Jing Chen, Chung-Ping Young, Da-Wei Chang, Guan-Ying Huang, Su-
+Lin Chu, Chung-Yuan Ke, Shih-Tun Yen, Tsang-Shuo Kuo, “Building 
+Multi-kernel Embedded System on PAC Multi-core Platform”, In 
+Proceedings of the 10th IEEE International Conference of Quality 
+Software (QSIC), pp. 465-472, July 2010. 
+[31] Barry Kauler, “A Tiny Microcontroller Dataflow Kernel”, Micropro-
+cessors and Microsystems, Vol. 20, No. 2, 1996, pp. 105-110. 
+[32] Kuljeet Singh, “Design and Evaluation of an Embedded Real-Time 
+Micro-Kernel”, CPES, Blacksburg, Virginia, October 2002. 
+[33] Youngsoo Kim and Suleyman. Sair, “Designing Real-Time H.264 
+Decoders with Dataflow architectures. In Proceedings of the 3rd IEEE/ 
+ACM/IFIP International Conference on Hardware/Software Codesign 
+and System Synthesis, pp. 291-296, 2005. 
+ 
+ 
+出席 IEEE/ACM CPSCom2010, GreenCom2010, APESER2010 報告                        2 / 9 
+WiSARN、SocialNet 2010、UUMA 2010、APESER 2010 等。各學術研討會之名稱
+如表一所列。其聯合舉辦之方式為除了各研討會之分組論文發表議程獨立舉行之
+外，開幕式與專題演講(Keynote Speech)接合併聯合舉行。各研討會自行設定專題
+演講主題並自行邀請講者，但所有專題演講統一安排演講時間並開放所有與會者
+參加。此一聯合舉辦方式本人感覺甚佳，不僅因聯合舉辦可使資源整合並提高效
+率，避免資源浪費；更使研討會參加者能擴大參與面，並有機會參加不同領域或
+主題之學術研討。 
+ 
+表一、 國際學術研討會名稱 
+ 簡  稱 全    名 
+CPSCom 2010 The 3
+rd IEEE/ACM International Conference on Cyber, 
+Physical and Social Communication 主 
+辦 
+GreenCom 2010 The 2010 IEEE/ACM International Conference on 
+Green Computing and Communications 
+WiSARN The International Workshop on Wireless Sensor, 
+Actuator and Robot Networks 
+SocialNet 2010 The 2010 International Symposiumm on Social 
+Computing and Networking 
+UUMA 2010 The International Workshop on Universal User 
+Modeling and Applications 
+參 
+與 
+聯 
+合 
+舉 
+辦 APESER 2010 The 4th Asia-Pacific Embedded Systems Education 
+and Research Conference 
+ 
+第四屆亞太地區嵌入式系統教育與研究研討會(APESER 2010)於 12月 18日開
+幕，會場地點設於杭州風光明媚，名聞中外之西湖濱傍金溪山莊飯店。APESER
+之規模不算大，但由於本次會議是六個國際學術研討會聯合舉辦，共約 200 人參
+與，故整體場面頗為熱鬧。APESER 2010 吸引亞洲地區多數國家(包含：中華民國、
+日本、南韓、新加坡、馬來西亞、泰國、印度、中國大陸與香港等)、中東地區國
+家與歐洲地區國家(包含：德國、西班牙與希臘等)之論文投稿。主辦單位公佈之統
+計為：有來自共 13 個國家地區之論文投稿計 39 篇，獲選接受發表之論文計 17 篇，
+接受率約為 44%；以此一類型之國際會議而言，誠如會議主席所言，雖小卻好(Small 
+but good.)。APESER 2010 議程依研究主題分為 4 場單軌議程進行論文發表與研討
+並針對嵌入式系統產品開發與嵌入式系統教育與研發人才之培育等重要議題舉行
+3 場專業演講。本人於會議進行首日下午之第二議程擔任分組主席，議程主題為嵌
+入式控制系統，本人主持四篇論文報告與討論。本人並於 12 月 19 日下午之第四
+議程發表論文；議程主題為嵌入式系統應用。本人發表之論文題目為：Zinix – A 
+Function-Modularized Kernel for Multi- processor Embedded Systems (Zinix - 一功能
+ 
+出席 IEEE/ACM CPSCom2010, GreenCom2010, APESER2010 報告                        4 / 9 
+同學。浙江大學佔地面積頗大，共分為五大主要校區，本次參訪因時間有限且為
+出席國際學術研討會順道安排之非正式訪問，故僅參訪位於西湖濱傍之育泉校
+區。陳天洲教授目前為浙江大學計算機系統工程研究所副所長，亦擔任本次會議
+APESER 2010 之共同主席，其主要研究興趣包含：多核系統結構、嵌入式微處理
+機設計、FPGA 可重構處理器、低功耗設計、硬體安全、軟體節能、軟硬體協同設
+計方法等等，並主持浙江大學嵌入式系統研究中心、多核實驗室與 Google Android
+實驗室等研發單位。本次訪問中，陳天洲教授介紹該校有關嵌入式系統之研究、
+與工業界之合作交流現況與成果，並說明該校有關嵌入式系統教學概況、教學及
+研發重點與課程規劃。陳天洲教授亦引導本人與王明習老師參觀嵌入式系統研究
+中心、多核實驗室、研究生實驗室、Google Android 實驗室、大學部嵌入式系統設
+計課程實驗室等。 
+(A) 浙江大學嵌入式系統研究中心是基於與 Intel 公司合作而成立之技術研究中
+心，也是 Intel 公司在全球與大學合作建立之八個技術研究中心中，唯一以嵌
+入式系統技術為面向之研究中心。主要研究方向為計算機體系結構，包含：
+多核系統結構、嵌入式微處理器設計、FPGA 可重構處理器、低功耗設計、
+硬體安全、軟體節能、依賴於體系結構之作業系統與編譯技術。該實驗室具
+備之技術能力有： 
+ (a) 應用客製化之處理器核心； 
+ (b) 加速核心設計，提高系統性能； 
+ (c) 伺服器底層調優； 
+ (d) 伺服器與嵌入式系統節能； 
+ (e) 嵌入式系統軟體優化。 
+(B) 浙江大學多核實驗室是 Intel 公司為推動多核心處理器技術與大學合作而設
+立之實驗室主要目的為協助訓練大學生瞭解並具備新型處理器之軟體開發
+技術。此一實驗室由 Intel 公司提供專業知識、開發工具、訓練設備、教材、
+經費等資源，並與 Intel 公司合作以專案計畫方式進行多核心處理器軟體技術
+之研究。 
+(C) Google Android 實驗室是 Google 公司為推動其 Android 平台支手機軟體與中
+國大陸之多所大學合作設立之實驗室之一。浙江大學 Google Android 實驗室
+是第一批建立之實驗室，目前已開始運作。此一實驗室與 Google 公司之合作
+主要為教育訓練與推廣，提供訓練課程與教材，並提供師資培訓。浙江大學
+目前已規劃並實施首機軟體設計之專業課程。 
+由陳天洲教授之說明中，本人得知浙江大學對於研究發展較為注重並以多種
+方式鼓勵與獎勵該校教師爭取科研經費或業界之研發合作；對於研究生也提供多
+種獎助或津貼，使研究生可專注於研究與自我培育。課程與學制方面則以彈性之
+制度減少傳統學制可能產生之僵化現象；例如：每一學年分為五個學期，每一學
+期為期約 8 週；課程實施以完成總教學時數為原則而不必拘泥於每週必須實施固
+定授課時數之規定。本人以為重研發可能產生輕教學之缺失，長久而言，亦對研
+ 
+出席 IEEE/ACM CPSCom2010, GreenCom2010, APESER2010 報告                        6 / 9 
+此不僅可有助於培養國內優質研發人才，亦應有助於整體研發實力之提升。 
+2. 爾來國際性學術研討會數量增加，每一會議之籌辦皆須投資相當之人力與資
+源。目前跨領域合作之風氣亦盛，故建議於舉辦各類學術研討會時，鼓勵將具
+有同質性或相關性之學術研討會採取聯合舉辦或共同舉辦之方式，不僅對於參
+與研討會之各界人士可提供更高之助益，且可並收有效利用資源，提高各研討
+會服務品質之效果。 
+3. 本次出國行程配合政府規定，選擇搭乘中華航空公司自高雄直飛杭州班機，於
+11 月下旬完成購票程序，取得電子機票並依據班機時間規劃本次出席國際學術
+會議與參訪行程。詎料於出發前四日，12 月 13 日，接獲代辦機票旅行社通知
+謂：去程班機已遭中華航空公司於未說明理由之情形下臨時取消並正協調安排
+改由香港轉機前往杭州。然次日，即 12 月 14 日，復接到通知回程班機亦遭中
+華航空公司取消且未說明理由。本人震驚之餘，深感無奈；因行程已規劃並與
+APESER 2010 會議主席及相關學者預約會面時間進行交流與討論，亦安排參訪
+浙江大學行程，且回程當日亦將返回本校與學生研討；除參與研討會之時間較
+不受影響之外，其他行程時間必須重行規劃與安排。本人雖不得已必須接受改
+由香港轉機之較長往返旅程時間，但對於中華航空公司不顧乘客權益，且於本
+人向中華航空公司抗議時所感受到該公司霸道與藐視之心態深感痛心與氣憤。
+特此請校方轉呈有關單位建議明令取消「因公行程以搭乘本國籍航空公司班機
+為原則」之所有限制，並對於航空公司此類枉顧乘客權益之無理行為予以明確
+規範與嚴懲。 
+ 
+出席 IEEE/ACM CPSCom2010, GreenCom2010, APESER2010 報告                        8 / 9 
+2. 會議地點照片： 
+ 
+ 
+3. 會場照片： 
+ 
+ 
+ 
+ 
+Zinix – A Function-Modularized Kernel for Multiprocessor 
+Embedded Systems 
+ 
+Jing Chen∗ Lian-Jou Tsai∗∗ Wen-Bin Hung∗ Jian-Hong Liu∗
+ 
+∗Department of Electrical Engineering 
+National Cheng Kung University 
+1 University Road, Tainan City, 70101, Taiwan, ROC 
+{jchen, zzbin, liuken}@rtpc06.ee.ncku.edu.tw 
+∗∗Department of Electrical Engineering 
+Southern Taiwan University 
+1 Nantai St., Yung-Kang City, Taiwan, ROC 
+ljtsai@mail.stut.edu.tw 
+ 
+ 
+Abstract — This paper presents the design and implementation of 
+an embedded system kernel, namely Zinix, with functional 
+modularity for multiprocessor platforms. Zinix supports system 
+configuration of both homogeneous and heterogeneous multi-
+processors with shared memory. Its design is based upon the 
+concept of micro-kernel with emphasis on modular functionality 
+and reusability in order to be flexible and suitable for running 
+various applications. To achieve modularity of service functions, 
+Zinix is built, in addition to a micro-kernel, with server processes 
+of process manager and memory manager so that applications or 
+user processes are provided essential system service functions, 
+while supporting multiprocessor configuration as well as other 
+sophisticated services are harnessed via adding function-specific 
+server processes. This paper focuses on the system architecture of 
+Zinix, and discusses the design of dynamic server processes with 
+scheduling concerns. The performance evaluation of its current 
+implementation is also presented. 
+Keywords— Embedded System; Multiprocessor; Multiprocessor 
+Embedded System; Kernel; Embedded Software 
+ 
+I.  INTRODUCTION  
+Embedded system products nowadays are prevailing in our 
+living environment more than ever. Cellular phones, personal 
+navigation devices, MP3 players, game players are just some 
+popular examples in our daily lives. From software aspect, 
+there is a kernel sitting at the heart of these embedded system 
+products, which, unlike the kernels in desktop computers, has 
+some comparable traits. First, the kernel should not consume 
+too much memory storage due to the nature of system scale. 
+Second, the adopted algorithms should present satisfactory 
+efficiency on the restricted hardware. Third, the kernel should 
+meet the requirements specific to the running applications. For 
+instance, when running real-time tasks, the kernel services 
+should show predictable timing behaviors [6]. In addition, the 
+system should support power management by turning off idle 
+peripherals or degrading some functions of less importance. 
+Multiprocessor configuration is not uncommon for many 
+embedded systems. As modern embedded system are required 
+to provide sophisticated functionality with high performance 
+yet to keep power consumption low as well as small in size, 
+the trend of deploying an SOC (System-On-a-Chip) emerges, 
+in which more than one processor are put into a single silicon 
+chip to implement the configuration of multiprocessor. The 
+OMAP architecture of Texas Instruments Inc. (TI for short) is 
+a well-known example, which integrates an ARM processor 
+core and a TMS320C55x DSP core into the chip and forms a 
+platform with heterogeneous multiprocessor architecture [13]. 
+This category of SOC typically consists of one GPP (General 
+Purpose Processor) and one SPP (Special purpose Processor) 
+as co-processor. When the system platform is configured with 
+multiple processors (usually GPPs) of the same architecture, it 
+is homogeneous multiprocessor system. 
+While platforms with multiprocessor architecture in SOC 
+can effectively meet the requirements imposed from some 
+conflicting restrictions of embedded system products such as 
+high performance and low cost, multiprocessor architectures, 
+especially those of heterogeneous processors, usually bring 
+new design challenges as well as increase the complexity in 
+developing embedded software, in particular, at the level of 
+kernel or operating system software. This paper presents the 
+design and the implementation of Zinix, an embedded system 
+kernel with modular functionality for the platforms of shared 
+memory multiprocessor architecture. Zinix is designed based 
+on the concept of micro-kernel architecture while putting the 
+emphasis on its modularity and reusability at the functionality 
+level in order to be flexible and suitable for running various 
+applications. Zinix can support system configurations of both 
+homogeneous and heterogeneous multiprocessors. A prototype 
+of the design has been implemented on a reference design of 
+TI’s DM270 (short for TMS320DM270) platform which is a 
+heterogeneous multiprocessor architecture SOC with a GPP of 
+ARM7TDMI core and an SPP of C5409 DSP core [14]. To 
+achieve the modularity and flexibility of service functions, 
+Zinix is built with the server processes of process manager and 
+memory manager integrated into a micro-kernel as primary 
+components so that user processes or applications are provided 
+essential system services, while meeting application-specific 
+requirements and supporting multiprocessor configuration are 
+harnessed via registering proper server processes to the kernel. 
+The remaining of this paper is organized as described in the 
+following. Section 2 presents the design concept and approach 
+of Zinix conceived from comparing other systems. The system 
+architecture of Zinix and its implementation on DM270 are 
+described, respectively, in Section 3 and Section 4. Section 5 
+then presents a performance evaluation of the implementation. 
+Finally, Section 6 concludes this paper and describes some 
+further works. 
+This work was partially supported by National Science Council of the 
+Republic of China (ROC) under the contract number: NSC92-2220-E-006-002 
+and NSC99-2220-E-006-010. 
+requests from either the ARM side or the DSP side. Therefore 
+supporting multiprocessor configuration can be realized. This 
+design apparently would be feasible for either homogeneous 
+or heterogeneous multiprocessor systems. Further, in terms of 
+manager processes, flexibility and modularization of kernel 
+functionality are achieved. 
+ 
+ 
+Figure 2.  Hybrid model of multiprocessor architecture 
+ 
+ 
+Figure 3.  Zinix system architecture 
+Figure 3 depicts the system architecture of Zinix running at 
+the ARM side. The software components grouped beneath the 
+dotted line form the micro-kernel which provides the primitive 
+functions, such as scheduling, message passing and interrupt 
+dispatching, of a typical operating system kernel. Rendezvous 
+message passing is adopted as the only mechanism to fulfill 
+communication among processes. In supporting applications 
+with real-time requirements, each message is limited to ten 32-
+bit parameters in the structure so that the time of message 
+delivery can be bounded. To avoid the problem of priority 
+inversion [6], a process, when receiving a message, may 
+inherit the priority of the sender process if the later has higher 
+priority. Besides, the route of each message is tracked to see if 
+a message circularly goes back to its origin to avoid possible 
+deadlock [1]. 
+The processes running with Zinix are categorized into user 
+processes and server processes. As their names imply, the 
+former are user-launched processes or applications, while the 
+later are service providers such as the DSP manager described 
+above. Other server processes considered in the design of 
+Zinix include process manager, memory manager, file system 
+manager, and GUI manager. In particular, the process manager 
+and the memory manager are essential for a friendly runtime 
+environment, which therefore are built-in server processes in 
+Zinix to provide basic services to user processes. 
+Based on the above, the main features of Zinix’s system 
+architecture are summarized below: 
+(a) Deterministic micro-kernel architecture: This makes 
+kernel behaviors analyzable, which is desirable and is 
+suitable for real-time applications. 
+(b) Mechanism of dynamic module registration: This is in 
+fact the key to enable introducing new devices and 
+providing new service functions. Zinix thus becomes 
+function-modularized and tailorable. In addition, usability 
+and developer-friendliness can be achieved. 
+(c) Multiprocessor support: This feature helps leverage the 
+processing power of co-processors in the systems. 
+(d) Multi-threading support: Scheduling is according to 
+process control blocks. It does not matter a process 
+consists how many threads. 
+(e) Rendezvous message passing with priority inheritance: It 
+simplifies kernel jobs while allocating memory for the 
+message queue of each process. 
+(f) Graphic User Interface (GUI) support: Zinix provides a 
+server process of GUI manager which uses double display 
+buffers to increase performance. A uniformed GUI 
+management can enhance portability when a new display 
+device is considered. 
+ 
+ 
+Figure 4.  Top-half of an interrupt request 
+IV. THE IMPLEMENTATION 
+This section describes the implementation of Zinix on DM270 
+[14]. The implementation includes a micro-kernel, memory 
+manager, process manager, file system manager, graphic 
+interface manager, DSP manager, and some device drivers. 
+Due to the space limit, some details are not presented here. 
+A. Interrupt Services 
+In Zinix, a server process has the privilege to register an 
+interrupt event dynamically. Because the kernel and server 
+processes reside in different address spaces, it is necessary to 
+switch address spaces before invoking the respective server 
+process. There are two phases, namely top-half and bottom-
+half, in processing an interrupt signal. 
+The top-half, shown in Figure 4, is responsible for simple 
+and un-interruptable jobs, and usually by nature has timing 
+constraints. The timer process is a typical example of top-half. 
+Figure 4 also shows that the top-half is activated by kernel, 
+faster but no software priorities between interrupts. On the 
+other side, the bottom-half is switched on by the scheduler 
+according to system policy. 
+there is a corresponding processor manager registered for each 
+co-processor. We believe that dedicated code running on the 
+special purpose processor helps unleash its power. Still it is 
+required paying attention to the implementation of processor 
+manager as it might easily become one traffic bottleneck. 
+ 
+ 
+Figure 7.  Management of dynamic server modules 
+ 
+ 
+Figure 8.  Zinix architecture 
+ 
+ 
+Figure 9.  The hybrid architecture of Zinix 
+V. PERFORMANCE EVALUATION 
+The current implementation of Zinix is 113,920 bytes in size. 
+Figure 10 shows the memory share of each system component. 
+Unsurprisingly, File System Manager (FSM) owns the biggest 
+share. The sizes of other components listed in non-ascending 
+order are: DSP manager (DSPM), Process manager (PROCM), 
+Kernel, TTY, Graphic interface manager (GM), Memory 
+manager (MM), CF card driver, and Timer driver.  
+To measure the benchmark, an independent hardware 
+timer is used. The control program of this timer is isolated, 
+without kernel support, for accurate measurement. Listed in 
+Table I are the performance data of kernel functions. The data 
+are taken with the worst case tests. 
+ 
+Figure 10.  Memory share of each system component 
+TABLE I.  PERFORMANCE OF ZINIX KERNEL FUNCTIONS 
+Kernel Function Time(µs) Clocks 
+Interrupt pre-processing 
+(irq_vector( ) + irq_func( )) 16.587 1045 
+Request (msg. sys. call) 
+(swi_request( )) 16.587 1045 
+Listen (msg. sys. call) 
+(swi_listen( )) 16.587 1045 
+Reply (msg. sys. call) 
+(swi_reply( )) 16.238 1023 
+Send (msg. sys. call) 
+(swi_send( )) 16.238 1023 
+Receive (msg. sys. call) 
+(swi_receive( )) 15.571 981 
+Registration (reg. sys. call) 
+(swi_regisr( )) 17.603 1109 
+Unregistration (reg. sys. call) 
+(swi_unregisr( )) 17.270 1088 
+Process wake up 
+(swi_wakeup( )) 14.650 923 
+Context switch 
+(switch_to( )) 4.333 273 
+Schedule 
+(schedule( )) 36.571 2304 
+ 
+Overhead incurred from message passing is often 
+considered a drawback on messaging systems, and is worthy 
+to look into this potential performance impact. The pseudo 
+code for testing message passing is shown in Figure 11. It 
+opens a network node file and writes a character to the file. 
+The environment of the test uses 63 MHz ARM core, with 
+enabled instruction cache and 5ms interval of hardware timer 
+tick. The flow of message passing is shown in Figure 12 in 
+which the network module returns the message immediately 
+without any real network activities. The average measured 
+time is 156µs that consists of 2 IPC propagation times. After 
+elementary arithmetic work, the result in units of clock cycle 
+is 4914. 
+     1 / 7 
+出席國際學術會議心得報告 
+                                                       
+計畫編號 NSC 99-2220-E-006-010 
+計畫名稱 
+嵌入式多核心平台開放系統與應用軟體開發(III) (嵌入式系統軟體技術開
+發分項)－子計畫三:非對稱式異質多核心系統晶片對稱式訊息傳遞與管
+理機制之設計與實作】 
+出國人員姓名 
+服務機關及職稱 
+陳 敬 
+國立成功大學電機工程學系/電腦與通信工程研究所 助理教授 
+會議時間地點 時間：2011 年 07 月 18 日至 07 月 21 日 地點：德國慕尼黑 (Munich, Germany) 
+會 議 名 稱 
+(中文) 第十一屆 IEEE 網際網路與應用國際學術研討會 
+(英文)  The 11th IEEE International Symposium on Applications and the 
+Internet (IEEE/IPSJ-SAINT2011) 
+發表論文題目 
+(中文)  ACES – 嵌入式系統之應用雲 
+(英文)  ACES – Application Cloud for Embedded Systems 
+ 
+一、參加會議經過 
+本人於中華民國 100 年 7 月 17 日自高雄小港國際機場出發，經由桃園國際機場轉
+機直飛德國法蘭克福(Frankfurt)，再換乘鐵路快車前往慕尼黑(Munich)，於 7 月 18 日午
+間抵達。本人隨即前往本屆 IEEE 網際網路與應用國際學術研討會 (IEEE/IPSJ- 
+SAINT-2011)舉辦地點辦理報到手續並領取資料。 
+本屆(第十一屆)IEEE 網際網路與應用國際學術研討會與第卅五屆 IEEE 國際軟體與
+應用學術會議(COMPSAC)同地舉行，並配合會議之舉行同時安排多場相關重要主題之
+短期學術研討會(Workshop)，使本次會議頗具規模，更吸引來自世界各國之學者與專家
+超過 400 人之參與。IEEE COMPSAC 與 IEEE/IPSJ-SAINT 自 2008 年起每年同地聯合舉
+辦；此一結合數個國際學術研討會同地聯合舉辦之模式近年頗為常見，實際運作方式雖
+略有不同，但基本形式為：各研討會之分組論文發表議程獨立舉行，開幕式與專題演講
+(Keynote Speech)等活動則合併聯合舉行；各研討會可自行設定專題演講主題並自行安排
+邀請演講者，但所有專題演講統一安排演講時間並開放所有與會者參加。此一聯合舉辦
+方式本人感覺甚佳，不僅因聯合舉辦可使資源整合並提高效率，避免資源浪費；更使研
+討會參加者能擴大參與面，並有機會參加不同領域或主題之學術研討。本次會議由上述
+IEEE COMPSAC-2011 與 IEEE/IPSJ-SAINT2011 國際學術研討會同地聯合舉辦，安排於
+同時同地舉行之短期國際學術研討會包含：HSNCE-2011、SIS-2011、MidArch-2011、
+NETSAP-2011、INFOAPP-2011、EUCASS-2011、C3NET-2011、FIE-2011、ARALD-2011、
+HEUNET-2011、ITeS-2011 等，另有特別為博士研究生交流、切磋與互動所安排之博士
+生研討會(Doctoral Symposium)，堪稱場面浩大，人氣鼎盛。本次參與舉辦之各學術研討
+會其名稱如表一所列，其中尤以 IEEE COMPSAC 最受重視，不僅具有已舉辦卅四屆之
+悠久歷史，更為著名國際組織 IEEE 轄下電腦協會(Computer Society)所舉辦之國際學術
+會議或研討會中最重要指標會議(Signature Conference)之ㄧ，不僅為產學界提供一國際
+     3 / 7 
+並選擇參與之場次，甚至於議程進行中趕赴另一場次；故會議進行中，常見場內外多人
+來往穿梭之場景，使本次會議顯得頗為熱鬧。本人係第一次參與 SAINT 國際學術研討
+會，主要目的包含：(1)將本人與研究團隊之研發成果與國際學者分享，並汲取與會者專
+業之意見與評論，以作為改進與繼續努力之參考，並避免坐井觀天之缺失；(2)藉由聽取
+其他學者之研發成果可瞭解相關主題之最新成果與發展趨勢；(3)與其他與會人士互動與
+交流可激發新的靈感與思維；除了增加相互切磋之機會，並擴展視野，增廣見聞。本次
+會議吸引亞洲地區多許國家(包含：中華民國、日本、南韓、新加坡、中國大陸與香港
+等)、中東地區國家、美加地區與歐洲地區國家(包含：英國、法國、德國、西班牙與奧
+地利等)之論文投稿。主辦單位公佈之統計為：有來自共 22 個國家地區之論文投稿計 66
+篇，獲選接受發表之論文(Regular Paper)計 21 篇，接受率約為 31.8%；以此一類型之國
+際會議而言，誠如會議主席所言，論文主題涵蓋面與論文品質俱佳。本人於會議進行第
+三日下午之議程發表論文；議程主題為雲端計算。本人發表之論文題目為：ACES – 
+Application Clouds for Embedded Systems (ACES – 嵌入式系統之應用雲)。此論文之成果
+來自於執行國科會補助之研究計畫中為瞭解並增加嵌入式作業系統之模組擴充與功能
+調適或修改所發展之技術，乃應用網際網路與瀏覽器(Browser)程式設計等軟體技術發展
+伺服器與嵌入式系統裝置之間適合雲端計算環境之資料傳輸與訊息傳送機制；此一機制
+可做為雲端計算環境中建置 Thin-Client 或遠端操作處理之基礎，使現有之軟體可執行於
+遠端伺服器而將輸出結果傳送至嵌入式系統裝置顯示，其特點為：(1)嵌入式系統裝置僅
+需要配置網際網路連線與瀏覽器(Browser)程式，不需另行安裝各式各樣之外掛程式
+(Plug-in)；(2)現有之軟體不需經過修改即可執行於伺服器。本人以英文報告論文成果並
+與現場之專家學者研討，回答問題並瞭解與會者不同之觀點與意見，由交流之互動切磋
+中獲益頗多；本論文成果亦獲得肯定，令人欣慰。本屆會議於 7 月 21 日閉幕，主辦單
+位並安排歡迎晚會與聯誼晚宴等活動，除邀請全體與會者參加外，並邀請當地相關產業
+之技術與研發工程師參與，不僅增加與會者交流之機會並擴大交流層面，聯誼晚宴更可
+增進對當地文化與風土民情之認識，為本次會議增添許多特色。本人於會議結束後搭乘
+7 月 22 日由法蘭克福(Frankfurt)起飛之華航班機於 7 月 23 日返抵國門，結束此行參與
+IEEE/IPSJ-SAINT-2011 國際學術會議之行程。 
+ 
+二、與會心得 
+第十一屆 IEEE 網際網路與應用國際學術研討會(SAINT-2011)之主調為「包容萬象之
+網際網路(The Inclusive Internet)」，其研討之主題與接受之論文側重於網際網路技術發展
+與成果，探討網際網路已革命性地改變吾人日常生活中溝通聯絡、社交、娛樂、存取資
+訊與商業行為等各種層面所產生之需求與影響。此一國際學術研討會規劃之目標為探討
+網路連線與應用相關主題重要之研究挑戰。目前網際網路之發展已演化成為以隨處可見
+連接電腦系統、行動裝置、感應器(Sensor)、家電設備與各式各樣之裝置所呈現之生態系
+統(Ecosystem)，導致數位化的人機世界與實體(Physical)、社交(Social)等方面深入互動與
+相互影響，使傳統電腦應用面臨多樣化的需求與各種創新之挑戰，也引領出對研發新技
+術之需求與新的研發挑戰。雲端計算之普及即為上述現象之具體代表之ㄧ；網際網路應
+用與嵌入式系統產品之結合，則為具體實現之範例。此外，嵌入式軟體技術研發、多核
+     5 / 7 
+ 
+三、參與第十一屆 IEEE 網際網路與應用國際學術研討會(IEEE/IPSJ-SAINT-2011)附件： 
+  1. SAINT-2011 會議地點研討室一景 
+ 
+ 
+  2. 慕尼黑市副市長於歡迎式中致詞： 
+ 
+ 
+     7 / 7 
+  4. 第十一屆 IEEE 網際網路與應用國際學術研討會(IEEE/IPSJ-SAINT-2011)議程總覽： 
+ 
+ 
+existing applications over Internet. The goal is to achieve an 
+execution platform based on Internet for embedded systems, 
+which can be either a stand alone cloud computing environ-
+ment or part of another one, on which existing applications 
+can be deployed as well as executed, and which is accessed 
+using a browser with no plug-in installed. ACES allows app-
+lications which are not developed for cloud computing to be 
+deployed in the cloud without incurring any effort in either 
+porting or modifying the applications. The development of 
+ACES relies upon a mechanism, at the server side in a cloud 
+computing environment, to transform the original application 
+presentation into web presentation expressed by HTML and 
+JavaScript, which are common features supported by typical 
+browser software. Therefore, ACES requires, on the client 
+side, only a plug-in-free browser to accomplish the benefit of 
+cloud computing while allowing existing applications to be 
+reusable in the environment of cloud computing. In addition, 
+ACES can be applied to not only embedded systems but also 
+ordinary computer systems such as desktop computers. 
+This paper presents the design of ACES and an example 
+implementation. The remaining of this paper is organized as 
+follows. Section II discusses some related works. Section III 
+describes the system architecture of ACES. Section IV and 
+Section V present respectively an example implementation 
+of ACES and a demonstration of ACES environment. Finally, 
+Section VI concludes this paper and discusses future works. 
+ 
+II. RELATED WORKS 
+Many research works focused on separating application 
+view from execution logic or transferring application view to 
+remote display have been done. The technology is also called 
+thin client. This section presents a literature study related to 
+the development of ACES. The main features the proposed 
+approaches are summarized at the end of this section. 
+Redar [15] presents a remote desktop architecture for 
+Distributed Virtual Personal Computing (DVPC). It provides 
+an integrated window-style desktop user environment using a 
+desktop integrator. A manager within the desktop integrator 
+merges into a frame the window images of the applications 
+running on different servers, and the frame is then sent to the 
+client device. The basic idea adopted by Redar is collecting 
+the images displayed by the running application. Its approach 
+relies on a particular program installed on the client device to 
+receive the merged frame sent by the desktop integrator. 
+Baratto et al. proposed MobiDesk [2], THINC [3] and 
+pTHINC [6]. The main concept is building a virtual desktop 
+computing hosting infrastructure which leverages continued 
+improvements in network speed, cost, and ubiquity in order 
+to address the complexity, cost, and mobility limitations of 
+today’s personal computation infrastructure. They virtualize 
+the computing session of a user through abstracting three 
+major resources, namely display, operating system, network. 
+It provides a thin virtualization layer that decouples user’s 
+computing session from any particular device, and moves all 
+application logic to the corresponding hosting providers. The 
+display commands are intercepted and then translated into a 
+unified command set. The resulting translated commands are 
+sent to remote clients. Therefore, this approach also needs a 
+specific program installed on client device in order to receive 
+the response from this system. 
+Universal plug-in [8], auto-offloading framework [14] 
+and Flashproxy [10] all have the same purpose that allows 
+browsers to be capable of displaying web pages which have 
+un-viewable contents, such as ActiveX or Java Applet. Both 
+universal plug-in and auto-offloading framework provide 
+plug-ins to be installed on the browsers of client devices for 
+receiving translated content by theses systems. Instead of 
+installing a plug-in on client devices, Flashproxy captures the 
+pictures of embedded flash applications on web pages and 
+modifies the original page to embed the captured picture. 
+During the execution of the flash program, the browser on 
+client device periodically polls the captured pictures through 
+AJAX (Asynchronous JavaScript and XML). AJAX is also 
+employed by JavaScript to send requests to server side. For 
+instance, a user input event is captured by JavaScript and 
+sent to server side through AJAX. Another example is the 
+request of UI update which is used to request refreshing UI. 
+Chen and Itoh [4] designed a virtual smart phone farm 
+for offloading application logic to the machines running in 
+this farm. Those machines in the farm are all installed the 
+same images as the client devices. Android image is chosen 
+as the target image. Therefore, the client devices all need to 
+be Android-based systems. When an application is launched 
+from a client device, the application executes on a machine 
+in the farm. The output snapshot of the executing application 
+will be captured and sent to a receiving program on the client 
+device. 
+TABLE I.  SUMMARY OF RELATED WORKS 
+          Rendering
+Program
+Drawing 
+Method 
+Standalone 
+program 
+Browser w/  
+plug-in 
+Browser w/o 
+plug-in 
+Copy-and-Paste
+ Image 
+Redar, 
+Virtual 
+Smartphone
+Universal plug-in, 
+Auto-offloading 
+framework 
+Flashproxy 
+Drawing 
+Command 
+THINC, 
+pTHINC, 
+MobiDesk 
+Plug-in built-in Browser Built-in,JavaScript 
+ 
+Table I gives a summary as the conclusion of the above 
+discussion. Each system can be commented by its rendering 
+program and the method of drawing image. There are two 
+types of image drawing methods: copy-and-paste image and 
+drawing command. The method of copy-and-paste image 
+captures the snapshot of an application’s output and then 
+transmits it to the remote end for rendering on client devices. 
+Comparing with the method of copy-and-paste image, the 
+method of drawing command consumes less transmission 
+bandwidth. For example, it requires a few bytes to transmit a 
+command string for drawing a string while the method of 
+copy-and-paste image needs to draw the string on a canvas 
+and then transmits the canvas. The size of a canvas in general 
+case is bigger than a series of byte strings. 
+While a service transmits the snapshot of an application, 
+a program on client device is needed to receive this snapshot. 
+Three types of such programs can be observed: standalone 
+special-purpose program, browser with plug-in and browser 
+not mean that all these components must be running on the 
+same machine or server. Web server, Application Launcher, 
+and App Agent Manager can be executed on different server. 
+Furthermore, the number of each component is not limited to 
+one. Thus, there can be two or more App Agent Managers in 
+ACES and these App Agent Managers may not execute on 
+the same server. The extension of components is also applied 
+to Application Launcher and web server. This ACES can be 
+built as a stand alone cloud computing environment or 
+integrated into an environment of cloud computing. 
+The architecture design of ACES brings out the design 
+issues in the communication interfaces between server side 
+components: web server-Application Launcher, web server-
+App Agent and Application Launcher-App Agent Manager. 
+Because the communication between web servers is more 
+complicated than ordinary IPC, XML-RPC is adopted to the 
+communication interfaces related to web server. On the other 
+hand, the communication between Application Launcher and 
+App Agent Manager can be realized using network socket. 
+Applying the architecture of ACES, more than one web 
+server, Application Launcher and App Agent Manager can 
+be deployed on the cloud. Each web server can be configured 
+with more than one Application Launcher as well as App 
+Agent Manager. User can choose one web server to launch 
+the application or a management server can be introduced to 
+be the portal that automatically chooses an adequate web 
+server based on current system loading. Since the launched 
+application is executed on remote machine over Internet. A 
+browser software is the only application needed to intercept 
+user inputs and render result images of executing application. 
+ 
+IV. AN IMPLEMENTATION 
+This section describes an example implementation of 
+ACES which adopts X window system [9][22] as the base 
+for App Agent. The objective of this implementation is to 
+demonstrate the concept of ACES. The widespread support 
+of X window system, the popularity and the availability of 
+many X-window-based applications are the reasons why it is 
+chosen. Furthermore, X window and these applications were 
+not developed for cloud computing. 
+X window system (the latest version is commonly known 
+as X11) is a software system includes network protocol, 
+which provides a basis for graphic user interfaces (GUI) for 
+networked computers [22]. It consists of X server and X 
+client [9]. X client, also called X application, executes the 
+application logic and requests X server to draw user interface 
+while X server assumes the responsibility of managing 
+display hardware and handling the drawing request from X 
+client. The interaction between X server and X client is the 
+basis of X application development. At the start of an X 
+application, it must firstly connect to an X server. After the 
+connection is successfully built, the X client typically listens 
+on events sent from X server or sends requests to X server. A 
+typical development is using a loop to handle events and 
+sending requests according to events. Thus, the interaction 
+between application logic and user interface on X window 
+system can be manipulated without modifying X window 
+system and existing X applications. 
+Figure 3 depicts the architecture of this demonstrating 
+implementation which follows the architecture of ACES in 
+Figure 1. The X Agent in Figure 3 is the implementation of 
+App Agent shown in Figure 1. 
+ 
+ 
+Figure 3.  ACES of X Window System. 
+In order to cooperate with the web server and to be more 
+flexible, XML-RPC is used to transfer the requests carrying 
+user inputs and starting up as well as shutting down the 
+selected application. Figure 4 shows the implementation of 
+Application Launcher using XML-RPC in this example. As 
+part of the Application Launcher, an XML-RPC server is 
+created to receive requests in XML format. There are only 
+two valid requests in this example implementation, namely 
+launch.event and terminate.event, designating respectively 
+launching a program and terminating a program. When any 
+of these two requests is accepted, the Application Launcher 
+will inform the X Agent Manager to start or stop application 
+execution accordingly. 
+ 
+ 
+Figure 4.  XML-RPC in Application Launcher. 
+Figure 5 depicts the components of X Agent in this 
+implementation. In addition to a virtual X server, it consists 
+of window status monitor, user input handler, image capture 
+and image update. Xephyr [24] is used as the virtual X server. 
+Once an X application starts its execution, it will be properly 
+set up to connect to this virtual X server. Then window status 
+monitor listens to the status change events issued from the 
+virtual X server. The events to which the window status 
+monitor listens are map event, unmap event and mapnotify 
+ 
+Figure 8.  Application launching page 
+The experiment environment employs an Android-based 
+smart phone as the embedded system device on the client 
+side. For demonstration purpose, the pre-installed browser on 
+the XT701 is used. Figure 8 shows the application launching 
+page provided by the management server. There is a pull-
+down menu showing the list of available applications. Figure 
+9 shows the menu for selecting an application in ACES as a 
+user operates the browser on XT701. When the user selects 
+an application, the management server will send the request 
+to a suitable server according to its status of loading and 
+capability. Then the selected server directly connects the user 
+device. 
+ 
+ 
+Figure 9.  List of available applications 
+ 
+ 
+ 
+Figure 10.  Xeye Application 
+ 
+Figure 11.  GNOME Tetris 
+Figure 10 and Figure 11 show that two X applications are 
+running in the X Agent and the output images are displayed 
+on the client device – XT701. In these two figures, it can be 
+seen that a LCD monitor displays the output of the virtual X 
+server, Xephyr. While the user operates the touches screen of 
+the XT701, an mouse event is sent to the virtual X server. 
+The screen display of the virtual X server, either the entire 
+window display or the modified part, is sent back to the 
+browser on XT701. Therefore, the virtual X server and the 
+client side device XT701 display the same image 
+TABLE II.  LATENCY BETWEEN CLIENT AND SERVER (SECONDS) 
+App xeyes gedit gnometris swfdec-player 
+gnome-
+calculator 
+First 
+image 
+showing 
+on user 
+device 
+4.78 4.76 4.92 4.83 4.76 
+First 
+image 
+captured 
+by X 
+Agent 
+4.39 4.52 4.32 4.46 4.30 
+Latency 0.38 0.24 0.60 0.37 0.46 
+ 
+The implementation and experiment environment prove 
+the concept of ACES. However, the performance would be 
+one potential issue that can not be overlooked, and, in this 
+aspect, the overhead incurred from ACES processing as well 
+as network transmission would be the main factors. In this 
+experiment environment, the latency between the client side 
+and the server side is measured of running several X appli-
+cations. As shown in Table II, the first row lists the names 
+of applications of which the latencies were measured. The 
+second row and the third row respectively show the time 
+measured at the client side device (XT701) and the server 
+side machine from the application is launched by the user. 
+The time shown in the second row is the time when the first 
+image is displayed on the client side device while the time 
+shown in the third row is that when the first image is 
+captured by the X Agent on the server side machine. The 
+fourth row shows the difference between the time values 
+無研發成果推廣資料 
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+本計畫初期參與人員參加教育部舉辦之九十八年度全國微電腦應用系統設計製
+作競賽獲獎得第三名。 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

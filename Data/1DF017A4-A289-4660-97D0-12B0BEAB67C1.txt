@@ -1,0 +1,710 @@
+  2 
+information, is used as the basis of dispatching. 
+Using the content of request and load 
+information, complex or intelligent request 
+dispatching algorithms can be applied. Web 
+Clusters will be more efficient in handling all 
+types of Web pages and utilizing cluster 
+resource. However, for a Web switch to 
+perform content-aware request distribution, 
+many important issues such as TCP connection 
+transfer mechanisms, supporting persistent 
+connection and content-aware request 
+distribution policies should be solved and 
+implemented. 
+In this project, we have taken advantages 
+of module approach design and used Linux 
+loadable kernel module approach to develop a 
+high-performance and highly scalable Web 
+Cluster named LVS-CAD that can perform 
+content-aware request dispatching on Linux 
+kernel 2.6. Using the content of request (i.e. 
+URL information) and load information, 
+complex or intelligent request dispatching 
+algorithms can be applied. Web Clusters will 
+be more efficient in handling all types of Web 
+pages and utilizing cluster resource. 
+ 
+Keywords: Cluster-based Systems, Web 
+Clusters, Content-Aware Request 
+Distribution, Persistent Connection, Load 
+Balance 
+ 
+一、前言 
+ 
+隨著網際網路的快速發展，使用者與服
+務需求量也迅速的增加，而隨著網路技術的
+迅速發展，與電子商務及企業電子化的影響
+下，許多網頁類型轉變為動態的網頁服務，
+動態網頁(如 PHP、ASP、或 JSP) 所佔的需
+求比例逐年升高，網頁開發技術的進步加上
+多媒體影音技術的運用，網頁內容日趨複雜
+與龐大，大型檔案的數量也逐漸增加，使得
+網路服務需求較以往來的消耗網路頻寬、
+CPU 資源與記憶體空間，使得伺服器的負載
+也隨之加重。由於單一伺服器在技術上與成
+本上的限制，網頁叢集式系統 (Web Cluster) 
+已成為目前最佳的解決方案。叢集式系統是
+一群伺服器的集合，希望藉由負載平衡 
+(Load Balance) 與負載分享 (Load Sharing) 
+的概念，將來自 Client 的服務需求分散至不
+同的伺服器來處理，以避免單一伺服器負載
+過重。但面對服務需求量劇增的問題，叢集
+式系統的架構與其 request packet 轉送的機
+制，以及服務需求分配機制，皆會嚴重地影
+響叢集式系統整體的系統效能與叢集式系
+統的擴充能力 (Scalability)。而另一方面，
+由於靜態網頁、動態網頁與多媒體影音所消
+耗的伺服器資源差異相當大，單純的負載平
+衡分配已不足以應付需求，因此網頁叢集式
+系統(Web Cluster)需要改進以往適用於靜態
+網頁的需求分配方法，針對動態網頁與多媒
+體影音的特性，以及動靜態混合的網頁需求
+加以重新設計。 
+本研究的 Web Cluster 對外是提供單一
+的系統映像 (Single System Image)，包含一
+個服務需求分配主機 (Request Dispatching 
+Server，亦稱為 Web Switch) 負責將使用者
+的需求分配給伺服器叢集中的伺服器 
+(Request Handling Server) 來處理。而 request 
+packet 轉 送 的 機 制 ，分為 Layer-4 的
+Content-blind Routing 與 Layer-7 的 
+Content-aware Routing 。 Layer-4 的 
+Content-blind Routing 是在 Client 要求建立
+連線的時候，即依其分配排程法來決定服務
+此連線需求的伺服器，因此是依每個連線來
+分配。而 Layer-7 的 Content-aware Routing 
+是在 Client 與 Web Switch 建立連線後，分
+析 request packet 中的 HTTP 內容來決定服
+務此服務需求的伺服器。而其架構依 Client
+與 Server 間封包轉送的流程，又可進一步分
+為 one-way 與 two-way 的架構，不同點在
+於 one-way 的架構是叢集系統中的伺服器
+會將需求結果直接回應給 Client ，而 
+two-way 的架構是透過 Web Switch 來回
+應給 Client。One-way 的架構雖較複雜，但
+因分配主機只需處理 inbound packets，因此
+較有效率。而服務需求分配機制可實作在 
+kernel level 或 user level，kernel-level 的實
+作較複雜但較有效率。因此，本研究是以 
+one-way 的架構， kernel-level 的  request 
+  4 
+Block I/O layer 及  Asynchronous I/O 的 
+improvements 等等，這些因素使得  Web 
+server 更穩定且效能也有更大的提升。在 
+IBM Linux Technology Center 的 Li Ge 的
+研究報告”Kernel comparison: Web serving 
+on 2.4 and 2.6” [5] 一文中就指出，在他們的
+測詴項目，在同樣的系統環境設定 (system 
+configuration) 和  workload 下，即只有 
+Linux kernel 版本的差異，Web Server 在 
+Linux kernel 2.6 下服務 Web pages 的數
+目，是在 Linux kernel 2.4 下的 6 倍，大幅
+的提升 Web server 的效能。 
+而目前唯一有  open source 且具備 
+Content-ware Request Dispatching 的  Web 
+Cluster 的 TCPHA Project [6]，它是 Linux 
+Virtual Server (LVS) 的子計畫，其目標與我
+們的  LVS-CAD 平台相同的亦是以  LVS 
+為基礎，同樣也是修改Content-blind的 LVS
+來支援 Content-ware Request Dispatching，亦
+屬於  Kernel-level 的實作，也是  one-way 
+的架構，亦支援持續連線。但不同的是 
+TCPHA 是使用效能不若我們所使用的 
+direct routing [2] 好的 IP Tunneling [2] 封
+包轉送機制，而且它是實作 TCP Handoff [7] 
+的技術來達成 TCP 連線的移轉，需要移轉
+連線的資訊，它目前的版本仍是基於 Linux 
+kernel 2.4.20 的實作。在我們的測詴下，在
+大量的 requests 時，常會有當機的情形，
+且其效能並不穩定。而我們先前的研究和實
+驗 都 顯 示 LVS-CAD 平 台 的 效 能 與
+Scalability，即使在接收來自 Client 大量的
+request packet 時，亦能維持系統的穩定度。 
+因此，為了能讓 Web Cluster 利用 
+kernel 2.6 對核心的 improvement 來提升 
+Web Cluster 的效能，因此本計畫之首要目
+標即是將我們的  LVS-CAD 研究平台自 
+Linux kernel 2.4.18 更新至目前主流的 
+kernel 2.6 版本。除此之外，從我們過去的
+經驗以及實驗中，我們發現在 CPU 技術與
+速度不斷的提升下，以及 memory 容量加
+大與硬碟速度提升下，network I/O 會是整
+體 cluster 系統效能的瓶頸。因此，我們也
+需將我們的實驗平台改為使用 Gigabit 
+Ethernet (1000Mbps) 的網路環境，同時研究
+在 Web Cluster 內部網路使用  Gigabit 
+Ethernet 的網路環境對 Web Cluster 架構的
+影響。因為在內部網路是 Gigabit Ethernet
+的情形下，許多研究皆顯示，透過高速網路
+自其他後端伺服器的 memory-based Web 
+cache 中取得 Web document 的網路存取，會
+比自本地端的磁碟存取來的快。然而後端伺
+服器的 memory-based Web cache 應採用何
+種 replacement 策略，且發生 cache miss 的
+後端伺服器應自那一台後端伺服器的
+memory cache中取得 Web document 應再進
+一步的研究。 
+另一方面，由於 Linux 的作業系統設計
+採用 modular approach，使用物件導向程式
+設計的技術來建立模組化的核心，核心包含
+主要的元件，可以在系統執行時動態的連結
+額外的模組至核心來增加核心的功能。例
+如：Linux 將部份的系統元件如設備驅動程
+式、檔案系統等模組化，設計成可載入核心
+模組 (loadable kernel modules)，當需要某些
+不在核心的模組時，可以動態的連結和載入
+模組至核心，而在不需要這些模組時，可以
+動態的自核心移除，而這些載入至核心的模
+組與核心和模組之間可以互相直接呼叫，因
+此彈性、效能及擴充性皆佳。 
+因此，本計畫的另一重點，由於模組化
+設計的優點，也為了方便安裝我們的 
+LVS-CAD，進行將 LVS-CAD 軟體模組改
+以 Linux 的 loadable kernel modules 的方
+式來實作，並進行 Web Cluster 效能提昇的
+研究與實作。例如，減少過多的連線移轉，
+由於 Multiple TCP Rebuilding 的技術是依
+每個服務需求而非連線的不同來選擇最適
+合的伺服器來服務，所以所需的 total 連線
+移轉的 overhead 會比 Single TCP Rebuilding 
+來的大。因此，需避免過度的 Multiple TCP 
+Rebuilding，即減少過多的連線移轉，當確
+定連線移轉所帶來的效益會大於連線移轉
+的成本時，才進行連線移轉，以降低 total 
+連線移轉的 overhead。 
+ 
+三、文獻探討 
+ 
+國 內 外 有 許 多 研 究 致 力 於 
+  6 
+ 支援 Content-aware Dispatching 的 
+LVS-CAD 平台於 Linux kernel 2.6 的
+實作 
+ 
+參 與 計 畫 的 人 員  trace 了 Linux 
+TCP/IP、IPVS 模組、以及 LVS-CAD 平台
+相關的程式碼，由於當初我們所實作的 
+LVS-CAD 平台是基於 Kernel 2.4.18，依功
+能的不同是分為前端伺服器以及後端伺服
+器的實作，在前端伺服器我們是修改 IPVS 
+1.0.4 模組，使其能提供 Content-aware 
+Dispatching 的功能，以及實作 fast three-way 
+handshaking，而在後端伺服器我們則是修改 
+TCP layer 的程式碼，使其支援 TCP 
+Rebuilding 及 Multiple TCP Rebuilding。因
+此，我們將這些修改至 Kernel 2.6.18 的 
+IPVS 1.2.1 模組以及 Kernel 2.6.18 的 TCP 
+layer。 
+我們已完成將 LVS-CAD 研究平台自 
+Linux Kernel 2.4.18 更新至目前主流的 
+Kernel 2.6.18 版本，而 IPVS 從原先的 1.0.4
+版本更新至 1.2.1 版本。我們主要是解決了
+不同版本 kernel 及不同版本 IPVS 模組所
+使用 data structures、functions 及處理流程
+的差異，我們尚且必需修改 IPVS module 內
+的 Connection State Machine，如此才能正確
+地反應連線的狀態。除此之外，我們也將我
+們的實驗平台改為使用 Gigabit Ethernet 
+(1000Mbps) 的網路環境，詳細說明如下: 
+ 
+(1) 前端伺服器 
+ 
+前端伺服器主要工作是和 Client 進行
+three-way handshaking 的動作，然後分析接
+下來收到設有 psh 標記的封包，並且參考
+封包內容 (如 URL 資訊) 進行分配策略。為
+了要將 LVS-CAD 從原本實作的  Linux 
+kernel 2.4.18，移植到 kernel 2.6.18 平台，
+我們必頇瞭解  IPVS 模組在  2.4 核心到 
+2.6 核心之間的差異。 
+隨著網路協定的演進，在原本 2.4 核心
+中只支援了 TCP 和 UDP 協定，而目前 2.6 
+核心的 IPVS 模組已經支援了像是 TCP、
+UDP、AH 和 ESP 通訊協定。為了讓 IPVS 
+模組更有彈性地支援更多種的通訊協定，在 
+2.6 核心的 IPVS 模組中採用一個新的資料
+結構將不同的通訊協定整合在一起。這個資
+料結構主要由一個  ip_vs_proto_table 的 
+Hash Table 組成，此 hash table 主要紀錄了
+多個 ip_vs_protocol 資料結構。每種通訊協
+定都代表了一個  ip_vs_protocol 資料結
+構，而每個 ip_vs_protocol 資料結構中都包
+含了許多 function pointer 來呼叫相對應的
+函式。藉由此方式，IPVS 模組的程式碼可
+以比較精簡地使用不同通訊協定相對應的
+函式。如果要支援新的通訊協定，只要產生
+新的 ip_vs_protocol 結構就能夠輕易整合
+進 IPVS 模組。 
+由以上可之，因為在 2.6 核心的 IPVS 
+模組，重新改寫了一些資料結構。相對應的
+函式和流程可能也會有所變動。因此，在我
+們將 Fast handshaking 機制移植到 2.6 核
+心的模組時，必頇先瞭解整個 IPVS 模組在 
+2.6 核心的運作情形才能對 IPVS 模組進
+行修改的步驟。 
+在圖一我們簡單顯示修改前和修改後
+的  IPVS 模組流程圖。圖一 (a) 是原本 
+IPVS 的流程圖，圖一 (b) 是支援  Fast 
+handshaking 的 IPVS 流程圖。 
+ 
+ 
+No
+Call dispatching policy
+Send the packet to the destination
+Yes
+Is there exist a connection
+for the packet?
+ 
+(a) 
+  8 
+平台已經大致完成，並且可以正常運作。不
+過為了讓 LVS-CAD 能夠方便安裝，也由於
+模 組 化 的 優 點 ， 我 們 將 以上的  Fast 
+handshaking 和 TCP Rebuilding 機制實作
+成 Linux 的 loadable kernel module。在 Linux
+核心中，有 Netfilter [11] 機制可以在網路
+層的不同位置設置攔截點 (hook point)。而
+我們可以利用攔截點，將模組化的 Fast 
+handshaking 模組和 TCP Rebuilding 模組插
+入 Linux 核心中。以下先簡介 Netfilter 然後
+再分別從這兩個模組來討論。 
+ 
+(1) Netfilter 
+ 
+圖三顯示  Linux 網路層的封包流程
+圖，其中有五個攔截點可以掛載自訂的模
+組。一開始封包進入網路層會先呼叫 ip_rcv 
+函式。在決定分配給本機還是轉送之前會先
+經過 IP_PRE_ROUTING 攔截點，如果確定
+是 送 給 本 機 的 封 包 ， 會 經 過 
+IP_LOCAL_INPUT 攔 截 點 後 ， 再 經 過 
+ip_local_deliver_finish 函式，然後送到更上
+層處理。如果不是給本機的封包而是需要轉
+送的話，就會經過  IP_FORWARD 攔截
+點。然後再確定轉送的目的地之後，會經過
+IP_POST_ROUTING 攔 截 點 。 另 外 ，
+IP_LOCAL_OUTPUT 攔截點會攔截到本機
+所發出去的封包，如果是轉送的封包就會不
+經過這個攔截點。 
+圖三：Linux 網路封包流程圖 
+ 
+(2) Fast handshaking module 
+在我們之前所實作的 Fast handshaking 
+機制是直接修改 IPVS 模組，改變封包的處
+理流程，讓前端伺服器能夠與 Client 進行
+Three-Way Handshaking 還有處理內部網路
+的 multi-handoff。原本的 IPVS 模組也是利
+用 Netfilter 的 功 能 ， 掛 載 在
+IP_LOCAL_INPUT 的攔截點，當封包進入
+時，進行封包分配策略還有轉送的動作。由
+於 Fast handshaking 的目的是和 Client 進行
+Three-Way Handshaking 的動作，必頇在 
+IPVS 模組攔截到之前就將 Client 來的 SYN
+封包攔截，並且回應 SYN,ACK 封包給
+Client。因此我們必頇將 Fast handshaking 模
+組掛載在 IPVS 模組之前，讓封包在進入 
+IPVS 模組之前就先被 Fast handshaking 模組
+過濾。 
+圖四顯示 Fast handshaking 模組的簡易
+流程圖。當封包進入 IP_LOCAL_INPUT 攔
+截點時，會先進入 Fast handshaking 模組，
+如果這封包的目的地是 LVS 的話  (Step 
+2.b)。就會檢查是否需要做 Fast handshaking 
+的動作，或者是要利用封包分配策略來決定
+轉送的後端伺服器。由於連線已建立的封包
+在 IPVS 模組不會再做分配策略，因此在 
+Fast handshaking 模組所做的分配策略並不
+會和 IPVS 重複。另外，如圖五所示，因為
+在 Fast handshaking 進行分配策略所決定
+的後端伺服器，可能會和先前所決定的後端
+伺服器不同，所以需要作 multi-handoff 的
+動作，送 reset 封包給原本建立連線的後端
+伺服器，讓原本的連線中斷。 
+ 
+圖四: Packet flow in fast handshaking module 
+ip_output.c
+ip_forward.c
+ip_input.c
+Higher Layers
+ip_local_deliver_finish
+NF_IP_LOCAL_IN
+ip_local_deliver
+ip_rcv_finish
+NF_IP_PRE_ROUTING
+ip_rcv
+ip_forward
+NF_IP_FORWARD
+ip_forward_finish
+ip_queue_xmit
+NF_IP_LOCAL_OUT
+dst_output
+ip_output
+ip_finish_output
+ip_fragment
+NF_IP_POST_ROUTING
+ip_finish _output2
+ 
+IP_LOCAL_INPUT
+For LVS 
+service
+Dispatching 
+Policy
+(conn_schedule)
+Fast handshaking
+handler
+Is connection 
+established?
+IPVS module
+Y
+Y
+N
+NSend RST 
+packet
+2.a
+1
+2.b3.b
+3.a
+5.a
+5.b F
+ast h
+an
+d
+sh
+ak
+in
+g
+ m
+o
+d
+u
+le
+ip_local_deliver
+F
+ast h
+an
+d
+sh
+ak
+in
+g
+ m
+o
+d
+u
+le
+  10 
+ Module-based LVS-CAD 實驗平台於 
+Linux Kernel 2.6 的建置以及效能訐估 
+ 
+透過效能評估能使我們了解我們所實
+作至 Linux Kernel 2.6.18 的 LVS-CAD 平台
+與當初我們所實作基於  Kernel 2.4.18 的 
+LVS-CAD 平台效能的差異，我們也評估 
+LVS-CAD 與 Linux Kernel 2.6.18 的 
+content-blind LVS 效能的差異。同時，我們
+也評估不同的 Kernel 版本 (即 Kernel 2.4 
+與 Kernel 2.6) 的差異對 Web Services 效能
+的影響，進而進行提昇 LVS-CAD Web 
+Cluster 效能提昇的研究與實作。 
+由於我們已將我們的實驗平台改為使
+用 Gigabit Ethernet (1000Mbps) 的網路環
+境，我們實驗當 Web Cluster 內部的網路環
+境是使用 Gigabit Ethernet 的網路環境對 
+Web Cluster 架構的影響。除了進行平台效
+能的測詴外，我們亦進行平台延展性 
+(Scalability) 的測詴，實驗當叢集中伺服器
+數量的變化對效能的影響。 
+ 
+五、結果與討論 
+ 
+我 們 已 完 成 支 援 Content-aware 
+Dispatching 的 LVS-CAD 平台於 Linux kernel 
+2.6 的實作，並將此研究平台以 Linux 的 
+loadable kernel modules 的方式來實作，此外
+尚包含效能評量工具的研究以及實驗平台的
+建置，以及發展 Content-aware Request 
+Distribution 策略與機制相關文獻的研究與實
+作，詳細項目包括： 
+ 
+(1) 完成 LVS-CAD 平台  Web Switch 於 
+Linux kernel 2.6 的實作。 
+(2) 完成 LVS-CAD 平台 Real Web Servers 
+於 Linux kernel 2.6 的實作。 
+(3) 完成 LVS-CAD 平台 Web Switch 的 Fast 
+Three-way Handshaking 模組的實作。 
+(4) 完成 Real Web Servers 的 TCP Rebuilding
+模組的實作。 
+(5) 完 成 Existent Content-aware Request 
+Distribution 策略於 LVS-CAD 平台的實
+作，包含 LARD、LARD/R、CAP、WARD。 
+(6) 完成改進 LARD/R 與 LARD 策略的研
+究與實作，並整合至 LVS-CAD 平台。 
+(7) 完成改進 CAP 策略的研究與實作，並整
+合至 LVS-CAD 平台。 
+(8) 完成研究與實作新的 Content-aware 
+Request Distribution 策略，並整合至 
+LVS-CAD 平台。 
+(9) 完成在 Web Cluster 內部網路使用 
+Gigabit Ethernet 的網路環境，對 Web 
+Cluster 架構影響的研究。 
+(10) 完成效能評量工具的研究、Trace 與
+Workload 的設計。 
+(11) 完成實驗平台的建置、系統整合與效能
+的評量。 
+ 
+基於此研究平台，後續尚有相關的研究
+課題值得深入探討，包含支援 Web QoS 與 
+Differentiated Service 的機制、多媒體影音串
+流 服 務 的 支 援 、 Content Placement 與 
+Resource Management 的研究，以及發展相關
+的 Content-aware Request Distribution 
+Policies。 
+ 
+六、參考文獻 
+ 
+[1] Ho-Han Liu, Mei-Ling Chiang, Men-Chao W, 
+“Efficient Support for Content-Aware Request 
+Distribution and Persistent Connection in Web 
+Clusters,” Software Practice & Experience, 
+Volume 37, Issue 11, pp. 1215-1241, 2006. 
+[2] Linux Virtual Server Website, 
+http://www.linuxvirtualserver.org/. 
+[3] Ulrich Drepper and Ingo Molnar, “The Native 
+POSIX Thread Library for Linux,” 
+https://news.wideopen.com/whitepapers/devel
+oper/POSIX_Linux_Threading.pdf. 
+[4] “A closer look at the Linux O(1) scheduler,” 
+at 
+http://www.hpl.hp.com/research/linux/kernel/
+o1.php. 
+[5] Li Ge, “Kernel Comparison: Web serving on 
+2.4 and 2.6,” at 
+http://www.ibm.com/developerworks/linux/lib
+rary/l-web26/, Feb. 2004. 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 97-2221-E-260-011- 
+計畫名稱 叢集式網頁伺服器與其相關進階課題的研究與製作 
+出國人員姓名 
+服務機關及職稱 
+姜美玲  
+國立暨南國際大學資訊管理學系 副教授 
+會議時間地點 97/03/09~97/03/12, Honolulu, Hawaii 
+會議名稱 The 24nd Annual ACM Symposium on Applied Computing (ACMSAC 2009) 
+發表論文題目 
+New Content-aware Request Distribution Policies in Web Clusters Providing 
+Multiple Services 
+ 
+一、參加會議經過 
+ 
+參加會議經過如下: 
+ 2009/03/08 起程出發至桃園機場坐華航飛機，在美國時間 2009/03/08 到達夏威夷
+檀香山，住進大會舉辦的地點 Hilton 飯店。由於本人所發表的論文場次是在會議
+第一天早上的第一場，因此，於午休後圥至飯店尋找即將發表論文場次的會議廳。
+之後，前往市區觀光後回飯店休息，調整時差。 
+ 在美國時間 2009/03/09 抵逹會場後，巧遇數位來自國內的學者，交換心得後，即
+參加第一場 10:30 – 12:10 AM 的 Technical Session (Computer Network)，並於其
+中發表了 1 篇會議論文 (New Content-aware Request Distribution Policies in Web 
+Clusters Providing Multiple Services)。在會議進行中，除了 Session Chair 之外，
+另有 1 位外籍學者於會議中針對本人的論文提問與討論，由於這個場次的其他 3 
+位論文發表者，偏向於理論推導與模擬實驗，而本人的研究是實作於 Linux 核心
+中，因此引發各學者的興趣與討論。下午參加 2 場 Technical Session，晚上則與
+國內的學者餐敍，討論研究與交換參加會議的心得。 
+ 在美國時間 2009/03/10，主要是參加 Technical Session，之後前往飯店附近觀光後
+即回飯店休息，整理行李，準備隔天一早即將回國。 
+ 在美國時間 2009/03/11 上午一早即起程出發至夏威夷檀香山機場坐華航飛機返
+國，經日本轉機返回台灣桃園機場己是台灣時間 2009/03/12 晚上了。 
+ 
+二、與會心得 
+ 
+ACM Symposium on Applied Computing (ACM SAC) 會議包含的主題甚廣，其中
+Computer Networks、Operating Systems and Adaptive Applications、Embedded Systems and 
+Applications 都是其中主要的議題，皆有數個 Technical Sessions 的進行，及數篇會議論
+文的發表，廣受各國資訊研究人材以及各業界人士的重視。於此會議中，出席了相當多
+的國際學者，也有數位來自國內各大學的研究學者，有各個領域的專家，不論在會議場
+New Content-aware Request Distribution Policies in Web
+Clusters Providing Multiple Services
+Mei-Ling Chiang1 Chun-Hung Wu2 Yi-Jiun Liao3 Yu-Fen Chen4
+Department of Information Management,
+National Chi-Nan University,
+Puli, NanTou, Taiwan, R.O.C.
+{joanna1, s972135254}@ncnu.edu.tw, {yhung1242, wagajim3}@gmail.com
+ABSTRACT
+Due to the explosive growth of the Internet and increasing service
+demands from all around the world, the cluster-based system that
+consists of one request-dispatching server and several request-
+handling servers has become a cost-effective way to serve the
+huge amount of service demands. Nowadays, Web servers have to
+handle more complex types of requests since requests from clients
+may be mixed with dynamic Web pages, database processing, or
+multimedia stream data. Therefore, a Web cluster should be
+designed with intelligent request dispatching policies for
+supporting various types of service requests.
+In this paper, we have proposed two new content-aware request
+distribution policies named Locality-Aware Request Distribution
+with Replication and Classification (LARD/RC) and Grouped
+Client-Aware Policy (GCAP) to dispatch requests efficiently in
+Web clusters providing multiple types of services and running in
+homogeneous or heterogeneous environments. We have
+implemented our proposed policies in the LVS-CAD web cluster
+that can efficiently perform content-aware request dispatching.
+Performance evaluation shows that our proposed LARD/RC and
+GCAP policies could dispatch requests of different types to proper
+back-end servers in a more efficient way to utilize system
+resources than the other existing policies in both homogeneous
+and heterogeneous environments.
+Categories and Subject Descriptors
+D.4.4 [Operating Systems]: Communications Management –
+Network communication.
+General Terms
+Measurement, Performance, Design, Experimentation.
+Keywords
+Web cluster; Cluster System; Content-Aware Request Distribution.
+1. INTRODUCTION
+In recent years, due to the explosive growth of the Internet and the
+rapid development of Web technologies, Web-based services have
+occupied a great proportion of the Internet services. Whereas,
+many network servers have been unable to deal with a great deal
+of demands from all around the world. The cluster-based system
+that consists of one request-dispatching server also called front-
+end server and several request-handling servers also called back-
+end servers, namely Web cluster, has become a cost-effective and
+available way to serve the huge amount of service demands.
+Moreover, Web servers also have to handle more complex
+requests, since nowadays types of requests from clients have
+become much more diverse and requests may be mixed with
+dynamic Web pages, database processing, or multimedia stream
+data. If Web servers that could deal with only simple requests just
+like static Web pages, it would become function limited for
+supporting various services.
+To meet the above demands, we have proposed new content-
+aware dispatching policies and implemented them in the content-
+aware Web cluster named LVS-CAD [1] which is based on Linux
+Virtual Server (LVS) [2]. In contrast to LVS-CAD, LVS does not
+consider content of requests (i.e. URL) when dispatching requests
+from clients. That is, LVS supports only content-blind request
+distribution, whereas LVS-CAD can provide content-aware
+request distribution. LVS-CAD can analyze HTTP headers of
+requests from clients and adopts intelligent or sophisticated
+dispatching policies. This platform is efficient because it belongs
+to one-way architecture since back-end servers can respond data
+directly to clients, bypassing the front-end server. This prevents
+the front-end server from becoming the system bottleneck.
+Especially, the ingressive packets can be forwarded to the selected
+back-end server without any modification.
+In a content-aware Web cluster, some sophisticated request
+distribution policies can be applied to schedule the requests from
+clients to the proper back-end servers. Currently, many content-
+aware request distribution policies have been proposed [3].
+Locality-Aware Request Distribution (LARD) [4] and Locality-
+Aware Request Distribution with Replication (LARD/R) [4] are
+the most well-know ones. They aim to increase the cache hit rates
+of servers by dispatching the same requests to the same servers.
+However, these policies do not distinguish types of requests, and
+capabilities and specialties of servers. In contrast, Client-Aware
+Policy (CAP) [5] classifies requests into different types and tries
+to dispatch requests of each type to all servers evenly. However, it
+does not distinguish servers’ capabilities and specialties either. 
+Permission to make digital or hard copies of all or part of this work for
+personal or classroom use is granted without fee provided that copies
+are not made or distributed for profit or commercial advantage and that
+copies bear this notice and the full citation on the first page. To copy
+otherwise, or republish, to post on servers or to redistribute to lists,
+requires prior specific permission and/or a fee.
+SAC’09, March 8-12, 2009, Honolulu, Hawaii, U.S.A.
+Copyright 2009 ACM 978-1-60558-166-8/09/03…$5.00.
+CAP, GCAP lets each server serve requests of only certain types
+which are most suitable for it to distinguish the operating
+capabilities of the back-end servers. Then, requests of different
+types are dispatched to certain back-end servers with Weighted
+Round-Robin (WRR) scheduling. We can set weights of all back-
+end servers to the same value in a homogeneous environment or
+set weights to different values based on the processing capability
+of each server in a heterogeneous environment. So, a back-end
+server may serve various types of services at the same time, or
+serve only single type of service.
+Figure 1 illustrates how GCAP scheduling works. In this example
+we assume the Web cluster has three back-end servers offering
+two different types of requests, and both server A and server B
+can serve type-1 requests while server C can serve only type-2
+requests. In the beginning, the client sends the first type-1 request
+to the front-end server, the front-end server chooses the back-end
+server A as the proper request-handling server based on WRR
+policy. Then when the client sends the second type-1 request to
+the front-end server, the front-end server chooses the back-end
+server B as the request-handling server. When the client sends the
+third type-1 request and the fourth type-1 request to the front-end
+server, requests are respectively handled by the back-end server A
+and the back-end server B based on WRR policy. In the end, the
+client sends the fifth and the sixth type-2 requests to the front-end
+server. Because only the back-end server C can serve type-2
+request, so the fifth and sixth requests are handled by the back-
+end server C.
+Figure 1. Dispatching Result of GCAP.
+To implement GCAP scheduling, we first implement CAP
+scheduling and modify it with the ability to distinguish the type of
+requests and consider the weight of server’s processing capability
+when the Web cluster system is deployed in a heterogeneous
+system. In GCAP, we need to distinguish which type of requests
+that a server could offer. To do this, we have to determine what
+kinds of Web services each server can serve. We then add a new
+attribute of the offering service type into the data structure which
+describes back-end servers in LVS-CAD. Besides, we need to
+make sure that this attribute can be set by users when users add a
+new server into LVS-CAD. Therefore, we modify ipvsadm [2]
+which is an administrative tool used to manage LVS and LVS-
+CAD, to let administrator set this attribute for the offering service
+types of each server.
+After checking the URL of request and determining what kind of
+service this request belongs to, GCAP scheduling will assign a
+back-end server for handling this request. It has to compare the
+type of requests and the offering types of back-end servers. Only
+when the back-end server has offered this type of service can this
+request be distributed to that server.
+3.2 Locality-Aware Request Distribution with
+Replication and Classification
+The goals of LARD/R scheduling are to balance server loads and
+improve the cache hit rate of back-end servers. LARD/R
+scheduling may serve one request by a set of servers. When a
+request from client should be dispatched to one of the back-end
+servers, LARD/R scheduling will assign the least-loaded server in
+the proper server set to handle the request.
+However, LARD/R scheduling does not distinguish different
+types of requests. If a back-end server handles surplus CPU-
+bound requests and disk-bound requests at the same time, then
+this back-end server will become overloaded easily.
+In order to solve this problem, we have proposed our Locality-
+Aware Request Distribution with Replication and Classification
+(LARD/RC) policy which is based on LARD/R. Just like CAP
+scheduling, we classify clients’ requests into four types as defined 
+in CAP, then we let each server serve certain types of services that
+are most suitable for it. LARD/RC policy can be used in both
+homogeneous and heterogeneous systems.
+Figure 2 illustrates how LARD/RC scheduling works. We assume
+that the Web cluster has three back-end servers offering two
+different types of requests, both server A and server B can serve
+type-1 requests and server C can serve only type-2 requests, and
+the threshold of LARD/RC scheduling is set to 3. That is, if the
+number of connection exceeds the threshold, then the subsequent
+requests will be dispatched to another back-end server in which
+the number of active connections does not exceed the threshold.
+Figure 2. Dispatching Result of LARD/RC.
+To implement LARD/RC policy, we first implement LARD/R and
+modify it by adding the examination of request types and adding
+the related attributes to the data structure which represents back-
+end servers of LVS-CAD to let the request be distributed to a
+proper server which has offered this kind of service.
+Figure 3 shows the pseudo code of LARD/RC scheduling. There
+are some configurable variables such as Thigh, Tlow, and K. We
+define Tlow as the load which represents the number of active
+connections when the back-end server is in an idle condition. We
+define Thigh as the load which represents the number of active
+connections when the back-end server is likely to cause obvious
+delay to handle requests. K represents the seconds that the server
+set has not been changed for a period.
+In the implementation, we use Weighted Least-Connection (WLC)
+scheduling to assign requests to the proper server in each server
+set. LARD/RC policy will maintain a lardrc_table hash table
+which is used to record the relationship between each request and
+its responsible back-end servers.

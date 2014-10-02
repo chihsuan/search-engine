@@ -1,0 +1,352 @@
+1. 前言
+本研究針對資料索引系統的空間使用效能(space utilization)與儲存需求(storage requirement)進行深
+入探討與調查，從資料的分配性(data distribution)、資料的偏移性(data skewness)、資料順序(sequence
+order)、資料聚集與密度(aggregation and density)以至於資料精選性(data selectivity)等，找尋提升空
+間使用效能的因素；本研究採取緊密的資料安排(compact arrangement)策略以替代傳統鬆散的
+資料安排，提供有效降低儲存需求的資料分類方法。當索引系統的空間使用效能獲得有效
+的改善之後，資料查詢可以在一個精簡的索引結構中進行，時間效能也因此隨之獲得改善。
+2. 研究目的
+提高資料庫使用效能的關鍵因素，在於建立高效率的索引系統，設計不良的索引系統是造
+成資料庫存取效能緩慢的主要原因，為不同的資料庫開發適當的索引方法時，往往很難在
+資料查詢與資料更新效能之間取得平衡；資料量較小的資料庫，或是使用較少參數的索引
+鍵值，索引系統所需的記憶空間與維護負擔相對較小；相反地，如果資料量很大，或使用
+較多參數(高資料維度 high-dimensional)，索引系統將變得複雜且龐大，並且消耗大量的記憶
+空間。使用階層式樹狀目錄(hierarchical tree index)建構空間資料庫，關鍵技術主要集中在幾個
+方面：資料表示法(representation)、資料結構模式(data model)、資料分類法則、資料查詢方式。
+資料表示法與資料結構的設計關係著索引系統的空間效能，資料分類法則與資料查詢方式
+則關係著索引系統的時間效能。一般而言，整體索引系統的設計是由下而上(bottom-up)進行
+的，亦即從資料表示法著手，最後系統完成於產生一套適合的資料查詢方式；因而索引系
+統中空間與儲存(space and storage)的效能運用，直接影響系統的時間效能，許多傳統研究致力
+於改善資料分類法，希望藉由有效的資料歸類方式，縮短資料查詢時間，例如：R*-tree 挑
+選部份已經被索引處理的資料，以reinsertion方式讓資料的安排更加緊密，以減少node splitting
+的發生；又 KD-tree[5]致力發展一套切割 hyperplane 的方法，以期獲得最好的資料分類效果。
+但是許多傳統索引系統的空間效能與使用率通常維持在 50%~70%的範圍內，因此無法將索
+引結構的規模(scale)控制在一個令人滿意的範圍，這樣的結果使得資料搜尋無法快速達成；
+傳統索引系統忽略了一個重要的事實:『索引結構的空間使用效能直接影響資料庫的時間效
+能』。
+3. 文獻探討
+許多資料索引系統如 B-tree、B+-tree [1]、grid file [2]、Quad-tree [3]、KDB-tree [4]、KD-tree [5]、
+MC-tree [6]…等，它們被設計用來為一維、二維、三維以至於多維空間中點物件編製索引目
+錄；由於點物件具備明確的座標數值，制定一套有效的資料分群方法(clustering)是這類索引
+系統的主要技術。資料的分配(data distribution)通常呈現非均勻狀態(non-uniform)，處理不對稱
+性(data skewness)資料是點物件索引系統的重要工作。在平面空間中，區域物件涵蓋明確的面
+積(explicit area)，在多維空間中，此類物件會涵蓋明確的體積(explicit volume)，然而點物件與線
+段物件不涵蓋任何面積或體積，這是區域物件最大的特色。許多傳統空間資料索引系統使
+用MBR(minimum bounding rectangles)物件將區域物件包圍起來，然後再針對MBR進行處理，諸
+如：R-tree [7]、R+-tree [8]、R*-tree [9]、X-tree [10]、TV-tree [11]、grid file等索引系統。使用MBR
+物件代替原始物件進行索引處理會將許多無用空間資訊(dead space)導入索引結構中，因而造
+成對多餘資訊的過度處理，如此導致索引系統的查詢效能不佳的問題。許多研究[14, 15]致
+力於減少索引結構中重疊空間(overlap)的現象，但仍然存在許多改善空間。線段物件的特質
+是不包含封閉區域(closed region)，但卻涉及許多空間範圍，這樣的特質令線段物件最具爭議
+性，許多研究使用MBR處理線段物件，因此多餘資訊的過度處理比區域物件更加嚴重，例
+一般來說，實際的應用上，通常無法事先預知資料的產生順序，因此我們也無從事先對
+資料順序做最佳的安排。傳統索引結構的資料分類機制沒有可逆性(irrecoverable)，資料一
+旦做了不適合的分類，除非進行多次的資料刪除動作，否則無法回復至原先的分類，在
+圖一(a)的 step2 中，資料 4 使得第一個外部節點分裂形成兩個節點，三個外部節點分別
+包含資料{1，4}、{5}以及{8}，事實上，一種更恰當的資料分類為{1}、{4，5}以及{8}，
+這是因為{4，5}比{1，4}更具備資料集中性。傳統索引結構受到不良的資料順序之衝擊，
+這種衝擊會因為資料量的增加而愈來愈顯著。
+另外，以 KDB-tree 為例，假設 leaf 最大容量與 non-leaf 最大分支度均為 3，使用兩
+種不同的資料順序{a，b，c，d，e，f}與{a，b，c，e，d，f} 進行資料分類，資料順序
+影響資料空間的劃分並產生不同的空間切割(space partition)結果，如圖二(a)與(b)所示：
+圖二、不同的資料順序產生不同的空間切割。
+圖三建構資料順序{a，b，c，d，e，f}與{a，b，c，e，d，f}的相對 KDB-tree 索引結構，
+同樣對 6 筆資料進行編制索引處理，圖三(a)使用三個 leaves 而且這三個 leaves 的資料儲存
+空間都沒有發揮最大的使用效能，圖三(b)使用兩個 leaves 而且這兩個 leaves 的資料儲存
+空間都發揮到最大的使用效能；雖然圖三(b)的根節點之使用率低於圖三(a)的根節點，
+由於所有 leaves 的數量是構成索引樹狀結構的主要成份(leaves 數量佔全部節點數量的
+75%以上，分支度愈多，leaves 數量所佔的比重愈高)，因此開發 leaf 資料儲存空間使用
+率的重要性遠勝於 non-leaf，換言之，改進索引系統的外部結構(external structure)儲存空間
+效能所獲取之效益，遠勝於改進索引系統的內部結構(internal structure)。
+圖三、不同的資料順序構成不同的 KDB-tree 索引結構。
+以上 B+-tree 與 KDB-tree 的例子證實資料順序對索引結構的潛在影響性；當 leaf 遭遇滿載
+的情況時，藉由調整週遭附近節點的資料安排，索引結構可以避免許多節點分裂；我們
+再度以 KDB-tree 與資料順序{a，b，c，d，e，f}為例，當動態調整 splitting line 如圖四所
+示(將 S 移至 S′)，6 筆資料可以完全置入兩個 leaves 中。
+於較多次的存取操作使得資料的誤取率(false hit)提高，資料的精選性(selectivity)無法提升。
+在圖一(a)中，當欲取得涵蓋在區間[4，5]的資料時，我們必須進行兩次索引結構的搜尋，
+以取得{4}和{5}兩個分類；然而在圖一(b)中，只需要一次的搜尋與取得{4，5}一個分類。
+5. 結果與討論
+5.1 緊緻 B+-tree (compact B+-tree)
+我們使用下列符號描述 insertion algorithms:
+ T: The root of the compact B+-tree.
+ N, NN, O: A node of the compact B+-tree.
+ N.Rlink, N.Llink: The right and left links associated with node N.
+ parent(N): The parent of node N.
+ load(N): The load of node N.
+ k, k1, k2, k3: A key in node N.
+Algorithm Insert(T, I)
+Input: The root T of a compact B+-tree and the data I to be inserted.
+Output: The root of the new compact B+-tree.
+1. N  T.
+2. While N is a non-leaf node,
+a. If
+1.kNI  ,
+N  N.p0 .
+b. Else for a specific key N.ks such that 1..  ss kNIkN , )(Nloads .
+N  N.ps.
+3. If load(N)M, /*The target node N is under-full, the new data is added to N. */
+a. Install I in N.
+b. Increase load(N).
+4. If (load(N)=M) then select one of the following three cases:
+a. Probe(N)=1 /*Node N is full and N’s successor has free space.*/
+Invoke Adjust(N, I, 1).
+b. Probe(N)=2 /*Node N is full and N’s predecessor has free space.*/
+Invoke Adjust(N, I, 2).
+c. Probe(N)=0 /*Node N can not appeal to its full successor and predecessor.*/
+Invoke Split(N, I)
+7. Return T.
+Algorithm Probe(O)
+Input: A leaf node O in the compact B+-tree.
+Output: If the probing process is successful, return 1 or 2. If failed, return 0.
+1. If nullRlinkO . and load(O.Rlink)<M, return 1 and exit.
+Invoke Split(parent(O), k).
+我們利用實際的空間資料進行實驗，取自於數位電子地圖中的點資料被用來建構索引結
+構，四個點資料集 (大小分別為 10k, 30k, 100k, 以及 300k)用於建構索引結構。三種索引結
+構: 傳統 B+-trees (記作 B+)，緊密 B+-trees 採用右側偵測 (記作 compact RB )，以及緊密 B
++-trees
+採用左側和右側的偵測(記作 compact RLB )，進行比較測試。節點容量 (M)設定為 40。實驗
+包含兩部分，第一部分集中在觀察測試結構的外部組織，第二部分考慮整體結構，對外部
+結構來說，測量三個觀測值(NL，UL，PL)並進行比較。符號 NL 是所有樹葉節點總數，符號
+UL 是樹狀結構的外部組織之平均空間使用率；另外，在兩次連續分裂的期間，符號 PL 計算
+在此期間內被插入的資料量，所以 PL 也可稱為平均樹節點的分裂週期。在另外一方面，
+對整體結構而言，符號 N 是所有樹葉與非樹葉節點的總數，符號 S 記錄全部的分裂總數量，
+符號 U 和 P 則分別代表整體空間使用率和平均節點分裂週期。所有實驗在配備 Intel
+Pentium 1.73 GHz 處理器的工作站上執行，使用 C++ 程式語言進行模擬。
+圖五(a) 顯示 compact RLB 與 compact
+
+RB 比 B
++節省大約 17%和 10%的樹葉節點。圖五(b) 顯
+示 compact RLB 的樹葉空間使用率高達 90% 而 compact
+
+RB 的樹葉空間使用率達到 83%。除此之
+外圖五 a 和 b 顯示 compact B+-trees 再建構他們的外部結構時運用較經濟的儲存空間。圖五(c)
+顯示 compact RLB 與 compact
+
+RB 擁有較高的 PL ，越高的 PL 值表示索引結構越能夠在兩個節點
+分裂中間置放更多的資料。平均上來說，compact RLB 可以在每個數葉節點內放置 35~36 筆
+資料，這樣大約是使用 90%的節點空間。然而 B+ 只能夠放置 29~30 (72%~75% node capacity)筆資
+料。這個結果表示傳統 B+-trees 經常啟動樹葉分裂機制。
+0
+3000
+6000
+9000
+12000
+10k 30k 100k 300k
+data size
+leaf number (N L)
+0%
+20%
+40%
+60%
+80%
+100%
+10k 30k 100k 300k
+data size
+utilization (U L)
+(a) (b)
+entry number
+0
+10
+20
+30
+40
+10k 30k 100k 300k
+data size
+(P L )
+(c)
+圖五、外部結構的效能比較。
+就整體結構而言，compact RLB 和 compact
+
+RB 比 B
++使用較少的節點數量，我們的新索引
+方法使得 compact RLB 節省 16%~18%的節點數量，而
+
+RB 節省 11%，這結果顯示在圖六(a)。
+新方法的貢獻主要在改進資料在樹葉節點的安排方式，較少的樹葉節點產生較少的內部鍵
+方法進行壓縮。KDBcpd+用來表示 KDB-trees 採用 DT-partition 與 l-replication 方法進行壓縮。我們
+在實驗中將 MP 與 MR 均設為 20。空間效能與時間效能的實驗結果分別顯示於圖八中。
+圖八(a) 顯示 KDBcpd+ 產生最少的樹葉節點總數，KDBcpd+與 KDBcpd 約略比 KDBFD 節省
+22%~48% 與 7% 樹葉節點數。KDBcpd 在四個資料集中複製的樹葉數量分別為 998, 570,
+1281 及 1078。圖八(b) 顯示 KDBcpd+ 以及 KDBcpd 擁有比 KDBFD 良好的樹葉空間使用率。
+圖八、空間與時間效能比較。
+資料精選性(data selectivity)是用來測量資料在樹葉點數內的集中性，當進行評估資料擷
+取效能時，越高的資料精選性可以擁有較佳的精確度(precision and recall rates)。圖八(c) 顯示
+KDBcpd
++ 與 KDBcpd 較 KDBFD 擁有更好的資料精選性。除此之外，因為 KDBcpd 與 KDBcpd+ 成功
+地降低分裂頻率，所以他們也同時有效地改進建構索引所需消耗的時間。圖八(d)驗證了建
+構 KDBcpd+ 所需的時間比其他方法有效。
+參考文獻
+[1] S. Lanka, and E. Mays, Fully persistent B+-trees, In: Proceedings of ACM SIGMOD, pp. 426-435, 1991.
+[2] J. Nievergelt, H. Hinterberger, and K.C. Sevcik, The grid file: an adaptable, symmetric multikey file structure,
+ACM Trans. Database Systems, 9(1), pp. 38-71, 1984.
+[3] H. Samet. The Quadtree and related hierarchical data structures. ACM Comp. Surv., 16(2), pp. 187-260, 1984.
+[4] J.T. Robinson, The KDB-Tree: A search structure for large multidimensional dynamic indexes, In: Proceedings
+of ACM SIGMOD, April 1981.
+[5] J.L. Bentley, Multidimensional binary search trees used for associative searching, Communications of the ACM,
+18(9), pp. 509-517, 1975.
+[6] X. Jin, L. Wang, and Y. Lu, MC-Tree: Dynamic Index Structure for Partially Clustered Multi-Dimensional
+Database, Tsinghua Science and Technology, 8(2), pp.174-180, 2003.
+[7] A. Guttman, R-tree: a dynamic index structure for spatial searching, In: Proceeding of ACM SIGMOD Int. Conf.
+on Management of Data, pp. 47-57, 1984.
+[8] T. Sellis, N. Roussopoulos, and C. Faloutsos, The R+-tree: a dynamic index for multidimensional objects, In:
+出席國際學術會議心得報告
+計畫編號 NSC 96-2221-E-025-013-
+計畫名稱 大型高維度資料庫的空間與時間效能改善方法
+出國人員姓名
+服務機關及職稱
+林泓毅臺中技術學院流通管理系助理教授
+會議時間地點 Syney, Australia 8-11 July 2008
+會議名稱 IEEE 8th International Conference on Computer and Information Technology
+發表論文題目 High Indexing Compression for Spatial Databases
+一、 參加會議經過
+本人於 2008/7/8 聆聽兩場 keynote speakers 論文演講，分別為 Prof. David Suter,的『High
+dimensional data analysis in computer vision』與 Prof. lbert Y. Zomaya, 的『 Dynamic Mobility
+Management』。本人投稿之論文於 2008/7/9 在 Building 5, University of Technology, Sydney (UTS) 發
+表，聆聽本場次的學者來自日本、韓國、中國、新加坡等國家。其中日本學者 Prof. Shin-Ichi Minato與
+韓國學者 Prof. Sungwon Jung 為本論文提供許多建議，本人欣喜獲得如此寶貴經驗。大會於 2008/7/10
+舉辦盛大晚宴，參加晚宴的學者與研究相關人員眾多，氣氛融洽，大家相約 2009於厦門再見。
+二、 與會心得
+參與此次研討會本人有兩個極深刻的感觸：第一、中國大陸的學者與研究人員在國際研討會的表
+現愈加活躍，不僅在論文能見度方面，亦或研究生的參與度方面，以至於舉辦國際研討會的能力，皆
+令人印象深刻；交流結識許多與會的大陸學者後，瞭解大陸正朝向鼓勵學術研究，並支持學者往國際
+舞臺發展，大陸的教育品質與學術能量正快速往上提升。第二、此次研討會的主辦單位-雪梨科技大學
+University of Technology, Sydney 成功地吸引全世界各國學者持續參與，論文品質穩定並獲得
+Engineering Index 收錄，不僅吸引優秀學者持續支持研討會，提高主辦學校與單位知名度，更成功地
+行銷了城市觀光價值。
+Consider a collection of 6 data points a, b, c, d, e,
+and f distributed in a 2D space as shown in Fig. 1(a).
+Suppose the sizes of point page (MP) and region page
+(MR) are 3. When a data sequence abcdef
+is adopted, the underlying space is partitioned into
+three pages as shown in Fig. 1(b). While the insertion
+order is changed to abcedf, it only causes
+two partitions as shown in Fig. 1(c).
+Figure 1. Space partitions resulted by different data
+orders.
+Generally, in most of practical applications, data
+generation is over time and thus data accumulation is
+gradual. Every newly arrived datum is inserted to the
+latest index hierarchy, which is organized to fit its
+ancestor. The ancestor can form a structure that allows
+or inhibits the accommodation of the new insertion.
+Node splits derive mainly from the inhibition. To
+generate the vacancy for the new insertion, the index
+structure bears partial or overall reorganization unless
+some forced-reinsertions are applied in advance. R*-
+tree[1] adopts reinserting 30% of the point page to
+achieve dynamic reorganization. The selection of
+forced entries to be reinserted during the insertion
+routine arises another new problem that the improper
+selection may not only encumber system performance,
+but also increases the CPU cost in the insertion routine.
+We propose a new insertion policy called dynamic-
+tuning partition (abbreviated as DT-partition) to
+remedy the problem of data insertion orders. The
+design issue is explained by the following example.
+Again, data sequence of abcdef and MR=2,
+MP=3 are taken to process the indexing. As point d
+comes to the database, the dashed splitting line S along
+point c is set as shown in Fig. 2. The insertion of point
+e does not affect the partitions. Then, insertion of point
+f causes left partition overflowed. Instead of splitting
+the left page, shifting the dashed line S to the solid line
+S’can permit their loads. A node split is successfully
+avoided after shifting the splitting line in this example.
+Specially, we classify point f as reconcilable data and
+the others as flat data. DT-partition can accommodate
+reconcilable data into the current existent nodes by
+means of adjusting the current partitions. Flat data
+include two kinds. One contains those data which can
+be directly accommodated into the current under-full
+nodes and the other contains those data activate
+necessary splits.
+Figure 2. Tuning splitting line.
+3. The impact of data skewness
+Splits on the external structure are activated by
+force because the join of data into the full leaves. Splits
+triggered by flat data can generate additional vacancy
+for forthcoming data although the index size grows at
+the same time. Nevertheless, splits caused by skewed
+data not only inflate the index size but also impact the
+other parts of the hierarchy. In most practical
+applications, data are typically skewed and non-
+uniformly distributed. Skewed data tend to
+continuously overburden the full leaves so as to cause
+many fragmented subspaces and rapidly increase the
+number of point pages. KDB-tree family of index
+structures is easily encumbered with frequent splits.
+Traditional indexing schemes adopt the similar
+insertion algorithm with a consistent logic through the
+insertion process. It follows the principle that splitting
+a full target when it encounters a new insertion. In fact,
+besides the explicit information representing data
+location, size, and extent, much implicit information
+and interaction among data also affect data
+classification results. For instance, the spatial
+relationships between the insertion data and its prior
+data, the impact of insertion order to the target point
+page, and even the status of data distribution caused by
+the insertion data. Traditional index schemes ignore
+these interactive impacts. Our new insertion algorithm
+uses data density in monitoring the statuses of data
+classification at leaf level. Data density is a simple
+index indicating the congestion condition of data
+population in a closed area. The heavy data skewness
+can increase data densities rapidly and a point page
+with a high data density tends to incur splits. By means
+of comparing the data densities of some neighboring
+point pages, the condition of skewness can be clearly
+distinguished.
+Data density (denoted by ) of a point page is
+calculated by the number of data points within a limited
+for it. Since the fan-out of the root is less than 3,
+splitting operations are adopted and a normal leaf is
+created. Our splitting scheme differentiates from
+conventional methods in which data preserved in N1,
+N2 and N21 plus P4’are redistributed into three leaves
+with more-or-less equal size. The insertion
+mechanism of KDBcpd
++ responsible for processing
+flat data with a higher priority than skewed data so
+that the impact of continuous congestion can be
+solved.
+Figure 3. KDBcpd+-trees construction procedure.
+5. Experimental results
+Four 2D spatial datasets including SC, UK, CA, and
+LB as shown in Fig. 4 were employed to progress the
+comparative study. SC contains 36,176 points and
+representing the coast line of Scandinavia. UK contains
+39,828 points representing the boundary of the United
+Kingdom. CA and LB include 62,556 and 53,145 points
+representing locations in California and Long Beach
+County. All data points in these datasets distribute on
+an underlying 2D space with a resolution of [0, 106]
+[0, 106]. All structures were implemented in C++
+programming language executing on a workstation with
+a Pentium 1.73 GHz processor. Because the
+experiments reported in [7, 10] clearly show that, in
+high-dimensional spaces, the performance of KDBFS-
+trees is significantly lower than that of KDBFD-trees, it
+is sufficient to only take KDBFD-trees as the benchmark
+to progress the comparative study. In the following, we
+abbreviate KDBFS-trees as KDBFS.
+SC UK
+CA LB
+Fig. 4 Four spatial datasets.
+Since leaf nodes constitute a large portion of an
+index structure, only the structure statistics of the
+bottom structure and elapsed time are taken for
+comparison analysis. For all cases of three index
+structures and four datasets (SC, UK, CA, LB), the MP
+and MR adopted in the experiments are both 20. The
+space and time efficiencies are separately discussed by
+the first two and last two diagrams in Fig 8. Fig. 8(a)
+shows the number of leaves generated in KDBcpd+ is the
+most economic. KDBcpd
++ and KDBcpd approximately
+use less 22%~48% and 7% leaves than KDBFD,
+respectively. The numbers of replication leaves
+allocated by KDBcpd are 998, 570, 1281 and 1078 for
+four datasets. They are not displayed in Fig 5(a). The
+SC dataset has a highest “replication-leaves to normal-

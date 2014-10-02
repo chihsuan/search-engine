@@ -1,0 +1,264 @@
+ 2
+3.1 NCKU RISC32 處 理 器 整 合
+Trace-Reuse-Cache系統 
+Trace reuse cache (TR cache or TRC)為
+一放置在管線處理器後端的特殊電路。我們
+收集處理過的指令及其 PC 值儲存於
+HTB(History Trace Buffer)中，並將其中跳
+躍指令的下一個指令的編號、PC 值及其關
+聯的跳躍指令記錄在 TET(Trace Entry 
+Table)中，記錄每個指令流的進入點，讓我
+們以一個指令流為單位來處理。 
+3.1.1 Trace-Reuse-Cache架構 
+我們將根據圖 1 的架構來建立基於
+SimpleScalar模擬測試的TR cache來增進指
+令的利用率，完成其 RTL level的設計。在
+IF ( instruction fetch )級必須作修改，讓我們
+的 TR Cache所需要的指令以及 PC值能夠
+經由每一級所多添加的暫存器傳遞到下一
+級去，並在最後由我們的 TR Cache來考慮
+是否要將這些用過的指令放入 Cache 的儲
+存位置中。 
+IF/ID ID/EXE EXE/MEM MEM/WB
+TRC
+PC
+Inst.(used) to TRC
+PC(used) to TRCInst. from TRC
+nextPC from TRC
+TRC enable
+IF
+Inst. (System)
+Inst. (TRC)
+TRC enable
+nextPC (System)
+nextPC (TRC)
+PC to IF/ID
+Inst. to IF/ID
+ 圖1：ICache - TRC運作架構圖 
+如果由 TRC發現有命中的情況出現，
+也就是PC與存於TRC內的某筆資料相同，
+會拉起TRC_enable訊號線以告知CPU目前
+由 TRC所提供的 instruction以及 nextPC是
+可以使用的，而在 fetch 模組(IF)當中就會
+經由多工器的選擇將下一筆應該使用的資
+料送入 CPU處理指令的程序。 
+ 
+3.1.2 Trace-Reuse-Cache效能評估 
+由於我們採用的是近似於 Trace Cache
+這種作法，其在儲存內容的規則上會比較簡
+單。同時也因為不必考慮到整個記憶體空間
+的完全對映的需求，所以在設計起來會比一
+般傳統的 I Cache來的簡單，對於面積方面
+能有更好的利用率。在做比對的動作時，由
+於設計的緣故，可供比對的並不是一般
+cache 的 tag 欄位，而是整個 pc 值(或稱為
+IA：instruction address)，如圖 2所示，我們
+稱之為 TRC搜尋機制。如此一來；就必須
+作整個儲存陣列的內容搜尋，在合成時會需
+要用到 CAM來達到這樣的設計。     
+圖2：TRC搜尋機制 
+總和上面可以發現，輸入的設計若能夠
+越簡單，便能降低因為使用 CAM所增加的
+功率消耗負擔，因此在合成時製程的選擇會
+有蠻大程度影響我們設計的實驗結果。 
+3.1.3 初步成果 
+ 前述之架構我們已經完成 RTL 部份的
+撰寫，並初步驗證其功能。由於合成已經完
+成，現在正準備進行一般的測試程式驗證，
+諸如：Sort、影像處理常用的 RGB2YUV、
+以及 JPEG編碼等等，再更加詳實驗證其功
+能性之後，將依靠電路層的處理來達到更佳
+的效能與功耗。 
+ 4
+ System Controller 
+控制開發板上各種系統性設定。 
+ UART 
+此平台的輸入輸出系統。 
+ External GIC 
+GIC為 General Interrupt Controler的縮
+寫，將開發板上的硬體元件中斷分送給
+中央處理器，由於 ARM11 MPCore也
+內含一個 GIC，External GIC代表開發
+板上的 GIC控制器；而 Internal GIC代
+表 ARM11 MPCore內含的 GIC控制
+器。 
+ RAM 
+主記憶體。 
+ Other Peripherals 
+開發板上其它的周邊裝置：CLCD, 
+watchdog timer, GPIO, SSP, SCI, MCI, 
+SSMC, RTC, Keyboard, Mouse。這些週
+邊裝置在本模擬驗證平台上只實現了
+最基本的功能，以便讓 Linux kernel成
+功啟動。 
+ 而為了讓 Linux 作業系統可以順利啟
+動，中斷功能的正確實現是必要而不能有誤
+的。而系統中斷的分配將在下面詳述。 
+ Realview EB 開發板中有 4 個 GIC
+（Generic Interrupt Controller），分別接到
+兩個 core tile的 IRQ以及 FIQ腳位，本模
+擬驗證平台中只使用了連接到 Core Tile 0 
+IRQ腳位的 GIC 0。 
+除了開發板上的 4 個 GIC（稱為
+External GIC），ARM11 MPCore也內含了
+1個 GIC（底下稱為 Internal GIC）。Internal 
+GIC 內建於中央處理器當中，具有 32 個
+interrupt input腳位（於 CPU封裝上）。大
+致上來說，開發板上比較慢速的周邊裝置連
+結到 External GIC，其它則連結到 Internal 
+GIC，其中斷連接方式如下： 
+External GIC 
+ UART 0 
+ UART 1 
+ UART 2 
+ UART 3 
+ CLCD 
+ Watchdog Timer 
+ GPIO 0 
+ GPIO 1 
+ GPIO 2 
+ SSP 
+ SCI 
+ MCI 
+ SSMC 
+ 
+Internal GIC 
+ Timer 0 
+ Timer 1 
+ RTC 
+ Keyboard 
+ Mouse 
+ AACI 
+ External GIC 
+ 
+3.2.3驗證方式與結果 
+ 為了達成 ARM11 MPCore Instruction 
+Set Simulator 的功能性驗證，我們採用了
+booting Linux kernel 的方法，藉由檢查
+Linux kernel開機過程的正確性來驗證 CPU
+指令的正確。在 kernel 方面我們使用了
+Linux 2.6.28，並且加上 ARM的官方 patch
+以便開啟 SMP的支援。 
+其結果是我們能成功的啟動 Linux 
+SMP kernel，之後進入到一個小型的
+busybox 所編譯出的檔案系統 (Root File 
+System)中成功登入並且開啟 shell。 
+ 
+3.3基本晶片網路架構模擬系統建構 
+本 Multi-core 環境中的 Interconnect 使
+用 Fully-connected為 topology，實現了具有
+五個節點的On-chip Network(如圖5所示)，
+以驗證 switch、NI(Network Interface)、記憶
+ 6
+息是以封包的方式傳輸，假設 NoC 上有 n
+個 node，則每次為 cache coherence都需要
+廣播給其他 n-1個 node，並且每個 node都
+要回傳資訊給廣播者，所以需要 2n-2 個封
+包，即使使用區域網路中 routing 交換的
+flooding 機制，也是需要超過 n 個封包，
+overhead 相當大。因此 cache coherency 的
+部分我們使用 MESI Directory-based cache 
+coherence protocol，它的概念類似於
+snoop-based MESI protocol，兩者的最大不
+同是前者另外將 cache line 的 cache 
+coherence state 儲存在 L2 cache 所在的
+Memory Controller ， 因 此 不 用 進 行
+snoop-based coherence protocol 所必須的
+broadcast，只要到 directory去查詢即可，這
+樣可以大大的減少cache coherence traffic帶
+來的 overhead，增加 NoC的 scalability [2]。 
+ 
+3.3.2 Switch 
+負責接受由NI或是其他 Switch來的封
+包，根據 destination address將封包往下一
+個 switch傳送。Switch主要有以下四個部
+分： 
+1. Routing logic： 
+在 fully-connected network中，送到比
+自己大 1的要用最右邊的 port，比自己大
+2的要用右 2，依此類推，如果比自己小的
+則是再加上 5以後再去比較。因此可以推
+導出 destination port number與 source port 
+number的差值modulo 5就是要送出的port 
+number。 
+2. Input demultiplexer： 
+根據 routing logic的結果決定 output 
+port。 
+3. Output arbiter： 
+為了避免 starvation，我們使用了 Round 
+Robin的方式，每個 port輪流擁有這個 path
+的使用權。 
+4. Output multiplexer： 
+根據 Output arbiter 仲裁的結果決定哪
+一個 port 輸入的封包要被送到下一個
+switch。 
+3.3.3 Network Interface 
+負責MI與 network之間的訊息格式的
+轉換，並且設計 buffer讓兩者可以非同步的
+運作。NI主要有以下四個部分： 
+1. DataIn： 
+將從 MI 來的 data 儲存到 Transmit 
+buffer(Tx buffer)，這樣可以解決傳送到
+network與從MI端接收的非同步問題。 
+2. Transmit(Tx)： 
+把 Tx buffer的資料封裝成封包以後傳
+送到 network。 
+3. Receive(Rx)： 
+把從network接收的封包解封裝以後儲
+存到 Receive buffer(Rx buffer)。 
+4. DataOut： 
+和 DataIn類似，不過是把 Rx buffer的
+資料傳送到MI。 
+ 
+3.3.4架構討論 
+ Topology 
+以常見的 topology如八邊形(Octagon)、
+Fat tree、Mesh、BFT(butterfly fat tree)與
+Folded Torus來說，若考慮能量消耗(Energy 
+dissipation)，那 BFT是最低的，但是考慮到
+繞線複雜度(Wire complexity)的話，則是
+mesh 表現比較好，不過以整體表現來說，
+兩者不相上下[3]。因此接下來將會把 BFT
+與Mesh都實現出來，進一步分析他們的效
+能。而要將這些使用這些 topology，就像一
+般的Network一樣，只要實現相應的 routing 
+logic掛載上去即可。 
+ NoC架構的優化：Virtual Channel 
+Virtual channel是由好幾個邏輯上分開
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/06/27
+國科會補助計畫
+計畫名稱: 子計畫一：具自我測試特性之低功率處理器設計與其多核心全系統平台開發
+(1/3)
+計畫主持人: 陳中和
+計畫編號: 99-2220-E-006-015- 學門領域: 晶片科技計畫--整合型學術研究
+計畫
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+本成果包含實際的多核系統實作, 領先國內各大學以自行設計的處理器 Soft 
+IP 到多核系統的開發. 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

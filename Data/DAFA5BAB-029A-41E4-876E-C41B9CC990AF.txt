@@ -1,0 +1,631 @@
+ 2 
+行政院國家科學委員會專題研究計畫成果報告 
+ 
+計畫編號：NSC 98-2221-E-006-103 
+執行期限：98 年 08 月 01 日至 99 年 07 月 31 日 
+主持人：侯廷偉        
+計畫參與人員：林錦陽, 王邦傑, 林佳男, 王聖婷 
+執行機構及單位名稱：成功大學 工程科學系 
+ 
+中文摘要 
+本計劃旨在探討 Java-based Middleware 
+(OSGi, MHP)之平台弱點、快速啟動與可復原
+機制。在平台弱點方面，本計劃從現有的 Java
+安全機制，探討了平台上可能影響應用程式
+正確性之因素以及可能遭受之惡意攻擊，進
+而提出一個動態偵防系統，包括相關建議與
+討論。另一方面，此計劃提出可結合 JVM、
+OSGi 平台以及 OSGi 應用程式之快速啟動與
+可復原技術。據實驗結果顯示，此技術讓 Java
+以及 OSGi 執行環境的啟動時間獲得七成以
+上的改善；而切換 OSGi 應用程式所需之啟
+動時間亦有四成以上的改善。 
+關鍵詞：中介平台, Java 安全性, 惡意攻擊, 
+Java 虛擬機器, 快速啟動 
+ 
+Abstract 
+This project focuses on two key issues on 
+the Java-based middleware (e.g. OSGi, MHP). 
+The first is about the security of the middleware. 
+Since the standard Java security model, which 
+is commonly used in the middleware, cannot 
+completely satisfy the security requirements, 
+this project develops an auditing system to help 
+detect and handle some of the malicious 
+attacks/behaviors not easy to be detected by the 
+existing security schemes. The second is 
+concerned with how to support fast 
+startup/recovery of the execution system (JVM, 
+middleware) and applications. In this regard, 
+we develop and evaluate a fast JVM startup 
+technique. The results show that the reduced 
+startup time of the execution system and the 
+applications are, respectively, 77% and 45%. 
+Keywords: Java-based Middleware, Java 
+security, malicious attacks, JVM, fast startup 
+ 
+一、前言與研究目的 
+隨著網路的普及，網路應用的範圍已經
+從過去家庭外部衍生到家庭內部。許多現有
+異質的數位產品以及各種不同的服務可以透
+過 如 Open Service Gateway initiative 
+(OSGi)[16]以及  Multimedia Home Platform 
+(MHP) [17]等以 Java 為基礎之 Middleware 技
+術，整合於家庭網路中。各式各樣的服務程
+式可以從外部下載，即時的安裝並自動執
+行，雖然平台的擴充更具彈性，但也因此提
+高了受到外來惡意程式攻擊的風險。這些威
+脅並非只有從外部進行，也有可能來自服務
+的供應商。這些具有威脅性的服務，透過其
+它合法的服務取得資訊，影響其它服務的行
+為，破壞執行的環境，這些威脅是屬於內部
+的攻擊。 
+由於 Java-based Middleware 多半建立在
+Java Security 基礎上，對於非本地端的程式，
+將視為不信任的程式碼，而這些不被 Java 所
+信任的程式碼若企圖利用系統資源，將會受
+到 Java Permission [7]的控制。 
+然而，Java Security 使用在 Java-based 平
+台上的安全性並不足夠[12, 13]，所以此計劃
+將以此為探討平台弱點的主軸。首先，我們
+ 4 
+Java Security 1.2 的管理方式不再是只有
+簡單的完全信任或完全不信任，而是更有彈
+性的權限存取方式。一個 Java 應用程式，不
+管是本地端或者是遠端，不再是同意完全的
+使用系統資源，而是根據存取的權限來使用
+系統資源。如圖 1 所示，Access Controller 模
+組讀取 Policy 檔案，存取權限由保護空間
+(Protection Domain)所組成，每個保護空間擁
+有自己的存取權限。 
+為了使 Security Manager 的管理更有彈
+性，JDK 1.2 採用 Stack Inspection[5]機制。當
+一個 Java 執行緒嘗試要存取系統資源時，這
+個由執行方法所組成的堆疊(Stack)，將會動
+態檢查權限是否符合 Policy file 所定義的規
+則。每個呼叫的方法都會被檢查，並返回一
+個可信任的標籤“T”或是不可信任的標籤
+“U”，假如有其中一個呼叫的方法是不被信任
+的，這個操作將會被 JVM 禁止，並拋出一個
+例外(Exception)，圖 2 為一個 Stack Inspection
+的概念。 
+ 
+圖 2: Stack Inspection 
+Java Security JDK 1.2 使用 Policy 管理
+應用程式存取系統資源的權限，這個 Policy 
+file 在 JVM 啟動的同時被讀取並載入規則
+(Rules)。有關 Policy file 的標準格式以及相關
+細節可見[6]。此 Policy 的機制使得權限的管
+理更有彈性，應用程式不只有是標記成信任
+或不信任，每一個存取資源的動作都可以定
+義存取權限，而不再是開放所有權限。缺點
+則是會帶給系統管理者一定的負擔，因為這
+需要經驗和專業。 
+至於平台方面的弱點， Parrend 和
+Frenot[12]歸納定義出OSGi平台上 32個可能
+的弱點。這些弱點出現在許多 OSGi 實作平
+台 (如： Felix 、Knopflerfish、Concierge、
+SFelix)，有些則是涵蓋了 Java 平台。這些弱
+點當中有 13個可以使用 Java Permission來解
+決 [7, 20] ， 例 如 ： Runtime.exec.kill 、
+System.exit。除了這 13 個 Java Permission 可
+解決的弱點以外，其他弱點必須搭配不同機
+制才能處理，例如 P.PARREND和 S.FRENOT 
+[13]在 SFelix 平台上解決了 8 個弱點(如：
+Invalid Digital Signature Validation 、 Big 
+Component Installer)，而 C.C. Huang [11]則從
+VM Layer 的角度，提出一個偵測模型來解決
+部份弱點 (如：服務阻斷攻擊 (Denial of 
+Service))。 
+從這些相關研究可發現到，許多弱點其
+實難以單從 Java Layer 來解決，而必須從
+Native Layer 的角度(e.g. OS, JVM)來進行。因
+此，此研究計劃嘗試從 JVM 的角度來探討更
+多解決平台弱點的可能性，同時將提出對應
+的偵測模型與系統。 
+有關 VM 快速啟動方面。Kawachiya et al. 
+[14]提出 Cloneable VM 的概念。藉由一個持
+續運行的 parent JVM 來產生許多 child 
+JVMs，而產生這些 child JVMs 的方式是經由
+Linux fork。這表示 child JVMs 可得到完整
+parent JVM 的資源並從 fork 的點接續運行，
+因此可省略 child JVMs 啟動的步驟。雖然此
+方法可大幅減少 child JVMs 的啟動時間，但
+parent JVM 的啟動時間依舊緩慢。因此該技
+術只適用於需要同時使用大量 JVM 實體之
+伺服器上。對於只會執行少數 JVM 實體而且
+資源較少之平台(e.g. OSGi Home Gateway)並
+不適用。 
+Nikolov et al. [15]則藉由完全儲存及回
+復 Java Heap 及 Method Area Heap 來達成快
+ 6 
+似之 OSGi 平台，已有相關研究提出可補強
+平台攻擊防護的方法[12, 13]。在我們的研究
+中發現，許多 OSGi 平台上會發生的問題，
+同樣可能發生在 MHP 平台上，因此可以運用
+這些方法來輔助 MHP 平台的安全性問題
+[20]。但此法仍具潛在的危險，主要的因素是
+無偵測的能力，尤其是當惡意的程式不在定
+義的列表中，或者是濫用合法資源的攻擊
+時，並無法進一步察覺並採取適當的措施。 
+而本計劃則著重在現有方法中仍難以提
+供的動態偵防能力。希望藉由提出一個動態
+偵防系統，來提高偵防的能力，使得就算平
+台受到攻擊也可以察覺，並進行移除或隔離
+的保護措施。 
+(二) 系統架構分類與設計 
+本研究所提出之動態偵防(入侵偵測)系
+統架構主要是基於 Java Virtual Machine 
+Profiler Interface (JVMPI)[10]技術以及我方
+OSGi 相關之先期研究[19]。其系統架構如圖
+3 所示。 
+在設計上，此偵測系統(Auditing System)
+是實現於 JVM Layer 而非 MHP Layer 或
+Application Layer，主要是因為所有 Java 應用
+程式和 Threads 都是由 JVM 所產生，JVM 記
+錄著所有應用程式資訊，而且也只有 JVM 才
+是能夠取得這些資訊。 
+而 JVMPI原本是被設計成可以發展各種
+Profiles 與 JVM 底層連結進而分析或觀察系
+統內行為變化的工具。透過 JVMPI 可以方便
+取得  JVM 執行時期的性能數據或執行狀
+況，例如：可以得知執行時最浪費時間的物
+件，或當系統資源不足時提出警告。使用
+JVMPI 所提供的功能呼叫，可以使得 JVM 和
+客製化的 agents 做雙向溝通。使用者可視需
+要來決定是否接受特定事件的通知。因此，
+我們提出之Auditing System利用 JVMPI來作
+為收集資料的技術。 
+JVMPI 可收集的資訊類型可包含記憶體
+的配置、類別的載入、CPU 使用率及監聽衝
+突...等。Auditing System 透過 JVMPI 收集來
+自 JVM 的各種事件與資訊，並將這些資訊和
+應用程式做有意義的連結，同時偵測這些訊
+息(audit data)是否有異常行為出現。 
+圖中的 Advanced Security Manager 是一
+個入侵偵測的管理系統，它是以應用程式的
+形式運行於 MHP 平台上。主要的工作是通知
+JVMPI 需要監聽的對象以及告知使用何種偵
+測的機制。因此會有一個對外的使用者介面。 
+ 
+圖 3: Advanced Security Layer Model 
+一旦 JVMPI 偵測到可疑行為，會馬上回
+應給 Advanced Security Manager，JVMPI 只
+負責通知 Manager，由 Manager 負責可疑行
+為所需之後續處理，JVMPI 的部份並不做任
+何處理，事實上它也沒辦法處理，因為它是
+屬於 JVM Layer，無法直接控制 MHP Layer。 
+對 JVM 而言，每個 Java 應用程式的行
+為都會產生一些事件，這些事件可能是類別
+被載入、方法被執行或是啟動執行緒等。然
+而，入侵偵測系統並不知道那一些行為或事
+件是屬於那一個應用程式。因此，為了讓這
+ 8 
+系統效能。 
+ 
+圖 5: 模式 A(映射應用程式) 
+ 模式 B：映射 JVM、OSGi 及應用程式  
+相較於模式 A 的設計，同時映射 JVM、
+OSGi 以及應用程式雖然需要比較大的 Image
+空間，卻可避免複雜的溝通模式，而且不需
+要修改 OSGi 平台。再者，因為所有工作都
+在 Native Layer 完成 (in C Language)，系統效
+率將會更好。 
+ 
+圖 6: 模式 B(映射 JVM、OSGi 及應用程式) 
+其架構如圖 6，此時 Manager 扮演了管
+理 JVM 以及 Bundle-Buckets 的角色，每當切
+換到新的 Bundle-Bucket，會連同相關連之
+JVM 以及 OSGi 的部份一併回復。(NOTE: 此
+時 Image 是自行管理/過濾過的記憶體區域
+(Persistence Heap Area; 稍後說明)，並非完全
+的 Java Heap，因此相較於 Nikolov et al. [15]
+所提的方法，此 Image 相對仍小很多。) 
+在強調啟動效率以及降低系統複雜度的
+前提下，此研究採用了模式 B 的設計。也因
+此，後續所有的技術面工作都將落在客製化
+JVM 的議題上。 
+(二) 客製化 JVM 
+JVM 本身雖是以軟體虛擬出來的機器，
+但這機器內部的各個組成(Interpreter, Class 
+Loader, Garbage Collector, Object Access 
+Model, etc.) 卻是環環相扣，而且具有相當程
+度的複雜度。因此，如果沒有全面性的理解
+各個組成，將難以進行客製化的工作。而這
+也是為何需要針對 target JVM 的源碼做追蹤
+的主要原因。此計劃中採用之 target JVM 為
+JamVM。透過追蹤源碼的過程中，我們歸納
+出幾個技術重點以符合客製化 JVM 的需求
+[22]。 
+ 維護必要之執行時期映射資訊 
+我們透過修改 JVM，自行規劃一連續之
+記憶體區域來管理映射資訊，該區域稱之為
+Persistence Heap Area (Not Garbage Collected 
+Area)，並維護了需要映射之執行時期資訊如
+class structures、class loaders、system variables
+等。系統可於執行時期將該區域映射到某個
+image file，並在需要時進行回復。 
+ 執行時期回復 Class Loaders 物件 
+由於 Class Loaders 掌管類別的載入，所
+以設計上，我們實際寫出(映射)的是 Class 
+Loaders 所維護的類別結構，圖 7 顯示
+ClassLoader 的基本結構，當中實際寫出的為
+HashTable 中的 Class Entries。因此回復時(執
+行時期)，必須重新建立 ClassLoader 物件並
+將之與回復之 class structures 重新建立連結
+ 10 
+middleware 平台上的弱點，定義出更多有效
+的攻擊規則，朝著自動化更新弱點和規則的
+方向努力。 
+(二) 快速啟動與可復原機制 
+根據研究方法中所提出之技術，我們已
+經將之實現於以下的環境設定： 
+ OS:     Debian GNU/Linux 5.0.4 
+ OSGi: Knopflerfish 2.3.2 
+ CPU: 2xPentium(R) Dual-Core E5200  
+ Memory: 2G DDR II 
+ Hard Disk: 160 GB, 7200 RPM SATA II 
+首先，我們分別比較了 VM 與 OSGi 的
+啟動時間(結果如表 1)，其中 FS-VM 為客製
+化之 JVM。平均而言，VM 加上 OSGi 的啟
+動時間可以節省約 77%。 
+表 1: VM 與 OSGi 啟動時間 
+ 
+JamVM 
+(ms) 
+FS-VM  
+(ms) 
+Time 
+Reduced 
+JVM 55.8 2.8 95% 
+OSGi 112.8 36.0 68% 
+ 
+ 表 2 則比較了 Bundle-Bucket 啟動時間，
+其中Bucket A與Bucket B用來模擬不同的應
+用程式情境，分別有 10 與 16 個 bundles。結
+果顯示，以新技術來切換 OSGi 應用程式所
+需之啟動時間約有四成以上的效能提升。 
+表 2: Bundle-Bucket 啟動時間 
+ 
+JamVM 
+(ms) 
+FS-VM 
+(ms) 
+Time  
+Reduced 
+BucketA 155.1 85.6 45% 
+BucketB 344.9 233.8 32% 
+ 
+ 根據這樣的實驗結果，初步驗證了此快
+速啟動與可復原技術之效能與正確性。未來
+我們將嘗試將此技術應用於其他以 Java 為基
+礎的平台上。此外，目前提出之快速啟動技
+術與平台弱點改善技術並沒有實際整合在一
+起，由於兩者都是落實在 JVM Layer，未來
+將會進一步探討兩者實際整合的可行性。 
+六、計畫成果自評 
+當初計劃提案為三年期，工作內容以及
+相關工作人力因此被分成三年來規劃。雖最
+終核定下來只有一年，但由於中途延攬了對
+此方面有經驗之博士後人員(林錦陽)，使得計
+畫的執行進度比預期快了很多，依計劃書預
+期交付之項目來看，此計畫最終完成交付之
+項目已跨越了原計劃書中第二以及第三個年
+度之工作進度。原計畫中預期完成之研究工
+作如下: (1) Java Based Middleware 之平台弱
+點評估與防禦模組 (原規劃為第一年交付); 
+(2) Recoverable & isolable JVM 雛型 (原規劃
+為第二年交付); (3) Recoverable & isolable 
+JVM 完成 (原規劃為第三年交付)。整體而
+言，本計畫已達成預期目標。 
+此外，此計劃成果對學術科技領域的主
+要助益如下。隨著網路的普及，網路應用範
+圍已從過去家庭的外部衍生到家庭的內部，
+成為下一個世代的趨勢。許多異質的數位產
+品以及服務可透過如開放式服務閘道平台
+(Open Service Gateway initiative - OSGi)或數
+位電視平台 (Multimedia Home Platform - 
+MHP)，整合於家庭網路中。而許多基於 Java
+的服務/應用也應運而生，如：居家照護、保
+全系統、家庭娛樂...等。為了讓使用者能以
+更穩定、安全、有效率的方式來操作這些智
+能系統，此計畫順利研發兩項主要技術項
+目：(1) Java-based Middleware 現有平台弱點
+之改善技術; (2) 結合 JVM、OSGi 平台以及
+OSGi 應用程式之快速啟動與可復原機制。 
+這些成果在學術科技領域之主要貢獻在
+於驗證了"結合系統層面來解決應用層面需
+求之可行性"。從客製化 JVM、記憶體映射
+的規劃、回復機制的設計、安全性偵測...等，
+皆涉及許多 JVM 與 Middleware 系統層面的
+深入研究。加上目前手機、家用閘道器(home 
+ 12 
+碩士論文 , 國立成功大學工程科學系, 
+2007.  
+[20] 姜翰杰, “數位電視平台之弱點強化與動
+態偵防機制,” 碩士論文, 國立成功大學
+工程科學系, 2009. 
+[21] 馮堃齊, “改善 JVM 之共用物件存取方
+式以增進 OSGi 應用程式間之獨立性,” 
+碩士論文 , 國立成功大學工程科學系, 
+2009.  
+[22] 林佳男, “基於快速啟動 JAVA 虛擬機器
+之 OSGi 服務包集合置換方法,” 碩士論
+文, 國立成功大學工程科學系, 2010. 
+ 
+ 
+@tupG+%<+9],¯GR$ív<=>4(RGw4ü(LG`
+w8c5«"<5"ÉxG7w<noZGy<"ò¼,z9z%Gë
+F{)c?|}5NG+=`§z¾~,z9z% z¾¦/G
+{)õ$D;72z¾5ª/c?ò95rW` 
+ 
+    3A+9wZ IA,Jíî, $C*D&E 47 34)D(&*0 9:%*-:*2 zí, $C*D&E 
+47 8-740),&%4- ,-; 34))(-%:,&%4- 9:%*-:*2 zUVÏW,$ C*D&E 47 F*;%, 
+G*:H-454612 zÿ$, $C*D&E 47 K(),- ,-; 34)D(&*0 8-&*55%6*-:*2zJþÿ
+$,$C*D&E 47 L%4':%*-:* ,-; L%4%-740),&%:'2`2Z =@MM+J`g< 
+¬Ç= &7A,<Î7y?# GH* N(*'& 740 7(-;,)*-&,5 &*:H-45461 &4 
+'(DD40& ,- ,;/,-:*; %-740),&%4- '4:%*&1`=§ &7A,<ÎO'**+%-6 
+P*-*7%&' 740 H(),-+%-;Q %-&*55%6*-:* ,-; 5%7*Q ;0,R- 704) %-740),&%4- ':%*-:* ,-; 
+&*:H-45461O?`A9GQ4O34-&0%P(&%-6 &4 :0*,&%4- 47 , -*R 
+%-740),&%4-J40%*-&*; '4:%*&1 R%&H R405;J:5,'' 0*'*,0:H D04)4&%4- ,-; H(),- 
+0*'4(0:*' ;*/*54D*)*-&O`3ßnÀ5ªg !'5G3<VZ
+7A<<Z7«w?`,¯g ()Ã¡3§4n
+j` 
+ 
+Òª7A,¢<£¼ =9 @A¤¥?m¦<§nÿ$,f4$B2 
+704) '47& :4)D(&%-6 &4 5%/%-6 %-&*55%6*-:*Q :4)D(&*0 %-&*55%6*-:* ,-; ),:H%-* 
+%-&*55%6*-:*Q $=2 ,;/,-:*; ;,&, D04:*''%-6 &H04(6H 406,-%: P4-;%-6 47 5%/%-6 
+%-&*55%6*-:*Q :4)D(&*0 %-&*55%6*-:* ,-; ),:H%-* %-&*55%6*-:*` ¨w?4+G
+©ðª¥<T4,«e7¬&G)*`,­®¬.G¯°<¢¼&
+AÉV<§nÿ$,f4¾ H*5D%-6 D*4D5*:±èG<¿²³| 
+$B2F*,'(0*)*-& ,-; ,-,51'%' 47 5%/%-6 406,-%') %-&*55%6*-:* $+-4R%-6 H(),-'2<$=2 
+C*'%6- ,-; :4-'&0(:&%4- 47 :4)D(&*0 %-&*55%6*-:* $%)%&,&%-6 H(),-'2<$A2 ?-,51'%' 
+,-; ,:H%*/*)*-& 47 ),:H%-* %-&*55%6*-:* $:0*,&%-6 H(),-'2` 
+ 
+    ¨w?4,.´¦×<Òª4./zµ./z¶´·<[ZÈ(
+¥¸´$Z(¥/©2`¹4º»G©)*<§nÿ$,Gº»4¾
+$B2S%'(,5 ,-; :4540 D*0:*D&%4- 740 , P,00%*0J70** '4:%*&1 $=2 T4(-;,&%4- &*:H-45461 
+740 ,- %-&*0,:&%/* /%0&(,5 R405;:É`T4¼+½¾G¿ÀE` 
+ 
+    .Z7AdZûG!¼JLðJGÁÂº»Ãfð`ÒªÄ$B2Lð
+JLðvGcbÅJ @IUfð<@IUÆº»<>Ò4.oÃÇpÈ
+$AU2<oðÉÊË$=U2<Ì¦$IU2`$=2ÍðÈµÎÏfoÐ<$A2íFÑÏ
+foÐ<¬ÇZ IIU¾¯;4 BMMMe¾¯<íFÒ BMÓEÔ¾¯G'Ç
+Õ`$@2ðÖÏfoÐJ upð >AU<×Øð ==U<ÙÚ VU<ÇpÈÃ.È
+÷X<347AdZGJK<§u97[Òª9VGw
+;<8¾5"ÿ7¸GÚ5Gl]5G+Jª``
+graphic components strongly dependent with the native 
+graphic library. For the portability issue, we think the 
+substitution of the native graphic library should not have or 
+should only have little influences to the presentation of the 
+applications.  
+According to the PBP Specification, and reference 
+implementation [5,6], PBP is a layered architecture. The 
+drawing or rendering functions in the layer of Native Bridge 
+are mapped to native functions by JNI (Java Native 
+Interface) calls. Native Bridge layer consist of two parts: 
+drawing, rendering functions, and native functions which are 
+possibly implemented by C. The relationship between layers 
+is shown in Figure 2. 
+ 
+Figure 2. AWT Software Architecture 
+ 
+There are plenty of complex native calls from the Bridge 
+to Graphic Library. Each native bridge is responsible for a 
+series of process to invoke native graphic library. It takes 
+hard work to integrate two different Graphic libraries. 
+The approach we took was to move most of components 
+of Graphic Llibrary, as in Figure 2, from the native layer to 
+Java layer, and to keep only the minimum set of graphic 
+drivers on the native side, which require porting. Hence the 
+time, efforts, and cost to port AWT are reduced. We 
+considered the popular MicroWindows and QT-embedded 
+for demonstration.  
+• MicroWindows 
+PBP Reference Implementation takes MicroWindows as 
+the default native graphic library. MicroWindows is 
+strongly dependent on X11 library which is not a very 
+good solution for embedded systems because of its size 
+and portability. The structure of PBP built on top of 
+MicroWindows is shown in Figure 3. 
+AWT
+Microwindows
+Xlib
+Host Operating System
+JVM
+ 
+Figure 3. PBP with MicroWindows based on X11 
+Xserver receives the keyboard and mouse events and 
+keeps them in the MicroWindows event queue. An event 
+monitor thread calls GetNextEvent to get the event in the 
+event queue, packs the event into Java event class and 
+posts it to the Java event queue as the figure 4 shows. 
+ 
+Figure 4. MicroWindows Event Model 
+ 
+• Qt Embedded 
+Qt Embedded graphic library is developed by the 
+Trolltech using C++ for embedded systems [9]. That Qt-
+embedded draws images on the Framebuffer increases 
+the portability. In contrast, MicroWindows needs 
+Xwindow library support. Another advantage of the Qt 
+Embedded graphic library is its event model. An event 
+can be packed into Java event class, and posted to Java 
+event queue ,wait for Java dispatch, almost without any 
+modification of the Java event model except for some 
+keypad mapping or some character input devices. 
+B. Java Accelerator  
+Java compiler compiles Java source code to .class file 
+which is composed of bytecodes. After activating the class 
+loader of JVM to load .class file into the VM, and JVM runs 
+bytecodes by the bytecode interpreter. A .class file can run 
+on each platform which supports JVM. But interpretation 
+generally decreases performance. There are three kinds of 
+approaches to improve JVM performance: JIT (Just in Time 
+compiler), co-processor [14], and Java Processor[15,16,17]. 
+We chose the JOP (Java Optimized Processor) for references 
+[11] [12].  
+III. SYSTEM ARCHITECTURE 
+The reference implementation of AWT graphic library is 
+based on MicroWindow. There were a close dependency 
+between the library and the functions of MicroWindow. Our 
+experiences show that it took a lot of efforts on porting the 
+library. The research of [1] defined a java based graphic 
+library which only contained the fundamentals of window 
+like drawLine, drawRect and drawOval. Only these 
+fundamentals depended on window’s library, the 
+complicated functions (like fillRectǃfillPolygon…) were all 
+composed by the fundamental functions. On the other hand, 
+as porting the AWT to other platforms, only the fundamental 
+functions need being considered about. 
+Our research is based on the hardware solution of [3]. 
+Different from the original AWT architecture, our proposed 
+architecture exchanges the order of the graphic library and 
+Native Bridge. This change makes the proposed Java-based 
+graphic library become a pure Java graphic library, so to 
+implementation posts the images to the Framebuffer that 
+directly displays on the screen. 
+An architecture based on JOP is proposed, following the 
+model in Fig. Each layer in Fig. 5 for JOP implementation is 
+described as follows: 
+• AWT Class Library: It defines the interface for Java 
+programs. It has the abstract types as the original 
+AWT. 
+• Platform Toolkit: It implements each of the abstract 
+types in AWT and connects to the Graphics Library. 
+• Graphic Library: We used pure Java to implement 
+the graphic functions. 
+• Device Driver Interface: An interface implemented 
+by Java for applications to operate the Frame Buffer. 
+• JOP Native Bridge: Using the Native method 
+provided by JOP to write the pixels in Video RAM 
+which VGA needs. 
+• Hardware: It is the bytecode execution engine, the 
+Java processor. Here it is the JOP. 
+IV. PERFORMANCE AND EVALUATION 
+For the metric of portability effort, we measured that it 
+took one man-year (full time-graduate student) to learn to 
+port AWT on original windows. It took one month to 
+implement the Java-based graphic library on an X-86-based 
+platform. Porting the Java-based graphic library to an ARM-
+based platform only took a week. (Such a comparison is not 
+fair, because of the limited sample.) 
+We separately ran the pure software implemented graphic 
+libraries and the JOB enhanced on the same platform. The 
+base is a JVM running Qt/embedded. The testing 
+environment was x86 platform and Framebuffer was set to 
+640*480 pixels with 16 bits per pixel (rgba 5/11, 6/5, 5/0, 
+0/0). We wrote benchmark programs that used 14 functions. 
+These benchmark programs were run 100 and 1000 times to 
+measure their execution time.  
+The delay time is composed of two parts: (1) pixels’ 
+processing time, (2) passing the pixels to show on the screen. 
+We found the most important factor to decide the delay time 
+is the resolution. For example, resolution in 800*600 needs 
+480,000*16 bits data but 320*200 only needs 64,000*16 bits 
+data. The former is 7.5 times of the latter. Hence, the smaller 
+display device took the shorter time to perform a drawing. 
+The proposed Java-based graphic library was 30~800 times 
+slower than native graphic library. The bottleneck is passing 
+the data to the bottom layer.Using JOP did have better 
+performance than pure software implementation. But JOP 
+version was 7.8 to 741 times slower than the native one.  
+The experimental results show that (1) such a minimum 
+library did improve porting efficiency very good, (2) the 
+performance of the proposed library still needs to be tuned 
+up. More native calls should be put to the lower layer to have 
+Java implemented graphic functions. 
+V. CONCLUSION AND FUTURE WORK  
+This research proposes a Java-based graphic library for 
+AWT in Java VM to improve portability for embedded 
+systems.  The library uses Frame-buffer for display. It is a 
+simple and direct drawing method and it provides a uniform 
+input device interface for different embedded devices and 
+platforms. The library minimizes the native calls and re-
+implements other functions in Java.  
+Our measurements showed that porting the original AWT 
+using native graphic library took one-graduate-student year. 
+But porting the proposed Java-based graphic library took 
+only one graduate-student week. Of course, the comparison 
+is not fair because the graduate student is familiar with his 
+work on porting the proposed library. But the results still 
+stand that the proposed approach does save porting time. Our 
+measurement also showed that the performance need 
+improvement. We are trying to tune of the graphic library, 
+i.e., to have more functions than the minimum set. 
+REFERENCES 
+[1] Dan Garcia, “Scan Conversion Distillation”, 
+http://www.cs.berkeley.edu/~ddgarcia/cs184/r3/ 
+[2] Jonathan Kundsen, “Java 2D Graphics”, O’Reilly, Sep 2000. 
+[3] C.Y. Lin, "Design and Implementation of the Java Abstract Window 
+Toolkit for the Embedded Java Runtime Environment", Master 
+Thesis, National Cheng Kung University, 2001. 
+[4] SUN Microsystems, “Java ME Documentation”, 
+http://Java.sun.com/Javame/reference/docs/index.html 
+[5] SUN Microsystems, “JSR 129 –Personal Basis Profile SPEC”, 
+http://www.jcp.org/en/jsr/detail?id=129 
+[6] SUN Microsystems, “SUN modified MicroWindows for PBP”, 
+http://experimentalstuff.sunlabs.com/Technologies/mwpbp/index.htm
+l 
+[7] Thomas Porter and Tom Duff, “Compositing Digital Images”, 
+Computer Graphic, Volume 18 No.3, pp 253-259, Jul 1984. 
+[8] Todd Sundsted, “New specs signal a growth spurt for Java 2 
+Platform's smallest edition”, http://www-
+128.ibm.com/developerworks/library/j-j2me/ 
+[9] Trolltech, “Qt/Embedded”, 
+http://www.trolltech.com/products/qt/qt3/embedded/ 
+[10] Karim Yaghmour, Building Embedded LINUX Systems, O’Reilly, 
+Apr 2004. 
+[11] Martin Schoeberl, “A Java processor architecture for embedded real-
+time systems”, Journal of Systems Architecture, 
+doi:10.1016/j.sysarc.2007.06.001 , 2007. 
+[12] Martin Schoeberl, “JOP – Java Optimized Processor”, 
+http://www.jopdesign.com 
+[13] TLDP (The Linux Documentation Project), “Framebuffer HOWTO” 
+http://tldp.org/HOWTO/Framebuffer-HOWTO.html 
+[14] ARM Jazelle Technology , 
+http://www.arm.com/products/esd/jazelle_home.html 
+[15] ajile: Embedded Low-Power Direct Execution Java Processor, 
+http://www.ajile.com/index.php?option=com_content&task=view&id
+=21&Itemid=28 
+[16] Sergio Akira Ito and Luigi Carro, Ricardo Pezzuol Jacobi, “Making 
+Java Work for Microcontroller Applications”, IEEE Design & Test of 
+Computers Vol.18, Issue 5, pp 100-110, September 2001.  
+[17] Y.Y.Tan, C.H. Yau, K.M. Lo, W.S. Yu, P.L. Mok and A.S. Fong, 
+“Design and implementation of a Java Processor”, IEE Proc.-Comput. 
+Digit. Tech. Vol. 153, Issue 1, pp 20-40, 10 January 2006.       
+ 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+■達成目標 
+□未達成目標（請說明，以 100字為限） 
+□實驗失敗 
+□因故實驗中斷 
+□其他原因 
+說明： 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：□已發表 □未發表之文稿 ■撰寫中 □無 
+專利：□已獲得 □申請中 ■無 
+技轉：□已技轉 □洽談中 ■無 
+其他：（以 100字為限） 
+已備有相關論文(8、9 成完成度)準備於近期投往國際 SCI 期刊(IEEE Transactions on 
+Consumer Electronics) 
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以
+500字為限） 
+隨著網路的普及，網路應用的範圍已經從過去家庭的外部衍生到家庭的內部。許多現有異
+質的數位產品以及各種不同的服務可以透過如開放式服務閘道平台(OSGi)或數位電視平
+台(MHP)，整合於家庭網路中。 許多基於 Java 的服務也應運而生，如：居家照護、保全
+系統、家庭娛樂...等。為了讓使用者能以更穩定、安全、有效率的方式來操作這些智能
+系統，此計畫順利研發兩項主要技術項目： 
+(1) Java-based Middleware 現有平台弱點之改善技術; 
+(2) 結合 JVM、OSGi 平台以及 OSGi 應用程式之快速啟動與可復原機制; 
+ 
+這些成果在學術科技領域之主要貢獻在於驗證了"結合系統層面來解決應用層面需求之可
+行性"。從客製化 JVM、記憶體映射的規劃、回復機制的設計、安全性偵測...等，皆涉及
+許多 JVM 與 Middleware 系統層面的深入研究。加上目前手機、用閘道器(home gateway)、
+機上盒(set-top-box)、數位電視等應用與系統研發工作對台灣資訊電子業日趨重要，相
+信此研究成果將提供有心從事此類系統之研發人員更多的信心與想法。 

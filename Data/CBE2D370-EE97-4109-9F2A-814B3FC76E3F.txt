@@ -1,0 +1,1035 @@
+II 
+ 
+目錄 
+1 摘要 ...................................................................................................................................................... IV 
+2 報告內容 ................................................................................................................................................ 1 
+2.1 前言 ........................................................................................................................................................ 1 
+2.2 研究目的 ................................................................................................................................................ 1 
+2.3 文獻探討 ................................................................................................................................................ 1 
+2.3.1 DVB-H 系統架構簡介.................................................................................................................. 1 
+2.3.2 IP 及 UDP 封包格式..................................................................................................................... 3 
+2.3.3 RTP/RTCP 傳輸協定 .................................................................................................................... 4 
+2.3.4 FLUTE 傳輸協定 .......................................................................................................................... 6 
+2.3.5 FLUTE file repair server 簡介..................................................................................................... 11 
+2.3.6 SDP(Session Description Protocol) ............................................................................................. 12 
+2.4 研究方法 .............................................................................................................................................. 13 
+2.4.1 系統資料來源 ............................................................................................................................. 13 
+2.4.2 IPDC 子系統之設計架構 ........................................................................................................... 14 
+2.4.2.1 IPDC 子系統流程介紹- IP Analysis...................................................................... 15 
+2.4.2.2 IPDC 子系統流程介紹- UDP ................................................................................ 16 
+2.4.2.3 IPDC 子系統流程介紹- FLUTE Analysis............................................................. 17 
+2.4.2.4 IPDC 子系統流程介紹- RTP/RTCP Analysis....................................................... 18 
+2.5 結果與討論 .......................................................................................................................................... 20 
+2.5.1 取得系統初始資訊 ..................................................................................................................... 20 
+2.5.1.1 解譯 FLUTE 封包資訊之程式碼解析 .................................................................. 20 
+2.5.1.2 FLUTE 檔案物件資訊結構程式碼解析 ............................................................... 25 
+2.5.1.3 判斷 FLUTE 檔案物件是否完整程式碼解析 ...................................................... 26 
+2.5.1.4 經由 FLUTE 取得 ESG Bootstrap 檔案列表 ........................................................ 27 
+2.5.2 取得頻道資訊 ............................................................................................................................. 28 
+IV 
+ 
+ 
+1 摘要 
+本研究計畫為兩年期 DVB-H 整合型計畫中的子計畫之一。本子計畫執行嵌入式 DVB-H
+接收系統內 IP Datacast 規格中的網路與傳輸層軟體之開發，並利用軟體工程技術及CMMI 程
+序，與總計畫及各子計畫之開發成果進行實際與持續整合，實現一個嵌入式基於 Android 平
+台下完整的 DVB-H 接收系統。本年度執行此整合型計畫第二年，在 Android pad 上實現
+DVB-H 接收系統 IPDC 相關網路層與傳輸層模組軟體的開發。本子計畫在本年度完成的工作
+項目包含：(1)解譯 FLUTE/ALC/LCT 封包模組之優化; (2)對解譯 ESG 資訊並傳輸至應用層模
+組做進一步的詮釋; (3)解譯會話描述協定模組之修改; (4)優化解譯 LCT 延伸標頭之模組; (5) 
+對解譯 RTP/RTCP 封包之模組進行優化; (6)實現 FLUTE 錯誤檔案重傳功能。 
+關鍵詞：IP 數據廣播、單向非及時性檔案內容傳輸、電子服務指引、嵌入式系統、Android
+平台、DVB-H 接收系統。 
+ 
+Abstract – This project belongs to a subproject of a two-year joint project. In this project, we have 
+implemented the software modules of both network and transport layers specified by the IP 
+Datacast Protocols. The software engineering techniques and CMMI procedures are enforced in the 
+course of the project execution as well as the integration with the overall joint project. The final 
+product of this joint project is the successful implementation of an Android based embedded 
+DVB-H reception system. We have carried out the 2nd year and have completed the following items: 
+(1) Code optimization of FULTE/ACT/LCT packet decapsulation module; (2) Parsing the 
+Electronic Service Guide (ESG) data for the further processing in the corresponding application 
+layers; (3) Modification of Session Description Protocol (SDP) parsing module; (4) Code 
+optimization of the LCT extension field decoding module; (5) Code optimization of RTP/RTCP 
+packet decapsulation module; (6) Implementation of FLUTE file repairing function. 
+Keywords: IP Datacast、FLUTE、ESG、Embedded System、Android Plateform、DVB-H 
+Reception System 
+ 
+2 
+ 
+ 
+圖 2.1 DVB-H System Protocol Stack 
+ 
+由於 DVB-H 係以單向播放多媒體串流為主要目的，所以使用 UDP (User Datagram Protocol)[5] 為
+傳輸層之解決方案。DVB-H 系統主要傳送兩大類資料：即時串流內容(real-time streaming content)以及
+非即時檔案內容。DVB-H 多工與封裝流程如圖 2.2 所示，影音串流部分經過 RTP[6] 封包封裝處理；
+而 ESG(節目資訊)，則利用 FLUTE 封包封裝處理。兩者個別處理過後需經過 IP 封裝，再經過 MPE
+與 MPE-FEC 編碼處理之後，轉變成傳輸串流，最後由 DVB-H 天線發送。 
+ 
+圖 2.2 DVB-H 多工及封裝流程 
+4 
+ 
+ 
+2.3.3 RTP/RTCP傳輸協定 
+DVB-H 的系統中，RTP（Real-time Transport Protocol）與 RTCP（RTP Control Protocol）這兩種傳
+輸協定是用來處理影音串流的資訊，資料經過 IP/UDP 層解譯後其 payload 傳遞至此層做解譯來組成
+影音資訊，它最早被定義在 RFC1889[6] 中，屬於應用層網路協定，因此非常適合在不同的應用程式
+使用。而 DVB-H 中，發送節目的波段為單向的傳輸，所以 DVB-H 中的 RTP/RTCP 功能因為缺乏反
+饋機制而沒有全面的使用。 
+RTP 的定義包含兩個部分： 
+ RTP(Real-time Transport Protocol)：用來攜帶即時影音的傳輸資料。 
+ RTCP(Real-time Transport Control Protocol)：傳送參與者的資訊，並可以監控 RTP 的 QoS 服務。 
+RTP 通常運作於 UDP 之上，在 DVB-H 系統中也是，其原因是方便運用 UDP 的多工服務
+（Multiplexing Service）與檢查服務（Checksum Service），但實際上 RTP 也可以跟其它適合的下層網
+路或傳輸協定一起運作，若下層網路有提供多方廣播的功能，則 RTP 也可以支援；由於 RTP 本身並
+沒有提供在一定時間內保證送達與服務品質保證（Quality-of-service Guarantee）機制，故資源的保留、
+到達保證等諸如此類工作，通常都得視下層的網路服務是否提供。 
+如圖 2.5 所示，RTP 封包的格式大致上為固定格式，且對其 payload 的格式也有明確定義，在
+DVB-H 系統解譯 IP/UDP 封包格式後，還需要解譯 RTP 封包才能夠得到影音串流的資料。 
+ 
+圖 2.5 RTP packet format[6]  
+RTCP 為支援 RTP 所設計的控制協定，RTCP 之下層協定必須提供可以將 RTP 與 RTCP 視為分開
+資訊的多工處理(UDP 利用不同的 Port Number 以符合此規定)方式；RTCP 透過定期回報方式使整個
+連線過程的資料收送狀況得以掌握，其主要功能包括： 
+ 服務品質監控與壅塞控制(QoS Monitoring and Congestion Control) 
+ 媒體間的同步（Inter-media Synchronization） 
+6 
+ 
+ 
+圖 2.7 RTCP SR packet header format 
+ 
+2.3.4 FLUTE傳輸協定 
+DVB-H 系統經過 IP/UDP 解譯後，除了影音串流以外另外一條解譯路線就是 FLUTE(File Delivery 
+over Unidirectional Transport) 層，其主要功能為節目資訊和系統初始化所需資料的傳遞。FLUTE 為針
+對檔案傳輸的網路協定，定義在文件 RFC3926[7] 中，主要功能為實現單向的檔案傳輸協定。其特點
+著重在檔案會被當成所謂的"物件"來發送，又針對單向傳輸做設計，所以接收端不需要回傳，可以適
+用於大量的單向檔案傳輸，且沒有特別規範 IP 版本的欄位，所以可以支援 IPv4 與 IPv6，並且在 UDP
+下的 Unicast 與 Multicast 的傳輸皆適用。一般傳輸最需要被保證的可靠度則靠 Retransmission 機制和
+FEC(Forward Error Correction)來達成。 
+FLUTE 架構是建構於另一個 IETF 通信協定-ALC(Asynchronous Layered Coding[8] ,非同步分層編
+碼)之上發展的，因此 ALC 封包架構為 FLUTE 的主體，而 ALC 架構中又包含了三個 Building Block：
+LCT，CC(Congestion Control)，FEC(Forward Error Correction)，故三個通信協定的關係如圖 2.8 所示。 
+ 
+圖 2.8 FLUTE/ALC/LCT 之關係方塊圖 
+ 
+由圖 2.8 中可以看出 FLUTE 架構內含 ALC 的架構，ALC 內部又包含 LCT 與 CC 跟 FEC 的部分，
+ALC 是一個將 LCT 架構物件化(instantiation)的協定。LCT，為針對分層多重傳輸速率的網路協定，
+在 ALC 內負責會談管理的功能(session management)，將分層和可伸縮性(Scalability)的概念導入到非
+同步傳輸，另外又結合了 FEC、以及壅塞控制功能。FLUTE 則將這些原有基本的 ALC 架構特性做延
+伸，給傳輸的物件增加額外的屬性。 
+LCT[10] 為 FLUTE/ALC 分層傳輸技術的核心，LCT 封包標頭放置於 ALC 封包標頭的最前端。
+ALC 整合了 LCT、FEC、以及多傳輸率壅塞控制(multiple rate congestion control)等三個機制，但單依
+靠 LCT 標頭欄位無法得知個別物件的代表意義，所以藉由 FLUTE 協定賦予物件代表參數[7] 來了解
+物件之相關屬性。LCT 接收端必須在開始該會談前先得到足夠的會談敘述(session description) ，如圖 
+2.9 所示。LCT 會談敘述定義了所有關於該會談之參數，包含用來實現壅塞控制所需的資訊。會談敘
+述(SDP)是由傳輸端所決定，且其傳輸的通道與數據服務的通道不同，以外頻(communication 
+8 
+ 
+ 
+FLUTE 協定推薦每個 FLUTE 封包的長度盡可能固定，這樣有利於加強壅塞控制的效果。FLUTE
+接收端必須支援前述的兩種傳遞模式。在一個會談裡，物件可以被循序地(sequentially)傳輸或是同時
+傳輸(concurrently)。接收端在上一檔案結束傳輸後開始再製(reproduce)物件。接收端可以同時接收不
+同傳輸端的不同會談，並實施不同的壅塞控制。 
+傳輸端負責在傳輸之前以外頻 (out-of-band)的方式將會談敘述送達接收端，之後開啟會談。一個
+會談可以傳送多個物件，物件編號以傳輸檔案認證(TOI)做為區隔。傳輸的終止可能為下列情況： 
+ 某些封包過期(expired)。 
+ 已傳輸一定的封包量。 
+ 外頻反饋顯示大部分的接收端已經接收完畢。(在 DVB-H 中無反饋故不會發生) 
+ 
+ 
+圖 2.10 LCT Header Format[9]  
+ 
+ALC[8] 協定為將 LCT 物件化的協定，其非同步分層(Asynchronous Layer)的目的在於綜合分層編
+碼標頭以及前向糾錯碼作為建構區塊 (building blocks)，以保障支援壅塞控制的可靠非同步傳遞
+(reliable asynchronous delivery)。在這裡非同步的意思是指任意一個接收端都能以非同步方式啟動接收
+物件的工作。非同步分層的目標包括高規模可伸縮性，在這裡高規模可伸縮性包括無限制之接收端數
+量及其所傳輸的資料量。其接收端的非同步分層工作為： 
+ 以適合的通道數加入會談。 
+ 依照會談中偵測到的壅塞狀況動態調整通道數，以實施壅塞控制。 
+ 重建(reconstruct)物件。 
+ALC 繼承 LCT 支援的兩種服務傳遞模式(表 2.1)，IP multicast 的傳輸採取 best effort 模式，故不
+10 
+ 
+得這物件有了描述，所以 FLUTE 在接收端負責派發訓令(signaling)和對應(mapping)，將這些代表參
+數對應到接收的 ALC 檔案(file，即物件)上。以下為 FLUTE 對 ALC 之增加功能： 
+ 將傳輸的具體事項(transport details)和時限(timing constraint)包在檔案傳遞會談(file delivery 
+session)的定義中。 
+ ALC 會談中有關傳遞參數的內頻訓令(in-band signaling) 。 
+ 被傳遞之檔案特性，以內頻訓令傳遞。 
+ 某會談中多個檔案傳遞之多工行為具體事項。 
+FLUTE 藉由 FEC 來降低資料的錯誤率以保障可靠性，但是傳輸端的 FLUTE 機制無法保證傳輸的
+成功。在一個 FLUTE 檔案傳遞會談(file delivery session)如圖 2.11 中，ALC/LCT 在 FLUTE 中的任務
+為一個 ALC/LCT 會談包括數個邏輯的 ALC/LCT 通道，藉由 ALC/LCT 封包標頭被單一傳輸端傳遞一
+或數個物件。一個 ALC/LCT 通道由其通訊埠編號(port number)一個傳輸端所構成。接收端加入此通
+道以接收資料封包並且藉由離開通道來停止接收。 
+ 
+圖 2.11 FLUTE Session 
+ 
+如圖 2.11 所示，一個會談(session)中一個會談可能包含數個通道用以傳送物件(objects)或在
+FLUTE 中稱檔案(file)；而一個物件可能為數個封包組成，這些封包攜帶了物件欲傳輸的資訊。 
+FLUTE 中封包和物件的辨識：在任一封包內，接收端利用 ALC/LCT 封包標頭內的傳輸會談認證
+(Transport Session Identifier，TSI)與來源 IP 位址來辨別該封包所屬之會談；在一個會談中可能有數個
+檔案，所以接收端利用 ALC/LCT 封包標頭內的傳輸會談認證(Transport Object Identifier，TOI)來辨識
+該封包屬於哪一個物件。 
+以下為 FLUTE 機制的規範： 
+(a) ALC/LCT 會談定義為檔案傳遞會談(file delivery session)。 
+(b) ALC/LCT 中的物件(object)即為檔案(file)或檔案傳遞表格實體(file delivery table (FDT) 
+instance) 。 
+(c) 只要是有 payload data 的會談，其所屬封包中必須要加入傳輸物件認證(Transport Object 
+Identifier，TOI) 。 
+(d) 資訊等級由低到高：封包物件(檔案或 FDT Instance)會談。 
+12 
+ 
+臨時的 URI 為群播修復 session 傳送 SDP file(session description)與 HTTP 回應所用，伺服器端會收集
+修復訊息並傳送給發送端，修復訊息裡面會有不完整檔案的 URI、SBN 或 ESI。在與發送端溝通後可
+決定要修復的大小，是整個檔案、完整的一個 blocks 或是只有幾個 encoding symbols。 
+ 
+2.3.6 SDP(Session Description Protocol) 
+SDP(Session Description Protocol)文件規格定義在 RFC4566[9] 中，其作用就如同名稱所示，主要
+是用來敘述 session 相關的參數，在 DVB-H 中可以利用許多種方法傳遞，如 FLUTE 中的檔案傳遞，
+或是 ESG 中的 xml 格式內容欄位標示，無論那種都是用來描述一個 session 的相關參數。其欄位名稱
+與內容對應如圖 2.13 所示。 
+ 
+圖 2.13 SDP 欄位與內容對應格式[9]  
+ 
+其中有標示*符號的欄位為 optional 欄位，並不是每次都會出現，而敘述中標記為(Zero or more 
+media descriptions)和(one or more time descriptions)分別定義在 RFC 中其他的章節，圖 2.14 所示為從
+公視串流解譯出的 SDP 檔案資訊： 
+14 
+ 
+ 
+2.4.2 IPDC子系統之設計架構 
+ 
+圖 2.15 IPDC 子系統設計架構 
+ 
+IPDC 子系統中包含解譯 IP/UDP/FLUTE/RTP/RTCP 功能部分，皆屬於網路架構中網路與傳輸層
+面。IPDC 子系統根據目的端 IP 位址與目的端 PORT 作為對應開啟檔案以取得需要的串流。系統指定
+IPDC 子系統目前處理串流為 FLUTE 格式或是 RTP/RTCP 格式。影音串流中每個封包資料是以
+RTP/RTCP 串流方式傳送，所以 IPDC 子系統為了使用 RTP/RTCP 協定封包格式而將這些串流封包解
+譯成自訂的物件格式 IPDCHeader_RTP 與 IPDCHeader_RTCP，再將目的端 IP 位址與目的端 PORT 組
+合的值存放至 IPDC 子系統宣告的 RTP Buffer 中(RTP MAP)，最後輸出至 Video/Audio 對應的子系統；
+系統指定以 FLUTE 解譯的資料(非即時性檔案)則在各封包解譯完畢後存成 IPDCHeader_FLUTE 物
+件，並根據以下四項數值：目的端 IP 位址、目的端 PORT、FLUTE 封包欄位中的 TOI 與 payload ID
+存至 TOILIST Map 中。TOIList 以 TOI 為 key 值做管理，方便判斷檔案的完整性，若檔案完整則在系
+統要求此檔案時可以輸出至 ESG 子系統。 
+IPDC 子系統解譯流程如圖 2.16，當資料進入 IPDC 子系統開始解譯，一開始會設定這次解譯的
+對象為 RTP 影音資料或是 FLUTE 非即時檔案資訊，提供其目的端 IP 位址與目的端 PORT 以供辨識
+解譯目標。根據目的端 IP 位址與目的端 PORT 與指定的串流型態當成參數傳至 IPDC 子系統後，將
+會根據測試資料開始解譯資料以供此層使用，一次讀取含一連串的 IP 的封包串流與此次獲得的封包
+總數(因為 burst 的關係)。這裡會有一個例外判斷是否回傳了正確 IP 封包個數，若沒有回傳封包則表
+示無資料會繼續呼叫。傳入的資料將會依序做處理，系統根據順序先解譯 IP 標頭的部分，再解譯 UDP
+16 
+ 
+ 
+圖 2.17 IP Analysis flow chart 
+ 
+2.4.2.2 IPDC子系統流程介紹‐ UDP 
+UDP 協定在本系統解譯流程如圖 2.18 所示，UDP 分析單元會將 IP 封包 Payload 資訊前 8 byte
+解譯為 UDP 標頭資訊，並對其標頭資訊做判斷處理。若其封包計算後的 checksum 值與標頭欄位內容
+不符，則會將封包解譯資訊回傳 NULL 表示，表示錯誤；若是沒有錯誤則會將輸入的 IP 封包格式之
+Payload部分解譯為 UDP封包格式並將其回傳。此處會將 IP與Port轉換成對應的字串，以供系統buffer
+存取。 
+18 
+ 
+ 
+圖 2.19 FLUTE Analysis flow chart 
+ 
+2.4.2.4 IPDC子系統流程介紹‐ RTP/RTCP Analysis 
+RTP/RTCP協定解譯流程如圖 2.20所示，系統根據收到的UDP封包目的端Port來判斷是否為RTP
+格式的封包，若目的端 Port 等於 RTP 目的端 Port + 1，則此封包即判斷為 RTCP 格式。系統依照此法
+分辨 RTP/RTCP 後，便開始各自對應的解譯流程： 
+20 
+ 
+2.5 結果與討論 
+本系統已經成功開發了 IPDC 的網路與傳輸層的相關軟體模組，並與總計畫與各子計畫之開發成
+果進行實際的整合，實現一個嵌入式基於 Android 平台下完整的 DVB-H 接收系統。以下僅剖析本系
+統重要的執行流程與結果。 
+2.5.1 取得系統初始資訊 
+本系統所有的資訊都是從檔案獲得 IP 串流資訊進行分析解碼處理，由此可知如何從 IP 串流中解
+譯出正確的資訊為本系統最基礎的函式，沒有此功能便無法進行後續的處理。而 IPDCHandler 為處理
+IP 串流資訊之主要核心，所有封包的控制，過濾或暫存，都是由這個類別來操作，透過此函式內含
+兩個 C++中的 STL::map 分別是 IPDC_MAP 與 TOIList。IPDC_MAP 以目的端 IP 和目的端 Port 資訊
+為 KEY 值，將對應 RTP 與 RTCP 封包存入，為影音串流的 buffer；TOIList 則是以 FLUTE 封包欄位
+中的 TOI 為 KEY 值將對應的 FLUTE 物件資料存入，為 FLUTE 檔案物件的 buffer。IPDCHeader 這個
+類別，功能為存放解譯完畢的 IP 封包資訊，除了有 IP 標頭資訊還有 UDP 標頭資訊，而由於 DVB-H
+皆以 UDP 方式傳輸，故此類別為一基礎的類別，另外有 IPDCHeader_RTP，IPDCHeader_RTCP，
+IPDCHeader_FLUTE 等類別會繼承這基礎類別，以供存放 RTP/RTCP 封包資訊或 FLUTE 封包資訊。 
+ 
+2.5.1.1 解譯 FLUTE封包資訊之程式碼解析 
+取得 FLUTE 封包，程式撰寫部分較為重要的地方為 IPDCHandler 物件之實作的方式。 
+以下講解此段程式碼之重要部分： 
+22 
+ 
+會先解譯 IP/UDP(圖 2.22)，再開始解譯 FLUTE(如圖 2.26)，當解譯完畢，根據 FLUTE 封包內 TOI
+的值將資料存入 FLUTE 的 TOIList MAP 中，繼續下一個封包解譯。當整個 LOOP 跑完後，最後
+會根據系統指定的 TOI 判定所需的 FLUTE 物件資料是否完整(圖 2.28)。若完整則寫入檔案，回傳
+true 值表示這個檔案成功取得。整體流程如圖 2.26。 
+ 
+圖 2.22 ProcessIP/UDP sequence Diagram 
+ 
+如圖 2.22 所示，由於解譯流程是固定的，而且 FLUTE 資料需要保證其正確性，所以當 IP 標
+頭內的 protocol 欄位的值不等於 UDP(17)時，或是 IP、UDP 內容 checksum 計算錯誤時，此封包解
+譯流程將會中斷並丟棄這個封包，將直接處理下一個封包。 
+24 
+ 
+ 
+圖 2.25 Bootstrap - FLUTE 封包資訊 
+ 
+26 
+ 
+ 
+圖 2.27FLUTE payload 存取結構 
+ 
+圖 2.28 為 IPDCHandler 在判斷存取 FLUTE 資料的程式碼部分，開始先根據封包的 TOI 值，判斷
+此封包資訊是否存在於_TOIList Map 中。若沒有則表示封包內的 payload 資訊一定為新的資訊，將會
+依據上述的存取結構存取，若_TOILST[TOI]已經有資訊，則將目前較新的資訊存放在 MAP 中。 
+ 
+圖 2.28FLUTE 資料存取判斷 
+ 
+2.5.1.3 判斷 FLUTE檔案物件是否完整程式碼解析 
+經由 FLUTE 傳送的檔案為封包形式傳遞，且檔案會根據其 ALC 架構之 FEC 演算法切為許多區
+塊傳送，而且 FLUTE 封包在 DVB-H 中傳送的多為重要系統資訊，當 FLUTE 封包遺失或不完整時資
+訊將無法使用，故判定其資料完整與否為圖 2.29 程式碼主要的功能： 
+28 
+ 
+ 
+圖 2.30 取得 FLUTE 資訊並供給 ESG 層所需檔案 Sequence Diagram 
+ 
+如圖 2.30 所示，系統在呼叫 IPDC 子系統之後，會得到一個 bool 值會傳是否成功或得所需檔案，
+若為 true 則將檔案交由 ESG 子系統處理，若失敗則會回傳給使用者介面。 
+ 
+2.5.2 取得頻道資訊 
+系統會依照所選取的服務提供者資訊，提取其 IP、Port 與 TOI。圖 2.31 為系統根據選取的服務
+(tbm)，所得到的 FDT-Insatance 檔案清單，其原始檔案交由一般瀏覽器開啟的結果，由圖中可知內容
+有 16 個檔案描述。 
+30 
+ 
+ 
+圖 2.33 本系統讀取之 FDT Instance 結果 
+ 
+圖 2.32 為 DVB-SAM 軟體所得的 FDT-Insatnce 結果，圖 2.33 為本系統選取 tbm 服務後所得結果，
+將本系統與 DVB-SAM 和原始檔案比較，可知各欄位資訊皆為相同的，並以此驗證分析 FDT-Insatance
+的正確性。 
+ 
+2.5.3 取得影音串流 RTP/RTCP封包 
+2.5.3.1 解析 SDP檔案 
+點選了節目選單後，根據節目選單中的 SDP 資料，從 FLUTE 中獲得 SDP 檔案。假設所選節目為
+PTS，系統將會根據 PTS 這個 Service 搜尋對應的 Acquisition 檔案，從中取得 SDP 檔案名稱，並根據
+其 SDP 檔案名稱，從 FDT-Insatnce 取得 SDP 檔案的 TOI 值，然後從 FLUTE buffer 中根據 TOI 組成
+SDP 檔案，並開始解析。 
+圖 2.34 為本系統根據 Service Name 為 PTS 時，所產生的 SDP 檔案，其內容欄位可以解析出影音
+資訊的 IP 位址，再根據 m 欄位中 video 與 audio 擷取出對應的 port number。並且將 SDP 檔案分析好
+的資料暫存起來，留待解析 audio/video 串流使用。 
+32 
+ 
+圖 2.35 程式碼為 IPDC 子系統解譯 FLUTE 資訊以外另一個主要的函式 getRTPPacket，功能為從
+測試檔案取得 RTP/RTCP 串流並加以分析存放至 RTP buffer 中，程式碼流程上與取得 FLUTE 封包大
+致上相同，系統在宣告 IPDCHandler 物件後，根據 SDP 資訊的目的端 IP 位址和目的端 port 來呼叫函
+式 getRTPPacket (string IP, int audioPort, int videoPort, vector<RTPHeader*> *A_RTP, 
+vector<RTCPHeader*> *A_RTCP, vector<RTPHeader*> *V_RTP, vector<RTCPHeader*> *V_RTCP)，其
+四個 vector 用來存放解譯過的 RTP/RTCP 串流資訊，並分為視訊和音訊，值得注意的是解譯 IP/UDP
+之後，會根據指定的目的端 PortRTP 解譯，而目的端 Port+1 的封包為 RTCP 封包解譯，如圖 2.36，
+而處理好的資訊將會放入一開始系統宣告好的 vector 中。再呼叫 video/audio 處理。 
+ 
+圖 2.36ProcessRTP/RTCP sequence diagram 
+ 
+圖 2.36 為 IPDC 子系統呼叫 getRTPPacket 函式的封包的解譯流程，由圖中可以看出此部分與解
+譯 FLUTE 封包時一樣，都是在解譯完 IP 與 UDP 層之後才開始 RTP/RTCP 的解譯，由於 SDP 檔案資
+訊只定義其影音資料的 RTP port number，而解譯時，本系統將自動以 RTP port number +1 為 RTCP
+的 number，根據並根據對應的格式解譯，每解譯好一個封包將其存入相對應的 RTP buffer 中。 
+34 
+ 
+3 參考文獻 
+[1]  尹培鑫，「DVB-H 接收系統之網路與傳輸層的模組之實現」，國立臺北科技大學資訊工程研究
+所碩士論文，2010 年。 
+[2]  DVB, URL: http://www.dvb.org/technology/standards/index.html. 
+[3]  DVB-H, URL: http://www.dvb-h.org/index.html. 
+[4]  J. Postel, “Internet Protocol,” RFC 791, Sep. 1981. 
+[5]  J. Postel, “User Datagram Protocol,” RFC 768, Aug. 1980. 
+[6]  H. Schulzrinne, S. Casner, R. Frederick, V. Jacobson, “RTP: A Transport Protocol for Real-Time 
+Applications,” RFC 1889, Jan. 1996. 
+[7]  T. Paila, M. Luby, R. Lehtonen, “FLUTE – File delivery over unidirectional transport,” RFC 3926, Oct. 
+2004. 
+[8]  IM. Luby, J. Gemmell, L. Vicisano, L. Rizzo, J. Crowcroft, “Asynchronous Layered Coding (ALC) 
+Protocol Instantiation”, RFC 3450, Dec. 2002. 
+[9]  M. Handley, V. Jacobson, C. Perkins, “SDP: Session Description Protocol,” RFC 4566, Jul. 2006. 
+[10]  M. Luby, J. Gemmell, L. Vicisano, L. Rizzo,  M. Handley, J. Crowcroft, “ Layered Coding Transport 
+(LCT) Building Block,” RFC 3451, Dec. 2002. 
+[11]  ETSI, Digital Video Broadcasting (DVB),”IP Datacast over DVB-H: Content Delivery Protocols,” 
+European Telecommunications Standards Institute TS 102 472 v1.2.1, Dec. 2006. 
+[12]  A. Mankin, A. Romanow, S. Bradner, V. Paxson, “Criteria for Evaluating Reliable Multicast Transport 
+and Application Protocols,” RFC 2357, Jun. 1998. 
+[13]  dvbSAM, URL: http://www.decontis.com/samesg-dvb-h-service-guide.html. 
+36 
+ 
+5 國科會補助計畫衍生研發成果推廣資料表 
+日期： 100 年 10 月 15 日 
+國科會補助計畫 
+計畫名稱：嵌入式 DVB-H 接收系統之開發 - 子計畫二： 
+DVB-H 網路與傳輸層軟體之開發（2/2） 
+計畫主持人：吳和庭 :   共同主持人：柯開維 
+計畫編號：NSC 99-2220-E-027-003 領域：自由軟體暨嵌入式系統
+（中文）DVB-H 接收系統網路與傳輸層軟體之開發（2/2） 
+研發成果名稱 （英文）The software development of network and transport layers in 
+DBV-H reception system 
+成果歸屬機構 
+國立台北科技大
+學 軟體發展研
+究中心 
+發明人 
+(創作人) 
+ 
+吳和庭 
+（中文）本研究計畫為兩年期 DVB-H 整合型計畫中的子計畫之
+一。本子計畫執行嵌入式 DVB-H 接收系統內 IP Datacast 規格中
+的網路與傳輸層軟體之開發，並利用軟體工程技術及 CMMI 程
+序，與總計畫及各子計畫之開發成果進行實際與持續整合，實現
+一個嵌入式基於 Android 平台下完整的 DVB-H 接收系統。本年
+度執行此整合型計畫第二年，在 Android pad 上實現 DVB-H 接收
+系統 IPDC 相關網路層與傳輸層模組軟體的開發。本子計畫在本年
+度完成的工作項目包含：(1)解譯 FLUTE/ALC/LCT 封包模組之優
+化; (2)對解譯 ESG 資訊並傳輸至應用層模組做進一步的詮釋; (3)
+解譯會話描述協定模組之修改; (4)優化解譯 LCT 延伸標頭之模組; 
+(5) 對解譯 RTP/RTCP 封包之模組進行優化; (6)實現 FLUTE 錯誤
+檔案重傳功能。 
+技術說明 （英文）This project belongs to a subproject of a two-year joint project. In this project, we have implemented the software modules of 
+both network and transport layers specified by the IP Datacast 
+Protocols. The software engineering techniques and CMMI procedures 
+are enforced in the course of the project execution as well as the 
+integration with the overall joint project. The final product of this joint 
+project is the successful implementation of an Android based 
+embedded DVB-H reception system. We have carried out the 2nd year 
+and have completed the following items: (1) Code optimization of 
+FULTE/ACT/LCT packet decapsulation module; (2) Parsing the 
+Electronic Service Guide (ESG) data for the further processing in the 
+corresponding application layers; (3) Modification of Session 
+Description Protocol (SDP) parsing module; (4) Code optimization of 
+the LCT extension field decoding module; (5) Code optimization of 
+RTP/RTCP packet decapsulation module; (6) Implementation of 
+FLUTE file repairing function. 
+38 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+附件：  出席國際會議心得報告 
+ 
+ 
+ 
+ 
+ 2
+一、 參加會議經過 
+ 
+2011第四屆 IEEE 計算機科學與信息技術國際會議 (IEEE 
+ICCSIT 2011)為一個廣泛的探討計算機科學與資訊科技相關技術的
+國際研討會議，本次共約接受了1400篇論文(接受率約30%)。筆者於6
+月9日於桃園國際機場出發，大約經約4小時之飛行於深夜抵達成都雙
+流國際機場。隔日立即前往大會會場西藏大飯店註冊。此會議的主要
+會議議程安排在6月11日至6月12日兩天舉行；在6月11日上午，筆者
+全程聆聽了四場的 Plenary speech，四位分別來自中國、台灣、新加
+坡與美國的專家學者，分別就無線通訊、資訊安全、機械學習與資料
+探勘等相關先進技術發表專題演講，讓筆者獲得許多寶貴的資訊科技
+新知。筆者於6月12日下午在ICCSIT-12場次中發表上述論文，也與數
+位專家學者所提出的問題交換研究心得與意見。在6月13日，筆者也
+參加了由本次大會所安排的成都當地文化民俗景點的參訪活動，對於
+成都當地的風土民情與文化古蹟留下深刻及美好的印象。筆者於6月
+14日上午前往成都雙流國際機場搭機，於當天下午返抵桃園機場，完
+成此次學術會議的行程。 
+下圖為參加此次 IEEE ICCSIT 2011會議之議場照片留影記錄 
+ 4
+ 
+三、 建議 
+此次IEEE ICCSIT 2011會議為第四屆舉辦，歷史不算悠久，整體
+會議的安排與服務也僅達到中等水準。但因所有在本會議上發表的論
+文都將放置於IEEE 數位資料庫上，可透過IEEE Explorer 很方便的
+查詢，所以仍然能吸引不少國際學者專家的重視，願意在此會議中投
+稿並發表論文。建議台灣的學術界在思考未來辦理國際性學術研討會
+之時，亦可多考慮與如IEEE協會等著名國際學會一起承辦，應該較
+能擴大稿源，吸引國際學術界重視，也更能促進國際學術交流，增加
+台灣學術界之能見度。 
+ 
+四、 攜回資料名稱及內容 
+筆者參加此次會議，帶回大會會議手冊一本、會議論文集一本及
+論文光碟片一片，內容包括此次會議所發表的研討會論文詳細內容。。 
+五、 其他 
+感謝國科會計畫NSC 99-2220-E-027 -003之經費補助，使得本研
+究得以順利進行，以及成果能在此國際會議中發表。 
+ 
+2011 4th IEEE International Conference on Computer Science and Information Technology  
+(IEEE ICCSIT 2011) 
+ 
+- 2 - 
+4. Finish the payment of Registration fee at the Bank. (The bank transfer information can be found 
+in the Registration form)  
+http://www.iccsit.org/ICCSIT.Registration.doc (English) 
+http://www.iccsit.org/ICCSIT.CNRegistration.doc (中国大陆作者注册表) 
+5. Finish the IEEE Copyright Form 
+http://www.iccsit.org/IEEECopyrightForm.doc  
+6. Send your final papers (both .doc and .pdf format), filled registration form (.doc format), 
+copyright form (.jpg format) and the scanned payment (in jpg format) to us at iccsit@vip.163.com   
+(Before May 5, 2011) 
+ICCSIT 2011 will check the format of all the registered papers first, so the authors don’t need to 
+upload the paper to the IEEE. After the registration, we will send all qualified papers to the IEEE 
+for publishing directly. 
+The ICCSIT 2011 conference proceeding will proudly published by IEEE Press, which will be 
+included in IEEE Xplore, and indexed by Ei Compendex, INSPEC and Thomson ISI (ISTP).  
+Maybe some unforeseeable events could prevent a few authors not to attend the event to present 
+their papers, so if you and your co-author(s) could not attend ICCSIT 2011 to present your paper for 
+some reasons, please inform us. And we will send you, the official receipt of registration fee, 
+proceedings, and/or other materials after ICCSIT 2011 free of charge.  
+Please strictly adhere to the format specified in the conference template while preparing your final 
+paper. If you have any problem in preparing the final paper, please feel free to contact us via 
+iccsit@vip.163.com. For the most updated information on the conference, please check the 
+conference website www.iccsit.org. The Conference Program will be available at the website in late 
+May, 2011. 
+Finally, we would like to further extend our congratulations to you and we are looking forward to 
+meeting you in Chengdu, China! 
+Yours sincerely, 
+ 
+ICCSIT 2011 Organizing Committees 
+www.iccist.org  
+Chengdu, China 
+Designs of Access Mechanisms in IEEE 802.16e Mobile Systems 
+Ho-Ting Wu, Yi-Wei Sun, and Kai-Wei Ke 
+Department of Computer Science and Information Engineering, 
+National Taipei University of Technology 
+Taipei, Taiwan, ROC 
+htwu@csie.ntut.edu.tw 
+ 
+ 
+Abstract—In this paper, we first propose a call admission 
+control algorithm for IEEE 802.16e mobile WiMAX system. 
+We then design the handover mechanism according to the 
+general handover procedure specified by the IEEE 802.16e-
+2005 standard. Performance evaluations via simulations are 
+conducted to compare the system performance for the network 
+with or without handover procedures employed. It is also 
+found that the transmission quality is subject to the 
+modulation rate change significantly in the mobile 
+environments. The proposed mechanisms are shown to reduce 
+connection blocking rate and packet dropping rate effectively 
+to enhance the efficiency of the mobile WiMAX system. 
+Keywords-WiMAX; IEEE 802.16e; Call Admission Control; 
+Mobile system; Handover 
+I.  INTRODUCTION 
+WiMAX is a technology that provides last mile internet 
+access service in WMAN (Wireless Metropolitan Area 
+Network). It also provides QoS, mobility and power saving 
+mechanism which are defined in relevant IEEE 802.16 
+Standards [1][2]. WiMAX system comprises two parts: SS 
+(Subscriber Station) or MS (Mobile Subscriber Station) and 
+BS (Base Station). The maximum transmission range is 
+about 50km with 75Mbps available bandwidth. The link rate 
+for each BS-MS pair is about 300k~2M bps. WiMAX 
+network uses BS to connect core network. All packet 
+transmission between WiMAX core network and MS must 
+be forwarded by the BS. In IEEE 802.16e, the maximum MS 
+speed can be supported up to 120km/hr (equal to the 
+vehicular speed). The IEEE 802.16 standards have defined 
+the specifications for both MAC (Media Access Control) 
+layer and PHY (Physical) layer. 
+To support QoS in the WiMAX network, the BS may 
+implement CAC (Call Admission Control) mechanism to 
+decide whether to admit or reject the connection request. 
+CAC is also used for reserving bandwidth for admitted 
+connection and thus reducing the contention occurrence. For 
+the admitted connection, the BS will then implement the 
+bandwidth allocation mechanism to grant the bandwidth 
+based on current bandwidth utilization and QoS parameters. 
+The scheduling scheme is then executed to determine the 
+actual packet transmission time of each connection. 
+Five service types are defined in IEEE 802.16e-2005 
+standard, which includes UGS (Unsolicited Grant Service), 
+ertPS (Extended Real-time Polling Service), rtPS (Real-time 
+Polling Service), nrtPS (Non Real-time Polling Service), and 
+BE (Best Effort). The UGS is designed to support real-time 
+service flow that generates fixed-size data periodically, such 
+as T1/E1, VoIP without silence suppression. The ertPS is 
+designed to represent real-time service flow that generates 
+ON-OFF type data on the periodical interval, such as VoIP 
+with silence suppression. The rtPS is designed to support 
+real-time service flow that generates variable size data, such 
+as video streaming services. The nrtPS is designed to support 
+non real-time service flow that generates variable size data, 
+such as FTP. The BE is designed to support best effort 
+service, such as email. 
+In the mobile WiMAX environment, the handover 
+procedure occurs when the MS moves into the service range 
+of another BS. Two HO (handover) processes are defined in 
+IEEE 802.16e-2005 standard: the hard handover process and 
+the soft handover process. The hard handover is also called 
+break-before-make handover. The MS starts connections 
+with target BS only after disconnecting service with the 
+serving BS. On the other hand, the soft handover is also 
+called make-before-break handover. The MS starts 
+connections with target BS before disconnecting service with 
+the serving BS. 
+ In this paper, the QoS mechanisms for the employment 
+in the mobile WiMAX environment are proposed. We 
+compare the performance of various traffic type data with or 
+without handover procedures in the mobile WiMAX 
+environment via simulations. The connection blocking 
+probability and packet dropping rate under various scenarios 
+are investigated. 
+ The rest of this paper is organized as follows. Related 
+works are described briefly in Section II, followed by the 
+proposed call admission control mechanism in Section III. 
+The handover procedures are proposed in Section IV. In 
+Section V, performance evaluations are conducted. Finally, 
+we draw our conclusions in Section VI. 
+II. RELATED WORKS 
+Reference [3] provides a cross layer handover procedure 
+to reduce delay duration during handover procedure. Using 
+Fast Mobile IPv6 mechanism for handover procedure, it 
+activates both predictive and reactive mechanisms. The 
+predictive mechanism is used when MS has enough reserved 
+time to handle the handover procedure. The MS obtains new 
+CoA before the handover procedure starts. On the other hand, 
+the reactive mechanism is used when MS does not have 
+enough handover time. In such case, MS gets new CoA after 
+the handover procedure finishes. 
+___________________________________ 
+978-1-61284-836-5/11/$26.00 ©2011 IEEE  
+  
+307
+ 
+Figure 1. General Handover Message Flow. 
+ 
+In the IEEE 802.16e-2005 standard, the criterion of 
+handovers is not specified. Hence, we use SNR threshold 
+value between the MS and BS when evaluating handovers. 
+To prevent the ping-pong effect in the handover process, we 
+use the method of Relative Signal Strength with Hysteresis 
+[5].  
+Fig. 2 shows the MS moving between two adjacent 
+regions and the changing SNR of the serving BS and target 
+BS in relation to time, where the X axis is the SNR value and 
+Y axis being time. 
+ 
+Figure 2. SNR Change Between old/new BSs 1. 
+ 
+The most suitable time window for handover is when the 
+SNR1 of serving BS becomes lower than the handover signal 
+strength threshold SNRCST, and when the SNR2 of the target 
+BS is greater than the SNR1 of the serving BS by , as 
+shown by (3) and (4). 
+The Relative Signal Strength with Hysteresis and 
+Threshold method is implemented as follows. Equation (3) 
+and (4) represent the handover conditions of the system. In 
+this study,  is regarded as OFFSET. Utilizing this method 
+presents two advantages: 1) While the communication 
+channel quality with the current serving BS remain adequate, 
+unnecessary handovers do not occur even in the event of a 
+nearly BS with a stronger signal strength; 2) When a MS 
+switches to a new BS, it will not handover immediately back 
+to its previous BS if the distance between is shortened again 
+as it changes its direction of movement. The SNR1 of the 
+previous BS must exceed the SNR2 of the new BS by  in 
+order for the MS to handover back to the previous BS, thus 
+preventing ping-pong effect. 
+ SNR1 < SNRCST (3) 
+ SNR2 > SNR1 +  (4) 
+V. PERFORMANCE RESULTS 
+The simulation environments and parameters are shown in 
+the following tables, and performance results are exhibited 
+from Fig. 3 to Fig. 10. 
+TABLE I. SIMULATION PARAMETERS 1 
+Parameters Value
+Number of BS 3
+Number of MS 4Ε6Ε8Ε10
+Modulation Supported QPSKΕ16QAM 3/4Ε64QAM 
+Traffic Supported UGS/ertPS/nrtPS/rtPS/BE
+Mobility Yes
+Scope 3500 x 3500 m
+Number of Symbol each DLsubframe 26 symbols
+Number of Symbol each ULsubframe 21symbols
+MAX_UL_RATE 1
+MAX_DL_RATE 0.8
+Packet Size 160 byte
+BWALLOC_FRAME_NUM 5 frames
+Frame Duration 5m Sec
+Simulation Time 7200 sec
+SNRCST 12.5 db
+OFFSET 3 db
+HANDOVER_WAITING_TIME 3sec  
+TABLE II. SIMULATION PARAMETERS 2 
+ 
+A. Case 1:  
+ 
+Figure 3. Connection Blocking Rate (Single BS). 
+ 
+Fig. 3 shows the rate of connection blocking rate 
+experienced by the BS with different numbers of connecting 
+MS. It can be obtained that when switching from QPSK 1/2 
+to 64QAM 3/4, the total bandwidth of the system is 
+increased, and the connection blocking rate is gradually 
+decreased. Hence for the CAC, using a modulation scheme 
+309
+ 
+Figure 8. Connection Blocking Rate (Handover vs. non-Handover). 
+ 
+ 
+Figure 9. Packet Dropping Rate (Handover vs. non-Handover). 
+ 
+Fig. 10 sets the number of MS at 8 and shows the packet 
+dropping rate with respect to different QoS traffic classes. 
+The graph shows packets with UGS, ertPS, and rtPS types, 
+due to the prioritized bandwidth allocation mechanism, 
+experience better performance than other types in both 
+handover and non-handover settings. Yet, without handovers, 
+the MS may be transferring data using a less suitable 
+modulation scheme for an extended period of time, causing 
+starvation for other lower priority traffic types, resulting in 
+higher packet dropping rates. 
+ 
+Figure 10. Packet Dropping Rate / QoS Type (Handover vs. non-
+Handover). 
+Based on these results, it can be concluded that 
+performance in the handover setting far exceeds the non-
+handover setting. 
+VI. CONCLUSION AND FUTURE RESEARCH  
+In this study, we referred to the IEEE 802.16e-2005 
+standard, and proposed a QoS mechanism for mobile 
+environments with network handover procedures. We also 
+proposed a General Handover algorithm. Through the 
+analysis of handover parameters, we reach the conclusion 
+that, a suitable set of parameters must be applied in order to 
+optimize system transfer performance. A relatively higher or 
+lower number of handovers will in general result in poorer 
+performance. 
+We also studied and analyzed the effects of handovers on 
+system performance against systems without handovers. We 
+observed that a system with handover mechanism shows 
+higher transfer efficiency and lower connection blocking 
+rates and packet dropping rates. 
+ACKNOWLEDGEMENT 
+This research work is supported by National Science 
+Council, Taiwan, R.O.C., under grant number: NSC 99-
+2220-E-027-003. 
+REFERENCES 
+[1] IEEE Standard for Local and Metropolitan Area Networks Part 16: 
+Air Interface for Fixed Broadband Wireless Access Systems, IEEE 
+Std. 802.16-2004, October 2004. 
+[2] IEEE Standard for Local and Metropolitan Area Networks Part 16: 
+Air Interface for Fixed and Mobile Broadband Wireless Access 
+Systems, IEEE Std. 802.16e-2005, December 2005. 
+[3] Fu Yia Hsieh, “Cross-layer Handoff Scheme for IEEE 802.16e,” M.S. 
+thesis, Department of Communication Engineering, National Central 
+University, Taiwan, July 2006. 
+[4] Liping Wang, Fuqiang Liu, and Yusheng Ji, “Ad-mission Control for 
+Non-preprovisioned Service Flow in Wireless Metropolitan Area 
+Networks,” Proceedings of the Fourth European Conference on 
+Universal Multi-service Networks, 2007. 
+[5] H. H. Guong, A. Dadej, and S Gordon, “Proactive Context Transfer in 
+WLAN-based Access Networks,” Proceedings of the Second 
+International Workshop on Wireless Mobile Applications and Service 
+on WLAN Hotspots (WMASH) 2004, Oct., 2004. 
+ 
+311
+ 2
+一、 參加會議經過 
+ 
+2011年智能信息處理國際會議(ICIIP 2011)與2011年圖像與視覺
+技術國際會議(ICIVC)及2011年第二屆材料與製造技術國際會議
+(ICMMT 2011)同時於7月8-10日在廈門市召開。筆者於7月8日傍晚於
+台北松山機場搭乘立榮航空B7 511班機出發，大約經1.5小時之飛行
+抵達廈門高崎國際機場。隔日立即前往大會會場閩南大飯店註冊及參
+加研討會。在7月9日上午，筆者聆聽了兩場的 Plenary speech，兩位
+分別來自台灣與馬來西亞的專家學者，分別就圖像偽裝技術與微機電
+技術發表專題演講，讓筆者獲得許多寶貴的科技新知。筆者於7月9
+日下午發表上述論文並受邀擔任該場次的Session Chair，也與數位專
+家學者交換研究心得與意見。次日，筆者也參加了由本次大會所安排
+的廈門當地文化民俗景點的參訪活動，對於廈門的風土民情與文化古
+蹟留下深刻及美好的印象。筆者於7月11日中午搭乘立榮航空B7 512
+班機，於當天下午返抵台北松山機場，順利完成此次學術會議的行程。 
+下圖為參加此次 ICIIP 2011會議之議場照片留影記錄 
+ 4
+英語仍是國際最通用的語言的情況下，強化學生的英語訓練與演說技
+巧，也應該列為培養碩士班學生競爭力的重要指標之一。 
+ 
+ 
+三、 建議 
+建議台灣的學術界在思考未來辦理國際性學術研討會之時，可考
+慮以student forum 或 work-in-progress session 等方式積極鼓勵台灣
+的碩士班學生一起參與研討會並發表研究成果。如此，能促進學生參
+與國際學術交流，擴大視野，培養英語溝通的勇氣與能力，提升其競
+爭優勢。 
+ 
+四、 攜回資料名稱及內容 
+筆者參加此次會議，帶回大會會議手冊及擔任Session Chair 與
+發表論文的證明文件各一份。 
+五、 其他 
+感謝國科會計畫NSC 99-2220-E-027 -003之經費補助，使得本研
+究得以順利進行，以及研究成果能在此國際會議中發表。 
+2011 International Conference on Intelligent Information Processing (ICIIP 2011) 
+- 2 - 
+4. Finish the payment of Registration fee at the Bank. (The bank transfer information can be found in the Registration 
+form)  
+http://www.iciip.org/reg.doc (English) 
+http://www.iciip.org/cnreg.doc (中文注册表) 
+5. Finish the TTP Copyright Form 
+http://www.iciip.org/General_copyrightTransfer.doc  
+6. Send your final papers (both .doc and .pdf format), filled registration form (.doc format), copyright form (.jpg format) 
+and the scanned payment (.jpg format) to us at iciip@iacsit.org . (Before April 10, 2011) 
+ICIIP 2011 will check the format of all the registered papers first, so the authors don’t need to upload the paper to the 
+TTP. After the registration, we will send all qualified papers to the AMR Journal for publishing directly. 
+If the above requirements are met by the set deadlines, the paper will be published by Advanced Materials 
+Research Journal, which will be indexed by EI Compendex. 
+Maybe some unforeseeable events could prevent a few authors not to attend the event to present their papers, so if you 
+and your co-author(s) could not attend ICIIP 2011 to present your paper for some reasons, please inform us. And we 
+will send you, the official receipt of registration fee, proceedings and/or other materials after ICIIP 2011 free of charge.  
+Please strictly adhere to the format specified in the conference template while preparing your final paper. If you have 
+any problem in preparing the final paper, please feel free to contact us via iciip@iacsit.org. For the most updated 
+information on the conference, please check the conference website at http://www.iciip.org . The Conference Program 
+will be available at the website in Early June, 2011. 
+Finally, we would like to further extend our congratulations to you and we are looking forward to meeting you in 
+Xiamen, China! 
+Yours sincerely, 
+ 
+ICIIP 2011 Organizing Committees 
+http://www.iciip.org  
+Xiamen, China 
+ The Design of the Power Saving Mechanisms for IEEE 802.16e 
+Networks  
+aLei Yan, bHo-Ting Wu and cKai-Wei Ke  
+Department of Computer Science and Information Engineering, 
+National Taipei University of Technology 
+bhtwu@csie.ntut.edu.tw and ckwk@csie.ntut.edu.tw  
+Keywords: IEEE 208.16e, WiMAX, Power Saving, QoS, Superframe 
+ 
+Abstract. The high transmission rate for IEEE 802.16e (WiMAX) system can afford many kinds of 
+high quality mobile services but also induces the higher power consumption. Therefore, the IEEE 
+802.16e specification  proposes the power saving function for MSs. However, the actual implemented 
+sleep duration for MS is fragmentary and short. In this paper, we have proposed a complete solution 
+of the power saving function, which includes the Call Admission Control (CAC) algorithm, the 
+Bandwidth Allocation (BWA) algorithm, and the packet scheduling algorithm to prolong the sleep 
+duration of MS for UGS/ertPS, rtPS, nrtPS, and BE traffics. The simulation result reveals the 
+efficiency of sleeping mode and the excellent performances in packet delay and dropping probability. 
+Introduction 
+The IEEE 802.16e WiMAX system supports maximally 75 Mbps for transmission rate and 50 km 
+as its coverage [1]. Therefore it is suitable for WiMAX to implement high quality mobile services, 
+such as audio/video clips, the location-based positioning services, and VoIP via a cell phone or a 
+laptop with USB dongle for WiMAX. However, all these services are built on mass of data 
+transmission, and the power consumption will be high [2][3]. 
+ 
+Table 1 Correspondence among PSCs 
+PSC Real-time Non-Real time 
+NRTVR (nrtPS) 
+PSC I  
+BE 
+UGS 
+PSC II 
+RTVR (rtPS) 
+PSC III ERTVR (ertPS) 
+ 
+ 
+Normal mode
+time
+Normal mode Sleep mode Normal mode
+time
+(a)
+(b)TS TL TS TL TS TL ...
+TL TS TLTS TL TS TLTS TL TS TLTS TS TL ...
+TS
+(c)
+(d)
+TS: The sleep duration       TL: The listening duration  
+Figure 1 Comparison for the sleep behavior among PSCs. (a) Without power saving (b) PSC I case (c) PSC II case (d) 
+PSC III case 
+ 
+The IEEE 802.16e standard has defined a sleeping mechanism initiated by MSs that have just 
+finished the transmission. In order to distinguish the difference of the service types from uplink 
+                                            1 11
+1
+estimated estimated i i i
+i i i i cycle
+i
+G B BC T AR T
+T
+ 
+
+
+                                           (1) 
+.
+,
+estimated
+i i i i CAC i
+i estimated
+CAC i
+B C iff B C BW T
+G
+BW T otherwise
+      
+                                          (2) 
+In order to increase the precision of predicting the grant size, we modified equation (2) with 
+parameters during the previous scheduling cycle, which is shown in equation (3). 
+ 
+1 1
+1
+.
+,
+,
+i i i i
+i i CACestimated cycle
+i ii
+estimated
+CAC i
+B C B CB C iff BW
+T TG
+BW T otherwise
+ 
+
+       
+                                         (3) 
+Proposed call-level packet scheduling algorithm 
+There are two assumptions for the proposed packet scheduling algorithm. First, we allowed the 
+frame overflow, that is, the BS can schedule across the border of frames for any traffic. Second, we 
+merged the listening duration into the normal mode, therefore there only exists ON-state and 
+OFF-state for each MS. After all calls are finished scheduling, the MS can enter the sleep mode by 
+receiving the MOB_SLP_RSP message and awake at the time determined and conveyed by the same 
+message. With the proposed algorithm, each MS can have both long and intact sleep durations either 
+at the aggregated frame durations or the epoch of scheduling. 
+Simulation Results 
+Table 2 Parameters in simulation 
+Number of BS 1 
+Number of MS 20~200 
+System capacity (Mbps) 50 
+Frame duration (ms) 5 
+Capacity per frame (byte) 31250 
+Amplification ratio 5, 10, 15, and 20 
+Simulation duration (sec) 500 
+Call duration (sec) Uniform(60,200) 
+ 
+We ignore the mobility issues with identical modulation scheme among all MSs. We assume that 
+each MS has at most four alive traffics with UGS and ertPS are uniformly chosen. The parameters for 
+simulation are shown in Table 2 and the characteristics of service types are shown in Table 3 
+referenced from [5] and [6]. 
+ 
+Table 3 Characteristics for service types 
+Service type UGS ertPS rtPS nrtPS BE 
+Delay bound 
+(ms) 100 100 100 100 100 
+Transmission 
+rate required in 
+CAC (kbps) 
+64 64 
+Unif
+orm
+(48,6
+0) 
+Unifor
+m 
+(48,60)
+Uniform 
+(48,60) 
+Bandwidth 
+request size per 
+frame (byte) 
+40 40 
+Unif
+orm
+(30,5
+0) 
+Unifor
+m 
+(30,50)
+Uniform 
+(30,50) 
+Poisson Arrival 0.44 0.44 0.03 0.02 0.2 
+ dropping rate of traffics without BWA are higher than that with BWA since the BWA algorithm can 
+adaptively determine the grant size based on the trend of difference of the bandwidth request size. 
+ 
+ 
+Figure 9 Sleeping ratio for NUM_MS = 200 
+ 
+Figure 9 depicts the case of sleeping ratio for NUM_MS=200, and we can observe that the sleeping 
+ratio arises stably with the increase of traffic loading especially for AMP > 10, and the curve of 
+adoption of BWA is higher than that of non-adoption of BWA since the traffic loading increases. 
+Conclusion 
+In this paper, we proposed a superframe-based structure of WIMAX with traditional CAC 
+algorithm, the prediction-based BWA algorithm, and the packet scheduling algorithm to prolong the 
+sleep duration and re-duce the traded packet delay and dropping by adaptively adjusting the grant size 
+and the skill of scheduling. The simulation result reveals that our solution has completed this goal. 
+Acknowledgment 
+This research work was supported by the National Science Council, Taiwan, R.O.C., under the grant 
+number: NSC 99-2220-E-027-003. 
+References 
+[1] IEEE Standard for Local and metropolitan area networks Part 16: Air Interface for Fixed and 
+Mobile Broadband Wireless Access Systems, IEEE Std. 802.16e-2005. 
+[2] Yang Xiao, “Energy Saving management in the IEEE 802.16e wireless MAN,” IEEE 
+Communications Letters, Vol.9, no.7, pp.595-597, July 2005 
+[3] Shih-Chang Huang, Rong-Jong Jan, and Chien Chen, “Energy Efficient Scheduling with QoS 
+Guarantee for IEEE 802.16e Broadband Wireless Access Networks,” Proceedings of the 2007 
+international conference on Wireless communications and mobile computing, pp. 547-552 
+[4] Chun-Hung Chen, Ho-Ting Wu, and Kai-Wei Ke, Predictive Credit Based Dynamic Bandwidth 
+Allocation Mechanisms in Ethernet Passive Optical Net-work,” TENCON 2006. 2006 IEEE Region 10 
+Conference, 14-17 Nov. 2006 Page(s):1 - 4 
+[5] Claudio Cicconetti, Alessandro Erta, Luciano Lenzini, and Enzo Mingozzi, "Performance 
+Eva-luation of the IEEE 802.16 MAC for QoS Supp-ort," IEEE Transactions on Mobile 
+Computing, Vol. 6, No. 1, Jan., 2007, pp.26-38. 
+[6] WiMAX Forum™ Mobile System Profile Release 1.0 Approved Specification (Revision 1.4.0: 
+2007-05-02). 
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：吳和庭 計畫編號：99-2220-E-027-003- 
+計畫名稱：嵌入式 DVB-H 接收系統之開發--子計畫二:DVB-H 網路與傳輸層軟體之開發(2/2) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 1 1 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 3 3 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 1 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 2 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

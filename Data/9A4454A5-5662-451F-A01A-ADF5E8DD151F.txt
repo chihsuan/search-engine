@@ -1,0 +1,302 @@
+行政院國家科學委員會專題研究計畫成果報告 
+ 
+自由軟體作業系統核心客製化工具組之研製 
+ 
+計畫編號：NSC－94－2218－E－035－009 
+執行期間：94 年 8 月 1日至 95 年 7 月 31 日 
+計畫主持人：林志敏 教授 
+計畫參與人員： 李啟泰、方郭銘、林秉毅 
+ 
+中文摘要 
+ 
+在設計一個嵌入式軟體系統時，有一個重要的考量因素就是所設計的軟體程式碼是否
+能妥善置入嵌入式系統中。因此，如何縮小嵌入式系統中軟體程式碼的大小已是一個令人
+注意的議題。典型的 Linux 系統提供了內建的核心功能組態，讓 Linux 使用者可以根據自
+己的需求縮減(reduction)核心程式碼。但是 Linux 核心在使用了內建的核心功能組態(make 
+xconfig)後所產生的 Linux 核心還是一個一般性作業系統(General Purpose OS，GPOS)，所以
+此 Linux 核心程式碼中還是會存在著許多不會被執行的程式碼(unreachable code)或是執行
+後也不會對 Linux 系統產生任何助益的死碼(dead code)。在我們之前的研究中[1-5]提出了一
+個利用已經手工建構好的完全呼叫圖來客製化 Linux 核心。而在本文中，我們提出了一個
+能自動建構 Linux 核心的完全呼叫圖的指向集合演算法，再利用此完全呼叫圖篩選出 Linux
+核心在嵌入式系統中所有不會被執行的程式碼，進而縮減 Linux 核心在執行時所需要的記
+憶體空間。在本文所設計的實驗系統中，在 Linux 核心中約有 20.4%的程式碼被辨別為不
+會被執行的程式碼，而可以安全的從 Linux 核心中移除。 
+ 
+關鍵詞：自由軟體、核心碼縮減、Linux 核心客製化、完全呼叫圖 
+ 
+英文摘要 
+ 
+Reduction of software code is a critical issue for embedded systems to reduce the requirement on 
+the size of storage and memory. Although, the configurability of building a Linux system can 
+specify the kernel functionalities and reduce code size, the Linux kernel built may still be a 
+General Purpose Operating System (GPOS). When a GPOS is fit for an embedded system, it may 
+exist a lot of redundant code that an embedded system will never execute (unreachable code) or 
+contribute nothing (dead code) to the targeted embedded system. In our previous research [1-5], 
+we proposed a method of customizing Linux kernel to suit with specific applications by manually 
+generating complete call graph of Linux kernel. In this article, we propose an automatic method 
+to construct Linux kernel complete call graph – an algorithm to calculate Points-to set. By 
+analyzing the complete call graph, we can eliminate redundant codes that will never execute. In 
+our experiment system, the unreachable codes can be safely removed form the Linux kernel 
+2.4.20. The size of the codes is about 20.4 percent of the kernel code. 
+ 
+Keyword: open source, kernel code reduction, Linux kernel customization, complete call graph 
+ 
+一、導論 
+ 
+由於自行發展一個嵌入式作業系統在設計及維護上非常的困難，常導致需要較長的發
+展時間才能讓產品上市。而 Linux 核心是一個自由軟體開放原碼的程式，Linux 在經過長期
+的演進及改良後，擁有很高的可靠度，並且在系統的發展及維護上也非常方便，因此有越
+來越多嵌入式系統的設計者採用 Linux 作為產品的核心。然而，Linux 核心程式碼的發展越
+AP 1 AP 2 AP 3 AP 4 AP 5 AP 6
+System call
+Kernel SubSystems
+Device Drivers
+Application
+Linux kernel
+Hardware Monitor Keyboard Mouse LAN adapter HD
+Downsize
+AP 1
+System call
+Kernel SubSystems
+Device Drivers
+Application
+Linux kernel
+Hardware HD
+AP 2
+Kernel SubSystems
+Device Drivers
+LAN adapter 
+System call
+ 
+圖一 Linux 核心程式碼縮小概念圖 
+ 
+分析越正確的演算法通常是代表演算法的執行步驟越複雜。由於本文的主要目的是希
+望能將 Linux 核心可以根據應用程式及週邊設備的需求而移除 Linux 核心中不會被執行到
+的程式碼，又必須確保縮減後的 Linux 核心能正確的執行。在這節中，我們描述了幾個重
+要的函式指標分析特點，這些特點常對應了這個函式指標演算法是否分析準確(precision)以
+及是否需要很大的計算花費(cost)。 
+ 
+Flow-sensitive 分析：此類函式指標分析的演算法[10,12]是依據程式執行時指令的流程
+(control flow)來判定函式指標所可能指向的指向集合。函式指標所指到的位址是根據最接近
+這個函式指標的 assignment 指令所決定的。藉由收集程式執行資料所產生的動態呼叫圖
+（dynamic call graph）跟利用 flow-sensitive 分析演算法所獲得的呼叫圖是一樣的。所以這
+種分析函式指標的演算法常用來獲取程式真實執行時的動態呼叫圖。但是對縮減 Linux 核
+心而言，並不適合採用此類的演算法，因為若只是分析 Linux 核心在某次執行時的行為，
+就移除掉那些沒被執行的程式碼，此縮減後的 Linux 核心極有可能在未來執行中因為執行
+到被移除的程式碼而發生系統當機。但不可諱言的，使用 flow-sensitive 分析演算法所獲得
+縮減後的 Linux 核心程式碼，在這些分析方法中將會是最小的。 
+ 
+Flow-insensitive 分析：此類函式指標分析的演算法[11,13,15,16]並不考慮程式執行指令時的
+順序。這種演算法在分析程式時會比 flow-sensitive 演算法來的有效率。當使用者想要產生
+程式的完全呼叫圖(complete call graph) 時通常會使用 flow-insensitive 的分析方法。當我們
+在縮減 Linux 核心時，先獲得 Linux 核心的完全呼叫圖再移除那些不會被執行到的程式碼，
+是比較安全的作法。因為在每一個函式中，所有可能會被呼叫到的 callee 都會被考量到。
+因此，一個 Linux 核心經過 flow-insensitive 分析後移除不會被執行的程式碼，在執行上比
+較不可能會有系統當機的情況發生。但相對的來說，使用此分析方式所獲得的 Linux 核心
+程式碼將會比使用 flow-sensitive 分析方法所獲得的 Linux 核心程式碼要來的大。 
+ 
+Context-sensitive 分析：此類函式指標分析的演算法[8,9,14]會區別在 caller 函式中呼叫了同
+一個 callee 函式一次以上。也就是說，在 caller 函式中呼叫了 callee 函式幾次，在呼叫圖中
+就對應著產生幾個弧。這種分析方法通常適用於當函式呼叫時伴隨著傳遞的參數是一個函
+數，則我們也要將這些函式指標變數列入演算法的考量中。最後將這些找到的函式
+定義放到header集合中。 
+步驟二：找出所有的指定運算元。若指定運算元的lhs(left hand side)是一個函式指標變數，
+則指定運算元的rhs(right hand side)一定是一個函式指標變數，或者是一個函式的名
+稱。將這些指定運算元中lhs是函式指標變數的指述(statement)放到assignment集合
+中。在assignment集合中，我們可以找出部份的函式指標變數的指向集合。 
+步驟三：找出所有的函式呼叫。若這個函式呼叫在參數列中有傳遞函式名稱或是函式指標
+變數時，我們也要將它們列入考慮。將這些找到的函式呼叫指述放到invoke集合中。 
+步驟四：搜尋header集合以及invoke集合是否有相同樣式的配對，並產生函式指標變數的指
+向集合。 
+步驟五：將invoke集合中是利用函式指標變數做函式呼叫的item，置換成已經相對應的指向
+集合內的函式名稱。 
+步驟六：搜尋header集合以及invoke集合是否有相同樣式的配對。並產生函式指標變數的指
+向集合。 
+步驟七：將invoke集合中是利用函式指標變數做函式呼叫的item，置換成已經相對應的指向
+集合內的函式名稱。若由步驟七所獲得的invoke集合與由步驟五所獲得的invoke集
+合相同，則計算指向集合演算法結束。若不相同，則重複執行步驟六。 
+ 
+以上我們介紹了計算指向集合演算法的詳細步驟，接下來將針對實際的 Linux 核心原
+始程式碼，做函式指標變數的指向集合的計算。 
+ 
+圖二為 Linux 核心 2.4.20 版原始碼目錄 arch/i386/kernel/process.c 中的 cpu_idle 函式示
+意圖。在圖二中，橢圓圖形代表了一個函式在呼叫圖中的 call site，方框代表了這個 call site
+所代表的函式定義，實線箭頭代表了函式間是直接呼叫，虛線箭頭則是代表了在函式中利
+用了函式指標變數來執行函式呼叫。 
+ 
+ 
+idle_setup
+int idle_setup (char *str)
+{
+   pm_idle = poll_idle;
+}
+void cpu_idle (void)
+{
+   void (*idle)(void) = pm_idle;
+   if (!idle)
+          idle = default_idle;
+   while (!current->need_resched)
+          idle();
+}
+cpu_idle
+void (*pm_idle)(void);
+void poll_idle (void) {...} void default_idle(void) { }
+(*idle)()
+default_idle
+poll_idle
+A
+B
+ 
+ 
+圖二 cpu_idle 函式中 idle 函式指標變數的指向集合示意圖 
+ 
+ 
+ 
+存放的是被呼叫的函式名稱或是函式指標變數名稱。第三個 item 所存放的是函式呼叫時，
+在參數列中第幾個遇到的放到函式指標變數或是函式名稱，第四個 item 所存放的是所遇到
+指標指標變數名稱或是函式名稱。在這個範例中，只有 cpu_idle 函式內利用函式指標變數
+idle 做函式呼叫，但 idle 並未傳遞任何的函式指標變數或是函式名稱。 
+ 
+在演算法步驟四中，將比對 invoke 集合以及 header 集合中的第二個 item 是否有相同的
+名稱，若是有則代表 invoke 集合中的函式呼叫的 header 集合中的函式。在這個步驟中，最
+主要是判斷在函式的呼叫中，是否有傳遞指標指標變數或是函式名稱給 callee。在這個例子
+中，invoke 集合中第二個 item 並未與 header 集合中第二個 item 中有任何相同的名稱。 
+ 
+在演算法步驟五中，將 inovke 集合中第二個 item 是指標指標變數轉換成目前相對應的
+指向集合中的函式名稱。由步驟二我們可以得知函式指標變數 idle 的指向集合則是 poll_idle
+以及 default_idle這兩個函式。因此在 invoke集合中將多出兩個項目<cpu_idle, poll_idle, Null, 
+Null>以及<cpu_idle, default_idle, Null, Null>。 
+ 
+在演算法步驟六中，再次比對 invoke 集合以及 header 集合中的第二個 item 是否有相同
+的名稱。其中有 poll_idle 和 default_idle 兩個項目，但是由於函式的呼叫並未傳遞任何函式
+指標變數或是函式給 callee，因此指向集合並不會有任何的變動。 
+ 
+int dmi_scan_machine(void)
+{
+    int err = dmi_iterate(dmi_decode);
+}
+dmi_scan_machine
+void dmi_decode(void) {...}
+int dmi_iterate(void (*decode)(void))
+{
+    dmi_table(decode);
+}
+dmi_iterate
+int  dmi_table(void (*decode_1)(void))
+{
+    decode_1();
+}
+dmi_iterate
+dmi_decode
+(*decode_1)()
+ 
+ 
+圖四 dmi_table 函式中 decode_1 函式指標變數的指向集合示意圖 
+ 
+在演算法步驟七中，重複著步驟五的方法。由於指向集合並未變動，因此在 invoke 集
+合中還是由比步驟三產生的 invoke 集合多出兩個項目<cpu_idle, poll_idle, Null, Null>以及
+<cpu_idle, default_idle, Null, Null>。當由步驟五和由步驟七在 invoke 集合中產生相同的項目
+時，代表演算法已經收斂並且可以結束演算法的執行。 
+ 
+圖四為 Linux 核心 2.4.20 版原始碼目錄 arch/i386/kernel/dmi_scan.c 中的 dmi_table 函式
+示意圖。在圖五中，則是計算 dmi_table 函式中函式指標變數 decode_1 的指向集合的演算
+法執行的過程。由於許多演算法步驟執行的內容類似，在這邊就省略不提。需要加以說明
+的是在步驟一中產生的 header 集合，由於 dmi_iterate 函式定義以及 dmi_table 函式定義的
+引數宣告列中分別存在著函式指標變數。因此在 header 集合中必須將這是第幾個引數，以
+及引數的名稱加到第三個 item 和第四個 item 內。在步驟三所產生的 invoke 集合中，由於
+dmi_scan_machine 函式在呼叫 dmi_iterate 函式時傳遞了 dmi_deccode 這個函式名稱，以及
+main
+cd_status autocat
+freeread_toc exit close open
+malloc
+ioctl
+play_cd stop_cd checkit
+play_chunk
+malloc free exit close open ioctl
+sys_brk sys_exit sys_close sys_open sys_ioctl
+Application
+C Library
+Linux Kernel
+IRQ0_interrupt
+IRQ15_interrupt
+IRQ1_interruptdo_IRQ
+divide_error
+debug
+System Call
+Exception Handler
+Interrupt Service RoutineNMI
+ 
+ 
+圖六 由 ACDC 應用程式、C 函式庫以及 Linux 核心所組成的呼叫圖 
+ 
+表一 使用指向集合演算法分析2.4.20版Linux核心後移除不會被執行的程式碼所得到的結
+果，其中的縮減比例 = (原本節區大小 – 縮減後節區大小) /原本節區大小 X 100% 
+ 
+L i n u x 核 心 節 區 名 稱
+. t e x t
+.d a t a . i n i t _ t a s k
+. r o d a t a
+. t e x t . i n i t
+_ _ e x _ t a b l e
+.d a t a . i n i t
+. d a t a .p a g e a l i g n e d
+. s e t u p . i n i t
+. d a t a . c a c h e l i n e _ a
+. i n i t c a l l . i n i t
+b z I m a g e
+.b s s
+v m l i n u x
+原 節 區 大 小
+( b y t e )
+6 6 7 ,5 6 1
+8 , 1 9 2
+8 9 , 0 0 4
+5 9 , 4 5 1
+7 , 1 2 0
+7 , 1 8 2
+2 , 0 4 8
+2 4 8
+1 , 1 5 2
+9 2
+4 2 8 ,6 2 7
+1 4 5 ,2 5 6
+1 ,0 3 7 ,1 0 3
+. d a t a 3 5 , 9 3 6
+縮 減 後 節 區
+大 小 ( b y t e )
+4 7 3 ,3 4 5
+8 ,1 9 2
+7 7 , 0 8 4
+5 8 , 5 0 8
+3 ,5 2 0
+7 ,1 8 2
+2 ,0 4 8
+2 4 8
+1 ,1 5 2
+9 2
+3 2 1 ,8 1 1
+1 4 5 ,0 3 2
+8 2 5 ,1 3 9
+3 5 , 8 7 2
+縮 減 比 率
+2 9 .1 %
+0 %
+1 3 .4 %
+1 . 6 %
+5 0 .6 %
+0 %
+0 %
+0 %
+0 %
+0 %
+2 4 .9 %
+0 . 2 %
+2 0 .4 %
+0 %
+ 
+ 
+在建構Linux核心的呼叫圖時，我們必須注意下列的幾個重點：第一點，在2.4.20版的
+Linux核心在啟動時會使用sys_open、sys_dup、sys_execve、sys_clone、sys_exit、sys_close
+以及sys_waitpid等7個系統呼叫。因此這些系統呼叫也是Linux核心的進入點。第二點，
+在.setup.init節區以及.initcall.init節區內，存放著Linux系統起動時可能會呼叫到的函式位
+址，這些函式的進入點可能無法自動的由程式來判別而取得，在本文的實驗系統中，是以

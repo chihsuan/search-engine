@@ -1,0 +1,1708 @@
+2 
+使用可組態計算技術之適應性網路流程管理、封包分類與資料比對 
+ 
+     主持人 王勝德 
+摘要 
+ 隨著網路的發展，網路速度不斷加快，雖然有利於提升服務的品質與加速訊息的傳遞，但同時也提高了網
+路攻擊對網路設備的殺傷力。在如此高速的網路環境下，網路設備為了處理安全性問題，必須在極短的時間內，用
+數以千計的安全規則來過濾數量龐大的封包，這已經不是單純使用軟體就可以達成。本計畫的目的就是要為這個問
+題，提出一套可行的解決方案，包括演算法、軟體程式與硬體線路等。本計畫主要目的在以Linux Kernel中所提供
+的Netfilter/IP Tables軟體為基礎，研究此防火牆當遇到巨大網路流量時軟體主要的功能瓶頸，並試著以FPGA將
+這些功能實作成硬體電路，以期能提升防火牆整體處理封包的效能。 
+ 
+研究項目包括封包分類器硬體加速電路，以及其所對應的Linux 驅動程式，實作以Xilinx Virtex 4 FPGA平
+台，主要著重在硬體加速電路的開發上，計畫分三年進行：第一年主要工作項目為：封包分類與流程管理軟硬共同
+設計與模擬，第二年：資料比對與以決策樹為資料結構的封包分類演算法軟硬體共同設計與模擬，第三年：使用可
+重組態計算方法實現流程管理、封包分類與資料比對。 
+ 
+關鍵詞 
+可組態計算、網路安全、流程管理、封包分類、資料比對 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+本研究的成果已發表。 
+Y.-H. Wu, C.-J. Yu, and S.-D. Wang, "Heuristic algorithm for the resource-constrained scheduling 
+problem during high-level synthesis," IET Computers and Digital Techniques, Vol. 3, No. 1, p. 43-
+51 January 2009 
+Chang-Ching Yang, Chen-Mou Cheng, and Sheng-De Wang, "Two-phase Pattern Matching for Regular 
+Expressions in Intrusion Detection Systems," Journal of Information Science and Engineering, 2010. 
+Contents
+1 Introduction and Background 5
+1.1 TCP Reassembly Background . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+1.1.1 Sequence Number . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+1.1.2 TCP Sliding Window Protocol and Receive Buffer . . . . . . . . . . 8
+1.2 Pattern Matching and Maximum Length of Snort PCRE Rules . . . . . . . 10
+1.2.1 Pattern Matching Unit and Input Patterns . . . . . . . . . . . . . . 10
+1.2.2 Maximum Length of Snort PCRE Rules . . . . . . . . . . . . . . . . 11
+1.3 SPI System . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15
+1.4 Retransmission Time Interval . . . . . . . . . . . . . . . . . . . . . . . . . . 16
+1.5 Problem Statement . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 17
+1.5.1 Common TCP reassembly Concerns . . . . . . . . . . . . . . . . . . 18
+1.5.2 Dedicating to Pattern Matching Concerns . . . . . . . . . . . . . . . 19
+1
+4 Implementation 52
+4.1 State Machine . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 52
+4.2 FPGA Verification , Performance and Resources Used . . . . . . . . . . . . 54
+5 Experiments on TCP Reassembly Mechanisms 58
+5.1 Experiment Setup . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 59
+5.1.1 Attributes and Software Simulation Setup . . . . . . . . . . . . . . 59
+5.1.2 Algorithms of the Three Mechanisms . . . . . . . . . . . . . . . . . 61
+5.1.2.1 The Simple TCP Reassembly Unit . . . . . . . . . . . . . . . 61
+5.1.2.2 TCP Reassembly Unit Using Paging . . . . . . . . . . . . . . 63
+5.1.2.3 TCP Reassembly Unit Using Paging and Early Inspection . 63
+5.2 Experiment Results . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 63
+5.2.1 Configuration of the Amount of Total Packets Sent . . . . . . . . . . 63
+5.2.2 Configuration of Retransmission Time Interval . . . . . . . . . . . . 66
+5.3 Configuration of Packet-Loss Rate . . . . . . . . . . . . . . . . . . . . . . . 69
+5.4 Conclusion . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 71
+6 Conclusion and Future Work 72
+3
+Chapter 1
+Introduction and Background
+Famous network intrusion detection software such as Snort, it analyzes
+packets received from internet and uses the technique known as pattern
+matching to recognize malicious information that is hidden in packet pay-
+loads. Once a session is determined malicious, Snort blocks the session
+and informs user that it successfully discovered and blocked the mali-
+cious session. While the traffic on the internet is increasing, software
+solution is becoming insufficient and for this reason, developers start to
+design internet specific intellectual circuits to offload the CPUs of the
+target machines, TCP reassembly unit comes from this kind of demand.
+Snort software runs in the application layer on a PC and TCP re-
+assembly is handled by the OS of the target PC. To keep up such heavy
+traffic loading, specific intellectual circuits designed for TCP reassembly
+is urgently needed.
+This TCP reassembly unit is a part of our deep packet inspection
+5
+Figure 1.1: TCP Header
+Figure 1.2: IP Header
+7
+formation. The receive window only slides when the segment with the
+sequence number meets the next expected. When one packet of this win-
+dow is dropped, the sliding window stops and wait until the lost segment
+to arrive. TCP uses selective repeat protocol to deal with lost packets.
+Selective repeat has an important feature that only the lost segment is
+retransmitted and the receiver buffers the arrived segments in order to
+reduce the traffic. When the lost segment arrives, receiver sends an ac-
+cumulative ack and slides the window.
+Figure 1.3 shows an example of the sliding window protocol and the
+buffer of the receiver. Assume the sender has six packets to send and the
+receiver does not send these four packets to upper layer until all of them
+arrive and are in the correct order. Packet 2 is lost during its travel so the
+receiver buffers packets 1,3,4 and leaves an empty slot that fits packet 2.
+When packet 2 arrives, it will be put in the empty slot preserved. The
+receiver uses the buffer and follows the sliding window protocol so seg-
+ments of a session is reassembled.
+The size of the receiver buffer is strongly related to the size of the
+receive window. A sender would only send data less than the size of the
+receive window and this is very important to the hardware design of TCP
+reassembly system because it decides the size of the buffer each session
+needs. In the TCP header, window size uses 16-bits to present and that
+indicates the maximum window size to be about 64 kbytes.
+9
+Figure 1.4: A brief view of a pattern matching unit
+ously set by the pattern matching unit, see Figure 1.4. In this report, the
+input patterns are packet payloads.
+While the sending host is transferring data, receiver would not know
+when the sender will finish its transferring until it receives a handshake
+request for connection termination from the sender[1]. During the trans-
+ferring, receive buffer does not keep all the data received and input the
+data to the pattern matching unit at once because the transferred data
+could be huge. In other words, data segments should be input into the
+pattern matching unit when they are considered sufficient instead of
+keeping all the data received and send it to the pattern matching unit
+as a whole.
+1.2.2 Maximum Length of Snort PCRE Rules
+As mentioned in chapter 1.2.1, data segments are input into the pattern
+matching unit. The size of the input pattern should be sufficient. For
+example, see Figure , a Snort PCRE rule is 5 bytes in length and a data
+segment that is 3 bytes in length is input into the pattern matching unit.
+The data segment is insufficient because the pattern in the data segment
+will never match the rule. As a result, the length of the data segment
+11
+• pcre_match_limit : Restricts the amount of backtracking a given
+PCRE option. For example, it will limit the number of nested re-
+peats within a pattern. A value of -1 allows for unlimited PCRE, up
+to the PCRE library compiled limit (around 10 million). A value of
+0 results in no PCRE evaluation. The snort default value is 1500.
+• pcre_match_limit_recursion : Restricts the amount of stack used
+by a given PCRE option. A value of -1 allows for unlimited PCRE,
+up to the PCRE library compiled limit (around 10 million). A value
+of 0 results in no PCRE evaluation. The snort default value is 1500.
+This option is only useful if the value is less than the pcre_match_limit.
+In short, pcre_match_limit restricts the amount of backtracking and
+pcre_match_limit_recursion restricts the amount of stack used, both to
+1500.
+Figure 1.6 gives an explanation of backtracking in PCRE rules.
+There is a pattern c c c c c a b b c c c c c c, two rules a b a c and a b b c in
+this example. When the pattern matching unit meet the character a, it
+matches the first character of both the two rules. It first tries rule a b a c
+and finally at step 3, it fails to match so it backtracks to a and then tries
+rule a b b b.
+When the character a matches, the pattern matching unit starts to push
+the information of the characters that match into a stack. When it back-
+tracks, the stacked information is poped. The pcre_match_limit_recursion
+option restricts the amount of stack used to 1500 by default. Thr pattern
+13
+matching designers often use state machine to illustrate their pattern
+matching designes. When a character of a rule is matched, the state
+machine of the rule changes to the next state which indicates the next
+character expected to be matched. No matter what state the current
+matching is in, the state machine resets if the pattern does not match
+the next character expected.
+Simply put, pcre_match_limit_recursion restricts the number of state
+changes of the matching of a pattern to a rule. If the state changes ex-
+ceeds 1500 times and the pattern does not match the rule, Snort considers
+this rule is not matched. In other words, rules that has more than 1500
+state changes, or 1500 characters, would never be matched.
+Snort added pcre_match_limit and pcre_match_limit_recursion op-
+tions in the latest version 2.8, in order to reduce the loading of user com-
+puters. Although there is no exact value of the maximum length of the
+Snort PCRE rules, 1500 seems to be an acceptable value and many dis-
+cussions agree that only very few rules might hit the limit.
+1.3 SPI System
+Stateful Packet Inspection (SPI) architecture was designed by Jhu-
+Jin Yang, one who had contributed the deep packet inspection system
+[4]. The SPI system uses previous communications to derive the state of
+current communication and records the packet state by a session table
+whose entries typically store important information to identify a session
+15
+fast retransmission mechanism. The segment with sequence number 2
+is lost, so when segments 3 and 4 arrive, the receiver gives two ACK 1.
+Since the sender receives three ACK 1, it recognizes that the segment 2
+is lost, so the sender retransmits segment 2. Nomal fast retransmission
+implementation uses three continuous ack with the same sequence num-
+ber to identify a lost segment, but some may wish to use other numbers
+of continuous acks. No matter how many continuous acks with the same
+sequence number before the sender identifies a segment to be lost, we de-
+fine the time interval from the time the receiver receives the last segment
+that triggers fast retransmission to the ACK generated by the segment
+( in Figure 1.7, the ACK 1 of segment 4 triggers fast retransmission).
+The retransmission time interval defined here defines the minimum time
+interval the receiver waits for the lost segment. This time interval ap-
+proximately equals to the round-trip time (RTT) that the sender sends
+the segment and receives the ack of the segment assuming the segment
+and the ack are not lost.
+1.5 Problem Statement
+This TCP reassembly unit is implemented on Altera DE2-70 using
+FPGAs, same as those commercial designs in the real world, it faces re-
+source restrictions and unsatisfactory internet environment. Besides, it
+is dedicated for pattern matching, efficient design for the interface be-
+tween the TCP reassembly unit and the pattern matching unit is re-
+quired.
+17
+1.5.2 Dedicating to Pattern Matching Concerns
+As mentioned in section 1.2.2, sufficient length of data payloads that
+are input into pattern matching unit depends on the maximum length of
+Snort PCRE rules and in this report, this maximum length is considered
+1500 bytes, which every character in a PCRE rule occupies 1 byte because
+it is presented in ASCII code.
+Yet another concern is derived from multiple sessions. TCP reassem-
+bly unit receives packets from many sessions so the packet of a session
+that arrives the TCP reassembly unit might be followed by the packet of
+another session. That is, those packet payloads of a session should be
+buffered until they exceed the sufficient length for pattern matching in-
+stead of being sent to the pattern matching immediately while they are
+arriving. Consider that there are two different sessions that are send-
+ing packets to the target receiving host. First, a few packets sent by the
+first session accumulate a data segment that exceed the sufficient length.
+The pattern matching unit should be informed and the data segment is
+ready to be inspected. And then, a few packets sent by the second ses-
+sion accumulate a data segment that exceed the sufficient length so the
+pattern matching unit is also informed. At last, the remaining packets of
+the first session arrive and are ready to be inspected. It should be noticed
+that there exists a relationship between the first half data segment and
+the remaining data segments. Take Figure?? for example, the data has a
+pattern containing A B C D that matches the rule but the data is cut into
+two segments and the two segments are sent to pattern matching unit
+separately due to the situation described above. Segment 1 and segment
+19
+Chapter 2
+Related Works
+Researches of TCP reassembly can be briefly concluded into two cate-
+gories. Researches of the first category put emphasize on general re-
+assembly, gives sketchs of hardware architectures and they analyze in-
+ternet environment and how it affects receive buffer. Researches of the
+another category outline algorithms and hardware architectures dealing
+with the interface between TCP reassembly and pattern matching.
+2.1 Researches on General TCP Reassembly
+Packet reassembly contains two parts : one is IP-layer reassembly
+which is known as IP defragmentation and the another one is TCP re-
+assembly. IP defragmentation uses information in IP header such as
+identification, flags and fragment offset to reassemble IP fragments into
+a TCP segment. TCP reassembly uses information in TCP header such
+21
+this session along with the newly received packet to pattern matching
+unit to inspect the payloads of these packets. If the next arriving packet
+belongs to another session and is expected to receive, it saves the status
+of the state-machine based pattern matching unit, resets the status of
+the pattern matching unit and then sends the newly arrived packet to
+pattern matching unit. When a packet that belongs to a session arrives, it
+saves the status of the pattern matching unit of whatever is in processing,
+restores the status of the pattern matching unit for the session the newly
+arrived packet belongs to and then begin to inspect the newly arrived
+packet.
+2.3 Discussions
+This section discusses the packet reordering mechanisms and receive
+buffer used in [7] and what it lacks. The difficulties of implementation of
+[8] is also discussed.
+In [7], it explains how to reorder packets and summaries the possi-
+bilities of sequence hole creating and plugging. It follows the common
+mechanism that it buffers arrived segments and waits for the hole to be
+plugged. It is possible that a sequence hole to be created due to the a
+missing packet. In practice, it takes several milliseconds to several thou-
+sands of milliseconds before the missing packet is re-transmitted. It leads
+receive buffer to be overwhelmed under multiple concurrent sessions en-
+vironment.
+23
+Chapter 3
+TCP Reassembly Architecture
+This chapter explains the core mechanisms in the TCP reassembly. First
+it outlines assumptions in section 3.1 , then a simple TCP reassembly
+unit derived from TCP protocol with least improvements is introduced in
+section3.2 and at last, the proposed TCP reassembly unit is described in
+section 3.3.
+3.1 Preliminary
+Figure 3.1 gives an overview of the deep packet inspection system.
+Snort software runs in the application layer, so it does not handle packet
+reassembly and TCP/IP protocols. This deep packet inspection system
+follows Snort as a model so the TCP reassembly unit does not handle
+handshakes that TCP protocol does. It merely probes copies of packets
+coming toward the protecting target. The deep packet inspection system
+25
+D:/Users/Berby/Desktop/TCP reassembly thesis/figures/typical mechani
+Figure 3.2: A sequence of packets with packet A missing.
+large number of concurrent connections and how does early inspection
+saves receive buffer from begin overwhelmed.
+As mentioned in section 2.3, typical reassembly mechanism buffers
+arrived packets and waits for the sequence hole to be plugged. Once
+the sequence hole is plugged by a newly arrived packet, the newly ar-
+rived packet along with the buffered packets are ready to inspect. Figure
+3.2shows a sequence of packets with packet A missing. Buffered packets
+B C D E are typically buffered before packet A arrives because the data is
+considered incomplete. In general case, TCP would not send incomplete
+data sequence to upper layer.
+There is in fact a chance to inspect those buffered packets. As in-
+troduced in section 1.2.2, maximum length of PCRE Snort rules is con-
+sidered 1500 characters, which is 1500 bytes in size and in section 1.1.1,
+each segment is set to 1500 Bytes in size. See Figure 3.3 for example,
+assume there is a 1.5 kbytes segment X positioned in the middle of a se-
+quence of segments. If one wishes to put this segment under inspection
+using Snort rule, this segment is safe only if this segment X along with
+segment X-1 and segment X+1 are all put under inspection. It is because
+the malicious pattern could have one part be in the segment X-1 and the
+another part be in the segment X or the same, be in both X and X+1.
+27
+whelmed. The implementation of early inspection will be extended in a
+more practical way in the following sections.
+3.1.2 IP-Layer Reassembly Unit
+IP-layer reassembly unit is a part of our deep packet inspection sys-
+tem. It sets, each defragmented packet, which is a TCP segment, has
+1.48 kbytes in size after removing 20 bytes IP header. Since we use eth-
+ernet packets as our target, a packet will have size no more than MTU of
+ethernet and those fragments smaller than 1.48 kbytes would be defrag-
+mented back to 1.48 kbytes segments. The only segment that has size
+less than 1.48 kbytes would be the very last packet of the whole data.
+In addition, since the payload of each segment is 1.46 kbytes after
+removing TCP header, the maximum length of Snort rules introduced in
+section 1.1.2 is assumed 1460 characters in the following chapters, which
+would not cause serious safety concerns, to make the implementation of
+the TCP reassembly unit easier.
+3.1.3 Simplified Serial Number
+A serial number of a TCP packet in its header gives the serial number
+of the first byte sent. Assume an ethernet packet is sent and the initial
+sequence number (ISN) is 100, then the sequence number of this packet
+will be written 101 in its header. This sequence number bytes that have
+sequence numbers range from 101 to 1560 since an ethernet packet has a
+29
+first 20 bytes, which are TCP header, are sent to header parsing unit.
+Information is parsed from the header and the control unit determines
+whether to drop, buffer or forward this segment.
+According to sliding window protocol, the sender would only send
+data the amount of the size of the window before it receives any ack from
+the receiver. The window size is not a fixed value. It varies according to
+two factors : one is the receive buffer that is available, which is known re-
+ceive window size (rwnd), and the another one is congestion window size
+(cwnd) which is determined by congestion avoidance algorithms that is
+applied in TCP protocol. The actual window size a sender could possibly
+send is the smaller of the rwnd and cwnd. The window size is a 16 bit
+value written in TCP header, which indicates that the maximum window
+size is about 64 kbyte. The receive buffer of the TCP reassembly unit
+should be sufficient under all situations so the receive buffer is set a fixed
+value 64 kbytes.
+This simple TCP reassembly unit works well under few amount of
+concurrent sessions and non-packet-loss environment. For each session,
+it takes 64 kbytes to buffer segments of this session, that means if one
+wishes to implement this system under large amount of concurrent ses-
+sions, say ten thousand sessions, the reassembly unit would need 640
+Mbytes receive buffer.
+In [7], it uses paging as its memory management algorithm. It seg-
+ments available memory into fixed-length pages (chunks) allocated to in-
+coming packets as required. If a packet is bigger than a page then we
+store it across multiple pages, with all pages linked in a list. It uses a
+31
+Figure 3.5: TCP reassembly system overview
+• TCP Reassembler processes header parsing and controls the ses-
+sion flow, it receives packets from Nios II CPU, at the frequency of
+32-bits each cycle. It also controls the pattern matching unit.
+• SSRAM stands for synchronous SRAM, the session table stored in
+SSRAM records the information of sessions.
+• SDRAM stores packet payloads.
+• Pattern Matching Unit communicates with TCP reassembler, TCP
+reassembler gives adress and length of the payloads to inspect and
+pattern matching unit retrieve payloads from SDRAM.
+A segment has a 20-bytes header and a 1460-bytes payload. For each
+cycle, TCP reassembler receives 4 bytes of the segment sent by Nios II
+CPU. Figure 3.6 shows the processing of a packet. The processing of a
+packet starts from the header of the packet and then the system pro-
+cesses memory management, scheduling and update status of the session
+33
+Figure 3.7: Status table format
+pected to receive, the initial value is set to initial sequence num-
+ber(ISN) that is decided when three-way handshaking for session
+establishment processes.
+• Status indicates the status of the current receive window. Max-
+imum window size is 64 kbytes and the payload of each ethernet
+packet is 1.46 kbytes, so there are about 44 packets that would be
+sent in a window. Each bit in the status shows if the corresponding
+packet had arrived.
+• Safe indicates that if a segment is considered safe, which will be
+explained in section 3.3.4.
+• Address indicates the address of the head of the linked pages in
+the SDRAM, which will be explained in section 3.3.3.
+• Distance indicates the relationship of the head of the linked pages
+and the next expected. Distance is a 7 bits value, the most sig-
+nificant bit is 1 if the head has sequence number that is smaller
+than the next expected and is 0 if is larger than next expected. The
+remaining 6 bits shows the distance the that head is to the next
+expected.
+The another important information in TCP header is the sequence num-
+35
+3.3.3 Memory Management
+3.3.3.1 Memory Management Unit
+Segments are saved in SDRAM in pages, each page has a fixed length
+of the size of four 1460 bytes segments plus a 32 bits header. The mem-
+ory management unit is quite a simple unit that it gives an empty page
+every time when it is requested and it keeps a record of occupied and
+unoccupied pages.
+3.3.3.2 Data Structure
+In Figure 3.7, the Address column indicates the SDRAM address
+of the first page as a pointer. Figure 3.9 shows the data structure of a
+page. DE2-70 has a 64MB SDRAM, it can be divided into 10958 pages so
+the address of each page is represented by the number of the page, which
+is 0,1,2,...,10957, using a 14 bit value. The Info records if a segment exists
+and is not safe, it will be explained in section 3.3.3.4, the this and next
+represents the address of this page and the next page, pages are linked
+in a list. Each arrived segment is inserted into the fixed position of a
+page, the sequence number mod 4 decides which position of a page this
+segment is to be inserted. For example, a segment that has sequence
+number 100, it would be inserted to the position of segment 1 since 100
+mod 4 equals zero. In reverse, if one wishes to retrive a specific segment
+from SDRAM, first he need to find the page the segment is in, and then
+uses the sequence number of the segment to position the segment. The
+37
+Figure 3.10: The relationship of head, distance and next expected
+occupy at most 11 pages. The TCP reassembly unit is a hardware design
+so fixed amount of linked pages is required because finding a page in the
+linked pages needs memory accesses. If the linked pages has unknown
+amount of pages in the link, one could not expect when the desired page
+to be found.
+First it finds all existing pages of a session and retrieves the informa-
+tion of those pages, the following explains how to find the linked pages.
+The address and distance in the status table indicates where the first
+page is in the SDRAM and what segments it contains. The distance is a
+7 bits value, the most significant bit is set to 1 if the serial number of the
+head is smaller than the next expected and the remaining 6 bits repre-
+sents the distance between the head and the next expected. See Figure
+3.10 for example, (a) shows a newly created session with next expected 1,
+(b) shows if segments with serial number 1 and 2 arrives the head will
+points to 1 and the distance is 1000010 since 1 is smaller than the next
+expected 3 and it has a distance 2. (c) shows if the segment with serial
+number 7 arrives to the newly created session, the head therefore points
+to 7 and the distance is set to 0000111.
+The process of inserting a new segment into the linked pages starts
+39
+Figure 3.12: The process of inserting a new page to the linked pages
+Figure 3.13: The process of inserting a segment into an existing page
+continues the process and finds out that the page of segments 8,9,10,11
+exists so it links this new page to the page of segments 8,9,10,11. Figure
+3.13 shows that segment 5 arrives, by following the process, it finds that
+the page of segments 4,5,6,7 exists so segment 5 is inserted in this page.
+3.3.3.4 The Policy of Releasing the Pages
+As introduced earlier, the info in Figure 3.9 records if a segment ex-
+ists and is not safe. When a segment arrives and is inserted into a page
+in a specific segment slot, the corresponding bit of info is set to 1. When
+this segment along with the related segments are inspected, this bit is set
+41
+Figure 3.14: A session that no segment has arrived
+segment is out of order so the next expected remains 1, it requests a page
+to buffer segment 2 and head points to segment 2
+Figure 3.14 shows a session that has some arrived segments and the ar-
+riving segment has serial number equals to the next expected, in (a) the
+head points to segment 2 so when segment 1 arrives, the head points to 1
+and the next expected moves to 5. In (b) the head points to segment 1 so
+segment 3 attaches after segment 2 and the next expected moves to 4.
+Figure 3.14 shows a session that has some arrived segments and the ar-
+riving segment has serial number that is larger than the next expected,
+in (a) the head points to segment 3 so the head points to segment 2 when
+it arrives. In (b) the head points to 1 so it requests a new page to buffer
+segment 4.
+43
+Figure 3.17: Data structure of (a) higher priority scheduler (b) normal
+scheduler
+3.3.4.2 Scheduling
+After the arriving segment is inserted in the correct position, the
+TCP reassembly unit starts to schedule the buffered segments of the
+session. As mentioned in section 3.1.1, the shortest length that is able
+to be scheduled is the length of three continuous segments. There are
+two schedulers which are normal scheduler and higher priority sched-
+uler, each has eight slots which means each scheduler can buffer eight
+scheduling data and they have data structures as Figure 3.17 shows.
+The following lists the two situations when it schedules segments:
+• Normal inspection: when the arriving segment has serial number
+that equals to the next expected.
+• Early inspection: when the arriving segment has serial number that
+is larger than the next expected.
+45
+Figure 3.18: Normal inspection
+This segments sequence is scheduled but it might not be chosen to be in-
+spected, it is because the reassembly unit always choose the one with the
+longest length to inspect, for the best of releasing the pages. Once this
+segments sequence is chosen, the address of the head page is updated.
+If segment 4 arrives before this segments sequence is chosen to inspect,
+the information for this session is updated. As Figure 3.18 shows, after
+this segments sequence is chosen, the segment slots of segments 1 and
+2 could be released because they are considered safe, segment 3 is left
+because segment 3 is not inspected with segment 4 so it is not considered
+safe.
+Figure 3.19 shows an example of early inspection, after inserting seg-
+ment 2, the reassembly unit tries to schedule segments sequence 2,3,4,5.
+It first checks if the length of the segments sequence is larger than the
+longest length of the scheduling information in the normal scheduler, if
+the length is longer than that the longest length in the normal sched-
+47
+Figure 3.19: Early inspection
+the sequence has length two so it would never be scheduled following the
+scheduling policy of normal inspection.
+3.3.5 Interface Providing to Pattern Matching Unit
+Figure 3.20 shows the hardware connection between TCP reassembly
+unit and pattern matching unit. The signals are essential:
+• isPatternMatchingBusy : the bit is set to 1 if pattern matching unit
+is busy.
+• Address : physical address of SDRAM where the scheduled segment
+is.
+• Length : length of byte strings scheduled to inspect.
+• resetPatternMatching : resets the state of the pattern matching
+unit when the scheduled segments belongs to a different session
+49
+Figure 3.20: Hardware connection between TCP reassembly unit and pat-
+tern matching unit
+the newly arriving segment may change the information in the sched-
+ulers. In addition, since TCP reassembly unit keeps records of the infor-
+mation of the sessions, when the alert is set, it will know which session
+contains malicious information and the session can be dealt using policies
+defined in Snort rule.
+51
+Figure 4.1: TCP reassembly unit input and output ports
+Figure 4.2: The state machine of TCP reassembly unit
+53
+Figure 4.3: FPGA verification of TCP reassembly system, max frequency
+Figure 4.4: FPGA verification of TCP reassembly system, FPGA re-
+sources used
+55
+to divide a complicated calculation that runs in a cycle into several sim-
+pler calculations that run on several different cycles. For example, when
+it wishes to search for the longest one in a normal scheduler with eight
+slots. The search is divided into the comparisons of 4 couples( (1,2) (3,4)
+(5,6) (7,8)) in the first cycle and the winning two couples ((1,3) (5,7)) in the
+second cycle and at last the winning couple (1,5) at the third cycle. And
+such calculations can be parallel to memory access or other calculations
+in a cycle.
+57
+5.1 Experiment Setup
+The experiments are implemented using C++ language running on a
+PC. The experiments are designed to show how packet-loss overwhelms
+receive buffer. In this section, the attributes that may affect the receive
+buffer and the experiment setup in software will be described in section
+5.1.1 and then the algorithms of the three mechanisms will be explained
+section 5.1.2.
+5.1.1 Attributes and Software Simulation Setup
+The attributes that affects the receive buffer considered are:
+• Packet loss rate : the packet loss rate is set from 0.1% to 5% which
+is commonly seen on the internet[9].
+• Retransmission time interval : retransmission time interval is set
+from 1 ms to 3000 ms which is commonly seen on the internet.
+Figure 5.1 shows the steps the simulation software does, first each session
+designates a packet to send and the packet sent is in order, that means
+packet 1 is followed by packet 2. If the retransmission time interval of
+lost packet of this session is triggered, the lost packet is designated to
+be sent, or the it designates a new packet to be sent. The designated
+packet has 0.1% to 5% possibility of being lost, if it rolls the die and is
+considered normal, the packet is sent to the three mechanisms (which
+59
+The three mechanisms implemented have their own simulated memory
+space which are implemented using arrays. For example, each page in
+the TCP reassembly unit this report presents is 5841 bytes in size, so 64
+MB SDRAM can be divided into about 10957 pages. In the simulation
+software design, an array of 10957 slots represents those 10957 pages,
+if the reassembly unit requests a new page, the software gives an empty
+page to it and marks the given page as occupied. When the reassembly
+unit decides to release a page, the software marks the returned page as
+unoccupied. If the reassembly unit requests a new page but there is no
+page available, the packet is dropped and the number of the dropped
+packets due to the insufficiency of memory space is recorded. By this, it
+is easy to monitor how many pages are occupied and how many packets
+are dropped.
+5.1.2 Algorithms of the Three Mechanisms
+5.1.2.1 The Simple TCP Reassembly Unit
+The simple TCP reassembly unit uses fixed memory space as a buffer
+for each session, for each session , it takes 64 kBytes as a buffe, 64k Bytes
+can be divided into 11 pages. The algorithm can be briefly described by
+Figure 5.3.
+61
+5.1.2.2 TCP Reassembly Unit Using Paging
+This algorithm uses paging and each page has size 5841 bytes, when
+the segment that is next expected, all pages that a session occupies could
+be released. Figure 5.3 briefly describes the algorithm.
+5.1.2.3 TCP Reassembly Unit Using Paging and Early Inspection
+The mechanism applied here uses paging and early inspection as de-
+scribed in chapter 3, Figure 5.4 briefly describes the algorithm.
+5.2 Experiment Results
+5.2.1 Configuration of the Amount of Total Packets
+Sent
+This experiment sets the attributes :
+• Memory space : unlimited
+• Sessions : 10000
+• Packet loss rate : 0.5% ~ 5%
+• Retransmission time interval : 1 ~ 1000 ms
+• Total packets sent : 1,000,000
+63
+Figure 5.4: Psudo code describing TCP reassembly unit using paging and
+early inspection
+65
+Table 5.1: Configuration of the amount of packets sent
+67
+amount of pages. When RTI is set to 1~1000 ms (500ms on average), the
+mechanism with early inspection requires about 86% pages on average
+and 80% peak pages compare to the one without early inspection. When
+RTI is set to 1~2000 ms (1000 ms on average), it takes about 61% on
+average and 52% peak pages. When RTI is set to 1~3000 ms( 1500 ms
+on average), it takes about 49% on average and 40% peak pages. As we
+can see from Table 5.2 , the amount of pages required by mechanism with
+only paging increases very fast as the max RTI increases, the mechanism
+with early inspection, instead, is more robust against the increment of
+max RTI.
+5.3 Configuration of Packet-Loss Rate
+This experiment sets the attributes :
+• Memory space : unlimited
+• Sessions : 10,000
+• Packet loss rate : 0.5% ~ 10%
+• Retransmission time interval : 1 ~ 1000 ms
+• Total packets sent : 1,000,000
+Table 5.3 shows the result.
+69
+5.4 Conclusion
+The three factors that affect the receive buffer are RTI, packet-loss rate
+and the amount of sessions. RTI indicates the time period before the lost
+packet is re-transmitted and it affects the receive buffer the most. When
+the RTI of the lost packet is smaller than 100ms, early inspection does
+not make any improvement to the receive buffer. When the RTI of the
+lost packet is more than 1000ms, the receive buffer benefits from early
+inspection greatly. As shown in section 5.2, when the RTI reaches an
+average 1500 ms, early inspection saves 51% on average and 60% peak
+pages required.
+The hardware implementation of TCP reassembly unit references the
+peak pages required. The simple TCP reassemably unit is apparently
+insufficient for the experiments presented, since for each session, it re-
+quires 64k bytes as its buffer. From the experiments, the mechanism
+using only paging requires peak pages that range from 1.0 pages to 4.32
+pages (5841 bytes to 25233 bytes) for each session. The mechanism using
+early inspection shows a relatively stable outcome that the peak pages
+10000 sessions requires range from about 11000 to 17000 pages under
+different attributes so we can evaluate that each session takes about 1.0
+pages to 1.7 pages ( 5841 bytes to 9929 bytes).
+71
+memory space those segments occupy. If a buffered segment is consid-
+ered malicious, it might drop all the memory space the malicious session
+occupies. Early inspection changes the mechanism traditionally applies
+to a deep packet inspection system, it does not wait for the segments to be
+reordered. A segments sequence that is scheduled to inspect depends on
+the length of this sequence instead of if this sequence is in order. Early
+inspection can schedule segments sequence positioned in anywhere of a
+string of segments.
+The concerns of dedicating the TCP reassembly unit to pattern match-
+ing is solved, the mechanism is simple and efficient. After the pattern
+matching unit inspect a segments sequence, the TCP reassembly unit al-
+ways check if a segment is safe before releasing the segment. The policy
+of considering if a segment if safe or not depends on if all the segments
+relative to the segments under inspection are considered safe. Although
+there are segments that might be inspected more than once, it assures
+the safety of those segments inspected. Most papers can not address this
+issue, but it is an important factor if one wishes to claim the mechanism is
+sufficiently safe. Occasionally, the speed of the segments inspection is the
+main concern and the safety of the inspection is a minor concern. For ex-
+ample, if the user wishes to lower the security level of the packet inspec-
+tion system for the trusted sessions, the scheduling mechanism can be
+slightly changed to that ; once a segment is inspected, the memory space
+occupied by the segment is ready to be released and those segments that
+are relative to the segments under ispection can be neglected. By doing
+so, the inspection is more like a per-packet inspection instead of sequence
+73
+Bibliography
+[1] Transmission Control Protocol wiki, http://en.wikipedia.org/wiki/Transmission_Control_Protocol
+[2] Perl Compatible Regular Expressions wiki, http://en.wikipedia.org/wiki/PCRE
+[3] Snort Configuration Directives, http://www.snort.org/
+[4] Jhu-Jin Yang, “High-Speed Stateful Packet Inspection Architecture for Network
+Intrusion Detection Systems,” National Taiwan University mater thesis.
+[5] Al Basseri , “Different TOEs for different folks,” reprinted from Compact PI sys-
+tems, December, 2003
+[6] M. Necker, D. Contis, and D. Schimmel, “TCP-Stream reassembly and state track-
+ing in hardware,” in Field-Programmable Custom Computing Machines, 2002. Pro-
+ceedings. 10th Annual IEEE Symposium on, 2002, 286-287
+[7] Sarang Dharmapurikar and Vern Paxson, “Robust TCP stream reassembly in the
+presence of adversaries,” in Proceedings of the 14th conference on USENIX Se-
+curity Symposium - Volume 14 (Baltimore, MD: USENIX Association, 2005), 5-5,
+http://portal.acm.org/citation.cfm?id=1251403
+[8] Aleksandr Dubrovsky, Roman Yanovsky, Scott Aaron More, Boris Yanovsky,
+“Method and an apparatus to perform multiple packet payloads analysis”, USPTO
+Application #: 20060077979
+75
+Published in IET Computers & Digital Techniques
+Received on 23rd November 2007
+Revised on 5th March 2008
+doi: 10.1049/iet-cdt:20070162
+ISSN 1751-8601
+Heuristic algorithm for the resource-
+constrained scheduling problem during
+high-level synthesis
+Y.-H. Wu C.-J. Yu S.-D. Wang
+Department of Electrical Engineering, National Taiwan University, Taipei, Taiwan, Republic of China
+E-mail: sdwang@ntu.edu.tw
+Abstract: Scheduling is considered the most important task in a high-level synthesis process. A heuristic algorithm
+based on the A search to ﬁnd optimal schedules quickly is presented. This algorithm reduces the computational
+effort required to obtain the best schedules on a pre-deﬁned datapath by effectively pruning the non-promising
+search space. The pruning method is accomplished by an admissible heuristic that estimates the schedule length,
+or the cost, of a search node represented by a partially scheduled data ﬂow graph. The search node with the least
+cost is considered the most promising candidate and is expanded next, avoiding an exhaustive search of the
+problem space. When the costs of the candidate search nodes are identical, the A search is guided by a
+depth-ﬁrst search to speed up the computation. Experimental results on several well known benchmarks with
+varying resource constraints show the effectiveness of the proposed algorithm. Multicycle, pipelined and
+chaining execution of operations are supported.
+1 Introduction
+Growing design complexity has led designers to generate
+designs at higher levels of abstraction, such as, the
+behaviour description level. The core task for synthesising
+the behaviour description is the high-level synthesis
+(HLS), which contains three main steps to create a
+hardware architecture of datapath elements, control logic
+and memory elements: resource allocation, binding and
+scheduling. Data ﬂow graphs (DFGs) model dependencies
+between operators, and the allocation step identiﬁes the
+operators used in an algorithm and infers the need for
+memory resources to hold data implied by the sequential
+activity for the algorithm. The binding step binds these
+operators and memory resources to datapath resources. The
+scheduling step assigns operations to speciﬁc clock cycles to
+implement the ﬂow of the algorithm. This step determines
+the number of combinational units that will be used in a
+given clock cycle and shared between cycles [1].
+Three basic problems existing in HLS research are
+resource-constrained scheduling (RCS), time-constrained
+scheduling (TCS) and resource- and time-constrained
+scheduling (RTCS). The RCS problem minimises control
+steps with the constraint of the total area, which is usually
+simpliﬁed to the functional unit area. The TCS problem
+minimises the total area when the number of control steps
+is ﬁxed. The RCTS problem determines whether or not a
+constraint speciﬁcation is feasible when both the number of
+functional units and the number of control steps are ﬁxed [2].
+Chained and multicycle operations shown in Fig. 1 are also
+considered in scheduling problems. Architectures supporting
+multicycle operations have a smaller clock length and, thus,
+decrease completion time. Chained operations lead to fewer
+control steps, resulting in less control logic [3].
+Scheduling problems are well known as NP-complete.
+When synthesising a behavioural description, there may
+exist several different alternative design points that have
+the same functionality. Each design point has its own
+characteristics, such as area, latency, throughput and so on.
+An optimal solution cannot be found until all the design
+alternatives are explored. Mathematical formulation is a
+IET Comput. Digit. Tech., 2009, Vol. 3, No. 1, pp. 43–51 43
+doi: 10.1049/iet-cdt:20070162 & The Institution of Engineering and Technology 2009
+www.ietdl.org
+of any search node n is known as f (n), which is evaluated by
+g(n) and h(n), where g(n) is the partial schedule length of the
+search node and h(n) is the lower-bound schedule length of
+the unscheduled part of the search node computed by the
+admissible heuristic function proposed in [16]. In the
+beginning, we perform as soon as possible (ASAP)
+scheduling to the complete DFG, obtaining a root search
+node Pi, where i, deﬁned as the length of the partial
+schedule, is set to 0, representing that the root search node
+has no operation that is, scheduled under resource
+constraints. Fig. 3 shows two search nodes P0 and P5 under
+resource constraints of two adders and one pipelined
+multiplier. We can see that operations in the root search
+node P0 are all scheduled by ASAP, whereas operations at
+c-step 1–5 in P5 are scheduled by a ﬁxed partial schedule
+and satisfy the resource constraints. The detailed
+description of the evaluation function f (n), g(n) and h(n) is
+provided later in this paper.
+In most cases, the ASAP schedule is too tight and violates
+the resource constraints; hence an iteration process is invoked
+to relax the number of c-steps. This iteration begins by
+scheduling one more c-step of the least-cost search node
+polled from the priority queue. If the partial schedule
+length of the search node covers all the operations in
+the DFG, the iteration breaks and the search node is
+obtained as the optimal solution. When scheduling one
+more c-step from a search node, there would be many
+possible choices that are feasible; we have to enumerate all
+the possible schedules to guarantee optimality.
+Enumerate_Possible_Schedules(Pi) computes a set of
+partial schedules (or search nodes), fPiþ1g, from the
+interested schedule Pi. This set is then inserted into the
+queue, is compared with other schedules in the queue, and
+the iteration is continued.
+3 Enumerating possible schedules
+Any feasible scheduling result can be derived from the ASAP
+schedule by simply rescheduling some operations into later
+control steps [17]. In our approach, we start with the
+ASAP schedule as the root search node; in each search
+node we postpone each operation by one c-step that
+violates the resource constraints at the earliest c-step,
+generating a search tree where each node represents a
+partial schedule and each branch means the postponement
+of operations by one c-step. The nodes with the same
+ancestor are the enumeration of possible schedules planned
+one more c-step from the ancestor. The postponement of
+an operation may incur the successive delays of other
+successor operations depending on it in order to preserve
+their precedence relations. The leaves of this search tree are
+the complete schedules that meet resource constraints. Note
+that the set of leaves is guaranteed to include all the
+feasible solutions. However, if we expand all the search
+nodes, the search space grows exponentially and no
+algorithms can explore it in linear computation time. In the
+A search procedure, only the search node with the least
+cost is expanded, and hence the search efforts can be reduced.
+Fig. 4 shows the procedure of enumerating possible
+schedules from an interested partial schedule, Pi, which is
+the least-cost search node polled from the priority queue.
+We list the operations at c-step iþ 1, which is the earliest
+Figure 3 Two search nodes P0 and P5 under resource constraints of 2 adders and 1 multiplier
+IET Comput. Digit. Tech., 2009, Vol. 3, No. 1, pp. 43–51 45
+doi: 10.1049/iet-cdt:20070162 & The Institution of Engineering and Technology 2009
+www.ietdl.org
+search astray. In the rest of this section, we describe what we
+do when the evaluation function is inaccurate, or the
+evaluation function produces the same cost of each search
+node and does not help guide the A search.
+A search keeps all generated nodes in memory. When
+h(n) is inaccurate, backtracking occurs frequently and leads
+the search run out of space and time. SMA is a simple
+approach that drops the worst leaf node when all available
+memory is used. It then backs up the value of the forgotten
+node to its parent. SMA regenerates the subtree that
+contains the leaf node only when all other paths have been
+shown to look worse than the path that has been forgotten
+[15]. However, each node regeneration invokes the
+heuristic function h(n) once; the complexity of h(n) is, thus,
+a key factor that affects the search performance. In our
+approach, the complexity of h(n) [16] is O(n2þ c2), where
+n is the number of nodes in the DFG and c is the critical
+path. This complexity is too high to be used in SMA.
+Therefore when the priority queue is full, we just remove
+the worst node instead of backing up its cost value and
+regenerating it when needed. In this way, the optimality
+requirement of A search is dropped, but we can still judge
+the solution quality by comparing it with the estimated cost
+of the root search node P0; if the schedule length of the
+solution is identical to the cost of P0, it is obviously an
+optimal solution (because the cost of P0 is the lower-bound
+schedule length). Experimental results discussed in Section
+5 show a few cases that do not satisfy the optimality
+requirement of the A search, but their optimality is still
+guaranteed by the lower bounds.
+There are chances that the estimation function produces
+identical costs of the search nodes. In this situation, the
+priority queue has no way to determine the ordering of its
+elements. A possible solution is the random guess.
+However, a reasonable observation is that, considering a
+search node, the more operations there are within the
+partial schedule (or, equivalently, the longer the partial
+schedule), the more accurate the estimated cost. In other
+words if a node is closer to the goal, there are more
+chances that its cost is identical to the cost of the optimal
+solution. Hence, in our approach, when the costs of some
+search nodes are the same, the node with the greatest
+partial schedule length is polled ﬁrst. Actually, this method
+is a depth-ﬁrst search, where the depth is the partial
+schedule length. Note that the optimality requirement is
+still satisﬁed.
+5 Experimental results
+To demonstrate the accuracy and performance of our
+approach, we tested a series of experiments using the well
+known AR-lattice ﬁlter [21] (ARF), elliptical wave ﬁlter
+[22, p. 206] (EWF), eight-point discrete cosine transform
+(DCT) [23] and fast discrete cosine transform [24]
+(FDCT) benchmarks. We implemented our approach in
+JAVA language and ran the experiments on a 1.5 GHz
+CPU. Table 1 shows the scheduling results compared with
+Rensselaer’s Voyager system [2] when chaining is enabled.
+We assume that additions can be chained and the delay of
+multiplication is one time step. This assumption is the
+same as [2] when a clock length of 163 ns is chosen and
+the VDP100 module library [19, 20] is used, which has a
+multiplication delay of 163 ns and an addition delay of
+48 ns. Rensselaer’s Voyager system [2] solves the RCS
+problem by ﬁrst computing lower bounds and then solving
+the resulting RTCS problem by ILP formulation. We
+produce the same optimal results as [2]. However,
+considering the computation time, solving ILP formulation
+needs a commercial solver (for example, [2] using LINDO)
+and designing a well-structured ILP formulation is also a
+complicated task. In contrast, our approach is fast, and can
+be run on simple platforms.
+In the second experiment shown in Table 2, chaining is
+disabled and the multiplication delay is two time steps. We
+compare the scheduling results with two heuristic-based
+scheduling algorithms: SALSA [10] and list-scheduling
+[13]. SALSA explores the design space by using simulated
+Table 1 Scheduling results compared with Rensselaer’s Voyager [2]
+Bench-mark # of ma, ab [2] #steps [2], s A #steps A, s
+EWF # nodes: 34 1, 2 15 1.51cþ 7.75d 15 0.2
+2, 2 15 15 0.1
+3, 3 10 10 0.1
+ARF # nodes: 28 2, 1 13 13 0.6
+2, 4 9 9 0.5
+4, 2 8 8 0.7
+6, 4 6 6 0.2
+aOne time step multipliers; bAdders with chaining allowed; cTime to compute the lower bounds; dTime to solve the time-RCS
+problem
+IET Comput. Digit. Tech., 2009, Vol. 3, No. 1, pp. 43–51 47
+doi: 10.1049/iet-cdt:20070162 & The Institution of Engineering and Technology 2009
+www.ietdl.org
+Table 3 Produced schedules and run times compared with BULB [14]
+Bench-mark # of
+ma, ab
+BULB,
+#steps
+BULB, s A
+#steps
+A, s # of
+pc, ab
+BULB,
+#steps
+BULB,
+s
+A
+#steps
+A, s
+EWF # nodes: 42 1, 1 28 ,0.01 28 0.6 1, 1 28 ,0.01 28 0.7
+1, 2 21 0.01 21 0.1 1, 2 19 0.04 19 0.1
+2, 2 18 ,0.01 18 ,0.01 1, 3 18 ,0.01 18 0.1
+3, 3 17 ,0.01 17 ,0.01 2, 2 18 ,0.01 18 0.1
+2, 3 17 ,0.01 17 ,0.01
+ARF # nodes: 44 1, 1 34 11.22 34 2.1 1, 1 19 ,0.01 19 1.6
+2, 1 18 0.29 18 2.7 2, 1 16 0.01 16 2.1
+2, 2 18 2.34 18 5.5 1, 2 19 ,0.01 19 1.6
+3, 1 16 ,0.01 16 3.4 2, 2 13 ,0.01 13 2.0
+4, 1 16 ,0.01 16 3.4 2, 3 13 ,0.01 13 2.0
+3, 2 15 10.90 15 33.9 3, 2 13 ,0.01 13 3.1
+3, 3 15 11.35 15 32.7 4, 2 11 ,0.01 11 3.2
+4, 2 11 ,0.01 11 3.2
+FDCT # nodes: 58 1, 1 34 0.01 34 1.1 1, 1 26 ,0.01 26 1.1
+2, 1 26 ,0.01 26 1.0 2, 1 26 0.01 26 0.9
+2, 2 18 d 18 1.3 1, 2 19 ,0.01 19 2.0
+2, 3 18 ,0.01 18 1.6 2, 2 13 ,0.01 13 1.5
+3, 2 14 213.25 14 1.4 3, 2 13 ,0.01 13 1.3
+3, 3 14 1.03 14 1.5 2, 3 12 0.17 12 1.5
+3, 4 14 d 14 85.3 3, 3 10 ,0.01 10 1.4
+4, 2 13 ,0.01 13e 15.9 4, 4 09 ,0.01 09 1.6
+4, 3 11 107.03 11 2.2 8, 4 08 ,0.01 08 1.5
+4, 4 11 ,0.01 11e 250.9
+4, 5 11 ,0.01 11e 308.7
+5, 4 10 ,0.01 10 1.6
+5, 5 10 ,0.01 10 1.2
+8, 4 08 ,0.01 08 1.5
+two times unfolded
+EWF # nodes: 84
+1, 1 56 ,0.01 56 43.3 1, 1 56 ,0.01 56 44.3
+2, 1 56 ,0.01 56 44.1 2, 1 56 ,0.01 56 44.0
+1, 2 41 0.04 40f 12.1 1, 2 37 0.01 36f 30.5
+2, 2 35 0.02 35 8.8 2, 2 36 0.01 35f 8.7
+1, 3 41 0.04 40f 12.1 1, 3 35 ,0.01 34f 10.7
+2, 3 35 0.01 34f 3.8 2, 3 33 ,0.01 33 3.4
+3, 3 33 ,0.01 33 3.4
+Continued
+IET Comput. Digit. Tech., 2009, Vol. 3, No. 1, pp. 43–51 49
+doi: 10.1049/iet-cdt:20070162 & The Institution of Engineering and Technology 2009
+www.ietdl.org
+[2] CHAUDHURI S., BLYTHE S.A., WALKER R.A.: ‘A solution
+methodology for exact design space exploration in a
+three-dimensional design space’, IEEE Trans. Very Large
+Scale Integr. Syst., 1997, 5, (1), pp. 69–81
+[3] WALKER R.A., CHAUDHURI S.: ‘Introduction to the
+scheduling problem’, IEEE Des. Test Comput., 1995, 12,
+(2), pp. 60–69
+[4] HWANG C.-T., LEE J.-H., HSU Y.-C.: ‘A formal approach to the
+scheduling problem in high level synthesis’, IEEE Trans.
+Comput.-Aided Des., 1991, 10, (4), pp. 464–475
+[5] GEBOTYS C.H., ELMASRY M.I.: ‘Global optimization approach
+for architectural synthesis’, IEEE Trans. Comput. Aided Des.
+Integr. Circuits Syst., 1993, 12, (9), pp. 1266–1278
+[6] EINAVT D., FEHLINGT M.R.: ‘Resource-constrained search’.
+IEEE Int. Conf. Systems, Man and Cybernetics, Conf. Proc.,
+November 1990, pp. 265–268
+[7] PAULIN P.G., KNIGHT J.P.: ‘Force-directed scheduling in
+automatic data path synthesis’. Proc. 24th ACM/IEEE
+Conf. Design Automation, 28 June–1 July 1987,
+pp. 195–202
+[8] GREWAL G., O’CLEIRIGH M., WINEBERG M.: ‘An evolutionary
+approach to behavioral-level synthesis’. The 2003
+Congress on Evolutionary Computation, December 2003,
+vol. 1, pp. 264–272
+[9] PARK I.-C., KYUNG C.-M.: ‘FAMOS: an efﬁcient scheduling
+algorithm for high-level synthesis’, IEEE Trans. Comput.
+Aided Des. Integr. Circuits Syst., 1993, 12, (10),
+pp. 1437–1448
+[10] NESTOR J.A., KRISHNAMOORTHY G.: ‘SALSA: a new approach
+to scheduling with timing constraints’, IEEE Trans.
+Comput. Aided Des. Integr. Circuits Syst., 1993, 12, (8),
+pp. 1107–1122
+[11] PARK N., PARKER A.C.: ‘Sehwa: a software package for
+synthesis of pipelines from behavioral speciﬁcations’, IEEE
+Trans. Comput.-Aided Des., 1988, 7, (3), pp. 356–370
+[12] AHMAD I., DHODHI M.K., HIELSCHER F.H.: ‘Design-space
+exploration for high-level synthesis’. IEEE 13th Annual Int.
+Phoenix Conf. Computers and Communications, April
+1994, p. 491
+[13] SLLAME A.M., DRABEK V.: ‘An efﬁcient list-based scheduling
+algorithm for high-level synthesis’. Proc. Euromicro Symp.
+Digital System Design, 2002, pp. 316–323
+[14] NARASIMHAN M., RAMANUJAM J.: ‘A fast approach to
+computing exact solutions to the resource-constrained
+scheduling problem’, ACM Trans. Des. Autom. Electron.
+Syst., 2001, 6, (4), pp. 490–500
+[15] RUSSELL S., NORVIG P.: ‘Artiﬁcial intelligence an modern
+approach’ (Prentice Hall Publisher), 2003, pp. 97–104
+[16] LANGEVIN M., CERNY E.: ‘A recursive technique for
+computing lower-bound performance of schedules’, ACM
+Trans. Des. Autom. Electron. Syst., 1996, 1, (4), pp. 443–455
+[17] BLOUGH D.M., KURDAHI F.J., OHM S.Y.: ‘High-level synthesis of
+recoverable vlsi microarchitectures’, IEEE Trans. Very Large
+Scale Integr. Syst., 1999, 7, (4), pp. 401–410
+[18] RIM M., JAIN R.: ‘Lower-bound performance estimation
+for the high-level synthesis scheduling problem’, IEEE
+Trans. Comput. Aided Des. Integr. Circuits Syst., 1994, 13,
+(4), pp. 451–458
+[19] NARAYAN S., GAJSKI D.D.: ‘System clock estimation based on
+clock slack minimization’. Proc. European Design
+Automation Conf. (EuroDAC), Hamburg, Germany,
+February 1992, pp. 66–71
+[20] VLSI Technologies Inc.: VDP100 1.5 Micron CMOS
+Datapath Cell Library, 1988
+[21] JAIN R., PARKER A.C., PARK N.: ‘Predicting system-
+level area and delay for pipelined and nonpipelined
+designs’, IEEE Trans. Comput. Aided Des., 1992, 11,
+pp. 955–965
+[22] THOMAS D.E., LAGNESE E.D., WALKER R.A., NESTOR J.A., RAJAN J.V.,
+BLACKBURN R.L.: ‘Algorithmic and register transfer level
+synthesis: the system architect’s workbench’ (Kluwer
+Academic, New York, 1990)
+[23] WOUDSMA R., CHONG D.C.H., MCSWEENEY B.T. ET AL.: ‘One-
+dimensional linear picture transformer’. US Patent 4 881 192
+[24] HAYNAL S., BREWER F.: ‘Automata-based symbolic
+scheduling for looping DFGs’, IEEE Trans. Comput., 2001,
+50, (3), pp. 250–267
+IET Comput. Digit. Tech., 2009, Vol. 3, No. 1, pp. 43–51 51
+doi: 10.1049/iet-cdt:20070162 & The Institution of Engineering and Technology 2009
+www.ietdl.org
+CHANG-CHING YANG, CHEN-MOU CHENG AND SHENG-DE WANG 
+ 
+1564 
+ 
+tems. It has been shown that in a typical NID system, 40-70% of the total processing 
+time and 60-85% of the operations are spent in string pattern matching [5].  
+Many NID systems are purely software-based, which are flexible but can not keep 
+up with the traffic of heavily loaded high-speed networks. It is possible to distribute the 
+work to the host computers in a network to offload the computation, but this approach 
+will impose extra load on the host computers, not to mention that the installation and 
+maintenance of software is difficult to manage. For this reason, it is often preferable to 
+have a set of dedicated NID systems with hardware accelerators to achieve high through-
+put.  
+In a typical NID system, the most performance-critical part is the pattern matching 
+process. There are two kinds of mechanisms to accelerate this process: circuit-based and 
+memory-based. In the former approach, the rules are translated into a set of comparators, 
+and the input is processed by each comparator in parallel. The advantage is the high- 
+speed parallel comparison, but the circuit-based approach has a fatal drawback, namely, 
+the comparator circuit is fixed and can not be changed easily. In other words, if we want 
+to change the rule sets dynamically, we would have to redesign the comparators. Mem-
+ory-based approaches, on the other hand, employ a controller to process the input data 
+with high-speed memory look-ups, allowing rule sets to be updated at run time. 
+Due to the blooming variations of security threats, being able to update the rule sets 
+on line is of crucial importance to commercial NID systems. In this paper, we will pre-
+sent a low storage-cost solution to memory-based pattern matching engine with on-line 
+update capability. We will also report our implementation and performance analysis of 
+the proposed approach on a field programmable gate array (FPGA) evaluation board. 
+The rest of this paper is organized as follows. In section 2, we will first review nec-
+essary background information and present the problems that may be encountered by a 
+regular-expression recognizer for deep packet inspection. In section 3, we will review 
+relevant works in the literature. In sections 4 and 5, we will discuss our proposed algo-
+rithms, accelerator architecture, and implementation details. We then present the result of 
+our prototype implementation in section 6 and conclude this paper in section 7. 
+2. BACKGROUND AND PROBLEM STATEMENT 
+2.1 Regular Expressions 
+ 
+A regular expression consists of constants and operators denoting the sets of strings 
+and the operations over these sets, respectively. Given a finite alphabet set Σ and subsets 
+R, S of Σ, the following three basic operations are defined.  
+ 
+• Concatenation: RS denoting the set {αβ⎪α ∈ R, β ∈ S}. 
+• Alternation: R⎪S denoting the set union of R and S. 
+• Kleene star: R* denoting the smallest superset of R that contains the empty string and 
+is closed under string concatenation. This is the set of all strings that can be made by 
+concatenating zero or more strings in R. 
+ 
+There is a straightforward mapping between regular expressions and finite-state 
+CHANG-CHING YANG, CHEN-MOU CHENG AND SHENG-DE WANG 
+ 
+1566 
+ 
+Table 1. List of literals and meta-characters in GNU flex regular expressions. 
+ 
+ 
+ever, it could invoke an exponentially-sized state transition table.  
+In the latter type, we apply the recognizing process to any start position to find all 
+possible matches. In other words, if we find all matches and reach the end of the input 
+from start position Pi, we need to start the next recognizing process from the next char-
+acter position in input Pi+1. This approach is commonly used in language parser but is not 
+suitable for packet payload scanning because of the inefficiency and low matching prob-
+ability. 
+ 
+2.2 A Motivating Example and its Analysis 
+ 
+We have the following regular expression from the rule set in Bro for detecting IMAP 
+login buffer-overflow attempt: “.*LOGIN[^\x0a]{100}”. This matches packet pay-
+load that starts with LOGIN, followed by 100 non-newline characters from any position. 
+The recognizing process is shown in Fig. 2. 
+ 
+Fig. 2. The recognizing process for pattern “LOGIN[^\x0a]{100}”. 
+CHANG-CHING YANG, CHEN-MOU CHENG AND SHENG-DE WANG 
+ 
+1568 
+ 
+sibilities that A combined with the subsequent characters before B. Therefore, the number 
+of total states is 9, as opposed to 4: we will need to match some arbitrary characters, the 
+character A, an arbitrary character, and finally the character B. Therefore, when we ex-
+pand the pattern to “.*A.{N}B”, the number of states grows like O(2N + c), where c is 
+the string length.  
+In real-world NID systems, there are a significant number of signature patterns with 
+features of type 0. A majority of them are for detecting buffer-overflow attempts. In Bro 
+1.3.2, there are 105 such patterns out of 1278 regular expression signature patterns, 
+whereas in Snort 2.4, there are 123 out of 385.  
+Moreover, the problem becomes more serious as a result of applying the long length 
+restriction to this type of patterns. The length usually ranges from 0 to 100, but some of 
+them can be as large as 512 or 1024, suggesting that the number of states could be in-
+credibly large, like 2512 or 21024, making them impossible to implement in practice.  
+ 
+Type 1: Interactions among Multiple Signature Patterns  
+This type of interaction exists when there is a partial match to one signature pattern, 
+which also belongs to another signature pattern. Because of the deterministic property, 
+we need to add extra states to record all possible transitions if we adopt the DFA ap-
+proach. 
+As an example, consider two patterns “.*A.B” and “.*C.D”. The sub-pattern 
+“A.B” from the former matches the sub-pattern “.*” from the latter. If we want to de-
+termine which pattern we have matched, we need to introduce some extra states to the 
+automaton. Furthermore, if we have “.*A.{N}B” and “.*C{N}.D”, we would have 
+O((k + 1)N) states when we compile k signature patterns of type 0 into one DFA. As men-
+tioned previously, there are a large number of patterns of type 0. When they are compiled 
+together, the type 1 interaction will occur, resulting in explosion in the number of states. 
+3. RELATED WORK 
+3.1 String Pattern Matching 
+ 
+Traditionally, the signatures in NID systems have been specified as pre-defined 
+strings corresponding to a set of well-known issues. Many efficient algorithms have been 
+proposed, e.g., Aho-Corasick [10] and Wu-Manber [11]. They use a pre-processed struc-
+ture to parse the input data. There are many enhancements based on their works. For 
+example, Tuck et al. have introduced the use of bitmap and path compression to reduce 
+memory requirement [12].  
+Tan et al. present the bit-split algorithm to split an Aho-Corasick automaton into 
+binary state machines to reduce the memory requirement [13]. Dharmapurikar et al. pro-
+pose a hardware architecture based on parallel Bloom filters [14]. A Bloom filter is a 
+space-efficient probabilistic data structure used to test set membership. Aldwairi et al. 
+suggest a reconfigurable memory-based accelerator [15]. The accelerator is part of a con-
+figurable network-processor architecture. The software running on a 2-wide multiple- 
+issue VLIW processor generates a finite-state machine and creates the state tables, with 
+string matching based on the Aho-Corasick algorithm. Baker et al. use a set of compara-
+tors pipelined with output flip-flops to identify data bytes [16]. 
+CHANG-CHING YANG, CHEN-MOU CHENG AND SHENG-DE WANG 
+ 
+1570 
+ 
+4. PROPOSED APPROACHES OF MATCHING 
+The basic idea of our proposed approach is to partition signature patterns into 
+groups, e.g., partitioning each signature pattern of type 0 into two parts. Then, by apply-
+ing hash algorithms and building the grouped DFA approach to the modified repeated- 
+scan matching model, we can solve the state-explosion problem discussed in section 3. 
+ 
+4.1 Motivation of Hybrid Matching 
+ 
+As we have mentioned in section 3, if we choose the one-pass-scan matching as our 
+search model, the meta-character “.*” should be prepended to the original pattern. Then, 
+if there are sub-patterns with a wildcard character and a repetition constraint to this wild-
+card character in any rule, the exponentially-sized DFA corresponding to the type 0 regu-
+lar expression is generated.  
+Hence, the question of concern is: what problems the other search model “repeated- 
+scan matching” has on the search process? The consensus is that this kind of model is in- 
+efficient to packet payload scanning processes because the chance of the packet payload 
+matching a particular pattern is considerably low [9]. In other words, if the matching 
+probability is low, then most state transitions are in vain, resulting in a low throughput. If 
+we were to try a hybrid system, the repeated-scan matching model would not be able to 
+keep up with the throughput of the one-pass-scan matching model. 
+However, if we can apply the “repeated-scan matching” model to these DFA that 
+correspond to the regular expressions of type 0, then we would be able to avoid prepend-
+ing the meta-character “.*” and break the structure of type 0. As a result, we can avoid 
+having a large amount of extra states and reduce the memory requirement directly. 
+ 
+4.2 Multi-staged Partition 
+ 
+We observe that these exponentially-sized DFA corresponding to the regular ex-
+pressions always contain one character string, which we shall call the prefix string, be-
+fore the sub-pattern with a wildcard character and its repetition constraint, e.g., the char-
+acter ‘A’ in the prototype of the exponentially-sized DFA with type 0, “.*A.{N}B”. It 
+is a key observation that if there is a string sub-pattern in the original pattern, we can 
+partition it into two parts and match the two parts sequentially. Furthermore, if the first 
+string matching fails, we can skip the second string matching. Because the probability 
+that a packet matches a particular pattern is low, most of the work will be in the first part.  
+The analysis above gives us a hint to modify the repeated-scan matching model that 
+would allow us to apply existing algorithms to the string matching process. The tradi-
+tional repeated-scan matching model processes one character and transit the DFA to the 
+next state each cycle. When transiting the DFA to a failed state, the DFA will return to 
+the position next to the starting position. However, our modified repeated-scan-matching 
+processes a string from the starting position and jumps to a position next to the starting 
+position or starts the following DFA matching process, depending on whether the string 
+matching process fails or succeeds.  
+This modification gives a chance to the repeated-scan matching model. If we guar-
+antee that we can process one character in the input packet each cycle, then we can meet 
+CHANG-CHING YANG, CHEN-MOU CHENG AND SHENG-DE WANG 
+ 
+1572 
+ 
+For instance, if there are two patterns, namely, “ABC.{10}T”, where T means the trail-
+ing sub-pattern, and “DEFG.{10}T”, then we could let the remaining part “.{10}T” 
+use the same DFA as the recognizer.  
+In this way, we can further reduce the memory cost and keep the same ability to 
+recognize signature patterns in rule sets. Finally, the matching process and the possible 
+memory look-up method are illustrated in Fig. 5. 
+ 
+Fig. 5. The proposed two-phase matching process. 
+5. IMPLEMENTATION 
+We describe our TPME implementation that works side by side with a traditional 
+DFA recognizer. Our implementation uses software-based contents pre-processing with 
+hardware-based run-time matching circuit. The maximum throughput could be up to 8h 
+characters per cycle, where h is the number of hash engines. This result can easily keep 
+up with the performance of the state-of-the-art DFA matching engines.  
+ 
+5.1 Choice of Hash Function 
+ 
+We consider three classes of hash algorithms that can be easily implemented in 
+hardware: (1) addition-multiplication-based methods, (2) bitwise operation-based meth-
+ods, and (3) cyclic redundancy check (CRC) code-based methods.  
+Some hash algorithms discard position information, whereas CRC algorithms, 
+which are widely used in error detecting and correcting context, preserves position in-
+formation as a hash function [26].  
+We experimentally compare a few commonly used hash algorithms for string hash-
+ing. The first basic-hash algorithm uses character-wise addition and multiplication op-
+erations. The second lh-strhash algorithm is from the openSSL library, which uses ex-
+clusive or (XOR) and shift operations. The third 32bit-FNV algorithm uses XORs and 
+multiplications modulo a special prime number 16777619. The last one is CRC-CCITT 
+algorithm with polynomial X16 + X12 + X5 + 1. 
+The comparison will focus on the collision rate, which is defined as the probability 
+that more than one string map to the same entry of the hash table. Our simulation gener-
+ates a large number of different strings composed of common characters with the ASCII 
+CHANG-CHING YANG, CHEN-MOU CHENG AND SHENG-DE WANG 
+ 
+1574 
+ 
+operations, resulting in lower hardware cost and shorter delay on the critical path. The 
+FNV algorithm could also be a decent choice if hardware cost is not a concern. 
+ 
+5.2 Pre-processing 
+ 
+Since our proposed approach is memory-based, we have to prepare the contents 
+stored in the memory before we can run our algorithm. We do not include this cost in this 
+paper because it does not contribute significantly to the total run-time cost. 
+ 
+5.2.1 The format of memory contents 
+ 
+We need two tables: one for hash algorithm look-up and the other for recording the 
+state transitions. The format of these two tables is shown in Fig. 7. The layout of the 
+first-stage is 24-bit wide, including 8 bits for recording the pattern information and 16 
+bits for storing the address of the corresponding entry in the state transition table. Note 
+that the entry address could be the same as any other rules when they have the same 
+starting state in the state transition table.  
+ 
+Fig. 7. The memory content layout. 
+ 
+Meanwhile, the content format of the second stage is 16-bit wide for each entry. 
+Every state has a “state property” for recording state-related information, e.g., that this 
+state is an accepted state or an intermediary state. Followed the state property field, there 
+are 128 or 256 records to store the “next state” information. The size of the records 
+should be determined by the character encoding, e.g., 128 for 7-bit ASCII code and 256 
+for 8-bit ASCII code.  
+This layout is bounded by at most 256 prefix strings and up to 65536 states in the 
+transition table. Currently these bounds appear to be sufficient but can be adjusted ac-
+cordingly as the rule sets change in the future. 
+ 
+5.2.2 Translator 
+ 
+After determining the format of the memory content, we now turn to the content it-
+CHANG-CHING YANG, CHEN-MOU CHENG AND SHENG-DE WANG 
+ 
+1576 
+ 
+ 
+ 
+5.3 Run-time Matcher 
+ 
+After preparing the memory contents, we now need to build a run-time matching 
+circuit. We use Xilinx’s ML405 FPGA evaluation board and map the two required mem-
+ory blocks to an on-chip block RAM and an off-chip SRAM. There is a hardcore 
+PowerPC 405 processor on this FPGA chip. We run test applications on this processor 
+and get the required information on the host PC via RS-232 port.  
+We note that our goal is to verify our proposed approach and maximize the through- 
+put of the matching process. The complete system architecture is illustrated in Fig. 8. The 
+dotted fields in Fig. 8 are not necessary for verifying our approach, so they are not in-
+cluded in our prototype implementation.  
+ 
+Fig. 8. Complete system architecture.
+CHANG-CHING YANG, CHEN-MOU CHENG AND SHENG-DE WANG 
+ 
+1578 
+ 
+6. EXPERIMENT RESULTS 
+6.1 Storage-cost Comparison 
+ 
+As mentioned in section 3, the complexity of the number of states of the traditional 
+DFA approach is O((k + 1)N) when processing type 0 regular expressions. Here we 
+choose four signature patterns in the Bro and Snort NID systems as the benchmark. They 
+are “.*SSH-[ \t\n][^\n]{200}”, “.*rename][^\x0a]{1024}”, 
+“.*http:\\[ \t\n][^\n]{400} ”, and “.*apop[^\x0a]{256} ”.  
+Because of the limitation in GNU flex, we have to shorten the repetition constraint 
+of signature patterns so that GNU flex can generate the corresponding state transition 
+tables. We list the results of various repetition constraints in Table 3. 
+Table 3. Comparison of number of states for four benchmark patterns. 
+ 
+Table 4. Comparison of number of states for eight benchmark patterns. 
+ 
+On other hand, when we increase the number of signature patterns by adding four 
+extra signature patterns: “.*HELO\s[^\n]{500}”, “.*PUT[^\n]{432}”, “.*file 
+\x3a\x2f\x2f[^\n]{400}”, “.*User-Agent\x3a[^\n]{216}”, the tradi-
+tional DFA approach will suffer the state-explosion problem. The result of the eight sig-
+nature patterns is shown in Table 4. 
+We observe that our proposed approach can reduce the number of required states for 
+signature patterns. As Fig. 10 shows, the storage cost of our approach is linear to the 
+repetition constraint. Furthermore, the storage cost will increase slightly when adding 
+extra patterns with the same suffix. This shows that our proposed grouping has taken 
+effect, so we can share the suffix between the different signature patterns.  
+CHANG-CHING YANG, CHEN-MOU CHENG AND SHENG-DE WANG 
+ 
+1580 
+ 
+7. CONCLUDING REMARKS 
+We have considered a class of signature patterns that could cause the state-explo- 
+sion problem using DFAs to match regular expressions. For these signature patterns, we 
+have shown that they all have a common pattern “.*A.{N}B”. When using the tradi-
+tional DFA solution, we might intend to use the one-pass-scan matching model for high- 
+speed matching processes. But for signature patterns belonging to this common type, this 
+model could have an exponentially growing memory cost. We have proposed a partition 
+method to cut a pattern into two matching stages to prevent state explosion from hap-
+pening. By adopting the partition method, we could use the modified repeated-scan 
+matching model to scan the prefix string repeatedly. Based on the low matching prob-
+ability, the remaining part matching process would not be triggered frequently. At the 
+same time, by adopting the partition method, we can also share the common suffix from 
+different signature patterns by grouping them appropriately. Finally, we construct DFA 
+with multiple entry points in order to retain the information about the partial matches 
+from the first stage. Our implementation result shows that we can achieve a throughput 
+of 1.864 gigabits per second by choosing the appropriate hash functions to match the 
+prefix string in the first stage. In additions, previous works on compressing the DFA 
+transition tables and speeding up the table look-ups can be applied to the second stage 
+directly. All in all, using TPME as a co-processing unit with the traditional DFA engine 
+could be a sound solution to implement a regular expression matching engine. 
+REFERENCES 
+1. “Snort − The de facto standard for intrusion detection/prevention,” http://www.snort.org/.   
+2. M. Roesch, “Snort-lightweight intrusion detection for networks,” in Proceedings of 
+the 13th USENIX Conference on System Administration, 1999, pp. 229-238.    
+3. “Bro intrusion detection system,” http://www.bro-ids.org/.   
+4. V. Paxson, “Bro: A system for detecting network intruders in real-time,” Computer 
+Networks, Vol. 31, 1999, pp. 2435-2463.   
+5. S. Antonatos, K. G. Anagnostakis, and E. P. Markatos, “Generating realistic work-
+loads for network intrusion detection systems,” SIGSOFT Software Engineering 
+Notes, Vol. 29, 2004, pp. 2070-215.   
+6. J. E. Hopcroft, R. Motwani, and J. D. Ullman, Introduction to Automata Theory, 
+Languages and Computation, 2nd ed., Addison-Wesley, MA, 2001.    
+7. “flex: The fast lexical analyzer,” http://flex.sourceforge.net/.   
+8. “PCRE − Perl compatible regular expressions,” http://www.pcre.org/.   
+9. F. Yu, Z. Chen, Y. Diao, T. V. Lakshman, and R. H. Katz, “Fast and memory-effi- 
+cient regular expression matching for deep packet inspection,” in Proceedings of the 
+ACM/IEEE Symposium on Architecture for Networking and Communications Sys-
+tems, 2006, pp. 93-102.   
+10. A. V. Aho and M. J. Corasick, “Efficient string matching: An aid to bibliographic 
+search,” Communications of the ACM, 1975, pp. 333-340.   
+11. S. Wu and U. Manber, “A fast algorithm for multi-pattern searching,” Technical 
+Report TR-94-17, Department of Computer Science, University of Arizona, 1994.    
+CHANG-CHING YANG, CHEN-MOU CHENG AND SHENG-DE WANG 
+ 
+1582 
+ 
+Chang-Ching Yang (楊長青) was born in Taiwan in 1984. 
+He received the B.S. degree from National Chiao Tung Univer-
+sity, Hsinchu, Taiwan, in 2006, and the M.S. degrees in Electrical 
+Engineering from National Taiwan University, Taipei, Taiwan, in 
+2008. His research interest includes embedded computing and 
+network systems. 
+ 
+ 
+ 
+ 
+ 
+ 
+Chen-Mou Cheng (鄭振牟) received his B.S. and M.S. in 
+Electrical Engineering from National Taiwan University in 1996 
+and 1998, respectively, and Ph.D. in Computer Science from Har-
+vard University in 2007. He joined the Department of Electrical 
+Engineering at National Taiwan University in 2007, where he is 
+currently an Assistant Professor. His research interest spans cryp-
+tology and cryptanalysis, information security and privacy en-
+hancement technologies, computer and wireless communication 
+networks, and high-performance embedded computing. He cur-
+rently works in the area of high-performance cryptographic com-  
+puting. 
+ 
+ 
+Sheng-De Wang (王勝德) was born in Taiwan in 1957. He 
+received the B.S. degree from National Tsing Hua University, 
+Hsinchu, Taiwan, in 1980, and the M.S. and the Ph.D. degrees in 
+Electrical Engineering from National Taiwan University, Taipei, 
+Taiwan, in 1982 and 1986, respectively. Since 1986 he has been 
+on the faculty of the Department of Electrical Engineering at Na-
+tional Taiwan University, Taipei, Taiwan, where he is currently a 
+Professor. From 1995 to 2001, he also served as the director of 
+Computer Operating Group of Computer and Information Net-
+work center, National Taiwan University. He was a visiting 
+scholar in Department of Electrical Engineering, University of Washington, Seattle dur-
+ing the academic year of 1998-1999. From 2001 to 2003, He has been served as the De-
+partment Chair of Department of Electrical Engineering, National Chi Nan University, 
+Puli, Taiwan for the 2-year appointment. His research interests include embedded sys-
+tems, reconfigurable computing, and intelligent systems. Dr. Wang is a member of the 
+Association for Computing Machinery and IEEE computer societies. He is also a mem-
+ber of Phi Tau Phi Honor society. 
+另外，目前也有使用，英特爾(Intel)的 Atom 晶片，或是安謀(ARM)的晶片架構，替以
+網路應用為主的公司，設計伺服器的報導。移動式系統使用的晶片成為伺服器的處理
+器，這種想法雖是逆向思考，但亦不無可能。 
+ 
+另外，在 SOC 設計方面，很多產品都朝多核心的設計進行，但多核心的系統會提高功
+耗，且 2D IC 的發展已達極限，在此次會議就為多場演講討論到 3D IC 的技術。國際
+半導體設備材料產業協會(SEMI)將目前 3D IC 技術分為四大類，1）3D 晶圓級封裝
+(WLP)、2）3D Stacked IC(SIC)、3）3D 系統級封裝(SiP)與 4）TSV 3D IC。其中 TSV  
+(Through Silicon Via) 3D IC 才是真正的 3D IC，Xilinx 和台積電(TSMC)最近發表的 28
+奈米製程 FPGA 堆疊晶片試製原型，就是屬於 TSV 這一類型的技術。另外，半導體設
+計廠商以記憶體為主要應用的同質整合，已積極發展，將來擴展到處理器的 3D
+技術，指日可待。  
+ 
+ 
+附件：發表之論文。 
+ multi-core processors for parallel processing and use DFAs 
+approach to control the execution. Ning and Meng proposed a 
+design scheme for a DTD-based XML parser [9]. As compared 
+to pure software solution, the hardware-accelerated approach 
+can speed up XML parsing. Zhang from XimpleWare advocates 
+processing XML on a chip [7], where a non-extractive XML 
+parsing technique called Virtual Token Descriptor (VTD) is 
+proposed. On a Core2 2.5 GHz Desktop, VTD-XML 
+outperforms DOM parsers by 5~12 folds, delivering 150~250 
+MB/sec per core sustained throughput. To enhance the system 
+performance, stream-based indexing techniques are the trend in 
+the future. Chen implemented an XML indexer based on VTD 
+algorithm to compare the performance between hardware and 
+software implementations [6]. The structure of VTD is suitable 
+for hardware processing because of its fixed and table-based 
+property. The VTD-XML parser recognizes certain types of the 
+important tokens in the XML document and generates indexes 
+to the XML document instead of extracting all the data 
+contained in the XML document. The generated indexes and 
+tokens are kept in the VTD table. The XML document together 
+with the VTD table acts like a database because of the ability of 
+indexing. The further processing or access to the XML 
+document can use this table to find out the corresponding 
+information. 
+ 
+III. UTF-8 SUPPORT 
+For international information exchange, a universal encoding 
+method to represent various literals is needed. Unicode is a 
+computing industry standard allowing computers to consistently 
+represent and manipulate text expressed in international 
+documents or messages. Unicode can be implemented by 
+different character encodings. The most commonly used 
+encodings are UTF-8. UTF-8 is a various length encoding 
+format that encodes each character in 1 to 4 bytes and each byte 
+has 0 to 4 leading 1 bits followed by a zero bit to indicate its type 
+[3]. Table 1 shows how to convert the character which is 
+Unicode encoding into UTF-8 encoding. 
+ 
+ 
+Table 1: The UTF-8 encoding format 
+In the proposed XML parsing engine, to process a UTF-8 XML 
+document, we design a finite state machine shown in Figure 2 to 
+support UTF-8 encoding, where we can see that states 0, 1, 2, 4 
+are respectively corresponding to the one-, two-, three-, and 
+four-byte encoding. 
+ 
+Figure 2: The FSM to handle UTF-8 encoding 
+IV. ABSTRACT CLASSIFICATION TABLE 
+In general, a hardware implementation prefers static data 
+structures to dynamic data structures. This paper proposes an 
+intermediate format, called Abstract Classification Table, to 
+support the random access of XML documents while using a 
+fixed tabular structure. As VTD, the Abstract Classification 
+Table (ACT) is a simple, non-extracted format for the XML 
+parser with less memory in XML navigation. The ACT is 
+table-based format which is different from event-based, SAX, or 
+tree-based, DOM, parser. The ACT extends VTD-XML with 
+hierarchical information to support better navigating ability. As 
+shown in Table 2, an ACT table contains entries of five fields, 
+namely, type, depth, length, parent, and offset. Each field 
+represents a specific token in the original document. Table 2 
+illustrates a version of ACT table with 64-bit entries. 
+ 
+ 
+Table 2: The format of Abstract Classification Table 
+The Type field indicates the type of this ACT record. There are 
+13 types to differentiate different records shown in Table 3. The 
+Depth field is to indicate the nested depth of the token in the 
+XML document. The Length field is to indicate the length of the 
+token. The Parent field is to point to the parent record of this 
+record. The Offset field is to indicate the starting offset of this 
+token in the corresponding document. Using this fixed format, 
+dynamic memory allocation is not necessary in the parsing stage. 
+The other benefit is to save enormous memory spaces, because 
+ACT does not need to store entire XML document but just 
+record their tokens as indexes. 
+V. SYSTEM ARCHITECTURE 
+The proposed system architecture for XML processing is shown 
+in Figure 3. There are three important components in our system 
+architecture. They are a testing application running on the main 
+processor PowerPC, a main memory for storing the XML 
+document and the parsed ACT table, and a hardware XML 
+accelerator. The XML document to be processed will be put on 
+the memory. As soon as XML document is ready for processing, 
+our customized application will initialize registers such as the 
+source address register, the destination address register, and the 
+document size register that are built in the hardware XML 
+468
+  
+Figure 6: The block diagram of Well-Formed Checker 
+ 
+In the current version of the architecture, we proposed 8 
+sub-modules for WFC to handling 8 error codes as shown in 
+Table 4. According to this error code, we can detect errors in the 
+given XML document in parallel. 
+ 
+ 
+Table 4: Error codes to indicate error conditions 
+ 
+The internal structure of the main XML ACT Parser can be 
+shown in Figure 7. This module is responsible for parsing XML 
+document according to our ACT algorithm. To simplify the 
+design complexity and speed up the hardware XML processing, 
+we use a parallel architecture for parsing XML document. There 
+are 11 sub-modules in the XML ACT Parser. Each sub-module 
+is responsible to its own parsing mechanism. Because there are 
+13 types in ACT entries, we have almost one sub-module to 
+processing one type of XML tokens with some exceptions. For 
+example, Parser_Xmldecl module can identify the XML 
+declaration name and the XML declaration value, so it can 
+generate two kinds of entries in the ACT table. 
+ 
+Figure 7: The block diagram of XML ACT Parser 
+ 
+To illustrate the operation of the proposed architecture, we will 
+use a sample well-formed XML document to see the 
+corresponding ACT records. Figure 8 shows a sample XML 
+document that is well-formed. Table 5 shows the corresponding 
+ACT records. There are 17 ACT records in this sample XML 
+document. 
+ 
+Figure 8: A sample well-formed XML document 
+ 
+ 
+470
+  
+Figure 10: The execution flow of software application 
+ 
+VII. EXPERIMENTAL RESULTS 
+In order to benchmark the proposed hardware XML accelerator, 
+we collect several different sample XML documents for testing. 
+Some documents are made by us and some are obtained from 
+specified website. There are total 15 sample XML documents. 
+There exist three bus operation modes to exchange data between 
+the parser and the memory module. The first is SRSW (single 
+read and single write). The second is BRSW (burst read and 
+single write). The third is BRBW (burst read and burst write). 
+Obviously, the burst beat bus mode will achieve best 
+performance. So our results will mainly based the burst read and 
+burst write mode. However, we are curious about how 
+differences are about the three. Based on these three different 
+bus modes, we present our comparison statistics in Figure 11. 
+As we can see, BRBW is almost 5 times better than SRSW, and 
+is close to the ideal value, which is 1. We obtain the best 
+Cycle/Bytes (C/B) value is 1.5 among the testing cases. Because 
+there are always extra cycles for waiting particular events or 
+getting and setting registers. That is, the Cycle/Bytes (C/B) 
+value is always bigger than 1. 
+8
+2.5
+1.7
+0
+1
+2
+3
+4
+5
+6
+7
+8
+C/B
+SRSW BRSW BRBW
+PLB Bus Mode
+PLB Bus Mode vs CB Analysis
+ 
+Figure 11: Performance on three PLB bus modes 
+ 
+Table 7 shows the comparisons of one software implementation 
+and two hardware implementations. The software part is a 
+VTD-based software implementation provided in a VTD 
+website [4]. The second is our previous implementation that is a 
+hardware XML indexer based on VTD [6]. This indexer is able 
+to parse XML document based on VTD format but do not have 
+the ability of well-formedness checking. The third is the 
+proposed hardware XML accelerator. We not only parse XML 
+documents based on the new ACT format but also do the 
+well-formedness checking. As can be seen from Table 7, the 
+proposed hardware XML accelerator is much better than the 
+existing implementations. 
+ 
+ 
+Table 7: Performance on different implementations 
+ 
+VIII. CONCLUSIONS 
+This paper presents a new table-based approach, called Abstract 
+Classification Table (ACT), to pre-process and parse an XML 
+document and generate indexes to the elements of the document. 
+An ACT table consists of records or entries to index the XML 
+document and each ACT record has 5 fields that are type, depth, 
+length, parent and offset. The table-based algorithm is suitable 
+to be implemented in hardware and the hierarchical information 
+is also captured by the field of parent, which can further support 
+the navigation. In addition to parsing XML documents, our 
+hardware accelerator implements a part of XML grammar 
+checking, called well-formedness checker (WFC), to examine 
+the syntax of the XML document. This well-formedness checker 
+is a subset of a formal grammar. It can detect syntactic faults in 
+XML documents such as XML declaration, element name and 
+value, attribute name and value, incomplete comment, 
+processing instructions and so on. Since XML has been widely 
+used in the Internet, it is important to support internationalized 
+character encoding. The proposed XML parser also supports the 
+UTF-8 various length encoding to handle different languages. In 
+order to test our hardware accelerator, we build a prototypes 
+using Xilinx FPGA platform, which implements the software 
+part using the built-in PowerPC CPU and the hardware 
+accelerator using FPGA logic elements. The burst master mode 
+can handle one byte per 1.5 cycles and achieve high 
+performance while compared to single transfer bus modes. 
+Finally, our hardware accelerated XML parser can achieve 
+206MB per second, or almost 1.67 Giga-bits per second 
+throughput, which is much faster than the existing 
+software/hardware implementations. In the future, there are 
+some post-processing actions to be done, such as XML schema 
+validation [12], XPATH [8] and so on. Most post-processing 
+tasks can be achieved by using ACT records.  
+ 
+Acknowledgement 
+     This work is partially supported under the "Project Digital 
+Convergence Service Open Platform" of the Institute for 
+Information Industry which is subsidized by the Ministry of 
+Economy Affairs of the Republic of China. 
+472
+國科會補助計畫衍生研發成果推廣資料表
+日期:2010/05/20
+國科會補助計畫
+計畫名稱: 使用可組態計算技術之適應性網路流程管理、封包分類與資料比對
+計畫主持人: 王勝德
+計畫編號: 96-2628-E-002-024-MY3 學門領域: 計算機網路與網際網路 
+研發成果名稱
+(中文) 正規表示法電路系統以及其共用方法
+(英文) A CIRCUIT SYSTEM AND COMMON METHOD OF REGULAR EXPRESSION
+成果歸屬機構
+國立臺灣大學 發明人
+(創作人)
+王勝德,王彥凱
+技術說明
+(中文) 本發明是有關於一種正規表示法電路系統以及其共用方法。該電路系統包含比較
+器、動態支援分配器比較器以及複數個非決定性狀態機。首先提供比較器以接收
+輸入訊號以及控制訊號，提供動態支援分配器以接收動態訊號，提供複數個非決
+定性狀態機以連接比較器以及動態支援分配器，而複數個非決定性狀態機係根據
+輸入訊號分別輸出一樣式(pattern)，比較器判斷該輸入訊號內之資料，並將輸
+入料中之共用字元建立於一共用字元表中，藉由該共用字元表降低邏輯電路之數
+目。
+(英文) A circuit system and command method of regular expression is provided. A dynamic 
+assign is provided for receiving a dynamic signal. A plurality of non-determined state are 
+provided for connecting with comparator and dynamic assign. The plurality of non-
+determined states outputs a pattern in accordance with the input signal. The data of the 
+input signal is determined by the comparator, and the common character is selected and 
+listed in the common table. Then the number of the logic is decreased by using the 
+common table. 
+產業別 其他專業、科學及技術服務業；資訊服務業
+技術/產品應用範圍
+技術移轉可行性及
+預期效益
+註：本項研發成果若尚未申請專利，請勿揭露可申請專利之主要內容。
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+衍生產學計畫一件。 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

@@ -1,0 +1,346 @@
+ II
+ 
+摘要 
+本計劃旨在發展一種適用於測距電驛的數位濾波演算法以及其現場可程式閘陣列的晶片
+設計。本計劃混合時域的差分方程式與頻域的離散傅立葉轉換演算法為基礎，發展出一種可即
+時在時域的電流波型之中移除衰減直流成分，並計算出測距電驛所需的視在阻抗的濾波演算
+法。由於本計劃所發展之演算法利用線路參數估算的概念以取代常用的精確分析電流波型參數
+估算的概念。因此本計劃所發展的演算法可以不受實際波型的內含之影響，而不會有常用之濾
+波演算法可能面臨的數值發散之問題。與常用的數位濾波演算法和 Mimic 濾波演算法相比較，
+本計劃所提出的演算法更具有強健性，也較適用於實際的輸電線濾波環境。其次本計劃利用
+FPGA 為開發平台以實現所提出之濾波演算法之晶片。由於本演算法同時包含時域與頻域的計
+算，因此本計劃分別利用兩種快慢不同時脈，並以同步時脈的技術以完成晶片的設計。本計劃
+最後利用 MATLAB/SIMULINK 與 QUARTUS II 環境分別驗證所提出之演算法以及所設計之晶
+片。由結果可知，所提出之演算法可以快速而正確的移除衰減直流成分並計算出測距阻抗，晶
+片運算結果亦符合理論之預估，未來應可應用至實際之電力故障訊號之濾波應用。 
+關鍵字：測距電驛、現場可程式閘陣列、差分方程式、離散傅立葉轉換 
+ 
+ 
+ 1
+一、緣由與目的 
+在高壓/超高壓輸電網之中，測距電驛是最常用於保護輸電線的設備。藉著儘快的計算出正
+確的線路阻抗值，我們可以即時的決定適合的保護區間，並且增加保護系統的可靠性。在測距
+電驛之中最重要的部份就是數位濾波單元，其主要的目地是將故障量測訊號之中不需要的成分
+濾除，並計算出正確的電壓與電流的基頻相量，以及測距保護需要的視在阻抗(Apparatus 
+Impedance)值[1]。然而在故障發生之後，故障電壓與電流的量測值之中大多含有大量衰減直流
+成分。衰減直流成分的量由其衰減時間常數與直流值的大小兩個未知數所決定。而衰減時間常
+數主要由故障線路的 X/R 值(電抗與電阻的比值)所決定，而直流值的大小則與故障的導入角有
+關。在高阻抗接地故障時，兩個未知數的大小均很小；但是在低阻抗接地故障時，兩個未知數
+的大小均很大。因此低阻抗接地故障所含有的衰減直流成分對於故護系統所造成的問題將較為
+嚴重[1]。 
+在近十年的研究之中，許多的研究人員專注於以上所提到的問題加以研究，並提出許多方法
+以解決衰減直流成分本身的問題。例如由 Benomouyal 所提出的數位 mimic 濾波器[2]，該濾波
+器利用預先設定的衰減時間常數進行故障電流的濾波，其效果可以濾除一部分的衰減直流成
+分。另一方面，以離散傅立葉轉換(Discrete Fourier Transform, DFT)[3,4]為基礎的濾波演算法則
+以精確的估算衰減直流成分的兩個未知數為研究的目標，其結果可以完全的濾波衰減直流成
+分，並達到另人滿意的結果。另外也有以最小平方差為基礎的演算法[5]，以及以卡曼濾波器為
+基礎的演算法[6]。若將以上的演算法應用至測距電驛系統之中，其架構將如圖一所示。首先分
+別針對故障電壓與電流濾波以移除含於其中的衰減直流成分，並分別計算出正確的電壓與電流
+的基頻相量。之後再利用電壓與電流的相量計算測距阻抗。然而測距電驛的主要目的不是要計
+算正確的電壓與電流之基頻相量，而是要得到正確的測距阻抗計算。因此圖一所提出的計算內
+容應該可以進一步的簡化。本計劃擬針對以上的架構加以簡化，並提出一種新的測距阻抗計算
+架構。 
+移除衰減直流成分
+並計算基頻相量
+故障電壓即
+時量測值
+正確的電
+壓相量
+故障電流即
+時量測值
+測距阻抗
+計算
+測距阻抗
+輸出
+移除衰減直流成分
+並計算基頻相量
+正確的
+電流相
+量
+ 
+圖一、傳統測距電驛的濾波架構 
+ 3
+我們利用圖二的短程輸電線以說明所提出的演算法。此一輸電線由電阻 R1 與 R2, 和電感 L1 
+與 L2 所構成。負載假定為固定阻抗負載(Rload 與 Lload)。測距電驛的量測值分別為端電壓 VT(t) 
+與線電流 IT(t)。在端電壓 VT 後面的戴維寧電源阻抗是 ZS。在時間 t0 之前，開關 SW 保持開啟，
+端電壓與線電流均保持純正弦波；在時間 t0 之後，我們藉由將開關 SW 關閉以模擬一直接接地
+故障，此時的端電壓與線電流的關係式可利用如下的關係式表示： 
+1 1( ) ( ) (R L )= × +T TV s I s s   (1) 
+S 1 1 1 1
+( ) ( )( )
+(Z ( ) R L ) (R L )
+S T
+T
+V s V sI s
+s s s
+= =+ + + .  (2) 
+我們可分別對(1)式與(2)式執行反拉式(inverse-Laplace)轉換以得到端電壓與線電流的時域關
+係。很明顯的，包含於電壓與電流時域波型之中衰減直流成分的時間常數是不同的。如果我們
+能得到參數 1 1(R L )+ s ，則含在電流 ( )TI s 之中的衰減直流成分可以經由對 ( )TI s 乘上 1 1(R L )s+ 加
+以移除。為了得到參數 1 1(R L )+ s ，我們對參數 ( )TI s 乘上 1 1K(1 L R )s+ 以定義一新變數 ( )TI s′ 如下： 
+1
+1 1
+L K( ) ( ) K(1 ) ( )
+R RT T T
+I s I s s V s′ = × + = ,  (3) 
+其中參數 K 用以維持兩變數 ( )TI s′ 與 ( )TI s 在基頻時的大小不變。如此一來，我們可以令變數 VT(s) 
+與 ( )TI s′ 在時域時具有相同的暫態響應，並利用單一運算式(3)以完成移除電壓與電流之間的衰減
+直流成分的目標。很明顯，以上的計算類似於數位模擬濾波器。然而本演算法的目標是使得電
+壓與電流具有相同的暫態響應。(3)式的時域響應可利用下式表示： 
+1
+1
+L ( )( ) K[ ( ) ]
+R
+T
+T T
+dI tI t I t
+dt
+′ = + .  (4) 
+如果取樣頻率為 1Sf t= Δ ，第 mth 個電流 ( )TI t 的取樣值表示為 ( ) ( )T m TI I m t= Δ 。藉由 backward 
+rectangular 規則[9]，我們可得到(4)式的離散表示式如下： 
+ 5
+1 1
+1 2 21 1 1 1 1 1 1
+( j ) ( j )( j )
+(R j L ) R ( L )
+T T
+T
+V VI ω ωω = =+ ω + ω ∠ϕ
+, (11) 
+其中，角度 11 1 1 1tan ( L R )−ϕ = ω 。很明顯的，角度 1ϕ 可以利用 TV 與 TI 之間的角度差而決定：  
+1 1 1( j ) ( j )T TV Iϕ = ∠ ω −∠ ω . (12) 
+最後，線路參數 1 1L R 可利用下式求得： 
+1 1 1 1
+1 1 1
+L tan( ) tan( ( j ) ( j ))
+R
+T TV Iϕ ∠ ω −∠ ω= =ω ω . (13) 
+若考慮 TI 與 TI ′ 之間的角度差，變數 1 1L R 可利用下式求得： 
+1 i
+1 1
+1 r
+1 1
+Ktan( ( j ) tan ( ) ( j ))
+L K
+R
+T TV I
+− ′∠ ω + −∠ ω
+= ω . (14) 
+其中， 1( j )TV∠ ω 與 1( j )TI ′∠ ω 可以很容易的利用全週離散傅立葉轉換(Full Cycle Discrete Fourier 
+Transform, FCDFT)。 
+  利用以上的方程式，我們將本研究所發展的演算法利用圖三表示，其中的 Adaptive mimic filter 
+unit 可利用(5)式實現，而 Line parameters estimation unit 則可以利用(14)式實現。角度 vθ 與 iθ 分
+別代表變數 1( j )TV∠ ω 與 1( j )TI ′∠ ω 。線電流的取樣 T mI ( )送至 adaptive mimic filter unit 以計算新變
+數 ( )T mI ′ 。 
+vθ
+iθ
+( , )v vX θ
+( , )i iX θ
+( )T mI ′
+ 
+圖三、本論文所發展之演算法的實現方式 
+ 7
+0 2 4 6 8 10 12 14 16
+-1
+-0.8
+-0.6
+-0.4
+-0.2
+0
+0.2
+0.4
+0.6
+0.8
+1
+0 2 4 6 8 10 12 14 16
+-1
+-0.8
+-0.6
+-0.4
+-0.2
+0
+0.2
+0.4
+0.6
+0.8
+1
+0 2 4 6 8 10 12 14 16
+-1
+-0.8
+-0.6
+-0.4
+-0.2
+0
+0.2
+0.4
+0.6
+0.8
+1
+0 2 4 6 8 10 12 14 16
+-1
+-0.8
+-0.6
+-0.4
+-0.2
+0
+0.2
+0.4
+0.6
+0.8
+1
+)16(I~)1(I '' )16(V~)1(V '
+ 
+圖四、濾波晶片之硬體架構圖 
+硬體架構圖上的 mov(位移暫存器)時脈皆是由 dftclk 觸發的，其他 module 則是由 clk 觸發，說
+明則分為五個部份，如圖四虛線所標示。 
+(1)首先 V 與 I 取樣點的輸入，當第一個慢速 dftclk 觸發時則 V 與 I 的第一個取樣點分別送入
+第一個 mov，當第二個 dftclk 觸發時 V 與 I 的第二個取樣點再送入第一個 mov(位移暫存器) ，
+而本來第一個 mov 的值送入第二個 mov 內，直到電流的 17 個 mov 與電壓的 16 個 mov 皆有值
+時，而這些值再下一個 dftclk 觸發時皆是固定的，此時快速的 clk 則一直觸發，則其他的 module
+開始依序動作。 
+(2)首先 itnew 1 取 I 的 mov 1(it(m-1))與 mov 2(it(m))和 ttda 與 k 的參數運算出第一個修正後的
+I(itnew1)，其中 ttda 與 k 剛開始時皆設初值，而 itnew 2 取 I 的 mov 2 與 mov 3 和同樣的 ttda 與
+k 的參數運算出第二個修正後的 I(itnew2)，依序可算出 16 個修正後的 I。 
+(3)當得到修正後的 16 個 it 與 mov 的 16 個 V 後，開始將兩這 16 個值分別乘上 cos 與 sin 的
+16 個基底，如圖分別可得到 ir、ii、vr 與 vi，而 CORDIC 再算出電流的大小 Ir 與角度 Iθ 與電壓
+的大小 Vr 與角度 Vθ。 
+(4)當得到電流的角度 Iθ 與電壓的角度 Vθ 時，則 tan module 會將電壓的角度 Vθ 減電流的角
+ 9
+ZS=0.2+j6(Ω), R=1(Ω), X/R=5, Vs=110×sin(377t) (V)。測距保護的量測變數為 VT 與 IT，測距阻
+抗利用下式計算： 
+v
+app
+i
+XZ
+X
+∠= ∠
+v
+i
+θ
+θ            (15) 
+為了比較本計劃所提出之演算法的效果，我們另外也將 Mimic filter + FCDFT[2] (固定時間
+常 數設定為 1.5 週期) 以及 Gu 與 Yu [3]所提出的演算法一同模擬以進行結果的比較。首先，
+我們設定不同的 X/R 比值(XR = 1, 5, 10, 20)以進行比較。之後，我們分別在電壓與電流的量測
+訊號之中加入 MATLAB 之中利用 rand 所產生的隨機雜訊。雜訊的大小則設定為符合不同的訊
+號雜訊比(Signal-to-Noise Ratios, SNR)(分別為 SNR=40dB, 60dB，與 80dB)。同時，我們定義兩
+個性能指標 PRMSE 與 PPE 以表示運算結果的好壞。 
+第一個性能指標是 percentage root-mean-square error (PRMSE) 其定義如下： 
+n N 1
+th 2
+k n
+(k Filter output Steady state value) N
+PRMSE 100%
+Steady state value
++ −
+=
+−
+= ×
+∑
+. (16) 
+第二個性能指標是 percentage peak error (PPE) 其定義如下： 
+Max Filter output Steady state value
+PPE 100%
+Steady state value
+−= × ,  (17) 
+    圖七描述不同 SNR 值的濾波效果。由結果可知，“FCDFT+mimic filter” 的誤差約為本計劃
+所提出之演算法的兩位。同時，由於 Gu 與 Yu 所提出之演算是一種參數估測的演算法，因此
+其結果與 SNR 比值有很大的關係。隨著愈小的 SNR 條件，其計算的結果有較差的精確度。 
+ 11
+ 
+圖九、測距電驛合成方塊圖 
+整體電路在 FPGA 之實現: 
+Family: Cyclone2       
+Device: EP2C70F672C6 
+Logic Element: 19917/68416(29%)      
+Totalpins: 410/422(97%) 
+Fmax: 0.04GHz(period=25nsec) 
+ 
+圖十、濾波晶片波形圖時序 
+ 
+    圖十中的波形是利用晶片模擬所實際模擬出的波形，圖中的(1)至(5)分別對應到圖四的(1)
+至(5)。我們分別將電壓與電流的濾波結果畫出於圖十一所示。 
+ 13
+本研究經費承蒙國科會計畫補助，計畫編號：NSC95-2221-E-606-038，特此致謝。 
+參考文獻 
+[1] A.G. Phadke and J.S. Thorp, Computer Relaying For Power Systems, John Wiley & Sons, 1988. 
+[2] Benmouyal, G, 1995, “Removal of DC-Offset in Current Waveforms Using Digital Mimic 
+Filtering," IEEE Transactions on Power Delivery, vol. 10, no. 2,  pp. 621-630. 
+[3] Gu, J. C. and Yu, S. L., 2000, “Removal of DC offset in Current and Voltage Signals Using a 
+Novel Fourier Filter Algorithm," IEEE Transactions on Power Delivery, vol. 15, no. 1,  pp. 
+73-79. 
+[4] Guo, Yong, Kezunovic, Mladen, and Chen, Deshu, 2003, “Simplified Algorithms for Removal of 
+the Effect of Exponentially Decaying DC-Offset on the Fourier Algorithm,” IEEE Transactions 
+on Power Delivery, vol.18, no.3, pp.711-717. 
+[5] Rosołowski, E., Iżykowski, J., and Kasztenny, B., 2001, “Adaptive measuring algorithm 
+suppressing a decaying DC component for digital protective relays,” Electric Power Systems 
+Research. 60, pp. 99-105. 
+[6] Sachdev, M. S., Wood, H. C., and Johnson, N. G., 1985, “Kalman filtering applied to power 
+system measurements for relaying,” IEEE Transactions on Power Apparatus and Systems, vol. 
+PAS-104, no. 12, pp. 3565–3573. 
+[7] Meyer-Baese Uwe, 2003, Digital Signal Processing with Field Programmable Gate Arrays, 
+Springer, USA. 
+[8] Altera Company, Quartus II Development Software Handbook, Version 4.0, May 2004. 
+[9] Franklin, G. F., 1998, Digital Control of Dynamic Systems, the 3rd edition, Prentice Hall, USA. 
+[10] A. Biran and M. Breiner, MATLAB® for Engineers, Addison-Wesley Publishing Company, 1996. 
+[11] MATLAB, 2002, Power System Blockset User’s Guide, The Math Works, Inc., USA. 
+ 15
+the Decaying Dc Effects in Distance Protection,” The 27th Symposium on electrical power 
+engineering, Hsinchu, Taiwan, 2006 
+ 2
+報告內容: 
+一、 參加會議過程 
+    本研討會是由韓國每兩年固定舉辦一項有關於電力系統保護的重要研討
+會，投稿過程必需經過幾乎完整的全文審稿，投稿者必需在第一階段投出二
+千字以上的初稿，經過核可以後方可進行最後的投稿。所有經審訂接受之文
+章必需在會議中以口頭發表。與會人士為世界各地在電力系統保護方面研究
+的技術先進人員。由於專門為電力系統保護而舉辦的研討會相當的少，因此
+APAP 每兩年的聚會總能吸引許多的電力先進參與其中。經由參與並發表本次
+有關於國科會的研究成果，不但可以了目前世界上電力系統保護工程的最新
+技術發展現況，也可讓世界上其它地區的研究機構了解我國有關於電腦電驛
+的數位濾波方面之研究成果，並經由會議的討論過程之中可以達到技術交流
+的目的。 
+  本人四月二十三日於桃園中正機場搭乘遠航 EF708 班機直飛韓國濟洲
+島，於當地時間四月二十三日中午 12:40 到達。由於濟洲島目前已經成為我
+國前往大陸的一個重要轉機點，所以班機的數量相當密集。本次會議於韓國
+濟洲島市區的 Ramada Plaza 飯店舉行，其地點距離機場僅約 15 分鐘的車
+程，來回亦相當的方便。議程時間由四月二十四日開始至四月二十七日共四
+天，會議內容包含以下之項目： 
+z IEC 61850 and Substation Automation System 
+z Protection Relays and Control IEDs 
+z Distribution Automation 
+z Railway System Protection and Automation 
+z Communication Network and Protocol for Power Systems 
+z Electrical Safety 
+z Operational Softwares and Human-Man Interface 
+z Protection for FACTS, HVDC systems 
+z Distributed Generation P&C 
+ 4
+ 
+本人此次投稿一篇論文「A New Mimic Filtering Scheme for Distance 
+Relay Applications」，其內容是有關於一種適用於測距電驛的濾波演算法。很
+榮幸本人的論文安排在 Oral Section 1，Chairman 是由保護電驛領域的先進
+Mohindar S. Sachdev 擔任，Sachdev 除了是 IEEE 的 Life Fellow 之外，也
+在保護領域發表了數十篇的 Transaction 論文，其主持的風範令我受益良多。
+在完成口頭報告之後，亦有數位研究人員針對本人的研究成果提出意見與討
+論。由於時間有限，我們亦於會後進行了更進一步的討論。 
+本次會議除了領取相關證件及資料外，並至其它議場聽取其它相關研究領
+域人員的報告，並與會場之中各國研究人員交換心得。此外，本次會議的場
+商參加亦十分多，其中加拿大的 RTDS 公司更是首次有機會與其工程師討論
+相關的研究概念，其過程對於我日後可能會進行的 RTDS(Real Time Digital 
+Simulator) 研究有相當大的幫助。會議結束後於當地時間四月二十四日搭遠
+航 EF711 班機直飛台北中正機場。 
+二、 與會心得 
+玆將出席本次會議心得分述如下： 
+1. 會中與各國專家學者交換意見。其中與波蘭、韓國、美國與東南亞各國
+之教授交換部分研究心得，並收獲良多。與會學者並有多人針對該國實
+際之電力保護問題提出討論。其中韓國以國家的力量對於電力系統保護
+相關研究所提供的金費令我印象深刻，而其大量的研究成果也值得我國
+政府日後金費運用的參考。 
+2. 瞭解韓國電力研究單位的運作情形，收獲良多。 
+3. Energy 與 Power Quality 仍為電力的熱門話題，今年亦有多篇相關論
+文，此亦為目前各國發展之趨勢，我國在此方面也有相當之成果，但其
+未來之趨勢為我們應努力之處。 
+4. 由於保護電驛在我國為較冷門的研究領域，本次會議我國參與之人數在
+全部發表的文章之中的比例較少，相較於全世界對於先進電力系統保護
+設備所投注的人員與金費，我國在此一領域仍有相當大的努力空間。 
+ 

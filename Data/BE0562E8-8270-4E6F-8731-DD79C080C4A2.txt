@@ -1,0 +1,410 @@
+In this project, we exploit inherent parallelism 
+exhibits in an architectural simulator itself. As 
+almost all of the high-performance processors need to 
+explore instruction-level parallelism to accommodate 
+fast clock rate. All successful and popular micro-
+architectures all have long instruction pipelines 
+with multiple-issue capability. Such inherence 
+parallelism in the architectural design should be 
+reflected in the simulator itself and could be 
+exploit for accelerating architectural simulation as 
+well. Instead of parallelizing the simulator by 
+mapping each individual pipeline model onto different 
+threads as several pervious works, we map the same 
+pipeline stages from different pipelines onto the 
+same core. The benefit of this approach is two-fold: 
+first, the new grouping methodology enables us to 
+extract more parallelism from the pipelines itself in 
+addition to the parallelism between cores. Second, 
+grouping same pipeline stage together actually solves 
+the problem of the large overhead of the 
+bidirectional synchronization required by 
+conventional core-partitioned parallel simulator. 
+英文關鍵詞： Parallel Simulation,,Multicore System Design 
+ 
+子計畫一：多核平台上細部平行模擬多核處理機的技術研發 
+ 2 
+目錄 (Contents) 
+中英文摘要..........................................................................................................3 
+中文摘要 ..............................................................3 
+Abstract...............................................................4 
+一、前言...............................................................................................................5 
+二、研究目的......................................................................................................6 
+三、文獻探討......................................................................................................7 
+四、研究方法......................................................................................................9  
+1. Cycle-Accurate Simulation …………………...........................................................9 
+2. Pipeline-Partitioned Parallel Simulaton ……..…………….….………………..………14 
+五、結果與討論….............................................................................................17  
+六、參考文獻………..........................................................................................22 
+子計畫一：多核平台上細部平行模擬多核處理機的技術研發 
+ 4 
+Abstract  
+Simulations are required for all architectural designs, compiler research and development on yet-existed 
+targeted architectures, and application development for new platforms still under design. However, such 
+simulations are notoriously time consuming. Simulating SPEC2006 benchmarks suite using the popular 
+SimpleScalar simulator could take months on today’s platforms. Using sampling-techniques such as SimPoint 
+and SMARTS could still be extremely time-consuming. With the advent of multicores, the number of cores 
+will grow exponentially as Moore’s Law will continue in the foreseeable future (doubling every 2 years or so). 
+This will only exacerbate the required simulation time as we move from designing single-core processors to 
+multicore systems. 
+One way to accelerate such simulations is to run such simulations on multi-core platforms. There have 
+been several attempts in the past to accelerate such simulators on multi-processors. Most of those parallel 
+simulators have only limited success. One of the major reasons was the long communication delay between 
+processors that could slow down the overall performance. However, with the advent of multi-core platforms, 
+such simulators have a much better chance with fast communication mechanism on chip. 
+In this project, we exploit inherent parallelism exhibits in an architectural simulator itself. As almost all 
+of the high-performance processors need to explore instruction-level parallelism to accommodate fast clock 
+rate. All successful and popular micro-architectures all have long instruction pipelines with multiple-issue 
+capability. Such inherence parallelism in the architectural design should be reflected in the simulator itself and 
+could be exploit for accelerating architectural simulation as well. Instead of parallelizing the simulator by 
+mapping each individual pipeline model onto different threads as several pervious works, we map the same 
+pipeline stages from different pipelines onto the same core. The benefit of this approach is two-fold: first, the 
+new grouping methodology enables us to extract more parallelism from the pipelines itself in addition to the 
+parallelism between cores. Second, grouping same pipeline stage together actually solves the problem of the 
+large overhead of the bidirectional synchronization required by conventional core-partitioned parallel 
+simulator.  
+Keywords- Cycle-Accurate Simulator, Multicore, Parallelization 
+子計畫一：多核平台上細部平行模擬多核處理機的技術研發 
+ 6 
+“mis-speculation” occurred is still a very valid technique used in some of the recent approaches. 
+ 
+二、 研究目的  
+ 
+Simulation has been essential to both system evaluation and architecture exploration for the last few 
+decades. In the past, many simulators with different purposes have been proposed. For example, functional 
+simulators, such as QEMU[20], emulate the behavior of instructions to help developers verifying the 
+functional correctness of the target platforms or software. Since the functional simulation only emulates the 
+instruction stream, it keeps no precise timing information which is critical for performance evaluation. 
+Cycle-accurate simulators, such as PTLsim[12], not only emulate the instruction behavior but simulate nearly 
+the whole instruction pipeline and memory hierarchies in details. The timing information has been kept 
+throughout the simulation process by maintaining a proper virtual clock time and simulating the instructions 
+in a cycle-by-cycle fashion. The precise cycle-accurate timing information could be used to not only evaluate 
+the system performance but also analyze the timing and thermal issues of target system.  
+However, to maintain cycle-accurate characteristic, simulators have to make sure that there is no timing 
+violation throughout the whole simulation process. That is, all the events are handled and propagate to target 
+components in the correct order which means all its dependent events are already been handled. This is the 
+reason why cycle-accurate simulation are notorious for its extremely slow simulation speed, for it has to 
+carefully pace the simulation cycle-by-cycle to ensure timing correctness.  Lack of high performance 
+simulator not only slowdown the design space exploration but limit the development of new architecture as 
+well. As the number of cores continues to increase exponentially on multicores, the required simulation effort 
+will also increase exponentially as expected.  
+To improve the simulation performance, parallel simulators which exploit the computation power provided 
+by multicore platform are strongly required. Several recent works such as COREMU[4], RAMP[13], and 
+Graphite[7] have already parallelized both the functional and cycle-accurate simulation with different 
+methodologies and shorten the simulation time. These parallel simulators either require expensive 
+Field-Programmable Field Array (FPGA) as simulation platform or allow timing inaccuracy of a fix slack of 
+cycles to reduce synchronization overhead. However, in order to use FPGA as simulation platform, 
+developers have to build the simulator with hardware description language that forces them to provide detail 
+hardware specification in the early stage of development. Also, as the technology scaling with Moore’s 
+Law[21], both the power and thermal issues continually get more focus nowadays. Since the power and 
+thermal estimations rely on highly accurate timing information, the parallel simulator which allows 
+synchronization per fix cycle to trade the simulation accuracy for speed may not be an adequate candidate for 
+子計畫一：多核平台上細部平行模擬多核處理機的技術研發 
+ 8 
+ Some researches claim that the sequential characteristic of software approaches makes it even more 
+difficult to provide high speed parallel simulation. Therefore, RAMP Gold[13], FAST[8], and HASim[14] 
+propose that using FPGA could help solving this problem with its hardware concurrency nature. FAST 
+divides the simulation process into two different models, a functional model running on conventional servers 
+which emulate the function of simulation instructions and a timing model running on FPGA to simulate 
+micro-architectural components related to timing and resource usage. The software model feeds instruction 
+traces to the timing model FPGA, and FPGA adds timing information and detect violations to rollback the 
+functional simulation. RAMP Gold and HASim use the similar approach as FAST, but running both models 
+on FPGA. Although these methods show noticeable simulation time reduction, it also requires expensive 
+FPGA board as simulation platform comparing to other software approaches. Nevertheless, simulating with 
+FPGA requires detail RTL coding which complicates the target modeling and increase the time spending on 
+implementation. 
+ 
+ One of the main problems of parallelizing conventional software-based simulator is that the frequent 
+needs of synchronization such as memory hierarchy accesses. Jianwei et al.[11] proposed a slack-based 
+parallel simulation methodology which simulates each core of target chip multiprocessor cycle-by cycle in 
+each separate thread and allows these threads become asynchronous in a predefined slack cycle. In other 
+words, the simulation cores do not synchronize with each other in each cycle, but only synchronize when the 
+cycle difference of these threads have reached a predefined slack cycle. In advance, the author enhances the 
+slack simulation with adaptive slack scheme which feedbacks the simulation violation information to tune 
+slack size adaptively. Once the simulation violation is detected, the speculation mechanism rollback 
+simulation. Graphite[7] is a Pin-based simulator with similar approach which aims to estimate the 
+performance and other hardware statistics accurately without simulating with cycle-level details. Graphite 
+provides three different slack management mechanism with different accuracy level including a new 
+synchronization model, LaxP2P, that each tile periodically choose a random tile to synchronize with it. 
+Authors emphasizes on parallelizing the simulator onto distributed host platform. However, it simulates data 
+communication behavior with mathematical queuing model rather than detail cycle-accurate simulation, 
+which may makes it unable to provide the accurate performance statistic when memory access latency 
+becomes even more critical to performance. PCAsim[18] is another slack-based parallel cycle-accurate 
+multicore simulator based on the well-known sequential simulator, SimpleScalar[23]. It addresses the barrier 
+synchronization problem caused by slack mechanism with a new pending barrier method by predicting 
+timestamp of future bending barriers. Mieszko et al.[16] propose a parallel highly configurable cycle-level 
+multicore simulator, HORNET, which mainly focus on the NoC architecture and be able to model power and 
+子計畫一：多核平台上細部平行模擬多核處理機的技術研發 
+ 10 
+Cycle-accurate simulation has been used to produce detail performance, power, and thermal statistics 
+of future architectures, and thus allowing innovative software development or architecture research before 
+the hardware is available. A conventional cycle-accurate simulator simulates a complete instruction 
+pipeline with architecture components such as physical register, reorder buffer, and branch predictor. 
+Some simulators even simulate the memory hierarchy and network interface to fulfill simulation needs of 
+different research fields. Simulating the complex instruction pipeline and other components in details 
+demands even higher computation power than functional simulators. What makes matter worse is that, 
+according to previous works, the simulation time of cycle-accurate multicore simulation scales much 
+more than linear scaling to the numbers of simulated cores. To cope with this problem, the academy 
+developed many highly optimized simulators such as PTLsim and Simics, and also relying on the more 
+powerful new processing unit of simulating platform to provide the required computation power. 
+However, as the industry fails to extract more instruction-level parallelism and scale the core frequency to 
+provide even higher performance with uniprocessor, multicore architecture has gained much attention and 
+appeared to be an attractive approach in the last decade. Therefore, to fully utilize the computation power 
+provided by multicore, parallelize exiting sequential simulator or develop a new parallel simulator is a 
+pressing matter of the moment nowadays. We believe that the key to successfully develop a high 
+performance parallel simulator is to first understand the opportunities and the difficulties of parallelizing 
+it.  
+ 
+ 
+ 
+Fig. 1.  Simplified Data and Control Path of Major stages in PTLsim Instruction Pipeline Model. The data 
+pass from the first fetch stage to the commit stage in most cases. To deal with the data forwarding 
+mechanism, the transfer and writeback stages forward output data back to dispatch and issue stages.  
+  
+子計畫一：多核平台上細部平行模擬多核處理機的技術研發 
+ 12 
+hierarchy modeling. A common multicore architecture such as Intel Nahelem i7 has been 
+shown is Figure 2. As we can tell from this picture, cores in a common multicore architecture 
+usually share the lower level of memory hierarchy such as L2, L3 cache, or the off-chip 
+memory modules. Since each simulated core could send requests and receive responses from 
+the memory hierarchy, these memory actions should always be synchronized to all cores 
+throughout the simulation. We can handle this quite straightforward in a sequential simulator 
+by moving the memory module outside the instruction pipelines and handling these request 
+after all simulated core finished at the end of each cycle.  
+ 
+A-2. The Opportunities of Parallelizing Conventional Multicore Cycle-Accurate 
+Simulator 
+To parallelize a cycle-accurate simulator, we should first understand if there is inherent 
+parallelism in a hardware pipeline. Since the hardware pipeline stages are designed to run 
+parallel in each cycle, this implies that we can take advantage from the inherently characteristic 
+of the hardware pipeline. One of the key reasons that hardware pipeline exhibits inherent 
+parallelism is the latch between stages, for its edge triggering characteristic enables parallel 
+stage execution. Therefore, in order to exploit the similar parallelism inside a parallel simulator, 
+a software-implemented latch-like data structure between modeled stages is strongly required. 
+The reason why conventional cycle-accurate simulator does not model the latch is that 
+modeling actual data passing in a sequential simulator could neither improve the accuracy nor 
+ 
+Fig. 3.  Conceptual View of Conventional Core Parallelized Multicore Simulator 
+  
+子計畫一：多核平台上細部平行模擬多核處理機的技術研發 
+ 14 
+ 
+B. Pipeline-Partitioned Parallel Simulator 
+ 
+A pipeline-partitioned parallel simulator aims to extract the parallelism between pipeline stages 
+inherently. To achieve this goal, instead of mapping the instruction pipeline of individual simulated 
+core onto threads, we group the same pipeline stage from different cores onto the same thread and pass 
+the data between threads as the actual dataflow in a hardware pipeline. We modify a multicore 
+simulator, MARSS, to realize our pipeline-partitioned methodology. MARSS is a full system 
+multicore simulator based on two well-known simulation tools, PTLsim and QEMU. MARSS 
+implements the communication interface between PTLsim and QEMU to enable a seamless switch 
+between functional emulation and cycle-accurate simulation. Our modification is mainly focus on 
+cycle-accurate pipeline provided by PTLsim.  
+In a conventional sequential multicore simulator, many hardware components and working 
+behavior have been simplified. This is because that implementing all the details of the target 
+architecture usually leads to large memory footprint and resources wastes. However, without modeling 
+all the hardware components in a software simulator, conventional simulators lose the opportunity to 
+simulate all the pipeline stages concurrently as the hardware does. Hence, in order to exploit the 
+inherent parallelism between hardware pipeline stages, that is, to enable the parallel execution between 
+stages, it will require a close look to the hardware architecture implementations to identify the key 
+component of parallel stage execution.To develop our pipeline-partition cycle-accurate simulator 
+based on MARSS, we have faced some classical issues of parallelizing an existing simulator and 
+                              
+Fig. 5.  Stage Partition based on the load balancing and the communication behavior considerations 
+  
+子計畫一：多核平台上細部平行模擬多核處理機的技術研發 
+ 16 
+processing in each cycle. The edge triggering characteristic and its two stable states design 
+enable latches to provide concurrent read/write accesses in the same cycle. In a hardware 
+pipeline, each pipeline stage with precedent stages will write the data required by the precedent 
+stage into the latch when the precedent stage read the data written in the last cycle from the 
+same latch at the same time. However, in a conventional simulator, instead of implementing 
+latch structure inside their instruction pipeline for instruction or data passing between stages, 
+the developers usually enable each pipeline stage to directly access the data it need. In fact, this 
+implementation is quite reasonable, for there would be no concurrent access to these data 
+which is shared by numbers of stages in a sequential software approach. Implementing latches 
+between stages to simulate the hardware dataflow not only do no good to improve the 
+simulation accuracy but also waste the physical memory space and suffer from overhead of 
+unnecessary data passing. Nevertheless, when the need of parallel simulators emerges, we need 
+to take another careful evaluation to decide if modeling latch is still an unnecessary waste.  
+To enable parallel simulation of different pipeline stages, there are two obvious questions 
+to ask. The first question is  how to pass the data through the entire pipeline stage when all 
+stages might access these data from different threads at the same time. Since the hardware 
+design has already find latches as a good solution to this issue, we model the latch-like data 
+structure between pipeline stages with the double-buffering concept illustrated in Figure 6. 
+Each latch is composed by two separate link lists which play the role as the two stable states in 
+the real hardware latch. In each simulated cycle, the adjacent pipeline stages will read and 
+write from different link list, and switching the access mapping at the end of cycle. With this 
+latch-like structure, we successfully decouple the read and write to the same shared data in the 
+simulation. 
+The second problem coming with the latch-like structure is what data we should pass via 
+this latch structure. As a matter of fact, actually passing all the required data between stages 
+results in the serious performance degradation which is caused by the unnecessary data 
+movement. Therefore, in our pipeline partitioned simulator, we link all required resources via 
+pointers defined in the reorder buffer entry and pass only the rob entry via the latch-like 
+structure. By doing so, data passing only incurs the slight overhead of data movements.  
+B-3.  Keep Only Hardware-Related Information 
+Conventional single-core simulators which are object-oriented implemented are prone to 
+use a high-level global class to realize hardware components with similar characteristics. For 
+example, MARSS define a selfqueuelink class as the ancestor class of nearly all queue-based 
+子計畫一：多核平台上細部平行模擬多核處理機的技術研發 
+ 18 
+We use two different platforms with Intel Nahelem i7 and Intel Core2Quad Q8200 to test our 
+pipeline-partitioned parallel simulator. The detail specification of both platform is listed in Table 1. 
+ 
+B. Experiment Results 
+The performance results of our pipeline-partitioned simulator with four different synthetic workloads 
+are presented in Figure 7. Since we are working on the parallel simulator which is targeting the multicore 
+architecture, the results we presented here are coming from our parallel simulator targeting the 
+uniprocessor architecture. However, we have already been getting close to the final release of our 
+multicore-on-multicore parallel simulator. The results shown in Figure 7 indicate that our parallel 
+simulator could achieve up to 18% performance improvement with two threads. The main bottleneck of 
+our simulator is the synchronization overhead which resulted from the barrier synchronization at the end 
+            
+Table 1.  Specifications of Intel i7 and Intel Q8200 
+            
+Figure 7.  Performance result of our pipeline-partitioned parallel simulator with four different synthetic 
+benchmarks. 
+子計畫一：多核平台上細部平行模擬多核處理機的技術研發 
+ 20 
+C. Discussion 
+During the process of parallelizing MARSS with our pipeline partitioned methodology, we have 
+seen some interesting issues which affect the simulation performance. In this section, we will discuss 
+these issues, and hopefully providing some extra insight for future related works.   
+C-1. Load Balancing Between Threads 
+As mentioned in the previous section, we maps pipeline stages onto threads based on the 
+workload characterization and static data sharing analysis to balance the workload and minimize the 
+synchronization need between threads. However, when we take another close look to the load 
+balance issue and try to further improve the simulation speed, we figure out that although we have 
+already balanced the load of threads based on the macro view of the workload breakdown, the 
+workload between threads still diverse drastically in different cycles. In other words, the workload 
+of each stage does not remain stable in different cycles but instead changing severely. The reason 
+behind this consequence is that the behaviors of pipeline stages are highly dependent on other stages 
+and the resources pressure of the target platform. For example, the rename stage in MARSS could 
+rename maximum four instructions at one single cycle if the fetch stage does fetch new instructions 
+continually. However, once the fetch stage stop fetching new instructions due to the full of the 
+trans-decoder buffer or there is no free reorder buffer entries and architectural registers, the rename 
+stage will simply bypass this cycle and wait for the release of resources. Therefore, partitioning the 
+stages based on a macro view level helps little to improve the simulation performance. Even though 
+it is possible for us to predict the workload of each stage in the very next cycle, the overhead 
+incurred by this prediction could counterbalance the benefit gaining from micro level load 
+balancing.  
+C-2. Different Hardware Configurations affect Parallel Simulation Performance 
+To better optimize the simulation performance, we have evaluated the performance impact of 
+two different hardware configurations, the Intel Nahelem i7 and Intel Core2Quad Q8200 chip 
+multiprocessors. The experiment results show that the simulation performance is highly dependent 
+on the system configurations. The simulation performance of Intel i7 is much higher than Intel 
+Q8200. The performance improvement is mainly resulted from the higher frequency of Intel i7. 
+Nevertheless, when we take a closer look at the timing breakdown of each individual stage, it 
+appears that different hardware configurations also affect the accumulative thread workload. That is, 
+different stage workloads have been observed under different configurations, which means the 
+stage-to-thread mappings have to be tuned to accommodate the change of hardware configurations. 
+Since we have implement a latch-like data structure between threads which decouples most the data 
+子計畫一：多核平台上細部平行模擬多核處理機的技術研發 
+ 22 
+ 
+六、 參考文獻 
+[1] O. Certner, Zheng Li, A. Raman, O. Temam, “A Very Fast Simulator for Exploring the Many-Core 
+Future” in Proceeding of the Parallel & Distributed Processing Symposium (IPDPS), 2011.   
+[2] J. Chen, L. Dabbiru, D. Wong, M. Annavaram, M. Dubois, "Adaptive and Speculative Slack Simulations 
+of CMPs on CMPs," Microarchitecture, IEEE/ACM International Symposium on, pp. 523-534, 2010 43rd 
+Annual IEEE/ACM International Symposium on Microarchitecture, 2010  
+[3] J. Donald, M. Martonosi, “An Efficient, Practical Parallelization Methodology for Multicore Architecture 
+Simulation”, in Computer Architecture Letters, 2006 
+[4] Z. Wang, R. Liu, Y. Chen, X. Wu, H. Chen, W. Zhang, and B. Zang. “COREMU: a scalable and portable 
+parallel full-system emulator”, in Proceedings of the 16th ACM symposium on Principles and practice of 
+parallel programming (PPoPP '11). 
+[5] D.A. Penry, D. Fay, D. Hodgdon, R. Wells, G. Schelle, D.I. August, D. Connors, “Exploiting parallelism 
+and structure to accelerate the simulation of chip multi-processors”, in The Twelfth International Symposium 
+on High-Performance Computer Architecture, 2006.  
+[6] S. Kanaujia, I. E. Papazian, J. Chamberlain, and J. Baxter, “FastMP: A multi-core simulation 
+methodology,” in MOBS 2006: Workshop on Modeling, Benchmarking and Simulation, June 2006 
+[7] J. Miller, H. Kasture, G. Kurian, N. Beckmann, C. Gruenwald III, C. Celio, J. Eastep, and A. Agarwal, 
+“Graphite: A distributed simulator for multicores,” Cambridge, MA, USA, Tech. Rep. 
+MIT-CSAIL-TR-2009-056, November 2009 
+[8] D. Chiou, D. Sunwoo, J. Kim, N. A. Patil, W. Reinhart, D. E. Johnson, J. Keefe, and H. Angepat, 
+“FPGA-Accelerated Simulation Technologies(FAST): Fast, Full-System, Cycle-Accurate Simulators,” in 
+MICRO ’07: Proceedings of the 40th Annual IEEE/ACM International Symposium on Microarchitecture, 
+2007, pp. 249–261. 
+[9] C. Bienia, S. Kumar, J. P. Singh, and K. Li, “The PARSEC benchmark suite: Characterization and 
+architectural implications,” in Proc. of the 17th International Conference on Parallel Architectures and 
+Compila-tion Techniques (PACT), October 2008. 
+[10] A. Patel, F. Afram, S. Chen, and K. Ghose, “MARSSx86: A Full System Simulator for x86 CPUs,” in 
+Design Automation Conference 2011 (DAC’11), 2011. 
+[11] J. Chen, M. Annavaram, and M. Dubois, “SlackSim: A Platform for Parallel Simulations of CMPs on 
+CMPs,” SIGARCH Comput. Archit. News, vol. 37, no. 2, pp. 20–29, 2009. 
+[12] M. Yourst. PTLsim: A cycle accurate full system x86-64 microarchitectural simulator. In Proceedings of 
+the 2007 IEEE International Symmposium on Performance Analysis of Systems and Software (ISPASS), 
+pages 23{34. Apr. 2007. 
+[13] J. Wawrzynek, D. Patterson, M. Oskin, S.-L. Lu, C. Kozyrakis, J. C. Hoe, D. Chiou, and K. Asanovic. 
+RAMP: Research accelerator for multiple processors. IEEE Micro, 27(2):46{57, Mar. 2007. 
+[14] M. Pellauer, M. Adler, M. Kinsy, A. Parashar, and J. Emer. “HAsim: FPGA-based high-detail multicore 
+simulation using time-division multiplexing”. In Proceedings of the 17th International Symposium on 
+High Performance Computer Architecture (HPCA), pages 406{417, Feb. 2011. 
+[15] T. E. Carlson, W. Heirman, and L. Eeckhout. “Sniper: Exploring the level of abstraction for scalable and 
+子計畫一：多核平台上細部平行模擬多核處理機的技術研發 
+ 24 
+計畫成果自評： 
+In this two years project, our first year goal is to parallelize an existing cycle-accurate simulator, 
+PTLsim, with our do-pipe methodology. We have overcome many difficulties and then finally achieved 
+our goal eventually. Although our do-pipe methodology does not reduce the simulation time significantly 
+as we expected, the experiment results show the potential to achieve even higher performance when we 
+adopt the same method onto a multicore simulator. Therefore, we continue to apply our method onto a 
+full-system multicore simulator, MARSS. The parallel multicore simulator could help not only 
+accelerating the development process of new architecture ideas but also shortening the critical 
+time-to-market for the related industry.  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/11/04
+國科會補助計畫
+計畫名稱: 子計畫一:多核平台上細部平行模擬多核處理機的技術研發(2/2)
+計畫主持人: 游本中
+計畫編號: 99-2220-E-001-002- 學門領域: 自由軟體暨嵌入式系統
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+developing a multicore cycle-accurate pipline simulator with 
+parallelization  and releasing the source code on Open Foundry(the open 
+source website) 
+ 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

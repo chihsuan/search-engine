@@ -1,0 +1,248 @@
+descriptors have been extended to incorporate temporal information [4][25]. Law-To et al. presented a 
+comparative study for video copy detection and concluded that, for small transformations, temporal ordinal 
+measurements [4] are effective, while methods based on local features demonstrate more promising results in 
+terms of robustness [14]. However, Thomee et al. conducted a large-scale evaluation of image copy detection 
+systems and reached a somewhat different conclusion. Their chosen method that used interest points 
+performed poorly due to its inability to find similar sets of points between copies [23]. They concluded that 
+either a simple median method or the retina method performs the best. To design a practical copy detection 
+system, a compact, frame-level descriptor that retains the most relevant information, instead of just sets of 
+interest point descriptors, is most desirable [20]. Furthermore, frame-level descriptors are readily integrated 
+into fast detection frameworks such as the one presented in [18][27].  
+To measure video similarity, the edit distance between two symbol strings—defined as the minimal cost of 
+any insertions, deletions, and substitutions of symbols needed to make two strings equal—is shown to be 
+effective [1][2][11]. Motivated by the approximate string matching techniques, the use of edit distance in the 
+context of video matching was first proposed in [1]. To use the edit distance for comparing two frame 
+sequences, early studies suggested a quantization step that maps frames into symbols [1][11]. For such cases, 
+all operations have equal costs. The edit distance is then calculated as the number of operations needed to 
+make two sequences of symbols equal. In [11], a heuristic method was proposed to determine the best 
+step-size for quantization. However, the quantization process has potential drawbacks. It is not clear, for 
+example, how one should choose the number of symbols for generic videos. Bertini et al. avoided this 
+quantization step and proposed relying directly on the ground distance for comparing two frame descriptors 
+to determine the operation costs [2]. 
+However, the edit distance measures how two sequences are globally aligned. By global we mean two 
+sequences are aligned across their entire lengths. However, in CBCD applications, the query sequence might 
+not be a single video clip, but the concatenation of a collection of clips. Therefore, we often are more 
+interested in finding the most similar subsequences within two sequences that are aligned pair-wise in the 
+subsequence-level rather than finding the best alignment for the entire length of two sequences. Local 
+alignment methods can return more than one match for subsequences among the two sequences under 
+comparison because there may exist multiple-to-one, one-to-multiple, or multiple-to-multiple matches of 
+subsequences. Therefore, for general CBCD applications, a metric based on local alignment is desirable. 
+Finally, indexing approaches have been used to organize video frames in the database and to enable fast 
+search [7][18][30]. For example, Chum et al. compared the Locality Sensitive Hashing (LSH) method and 
+the Min Hash method that were used to index local features extracted from the video database [7]. They 
+concluded that the LSH method is preferable since it is more efficient and requires fewer parameters. Poullot 
+et al. proposed an indexing scheme based on the techniques of hashing and inverted lists [18]. However, this 
+scheme is restricted to be used with their “GLOCAL descriptors.” Yuan et al. proposed to employ a 
+multi-resolution kd-tree to index video segments [30]. Those methods were designed to index high 
+dimensional data alone, without the consideration that they will be combined with a similarity search method 
+between two sequences of data. In this research, we propose a fast edit-distance-based sequence matching 
+method and a dedicated indexing structure to enable a two-level filtration solution that can be used to achieve 
+a significant speedup for the video copy detection task.  
+We first construct a graph by imposing a K by K grid on the input frame. Each partitioned block corresponds 
+to a vertex in G, thus, N = K
+2
+. The connection between two nodes is determined by the content proximity 
+between two blocks. Two copies may not share common visual properties such as colors, textures, and edges; 
+however, they often maintain a similar inter-block relationship. For simplicity, we use the content proximity 
+between block i (denoted as Xi) and block j (denoted as Xj) as the edge weight and define it as: 
+)),,(
+1
+exp(),( ji YXD
+A
+jiw           (3) 
+where D(Xi, Xj) is the sum of square differences (SSD) between block pixels and A is a scaling parameter. 
+The number of elements in the correlation matrix is quartic with respect to the partition factor K. For example, 
+a K by K grid would generate K
+2
+ nodes and K
+2
+ (K
+2
+-1)∕2 features .  The dimension can be further reduced 
+based on the spectral properties of the graph [8]. One practical method for describing the structure of a graph 
+is to compute the stationary distribution of a random walk [8]: 
+,
+),(
+)(
+Gvol
+jiw
+i
+j
+          (4) 
+where each element is the degree of a node divided by the volume of the graph vol G = ∑i∑j w(i, j). The 
+stationary distribution of dimension N from the correlation matrix yields a compact, yet robust frame 
+descriptor. Thus, the comparison of two graphs is shifted to the comparison of two corresponding 
+distributions. The χ2 statistics is used for measuring the dissimilarity between two descriptors.  
+Finally, we propose to extend the descriptor by incorporating temporal information. The correlation matrix 
+then records the correlation among cubes, instead of blocks, by using additional frames that are temporally 
+adjacent to the frame under consideration. 
+Fast Sequence Matching 
+We extend the edit distance in two aspects for the purpose of finding local alignments between two video 
+sequences. First, we derive a score v(xi, yj) between two frame descriptors xi and yj based on their distance 
+under the principle that v(xi, yj) would be positive if xi and yj are similar, and negative otherwise. The value 
+ 
+Figure 2. The video copy detection framework. 
+represent contiguous matched descriptor pairs. Next, a gap link (i, j) is established if dot j is bottom-right 
+positioned with respect to dot i and the city block distance between the dots is within a threshold τ. We use a 
+negative weight value as a penalty applied for such links, and its magnitude is proportional to distance between 
+two dots. The gap links allow the operations of insertions and deletions, with the goal of extending the overall 
+length of the alignment. Both links can easily be constructed by examining the dot coordinates. Finally, we derive 
+the best alignment by searching for the longest simple path on G. Since G is acyclic, the optimal-substructure 
+property—sub-paths of longest simple paths in G are longest simple paths—exists. Therefore, this problem can be 
+solved efficiently by topologically pre-sorting the vertices and using the dynamic programming technique. The 
+algorithm is summarized as below. To handle multiple local alignments, the back tracking step is performed 
+repeatedly on the d and p arrays where previously detected segments are removed from the d array after each 
+iteration. 
+Algorithm 1 GetBestAlignment(G) 
+1:  Topologically sort the vertices of G 
+2:  Initialization 
+for every vertex v do dv ← 0,  pv ← NIL 
+3:  Propagation 
+for each vertex v taken in topological order do 
+for each vertex u adjacent to v do 
+if du  < dv + w(v, u) 
+du ← dv + w(v, u), pu ← v 
+4: Termination 
+   dmax ← max(dv) 
+   Find the alignment by back tracking pi  i = argmax(dv), … 
+結果與討論 
+The MUSCLE VCD benchmark [12] is a publicly available benchmark that consists of 101 videos with a 
+total length of 80 hours. It provides ground truth data for evaluating a system’s detection accuracy based on 
+two tasks: finding copies (ST1) and finding extracts (ST2). The first task evaluates a system’s ability to find 
+full copies in the database. This corresponds to the global alignment problem addressed in this work. The 
+second task is to detect partial copies, which clearly is a local alignment problem. Both tasks are challenging 
+because the transformations applied to this benchmark were very diverse. 
+Table I summarizes the detection performance of the best official results for all teams who participated in the 
+evaluation, Poullot’s approach [18], and the proposed method. Our recipe that combines global features with 
+the approximate sequence matching method achieves promising performance in comparison with other 
+methods. More importantly, our method has a low computational cost. We report runtime t1/t2 where t1 is used 
+for frame sampling, feature extraction and t2 is used for localizing copies. The matching process is faster than 
+other approaches. It is more than three times faster than the feature extraction process. The runtime is 
+reported based on non-optimized MATLAB codes running on a machine with an Intel Core 2 Duo 2.8 GHz 
+CPU and 3GB of RAM. All experiments were performed with the same machine. 
+Table II shows the number of frame pairs under comparison and the search time for the original and the 
+References 
+[1] D. A. Adjeroh, M. -C. Lee, and I. King. A distance measure for video sequence similarity matching. In 
+Proceedings of the International Workshop on Multi-Media Database Management Systems, pages 
+72-79, 1998. 
+[2] M. Bertini, A. D. Bimbo, and W. Nunziati. Video clip matching using MPEG-7 descriptors and edit 
+distance. In Proceedings of the ACM International Conference on Image and Video Retrieval (CIVR’06), 
+pages 133-142, 2006. 
+[3] L. Breiman. Probability. Society for Industrial and Applied Mathematics, 1992. 
+[4] L. Chen and F. W. M. Stentiford. Video sequence matching based on temporal ordinal measurement. 
+Pattern Recognition Letters, 29(13):1824-1831, 2008. 
+[5] S. -C Cheung, and A. Zakhor. Fast similarity search and clustering of video sequences on the 
+world-wide-web. IEEE Transactions on Multimedia, 7(3): 524-537, 2004. 
+[6] C. -Y. Chiu, C. -H. Li, H. -A. Wang, C. -S. Chen, and L. F. Chien. A Time warping based approach for 
+video copy detection. In Proceedings of the IEEE International Conference on Pattern Recognition 
+(ICPR’06), pages 228-231, 2006. 
+[7] O. Chum, J. Philbin, M. Isard, and A. Zisserman. Scalable near identical image and shot detection. In 
+Proceedings of the ACM International Conference on Image and Video Retrieval (CIVR’07), pages 
+549-556, 2007. 
+[8] F. R. K. Chung. Spectral Graph Theory. American Mathematical Society, May 1997. 
+[9] A. Joly, O. Buisson, and C. Frelicot. Content-based copy retrieval using distortion-based probabilistic 
+similarity search. IEEE Transactions on Multimedia, 9(2):293-306, 2007. 
+[10] Y. Ke, R. Sukthankar, and L. Houston. Efficient near-duplicate detection and sub-image retrieval. In 
+Proceedings of the ACM International Conference on Multimedia (MM’04), pages 1150-1157, 2004. 
+[11] Y. Kim, and T. -S. Chua. Retrieval of news video using video sequence matching. In Proceedings of the 
+International Multimedia Modelling Conference (MMM’05), pages 68-75, 2005. 
+[12] J. Law-To, A. Joly, and N. Boujemaa. Muscle-VCD-2007: a live benchmark for video copy detection, 
+2007. http://www-rocq.inria.fr/imedia/civr-bench/. 
+[13] J. Law-To, O. Buisson, V. Gouet-Brunet, and N. Boujemaa. Robust voting algorithm based on labels of 
+behavior for video copy detection. In Proceedings of the ACM International Conference on Multimedia 
+(MM’06), pages 835-844, 2006. 
+[14] J. Law-To, L. Chen, A. Joly, I. Laptev, O. Buisson, V. Gouet-Brunet, N. Boujemaa, and F. Stentiford. 
+Video copy detection: a comparative study. In Proceedings of the ACM International Conference on 
+Image and Video Retrieval (CIVR’07), pages 371-378, 2007. 
+[15] E. Maani, S. A. Tsaftaris, and A. K. Katsaggelos. Local feature extraction for video copy detection in a 
+database. In Proceedings of the IEEE International Conference on Image Processing (ICIP’08), pages 
+1716-1719, 2008. 
+[16] D. Nister, and H. Stewenius. Scalable recognition with a vocabulary tree. In Proceedings of the IEEE 
+Conference on Computer Vision and Pattern Recognition (CVPR’06), pages 2161-2168, 2006. 
+[17] W. R. Pearson, and D. J. Lipman. Improved tools for biological sequence comparison. In Proceedings of 
+the National Academy of Sciences of the United States of America, 85(8):2444-2448, 1988. 
+計劃成果自評 
+Some of the research outcomes are written into papers: 
+1. Mei-Chen Yeh and Tim Cheng. Fast visual retrieval using accelerated sequence matching. IEEE 
+Transactions on Multimedia, accepted. 
+2. Mei-Chen Yeh, Chao-Yung Hsu and Chun-Shien Lu. NTNU-Academia Sinica at TRECVID 2010 
+Content Based Copy Detection. TRECVID Video Retrieval Evaluation Workshop, 2010. 
+ 
+We have achieved the original goals we set up in the research proposal. In particular, we have developed: 
+1. A robust and compact representation method 
+We have analyzed the advantages and the limitations of both the global and the local features. Our 
+proposed descriptor, which models the relationship among pre-indexed local patches, has the merits of 
+both types of features. We have developed a video representation based on the proposed descriptor that 
+can serve as a suitable signature for the task of video copy detection. 
+2. A fast and effective segment-based similarity measurement method 
+We have developed a fast matching method for measuring the segment-level similarities between 
+videos. Those segments are considered as copies whose normalized similarity is larger than a 
+predefined threshold. Furthermore, a dedicated indexing structure has been designed to organize and to 
+manage video data extracted from the reference video database. Finally, the system is scalable to large 
+corpus of data. We have conducted evaluations to demonstrate the system performance.  
+ 
+The findings of the study should be beneficial for developing a practical, highly effective video copy 
+detection system. Besides, the proposed techniques are shown to be effective in our prototype system, and 
+should be able to be patented and applied for developing a commercial product. 
+ 2 
+detect and localize abnormal behaviors using social force model at a microscopic level. 
+These are important problems in computer vision and could enable various interesting 
+applications in multimedia. 
+The ACM MM program is organized in four distinct tracks as usual: Content Analysis, 
+Systems, Interaction, and Applications. Since multiple sessions took place at the same 
+time in different rooms, I attended mostly the content-analysis-track oral sessions, and 
+checked out poster papers and demos if interested. Topics such as automatic image tagging, 
+concept learning, multimodal image and video search, and near-duplicate detection are 
+still popular this year. However, it is worthy to mention that some new topics emerge this 
+year. For example, the processing social media, the mobile computing, and the use of 
+non-conventional means such as Electroencephalogram and eye gaze for content 
+understanding are organized in panel discussions in the conference. 
+Besides the full and short paper presentations, the Multimedia Grand Challenge, organized 
+for the first time last year in Beijing, was continued this year. A number of industry leaders 
+such as Google, Yahoo!, and HP defined a set of problems that are interesting to the 
+industry in a 2 to 5 year horizon, and encouraged researchers in multimedia to propose and 
+develop feasible solutions. There are in total 18 presentations organized. Since this is the 
+only session during early evening in day 2, it is a great opportunity to show research 
+works to attendees even though each presentation has only three minutes. During the three 
+days, I learned the most updated technologies and had a great time this year in ACM MM. 
+ 
+二、與會心得 
+ACM Multimedia is a very selective conference where only a small subset of submitted 
+papers is accepted for presentation after a long and careful double-blind review process. 
+Acceptance rates are 17% for full papers, and around 30% for short papers. This is not less 
+challenging than submitting a paper to top-tier Journals. Moreover, researchers from more 
+than 20 countries get together and exchange ideas in this annual event. Presentations in the 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/01/05
+國科會補助計畫
+計畫名稱: 視訊複製偵測方法之進階研究
+計畫主持人: 葉梅珍
+計畫編號: 99-2218-E-003-001- 學門領域: 資料庫系統及資料工程
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

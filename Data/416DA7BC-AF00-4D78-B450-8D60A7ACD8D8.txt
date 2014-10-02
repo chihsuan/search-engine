@@ -1,0 +1,935 @@
+2三、先前研究成果
+1. LBPS-Sync
+由於標準以及其他一些的相關研究都沒有考慮到
+traffic pattern 以及 traffic 的行為，但只要 BS 可以掌
+握所有 MSS 的 traffic pattern、traffic 行為等相關資
+訊，那麼藉著這些相關資訊就可以去對 MSS 的睡眠
+機制改進以增加整體的 power saving efficiency，所以
+我們先前便提出了新的睡眠機制：Load Based Power
+Saving- Synchronization (LBPS-Sync)，此機制的特色
+為假設所有 MSS 應該都會在同一時間進入到睡眠模
+式以及回到操作模式接收資料，而每個 MSS 的 sleep
+window size 都會一樣。LBPS-Sync 為每一個 MSS 設
+定一個 threshold，讓 MSS 累積的資料量超過 threshold
+的時候，才需要回到操作模式接收資料。BS 根據量
+測到的 traffic load 以及 traffic pattern 來預估 MSS 經
+過多久時間後，MSS 累積的資料量會超過 MSS 訂定
+的門檻值，而這段估計的時間便是 MSS 可以進入到
+睡眠模式的時間。如此一來便可以解決 Type I 及 Type
+II 的能源節省效能低落問題。
+因為我們假設資料流量為 Poisson process,在負載為
+時，一個 time frame 的累積資料量的計算方式如下所
+示：
+Prob [i packet arrivals in a time frame] =
+!
+)(
+i
+Te iT 
+,
+where T is the length of a time frame.
+假設資料累積的門檻值為 Data_TH (packets). 在連續
+K 個 time frames 所累積的資料量超過 Data_TH 的機
+率值可計算如下：
+PAcc(K, Data_TH)
+Prob [# of packet arrivals in K time frames > Data_TH]
+= 
+
+
+
+1_ !
+)(
+THDatai
+iKT
+i
+KTe 
+= 
+
+
+
+THData
+i
+iKT
+i
+KTe_
+0 !
+)(
+1
+
+睡眠週期長度（length of one awake-and-sleep cycle）
+的選擇即為能使上式之機率值超過預定要求
+（Prob_TH, e.g. 0.8）的最小 K 值，計算如下：
+LengthAwkSlpCyl (, Data_TH) =
+The length of one awake-and-sleep cycleK*
+= }),(|{ Prob_THData_THKPKMin Acc  , where an
+awake-and-sleep cycle is composed of the current awake
+time frame and the following sleep window.
+2. LBPS-Merge
+以 LBPS-Sync 理論為基礎，我們先前也提出了一延伸
+機制：LBPS-Merge，在此機制中，我們移除了 MSS
+同步的假設，讓 BS 可以更有彈性為每一個 MSS 排程
+睡眠的時間，並且依機制的不同對 MSS 作合併的動
+作來達到更好的 power saving efficiency。
+LBPS-Merge 的設計概念是考量既然 BS 排程所有的
+MSSs，若是每個 MSS 進入到睡眠模式的時間都是根
+據自己的負載所算出的睡眠週期, K time frames，並且
+完全交給 BS 去做排程，那麼對每個 MSS 的 power
+efficiency 就必定是最好的，於是乎，我們換個角度來
+想，不如就盡量讓一個 MSS 享有一整個 time frame
+的資源，來完成這個機制。而整個機制大致而言，BS
+會根據幫 MSS 量測出的 traffic load，並且代入
+LengthAwkSlpCyl (, Data_TH)以計算每個 MSS 的 K
+值，再交由 BS 幫所有 MSS 去排程，並盡量滿足所有
+MSS 的 K 值，為了排程上的方便與正確性，所有 MSS
+的 K 值須配合 2 的冪次方，比如某一個 MSS 的 K 值
+為 25，那麼為了配合 2 的冪次方，我們就將此 MSS
+的 K 值訂為 16。為了確定 MSS 的可排程性，於是有
+一個檢查機制，我們將參數 Sch 等於所有 K 值的倒數
+相加，如果 Sch1，那麼就表示 BS 可以為每個 MSS
+排程；若 Sch>1，那麼我們就必須合併某些 MSS。
+四、研究方法
+1. LBPS-Merge問題探討
+LBPS-Merge 雖然有效的調整了 MSS 的排程，且大
+大的提升了 MSS 的 Power Saving Efficiency，但主要
+的對象為非即時性的資料，當遇到有 Delay Bound 限
+制的 Real-Time Traffic 時，由於所產生的 K 值無法
+反應出 Delay Bound 的特性，加上即時性資料必須在
+規定的時限內完成資料的傳送或接收，因此 MSS 在
+Buffer 中所累積的資料量勢必減少許多，而在
+LBPS-Merge 的檢測公式中 
+
+
+n
+1i iK
+1
+Sch 並無法
+表現出其累積資料量的特性，排程上的誤差也就相對
+4代表 MSS 在每一個 Time Frame 所累積的資料量
+比例，當 1Sch ，那麼就表示 BS 能夠在一個 Time
+Frame 的時間內將所有 Buffer 中的資料傳送給每一
+個 MSS，因此可以為每個 MSS 排程；若 1Sch ，
+則代表 Buffer 中的資料量已超過一個 Time Frame
+所 能 傳 送 的 資 料 量 ， 那 麼 我 們 就 必 須 利 用
+LBPS-Merge 的方式合併某些 MSS，以便增加 MSS
+的可排程性。
+5. 整合即時性與非即時性資料之排程
+在LBPS-RT 排程演算法部份，我們提出三種不同的
+排程方法，分別為 In-order、Best-fit、Worst-fit，在
+In-order 排程部份，主要概念為每一次的排程週期
+中，BS針對每一個MSS的睡眠週期，將 MSS 的W*
+值依照K*值所需的週期放入每一個 Time Frame
+中，等確定排程順序後再做 Time Frame 時間切割的
+處理，如圖一所示，BS依序將MSS由W*值由大到小
+做排列。換言之 BS 必須依序將前一個 Time Frame
+的資源充分運用後，才能夠使用下一個 Time Frame
+的資源(將每一個 MSS 其 Buffer中所累積的資料量
+W*經由K*值分組後，再依據各組中W*值由大到小將資
+料傳送給每一個MSS)，當遇到單一個 MSS 無法在
+同一個 Time Frame 的時間內將 Buffer 中資料接收
+完成時(需要利用到下一個 Time Frame 的資源)，則
+代表此 MSS 需要較長的 Awake mode 來接收 BS
+傳送的資料，睡眠週期相對減短，因此必須將其K*
+值作降級調整，來完成資料的接收。
+而在 Best-fit、Worst-fit 的概念中則是針對每一個
+Time Frame 目前所累積傳送資料量的多寡，做有效
+的動態分配，其中 Best-fit 是每次搜尋排程週期中
+BS 可傳送的資料量滿足W*且目前已傳送累積資料
+量最大的Time Frame ，如圖二所示，W*=20的MSS
+必須排在目前累積資料量最大(70>40)，且能夠滿足
+W*=20的Time Frame中，而 Worst-fit 則是將 MSS 放
+置目前已累積傳送資料量最小的 Time Frame中，如
+圖三，BS 將 W*=20 的MSS 排在目前累積資料量最
+小(40<70)，且又能滿足W*=20的Time Frame中。
+當每一次的排程週期中，若無法找到能夠滿足傳送
+W*資料量的 Time Frame 時，則代表 MSS 在K*週期
+所累積的資料量已超過目前每一個 Time Frame 所
+能傳送的最大限度，因此我們必須將此 MSS 的K*
+值作降級的調整，已減少資料量的累積(當K*值越小，
+Wn越小)，增加可排程性。
+圖一、 In-order 排程範例
+圖二、 Best-fit 排程範例
+圖三、 Worst-fit 排程範例
+五、結果與討論
+1. 實驗環境與參數
+在實驗環境的部份，我們主要以 PMP 網路拓撲為主，
+環境的成員為一個 BS 與多個 MSS ，Traffic Pattern
+為 Poisson Process，而每一個 MSS 只有單一一種 Flow
+的 QoS 特性(例如 rtPS, nrtPS )，在資料傳輸的部份我
+們只考慮 Downlink Traffic (由 BS 將資料傳送給
+MSS)。
+在設定上，我們將資料累積的門檻值(Data_Threshold)
+定為一個 Time Frame。在表一中有其他相關環境參數
+值，其中Traffic Distribution分成Equal Load、Load=8:2
+Random 兩種方式，Equal Load 表示所有 MSS 的 Load
+都是相同的，而 Random Load=8:2 則代表先將 Total
+6回到 Sleep mode 並不需要經由 Idle Time 的時間，因
+此當 Load 上升時，我們可以針對實際 Load 情形，做
+出較適當的反應及排程，Power Efficiency 下降的趨勢
+相較於 Type II 便顯得緩慢許多。而在 In-order_nrtPS
+的部份，rtPS 的比例增加時，代表 nrtPS 的比例下降，
+因此 Merge 的情況(兩者交叉的部份)相較於圖四會較
+晚發生，但其下降的幅度相較於圖四更為明顯（非即
+時性資料的個數變少）。
+3. 不同排程方式的比較
+從圖六中我們可以看出，在非即時資料的部份，當
+Total Load 越重時，In-order 機制所呈現出的效果就越
+好，我們先觀察即時性資料的部份，由於 rtPS
+ratio=0.2，加上即時性資料所需要傳送的資料原本就
+比非即時性的資料要少許多，因此我們可以看出 BS
+均能有效的將 Buffer 中擁有 rtPS 資料的 MSS 傳送完
+成，使得在三種排程方法上 rtPS 的 MSS 其 Power
+Efficiency 均為 0.75 (Delay Bound = 4)左右。
+而在 nrtPS 的部份，我們可以分為兩部份來做討論，
+Total Load=0.5 之前；此時 1Sch ，MSS 無須作 Merge
+的動作，每個 MSS 都可以按照自己的 K 值進入到
+Sleep mode，加上 Best-fit 與 Worst-fit 兩種排程方法
+均是以動態的方式調整每次排程的位置，因此在 Load
+較輕的情況下其 Power Efficiency 是相同的。而相對
+於 In-order，他是依照 K 值與 W 值大小照順序的方式
+做排列，當排程方法上遇到跨越兩個 Time Frame 的
+情況時，MSS 的 K 值就必須下降來做調整，其 Power
+Efficiency 會略低於 Best-fit 和 Worst-fit。
+在 Total Load=0.5 之後，Sch >1，MSS 開始進行 Merge
+動作才可以符合我們在之前所提到的 LBPS-RT 排程
+檢測公式，隨著 Load 的上升，MSS 進行 Merge 的動
+作來增加可排程性，在 Load=0.8 時，我們可以看出
+In-order_nrtPS 的趨勢接近平緩，這是因為 In-order 的
+排程特性上是將依照每一個的 W 值來做累積的排
+列，因此能充分的利用每一個 Time Frame 的資源，
+反觀在另外兩個排程方法上，都是以動態的方式找出
+當下最佳的目標值(搜尋目前 Buffer 中累積資料量最
+多或是最少)來做排程，因此 Load 越重時，很有可能
+造成可使用的資源被分散在每一個 Time Frame，以致
+於當一個 Time Frame 的資源不足，但整理資源足夠
+的情形，無法有效的利用每一個 Time Frame 的資源。
+使得有些 MSS 的必須下降 K 值來增加排程性，造成
+Power Efficiency 下降的更快。
+4. 效能比較結論
+本計畫提出的 LBPS-RT機制相較於標準中的 Type II
+能減少 MSS 在 Sleep mode 與 Awake mode 之間
+的轉換，使 MSS 能盡量的留在 Sleep mode ，增加
+其 Power Efficiency ，除此之外，我們也可以由
+Delay 的分析圖看出， LBPS-RT 除了能夠增加
+Power Efficiency 之外，在一般 Real Time Traffic 十
+分在意的 Delay 的部份也能維持在一定的範圍之內
+與標準中 Type II 的方式相距不遠，滿足了在符合
+Delay Bound 的限制下提升 Power Efficiency 效能的
+目標。而在整合即時性與非即時資料的排程部份，由
+效能分析的結果可以看出，Best-fit 與 Worst-fit 排程
+方法在 Load 較輕的情況下，其 Power Efficiency 值
+是優於 In-order 排程法，這是因為 Best-fit 與
+Worst-fit 排程法是動態的找出當下最佳的目標值(目
+前 Buffer 累積資料量最多或是最少)來做排程，因此
+當 Load 輕時，其效能好過直接做堆積的 In-order
+排程法，而在 Load 重時，由於 In-order 排程法相
+較於 Best-fit 與 Worst-fit 排程法有較高的機會將資
+源空出給單一個 MSS 使用，因此其 Power Efficiency
+反而優過 Best-fit 與 Worst-fit 排程方式。
+六、計畫成果自評
+本計畫之研究成果至今已有一篇國際會議論文的發
+表如下所列，後續論文仍在整理撰寫中。
+計畫成果之論文發表：
+Chun-Chuan Yang, Yi-Ting Mai, Jeng-Yueng Chen, and
+Yu-Shiuan Shen, “A Clustering Technique of
+Load-based Power Saving in the IEEE 802.16e
+Network,” Proceedings, the Annual International
+Conference on Mobile Communications, Networking
+and Applications (MobiCONA 2011), Singapore, June
+2011, pp. M5-M9.
+國科會補助專題研究計畫項下出席國際學術會議心得報告
+日期：100 年 07 月 20 日
+一、參加會議經過
+IMECS (International Multi-Conference of Engineers and Computer Scientists) 乃是由 IAENG
+(International Association of Engineers) 機構所主辦的國際學術會議，IAENG 是由工程師與 電
+腦科學家共同組成的非營利之國際組織。每年有超過五十個國家約一千多位學者專家參與
+IMECS 會議。本人所參加之會議是 IMECS 所屬之 ICCSA 會議(International Conference on
+Communication Systems and Applications)。本人所發表論文的時間是在三月十八日 15:45 -
+17:00，論文題目為「Adaptive Zone-based Bandwidth Management in the IEEE 802.16j Multi-hop
+Relay Network」。
+二、與會心得
+因為學校課程的需要，本人此次僅有一天的時間參與會議，並於當天往返台灣與香港，因此此
+次主要的任務是論文的報告。本人所發表論文的時間為會議之最後一個時段（第三天下午
+3:45），參與之人員已明顯減少許多，令人感到些許遺憾。
+三、攜回資料名稱及內容：會議論文 CD。
+四、論文發表證書、論文全文：
+計畫編號 NSC 99－2221－E－260－013－
+計畫名稱 整合即時性與非即時性流量之 IEEE 802.16e 電源管理機制
+出國人員
+姓名
+楊峻權
+服務機構
+及職稱
+國立暨南國際大學資訊工程系 教授
+會議時間
+100 年 3月 16 日至
+100 年 3月 18 日
+會議地點 香港
+會議名稱
+(中文)
+(英文) The 2011 IAENG International Conference on Communication
+Systems and Applications ( ICCSA )
+發表論文
+題目
+(中文)
+(英文) Adaptive Zone-based Bandwidth Management in the IEEE
+802.16j Multi-hop Relay Network
+Adaptive Zone-based Bandwidth Management in the
+IEEE 802.16j Multi-hop Relay Network
+Chun-Chuan Yang1, Yi-Ting Mai 2, and I-Wei Lin 1
+Abstract–By comparing with the characteristics of the traditional
+mobile Quality-of-Service mechanisms, the idea of zone-based
+bandwidth allocation for mobile users in the IEEE 802.16j multi-hop
+relay network (IEEE 802.16-MR) is proposed in the paper. The zone
+of a mobile user includes the current relay station and its
+neighboring relay stations within the zone size in hop count.
+Bandwidth allocation is made for the mobile user roaming within the
+zone, and calculation of the required bandwidth is presented in the
+paper. Adaptive selection of the zone size fit for user mobility is the
+main focus of the paper. Markovian analysis is used to determine the
+proper zone size. Simulation study has demonstrated the
+effectiveness of the adaptive zone scheme.
+Index Terms— IEEE 802.16, Multi-hop Relay Network, Mobile QoS,
+Bandwidth Management
+I. INTRODUCTION
+HE IEEE 802.16 Standard [1]-[4], first published in 2001,
+defines a means for wireless broadband access as a
+replacement for current cable and DSL “last mile”services to
+home and business. The adoption of this standard is currently in
+progress through the use of WiMAX Forum certified networking
+equipment and widespread adoption should appear over the next
+few years. A series of specifications have been published in the
+history of IEEE 802.16. IEEE 802.16d (802.16-2004) [1] focuses
+on fixed location wireless access and can support up to 134 Mbps
+bit rate. IEEE 802.16e [2]-[3], completed in 2009, was proposed
+to support wireless access with high user mobility. The latest
+version of the standard, IEEE 802.16j-2009 [4] was proposed for
+mobile multi-hop relay networks, which is denoted by IEEE
+802.16-MR in the paper. Differing from the single-hop wireless
+connectivity of IEEE 802.16e, IEEE 802.16-MR allows the
+mobile stations to route through intermediate relay stations (RS)
+to reach the base station (BS). By adopting the idea of relay
+stations, IEEE 802.16-MR enables fast network deployment in a
+large area at a lower cost than the traditional wired counterpart.
+Mobile users equipped with the IEEE 802.16 interface can
+directly access the IEEE 802.16-MR network while roaming in
+the network area. The IEEE 802.11 access point connected to the
+Relay Station is required for WiFi users to gain access of the
+network. In either case, an appropriate bandwidth allocation
+scheme in the IEEE 802.16-MR network is expected in order to
+guarantee QoS transmission. The issue of QoS supporting for
+mobile users (also referred as Mobile QoS, denoted by MQoS),
+has been addressed in the literature for many years. The typical
+strategy for MQoS is to reserve necessary bandwidth at
+neighboring nodes before the mobile user handoff to the new
+node, which inevitably results in low bandwidth utilization.
+Extension of RSVP (Resource Reservation Protocol) was adopted
+in traditional MQoS mechanisms, such as Mobile RSVP [5] and
+Hierarchical Mobile RSVP [6]. Most of the QoS-related
+researches in IEEE 802.16 [7]-[10] focused on bandwidth
+allocation, scheduling, and architecture design with associated
+mechanisms, yet the issue of MQoS in IEEE 802.16-MR has not
+been widely addressed. Some researchers [11]-[12] proposed the
+idea of adopting RSVP for end-to-end bandwidth reservation in
+the IEEE 802.16 Mesh network, but the core of MQoS bandwidth
+management in the IEEE 802.16-MR network has not been
+addressed.
+Two important factors make traditional MQoS mechanisms
+inappropriate for MQoS support in the IEEE 802.16-MR network.
+Firstly, all relay stations in the network share the same medium
+(channel), and the bandwidth requirement for a traffic flow
+depends on (more specifically, is proportional to) its path length
+(the number of relay stations en route). Therefore, the bandwidth
+requirement of a mobile user at current relay station is correlated
+with the bandwidth requirement at neighboring or nearby relay
+stations. Secondly, the medium in the IEEE 802.16-MR network
+is managed by the base station in a centralized control manner,
+which provides the feasibility of more sophisticated bandwidth
+management in the network. The correlation of required
+bandwidth at nearby relay stations leads to the idea of zone-based
+bandwidth allocation in the paper. The zone of bandwidth
+allocation for a mobile user includes the user’s current relay
+station and the nearby relay stations. The number of relay stations
+in a zone is determined by the zone size in hop count. Adaptive
+selection of the zone size is the main focus of the paper. Mobility
+level of the mobile user presents an impact on the zone size. For
+example, a higher-mobility user deserves a larger zone in order to
+maintain a certain level of zone stability. Markovian analysis of
+user mobility in the network is used to determine the proper zone
+size. Simulation study has shown the flexibility as well as the
+effectiveness of the proposed scheme.
+The remainder of the paper is organized as follows.
+Zone-based bandwidth allocation is presented in section II.
+Markovian modeling and analysis for adaptively selecting the
+zone size is presented in section III. Simulation study is presented
+in section IV. Finally, section V concludes the paper.
+II. ZONE-BASED BANDWIDTH ALLOCATION
+A. Basic idea
+The motivation of zone-based bandwidth allocation is to
+reserve appropriate amount of bandwidth used for a mobile user
+at all relay stations within the zone such that bandwidth
+re-allocation is not necessary for handoffs of the user among the
+relay stations of the same zone. The size of a zone (denoted by
+Zsize) is defined to be the hop count of the most distant relay
+station from the initial (center) relay station as displayed Fig. 1.
+Following assumptions are made for better understanding
+zone-based bandwidth management.
+(1) All relay stations in the network share the same medium
+without spatial reuse in medium access, i.e. two or more
+relay stations cannot access the medium at the same time.
+(2) BS is fully in charge of medium access control and is
+responsible for bandwidth allocation by using fields like
+T
+1 Chun-Chuan Yang is with the Department of Computer Science and Information
+Engineering, National Chi Nan University, Puli, Taiwan, 545, R.O.C. (email:
+ccyang@csie.ncnu.edu.tw)
+2 Yi-Ting Mai Department of Information and Networking Technology, Hsiuping
+Institute of Technology, Taichung City, 412-80, Taiwan, R.O.C. (email:
+wkb@mail.hit.edu.tw)
+1 I-Wei Lin is with the Department of Computer Science and Information
+Engineering, National Chi Nan University, Puli, Taiwan, 545, R.O.C. (email:
+lewmewmew@yahoo.com.tw)
+III. ADAPTIVE SELECTION OF ZONE SIZE
+As mentioned in section I, the mobility level of the user
+imposes some impact on selecting a proper zone size. In this
+paper, user mobility in the network is modeled by the probability
+moving out of the current RS, denoted by Pmove, and moving into
+any of the neighboring RS with equal probability. The
+discrete-time Markov chain modeling user mobility in the
+chessboard-like network is displayed in Fig. 2. Our goal is to find
+a large enough zone to make the stay probability of the mobile
+user in the zone larger than the pre-defined threshold (denoted by
+PstayTH, 0.8 is used in the simulation). Two factors must be
+considered in the calculation of the stay probability in the zone.
+First, the stay probability should not include the case that the
+mobile user moving out of the zone and into the zone again, since
+a new zone should be initiated when the user moving out of the
+zone. Second, in the practical sense, the stay probability should
+be associated with a certain number of transitions. Therefore, the
+stay probability, denoted by Pstay(k), is defined as the probability
+of the mobile user never leaving the zone within k transitions.
+In order to reduce the number of states in the discrete-time
+Markov chain, RSs with the same hop count from the initial RS
+are treated as a single state, denoted by Ring(L) as displayed in
+Fig. 3-(a), in which L indicates the hop count. The new Markov
+chain of Ring states is displayed in Fig. 3-(b). The approximation
+of modeling is reasonable since the transition probability from
+the initial RS to each of its neighboring nodes is the same.
+Transition probability from Ring(L) to Ring(L-1) is calculated by
+the following equation. An example of calculating PRing(2) Ring(1)
+is given in Fig. 4.
+PRing(L) Ring(L-1) =
+Ring(L)
+1)LRingRing(L)
+innodesofnumberTotal
+(tofromprob.ntransitioallofSummation  (Eq-2)
+Expansion of the states is used to compute the probability of
+each Ring state after k transitions. An example of the Ring states
+after 5 transitions is displayed in Fig. 5, in which the transition
+probability between Ring states can be obtained by Eq-2 (Note
+that PRing(L) Ring(L+1) = Pmove - PRing(L)Ring(L-1) for L > 0). The
+probability of the mobile user staying in states Ring(0) ~ Ring(5)
+is calculated from the root state Ring(0) (the initial state with
+probability 1) following all possible paths until the 5th transition.
+For a given zone size, e.g. Zsize = 2, the staying probability of the
+mobile user in the zone within 5 transitions, Pstay(k=5), is the
+summation of the staying probability of Ring(0), Ring(1), and
+Ring(2) at the 5th transitions in Fig. 5. Unfortunately, a computer
+program is required to calculate Pstay(k) since the closed form for
+the probability is difficult to find. Simulation programs were
+conducted to evaluate the accuracy of the calculation of Pstay(k).
+Fig. 6 displays the simulation result as well as the analytical
+result in the case of Zsize = 2 and Pmove = 0.5. Closeness of the two
+curves in the Fig. demonstrates the feasibility of the above
+Markovian analysis. Finally, for a given value of k, the proper
+zone size for the mobile user is set as the smallest value of Zsize to
+make Pstay(k)PstayTH.
+IV. PERFORMANCE EVALUATION
+Simulation study has been conducted to evaluate the
+performance of the adaptive zone scheme. An 11x11
+chessboard-like network is used to simulate the IEEE 802.16-MR
+network, in which the BS is located at the upper-left corner and
+the CN is located outside the network. A discrete-time model is
+used to simulate user mobility. The initial position of a mobile
+user is randomly selected from the RSs in the network. Each
+mobile user leaves its current RS and moves to one of its
+neighboring RSs with probability Pmove at each transition time.
+Considering the regular service range of an RS is about 1 km and
+Fig. 2. Modeling user mobility
+RS
+RS
+RS
+RS
+RS
+1-Pmove
+Pmove /4
+Pmove /4
+Pmove /4
+Pmove /4
+…… ……
+…… ……
+Fig. 3. Reducing the number of states by the idea of Ring
+RS
+(a) The idea of Ring (b) New Markov chain of Ring states
+Ring(0)
+Ring(1)
+Ring(2)
+Ring(0) Ring(1) Ring(2) ……
+1-Pmove 1-Pmove 1-Pmove
+Pmove
+PRing(1)Ring(0) PRing(2)Ring(1) PRing(3)Ring(2)
+Pmove - PRing(1)Ring(0) Pmove - PRing(2)Ring(1)
+Fig. 4. Calculation of PRing(2)Ring(1)
+All transition prob.
+= Pmove /4
+1
+28
+3
+46
+7
+5
+PRing(2)Ring(1) = (Pmove/4)*12*(1/8)
+= (3*Pmove)/8
+REFERENCES
+[1] IEEE Std. 802.16-2004, “IEEE Standard for Local and 
+Metropolitan Area Networks—Part 16: Air Interface for Fixed
+Broadband Wireless Access Systems,” Oct. 2004.
+[2] IEEE Std. 802.16e-2006, “IEEE Standard for Local and 
+Metropolitan Area Networks—Part 16: Air Interface for Fixed
+Broadband Wireless Access Systems—Amendment: Physical and
+Medium Access Control Layers for Combined Fixed and Mobile
+Operation in Licensed Bands,” Feb. 2006.
+[3] IEEE Std. 802.16-2009, “IEEE Standard for Local and metropolitan 
+area networks Part 16: Air Interface for Broadband Wireless Access
+Systems,” May 2009.
+[4] IEEE Std 802.16j-2009, “IEEE Standard for Local and
+Metropolitan Area Networks Part 16: Air Interface for Broadband
+Wireless Access Systems Amendment 1: Multiple Relay
+Specification,” June 2009.
+[5] A. K. Talukdar, B. R. Badrinath, and A. Acharya, “MRSVP: A 
+Resource Reservation Protocol for an Integrated Services Network
+with Mobile Hosts,” Wireless Networks, vol. 7, no. 1, Jan. 2001, pp.
+5-19.
+[6] C. C. Tseng, G. C. Lee, R. S. Liu, and T. P. Wang, “HMRSVP: A 
+Hierarchical Mobile RSVP Protocol”, Wireless Networks, vol.9, no.
+2, March 2003, pp.95-102.
+[7] L. Erwu, W. Dongyao, L. Jimin, S. Gang, and J.Shan,“Performance
+Evaluation of Bandwidth Allocation in 802.16j Mobile Multi-hop
+Relay Networks,” in Proc. IEEE 65th Vehicular Technology
+Conference (VTC2007-Spring), April 2007, pp.939-943.
+[8] A. F. Bayan, and T.-C. Wan, “A Scalable QoS Scheduling
+Architecture for WiMAX Multi-Hop Relay Network,”in Proc. 2nd
+International Conference on Education Technology and Computer
+(ICETC), vol. 5, June 2010, pp. 326-331.
+[9] Y. T. Mai, C. C. Yang, and Y. H. Lin, “Design of the Cross-Layer
+QoS Framework for the IEEE 802.16 PMP Networks,” IEICE
+Transactions on Communications, vol. E91-B, no. 5, May 2008, pp.
+1360-1369.
+[10] C. C. Yang, Y. T. Mai, and L. C. Tsai, “Design of the QoS
+Framework for the IEEE 802.16 Mesh Networks,” International
+Journal of Communication Systems, vol. 22, no. 12, Dec. 2009, pp.
+1543-1562.
+[11] P. S. Mogre, M. Hollick, R. Steinmetz, V. Dadia, and S. Sengupta,
+“Distributed Bandwidth Reservation Strategies to Support Efficient
+Bandwidth Utilization and QoS on a Per-link Basis in IEEE
+802.16 Mesh Networks,”in Proc. IEEE 34th Conference on Local
+Computer Networks (LCN 2009), Oct. 2009, pp. 301-304.
+[12] A. Kapoor, and V. J. Ribeiro, “An End-to-end QoS Aware Greedy
+Distributed Scheduling Framework for WiMAX Mesh Networks,” 
+in Proc. Second International Conference on Communication
+Systems and Networks (COMSNETS 2010), Jan. 2010, pp. 1-8.
+Fig. 6. Analytic vs. Simulation for Pstay(k)
+Zsize = 2, Pmove = 0.5
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18
+Value of k (# of transitions)
+P s
+ta
+y(
+k)
+Simulation result
+Analytic result
+Fig. 7. Handoff call degradation ratio, Pmove = 0.5
+0%
+1%
+2%
+3%
+4%
+5%
+6%
+7%
+100 200 300 400 500 600 700
+# of flows
+H
+an
+do
+ff
+ca
+ll
+de
+gr
+ad
+at
+io
+n
+ra
+tio
+Zsize = 0
+Zsize = 1
+Zsize = 3
+Zsize = 5
+Adaptive Zsize
+Fig. 8. New call blocking ratio, Pmove = 0.5
+0%
+10%
+20%
+30%
+40%
+50%
+60%
+100 200 300 400 500 600 700
+# of flows
+N
+ew
+ca
+ll
+bl
+oc
+ki
+ng
+ra
+tio
+Zsize = 0
+Zsize = 1
+Zsize = 3
+Zsize = 5
+Adaptive Zsize
+Fig. 9. Bandwidth allocation, Pmove = 0.5
+0
+50
+100
+150
+200
+100 200 300 400 500 600 700
+# of flows
+B
+an
+dw
+id
+th
+al
+lo
+ca
+tio
+n
+(K
+bp
+s)
+_
+Zsize = 0
+Zsize = 1
+Zsize = 3
+Zsize = 5
+Adaptive Zsize
+Fig. 10. Zone effectiveness
+0%
+50%
+100%
+150%
+200%
+250%
+300%
+350%
+400%
+450%
+10% 20% 30% 40% 50% 60% 70% 80% 90%
+Move Probability (P move )
+Z
+on
+e
+ef
+fe
+ct
+iv
+en
+es
+s
+Zsize = 0
+Zsize = 1
+Zsize = 3
+Zsize = 5
+Adaptive Zsize
+四、論文發表證書、論文全文：
+batch arrival queueing model. Enhanced mechanisms to
+improve power saving efficiency by properly selecting the
+size of the sleep window were proposed, including heuristic
+algorithms based on traffic types [8] or traffic loads [9], and
+enhancements based on stochastic modeling tools to
+adaptively adjust the sleep window size [10-13].
+These protocols mentioned above inherit the characteristic
+of Type I or Type II, so the sleep pattern in the protocols is
+limited to either exponential pattern (Type I) or constant
+pattern (Type II), which implies the limitation of the protocols
+in dealing with variable bit rate (VBR) connections. In our
+opinion, neither exponential nor constant sleep patterns can
+provide enough capability to effectively deal with power
+saving for VBR traffic. A straightforward and better method is
+to proactively model and measure the traffic in the network,
+and the sleep window size is determined according to traffic
+parameters obtained from traffic measurement. Therefore, the
+idea of Load-based Power Saving (LBPS) was proposed in
+our previous work [14], which falls in the category of Type III
+power saving class. A basic version of LBPS called
+LBPS-Aggr, which treats the traffic for all MSSs as aggregate
+traffic to calculate the sleep window size for MSS, was also
+proposed.
+In this paper, the idea of LBPS is further extended by
+clustering MSSs in the schedule for better power saving
+performance. The enhanced version of LBPS is called
+LBPS-Split. Simulation study shows that better efficiency in
+power saving can be achieved by LBPS-Split over
+LBPS-Aggr. The rest of the paper is organized as follows. The
+survey of our previous work is presented in section II. The
+enhanced protocol LBPS-Split is presented in section III.
+Simulation study and performance comparison are presented
+in section IV. Finally, section V concludes this paper.
+II. PREVIOUS WORK
+A. Load-based Power Saving (LBPS)
+The objective of LBPS is to adaptively adjust sleep window
+size of each MSS to better fit in current traffic condition (load)
+by traffic measurement. LBPS achieves this goal by setting a
+target threshold of data accumulation in the buffer for an MSS
+and dynamically calculating next sleep window size. In this
+way, LBPS can adapt to different traffic load and still
+achieves a proper level of powering saving. There are a
+couple of things that need to be done in order to realize the
+goal of LBPS. Firstly, we need a stochastic model to
+characterize the traffic in the network. In LBPS, Poisson
+process is adopted as the modeling tool and exponential
+averaging is used for estimation of the traffic load (rate).
+Moreover, only downlink traffic (from the BS to MSSs) is
+considered in this paper for compactness, although LBPS can
+also deal with uplink traffic. Secondly, considering a larger
+value of the threshold for data accumulation achieves more
+power saving gain but also results in larger delays, one time
+frame of data should be a suitable upper bound for the
+threshold. Finally, the sleep window size is calculated as the
+number of time frames required to reach the threshold of data
+accumulation. The basic version of LBPS, LBPS-Aggr, in
+which all the traffic in the network is treated as an aggregate
+flow in calculating the size of the sleep window, is presented
+in the following.
+B. LBPS-Aggr Protocol
+In LBPS-Aggr, the BS needs to estimate the current load in
+the network (denoted by  packets per time frame) by
+collecting and exponentially averaging the samples of load as
+in TCP Round-Trip Time (RTT) estimation. Since the traffic
+arrival process is assumed to be Poisson, data accumulation
+under load in a time frame is calculated by the following
+equation.
+Prob [i packet arrivals in a time frame] =
+!
+)(
+i
+Te iT 
+,
+where T is the length of a time
+frame.
+The threshold of data accumulation is denoted by Data_TH
+(packets). The probability of data accumulation exceeding
+Data_TH packets over K time frames in a row can be
+calculated as follows:
+PAcc(K, Data_TH)
+Prob [# of packet arrivals in K time frames > Data_TH]
+= 
+
+
+
+1_ !
+)(
+THDatai
+iKT
+i
+KTe 
+= 
+
+
+
+THData
+i
+iKT
+i
+KTe_
+0 !
+)(
+1
+
+The number of time frames (including the current awake
+time frame) before the next awake time frame for an MSS is
+calculated as the smallest value of K such that PAcc(K,
+Notify
+awake MSS
+Figure 1. LBPS-Aggr protocol
+Awake
+MSS
+K* time frames
+(awake-and-sleep cycle)
+Traffic for all MSS
+BS
+B
+uf
+fe
+r
+Load
+estimation
+Next awake
+Time Frame
+calculation (K*)
+Awake
+Current Time Frame New K*
+out in one time frame in most of the time. However, the MSSs
+in a same group in LBPS-Split are scheduled to be awake in
+the same time frames, thus the value of DATA_TH for the two
+enhanced schemes is set as 80% of a time frame (i.e. 0.8*160
+packets as shown in Table 1) to reduce the probability of data
+overflow in an awake time frame.
+B. LBPS-Split vs. LBPS-Aggr
+Simulation results for comparing LBPS-Split, LBPS-Aggr
+and the standard Type I scheme in terms of power saving
+efficiency (PSE) and the average access delay (AvgDelay) in
+the case of 10 MSSs with equal load are displayed in Figure 3
+and Figure 4 respectively. As shown in Figure 3, power saving
+efficiency of LBPS-Aggr is significantly better than standard
+Type I, and LBPS-Split yields even better power saving
+performance than LBPS-Aggr, which correspondingly leads
+to larger AvgDelay as display in Figure 4. Moreover, since
+LBPS-Aggr is a special case of LBPS-Split, DATA_TH of
+LBPS-Split under very heavy load is set as the original 160
+packets (one time frame of data) in the protocol and thus the
+performance results of LBPS-Split and LBPS-Aggr under
+load 0.9 and load 0.95 converge at same points as displayed in
+Figure 3 and Figure 4.
+C. Impact of the number of MSS and load distribution
+Results of power saving efficiency of LBPS-Split under
+different numbers of MSS are displayed in Figure 5. The
+figure demonstrates that better PSE is achieved for a larger
+number of MSS, since a larger number of MSS provides more
+flexibility in splitting MSSs and thus more gain in PSE can be
+obtained. Figure 6 displays the results of PSE of LBPS-Split
+under three different load distributions: equal load, random
+load, and 8:2 load. In the case of “8:2 load”, 80% of the
+traffic goes to 20% of the MSSs. As demonstrated in the
+figure, higher variation of load distribution makes lower PSE
+in LBPS-Split.
+V. CONCLUSION
+As the mobility-supporting version of IEEE 802.16
+(WiMax), IEEE 802.16e was released in 2006. The subscriber
+station in IEEE 802.16e is no longer stationary but mobile and
+should be powered by battery, so power saving has become an
+important and practical issue in IEEE 802.16e. There are three
+types of power saving in the specification of IEEE 802.16e,
+Type I, II, and III. Most of the research works focused on
+Type I or Type II, which means these previous works
+inherited the limitation of Type I or Type II in selection of the
+sleeping pattern: either adopting the exponential pattern of
+Type I or the constant pattern of Type II for the sleep window
+size. In our previous work, the idea of Load-based Power
+Saving (LBPS) and a basic scheme LBPS-Aggr were
+proposed, in which all of the traffic in the network is treated
+as an aggregate flow for estimating the sleep window size. In
+this paper, an enhanced version of LBPS namely LBPS-Split
+is proposed. Instead of treating all traffic as a single aggregate
+flow, LBPS-Split splits MSSs into different groups in sleep
+scheduling to achieve more power saving efficiency.
+Simulation study has demonstrated LBPS-Split achieves
+better power saving efficiency than LBPS-Aggr. Impact of the
+number of MSS and the variation of load distribution on the
+performance of power saving are discussed in the paper.
+REFERENCES
+[13] IEEE Std. 802.16-2004, “IEEE Standard for Local and Metropolitan 
+Area Networks—Part 16: Air Interface for Fixed Broadband Wireless
+Access Systems,” Oct. 2004.
+[14] IEEE Std. 802.16e-2006, “IEEE Standard for Local and Metropolitan 
+Area Networks—Part 16: Air Interface for Fixed and Mobile Broadband
+Wireless Access Systems -Amendment for Physical and Medium
+Access Control Layers for Combined Fixed and Mobile Operation in
+Licensed Bands,”Feb. 2006.
+[15] IEEE Std. 802.16-2009, “IEEE Standard for Local and Metropolitan
+Area Networks—Part 16: Air Interface for Fixed Broadband Wireless
+Access Systems,” May 2009.
+[16] Y. Xiao,“Performance Analysis of an Energy Saving Mechanism in the
+IEEE 802.16e Wireless MAN,” in Proc. 3rd IEEE Consumer
+Communications and Networking Conference (CCNC), vol. 1, Jan.
+2006, pp. 406-410.
+[17] K. Han, and S. Choi, “Performance Analysis of Sleep Mode Operation 
+in IEEE 802.16e Mobile Broadband Wireless Access System,” in Proc.  
+63rd IEEE Vehicular Technology Conference (VTC 2006-Spring), vol. 3,
+May 2006, pp.1141-1145.
+[18] L. Kong, and D.H.K. Tsang, “Performance Study of Power Saving
+Classes of Type I and II in IEEE 802.16e,” in Proc. 31st IEEE
+Conference on Local Computer Networks (LCN 2006), Nov. 2006, pp.
+20-27.
+[19] S. Jin, and W. Yue, “Performance Evaluation of Self-similar Traffic in
+Multimedia Wireless Communication Networks with Power Saving
+Class Type II in IEEE 802.16e,” in Proc. 2010 IEEE International
+Conference on Wireless Communications, Networking and Information
+Security (WCNIS), June 2010, pp. 436–440.
+[20] J. Jang, K. Han, and S. Choi, “Adaptive Power Saving Strategies for
+IEEE 802.16e Mobile Broadband Wireless Access,” in Proc.
+Asia-Pacific Conference on Communications (APCC’06), Aug. 2006,
+pp. 1-5.
+[21] J. Xue, and Z. Yuan, “An Adaptive Power Saving Strategies based on
+Cross-layer Design in IEEE 802.16e,” Journal of Networks, vol. 5, no. 3, 
+March 2010, pp. 359-366.
+[22] J.R. Lee, and D.H. Cho, “Performance Evaluation of Energy-Saving
+Mechanism Based on Probabilistic Sleep Interval Decision Algorithm in
+Table 1. Simulation Parameters
+# of MSS 10, 20, 40, 80
+Load Distribution Equal, 8:2, Random
+Time Frame Size 160 mini-slots
+1 mini-slot = 1 packet
+Type I initial sleep window size 20 time frame
+Type I max sleep window size 29 time frames
+Listening window size 1 time frame
+Data_TH (LBPS-Aggr) 160 packets
+Data_TH (LBPS-Split) 0.8*160 packets
+Prob_TH (LBPS schemes) 0.8
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/10/08
+國科會補助計畫
+計畫名稱: 整合即時性與非即時性流量之IEEE 802.16e電源管理機制
+計畫主持人: 楊峻權
+計畫編號: 99-2221-E-260-013- 學門領域: 計算機網路與網際網路
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

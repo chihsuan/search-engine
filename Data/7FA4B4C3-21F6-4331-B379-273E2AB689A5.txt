@@ -1,0 +1,581 @@
+2 
+ 
+一、 前言 
+在 H.264/AVC編碼標準[1]，對於 Inter frame運動向量預估模式、entropy coding、
+多張參考 frame之 Inter frame編碼、I-frame的 Intra frame預測編碼模式及更精準的次像
+素運動向量預估模式微調等，提供很大的彈性以獲得最佳的 R-D cost。對於 Inter frame
+運動向量補償編碼中，最主要的運算落在每一個方塊內，必須從 4×4到 16×16的七種動
+態預估模式中找尋最佳的動態補償誤差值(motion compensation error)。對於 Intra frame
+預測模式編碼中，8×8色度(Chroma)區塊與 16×16亮度(Luma)區塊會有四種預測模式，
+4×4亮度區塊會有八個方向及一個 DC的預測模式。因此，我們可以發現在 JM-14.0參
+考軟體中，高複雜的 Intra/Inter frame完整搜尋方式造成編碼過程非常耗時。所以，許多
+的方法應運而生，如 SAD、相同區塊的分析、邊緣偵測等都是為了抉擇最佳的動態預估
+模式。然而，這些的運用都需要在動態補償過程中，花費額外的時間與資源。在此計畫
+中，我們所發展之技術不需要額外的影像處理，就可以達成的快速視訊壓縮編碼。本計
+劃構思利用當前畫面和參考畫面間，分析 Intra/Inter預測模式空間與時間的關聯性，找
+出在空間和時間上，每一個macroblock預估模式的關聯性後，建構快速模式決定的方法。
+而且，在模式處理過程中，採取漂移補償來避免誤差的累積。目前於實驗數據中，可以
+發現總運算量的時間可以節省約百分之七十，傳輸率(bit rate)方面只增加百分之三點七，
+平均的 PSNR大約只有損失 0.08 dB。 
+ 
+二、 研究目的 
+新一代的視訊編碼標準 H.264/AVC[1]是 Joint Video Team (JVT) [1]所發展的低位元
+率壓縮技術。在 H.264/AVC編碼標準[1]，對於 Inter frame運動向量預估模式、entropy 
+coding、多張參考 frame之 Inter frame編碼、I-frame的 intra frame預測編碼模式及更精
+準的次像素運動向量預估模式微調等，提供很大的彈性以獲得最佳的 R-D cost。特別是
+在七種運動向量預估模式從 4×4 到 16×16 模式在每個 macroblock 找最小運動補償誤差
+值。在當前的 JVT參考軟體中，七種模式(各式各樣的 block sizes)被應用於進行運動補
+償過程，此類的最佳化的 R-D cost定義如(1) 
+RDJ ModeMode ×+= λ                         (1) 
+在式子中 D 表示 macroblock運動補償誤差值， Modeλ 是 Lagrange multiplier，R表示要求
+的位元率。為了得到最佳的運動向量估計模式，我們必須在一些費時的過程，例如包含
+運動向量估計，DCT轉換，量化器，計算每一個運動向量估計模式的 R-D cost。 
+另外，利用七種運動向量估計模式從 4×4到 16×16 (見 Fig. 1)去決定在每個 macroblock
+最佳的運動向量估計模式。對 intra 預測模式，利用在 Fig. 2 中的四種預測模式去編碼
+8×8 chroma 與 16×16 luma blocks及利用在 Fig. 3中的八種預測方向和一種 DC 預測去
+編碼 intra 4×4 luma block 。然而，在參考軟體 JM-14.0[6]使用全域搜尋法(Full Search)
+會需要大量的計算量，使得此技術變的無效率。 
+ 
+4 
+ 
+會被移除掉。直到所有的 sub-macroblock 都被計算過這個程序才停止。最後，
+rate-distortion 最佳化被利用於去決定哪個是最好的運動向量預估模式。在文獻[9]，Pan 
+等應用邊緣方向值方圖去降低 intra預測模式的決定的計算成本。在文獻[10]，Zhu等應
+用低解析度的影像和邊緣偵測去決定運動向量預估模式 (8×4,4×8和 4×4)。在文獻[11]，
+Meng等應用兩個方法降低模式決定的複雜度。第一，marroblock decimation被利用於估
+計模式的最小的粗略 R-D cost。第二，如果 R-D cost比事前定義的 threshold T來的小，
+則我們選擇這個模式和這它的兩個鄰近的模式當作候選的模式。 
+ 對於 H.264/AVC 的 intra coding，文獻[12]Cheng 等應用三個步驟階層搜尋方法去
+預測 4×4 intra預測方法。第一，三個模式 0, 1和 2根據 R-D cost被計算。第二，基於步
+驟一的作法估計，兩個模式求一組(5,7)和(6,8)的值。最後，分析四組(4, 5) ,(3, 7), (4, 6) 和
+(6, 8)的 R-D cost去選擇最佳的 intra預測模式。在每個步驟，獲得最小的 R-D cost決定
+下一個去計算，且它會降低計算 cost從 9模式到 6模式。在文獻[13]，Hwang等應用時
+間的資訊去預測 intra模式在 P-frames。對每一個 block在同一個位置 previous預測模式
+且它鄰近的 block被當作候選預測模式去減少重要的搜尋方法。在文獻[14]， Lien等不
+只應用時間的資訊也利用空間的相關性去發展新的快速模式決定方法利用空間-時間預
+測模式。空間-時間相關性在參考 frame和鄰近 macroblocks之中被分析去發展快速模式
+決定方法不利用額外的影像處理。此外，drift compensation的概念被採用避免在模式決
+定的過程累積的誤差值。 
+ 在本計劃，不但利用在參考 frame和鄰近 macroblocks之中時間-空間的關聯性開發
+快速模式決定(運動估計)方法，也使用 P-frame的 intra 預測模式。這個新的想法不需要
+額外的影像處理且這個新的想法可以比[14]省更多的 cost。除此之外，此計劃有別於文
+獻[14]，我們除了考慮 interframe coding也同時考慮 intraframe frame coding. 也就是較完
+整的研究如何改善 H.264/AVC的編碼效能。根據比較 JM-14.0參考軟體，實驗結果顯示
+總共的計算 cost可減少 70%以上，總共的 bitrate只增加 3.7%而且平均的 PSNR只有下
+降大約 0.08dB。 
+ 
+四、 研究方法 
+ 
+4.1 H.264/AVC以及 JM-14.0參考軟體 
+近年來，新的視訊編碼標準 Advanced Video Coding (AVC)被提出到 ISO/IEC國際標
+準 ISO/IEC 14496-10視訊編碼和 ITU-T H.264[1]。H.264/AVC編碼的主要目的是要為了
+改善壓縮效率、網路適應性、抗錯能力與互動式和無互動式視訊應用。為了獲得最佳的
+R-D cost，在 H.264/AVC編碼標準中，對於運動估計模式有很大的彈性，提供多張參考
+frame、多種 I-frame的 intra預測模式、更精準的次像素運動向量預估模式微調、entropy 
+coding…等。H.264/AVC編碼架構如 Fig.4中所顯示。 
+ 
+6 
+ 
+4.1.2 The JM-14.0 編碼結構 
+在本計劃中，利用 H.264/AVC參考軟體 JM-14.0[6]去發展快速模式決定方法。Fig. 5顯
+示 JM-14.0 編碼器的主要部份的流程圖。在 JM-14.0 參考軟體中，configuration 
+(encoder_baseline.cfg)被初始化在 main”function的開頭。然後，frame_picture function用
+來定義 interlaced 或是 progressive 的視訊型態。在 field_picture function 中，
+PartitionMotionSearch function 用來分割 frame成為macroblock， encode_one_macroblock 
+function用來編碼每一個 macroblock。最後 BlockMotionSearch function 選擇運動估計模
+式用於運動補償編碼。 
+ 
+Fig. 5 Flowchart of the JM-14.0 encoder. 
+ 
+Fig. 6顯示在參考軟體 JM-14.0中再每一個 macroblock運動估計模式的決定方法與視訊
+壓縮編碼的 rate distortion最佳化的流程。 
+ 
+main()
+encode_one_frame()
+frame_picture()
+field_picture()
+code_a_picture()
+encode_one_slice()
+encode_one_macroblock()
+PartitionMotionSearch()
+BlockMotionSearch()
+FastIntegerPelBlockMotionSearch()
+FullPelBlockMotionSearch()
+FastFullPelBlockMotionSearch()
+SubPelBlockMotionSearch()
+FastSubPelBlockMotionSearch()
+8 
+ 
+ 
+Fig. 7 The mode correlation for a macroblock between adjacent frames. 
+ 
+在 P-frame #2 圖中所示的 macroblock，所採用之運動向量預估模式的機率會近似於在
+P-frame #1中以此 macroblock位置為中心的鄰近 macroblock (在 Fig.7 P-frame #1的編號
+1~9) 所採用之運動向量預估模式。根據 JM參考軟體，運動向量預估模式關聯性之分析
+列在 Table 1。在這裡，我們分析運動向量預估模式：16×16, 16×8,8×16, 8×8和 skip模式
+之模式關聯性。 
+ 
+Table 1. Probabilities for the mode of a macroblock on P-frame #2 is similar to the modes of 
+the neighboring macroblocks centered at the same position on P-frame #1. 
+Sequences QP28 QP32 QP36 QP40 
+Akiyo 95.11% 96.02% 97.22% 98.26% 
+Container 93.35% 94.88% 96.40% 97.55% 
+Hall_Monitor 95.28% 96.62% 97.16% 97.51% 
+Moth&Daug 91.77% 93.59% 95.11% 96.42% 
+News 92.90% 93.63% 94.52% 95.73% 
+Salesman 94.63% 95.10% 96.00% 97.31% 
+Carphone 88.54% 90.16% 92.32% 94.40% 
+Coastgrd 86.05% 87.31% 89.17% 92.70% 
+Foreman 87.28% 88.29% 89.22% 90.90% 
+ 
+在 Table 1中，九個長度 200 frame的 video sequences被使用在分析模式關聯性。此外，
+量化的 step size分別設定為 QP=28, 32, 36和 40。對於用 QP=28的 Foreman video 
+sequence，macroblock的估計模式的可能性是接近於前一張參考 frame中鄰近的
+macroblock相同位置的中心附近的估計模式是 87.28%。從 Table 1的分析結果中，觀察
+到模式關聯性對於在兩個相鄰的 frame的 macroblock是很高的。另外，對於模式關聯性
+的亮個額外的實驗線顯示在 Table 2和 3中。在 Table 2和 3中，skip和 16×16模式被當
+10 
+ 
+步驟 1. macroblock追蹤 
+對每一個 macroblack 找出運動向量預測模式之統計直方圖，為了精準求出每一個
+macroblack 之統計直方圖，我們需要找到這個 MB 在前一個 frame 的所在位置。相鄰兩
+畫面同一個 MB 的位移關係可由前一個 frame MB 所在位置鄰近方塊之權重運動向量計算
+之，如方程式(2)所示。Fig. 8說明了此追蹤程序。 
+∑ ∑+=
+−=
++=
+−=
+=
+1
+1
+1
+1
+),(),(
+xi
+xi
+yj
+yj
+)/Tji(yxMV m                      (2) 
+這裡 MV是指預測運動向量，x 和 y是指目前 frame的 block的座標，m(i, j)是在前一張
+frame的 block( i, j)的運動向量。Fig. 8說明估計運動向量的方法。運動向量的精確估計
+可能被計算利用權重的每一個 block根據面積比率的 block到 4×4block。舉個例，Table 4 
+說明顯示在 Fig. 8中每一個 macroblock內之 block相對於 4×4 block的面積比率。在 Eq. 
+(2)至中數值 T是觀察到的所有權重 factors的總和。然而，當 MV的數值不是整數時，
+我們選擇最接近的 macroblock如 Fig. 9所示，去計算模式的統計直方圖。 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+Fig. 8 Distribution of motion vectors for a macroblock on P-frame #2. 
+Table 4 The number of the available motion vectors in Fig. 8 
+No.1 No.2 No.3 No.4 No.5 No.6 No.7 No.8 No.9 T 
+16 0 4 8 16 0 0 0 0 44 
+ 
+Fig. 9 The prediction block from previous block. 
+Current prediction 
+corresponding block 
+ 
+Motion estimation block 
+ 
+Preview block 
+ 
+Motion vector after 
+calculating Eq. (2) 
+ 
+12 
+ 
+1. 用較小的 block組成當成新的候選模式類別置換較大的 block組成模式類別。但是新
+的被選擇的模式類別不應該和已被挑選的模式類別一樣。 
+2. 如果候選模式類別不能更新成較小的 block size，換言之，候選模式類別被類別#4和
+#5組成，那麼候選模式類別要停止更新。 
+3. 一旦決定了每一個 macroblock的運動估計模式，分割系統和相對應的運動 向量會被
+紀錄。 
+舉例來說，如果在 Fig.11中的 P-frame#2的 macroblock#2的 R-D cost大於 Fig.11中的
+P-frame#1的 macroblock#1的 R-D cost，那麼 P-frame#3的 macroblock#3的候選模式將
+會被決定藉由以上的規則。 
+ 
+ 
+Fig. 11 The drift compensation process. 
+ 
+步驟 4 快速 Intra 預測 
+在H.264/AVC中，intra預測模式決定是很複雜且非常耗時的。在此計劃有別於文獻[14]，
+我們除了考慮 interframe coding也同時考慮 intraframe frame coding. 也就是較完整的研
+究如何改善 H.264/AVC的編碼效能。在這裡，每一個 GOP內，JM完全模式搜尋被應用
+在第一個 P-frame作全模式之搜尋，並且對於每一個 macroblock的 intra編碼所決定的模
+式要被紀錄起來。在後繼的 P-frame 中被追蹤到的 macroblock 所可能採取的 Intra 預測
+編碼模式，即可以參考前一 P-frame所記錄的 Intra預測編碼模式。本計劃所提出的模式
+決定方法可應用於 intra 16×16預測模式和 intra 4×4預測模式兩者。在 JM完全模式搜尋
+方法，模式估計的數量大約是 592 = 4×(16×9+4)。然而，利用空間-時間預測系統，模式
+決定的數量可以減少成 17=1×(16+1)。 
+ 
+步驟 5 模式紀錄 
+一旦在每一個 macroblock所決定之 Inter/Intra預測編碼模式，macroblock分割圖，和相
+對應的運動向量都需要記錄起來。 
+ 
+當我們想要在P-frame中編碼macroblock，將會需要做兩個重要的步驟( intra 預測和 inter
+預測)。之後每一個 R-D cost的計算，我們將得到最好的預測模式。intra / intera模式決
+定方法利用空間-時間關聯性的 block diagram說明在 Fig. 12。它有兩個部份去作這個演
+算法，一個是快速 inter預測模式和另一個是 intra預測模式，兩者都被利用於降低預測
+14 
+ 
+ %100
+][
+][][ x
+JMTime
+proposedTimeJMTimeT −=∆                 (3) 
+ 
+ %100
+][
+][][ x
+proposedBitRate
+JMBitRateproposedBitRateR −=∆             (4) 
+ 
+Table 6 The motion estimation speed up analysis of proposed and Lien’s method. 
+Moiton  
+Estimation 
+Video Clip Type 28 32 36 40 
+A 
+akiyo 
+Proposed method 73.0% 73.7% 72.5% 71.2% 
+Lien’s method [14] 74.5% 73.1% 72.0% 71.2% 
+container 
+Proposed method 73.7% 73.8% 73.6% 74.7% 
+Lien’s method [14] 73.1% 72.7% 73.7% 74.7% 
+hall monitor 
+Proposed method 72.3% 72.4% 70.4% 71.4% 
+Lien’s method [14] 74.9% 73.4% 72.6% 71.1% 
+Moth&Daug 
+Proposed method 71.1% 71.4% 71.1% 69.8% 
+Lien’s method [14] 71.3% 71.1% 71.0% 68.3% 
+B 
+news 
+Proposed method 72.5% 71.0% 71.8% 72.4% 
+Lien’s method [14] 70.3% 68.7% 70.6% 71.7% 
+salesman 
+Proposed method 72.2% 72.2% 71.1% 70.6% 
+Lien’s method [14] 72.5% 71.2% 70.2% 71.0% 
+C 
+carphone 
+Proposed method 71.7% 70.4% 70.7% 70.5% 
+Lien’s method [14] 70.9% 70.6% 70.1% 70.7% 
+coastgrd 
+Proposed method 71.5% 71.9% 72.2% 71.2% 
+Lien’s method [14] 70.8% 71.2% 71.6% 72.7% 
+foreman 
+Proposed method 70.8% 70.1% 70.1% 70.1% 
+Lien’s method [14] 69.5% 70.3% 71.0% 69.8% 
+ 
+Table 7 The PSNR (dB) analysis of proposed and Lien’s method. 
+Y PSNR Video Clip Type 28 32 36 40 
+A 
+akiyo 
+Proposed method -0.07 -0.12 -0.1 -0.07 
+Lien’s method [14] -0.07 -0.12 -0.1 -0.07 
+container 
+Proposed method -0.08 -0.11 -0.11 -0.09 
+Lien’s method [14] -0.08 -0.11 -0.1 -0.09 
+hall monitor 
+Proposed method -0.07 -0.09 -0.1 -0.08 
+Lien’s method [14] -0.05 -0.09 -0.09 -0.08 
+16 
+ 
+Total  
+encoding 
+Video Clip Type 28 32 36 40 
+A 
+akiyo 
+Proposed method 74.3% 73.8% 73.4% 72.9% 
+Lien’s method [14] 40.7% 42.1% 43.7% 44.3% 
+container 
+Proposed method 72.0% 72.3% 73.1% 73.5% 
+Lien’s method [14] 41.8% 42.9% 44.9% 46.4% 
+hall monitor 
+Proposed method 73.6% 73.1% 72.4% 72.2% 
+Lien’s method [14] 39.6% 40.4% 42.4% 43.5% 
+Moth&Daug 
+Proposed method 70.5% 70.5% 70.5% 70.3% 
+Lien’s method [14] 44.7% 45.7% 45.7% 44.3% 
+B 
+news 
+Proposed method 72.0% 71.9% 71.8% 71.6% 
+Lien’s method [14] 41.1% 42.5% 44.2% 45.7% 
+salesman 
+Proposed method 73.1% 72.6% 72.5% 71.9% 
+Lien’s method [14] 41.0% 44.0% 46.3% 46.8% 
+C 
+carphone 
+Proposed method 67.6% 68.0% 68.3% 68.4% 
+Lien’s method [14] 45.7% 46.7% 47.1% 46.5% 
+coastgrd 
+Proposed method 66.8% 67.3% 68.2% 68.8% 
+Lien’s method [14] 51.4% 52.1% 52.7% 52.7% 
+foreman 
+Proposed method 66.5% 66.7% 66.8% 66.8% 
+Lien’s method [14] 48.4% 49.1% 50.1% 50.0% 
+ 
+5.2 The Rate-Distortion Analyses 
+在章節 4.2，rate-distortion的分析針對 bit-rate 100K 到 2500K bit/sec作說明。rate-distortion
+的分析被執行在下列兩個環境設定：(1)所有的運動估計模式在 JM-14.0中被利用，(2)
+利用 Len的方法。從 Fig. 13到 Fig. 15，模擬結果顯示 PSNR數值接近從 JM-14.0參考
+軟體獲得的最佳數值。 
+ 
+  
+SNR vs. bit-rate for sequence-akiyo.qcif
+40
+42
+44
+46
+48
+50
+52
+100 200 300 400 500 600 700 800
+Bit rate (kbit/s) @ 30.00 Hz
+Proposed method
+Lien's method
+JM 14.0
+SN
+R 
+Y
+ (d
+B)
+18 
+ 
+(c)
+ 
+ 
+Fig. 16 The computation time of the total encoding cost for (a)Akiyo, (b)News and 
+(c)Foreman video sequences using the JM-14.0 reference software, our proposed method, and 
+Lien's method. 
+ 
+我們可以從 Fig.16看見，我們提出的所以模式覺得的解法對於壓縮效率可以接近大約 3
+倍的改善。在最好 bit rate上我們提出的方法還比”Lien的方法”快。最後，我們可以發現
+空間-時間關聯性不只是對運動估計有效也適合用於 P frame的 intra 預測。運動估計和
+intra 預測都有計算時間上的速度提昇。所有的 bit rate也沒有增加太多，而且 PSNR也
+大多相同於” Lien的方法 ”。 
+ 
+六、 參考文獻 
+[1] “Draft ITU-T recommendation and final draft international standard of joint video 
+specification (ITU-T Rec. H.264/ISO/IEC 14486-10 AVC,” in Joint Video Team (JVT) of 
+ISO/IEC MPEG and ITU-T VCEG, JVT-G050, March, 2003. 
+[2] Iain E. G. Richardson, H.264 and MPEG-4 video compression, John Wiley & Sons, 2003. 
+[3] ITU-T Recommendation H.263, “Video coding for low bit rate communication,” version 3, 
+Nov. 2000. 
+[4] ISO/IEC 14496-2: “Information technology-coding of audiovisual objects-part 2: visual,” 
+Geneva, 2000. 
+[5] J. Ostermann, J. Bormans, P. List, D. Marpe, M. Narroschke, F. Pereira, T. Stockhammer, 
+T. Wedi, “Video coding with H.264/AVC: tools, performance, and complexity,” IEEE 
+Circuits and Systems Magazine, vol. 4, no. 1, pp. 7 - 28, March, 2004. 
+[6] Joint Video Team (JVT) Reference software JM-14.0, May, 2008, 
+http://iphome.hhi.de/suehring/tml/ 
+[7] X. Jing and L. P. Chau, “An efficient inter mode decision approach for H.264 video 
+coding,” IEEE International Conference on Multimedia & Expo, ICME2004, Taipei, 
+Taiwan, June 2004. 
+[8] D. Wu, S. Wu, K. P. Lim, Pan Feng, Z. G. Li, C. C. Ko, “Fast inter mode decision with 
+adaptive thresholds for H.264 encoding,” Accepted by 8th International Symposium on 
+Consumer Electronics (ISCE'2004), Reading, UK, 1-3 Sept. 2004. 
+[9] F. Pan, X. Lin, R. Susanto, K. P. Lim, Z. G. Li, G. N. Feng, D. J. Wu, and S. Wu, “Fast 
+mode decision algorithm for intra prediction in JVT,” ISO/IEC JTC1/SC29/WG11 
+(JVT_G013) MPEG2003, Pattaya, Thailand, March, 2003  
+[10] D. Zhu, Q. Dai and R. Ding, “Fast inter prediction mode decision for H.264,” IEEE the 
+fifth International Conference on Multimedia and Exposition (ICME 2004), Taipei, June 
+SNR vs. bit-rate for sequence-foreman.qcif
+20
+40
+60
+80
+100
+120
+140
+160
+10
+0
+20
+0
+30
+0
+40
+0
+50
+0
+60
+0
+70
+0
+80
+0
+90
+0
+10
+00
+15
+00
+20
+00
+25
+00
+Bit rate (kbit/s) @ 30.00 Hz
+Proposed method
+Lien's method
+JM 14.0
+To
+ta
+l e
+nc
+od
+in
+g 
+tim
+e 
+(S
+ec
+)
+20 
+ 
+七、 附錄 
+部分成果已發表在 
+Cheng-Chang Lien, Chih-Chang Chen and Yang-Kai Chang, “Fast Intra/Inter Mode Decision for H.264/AVC 
+Using the Spatial-Temporal Prediction Scheme,” IEEE Symposia and Workshops on Ubiquitous, Autonomic and 
+Trusted Computing in conjunction with the UIC’09 and ATC’09 conferences, Brisbane Australia, July 7- 9, 2009, 
+pp. 194-199. (EI) 
+ 
+22 
+ 
+ 
+24 
+ 
+ 
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+                          日期： 99  年 10  月 27  日 
+                                 
+一、 參加會議經過 
+這一次參加之會議發表論文一篇，題目為 People counting using multi-mode 
+multi-target tracking scheme。論文主題為提出一項多模式目標物追蹤技術，並另用此
+技術發展 front view 之人員計數技術。會議所報告之 SESSION 為 
+Session A01：Multimedia Signal Processing for Intelligent 
+Applications 
+A01-01【IIH-MSP-2009-IS32-01】 
+People Counting Using Multi-Mode Multi-Target Tracking Scheme 
+Cheng-Chang Lien, Ya-Lin Huang, and Chin-Chuan Han 
+Chung Hua University, Taiwan, R.O.C. 
+A01-02【IIH-MSP-2009-IS32-02】 
+Human Behavior Description Model Based on Action Recognition 
+Fang-Hsuan Cheng and Cheng-Yuan Chang 
+Chung Hua University, Taiwan, R.O.C. 
+A01-03【IIH-MSP-2009-IS32-03】 
+A New Feature Integration Approach and Its Application to 3D Model Retrieval 
+Jau-Ling Shih, Chang-Hsing Lee, Chih-Hsun Chou, and Yu-Cheng Chang 
+Chung Hua University, Taiwan, R.O.C. 
+A01-04【IIH-MSP-2009-IS32-04】 
+Modulation Spectral Analysis of Static and Transitional Information of Cepstral and 
+Spectral Features for Music Genre Classification 
+Chang-Hsing Lee, Hwai-San Lin, Chih-Hsun Chou, and Jau-Ling Shih 
+Chung Hua University, Taiwan, R.O.C. 
+A01-05【IIH-MSP-2009-IS32-05】 
+Face Image Super-Resolution Using Two-dimensional Locality Preserving Projection 
+Yuan-Kai Wang and Cai-Ren Huang 
+Fu Jen University, Taiwan, R.O.C. 
+A01-06【IIH-MSP-2009-233】 
+計畫編號 NSC 98-2221-E-216 -034 
+計畫名稱 使用空間與時間關聯預測之 H.264/AVC快速 Intra/Inter 模式決定系
+統 
+出國人員
+姓名 
+連振昌 
+服務機構
+及職稱 
+中華大學資訊工程學系 
+會議時間 
+2009年 9月 12日
+至 
+2009年 9月 14日 
+會議地點 
+日本 京都 
+會議名稱 
+(中文)IEEE 智慧訊息隱藏暨多媒體訊號處理國際會議 
+(英文) IEEE International Conference on Intelligent Information Hiding and 
+Multimedia Signal Processing 2009 (IIH-MSP 2009) (EI) 
+發表論文
+題目 
+(中文)使用多模式多目標物追蹤之人員計數系統 
+(英文) People counting using multi-mode multi-target tracking scheme 
+10:00--10:20 Coffee Break Conference Room A in MIELPARQUE, Kyoto 
+10:20--12:20 Session D01 and C01--C03 
+Conference Room 
+A--D 
+14:00--16:00 Session C04--C06 
+Conference Room 
+B--D 
+16:00--16:20 Coffee Break Conference Room A 
+16:20--18:20 Session C07 and P01--P02 
+Conference Room 
+B--D 
+ 
+ 
+ 
+二、 與會心得 
+每一次國際會議都會發現許多新技術的發展與應用，以及了解多媒體領域發展的
+新趨勢。因此研究要與國際接軌，參加國際學術研討會是必要的。 
+ 
+三、考察參觀活動(無是項活動者略) 
+無此項活動 
+ 
+四、建議 
+ 無 
+ 
+五、攜回資料名稱及內容 
+攜回資料為會議議程及論文光碟片。 
+ 
+六、其他 
+ 無 
+ 
+
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+已發表 EI 研討會論文 
+Cheng-Chang Lien, Chih-Chang Chen and Yang-Kai Chang, ＇Fast Intra/Inter 
+Mode Decision for H.264/AVC Using the Spatial-Temporal Prediction 
+Scheme,＇ IEEE Symposia and Workshops on Ubiquitous, Autonomic and 
+Trusted Computing in conjunction with the UIC＇09 and ATC＇09 
+conferences, Brisbane Australia, July 7- 9, 2009, pp. 194-199. (EI) 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

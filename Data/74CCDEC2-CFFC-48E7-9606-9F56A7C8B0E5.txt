@@ -1,0 +1,559 @@
+i 
+ 
+目錄 
+1. 前言 ................................................................................................................... 1 
+2. 本計畫目標 ....................................................................................................... 2 
+2.1. 封包過濾模組 ........................................................................................... 2 
+2.2. 封包分類模組 ........................................................................................... 3 
+2.3. 整合式封包分類技術 ................................................................................ 4 
+3. 本計畫進度規劃 ................................................................................................ 5 
+3.1. 預期進度及目前達成情況 ........................................................................ 5 
+4. 已完成之進度執行情形 .................................................................................... 7 
+4.1. 封包過濾模組 (Packet Filtering Module) ................................................. 7 
+4.2. 連線追蹤模組 (Connection Tracking Module) ......................................... 8 
+4.3. 封包分類模組 (Packet Classification Module) ......................................... 9 
+4.4. 規則更新 (Rule Update) ......................................................................... 11 
+5. 本年度預期產出及達成情形 .......................................................................... 13 
+6. 第二年度進度.................................................................................................. 15 
+7. 參考文獻 ......................................................................................................... 16 
+ © NCKU-EE 
+2 
+ 
+2. 計畫目標 
+ 
+本計畫目標以 NetFPGA 平台實作高速封包處理系統，計畫架構圖如 
+圖 2-1 所示，具備以下四個功能：封包擷取 (packet capture)、封包過濾 
+(packet filtering)、封包分類 (packet classification)及交換路由 (switching/routing) 
+模組。目前 NetFPGA 平台已經提供了基本封包擷取及交換路由的功能，因此本
+計畫將繼續實作高速封包過濾模組及內容層級 (content-level) 的封包分類模組
+的部分，由於內容層級的封包分類模組實作較複雜，所以目前先以 host 端作業
+系統核心中實作封包分類模組。本計畫再利用流量分類、過濾及交換路由等功
+能，以實現支援網路虛擬化 (network virtualization) 之高速封包處理平台。 
+以下簡述封包過濾模組，封包分類模組的功能，及整合式流量分類技術： 
+ 
+2.1. 封包過濾模組 
+ 
+封包過濾模組包含查詢個別封包層級 (packet-level) filter table及查詢連線層
+級 (connection-level) 的 connection table。前者進行 port-based 流量過濾，支援黑
+白名單的過濾，後者收集連線資訊，以支援 behavior-based 技術之流量分類及過
+濾。封包根據查表結果進行相對應的封包處理，例如：packet drop, 導至 host 端
+分析及轉送 (forwarding) 至相對應的埠口，可制定對應的應用進行對應的封包
+處理，以支援網路虛擬化技術。 
+ 
+ 
+ © NCKU-EE 
+4 
+ 
+2.3. 整合式封包分類技術 
+ 
+本計畫將整合 port-based, content-based, 及 behavior-based 流量分類技術，
+如圖  2-2 所示，以達成高速流量分類及提升流量分類的正確性。利用高速 
+port-based 流量過濾區分黑白名單，再利用 content-based 流量分類技術，以 DPI
+技術將封包應用層的內容與特徵子串比對，提升封包辨識率，並再以 
+behavior-based 的流量分類技術，根據流量行為如封包大小，單位時間連線數等
+資訊，分析流量行為，加強辨識結果，以減少封包誤判率 (false positive rate)。 
+ 
+ 
+圖 2-2 整合式流量分類技術 
+ 
+    本章節介紹本計畫之預期之目標，下一章節更詳細原計畫目標預定達成之
+進度，及目前執行之情形。 
+ 
+ © NCKU-EE 
+6 
+ 
+ 測詴與分析目前 NetFPGA 上封包擷取模組及交換/路由模組的效能 
+已測詴 reference router 及 OpenFlow switch 於 NetFPGA 平台之效能並 
+survey 相關論文數據[1][2]，目前 reference router 及 OpenFlow switch 其
+forwarding 之效能可達成線速 (wire-speed)。 
+ 
+ 設計與實作封包過濾模組以及建立 connection table 
+已完成封包過濾模組及建立 connection table 之設計與實作，後續章節會詳
+細介紹完成之情形。 
+ 
+ 設計與實作封包分類模組以及建立 rule table 
+已完成封包分類模組及建立 rule table 之設計與實作，後續章節亦會詳細介
+紹完成之情形。 
+ 
+ © NCKU-EE 
+8 
+ 
+Memory) 進行查表並決定比對的結果，  TCAM 的實作是利用  Xilinx Core 
+Generator 來產生 SRL-based CAM 的，並且在設計上使用多個 TCAMs 來達成平
+行處理，達成增加 TCAM 的大小或是比對的範圍。比對完後的結果會存放至 
+result_fifo。而 action_processor 能根據比對的結果，將封包從 
+input_fifo取出，進行流量過濾的處理，最後交由指定的埠口輸出。 
+ 
+user_data_path
+in
+p
+u
+t_
+a
+rb
+it
+e
+r
+NetfilterOffloader output_port_lookup
+o
+u
+tp
+u
+t_
+q
+u
+e
+u
+e
+s
+packet_
+extract tcam_lookup
+a
+ct
+io
+n
+_
+p
+ro
+ce
+ss
+o
+r
+input_fifo
+result_fifo
+generic_regs
+Packet bus data flow
+Register bus data flow
+Other control/data signals  
+圖 4-2 封包處理流程與硬體模組區塊關係圖 
+ 
+4.2. 連線追蹤模組 (Connection Tracking Module) 
+ 
+硬體部分的連線追蹤表已經完成，相關資料結構定義也完成。封包進入，查
+詢連線追蹤表的邏輯亦已完成。封包進入後的處理流程如下：一、根據封包的五
+個欄位（來源網路位址、目的網路位址、來源埠號、目的埠號以及網路層的協定
+欄位）來算出雜湊值；二、以此雜湊值為位址到靜態隨機存取記憶體中查詢；三、
+若查詢已有此封包流則告訴下一級命中，若否則告訴下一級沒有命中；四、如果
+ © NCKU-EE 
+10 
+ 
+    DPI server 在 kernel space 內部的運作如圖 4-3-2，網路封包由 Network 
+Device Driver (Network Interface Card) 接收後進入 Linux Kernel，經由函式
+ip_rcv( ) 檢查，接著到達 Netfilter framework。 
+Netfilter framework 為 Linux kernel 中封包過濾之機制，該機制提供了五個
+掛勾點  (hook) 供網路管理者使用，管理者可透過位於  userspace 的工具 
+iptables 來將封包過濾規則掛於掛勾點上。五個掛勾點分別是 PreRouting、
+Forwarding、PostRouting、Input 和 Output。封包經由 ip_rcv() 處理後會進入
+Netfilter framework 遇上第一個 掛勾 PreRouting hook；該 hook 會去判斷封包是
+否轉送或是傳送給本機端。如果為本機端的封包，則進入 Input hook 到達 user 
+space 做處理，處理結束再經由 user space 傳送給 Output hook，通過 PostRouting
+從適當的網路介面出去後到網路中；如果為轉送的封包，在 PreRouting hook 就
+會把此封包傳送給 Forwarding hook，最後再交由 PostRouting 送出至網際網路。 
+ 
+Network 
+Device 
+Driver
+Ip_rcv
+Promisc
+PreRouting
+Forwarding
+PostRouting
+Input
+Output
+Kernel Space User Space
+Network Service 
+Process
+iptables
+Service 7
+ 
+圖 4-3-2、DPI 內部實作架構圖 
+ 
+本計畫的DPI系統於Netfilter framework中新增了一個Promisc hook，以 port 
+ © NCKU-EE 
+12 
+ 
+燒錄 NetFPGA 板卡上的硬體部分。軟體部分修改了 Linux Kernel 提供的的防火
+牆 iptables，並且實作了一個 Kernel Module 藉由 Netlink socket 搭起 iptables 和
+NF2 driver 的溝通橋樑。當使用者在 User Mode 的介面輸入防火牆規則等後，此
+一資訊會經由 Netlink socket 傳送至 Netfilter 的 Kernel Module，根據使用者下的
+指令將資料傳給 NF2 driver，最後再經由 PCI bus 更新 NetFPGA 卡板上的硬體防
+火牆 – NetfilterOffloader。目前提供的指令有：新增、修改、刪除、搜尋和列出
+所有規則等五個指令。當完成指令後底層會回傳處理結果，Kernel Module 再將
+訊息（處理結果或者是錯誤代碼）藉由 Netlink socket 傳回 user space，使用者即
+可透過螢幕得知結果。 
+ 
+另外在統計資訊部分，寫入到 NetFPGA 卡板上的硬體防火牆  – 
+NetfilterOffloader 中的每條規則，會根據阻擋的封包數目和流量進行累計並儲存
+起來。當使用者欲取得此一規則的封包統計資訊時，只需在 command line 下達
+指令給 Kernel Module，自底層取回的統計資訊即會經由 Netlink socket 傳送回
+來，顯示此規則自生效後總共阻擋的封包數量以及總流量。 
+ © NCKU-EE 
+14 
+ 
+國內相關技術活動的參與方面，目前將封包過濾模組應用於伺服器端之硬體
+防火牆，已經參與了教育部舉辦 2010 全國嵌入式系統競賽，參賽題目“Using 
+NetFPGA to Implement a High-speed Firewall”，已進入決賽，已於 5/22 參於決賽
+報告及 demo，目前等待決賽結果公佈。 
+ © NCKU-EE 
+16 
+ 
+7. 參考文獻 
+ 
+[1] J. Naous, G. Gibb, S. Bolouki, and N. McKeown. NetFPGA: reusable router 
+architecture for experimental research. In PRESTO ’08: Proceedings of the 
+ACM workshop on Programmable routers for extensible services of tomorrow, 
+pages 1–7, New York, NY, USA, 2008. ACM 
+[2] J. Naous, D. Erickson, G. A. Covington, G. Appenzeller, and N. McKeown. 
+Implementing an openflow switch on the netfpga platform. In Symposium On 
+Architecture For Networking And Communications Systems, 2008. 
+[3] G. A. Covington, G. Gibb, J. Naous, J. W. Lockwood, N. McKeown, Encouraging 
+Reusable Network Hardware Design. International Conference on 
+Microelectronic Systems Education, 25-27 July 2009 
+[4] Application Layer Packet Classifier for Linux, http://l7-filter.sourceforge.net 
+ 
+表 Y04 
+ 2010 年基因及演化式計算研討會 
+Genetic and Evolutionary Computation Conference 
+2010 (GECCO 2010) 
+ 
+July 7 - 11, 2010, Portland, Oregon, U.S.A. 
+ 
+楊竹星 
+國立成功大學電機工程學系 
+ 
+一、參加會議經過 
+2010年基因及演化式計算研討會(GECCO 2010) 於 2010年 7月
+7 日至 11 日在美國奧瑞岡州波特蘭市召開。感謝國科會經費支持，
+得以成行參與研討會，在會中張貼短文，並且與其他專家學者討論相
+關研究議題，分享經驗與成果，收穫良多。 
+GECCO 2010於 7月 7日與 8日分別舉辦 9場免費的Tutorials and 
+Workshops，吸引與會者投入。接著進行為期三天的論文宣讀技術場
+次，Poster Session 則安排在 7/10 星期六 18:00-20:30 之間，與
+Reception 同時舉行，大會準備飲料與點心提供與會者享用，同時參
+與各個 Poster 的討論。 
+ 
+二、與會心得 
+ 
+此次 GECCO 2010 於美國奧瑞岡州波特蘭市舉行，感謝國科會經費支
+持，得以成行參加盛會。波特蘭市是美國排名居首之適合人居住的花
+園城市，由於緯度高天黑較晚，利用晚上到市區與公園閒逛，市區規
+劃相當環保與綠色科技結合，相當舒適。GECCO 2010 國際研討會是
+結合第十九屆國際基因演算法研討會與第十五屆基因程式規劃研討
+表 Y04 
+大會議程如下所示： 
+ 
+Tutorials 
+and 
+Workshops 
+Room  
+8:30-10:20  10:40-12:30  14:00-15:50  16:10-18:00  
+Salon A  Advanced  
+Representations for 
+Evolutionary 
+Algorithms  
+Franz Rothlauf  
+Intro  
+Statistical Analysis for 
+Evolutionary 
+Computation: 
+Introduction  
+Mark Wineberg, Steffen 
+Christensen  
+Advanced  
+Statistical analysis for 
+evolutionary 
+computation: 
+Advanced Techniques  
+Mark Wineberg, 
+Steffen Christensen  
+Advanced  
+Tuning and 
+Experimental Analysis 
+in EC: What We Still 
+Have Wrong  
+Mike Preuss, Thomas 
+Bartz-Beielstein  
+Salon B  Black Box 
+Optimization 
+Benchmarking 
+Workshop  
+Anne Auger, 
+Hans-Georg Beyer, 
+Nikolaus Hansen, 
+Steffen Finck, Raymond 
+Ros, Petr Posik  
+p. 31  
+BBOB  
+continued  
+BBOB  
+continued  
+BBOB  
+continued  
+Salon C  Medical Applications 
+of Genetic and 
+Evolutionary 
+Computation 
+(MedGEC) Workshop  
+Stephen L. Smith, 
+Stefano Cagnoni, Robert 
+Patton  
+p. 36  
+MedGEC  
+continued  
+Advanced  
+Evolutionary 
+Computation on 
+GPUs (with NVIDIA 
+presentation)  
+Wolfgang Banzhaf, 
+Pierre Collet, Simon 
+Harding, NVIDIA  
+Special  
+GPUs (with NVIDIA 
+presentation)  
+continued  
+Salon D  Advanced  
+Computational 
+Complexity and EC  
+Frank Neumann, 
+Thomas Jansen  
+Intro  
+Intro to Genetic 
+Algorithms  
+Erik Goodman  
+Intro  
+Learning Classifier 
+Systems  
+Martin Butz  
+Intro  
+Probabilistic 
+Model-Building GAs  
+Martin Pelikan  
+Salon G  Intro  
+Evolution Strategies: 
+Basic Introduction  
+Thomas Bäck  
+Special  
+No Free Lunch  
+Darrell Whitley  
+Advanced  
+Constraint Handling 
+Techniques Used with 
+EAs  
+Carlos Coello Coello  
+Advanced  
+Experimental 
+Optimization by 
+Evolutionary 
+Algorithms  
+Thomas Bäck, Joshua 
+Knowles, Ofer M. Shir  
+Salon H  Graduate Student 
+Workshop  
+Riccardo Poli  
+p. 36  
+Graduate Student 
+Workshop  
+continued  
+Graduate Student 
+Workshop  
+continued  
+Graduate Student 
+Workshop  
+continued  
+Salon I  Intro  
+Evolutionary 
+Computation: A 
+Unified View  
+Kenneth De Jong  
+Special  
+Generative and 
+Developmental Systems  
+Kenneth O. Stanley  
+Advanced  
+GA Theory  
+Michael D. Vose  
+Special  
+Genetic and 
+Evolutionary 
+Computer Vision  
+Gustavo Olague, 
+Mengjie Zhang, Stefano 
+Cagnoni  
+Portland  Late Breaking 
+Abstracts: Genetics 
+Based Machine 
+Learning,  
+Advanced  
+Bioinformatics  
+Jason Moore  
+Evolutionary 
+Computation and 
+Multi-Agent Systems 
+and Simulation 4th 
+Annual (ECoMASS) 
+Workshop  
+William Rand, Rick 
+Riolo  
+ECoMASS  
+continued  
+Salem  Late Breaking 
+Abstracts: Operator 
+Design and 
+Evolutionary Software 
+Frameworks  
+Late Breaking Abstracts: 
+Real World Applications 
+p. 40  
+8th Undergraduate 
+Student Workshop  
+Clare Bates Congdon  
+Frank Moore  
+8th Undergraduate 
+Student Workshop  
+continued  
+表 Y04 
+(Open panel discussion), p. 54  p. 61  p. 68  
+Salon H  Open Room for Attendees  
+Salem  Open Room for Attendees  
+ 
+Saturday July 10  
+Paper Presentations and Special Sessions  
+Keynote: W. Brian Arthur 8:30 – 10:10  
+Topic: Combinatorial evolution in technology and an algorithm this suggests  
+Room: 
+Oregon 
+Ballroom 
+Room  
+10:40 – 12:20  14:00 – 15:40  16:10 – 17:30  
+Salon A  EMO: Best Paper Nominees, p. 
+70  
+ESEP: Best Paper Nominees, p. 
+78  
+COM: Best Paper Nominees, p. 
+88  
+Salon B  EDA: Best Paper Nominees and 
+Multimodal EDAs, p. 71  
+EDA: Scalability, Efficiency 
+enhancement, and Applications, 
+p. 79  
+ESEP: Parameter Tuning and 
+Applications, p. 89  
+Salon C  GA: Parameter Tuning, p. 72  GA: Theory, p. 80  GP: Classification, p. 89  
+Salon D  RWA: Manufacturing, 
+Scheduling, Timetabling and 
+Robotics, p. 74  
+RWA: Social Network Analysis 
+and Music, p. 81  
+GBML: Best Paper Nominees, p. 
+90  
+Salon G  GP: Models, Methods and 
+Representations, p. 75  
+Bio: Best Paper Nominees: 
+Systems, Diseases and 
+Epidemiology, p. 83  
+Bio: Genes, Sequences and 
+Proteins, p. 91  
+Salon I  PES: Best Paper Nominees, p. 85  PES: Advanced Topics, p. 92  
+Portland  GDS: HyperNEAT & Related Algorithms, p. 76  GDS: General, p. 86  
+Salem  ECP: EC in Design, p. 77  ECP: EC in Statistics and EA 
+consultancy, p. 87  
+Salon H  Open Room for Attendees  
+ 
+Poster Session and Reception Saturday 10 July 18:00 – 20:30  
+Room: Oregon Ballroom  
+16:30–18:00 Poster presenters may set up their posters.  
+Please limit your activity to your poster setup and allow the banquet staff to finish setting up for the 
+reception. Thank you for your participation and cooperation.  
+18:00–20:30 Poster Session and Reception: Posters are on display. Poster authors will be available to discuss their posters 
+beginning at 18:30. Hot and cold hors d’ouevre, wine, beer, and soft drinks will be served.  
+Remember to bring your Badge and beverage tickets to the Poster Session.  
+ 
+Sunday July 11  
+Paper Presentations and Special Sessions  
+SIGEVO Meeting and Awards 8:30 – 10:10  
+SIGEVO Meeting and Awards. All are welcome.  
+Room: Oregon 
+Ballroom Room  
+10:40 – 12:20  14:00 – 15:40  
+Columbia  GP: Crossover, p. 93  GP: Fitness Evaluation, Feature Selection and 
+表 Y04 
+三、考察參觀活動 
+ 
+無。 
+ 
+四、攜回資料名稱與內容 
+筆者攜回研討會論文集(電子檔資料光碟)一份、大會議程以及論
+文摘要一本。 
+ 
+ 
+ 
+98 年度專題研究計畫研究成果彙整表 
+計畫主持人：楊竹星 計畫編號：98-2219-E-006-003- 
+計畫名稱：網路虛擬化架構之研究與建置--子計畫一：設計與實作一具有網路虛擬化之高速封包處理
+平台(1/2) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際
+已達成數)
+本計畫實
+際貢獻百
+分比 
+單位 
+備註（質化說明：如
+數 個 計 畫 共 同 成
+果、成果列為該期
+刊 之 封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 3 2 100% 
+篇 
+研討會論文係與總計
+畫之共同成果, 論文
+題目為＇＇以可程式
+化網路晶片實作高效
+能 硬 體 防 火
+牆＇＇, ＇＇基於
+DPI 之 Botnet 流量
+偵 測 控 管 系
+統＇＇, ＇＇以 DPI
+分析流量與網路設備
+整合之研究＇＇ 
+論文著作 
+專書 0 0 100%   
+申請中件數 3 0 100% 
+申請中專利係與總計
+畫之共同成果申請中
+專利名稱為＇＇＇＇
+處理資訊系統的方
+法＇＇＇＇,＇＇＇＇
+處 理 資 料 的 裝
+置 ＇ ＇ ＇ ＇ , 以
+及 ＇＇＇＇控制核心
+的方法＇＇＇＇等, 
+目前待審核中 
+專利 
+已獲得件數 0 0 100% 
+件 
+ 
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 4 4 100%  
+博士生 4 4 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  國外 論文著作 
+研究報告/技術報告 0 0 100% 
+篇 
+ 
+ 

@@ -1,0 +1,1519 @@
+度延遲微分方程式的解時主要計算時間花在計算 Jacobian矩陣上, 不論是用解析法或符
+號運算 (symbolic manipulation) 法求解複雜微分方程式的偏微分時, 都是非常耗時及不
+方便, 而且容易因人為疏失導致錯誤。 為了解決這個問題, 發展一個能夠有效率及正確的
+自動微分方法是必要的, 我們把之前發展的自我調整修正型共同配置方法擴大使用範圍到
+DDE 模型, 並植入自動微分的程式, 使得這個方法可以自動計算 Jacobian 矩陣的值, 以
+省略手動輸入偏微分方程式的時間及避免人為的輸入錯誤。我們把這個新版本的程式稱做
+延伸自我調整修正型共同配置方法 (EAMCM), 並應用到兩個真實的 DDE 模型, 結果顯
+示 EAMCM 是一個很好的動態靈敏度分析工具, 可以用來對 DDE 模型進行動態靈敏度
+分析, 尤其適合沒有電腦程式背景的使用者使用。
+關鍵字. 系統生物學, 動態靈敏度分析, 代謝網路, 訊號傳遞網路.
+ii
+the dynamic log gains of these systems is that the problem be solved is infinite di-
+mensional due to some of the input are functions of time. The classical dynamic
+sensitivity analysis don’t discuss this case for the dynamic log gains. In this research,
+we develop an algorithm, termed Adaptive Modified Collocation Method (AMCM),
+for dynamic sensitivity analysis, including the computation of dynamic log gains,
+of biological systems. The AMCM determines the step size automatically and it
+can be used on both computations of time profile and dynamic sensitivities with
+moderate accuracy even sensitivity equations are more stiff than model equations.
+The AMCM algorithm is implemented and applies to two sets of chemical reactions
+and an ethanol fed-batch fermentation system with a time-varying feed rate. The
+results show the AMCM can perform dynamic sensitivity analysis on very stiff ordi-
+nary differential equation (ODE) systems with moderate accuracy. Some processes
+in biological systems, such as the gene expression and feedback control in signal
+transduction networks, involve a time delay. These systems are represented as delay
+differential equation (DDE) models. Numerical sensitivity analysis of a DDE model
+by the direct method requires the solutions of model and sensitivity equations with
+time-delays. The major effort is the computation of Jacobian matrix when com-
+puting the solution of sensitivity equations. The computation of partial derivatives
+of complex equations either by the analytic method or by symbolic manipulation
+is time consuming, inconvenient, and prone to introduce human errors. To address
+this problem, an automatic approach to obtain the derivatives of complex functions
+efficiently and accurately is necessary. The AMCM algorithm is extended to solve
+the solution and dynamic sensitivities of time-delay systems describing by DDEs.
+To save the human effort and avoid the human errors in the computation of partial
+derivatives, an automatic differentiation technique is embedded in the extended algo-
+rithm to evaluate the Jacobian matrix. The extended algorithm, named as Extended
+Adaptive Modified Collocation Method (EAMCM), is implemented and applied to
+two realistic models with time-delays. The results show that the EAMCM is a good
+tool for dynamic sensitivity analysis on DDE models with less user intervention and
+is easy to use for end users without programming background.
+Keywords. systems biology, dynamic sensitivity analysis, metabolic network, sig-
+iv
+1 前言、 研究目的與文獻探討
+Since the discovery of double helix structure of DNA [1] in 1953, a series of efforts
+have been made by biologists. These efforts was focused on understanding the prin-
+ciples of DNA replication, the structure of RNA and proteins, the structure and
+function of membranes as well as transcription and translation. Due to the emer-
+gence of high-throughput experimental techniques in genomics and proteomics, the
+genomes of several organisms have been deciphered entirely. The notice milestone in
+deciphering DNA sequences is the completion of human genome sequencing by the
+Genome International Sequencing Consortium in 2001 [2]. Although deciphering of
+the DNA sequences of many organisms, including human, has been acknowledged
+as an essential step towards understanding a living organism, insight into these
+genomes and the mechanism of gene formation is important. Bioinformatics, a new
+field composed of biology and computer technology, has formed and try to uncover
+the biological information hidden in biological data. This new field focused on the
+implementation of tools that enable efficient access to various types of biological data
+at the early stage, including nucleotide and amino acid sequences, protein domains,
+and protein structures obtained from experimental labs around the world. After
+that stage, bioinformatics also develops new algorithms and statistics with which to
+assess relationships among members of large data sets, such as methods to locate a
+gene within a sequence, predict protein structure and/or function, and cluster pro-
+tein sequences into families of related sequences. With accumulating knowledge of
+genes and proteins by bioinformatics, the next natural questions to ask are how they
+are working together, what are the principles that govern at the system level. It is
+currently not possible to answer these questions using only the information encoded
+in the DNA sequences.
+Traditional molecular biology have uncovered a multitude of biological facts,
+such as genome sequences and protein properties, but this alone is not sufficient
+for interpreting biological systems. Bioinformatics focused on the identification of
+genes in the genome sequences and functional proteins. While such components
+are identified, we need to know how these components are assembled to form a
+biological network. Since a biological network is not just an assembly of genes and
+1
+sary. Systems biology employs theoretical concepts to describe complex biological
+systems by simplified mathematical models, e.g., Boolean models and ODE models.
+Boolean network modeling has been widely used for reconstructing gene regulatory
+networks. Such models are greatly simplified to reduce network complexity and sim-
+ulation time. They are easier to understand and apply to different questions. ODE
+models are employed to describe the dynamics of biological systems, e.g., glycolytic
+oscillations, but it is usually too complex to be solved.
+Once a mathematical model is constructed, all effects of possible perturbations
+can be simulated fairly cheaply in silico. Substantial advances in software and com-
+putational power have enabled the ability to simulate a realistic biological system.
+Current experimental molecular biology is also able to produce the high-throughput
+quantitative data needed to support simulation-based research. To extend the appli-
+cabilities of mathematical models, the development of analysis tools is required. A
+major application of mathematical models is the dynamic sensitivity analysis of bi-
+ological networks, including metabolic networks, signal transduction networks, and
+gene regulatory networks. Dynamic sensitivity analysis is a useful tool to investi-
+gate the behavior of dynamic systems. It also plays an important role in parameter
+estimation, model discrimination, experimental design, and uncertainty analysis for
+biological systems.
+Sensitivity analysis can be divided into categories: local and global sensitiv-
+ity analysis. Local sensitivity analysis methods refer to small changes of param-
+eters, while global methods refer to the effect of simultaneous, possibly orders-of-
+magnitude parameter changes over a wide range of values. Unlike local sensitivity,
+global sensitivity can not be defined by a simple mathematical formula like the
+derivative for the local sensitivity. It will be evaluated only through detailed numer-
+ical calculations.
+By extending the standard sensitivity analysis, the first general definition of time-
+varying sensitivity function was defined in the context of [4] and allowed treatment
+of systems whose behavior is primarily dynamic. In many practical applications,
+when performing the dynamic sensitivity analysis, we are interesting in a specific
+characteristic of the system which is not defined on the system domain, e.g., the pe-
+riod feature in oscillating systems. As pointed out in previous papers [5, 6], dynamic
+3
+equations can be used on both computations of time profile and dynamic sensitiv-
+ities with moderate accuracy even sensitivity equations are more stiff than model
+equations. To show this algorithm can perform the dynamic sensitivity analysis on
+very stiff ODEs systems with moderate accuracy, it is implemented and applied to
+two sets of chemical reactions: pyrolysis of ethane and oxidation of formaldehyde.
+The accuracy of this algorithm is demonstrated by comparing the dynamic parame-
+ter sensitivities obtained from this new algorithm and from the direct method with
+Rosenbrock stiff integrator based on the indirect method. The same dynamic sen-
+sitivity analysis was performed on an ethanol fed-batch fermentation system with
+a time-varying feed rate to evaluate the applicability of the algorithm to realistic
+models with time-dependent admissible input. By combining the accuracy we shown
+with the efficiency of being a decouple direct method, our algorithm is an excellent
+method for computing dynamic parameter sensitivities in stiff problems. We also ex-
+tend the scope of classical dynamic sensitivity analysis to investigating the dynamic
+log gains of models with time-dependent admissible input.
+Some processes in biological systems, such as the gene expression and feedback
+control in signal transduction networks, involve a time delay. These systems are rep-
+resented as delay differential equation (DDE) models. Numerical sensitivity analysis
+of a DDE model by the direct method requires the solutions of model and sensi-
+tivity equations with time-delays. The major effort is the computation of Jacobian
+matrix when computing the solution of sensitivity equations. The computation of
+partial derivatives of complex equations either by the analytic method or by sym-
+bolic manipulation is time consuming, inconvenient, and prone to introduce human
+errors. To address this problem, an automatic approach to obtain the derivatives of
+complex functions efficiently and accurately is necessary. We have proposed an effi-
+cient algorithm (AMCM) with an adaptive step size control to compute the solution
+and dynamic sensitivities of biological systems described by ODEs as mentioned
+above. The adaptive direct-decoupled algorithm is extended to solve the solution
+and dynamic sensitivities of time-delay systems describing by DDEs. To save the
+human effort and avoid the human errors in the computation of partial derivatives,
+an automatic differentiation technique is embedded in the extended algorithm to
+evaluate the Jacobian matrix. The extended algorithm, named as Extended Adap-
+5
+For a model describing by a non-autonomous dynamic system as follows:
+dx
+dt
+= f(x(t),y(t), t; θ),x(0) = x0,y(0) = y0. (5)
+We let xn+1 = t and dxn+1/dt = 1, equation (5) can be rewritten as equation (4)
+with x(t) ∈ Rn+1. This is an (n + 1)-dimensional autonomous dynamic system.
+Similarly, an n-dimensional time dependent equation is a special case of an (n+1)-
+dimensional autonomous dynamic system. By this trick, we can always remove any
+time dependence by adding an extra dimension to the system. Thus, without loss of
+generality, we will consider the autonomous dynamic systems expressed by equation
+(4) unless otherwise stated.
+2.1 ODE Solver
+Given a set of ODEs described as equation (4) and a set of time points T = {ti|i =
+1, . . . , k}. An ODE solver is to find the value of x(ti), ti ∈ T for a given θ. Many ODE
+solvers with variable step size control can be applied to solve equation (4). Wang
+[9] proposed a modified collocation method with Lagrange polynomials as shape
+functions to transform ODEs into algebraic equations. The whole time domain of the
+problem is divided into a number of non-overlapping intervals [ti−1, ti], i = 1, . . . , k.
+The unified formulas of the modified collocation method for the interval [ti−1, ti] can
+be expressed as
+x(tj) = Iˆx(tj−1) + ηj{Df(x(tj),y(tj); θ) + Dˆf(x(tj−1),y(tj−1); θ)}, (6)
+where ηj is the step size in time tj, ti−1 ≤ tj−1 < tj ≤ ti, Iˆ is the identity matrix
+and the coefficient matrices D and Dˆ depend on the shape functions. The accu-
+racy and efficiency of collocation methods are largely dependent on the degree of
+shape functions. The modified collocated equations with piecewise linear polynomi-
+als transformed from equation (4) for the interval [ti−1, ti] have the same formulas
+as the modified Euler method:
+x(tj) = x(tj−1) +
+1
+2
+ηj{f(x(tj),y(tj); θ) + f(x(tj−1),y(tj−1); θ)}. (7)
+Instead of solving the ODEs in equation (4) directly, we find the solution of algebraic
+equations in equation (7) step-by-step for each time interval [ti−1, ti], i = 1, . . . , k.
+7
+We now show how to decide the step size ηj in equation (7) based on the Banach
+fixed point theorem. Equation (7) is an implicit expression of x, it can be rewritten
+as
+x(tj) =
+1
+2
+ηjf(x(tj),y(tj); θ) + c = g(x(tj),y(tj); θ), (9)
+where c = x(tj−1)+ 0.5ηjf(x(tj−1),y(tj−1); θ) is a column vector of constant values.
+When the values of independent variable y and θ are given, the solution of x = g(x)
+can be found by iteration method. A sequence of values of x(tj) is obtained using
+the iterative rule. If xi(tj) tends to a limit x
+∗(tj) when i → ∞, it is the answer of
+x = g(x) and called a fixed point of function g(x). Let X be the set of xi(tj), i =
+1, . . . ,∞ and d(a,b) = ||a − b||p where a and b are arbitrary x(t), || · ||p is the
+p-norm. (X, d) forms a non-empty complete metric space. If g is a contraction on
+X, the Banach fixed point theorem promises the existence of a fixed point and the
+convergence of the iteration process to a fixed point. By the equation (8) and the
+definition of distance function d, for a,b ∈ X we obtain
+||g(a)− g(b)||p ≤ q||a− b||p, q < 1. (10)
+We suppose that g(x) is a continuous and differentiable function on X. By the
+generalized mean value theorem and the definition of norm, we have
+||g(a)− g(b)||p =
+∣∣∣∣∣∣∣∣∂g∂x
+∣∣∣∣∣∣∣∣
+p
+||a− b||p. (11)
+By combining equations (10) with (11), we obtain∣∣∣∣∣∣∣∣∂g∂x
+∣∣∣∣∣∣∣∣
+p
+< 1, (12)
+where ||.||p is the p-norm of a matrix. By substitution of the term on the right of
+the equal sign in equation (9) for g, equation (12) can be rewritten as
+1
+2
+ηj
+∣∣∣∣∣∣∣∣∂f(x,y; θ)∂x
+∣∣∣∣∣∣∣∣
+p
+< 1. (13)
+This equation is used to compute the maximum ηj with p = 2 when the process of
+finding the solution of equation (7) is in progress. The Jacobian matrix ∂f/∂x in
+equation (13) must be evaluated at each time tj. The computation of the Jacobian
+matrix can be done by evaluating the analytic formula of the partial derivative of f
+9
+(c) Compute the upper bound µ of the value of ||A||2 by√
+n(m+ n)||A||∆, ||A||∆ ≡ max
+i,j
+|aij|
+(d) If µ ∗ ε ≥ 1, the ODEs are stiff, exits this algorithm.
+(e) If µ ∗ ηj > 1, update ηj with 0.9/µ
+(f) Call iteration algorithm to compute the value of xc stepped forward
+ηj from x
+p.
+(g) If the iteration algorithm succeeds in computing xc, then dt ← dt+ηj
+and ηj ← ti − ti−1 − dt, otherwise exists this algorithm.
+3. x(ti)← xc, y(ti)← yc.
+• return x(ti), i = 1, . . . , k.
+End of Algorithm AMCM
+Algorithm Iteration
+Input:
+1. A set of n ordinary differential equations x˙ = f(x,y).
+2. x(t), y(t), ηj and the iteration limitation.
+Output: x(t+ ηj).
+1. Evaluate the value of f(x(t),y(t)).
+2. x(t+ ηj)← x(t) + f(x(t),y(t)) ∗ ηj.
+3. y(t+ ηj)← y(t) + f(x(t),y(t)) ∗ ηj.
+4. Repeat the following steps until the iteration limitation is reached or the value
+of x(t+ ηt) is convergent.
+(a) Evaluate the value of f(x(t+ ηj),y(t+ ηj)).
+(b) x(t+ ηj)← x(t) + 0.5 ∗ ηj ∗ (f(x(t),y(t)) + f(x(t+ ηj),y(t+ ηj)))
+5. If the iteration limitation is reached, exits this algorithm, otherwise, return
+x(t+ ηj).
+End of Algorithm Iteration
+11
+where fi is the i
+th element of f . The absolute dynamic log gain of xi with re-
+spect to yj is similar to equation (16) by replacing θj, s(xi, θj) with yj, l(xi, yj) re-
+spectively when yj(t) is a constant. In the case which yj(t) is a continuous time-
+dependent function, the whole time domain of yj(t) is partitioned into Nu time
+intervals (tk−1, tk), k = 1, . . . , Nu. Function yj(t) is parameterized by the piecewise
+constant functions ωk(t), k = 1, . . . , Nu, as follows:
+yj(t) ≈
+Nu∑
+k=1
+ukωk(t), (17)
+where uk, k = 1, . . . , Nu, are constant input control parameters and
+ωk(t) =
+{
+1, tk−1 ≤ t < tk
+0, otherwise.
+The continuous time-dependent function yj(t) is approximated by equation (17) and
+the dynamic log gain l(xi, yj) of infinite dimension is transferred into Nu dynamic log
+gains of dimension one with respect to the input control parameters and expressed
+as.
+dl(xi, uj)
+dt
+=
+
+n∑
+k=1
+∂fi
+∂xk
+l(xk, uj) +
+∂fi
+∂uj
+, tj−1 ≤ t < tj
+n∑
+k=1
+∂fi
+∂xk
+l(xk, uj), otherwise,
+where j = 1, . . . , Nu.
+We extended the proposed algorithm AMCM to compute the dynamic sensi-
+tivities. The dynamic sensitivities with respect to parameters (include the initial
+conditions) and absolute dynamic log gains can be computed simultaneously. Let
+u be the vector of input control parameters and r be an Nr dimensional vector of
+constants which contains constant independent variables in y and the input control
+parameters in u. When all components of y are constant, the vector r is equal to
+y. Let z be an n + p + Nr dimensional vector which contains model parameters
+θ, initial conditions of dependent variables x0 and constant input in r, and Φ be a
+matrix of size n× (n+p+Nr) which contains the absolute sensitivities with respect
+to model parameters and initial conditions, and the absolute log gains with respect
+to constant independent variables and input control parameters. z and Φ have the
+13
+In order to find the solution of equation (19), the whole time domain is divided into
+a number of non-overlapping time intervals [ti−1, ti], i = 1, . . . , k and the sensitivity
+equations in equation (19) are transformed to algebraic equations using modified
+collocation method with piecewise linear polynomials as shape functions for each
+subinterval [tj−1, tj], ti−1 ≤ tj−1 < tj ≤ ti:
+φ(tj) = φ(tj−1) +
+1
+2
+ηj{M(tj)φ(tj) +w(tj) +M(tj−1)φ(tj−1) +w(tj−1)}, (20)
+where ηj is the step size in time tj. This equation can be rewritten as:
+φ(tj) =
+1
+2
+ηjM(tj)φ(tj) + c = h(φ(tj)), (21)
+where the constant vector
+c = φ(tj−1) +
+1
+2
+ηj{w(tj) +M(tj−1)φ(tj−1) +w(tj−1)}.
+The value of w(tj) can be evaluated if the values of x(tj) have been computed when
+solving equation (7) by the ODE solver. The value of the M(tj) in equation (21)
+must be calculated before the solution of equation (20) can be obtained by iteration
+method. When the value of the Jacobian matrix ∂f/∂x in time tj is known, the
+value of the M(tj) can be obtained straightforwardly. There is no requirement for
+computing the value of the Jacobian matrix here due to it has been computed for
+step size control when solving equation (7) by the ODE solver.
+Equation (21) is similar to equation (9), we can apply the fixed point theorem
+to φ = h(φ) to get the maximum ηj satisfied the following condition∣∣∣∣∣∣∣∣∂h(φ)∂φ
+∣∣∣∣∣∣∣∣
+p
+=
+1
+2
+ηj ||M(tj)||p < 1.
+According to the definition of matrix norm, it is easy to verify that ||M||p =
+||∂f/∂x||p and we have ∣∣∣∣∣∣∣∣∂h(φ)∂φ
+∣∣∣∣∣∣∣∣
+p
+=
+1
+2
+ηj
+∣∣∣∣∣∣∣∣∂f(x, r; θ)∂x
+∣∣∣∣∣∣∣∣
+p
+< 1. (22)
+Equation (22) is the same as equation (13), so the same criterion is used to deter-
+mine the step size ηj for computing the time course and sensitivity profile with the
+promise of convergence and existence of a fixed point. The dynamic sensitivities can
+15
+and can be solved by our ODE solver in the AMCM. The AMCM algorithm with
+piecewise linear polynomials as the shape functions solves the ODEs transformed
+from equation (24) for each subinterval [tj−1, tj], ti−1 ≤ tj−1 < tj ≤ ti by
+x(tj) = x(tj−1) +
+1
+2
+ηj{f(x(tj),y(tj); θ) + f(x(tj−1),y(tj−1); θ)}, (25)
+where ηj is the step size in time tj. The adaptive ODE solver in the AMCM controls
+the step size automatically. The earlier values of x defined or computed on the
+interval [t − τ, t] have to be stored for y at every computation time t. Due to the
+automatic step size control, the solution at time t− τ may be not computed by the
+AMCM. To solve this problem, interpolation is used to generate the solution for the
+input variable y as follows:
+y(t) = x(t− τ) = x(ta) + t− τ − ta
+ta+1 − ta [x(ta+1)− x(ta)], ta < t− τ < ta+1, (26)
+where ta is the time point that x(ta) has been computed, ta+1 is the next time point,
+and the step size ta+1 − ta is determined by the AMCM automatically.
+2.4 Dynamic Sensitivity Analysis of DDE Models
+For a model described by equation (24), the absolute parameter sensitivity s(xi, θj)
+of dependent variable xi ∈ x with respect to a change in parameter θj ∈ θ is defined
+as
+s(xi, θj) = lim
+∆θj→0
+xi(t; θj +∆θj)− xi(t; θj)
+∆θj
+=
+∂xi(t; θ)
+∂θj
+, (27)
+where xi(t; θj + ∆θj) is the i
+th component of the solution of equation (24) with
+a change ∆θj on the j
+th parameter and the others fixed. The absolute parameter
+sensitivity s(xi, θj) is also defined as the first-order local sensitivity of xi with respect
+to θj [11]. The term local refers to the fact that the value of s(xi, θj) depends on
+the given set of values for the parameters θ. Under the assumption that the system
+responds linearly for small perturbations, s(xi, θj) measures the ratio between the
+effect on xi and the variation of θj. It is useful to consider the ratio between
+the relative effect on the output and the relative variation of a parameter when
+comparing different parameter sensitivities with respect to different parameters. The
+relative parameter sensitivity S(xi, θj) of xi with respect to θj , a dimensionless
+17
+integral value for the relative dynamic sensitivity over the whole time as a measure
+for ranking all sensitivities to identify the bottleneck reactions of the system. The
+time-averaged relative sensitivity is therefore defined as:
+S¯ij =
+1
+tf
+∫ tf
+0
+|S(xi, θj)|dt, (32)
+where tf is the final time.
+2.5 Automatic Differentiation
+The main challenge in computing the solution of equation (30) is the evaluation of
+partial derivatives of f with respect to all state variables x, delay variables x(t− τ),
+and system parameters θ. One way to obtain the partial derivatives is to use sym-
+bolic differentiation tools, such as Maple and Mathematica, to perform the algebra
+of the differentiation. The explicit expression of the partial derivatives of f can be
+generated automatically. This is very useful because it saves the human effort and
+avoids the human errors in the analytical differentiation process. In principle, this
+approach gives exact values of the partial derivatives of f at the expense of high
+computation cost. Symbolic differentiation tools always generate lengthy formulas
+containing many common subexpressions that require considerable computation to
+evaluate. If only the values of the partial derivatives rather than the explicit ex-
+pressions of the partial derivatives of f are needed, the simplest and common used
+approach is the numerical differentiation by finite difference approximation
+∂f
+∂x
+= lim
+∆x→0
+f(x+∆x)− f(x)
+∆x
+. (33)
+The main drawback of this approach is that the accuracy is hard to analyze. Another
+approach which can be used to evaluate partial derivatives is automatic differenti-
+ation. Automatic differentiation is a numerical computation of exact values of the
+partial derivatives without generating a formula for the partial derivatives and is
+much more efficient than symbolic differentiation. This approach is based on the
+fact that every function, no matter how complicated, can be represented by a well-
+formed expression that is a finite combination of elementary arithmetic operators,
+such as addition (+), subtraction (−), multiplication (∗), division (/), and power
+(∧), primitives, such as a constant or a state variable, and intrinsic functions, such
+19
+(b) If ti−1 > τ , then Φd ← Φ(ti−1 + di − τ); otherwise, Φd ← Φ0.
+(c) Evaluate the Jacobin matrix by automatic differentiation
+A←
+[
+∂f(xp,yp)
+∂x
+, ∂f(x
+p,yp)
+∂y
+]
+.
+(d) Compute the upper bound µ of the value of ||A||2 by√
+n(m+ n)||A||∆, ||A||∆ ≡ max
+i,j
+|aij|.
+(e) If µ ∗ ε ≥ 1, it means the DDEs are stiff, then exit this algorithm.
+(f) If µ ∗ ηj > 1, then ηj ← 0.9/µ.
+(g) Call the Iteration algorithm to compute the value of xc stepped for-
+ward ηj from x
+p.
+(h) Call the IterationOfSensitivity algorithm to compute the value of the
+sensitivity matrix Φc stepped forward ηj from Φ
+p.
+(i) If the Iteration and IterationOfSensitivity algorithms succeed in com-
+puting xc andΦc respectively, then dt ← dt+ηj and ηj ← ti−ti−1−dt;
+otherwise exist this algorithm.
+3. Save the value of the sensitivity matrix Φc as Φ(ti).
+• return Φ(ti), i = 1, . . . , k.
+End of Algorithm EAMCM
+Algorithm Iteration
+Input:
+1. A set of n delay differential equations x˙ = f(x,y),y(t) ≡ x(t− τ).
+2. x(t), y(t), ηj, and the iteration limitation.
+Output: x(t+ ηj).
+1. Evaluate the value of f(x(t),y(t)).
+2. x(t+ ηj)← x(t) + f(x(t),y(t)) ∗ ηj.
+3. y(t+ ηj)← x(t+ ηj − τ).
+21
+(b) Evaluate the new value of Φ(x(t+ ηj)) by
+Φ(x(t+ ηj)) = Φ(x(t)) + 0.5 ∗ ηj ∗ (Φ˙(x(t+ ηj)) + Φ˙(x(t))).
+6. If the iteration limitation is reached, then exit this algorithm; otherwise, return
+Φ(x(t+ ηj)).
+End of Algorithm IterationOfSensitivity
+3 結果與討論 (含結論與建議)
+To illustrate the accuracy of our algorithm, it is implemented and applied to stiff
+chemical mechanisms for the pyrolysis of ethane as well as the oxidation of formalde-
+hyde. These systems have been shown to be unstable using both the DM and the
+Greens function method [15]. The same dynamic sensitivity analysis is performed on
+an ethanol fed-batch fermentation system with a time-varying feed rate to evaluate
+the applicability of the algorithm to realistic models with time-dependent admissible
+input.
+3.1 Pyrolysis of Ethane
+The chemical mechanism for the pyrolysis of ethane is a very stiff system and consists
+of seven species in five reactions. The chemical reactions and rate constants are
+shown in Table 1 and are described by GMA model equations as follows:
+d[CH3]
+dt
+= 2k1[C2H6]− k2[CH3][C2H6]
+d[CH4]
+dt
+= k2[CH3][C2H6]
+d[C2H4]
+dt
+= k3[C2H5]
+d[C2H5]
+dt
+= k2[CH3][C2H6] + k4[C2H6][H]− k3[C2H5]
+d[C2H6]
+dt
+= −k1[C2H6]− k2[CH3][C2H6]− k4[C2H6][H]
+d[H]
+dt
+= k3[C2H5]− k4[C2H6][H]− 2k5[H]2
+d[H2]
+dt
+= k4[C2H6][H] + k5[H]
+2
+23
+3.2 Oxidation of Formaldehyde
+The formaldehyde oxidation mechanism is a larger system, involves 15 species in 25
+reactions. The chemical reactions and rate constants are shown in Table 3 and are
+described by GMA model equations as follows:
+d[HCO]
+dt
+= k2[HO2][CH2O] + k4[CH2O][OH] + k11[CH2O][H]
++ k16[CH2O][O] + k22[O2][CH2O]− k1[HCO][O2]− k20[HCO]
+d[O2]
+dt
+= k8[HO2]
+2 + k14[HO2][M ] + k25[HO2][H]
+− k1[HCO][O2]− k12[O2][H]− k13[O2][M ][H]− k22[O2][CH2O]
+d[HO2]
+dt
+= k1[HCO][O2] + k5[H2O2][OH] + k13[O2][M ][H] + k17[H2O2][H]
++ k19[H2O2][O] + k22[O2][CH2O]− k2[HO2][CH2O]− k7[HO2]
+− 2k8[HO2]2 − k10[HO2][CO]− k14[HO2][M ]
+− (k23 + k24 + k25)[HO2][H]
+d[CO]
+dt
+= k1[HCO][O2] + k20[HCO]− k9[CO][OH]− k10[HO2][CO]
+d[CH2O]
+dt
+= −k2[HO2][CH2O]− k4[CH2O][OH]− k11[CH2O][H]
+− k16[CH2O][O]− k22[O2][CH2O]
+d[H2O2]
+dt
+= k2[HO2][CH2O] + k8[HO2]
+2 − k3[H2O2][M ]− k5[H2O2][OH]
+− k6[H2O2]− (k17 + k18)[H2O2][H]− k19[H2O2][O]
+d[M ]
+dt
+= 0
+d[OH]
+dt
+= 2k3[H2O2][M ] + k10[HO2][CO] + k12[O2][H] + k15[H2][O]
++ k16[CH2O][O] + k18[H2O2][H] + k19[H2O2][O] + 2k23[HO2][H]
+− k4[CH2O][OH]− k5[H2O2][OH]− k9[CO][OH]− k21[OH][H2]
+d[H2O]
+dt
+= k4[CH2O][OH] + k5[H2O2][OH] + k18[H2O2][H] + k21[OH][H2]
++ k24[HO2][H]
+d[H2O2(wall)]
+dt
+= k6[H2O2]
+d[HO2(wall)]
+dt
+= k7[HO2]
+25
+Table 3: The mechanism for formaldehyde oxidation
+Reaction Rate constants
+HCO +O2 → HO2 + CO 6.02× 1010
+HO2 + CH2O → H2O2 +HCO 3.43× 1010
+H2O2 +M → 2OH +M 4.01× 106
+OH + CH2O → H2O +HCO 9.64× 1013
+OH +H2O2 → H2O +HO2 3.07× 1012
+H2O2 → H2O2(wall) 1.05× 102
+HO2 → HO2(wall) 1.05× 101
+HO2 +HO2 → H2O2 +O2 1.81× 1012
+OH + CO → CO2 +H 1.99× 1011
+HO2 + CO → CO2 +OH 7.23× 108
+H + CH2O → H2 +HCO 1.63× 1012
+H +O2 → OH +O 3.32× 1010
+H +O2 +M → HO2 +M 3.63× 1015
+HO2 +M → H +O2 +M 2.83× 105
+O +H2 → OH +H 1.82× 1011
+O + CH2O → OH +HCO 6.02× 1013
+H +H2O2 → HO2 +H2 7.83× 1011
+H +H2O2 → H2O +OH 3.55× 1012
+O +H2O2 → OH +HO2 6.02× 1010
+HCO → H + CO 4.60× 10−12
+OH +H2 → H2O +H 6.02× 1012
+CH2O +O2 → HCO +HO2 1.75× 104
+H +HO2 → 2OH 3.01× 1012
+H +HO2 → H2O +O 3.01× 1013
+H +HO2 → H2 +O2 2.71× 1013
+The initial concentrations are [CH2O] = 1.124 ×
+10−7, [O2] = 2.109 × 10−6, [CO] = 4.699 ×
+10−6, [M ] = 1.1772×10−5 and all other initial con-
+centrations are zeros. Units are molecule, cm2, s
+and the temperature is 952 K.
+27
+expressed in the forms:
+µ =
+µms
+Ks + s+ s2/KsI
+Kp1
+Kp1 + p1 + p
+2
+1/Kp1I
+Kp2
+Kp2 + p2 + p
+2
+2/Kp2I
+,
+qp1 =
+νp1s
+K ′s + s+ s2/K ′sI
+K ′p1
+K ′p1 + p1 + p
+2
+1/Kp′1I
+,
+qp2 =
+νp2s
+K ′′s + s+ s2/K ′′sI
+K ′p2
+K ′p2 + p2 + p
+2
+2/K
+′
+p2I
+.
+Using a batch fermentation model, Wang et al. obtained the optimal values of
+19 parameters [17]. The initial and feed concentrations of glucose are set to 10
+and 200 g/L, the initial concentration of biomass is set to 2 g/L, and the starting
+working volume is set to 1.5 L in the computations of optimal feed rate and optimal
+fermentation time to maximize the ethanol production rate J = p1V/tf under some
+physical constraints, e.g., the residual glucose restriction s(tf ) ≤ sr for reducing the
+separation cost, sr is the concentration of the desired residual glucose. The optimal
+final fermentation time is 12.836 hours and the optimal feed rate F ∗ for the fed-batch
+fermentation model [17] is as follows:
+F ∗ =
+
+1.0 for 0 ≤ τ ≤ 0.1
+0.8067 for 0.1 < τ ≤ 0.2
+0.5567 for 0.2 < τ ≤ 0.3
+0.3067 for 0.3 < τ ≤ 0.4
+0.0557 for 0.4 < τ ≤ 0.5
+1.3687× 10−18 for 0.5 < τ ≤ 0.6
+6.2749× 10−18 for 0.6 < τ ≤ 0.7
+0.0 for 0.7 < τ ≤ 0.8
+0.0 for 0.8 < τ ≤ 0.9
+2.1883× 10−20 for 0.9 < τ ≤ 1
+(35)
+and Figure 1 shows the computational time profile of the ethanol fed-batch fermen-
+tation model with the optimal feed rate.
+Our algorithm is applied to the ethanol fed-batch fermentation model using
+the initial conditions as described above. All dynamic sensitivities with respect
+to 22 parameters (include sF , F and tf ) and initial conditions, and the dynamic
+log gains with respect to time-varying feed rate are computed simultaneously with-
+out any difficulty. Figure 2 shows the dynamic relative sensitivities with respect to
+µm, Yp1/s, Yp2/s and sF . When the maximum specific growth rate µm is increasing,
+the rate of consuming glucose is increasing such that the concentration of residue
+29
+Fig 2: Dynamic relative sensitivities with respect to µm, Yp1/s, Yp2/s and sF
+(a) relative sensitivities with respect to µm; (b) relative sensitivities with respect
+to Yp1/s; (c) relative sensitivities with respect to Yp2/s; (d) relative sensitivities with
+respect to sF . The horizontal scale is in normalized fermentation time (t/tf ).
+31
+Fig 4: Dynamic relative sensitivities of J The relative sensitivities of ethanol
+production rate with respect to µm, Yp1/s, Yp2/s, sF and tf .
+for J with respect to tf means a decrease in the fermentation time will get a higher
+J at the expense of more residual glucose. Though the relative sensitivity of J with
+respect to sF is higher than that with respect to Yp1/s at the final fermentation
+time, by increasing sF to increase J will cause more glucose left at the final time
+and increase the cost to separate the residue glucose and the ethanol product. We
+can make a conclusion that to increase J by increasing Yp1/s will be a better choice
+than increasing sF or Yp2/s, and decreasing the fermentation time.
+The feed rate F (t) of the fed-batch fermentation model is an input control and
+in terms of time, so that the computation of the effect on J with respect to F (t)
+is an infinite dimensional problem. The fermentation time is divided into ten equal
+time partitions, and the optimal feed rate F ∗ for the fed-batch fermentation model
+[17] is approximated by ten piecewise constant functions and the ten input control
+parameters, denoted by Fi, i = 1, . . . , 10, are shown in equation (35). The proposed
+algorithm computes the dynamic log gains based on the parameterization method.
+All dynamic log gains with respect to Fi, i = 1, . . . , 10, are computed (data not
+shown here) with the parameter sensitivities simultaneously. The dynamic log gains
+33
+apoptosis that brings on cell death of the cancer cells. NF-κB is a transcription factor
+family that activating numerous genes that are related to cell survival pathways.
+Most commonly, NF-κB activation inhibits apoptosis pathways, as evidenced by
+several knockout mouse models [19, 20]. Based on these findings, the goal to design
+more effective cancer therapies can be initiated by apoptosis induction and inhibition
+of NF-κB. Many mathematical models describing the dynamics of apoptosis and
+NF-κB pathways have been published in last decade [21–25]. Most of the models
+to date have concentrated on only one of signaling pathways and do not consider
+the delayed transcription processes. The EAMCM program is applied to a TNF-
+α-induced signaling network considering both signaling pathways simultaneously to
+investigate how these two pathways work together to regulate cell fate in response
+to TNF-α.
+3.4 Cardiovascular Control System
+Mathematical models are useful to investigate the hemodynamics and regulation
+control of cardiovascular systems. In general, cardiovascular models consist of two
+major systems: the hemodynamic system and the autonomic nerve control system.
+The hemodynamic system is a systemic circulatory blood distribution network to
+deliver oxygen, nutrients, and hormones to cells and remove carbon dioxide and
+metabolic wastes. The left ventricle pumps blood to arteries, capillaries, veins, and
+back to the heart. The blood hemodynamics of this circulation can be represented
+by the relationship between blood pressure and heart rate in the cardiovascular
+system. The control of the blood pressure is crucial to human health due to that
+the blood pressure is the energy, generated by the heart, to push blood around the
+body. Although the endogenous regulation of arterial pressure is not completely
+understood, there are evidences that baroreceptors are important for minimizing
+changes in blood pressure. Animal studies have shown that blood pressure is much
+more variable if the influence of baroreceptors is removed [26, 27]. Baroreceptors
+detect changes in arterial pressure and send signals ultimately to the medulla of the
+brain stem. The medulla, by way of the autonomic nerve control system, adjusts the
+mean arterial pressure by altering the heart rate and the total peripheral resistance.
+The autonomic nerve control system includes the sympathetic and parasympathetic
+35
+Table 5: The value and definition of system parameters
+Parameter Definition Value
+h0 Uncontrolled heart rate 100 bpm
+p0 Mean arterial blood pressure 100 mm Hg
+α Sympathetic effect on peripheral resistance 15
+β Sympathetic control of heart rate 10
+ν Strength of vagal tone 9.63
+δ Relaxation time 0.8 s−1
+γ Damping effect of vagal activity on the sympathetic tone 0.2
+µ 3 / (2 + α) 0.18
+A1 Amplitude of the influence of respiration on blood pressure 0
+A2 Amplitude of the influence of respiration on heart rate 0.003
+fr Breathing rate 0.17 Hz
+τ Sympathetic time delay 3 s
+φ Phase lag 3.14 s
+n Hill exponent 8
+εh Relative coefficient for heart rate 1
+εp Relative coefficient for blood pressure 3
+The definition of system parameters in the DDE model developed by Ottesen [29].
+The parameter values are obtained from the literature [30].
+such as respiratory sinus arrhythmia (RSA), Mayer waves, and synchronization [30].
+The EAMCM program is used to do sensitivity analysis on the lumped cardiovas-
+cular model. The non-constant exponent of Hill function and sinusoidal functions in
+differential model equations complicate the evaluation of Jacobian matrix for com-
+puting the solution of sensitivity equations. By the help of automatic differentiation
+embedded in the EAMCM program, user can provide the model equations only at
+run-time for solving the dynamic sensitivities of the cardiovascular system. The
+dynamic sensitivities of heart rate and blood pressure with respect to all system
+parameters and initial conditions are computed. All relative parameter sensitivities
+are presented by 100% stacked column chart and shown in Figure 6. It is easy to
+find which parameter makes more effects on heart rate and blood pressure than the
+others from Figure 6. The values of top five sensitivities for the heart rate and blood
+pressure are shown in Table 6.
+The uncontrolled average arterial blood pressure (p0), breathing rate (fr), sym-
+37
+Time(t / t)
+0 20 40 60 80 100
+R
+e
+la
+ti
+v
+e
+s
+e
+n
+s
+it
+iv
+it
+ie
+s
+o
+f
+h
+e
+a
+rt
+ra
+te
+-40
+-30
+-20
+-10
+0
+10
+20
+30
+40
+R
+e
+la
+ti
+v
+e
+s
+e
+n
+s
+it
+iv
+it
+ie
+s
+o
+f
+b
+lo
+o
+d
+p
+re
+s
+s
+u
+re
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+S(x1,p0)
+S(x2,p0)
+Fig 7: The relative sensitivities of heart rate and blood pressure with
+respect to p0 The relative sensitivities of heart rate and blood pressure with respect
+to the uncontrolled average arterial blood pressure. The time is in dimensionless
+scale.
+pathetic delay (τ), sympathetic control of heart rate (β), and strength of vagal tone
+(ν) are identified as the key parameters for the control of heart rate and blood pres-
+sure. The relative sensitivities of heart rate and blood pressure with respect to the
+uncontrolled average arterial blood pressure are shown in Figure 7. The dynamic
+sensitivities of heart rate with respect to p0 oscillate symmetrically between positive
+and negative values. This result indicates that the uncontrolled average arterial
+blood pressure amplifies the variation of heart rate. In contrast, the dynamic sensi-
+tivities of blood pressure with respect to p0 oscillate but are all positive. This means
+that an increase of the uncontrolled average arterial blood pressure shifts the blood
+pressure to a higher value but does not change the variation of blood pressure. As
+shown in Table 6, the effect of uncontrolled average arterial blood pressure on the
+variation of average heart rate is tenfold larger than the variation of blood pressure.
+There is evidence that the slow-acting sympathetic nerves and the fast-acting vagal
+nerves compete with each other to increase and decrease the heart rate, respectively
+[31].
+The relative sensitivities of heart rate with respect to parameters for slow sym-
+39
+Time(t / t)
+0 20 40 60 80 100
+R
+e
+la
+ti
+v
+e
+s
+e
+n
+s
+it
+iv
+it
+ie
+s
+o
+f
+b
+lo
+o
+d
+p
+re
+s
+s
+u
+re
+-0.3
+-0.2
+-0.1
+0.0
+0.1
+0.2
+0.3
+b
+n
+Fig 9: The relative sensitivities of blood pressure with respect to β and
+ν The relative sensitivities of blood pressure with respect to parameters for slow
+sympathetic control and fast vagal control. The time is in dimensionless scale.
+mediated apoptosis pathway simultaneously. These two pathways involve 31 species
+in 19 reactions and the schematic diagram is shown in Figure 10. The formation of
+this network involves binding reactions between ligand and death receptor, protein-
+protein reactions, enzymatic reactions, translocations, and transcription processes.
+The network is induced by ligation of TNF-α to the cell surface receptor TNFR1.
+The ligation of TNFR1 by TNF results in the recruitment of the adaptor pro-
+teins such as TNFR-associated death domain (TRADD), TNFR-associated factor 2
+(TRAF2), receptor-interacting protein 1 (RIP1), and possibly other yet unidentified
+proteins to form the early complex. In the NF-κB-mediated transcription pathway,
+the inactive inhibitor kappa B kinase (IKK) binds to the early complex leads to
+the activation of IKK, IκB phosphorylation, and release of NF-κB. The free NF-κB
+translocates to the nucleus, binds to DNA, and leads to the transcription of IκB and
+cellular inhibitor of apoptosis protein (cIAP) that protects cells from TNF-induced
+apoptosis by binding to activated caspase-3 [33]. The newly synthesized free IκB
+41
+enters the nucleus and binds to nuclear NF-κB and this complex is exported to the
+cytoplasm [34]. This NF-κB-IκB complex is the target for IκB phosphorylation by
+active IKK and the liberating NF-κB will translocate to the nucleus again. Nelson
+et al. [35] proposed that this oscillatory feedback behavior of NF-κB regulates the
+expression of cIAP. In the caspase-mediated apoptosis pathway, TRADD, RIP1,
+and TRAF2 are dissociated from TNFR1 and recruit Fas Associated Death Domain
+(FADD) and caspase-8 to form a protein complex called the death-inducing signal-
+ing complex (DISC) [36]. As a result of DISC formation, caspase-8 is cleaved at
+the DISC resulting in the activation of caspase-8. The activated caspase-8 in turn
+activates effector caspases, such as caspase-3, causing the cell to undergo apoptosis.
+The transcription processes of cIAP and IκB due to the translocation of NF-
+κB to the nucleus are represented as delayed reactions. The delay time used for
+transcription is 20 minutes as suggested by Sung and Simon [37]. Based on mate-
+rial balance, this model consists of 31 delay differential equations which include 29
+parameters. The state variables are the concentration of the molecules in the sur-
+vival and apoptosis pathways and the input variable is the concentration of TNF-α
+that stimulates the signal transduction pathways. The output variable is the con-
+centration of fragmented DNA, which can be used as a marker for apoptosis. The
+fragmented DNA is defined as the fraction of DNA sites that have been attacked by
+the activity of effector caspase. The set of delay differential equations, all of the rele-
+vant definitions of variables, and parameters appearing in the DDE model, together
+with the nominal values can be found in Appendix A. The reason for representing
+the model equations here and not just referring to the article by Rangamani et al.
+[32] is that some of the parameters and state variables have different names as that
+in the original model.
+The EAMCM program is applied to the TNF-α signal transduction model using
+the initial conditions as described in Table 11 of Appendix A. All dynamic sensitivi-
+ties with respect to 29 parameters and 31 initial conditions are computed simultane-
+ously without any difficulty. All time-averaged semi-relative parameter sensitivities
+for each state variable are shown in Figure 11. Most of the time-averaged semi-
+relative parameter sensitivities for each state variable are too small compared with
+the largest and can be ignored. It is easy to find from Figure 11 that only some
+43
+sensitivity profile with respect to k15 can be obtained simply by reflecting about the
+time axis. To elucidate the effects of IKK (x10) and FADD (x17) on the oscillatory
+behavior of NF-κB (x16) and IκB (x31) in the survival pathway, the semi-relative
+sensitivities of NF-κB and IκB with respect to the rate constants k9 and k15, of
+the formation of survival complex and death complex are shown in Figure 12. We
+observe, from Figure 12, the negative regulation of oscillatory behavior of NF-κB and
+IκB when the rate constant (k15) or the initial concentration of FADD increases. The
+reverse effect is seen by increasing the rate constant (k9) or the initial concentration
+of IKK. We also investigate the responses of the apoptosis pathway to the variances
+of FADD and IKK. The activation of effector caspase-3 (x23) is the finial reaction of
+the apoptosis pathway, so the concentration of the active caspase-3 (x25) can be used
+as the response of the apoptosis pathway. The semi-relative sensitivities of active
+caspase-3 with respect to k9 and k15 are shown in Figure 12. The negative values
+of the semi-relative sensitivities of active caspase-3 with respect to k9 show that the
+active caspase-3 decreases when the rate constant (k9) or the initial concentration
+of IKK increases. By contrast, increasing the rate constant (k15) or the initial
+concentration of FADD induces the increase of the active caspase-3. These results
+are in agreement with observations by mutant studies [32] and show the interplay
+of the apoptotic and survival pathways in response to the variations of IKK and
+FADD. As Figure 12 shows, a combination of increasing the initial concentration
+of FADD and decreasing the initial concentration of IKK gets more effects on the
+DNA fragmentation.
+The fragmented DNA (x26) is the output of the signal transduction model in re-
+sponse to TNF-α stimulus. Our goal is to identify the essential reactions that have
+significant effect on the system output. The semi-relative sensitivities of fragmented
+DNA are used to achieve this goal. Since dynamic sensitivities vary with time,
+it is hard to determine the most important reaction that has the largest effect on
+the system output. We consider the usual used significance measure, time-averaged
+semi-relative sensitivity defined similar to equation (32), as the strength of effects on
+fragmented DNA for individual reactions. Table 7 shows the ranking of dynamic sen-
+sitivities of fragmented DNA with respect to all parameters based on time-averaged
+semi-relative sensitivities. The values of time-averaged semi-relative sensitivities and
+45
+Table 7: The ranking of semi-relative sensitivities for fragmented DNA
+Rank Parameter
+Time-averaged Percentage
+semi-relative sensitivity (%)
+1 k26 51.349 25.49
+2 k21 40.336 20.02
+3 k20 33.558 16.66
+4 k15 24.010 11.92
+5 k9 23.755 11.79
+6 k17 17.756 8.81
+7 k23 7.492 3.72
+The dynamic sensitivities of fragmented DNA (x26) with
+respect to all parameters are ranked based on the time-
+averaged semi-relative sensitivities. The values of time-
+averaged semi-relative sensitivities and the correspond-
+ing ratios to the total semi-relative sensitivity are shown
+if the ratios are greater than 2%.
+Time(min.)
+0 100 200 300 400
+S
+e
+m
+i-
+re
+la
+ti
+v
+e
+s
+e
+n
+s
+it
+iv
+it
+ie
+s
+o
+f
+x
+2
+6
+-150
+-100
+-50
+0
+50
+100
+150
+200
+250
+k9
+k15
+k17
+k20
+k21
+k23
+k26
+Fig 13: The semi-relative sensitivities of fragmented DNA The semi-relative
+sensitivities of fragmented DNA (x26) with respect to the rate constants of the for-
+mation of survival complex (k9), the formation of death complex (k15), the forma-
+tion of DISC without TNFR1 (k17), the caspase-8 activation (k20), the cleavage of
+procaspase-3 (k21), the caspase-3 activation (k23), and the fragmentation of DNA
+(k26).
+47
+Table 8: The ranking of semi-relative sensitivities of NF-κB
+Rank Parameter
+Time-averaged Percentage
+semi-relative sensitivity (%)
+1 k29 1.300E-02 23.77
+2 k14 1.082E-02 19.79
+3 k11 1.081E-02 19.76
+4 k9 6.709E-03 12.27
+5 k15 6.672E-03 12.20
+6 k12 2.255E-03 4.12
+7 k28 2.123E-03 3.88
+The dynamic sensitivities of NF-κB (x16) with respect
+to all parameters are ranked based on the time-averaged
+semi-relative sensitivities. The values of time-averaged
+semi-relative sensitivities and the corresponding ratios
+to the total semi-relative sensitivity are shown if the
+ratios are greater than 2%.
+Time(min.)
+0 100 200 300 400
+S
+e
+m
+i-
+re
+la
+ti
+v
+e
+s
+e
+n
+s
+it
+iv
+it
+ie
+s
+o
+f
+x
+1
+6
+-0.14
+-0.12
+-0.10
+-0.08
+-0.06
+-0.04
+-0.02
+0.00
+0.02
+0.04
+0.06
+0.08
+k
+9
+k
+11
+k
+12
+k
+14
+k
+15
+k
+28
+k
+29
+Fig 14: The semi-relative sensitivities of NF-κB The semi-relative sensitivi-
+ties of NF-κB (x16) with respect to the rate constants of the formation of survival
+complex (k9), the IKK activation (k11), the formation of NF-κB/IκB/IKK* (k12),
+the NF-κB activation (k14), the formation of death complex (k15), the deactivation
+of NF-κB (k28), and the transcription of cIAP and IκB (k29).
+49
+Time(min.)
+0 100 200 300 400
+S
+e
+m
+i-
+re
+la
+ti
+v
+e
+s
+e
+n
+s
+it
+iv
+it
+ie
+s
+o
+f
+x
+2
+1
+-0.20
+-0.15
+-0.10
+-0.05
+0.00
+0.05
+0.10
+0.15
+0.20
+k9
+k15
+k17
+k20
+Fig 15: The semi-relative sensitivities of DISC The semi-relative sensitivities
+of DISC (x21) with respect to the rate constants of the formation of survival complex
+(k9), the formation of death complex (k15), the formation of DISC without TNFR1
+(k17), the caspase-8 activation (k20).
+comparison, the EAMCM program surely outperforms the finite difference method
+using dde23 solver. The EAMCM program can be accessed from http://www.che.
+ccu.edu.tw/~bioproc/index_english.files/page00064.htm and a brief manual
+can be found in the Appendix B.
+Appendices
+A Mathematical Model of TNF-α Signal Transduction
+The TNF-α signal transduction model was developed by Rangamani et al. [32]. This
+model consists of 31 delay differential equations which include 29 parameters. The
+DDEs are derived according to the law of mass balance and reaction kinetics and the
+parameters are the kinetic rate constants. The state variables are the concentration
+of the molecules in the survival and apoptosis pathways and the input variable is
+the concentration of TNF-α that stimulates the signal transduction pathways. The
+output variable is the concentration of fragmented DNA, which can be as a marker
+51
+for apoptosis. The fragmented DNA is defined as the fraction of DNA sites that
+have been attacked by the activity of effector caspase.
+A.1 Model Equations
+dx1
+dt
+= −k1x1x2 + k2x3
+dx2
+dt
+= −k1x1x2 + k2x3 + k17x18 + k11x11
+dx3
+dt
+= k1x1x2 − k2x3 − k3x3x4 + k4x5
+dx4
+dt
+= −k3x3x4 + k4x5 + k11x11 + k20x21
+dx5
+dt
+= k3x3x4 − k4x5 − k5x5x6 + k6x7
+dx6
+dt
+= −k5x5x6 + k6x7 + k11x11 + k20x21
+dx7
+dt
+= k5x5x6 − k6x7 − k7x7x8 + k8x9
+dx8
+dt
+= −k7x7x8 + k8x9 + k11x11 + k20x21
+dx9
+dt
+= k7x7x8 − k8x9 − k9x9x10 + k10x11 − k15x9x17 + k16x18
+dx10
+dt
+= −k9x9x10 + k10x11 + k14x14
+dx11
+dt
+= k9x9x10 − k10x11 + k11x11
+dx12
+dt
+= −k12x12x13 + k13x14 + k11x11
+dx13
+dt
+= −k12x12x13 + k13x14 + k28x16x31
+dx14
+dt
+= k12x12x13 − k13x14 − k14x14
+dx15
+dt
+= k14x14
+dx16
+dt
+= k14x14 − k28x16x31
+dx17
+dt
+= −k15x9x17 + k16x18 + k20x21
+53
+Table 11: State variables and their initial values
+Variable species Initial value (nM)
+x1 TNF-α 1
+x2 TNFR1 100
+x3 TNF-α/TNFR1 0
+x4 TRADD 150
+x5 TNF-α/TNFR1/TRADD 0
+x6 TRAF2 100
+x7 TNF-α/TNFR1/TRADD/TRAF2 0
+x8 RIP-1 100
+x9 TNF-α/TNFR1/TRADD/TRAF2/RIP1 0
+x10 IKK 100
+x11 TNF-α/TNFR1/TRADD/TRAF2/RIP1/IKK 0
+x12 IKK
+∗ 0
+x13 IκB/NF-κB 250
+x14 IκB/NF-κB/IKK
+∗ 0
+x15 IκB-P 0
+x16 NF-κB 0
+x17 FADD 100
+x18 TNF-α/TNFR1/TRADD/TRAF2/RIP1/FADD 0
+x19 TRADD/TRAF2/RIP1/FADD 0
+x20 Caspase-8 80
+x21 TRADD/TRAF2/RIP1/FADD/Caspase-8 (DISC) 0
+x22 Caspase-8
+∗ 0
+x23 Caspase-3 200
+x24 Caspase-8
+∗/Caspase-3 0
+x25 Caspase-3
+∗ 0
+x26 DNA fragmentation 0
+x27 cIAP 0
+x28 Caspase-3
+∗/cIAP 0
+x29 DNA (intact) 800
+x30 Caspase-3
+∗/DNA 0
+x31 IκB 0
+55
+B.1 Introduction
+The extended adaptive modified collocation method (EAMCM) is implemented in
+the SBA program and can be used to compute the solution and dynamic sensitivities
+of ordinal differential equation (ODE) and delay differential equation (DDE) sys-
+tems. The SBA program is implemented with mixed-language programming employ-
+ing Microsoft Visual BASIC, Visual C++, and Intel FORTRAN. Mixed-language
+programming is very useful for many applications which can take advantage of the
+salient features of different programming languages. The GUI of the program is
+implemented by Microsoft Visual BASIC. It contains a wide variety of objects for
+use in the GUI and is easy to use for improving the user interface design. The
+input of differential equations and Jacobian matrix or gradient is not an easy job.
+They are provided through mathematical expressions and parsed by the compiler
+embedded in the SBA program. The parser to checking the syntax errors is im-
+plemented by Visual C++, because it provides object-oriented capabilities which
+should help us in developing high quality software. In addition to the parser, we
+use C++ object-oriented programming to design the new method for computing
+dynamic sensitivities of DDEs. We have developed many efficient and specifiable
+high-precision source codes implemented by Intel FORTRAN for computing the so-
+lution of optimization problems. FORTRAN programming language is efficient in
+the computation of mathematical arrays and is easy to ensure that the precision of
+floating-point numbers. To save our development time, these FORTRAN codes are
+compiled to a run-time library and linked into our program.
+B.2 Installation
+The SBA program is free and can be accessed from http://www.che.ccu.edu.tw/
+~bioproc/index_english.files/page00064.htm or sending an e-mail request to
+wwh@cs.ccu.edu.tw. This program should be run on Microsoft Windows XP SP2
+(X86) or later Service Packs. To install SBA program, uninstall the zip archive in
+a directory of your choice and execute the setup.exe directly. When the program
+is installing, the installer will check the running environment of your computer and
+connect to the web site of Microsoft to update your operating system automatically
+if it is required for the SBA program. The installer will create a new shortcut of the
+57
+Fig 18: Loading an existing model into SBA
+suggested for a new user. When a model text file is generated, the corresponding
+solver kept in the text file can be invoked by just pressing the ”run” button (right
+arrowhead) in the tool strip. When you close the SBA program or load another
+models, you will be requested to save the current model.
+B.3.2 Create a New Model File
+To compute the solution and dynamic sensitivities of an ODE or DDE model,
+model equations (ODEs or DDEs) and some information about the model should
+be provided through an input text file. The contents of the input text file can
+be generated automatically and modified by the assistance of an input form. Use
+Modeling→Solver→DDESolver to create a new DDE model. An input form will pop
+up for a DDE model as Figure 19 shows. Default values for the parameters are used
+if a new model is created. If an existing model is opened already, its content will be
+showed in the input form. The values of the parameters of the model can be input
+by the editing box. Three template differential equations are shown in the ”DDE
+Equations” text box and the number of equations can be extended by appending
+differential equations in the text box. The words beginning with the letter x and p,
+followed by a number, are reserved for the name of state variables and parameters,
+respectively. The initial values of state variables and parameters should be input
+59
+Fig 20: A snap shot of a default template file in SBA
+B.3.3 Plotting the Output Data
+The SBA program provide many ways to customize your plots. When the out-
+put data is generated, the plots for the data are generated automatically on the
+background and saved using the logging file name that user input with a ”png”
+extension name. You can select them from the file selection dialog box invoked
+by the Graph→Open command. If many state variables exist in the model, the
+Graph→Create command allows you to choose which data to plot. For example,
+you can choose to plot the time profile for all state variables, only some interesting
+state variables, or all state variables excluding some state variables in the apoptosis
+model. In Figure 21, the time profile for the x16 and x31 variables is chosen to plot
+and the result is shown Figure 22 when the ”Create” button in Figure 21 is pressed.
+B.3.4 Quit From SBA
+To end SBA program, select File→Exit or click the close icon on the top right
+corner of main window. If the model file currently opened in the main window was
+modified, SBA will display a confirmation dialog box as Figure 23 shows before
+quitting. You can cancel the quit command, abort the modified model, or save the
+61
+Fig 23: Confirmation dialog before existing SBA
+model file before exiting SBA program.
+B.4 Example - Dynamic Sensitivity Analysis of Apoptosis Model
+Apoptosis system is a complex DDE model and takes a few minutes to compute the
+solution and plot the time profile. The output data is stored in a file named as the
+user specified and shown directly in a popup window when it is finished. The graph
+for the time profile is generated on the background and can be shown later by the
+Open command in the Graph menu. The input text files for the apoptosis model are
+included in the program package and built in the same directory for the execution
+file when the program is installed.
+Use the File→Open command to open ”Apoptosis Sensitivity AutoDiff.txt” file
+and press the ”run” button in the tool strip. The output data is shown in a pop-up
+window as Figure 24 shows and the execution time is shown in the left bottom of
+the main window.
+We will show how to create the plot of parameter sensitivities of x16 with respect
+to parameter 9, 11, 12, 14, 15, 28, and 29. Use the Graph→Create command to
+invoke the ”Create” dialog box and select the parameter sensitivities as Figure 25
+shows. Input the number of state variables and parameters, then press the ”Create”
+button in the dialog box. The output is shown as Figure 26 shows. If you want to
+save the output graph, press the ”Save” button in Figure 25.
+The ”Create” dialog box also provides the function of comparison for two dif-
+ferent data files. For example, the sensitivities of x16 with respect to k9 in the
+apoptosis model for different values of k9 are interested to you. The parameter
+sensitivities of all state variables of the apoptosis DDE model for k9 = 0.111 are
+computed and saved in the ”Apoptosis Sensitivity AutoDiff Profile 9.txt” file. The
+63
+Fig 26: A sensitivity graph in SBA
+current model for k9 = 0.0111 is opened and shown in the display area of main
+window. Use the Graph→Create command to invoke the ”Create” dialog box again
+and input the data as Figure 27 shows. The output graph is shown in a pop-up
+window as Figure 28 shows. The gray dot line is the plot for the comparison data
+stored in the ”Apoptosis Sensitivity AutoDiff Profile 9.txt” file and the green line
+is the plot for the output data of current model.
+References
+[1] Watson JD, Crick FHC: Molecular structure of nucleic acids: A struc-
+ture for deoxyribose nucleic acid. Nature 1953, 171:737–738.
+[2] Venter JC, Adams MD, Myers EW, Li PW, Mural RJ, Sutton GG, Smith
+HO, Yandell M, Evans CA, Holt RA, Gocayne JD, Amanatides P, Ballew RM,
+Huson DH, Wortman JR, Zhang Q, Kodira CD, Zheng XH, Chen L, Skupski
+M, Subramanian G, Thomas PD, Zhang J, Miklos GLG, Nelson C, Broder S,
+Clark AG, Nadeau J, McKusick VA, Zinder N, Levine AJ, Roberts RJ, Simon
+M, Slayman C, Hunkapiller M, Bolanos R, Delcher A, Dew I, Fasulo D, Flanigan
+M, Florea L, Halpern A, Hannenhalli S, Kravitz S, Levy S, Mobarry C, Reinert
+K, Remington K, Jane AT, Beasley E, Biddick K, Bonazzi V, Brandon
+65
+[3] Acerenza L, Sauro HM, Kacser H: Control analysis of time-dependent
+metabolic systems. J. Theor. Biol. 1989, 137:424–444.
+[4] Acerenza L, Sauro HM, Kacser H: Control analysis of time-dependent
+metabolic systems. J. Theor. Biol. 1989, 137:424–444.
+[5] Demin OV, Westerhoff HV, Kholodenko BN: Control analysis of stationary
+fixed oscillations. J. Phys. Chem. B 1999, 103:10695–10710.
+[6] Kholodenko BN, Demin OV, Westerhoff HV: Control analysis of periodic
+phenomena in biological systems. Journal of Physical Chemistry B 1997,
+101:2070–2081.
+[7] Bier M, Teusink B, Kholodenko BN, Westerhoff HV: Control analysis of
+glycolytic oscillations. Biophysical Chemistry 1996, 62:15–24.
+[8] Bure´ EG, Rozenvasser EN: The study of the sensitivity of oscillatory
+systems. Automation and Remote Control 1974, 7:1045–1052.
+[9] Wang FS: A modified collocation method for solving differential-
+algebraic equations. Applied Mathematics and Computation 2000, 116:257–
+278.
+[10] Kreyszig E: Introductory Functional Analysis with Applications. Wiley; 1989.
+[11] Varma A, Morbidelli M, Wu H: Parameter Sensitivity in Chemical Systems.
+Cambridge: Cambridge University Press; 1999.
+[12] Tomovic R, Vukobratovic M: General Sensitivity Theory. New York: American
+Elsevier; 1972.
+[13] Baker CTH, Paul CAH, Wille´ DR: Issues in the numerical solution of evo-
+lutionary delay differential equations. Advances in Computational Math-
+ematics 1995, 3:171–196.
+[14] Wu WH, Wang FS, Chang MS: Dynamic sensitivity analysis of biological
+systems. BMC Bioinformatics 2008, 9:S17.
+[15] Dunker AM: The decoupled direct method for calculating sensitivities
+coefficients in chemical kinetics. J. Chem. Phys. 1984, 81:2385–2393.
+[16] Zou R, Ghosh A: Automated sensitivity analysis of stiff biochemical
+systems using a fourth-order adaptive step size Rosenbrok integration
+method. In AIEE Proc. Sys. Biol., Volume 153 2006:79–90.
+[17] Wang FS, Su TL, Jang HJ: Hybrid differential evolution for problems of
+kinetic parameter estimation and dynamic optimization of an ethanol
+fermentation process. Ind. Eng. Chem. Res. 2001, 40:2876–2885.
+67
+[31] McSharry PE, Clifford GD, Tarassenko L, Smith LA: A dynamical model
+for generating synthetic electrocardiogram signals. IEEE Transactions
+on Biomedical Engineering 2003, 50:289–294.
+[32] Rangamani P, Sirovich L: Survival and apoptotic pathways initiated
+by TNF-α: modeling and predictions. Biotechnology and Bioengineering
+2007, 97:1216–1229.
+[33] Luo JL, Kamata H, Karin M: IKK/NF-κB signaling: balancing life
+and death - A new approach to cancer therapy. J. Clin. Invest. 2005,
+115:2625–2632.
+[34] Vuillard L, Nicholson J, Hay RT: A complex containing βTrCP recruits
+Ccd34 to catalyse ubiquitination of IκBα. FEBS Letters 1999, 455:311–
+314.
+[35] Nelson DE, Ihekwaba AEC, Elliott M, Johnson JR, Gibney CA, Foreman BE,
+Nelson G, See V, Horton CA, Spiller DG, Edwards SW, McDowell HP, Unitt
+JF, Sullivan E, Grimley R, Benson N, Broomhead D, Kell DB, White MRH:
+Oscillations in NF-κB signaling control the dynamics of gene expres-
+sion. Science 2004, 306:704–708.
+[36] Harper N, Hughes M, MacFarlane M, Cohen GM: Fas-associated death do-
+main protein and caspase-8 are not recruited to the tumor necrosis
+factor receptor 1 signaling complex during tumor necrosis factor-
+induced apoptosis. J. Biol. Chem. 2003, 278:25534–25541.
+[37] Sung MH, Simon R: In silico simulation of inhibitor drug effects on nu-
+clear factor-κB pathway dynamics. Molecular Pharmacology 2004, 66:70–
+75.
+[38] Haefner B: NF-κB: Arresting a major culprit in cancer. Drug Discovery
+Today 2002, 7:653–663.
+[39] Yamamoto Y, Yin MJ, Lin KM, Gaynor RB: Sulindac inhibits activation
+of the NF-κB pathway. Journal of Biological Chemistry 1999, 274:27307–
+27314.
+[40] Yin MJ, Yamamoto Y, Gaynor RB: The anti-inflammatory agents aspirin
+and salicylate inhibit the activity of IκB kinase-β. Nature 1998, 396:77–
+80.
+[41] Wu WH, Wang FS, Chang MS: Sensitivity analysis of dynamic biological
+systems with time-delays. BMC Bioinformatics 2010, 11:S12.
+69
+Fuzzy Multiobjective Optimization for Metabolic Reaction 
+Networks Including Resilient Effects 
+ 
+Wu-Hsiung Wu1, Feng-Sheng Wang2 and Maw-Shang Chang1 
+1Department of Computer Science and Information Engineering, National Chung Cheng 
+University, Chiayi 62102, Taiwan 
+2Department of Chemical Engineering, National Chung Cheng University, Chiayi 62102, 
+Taiwan 
+____________________________________________________________________ 
+Many researches have discussed for applying model-based optimization strategies to 
+analyze and design a metabolic reaction network (Vital-Lopez et al., 2006; Vera et al., 2010). 
+The indirect optimization method is to convert a nonlinear kinetic model, which is described 
+by a GMA or Michaelis-Menten model, into an S-system formulation so that the optimization 
+problem is then solved by a linear programming method. Stochastic optimization methods are 
+directly applied to nonlinear model systems in order to obtain a global optimum. A 
+multiobjective optimization method attempts to find the solutions that are optimal for many 
+objectives simultaneously. Mixed-integer linear programming is used to determine an optimal 
+regulatory structure and production rate. The regulatory structure can be found by 
+mixed-integer linear optimization approach. However, what is the minimum set of enzymes 
+and/or gene knock-out in the metabolic network that should be perturbed, and by how much, 
+in order to obtain a viable strain producing the maximum possible flux and/or yield of a 
+desired final product?  
+Experiments have shown that a strain may reflect resilient phenomenon after stressful 
+environmental changes and genetic perturbations (Segre et al. 2002; Shlomi et al. 2005). The 
+mutant strain may respond with rapid and dramatic alterations in global genetic perturbations. 
+However, after the mutant adapts to the new condition, the gene perturbations adjust to a new 
+steady state that may be only slightly altered from the process seen before the perturbation. 
+The resilient phenomenon indicates that the mutant strain tries to recover from its original 
+“wild-type” characteristics. Segre et al. (2002) introduced the method of minimization of 
+metabolic adjustment (MOMA) to calculate the minimum distance solution for the mutant 
+strain relative to the original “wild-type” solution. Regulatory on/off minimization (ROOM) 
+introduced by Shlomi et al. (2005) has applied to determine minimum number of changes 
+between the mutant strain and the original one. However, both approaches are applied to 
+explain the resilient effects of metabolic networks that the dynamic behaviors are based on 
+flux balance analysis. Almost no literature has so far discussed such phenomena for metabolic 
+systems described by kinetic models.  
+In this representation, we will introduce a generalized fuzzy multiobjective optimization 
+approach to formulate the enzyme intervention problem of metabolic reaction networks to 
+cope with the resilient effects. The mathematical formulation is expressed as a mixed-integer 
+nonlinear programming problem that is to consider MOMA and ROOM effects in the single 
+framework. The integer variables are applied to determine minimum set of perturbed enzymes. 
+Applying kinetic model and fuzzy equality constraints, the concentrations for all metabolites 
+and enzymes can be formulated as close as possible to the corresponding wild-type ones so 
+that the resilient effects can be estimated. We are applying the approach to determine optimal 
+enzyme interventions for metabolic reaction networks to enhance the desired product 
+synthesis rate. In the conference, we will present two case studies for central carbon 
+                                                 
+ Corresponding author. E-mail address: chmfsw@ccu.edu.tw. Phone: +886 5 2428153. Fax: +886 5 2721206 
+ 2
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/09/22
+國科會補助計畫
+計畫名稱: 系統生物學的混合模式建立與分析之研究: 酵母菌發酵程序的實例應用
+計畫主持人: 王逢盛
+計畫編號: 97-2221-E-194-010-MY3 學門領域: 生化及生醫工程
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

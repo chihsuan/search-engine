@@ -1,0 +1,315 @@
+降低訊務分析計算時間，也可藉由加入主機開關機時間資訊，避免前後無關之訊務流資
+訊對訊務分析之干擾誤判，增加訊務分析之正確性。本研究計畫所提採用 SNMP 與
+NetFlow技術，均為一般網管人員熟悉且容易建置之工具，因此，本研究計畫以網管為
+觀點的 Botnet 及惡意軟體監測架構兼具學術性與實用性，可作為學術界與業界相關技
+術研究之重要參考。
+三、文獻探討
+Botnet的形成與運作，通常有以下依序的共同的模式[1, 4]，如圖一所示：
+圖一 Botnet的形成與運作模式
+(1). 感染(Infection)：為使 Botnet能控制的 Zombie數目增多，以增加其威脅能力進而獲
+取更大的非法利益，Bot程式設計的第一個要務便是如何有效的大量的擴散感染，增加
+受害的 Zombie數目，其感染方式，有的如蠕蟲(Worm)般，尋找具安全漏洞的主機以利
+用其漏洞植入 Bot 程式，或如網路釣魚(Phishing)，藉由 e-mail 附檔或藏於網頁、免費
+軟體或遊戲，瞞騙使用者主動將 Bot程式下載[5]。所植入或下載之 Bot程式不盡然具完
+整攻擊能力，因此還需經由網路連線至 Botnet 控制伺服器取得完整的 Bot 攻擊程式，
+此動作可視為第二次注入(Secondary Injection)[4]。
+(2). 建立 C&C通道(Command and Control Channel)：受感染並已植入完整的 Bot程式之
+Zombie須以人海戰術，方能展現 Botnet之強大，因此在網際網路上數以萬計的 Zombie
+必須聽從 Bot 控制伺服器(bot controller，或稱 botmaster)發號司令，以一致的行動進行
+網路攻擊行為，Zombie與Bot控制伺服器之間之C&C通道建立方式，以使用 IRC(Internet
+Relay Chat)通道最為人熟知之方式，新近的 botnet則開始採用 HTTP[6, 7, 8]或 P2P方式
+[9, 10]建立 C&C通道，Bot控制伺服器也不再是固定單一的網路伺服器，以避免被發現。
+Bot 控制伺服器透過 C&C 通道發號指令方式，可分為推播(Push)與拉取(Pull)兩種方式
+[11]，Push 方式是由 Bot 控制伺服器主動向 Zombie傳送指令，使用 IRC 作為 C&C 通
+道，便是以假裝聊天的掩人耳目方式，等待 Bot 控制伺服器以 Push 方式發送指令。而
+使用 HTTP建立 C&C通道，多以拉取方式在網站內置放指令或程式供 Zombie以 HTTP
+請求方式取回。
+(3). 進行惡意攻擊行為(Attacks)：Botnet 最終目的便是進行惡意與攻擊之行為，最具典
+型的 Botnet攻擊行為便是發動分散式阻斷服務攻擊(Distributed Denial of Service，簡稱
+DDoS)，其次是發送大量的垃圾郵件(Spam mails)，另外已知的惡意行為包括盜取使用
+者之帳號或有用之個人資訊、竊聽 Zombie所在網路之封包、扮演廣大之使用者進行廣
+告點選或投票之欺騙行為從中獲利[5]。
+過去監測Botnet之相關研究[5, 12]，多於主機上安裝監測程式，例如使用 libpcap [13]
+測方式可以在不介入受測系統的環境而達到主機型監測的目的，此外，我們在電腦開機
+時配合了網路型監測，運用 NetFlow 蒐集監測電腦連線資訊，對於 Fast-Flux 模式的
+Botnet與惡意軟體進行即時分析，也於監測電腦關機後，將所蒐集的連線資訊採用事後
+的存錄分析。由於蒐集之訊務流為每一主機開機至關機期間的資料，並採用事後的分
+析，能夠降低訊務流分析的計算時間。本研究所提機制主要包括三步驟:偵測輪詢、黑
+白灰名單、以及 NetFlow分析，茲分述如下。
+4.1. 偵測輪詢機制
+本研究使用 SNMP服務於遠端監測個人電腦網路連線以及其內部處理程序，然而蒐
+集監測資料之方法通常使用週期性輪詢(Polling)方式，由管理者主動以網路管理通訊協
+定與代理者聯繫並取得網路管理之相關資訊，以一般網路設備之監測為例，通常採用五
+至十五分鐘週期性輪詢的方式。輪詢週期會影響監測的資料品質與正確性，較小的輪詢
+週期可獲得較正確之監測結果，然而會耗費較多的通訊與計算資源，不利於延展性
+(Scalability)。採用較大的輪詢週期，則可能無法觀測被管設備瞬時之狀態變化，本研究
+將提出一個以 SNMP Trap驅動的動態輪詢機制，可以有效監測使用者電腦開機後短暫
+時間的處理程序與對外 TCP連結。依據 SNMP協定標準之規定，每一被管系統在開機
+啟動(ColdStart)時會自動發出 Trap通知管理者，利用此特性，本研究所提偵測輪詢機制
+運作如下：
+(1) 網管工作站收到來自 PC主機之 ColdStart Trap，從 Trap之 Agent Address欄位取得
+PC主機 IP位址，並紀錄收到 Trap之時間，作為該主機之開機時間 tu。
+(2) 從開機時間 tu起至 tu+W期間，採用小輪詢週期 c0值，SNMP Manager只用 SNMP
+GetNext Request 每隔 c0 時間(即 tu, tu+c0, tu+2c0,…)至該主機讀取 MIB II 之
+tcpConnTable與 Host Resources MIB之表格。(W:開機後的短週期時間視窗)
+(3) 時間 tu+W以後，改採較大的輪詢週期 c1值，繼續執行監測。
+(4) 當網管工作站進行輪詢時，發現 PC 主機沒有回應，判斷該主機已經關機，並記錄
+目前時間 td，作為該主機之關機時間。
+(5) 網管工作站停止對該主機輪詢，直到再次收到該主機之 ColdStart Trap，回到步驟
+(1)。
+本研究所採用的動態論詢機制之監測方式具有監測之正確性與系統之延展性，圖二
+說明一般輪詢監測方式與動態輪詢監測方式之比較。
+圖二(a) ㄧ般輪詢監測方式
+圖二 (b) 動態輪詢監測方式
+圖二 傳統輪詢(a) vs. 動態輪詢(b)。
+4.2. 黑白灰名單
+網管工作站接收到 SNMP Agent送來之 ColdStart Trap後，開始進行動態輪詢機制，
+輪詢內容將取得 SNMP MIB-II 被管物件集合中的 tcpConnTable 表格，以及 Host
+PING/PONG 與伺服器維持連線或取得資訊等行為，若發現具週期性特性，則將此
+Flow之 Destination IP Address與 Destination Port通知管理者。此外，每一筆 Flow資
+訊能夠代表一個 Connection，正常使用者行為之 Connection 無法在一秒內產生多筆
+Connection於同一個 Port上，因此我們運用 Flow產生的時間，計算每秒 Flow數，
+超過 10筆 Flow資料判定為掃描漏洞或攻擊行為，亦通知管理者。
+此外，對於灰名單的 NetFlow 分析之方法，則蒐集灰名單之處理程序執行期間之
+NetFlow訊務流，計算時間週期，在進行快速傅利葉轉換分析，如有異常將此灰名單之
+處理程序加入黑名單，反之則加入白名單。
+五、結果與討論
+為了驗證本研究所提出殭屍電腦與惡意軟體偵測機制，實驗將使用多個殭屍電腦病
+毒程式。本研究蒐集的殭屍電腦病毒程式有 IRC Bot、HTTP Bot與 P2P Bot三種類型，
+IRC Bot病毒程式有：agoBot、forBot、imBot、microBot、rBot、rxBot、sdBot及 urxBot。
+HTTP Bot病毒程式則有：BlackEnergy與 psyProxy。由於 P2P Bot較難取得原始碼，因
+此，P2P Bot 病毒程式只有 phatBot 一種。本研究將以上所提的病毒原始碼進行修改，
+並建立網路名稱伺服器(DNS Server)、網頁伺服器(HTTP Server)與 IRC伺服器來進行實
+驗。
+為了能夠準確的制定黑白名單，我們先利用新安裝好的 WindowsXP 作業系統運
+作，進行偵測系統第一次黑白名單的初始化，由於新安裝的WindowsXP所執行之處理
+程序，並沒有週期傳送 PING/PONG的特性，所以開機後執行的處理程序將會全部加入
+處理程序之白名單。接著陸續對 IRC Bot、HTTP Bot與 P2P Bot進行處理程序之黑白名
+單判斷。由於 IRC Bot程式在執行時皆會產生一個執行應用程序，且在 IRC Bot執行時，
+會與 IRC伺服器進行 PING/PONG週期性傳送訊息，因此，本實驗能夠判斷 IRC Bot執
+行應用程序為異常處理程序，並將其應用程序加入黑名單。但是，由此實驗我們發現，
+當正常處理程序執行時間相當接近於 IRC Bot之處理程序時，偵測系統亦會把此正常處
+理程序加入至黑名單，所以每當偵測系統將處理程序加入黑/白名單時，偵測系統皆會
+發送訊息給管理者，如有正常之處理程序被誤判為異常，則管理者可利用手動方式修
+改，將正常處理程序移至白名單內。圖三顯示 IRC Bot類別中 AgoBot、SdBot及 RxBbot
+之 FFT 分析結果。由 FFT 分析，我們可以看出 Bot 明顯的周期性，藉此正確偵測 Bot
+的存在。
+(a) AgoBot
+BotNet,”Proceedings of CAIDA DNS-OARC Workshop, 2005.
+[2] Byron Acohido and Jon Swartz,“Botnet scams are exploding,”USA TODAY, 3/26/2008.
+[3] Kraken botnet, http://en.wikipedia.org/wiki/Kraken_botnet.
+[4] Zhaosheng Zhu et al., “Botnet Research Survey,” Proceedings of the 2008 32nd Annual 
+IEEE International Computer Software and Applications Conference, Vol. 00, 2008,
+pp.967-972.
+[5] Paul Bacher, Thorsten Holz, Markus Kotter, Georg Wicherski, “Know your Enemy:
+Tracking Botnets,”http://www.honeynet.org/papers/bots/.
+[6] K. Chiang and L. Lloyd, “A case study of the rustock rootkit and spam bot,”First
+workshop on hot topics in understanding botnets, Sandia National Laboratories, 2007.
+[7] J. Nazario,“Blackenergy ddos bot analysis,”Technical report, Arbor Networks, Oct 2007.
+[8] N. Daswani, M. Stoppelman, the Google Click Quality, and S. Teams, “The anatomy of 
+clickbot.a,” First workshop on hot topics in understanding botnets, 2007.
+[9] J. B. Grizzard, V. Sharma, C. Nunnery, B. B. Kang, and D. Dagon,“Peer-to-peer botnets:
+Overview and case study, “First Workshop on Hot Topics in Understanding Botnets,
+2007.
+[10] T. Holz, M. Steiner, F. Dahl, E.W. Biersack, and F. Freiling,“Measurement and mitigation
+of peer-to-peer-based botnets: A case study on storm worm,”In LEET, 2008.
+[11] G. Gu, J. Zhang, and W. Lee, “Botsniffer: Detecting botnet command and control
+channels in network traffic,”NDSS, 2008.
+[12] 王 平, 王榮祥, 蘇浩儀, 顏柏璋, 郭溥村, “殭屍網路的感染途徑重建與分析,”
+TANET 2008.
+[13] The libpcap project, http://sourceforge.net/projects/libpcap/
+[14] CurrPorts: View Opened TCP/IP ports / connections on Windows,
+http://www.nirsoft.net/utils/cports.html
+[15] Niels Provos, “A Virtual Honeypot Framework,”In Proceedings of the 13th USENIX
+Security Symposium, Aug. 2004.
+[16] P. Barford and V. Yegneswaran, “An inside look at botnets,”In Special Workshop on
+Malware Detection Advances in Information Security, Springer Verlag, 2006.
+[17] Cisco Systems, Cisco IOS NetFlow, http://www.cisco.com/go/netflow
+[18] Bruce Potter,“Network flow analysis,”Network Security, Vol. 2007, Issue 12, Dec. 2007,
+pp. 18-19.
+[19] A. Karasaridis, B. Rexroad, and D. Hoeflin, “Wide-scale botnet detection and
+characterization,”First Workshop on Hot Topics in Understanding Botnets, 2007.
+[20] G. Gu, P. Porras, V. Yegneswaran, M. Fong, and W. Lee,“BotHunter: Detecting malware
+infection through ids-driven dialog correlation,”16th USENIX Security Symposium,
+2007.
+[21] T. H. P. R. Alliance, “Know your enemy: Fastflux service networks an ever changing
+enemy,”http://www.honeynet.org/papers/ff/fast-flux.html, 2007.
+[22] Case J, Fedor M, Schoffstall M, Davin J. Simple Network Management Protocol. IETF STD
+15, RFC 1157, http://www.ietf.org/rfc/, May 1990.
+[23] Jaehak Yu, Hansung Lee, Myung-Sup Kim, Daihee Park, “Traffic flooding attack
+detection with SNMP MIB using SVM,”Computer Communications 31(17), 2008, pp.
+4212-4219.
+[24] Jun-Sang Park, Myung-Sup Kim,“Design and Implementation of an SNMP-Based Traffic
+Flooding Attack Detection System,”APNOMS, 2008, pp. 380-389.
+[25] 郭蕭禎, 謝進利, 許忠強, “以SNMP偵測阻斷區域網路ARP欺騙行為,”TANET 2008,
+計畫成果自評
+本研究計畫執行內容與原研究計畫大致相符，在實際實作多個 bot 於
+實驗環境並觀察其連線行為後，發現其周期性的連線行為，因此採用 FFT
+分析，從頻譜上找出其特性可作為 bot 偵測的依據。本研究計畫的一個重
+要觀念在於以網路管理的觀點的 bot 偵測，因此網管人員必須針對每一部
+個人電腦與伺服器進行的偵測，必須考量偵測效能，因此本計畫所提由
+SNMP Trap觸發的偵測，確實可大幅降低需偵測的資料量。因為偵測只針
+對一部電腦的開機時間，不過在實務上，部分電腦開機時間很久，或經常
+處於開機時間，對於本研究所提在關機後再開始偵測的方式可能並不適
+用。關於此問題，可以將本方法改為開機算起一段時間(例如 90分鐘)後即
+啟動偵測，應可達到相同的效果。
+本研究計畫的偵測架構具高創新性，使用 bot 的週期性的 FFT 分析也
+是一個創新的作法，我們認為只使用週期性分析的偵測方法，誤判率可能
+較高，因此需要加入黑白名單機制加以克服。使用黑白名單的機制較沒有
+技術性的創新，也需要網管人員的介入，因此我們認為在偵測的方法上尚
+待改進，另外使用 FFT的分析只是初次的嘗試，未來也可以考慮採用其他
+的轉換分析，或進一步的高低頻分析找出更準確的偵測方法。總評本研究
+之成果，我們認為在實務應用上的價值頗高，對熟悉網路管理之技術人員，
+也是較為容易採行的方法。
+表 Y04
+四、建議
+本會議為亞太地區各國所重視，國內應多鼓勵學者參與，可提高我國在電信與網路相
+關研究之知名度。韓國在這方面很積極，值得我們效法學習。
+五、攜回資料名稱及內容
+12-th APNOMS 2009 Proceedings: Management Enabling the Future Internet for Changing
+Business and New Computing Services, LNCS 5787, Springer
+六、其他
+表 Y04
+management station in an ad hoc manner. Best effort searches of subnets are
+performed until no new topology information is discovered. Conventional topology
+discovery algorithms have their own criteria to restrict the range the discovery.
+Known criteria are exhaustive list of IP addresses, DNS zone transfer data [5],
+maximum hop count, and number of nodes. However, these methods didn’t originate 
+from the perception of network boundaries. They can be regarded as criteria to stop
+the execution of a topology discovery algorithm.
+In general, a network is administrated by an enterprise or organization. The
+network within an administrative domain is usually also the scope of network
+management. Therefore, it is important to control the discovery of network topology
+within an administrative domain. This paper will focus on the boundary-awareness of
+topology discovery for distributed management of large enterprise or ISP networks.
+We will consider the common characteristics of most enterprise networks and then
+present three heuristic boundary rules useful for them. By these boundary rule tests, a
+topology discovery algorithm can know whether a boundary is reached.
+2 Proposed Boundary Rules for Topology Discovery
+Domain Boundary: Given one domain name, network topology discovery will be
+performed only within the network corresponding to the given domain or its certain
+sub-domain. The domain boundary rule is designed to limit the topology discovery
+within the network in an administrative domain. By the domain boundary rule,
+whenever a new subnet is found, we should further look for nodes with host names
+within the given domain. If a subnet contains nodes with host names within the given
+domain, the subnet will be included in the discovered topology. A network boundary
+may be found when a new discovered subnet contains no nodes within the given
+domain and contains nodes belonging to other domains.
+LAN Boundary: Many enterprise intranets are constructed by one or more LANs
+connected by WAN links. The LAN boundary rule is to restrict the topology
+discovery within a LAN. By this rule, whenever a subnet is found during topology
+表 Y04
+1. For each subnet s in set dcSubnets, perform steps 2 and 3.
+2. Find the all network nodes found in s.
+3. For each node d, perform sub-steps 3.x.
+3.1: Get domain name of d, denoted by dnd.
+3.2: If dnd exists and is in domain dn, add s into the iSubnets set and go to step 4.
+3.2: If dnd exists and is in a domain different from dn, add s into the oSubnets set.
+4. Update iSubnets by adding the subnets that are in dcSubnets but not in oSubnet.
+LAN Boundary Test: The ifType variable in ifTable, defined in MIB II [11],
+indicates the type of a network interface. It also implies whether the corresponding
+network is a LAN. The proposed test is described as follows.
+1. Send SNMP get-next-request messages to router r to get the ipAddrTable table.
+2. For each subnet s in set dcSubnets, perform the following steps.
+3. By searching the ipAddrTable, determine the interface index ind, i.e. the
+ipAdEntIfIndex variable, of the network interface attached to subnet s.
+4. Send a SNMP get-request message to router r to retrieve the ifType variable in the
+entry of the ifTable table with ifIndex = ind.
+5. If the value of ifType is in the LAN type list, add s into iSubnets.
+Excluded Address Boundary Test: A small list of IP addresses is prepared in
+advance. Each IP address in the list is an address outside of the network to be
+discovered. The detail of the test is described as follows.
+1. For each subnet s in set dcSubnets, perform the following steps.
+2. Get the subnet mask of s, denoted by sm.
+3. For each IP address nip in list boundAddrList, perform steps 4 and 5.
+4. Obtain nid by computing the bitwise AND of nip and sm.
+5. If nid is identical to s, then mark s as an excluded subnet.
+6. If s is not an excluded subnet, add s into set iSubnets.
+表 Y04
+References
+1. Breitbart, Y., Garofalakis, M., Martin, C., Rastogi, R., Seshadri, S., Silberschatz, A.:
+Topology Discovery in Heterogeneous IP Networks. in Proceedings of IEEE Infocom 2000,
+Vol. 1, pp. 265—274 (2000)
+2. Govindan, R., Tangmunarunkit, H.: Heuristics for Internet Map Discovery. in Proceedings
+of IEEE Infocom 2000, vol. 3, 1371—1380 (2000)
+3. Lin, H.C., Lai, S.C., Chen, P.W., Lai, H.L.: Automatic Topology Discovery of IP Networks.
+IEICE Transactions on Information and Systems, Vol. E83-D, No. 1, pp. 71—79. (2000)
+4. Lin, H.W., Wang, Y.F., Wang, C.H, Chen, C.L.: Web-based Distributed Topology
+Discovery of IP Networks. In Proceedings of 15th International Conference on Information
+Networking, pp. 857—862 (2001)
+5. Sianwalla, R., Sharma, R., Keshav, S.: Discovering Internet Topology.
+http://www.cs.cornell.edu/skeshav/papers/discovery.pdf
+6. Lowekamp, B. et al.: Topology Discovery for Large Ethernet Networks. Proc. of ACM
+SIGCOMM '01 (2001)
+7. Barford, P. et al.: On The Marginal Utility of Network Topology Measurements. Proc. of
+ACM/SIGCOMM Internet Measurement Workshop (2001)
+8. Spring, N., Mahajan, R., and Wetherall, D.: Measuring ISP Topologies with Rocketfuel.
+Proc. of ACM/SIGCOMM '02 (2002)
+9. Lakhina, A., Byers, J., Crovella, M., and Xie, P.: Sampling Biases in IP Topology
+Measurements. Proc. of IEEE Infocom (2003)
+10.Emma, D., Pescape', A., and Ventre, G.: Discovering topologies at router level, 5th IEEE
+International Workshop on IP Operations & Management (IPOM 2005), LNCS, vo1. 3751,
+pp. 118—129 (2005)
+11.McCloghrie, K., Rose, M.: Management Information Base for Network Management of
+TCP/IP–based internets, RFC 1213 (1991)
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：陳彥錚 計畫編號：98-2221-E-260-011- 
+計畫名稱：以網路管理觀點的殭屍網路與惡意軟體偵測技術 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 6 6 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

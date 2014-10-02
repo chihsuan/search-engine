@@ -1,0 +1,216 @@
+ 2
+二、 計畫的緣由與目的 
+嵌入式系統經由硬體與軟體元件之間緊
+密結合可達成高效能與低功耗之特性。此類定
+製硬體與軟體元件的自動生成與評估工具之
+設計與研究是美國普林斯頓大學及麥迪遜威
+斯康辛大學所提出的計畫：「可展延低功耗之
+定製內嵌系統」(Scalable Power-Aware Custom 
+Embedded Systems 簡稱SPACES) 之設計的主
+要目標。與美方合作的我國團隊包含台大電子
+所陳少傑教授所提出的支援H.264視訊壓縮之
+定製低功耗晶片系統設計平台，以及本計畫所
+提 出 的 設 計 與 實 作 一 個 支 援 具 有 
+subword-parallel 指令集之可組態內嵌處理
+器，如PLX，之即時作業系統。 
+如圖一所示，PLX 是普林斯頓大學電機
+系Ruby Lee 教授所發展的小型具有 wordsize 
+可展延、平行次字彙 (subword-parallel，native 
+SIMD) 指令集架構的微處理器，用以設計處
+理多媒體。 
+ 目前，PLX發展到 1.2 版，並擁有 C 語
+言 編 譯 器 (LCC compiler) 、 組 譯 器 (PLX 
+assembler)以及指令集模擬器(PLX simulator) 
+[2]。由於PLX 擁有可組態(configurable)的特
+性，目前已支援3D圖形[3]及無線網路安全[4]
+等運算。 雖然，PLX 有一個好的程式發展及
+架構探索環境，但是它仍缺一個實作平台以及
+一套可用於發展複雜多媒體與資訊安全應用
+的即時作業系統。 
+ 
+圖一: PLX Processor Framework 
+本計畫設計的可組態即時嵌入式作業系
+統採用模組化設計策略如圖二所示，其中實作
+的微核心僅含一個基本的即時排程器。其他的
+模組可視需要動態執行時載入。此策略當 
+PLX 被實作在一個可動態且部分重新組態
+(partially reconfigurable)的 SoC 上會獲得很
+大的應用優勢。核心中的程序管理者負責高效
+能低功耗多重執行緒之間的溝通。可載入式模
+組包含區塊組態式記憶管理、輸出入管理、驅
+動程式、功耗管理、檔案系統管理、資訊安全
+協定介面、通訊介面及多媒體標準。 
+ 
+圖二：RTOS 的可配置模組化架構 
+和其他不同的RTOS相比，本計畫提出的
+即時作業系統模組在PLX架構下有很好的延
+展 性 (scalability) 及 可 重 新 組 態 的 能 力
+(reconfigurability)。其主要特色如下： 
+(1) Communications Interfaces 包含無線
+網路的通訊協定，如藍芽、802.11等； 
+(2) Multimedia Standards 包 含 MP3 及
+H.264 ，利用 PLX 的平行次字彙運
+算來加速處理； 
+(3) Security Interfaces 包 含  ECC 及
+AES，並由PLX的位元排列及轉移來
+完成，不需其他專門的硬體支援； 
+(4) Power Manager 允許不同時脈的處理
+器執行，甚至可在硬體處理器執行
+時，動態關閉硬體處理器。 
+因此，本計畫所提出的 RTOS 並無法完全
+以現今已存在的 RTOS 所取代。此作業系統針
+對可組態的處理器，如 PLX，取得最佳的效能。 
+ 4
+的資訊 
+7. 加入 ready queue 放置準備要執行的 task 
+ 
+在移植 SST 的過程中遇到以下幾個問題： 
+1. LCC compiler 無法同時編譯多個檔案，因
+此我們就把 SST 全部撰寫在同一個檔案 
+2. LCC compiler 無法接受 malloc 的使用，因
+此我們就用靜態記憶配置的方式解決 
+(二)在基於SystemC的PLX指令模擬器上利用
+PLX組語實作一個優先權排程器： 
+目前 PLX 上的LCC C語言編譯器仍有以
+下兩個主要的問題： 
+a) 對C語言的語法支援不全 
+b) 無法內嵌組語碼 
+由於以上的問題，目前先以組語程式碼的
+方式實作一排程器；而針對排程完後所需執行
+的context switching，需將正在執行工作的所有 
+registers 存到特定的資料結構中，並把即將執
+行的  task 原本的內容存回所有  registers 
+內，此動作必須以組語碼完成。 
+另外，Princeton大學所設計的PLX指令集
+架構目前尚缺乏中斷控制，故無法實作一個 
+preemptive 的排程器。台大的模擬器雖然已經
+暫時支援中斷，但是仍未支援巢狀中斷處理。
+以下詳述遭遇的問題及解決方法： 
+ 
+問題一： 
+目前 在PLX的架構中未設計中斷的方式 
+解決方式： 
+先於 Simulator 上模擬提供一種中斷(按
+鍵)，當按鍵中斷發生時，硬體會發出中
+斷通知系統，並跳到特定的記憶體位址，
+只需以插入中斷處理器的方式即可解決。 
+問題二： 
+上述的中斷機制無法提供巢狀的中斷處
+理，造成在某一個task 1執行期間，若使
+用按鍵中斷新增另一個 task 2，在完成新
+增task 2後仍需跳回task 1以完成此中斷。 
+解決方法： 
+在 每 一 個 task 中 設 定 一 些 插 斷 點
+(preemption points)，並呼叫scheduler。用
+此方法就可以優先執行優先權較高的
+task，但是並非fully preemptive。要做到
+fully preemptive，需要Princeton大學的
+PALMS團隊從指令集架構做加強，加入
+完整的中斷機制。 
+問題三： 
+PLX 上  R0 的值永遠等於0，故根據 
+PLX 的說明文件，可利用下列指令
+load/store Rd, R0, address來取得絕對的記
+憶體位址(physical address)，但於台大的模
+擬器中，這個以R0為記憶體基底來存取絕
+對的記憶體方式被對應到其他supervisor 
+register，而不是存取到實際的記憶體位
+址。 
+解決方法： 
+這個問題正與台大溝通。暫時用別的暫存
+器(R24)取代R0的功能。PLX 共有 32 個 
+general purpose registers，將R24的值設為
+0，以便取得絕對記憶體內容load/store Rd, 
+R24, address。 
+ 
+目前狀況： 
+目前，台大的模擬器已可動態新增工作，
+並在工作執行中插入其他task，再根據優先權
+的高低執行下一個task。其中，task preemption
+僅能在 task 中的preemption points進行。待
+Princeton大學的PALMS團隊在PLX ISA中加
+入完整的中斷機制之後，我們就可以做到fully 
+preemptive。 
+ 在圖五中，我們使用順序圖 (sequence 
+diagram)表示兩個tasks之間preemption是如何
+做到的。以下為更詳細的執行流程。這個流程
+已經用PLX組語實作完成，並且已驗證無誤。 
+1. 初始化所有的 registers 值 
+ 6
+由使用者自行控管，OS只負責將空的記憶體
+分配出去，但對於一般記憶體管理上的問題
+如：內部碎裂、位址空間的保護等並未提供解
+決方案；相較於uC/OS-II，Linux則提供了較多
+的機制來配置記憶體、保護記憶體內容等措
+施。 
+雖然 uC/OS-II的記憶體管理機制不如
+Linux來得嚴謹，或是嚴格來說，uC/OS-II並不
+具有管理的行為，然而uC/OS-II短小簡單的
+code size，使得他在嵌入式系統的開發上成為
+一項重要的優點。尤其在PLX缺乏MMU支援
+的架構下，虛擬記憶體機制無法實作，task必
+須直接存取實體記憶體位址，並負責管理其取
+得的記憶體。這與uC/OS-II的記憶體管理機制
+上頗為相符，因此我們參考uC/OS-II的管理機
+制並應用在本專案的記憶體管理發展設計上。 
+另一個重要的記憶體管理的議題是有關
+於週邊IO mapping的部份。因為PLX的ISA並
+未提供IO instruction，因此我們必需切割一塊
+實體記憶體空間當成週邊 IO mapping的部
+份，用以控制週邊設備。目前PLX的架構中週
+邊規劃尚不明朗，因此在週邊IO mapping的規
+劃上則是直接參考Linux memory zone的部
+份。在管理上，Linux DMA zone直接切割出16 
+MB提供給週邊DMA的使用，因此目前在PLX
+的記憶體規劃設計上，預設切割16 MB保留給
+DMA、Interrupt Vector Table (IVT)等主要作業
+系統相關功能所使用。 
+根據上述原則，針對目前的PLX架構所做
+的記憶體配置初步規劃如圖六所示。從低位元
+組部份開始，16 MB記憶空間配置給ISR、IO 
+Mapping、DMA等週邊使用，剩下的部份則依
+序配置OS的程式、資料及OS所需的stack;而目
+前OS的code size(即圖六中kernel code及kernel 
+data的部份)是根據uC/OSII的最大組態來配
+置。另外，剩下的部份再配置給tasks的程式
+碼、資料、及task所需要的stack。PLX專用的
+OS會另外提供系統呼叫(system call)，例如：
+mem_get()、mem_put()、mem_query()等函式用
+來配置或釋放記憶體，並提供查詢記憶體目前
+使用的狀況。 
+ 未來針對本專案的記憶體管理部份，需針
+對PLX的週邊設計及編譯器的搭配，來設計更
+詳細的記憶體規劃。 
+ 
+ 
+圖六：記憶體佈置情形 
+丙、H.264 codec的移植 
+本計畫最終目標是要實作一套即時嵌入
+式作業系統可以支援多媒體應用，例如視訊
+等。目前因為計畫才執行不到一年，故尚未完
+成，接下來的兩年內會完成。 
+影像(video)是高度仰賴real-time呈現的一
+種媒體型式，在播放時只要有任何的不順暢，
+人眼就很容易察覺出。影像利用人類視覺暫留
+的現象，在視覺保留的十六分之一秒內，出現
+下一張畫面以達到畫面連續。這個「畫面連續」
+需求，讓許多real-time的研究都想將它納入考
+慮。 
+而 就 目 前 的 影 像 編 碼 方 式 來 說 ，
+H.264/AVC是一個熱門且值得研究的編/解碼
+ISR、IO mapping、DMA 
+Kernel code 
+Task code 
+Task stack 
+.
+Kernel data 
+Kernel Stack 
+Similar to Linux 
+DMA zone: 16 MB
+Similar to uC/OS-II 
+configuration: 
+Data :  5523 bytes
+Code: 13048 bytes
+Task data 
+低位元
+高位元

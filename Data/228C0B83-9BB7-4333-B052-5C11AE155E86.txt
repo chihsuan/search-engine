@@ -1,0 +1,1898 @@
+  
+2
+ 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。 
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+□ ■達成目標 
+□ 未達成目標（請說明，以 100 字為限） 
+□ 實驗失敗 
+□ 因故實驗中斷 
+□ 其他原因 
+說明： 
+ 
+ 
+ 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：■已發表 □未發表之文稿■撰寫中 □無 
+專利：□已獲得 □申請中 □無 
+技轉：□已技轉 □洽談中 □無 
+其他：（以 100 字為限） 
+已經發表會議論文兩篇（IWSSPS 2010, CPSNA 2011，如附件），並被邀請投
+稿至 IEEE embedded systems letter 的一個 special issue 
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以
+500 字為限） 
+ 
+本計劃成果為固態硬碟的虛擬平台。原則上我們透過產學合作的管道推廣至
+業界使用，目前廠商的回應都相當不錯。而學術研究方面，基於這個虛擬平
+台，我們目前得以研究開發新的儲存裝置與主機端的溝通方式，藉以達成更
+好的效能改善。 
+ 
+ 
+ 
+ 
+I. INTRODUCTION 
+ 
+近年來行動電腦的儲存裝置由傳
+統硬碟(Hard Disk Drive, HDD)逐漸被
+以快閃記憶體為基礎的固態硬碟 
+(solid-state disks, SSDs)所取代。由於
+SSD 複雜的硬體架構以及韌體的演算
+法，使得如何設計高效能的 SSD成為
+一項艱鉅的任務。廠商面臨一個實際
+的問題，在不同的環境或用途下，要
+如何組合硬體與韌體的設計才能達到
+最佳的效能。目前有一些離線模擬的
+工具[1][2][3][4]可以用來測試硬體與
+韌體的組合。 
+ 
+由於現有的離線模擬工具不易使
+用，使得 SSD的研發和測試週期相當
+耗時，因此廠商強烈要求降低修改和
+測試週期的時間。另一方面，離線模
+擬工具有個問題是從 HDDs 收集
+workload的存取紀錄(trace file)時，I/O 
+request 的反應時間會受限於底層的儲
+存設備，假若從一個慢速設備收集
+trace，那麼 I/O request時間將會增加。
+因此使用 HDDs收集 trace無法完全展
+現真實 SSD的 I/O反應。 
+ 
+本研究提出一種線上 SSD模擬環
+境且提供一個快速的硬體-韌體之原型
+工具為 SSD設計之用，該模擬環境具
+有簡單的 programming 介面並有豐富
+的硬體/韌體設計的選擇。整體而言，
+該模擬環境包括 sim-engine 與 virtual 
+drive兩部分，sim-engine計算 SSD的
+I/O延遲，virtual drive在主機端的作業
+系統創建一個虛擬磁碟，設計者可以
+透過一般的磁碟存取操作對此虛擬磁
+碟進行讀寫，virtual drive會將這些 I/O 
+request 送予 sim-engine， sim-engine
+計算這些 request 需要多少 flash 
+ 
+Fig. 1 SSD Inter-chip architecture 
+Block 0 Block 1
+0 20 1 2 3
+: Invalid Data : Valid Data : Free Page
+ 
+Fig. 2 Out-of-place updating data 
+operations 且花費多少時間，再讓
+virtual drive 模擬出這些 I/O 延遲。該
+工具的目的在於降低除錯的成本，且
+不需要冗長的 trial-and-error 週期就能
+找出最佳的設計方案。 
+ 
+虛擬平台有幾項技術上的挑戰如
+下: 第一，sim-engine如何提供一個簡
+單又具共通標準制定的SSD硬體/韌體
+的抽象方法，讓設計者可以簡單地改
+變 SSD的設計。第二，虛擬平台如何
+與作業系統結合互動才能實現虛擬磁
+碟的功能。第三，sim-engine如何準確
+地計算 I/O 的延遲，virtual drive 如何
+模擬這些 I/O延遲。第四，如何利用有
+限的 RAM 創建出一個很大的虛擬磁
+碟。 
+ 
+II. HARDWARE/FIRMWARE 
+ABSTRACTION 
+ 
+A. SSD硬體架構 
+ 
+Figure 3 為 SSD 的硬體架構。
+Figure 4 (a)稱為"gang"，所有通道由同
+一條 chip enable line連接，每個通道必
+NUMBER OF GANG = 1; 
+CHANNEL PER GANG = 4; 
+CHIP PER CHANNEL = 1; 
+PLANE PER CHIP = 1; 
+hwAPI->SetupFlashChip(Chip 
+Character); 
+  
+關於韌體的部分，如Algorithm 1所示，
+韌體API可以做到: 1) 若寫入量小於 1 
+page且此 page之前已經寫過，則我們
+執行 read modify write。2) 將此 page
+寫到 log block並透過 API處理 GC或
+是取得新 log block。3) 修改 index，將
+邏輯分頁位址與實體分頁位址綁在一
+起。4) 將邏輯分頁位址與其 log block
+記下來 (association)。5) 若沒有 free 
+space則執行 GC。 
+ 
+Fig. 8 Virtual Platform: on-line simulation environment 
+所以我們必須將作業系統的核心
+模式與使用者模式做同步化動作。如
+Figure 5所示，有兩個共用物件 A和 B
+共用了記憶體C，sim-engine設成"wait"
+狀態並且等待 A。接下來我們將會用
+item 5-1 來解釋 Figure 5 中第一項
+item。 
+ 
+虛擬磁碟將會接收從應用程式送
+出的 I/O request packets(IRPs)，並將它
+們放在一個 Queue中，如 item 5-1 所
+示，接著用執行緒處理這個 Queue。在
+使用者模式中，執行緒將模擬請求的
+資訊給 C 並且設置 A 來通知 
+sim-engine，如 item 5-2所示，然後它
+將會設置"wait"狀態。當 sim-engine被
+A通知，如 item 5-3所示，它將會啟動
+並從 C 獲得資訊，並且開始模擬，我
+們將會計算模擬所用去的時間以及作
+業系統模式轉換的開銷，當模擬結束，
+sim-engine將會設置 B，如 item 5-4所
+示，而執行緒將會從記憶體 C 讀取延
+遲資訊並產生虛擬 I/O延遲及完成 IRP，
+如 item 5-5 所示，然後繼續處理
+metadata。我們將會在實際 SSD 平台
+實驗中驗證模擬的 I/O延遲正確性。關
+於作業系統執行緒轉換的開銷，我們
+將在第 IV.章節中解釋。 
+另一方面，sim-engine 也許會實施
+排程機制，out-of-order完成請求。 
+ 
+B. Metadata之辨識 
+ 
+為了利用大小有限的 RAM 去模擬
+一個大容量的 SSD，我們提出了一種
+定義 metadata的構想。 
+ 
+ Metadata 即為用來詮釋資料的一
+種資料，又可以稱為資料的索引，
+metadata 只佔所有 data 的一小部分。
+Disk中即使只存 metadata ，檔案系統
+也 可 以正 常運 作， 並 且讓 disk 
+benchmark tools 不要去驗證寫到 disk
+上的 data，因此 benchmark tools可以
+正常運作在只存有檔案系統 metadata 
+的虛擬磁碟上。 
+ 
+ 舉例來說，當我們格式化一個 
+ 250GB 的硬碟成 NTFS 的磁區 ，則
+這 個 硬 碟 上 的 metadata 只 佔 了
+74.46MB 的硬碟空間，因此我們藉由
+metadata 之識別方法來降低 SSD 虛擬
+平台對 RAM 的使用量。Sivathanu[7]
+提出一個方法去定義"live data"，但這
+個方法專注在資料內容的定義，而非
+metadata。 
+ 要定義 metadata，不同檔案系統有
+不同的架構，所以我們實作一套"rules 
+database"在我們的虛擬磁碟中，如
+Figure 6所示，該"rules database"包含
+許多的不同檔案系統 metadata 定義規
+則，藉由這個資料庫，我們可以找到
+並儲存metadata到不同的檔案系統上。
+我們將會在接下來的章節中，來討論
+NTFS 與 ext2 中定義 metadata 的方
+法。 
+在 NTFS 檔案系統的環境中，最
+主要的 metadata 都存在 MFT(Master 
+Files table)中。首先，在 disk的開機磁
+區中，我們可以知道MFT存放的位置，
+幸運地，每個MFT的項目為一筆紀錄
+的開頭，我們可以透過解析虛擬磁碟
+上的資料內容來定義這些紀錄，因此
+我們可以儲存這些紀錄來維持 NTFS
+的正常運作，如 Figure 6所示。 
+ 
+ switch，我們使用一些方法去解決這
+個問題。首先，我們得到處理器
+(processor)的時間戳記(TSC)去計算用
+來發送事件訊號的 CPU cycle time，換
+句話說，我們使用一個時間校準階段
+去計算事件訊號的時間消耗。第二，
+我們加入的虛擬平台 I/O 延遲是在作
+業系統核心模式，去避免使用者程序
+的競爭。第三，我們讓 sim-engine 執
+行在高優先權下，避免虛擬平台被系
+統的 context switch所影響。 
+ 
+在計算虛擬 I/O 延遲上符號的意
+義與方法，如 TABLE I所示。 
+與皆由TSC計算出來的，
+	
+為多通道架構環境下處理
+request所花的時間。 
+ 
+V.  實驗結果 
+ 
+ 在這一節，我們有兩個實驗部分。
+第一個是驗證虛擬平台的準確性，我
+們會與真正的 SSD(GP5086)平台來跟
+虛擬平台的模擬結果比較。第二個是
+在實際 workload 之操作下，虛擬平台
+展現的硬體/韌體搭配之下的效能。 
+ 
+我們使用業界最常使用的磁碟效
+能評比工具：IOmeter、ATTO 來驗證
+我們的虛擬平台與真實的 SSD 
+(GP5086)，並且在虛擬平台安裝 Office
+軟體，來測試兩種不同的硬體/韌體組
+合下的效能差異。 
+ 
+我們已經依照「硬體組態配置範
+例」章節中，將虛擬平台設定為跟真
+實平台(GP5086)相同的硬/韌體架構。
+如同 TABLE II所示，我們可以觀察到
+虛擬平台的 I/O 延遲誤差低於百分之
+五，其誤差的原因來自快閃記憶體晶
+片的寫入/抹除時間會隨著溫度及電壓
+的變化而改變。為了要測試我們處理
+事件通知的時間消耗以及使用者程序
+間的行程切換的方法，我們使用了
+FFT-z 這套工具來增進 CPU 使用率，
+測試我們的虛擬平台在 CPU高壓力下
+的效能，如同 TABLE III 所示。因為
+行程切換的開銷影響不大，並且 I/O延
+遲是在作業系統核心模式，故可以降
+TABLE I: I/O delay symbol table 
+TABLE II: Compare a real SSD (GP5086) 
+results with our virtual platform 
+本研究提出一個針對固態硬碟
+(SSD)的虛擬平台，並且在 user mode
+中設計了一個抽象化的硬體/韌體介面
+以方便設計 SSD。這個虛擬平台可以
+做快速的"測試並修改"設計循環並於
+線上模擬。該虛擬平台可以只儲存
+metadata，並在有限的記憶體下，建立
+大容量的 SSD。在實驗中，我們驗證
+了時間準確性之誤差相較於真實產品
+是低於百分之五。此外，我們也比較
+了兩種不同SSD的硬體/韌體設計來安
+裝 Office的效能。 
+  
+ 附件（已發表之會議論文）： 
+ 
+1. Ming-Yi Yang, Li-Pin Chang, and Ya-Shu Chen, "Workload-Oriented Benchmarks for Solid-State 
+Disks," International Workshop on Software Support for Portable Storage (IWSSPS), 2009. 
+2. Chun-Chieh Kuo, Jen-Wei Hsieh, and Li-Pin Chang, "Detecting Solid-State Disk Geometry for 
+Write Pattern Optimization," The International Workshop on Cyber-Physical Systems, Networks, and 
+Applications (CPSNA), 2011 
+ To improve read/write performance, SSD employs 
+additional RAM as write buffer or read cache. The current SSD 
+buffer management can be categorized into: (1) traditional 
+management schemes, such as FIFO, LRU; (2) new management 
+schemes designed for NAND flash physical characteristics, such 
+as FAB, BPLRU[4]. The former only utilizes the hardware 
+advantage of RAM to shorten access time, while the latter 
+optimize the management scheme costs as well. 
+The major management issues of the SSD are: address 
+mapping, free-space reclaiming and wear leveling. As the unit of 
+SSD read and write is a page, while the unit of erase is a block, it 
+is necessary to use out-place updates to avoid frequent erasure 
+operations. An address mapping mechanism is needed to translate 
+logical addresses into physical addresses. Most of the current 
+address mapping mechanisms divide the blocks into data blocks 
+and log blocks. All the original data is stored in the data blocks. 
+When each data update arrives, log blocks are used to hold the 
+updated data. It is a design option that how data blocks are 
+associated with log blocks. When a lot of free-space reclaiming 
+actions are taken by a small amount of data written, we can 
+conclude that the address mapping mechanism is not working well, 
+and action needs to be taken [5]. 
+When there is insufficient free-space for data writes, the SSD 
+needs to reclaim free-space by erasing invalid data. However, the 
+minimum unit that can be erased is a block. Garbage collection 
+will trigger a sequence of data moves and erases. The time cost of 
+garbage collection is the major management cost. Generally 
+speaking, garbage collection should be postponed as late as 
+possible, and should erase the block with most invalid pages. 
+When the cold data (rarely updated data) and hot data (frequently 
+updated) are mixed in the same block, the efficiency of garbage 
+collection will be significantly impaired. It is therefore better, 
+where possible, to store hot and cold data in different blocks. 
+3. Performance Evaluation using Real 
+Workloads 
+The SSD performance benchmarking proposed in this paper 
+takes the form of a black-box test to evaluate external response 
+time performance. The advantages of this method are easy test 
+environment setup and simple parameters. The disadvantage is the 
+difficulty in diagnosing the reasons for poor performance in a 
+single test. This section will introduce the system configuration of 
+the SSD benchmarking, performance metrics and typical 
+symptoms of suboptimal management strategies. 
+Our SSD benchmarking method is composed of two steps. 
+The first step is Trace-Collect. It operates in the driver layer of the 
+file system, collecting users’ access patterns to hard drives. The 
+second step is called Trace-Replay. It is mainly used to reproduce 
+the data access activities on the SSD that is going to be tested. 
+Because only write requests involve SSD management activities, 
+the benchmarking method proposed in this paper only concerns 
+write requests in the collected traces.  
+To focus on the impact of the SSD management strategies on 
+performance, we propose the Per-Byte-Response (PBR) as a 
+performance metric to eliminate the time overheads contributed by 
+data transfer. For each SSD write request, the PBR is defined by 
+the following formula: 
+Response time (in seconds) / Request size (in bytes). 
+Under optimal management scheme conditions, the 
+management overheads in SSD are kept as low as possible, and no 
+PBRs of requests are noticeably large. However, with suboptimal 
+management schemes, it is possible that a small request introduces 
+lengthy management activities, suddenly increasing its PBR. . 
+General users can not easily identify performance bottleneck of 
+various SSD devices by observing PBR only. To assist users to 
+diagnose the problem, it is necessary to analyze PBR results 
+exhibited by typical symptoms of suboptimal management 
+strategies. 
+To observe the time and spatial distribution of the PBR 
+values, we used a 3D visualization method, where the X axis 
+represents data reference numbers, the Y axis represents the 
+original logical address and the Z axis represents the PBR 
+value.As shown in Figure (1), there is a significant difference 
+between PBR values. The Figure shows how the data is buffered 
+to improve the performance before the data is written in SSD. 
+When there is free space in the write buffer, the extremely low 
+PBR values represent the time cost of writing data to RAM. When 
+the write buffer is full, data will be written to the SSD, which 
+results in a series of management activities and a significant 
+increase in the PBR value. However, this buffer management 
+scheme is not optimized for the flash translation layer, instead of 
+delivering stable PBR values, the PBR values changes severely. 
+This phenomenon is defined as “suboptimal write buffer 
+management”.  
+As shown in Figure (2), when the PBR values increase 
+dramatically and are randomly distributed over a large range of 
+logical addresses, garbage collection is triggered at a high 
+frequency, even through the total amount of data written is low. 
+The reason is that the suboptimal address mapping scheme results 
+in low utilization rate of the SSD space (i.e., log-blcok threshing). 
+This phenomenon is defined as “suboptimal address mapping”.  
+In Figure (3), the PBR values increase dramatically but only 
+appear densely in a small area and in a short time. This means that 
+certain data a updated frequently, triggering garbage collection. 
+There are two reasons for this phenomenon: (1) extremely high 
+PBR values representing large data relocation cost during garbage 
+collection. (2) high incidence of PBR values, indicating a 
+problematic garbage collection strategy, such as premature 
+garbage collection or improper selection of recycling victims. This 
+phenomenon is defined as “suboptimal garbage collection 
+scheme”. 
+4. Workload Characterization and 
+Benchmark Suites 
+In this section, we will discuss how to conduct temporal and 
+spatial analysis on the collected workloads, list important 
+characteristics, analyze the relationship between these 
+characteristics and SSD management schemes, and categorize 
+Figure (1) Suboptimal 
+write buffer 
+management 
+ 
+Figure (2) Suboptimal 
+mapping scheme 
+Figure (3) garbage 
+collection scheme 
+ We collected user file access patterns from personal 
+computers. User applications are of four types: general application, 
+internet application, operating system installation, and P2P 
+application. The access pattern of each user scenario is given in 
+the table (2). 
+ The first stage, trace-collection, was conducted with 
+Windows XP, using the Diskmon trace tool [6] to collect access 
+patterns and store them in a 16GB independent NTFS hard drive. 
+The second stage, trace-replay, was implemented by using the 
+functions CreateFile() and WriteFile() in the Windows API. 
+Firstly, we used CreateFile() to open the SSD in the device driver 
+mode. Secondly, we used WriteFile() to execute synchronous 
+write activities. Time data from the CPU clock cycle was read by 
+the assembly language function RDTSC(). 
+5.2  Benchmark Suites 
+ To conduct categorization of the workload benchmarking 
+and management mechanism evaluation, a macroscopic analysis 
+was first applied to the four collected workloads that are rewrite 
+ratio, sequential ratio, data length and alignment ratio. The value 
+of each application and its ratio to the overall data transfer rate is 
+given in Table (3). For example, if the update data amount is 
+100MB and the overall data transferred is 200MB, the rewrite 
+ratio is 50%. The error of the sequential activity is set to 10, which 
+means if the logical addresses of the Nth write and N+10th write 
+are contiguous, the action is considered a sequential write. 
+ Copy has a low rewrite ratio, and the write request is 64KB 
+sequential write, which can be categorized in the Transfer suite for 
+hardware transfer speed test. Browser has a high rewrite ratio: 
+these are most likely small writes with random access, which can 
+be categorized to the Garbage Collection Suite or to the Mapping 
+Suite. eMule and Install Linux are large-scale workloads. The 
+metric intensities of macroscopic analysis are not very clear, 
+therefore, we also use microscopic analysis to find out the 
+characteristics of eMule and Install Linux, as well as the hot/cold 
+data distribution of Browser.  
+ Figure (4)-(a)(b) are the Browser data logical address distribution 
+and hot/cold data distribution graph. The X axis in Fig. 4 (a) is the 
+data sequence, and the Y axis is the logical sector address. As can 
+be seen from the graph, the random access of the Browser is small 
+and intense. This is because the browser temporarily stores 
+website data on the hard drive to increase the website browsing 
+speed. These temporary files are managed by Index.dat, which is 
+frequently updated. The hot/cold data distribution is interpreted in 
+the Life Cycle analysis. In Fig. 4 (b), the X axis is the logical 
+sector address, and the Y axis is the life cycle (calculated by the 
+definition 2 given in Section 4). As shown in the graph, the 
+hot/cold data are highly mixed. The difference is not clear and 
+hard to identify. Due to the intensity of the hot/cold data mix, we 
+finally categorize Browser to the GC suite. 
+In the macroscopic analysis, the sequential ratio of Install 
+Linux is only 20%. As shown in the LSA distribution graph, 
+Figure (5)(a), its random access is scattered over a wide area. The 
+access addresses are mostly located in group headers –group 
+headers are where the metadata is stored in EXT2/EXT3 file 
+systems. In EXT2/3 default settings, reading data also causes 
+write actions to update the a-time in inode, which causes random 
+writes to be much more common than sequential write. Figure 
+(5)(b) shows the Seek Distance distribution for Install Linux. The 
+X axis is the LSA, and the Y axis is the seek distance. As shown 
+in the figure, the write action of Install Linux is scattered over a 
+large area. Therefore, we categorize Install Linux to the mapping 
+suite to test the address mapping s performance of the SSD. 
+eMule is a popular P2P download software. Its principle is to 
+cut files into several chunks and download multiple chunks 
+simultaneously. A chunk is the minimum download unit, with size 
+9.28MB and buffer capacity of 128 KB. According to our 
+macroscopic analysis results, 55% of rewrites are sequential and 
+the data length is typically around 512KB. As shown in Figure 
+(6)(a), the first half of eMule is a sequential write, which is caused 
+by the data buffering before downloading each file; the second file 
+is the random write of the chunk download. When a chunk starts 
+to be downloaded, random access will be limited in the addresses 
+of the corresponding chunk. Therefore, every chuck should have  
+Table (1) SSD device specifications 
+Manufacturer  Interface Memory Unit Capacity Controller
+MTRON SATAII SLC 32GB MTRON 
+Samsung SATAII SLC 32GB Samsung 
+TRANSCEND SATAII SLC 16GB SMI 
+TRANSCEND SATAII MLC 32GB SMI 
+OCZ SATAII MLC 64GB JMICRON
+(a) Logical address Distribution (b) Life Cycle Distribution 
+Figure (4) Characteristics of the Browser workload 
+Table (2) Workload of user scenarios 
+Workload Scenarios 
+Copy  Copy 200 files from one directory to another 
+Browser Use Internet Explorer 5.0 to browse internet for 3 
+hours 
+Install 
+Linux 
+Install Fedora Linux Server 4,the file system is EXT3
+eMule Use eMule 0.48b to download 3 files for 3 hours 
+Table (3) Workload Macroscopic Analysis Results 
+Workload Data 
+Transfer 
+Rewrites
+Ratio 
+Sequ-
+ential 
+Ratio 
+Data 
+Length 
+Alig-
+nment 
+Ratio 
+Copy  816MB 0.1% 96% 64KB 0% 
+Browser 477MB 80% 4% 4KB 31% 
+Install 
+Linux 
+2387MB 18% 25% 4KB, 
+128KB 
+0% 
+eMule 9437MB 5% 55% 4KB, 
+512KB 
+0% 
+Hot/Cold Data Mix 
+Figure (10) illustrates the results of the Mapping Suite test on 
+MTRON, Transcend SLC and OCZ MLC by using the Install 
+Linux workload. The results show lack of effective handling on 
+the random rewrites caused by Install Linux. However, the overall 
+performance differs from one device to another depending on 
+whether write buffering is available. MTRON is significantly 
+better than Transcend SLC. Significantly, OCZ MLC outperforms 
+Transcend SLC, even though Transcend SLC has better hardware 
+performance. As shown in Figure (10)(b), OZC has a much lower 
+address mapping cost than Transcend SLC. It is clear that current 
+SSD address mapping mechanisms are not suitable for the Install 
+Linux workload. The reason is that EXT2/EXT3 headers will 
+generate random rewrites over a large LSA area, causing a low 
+space usage problem. 
+Figure (11) demonstrates the GC Suite test results on 
+Transcend SLC and OCZ by using the Browser workload. The 
+results show the PBR values of Transcend SLD scattered in a 
+large LSA area with high intensities, which indicates that the 
+garbage collection is triggered frequently and the garbage 
+collection mechanism cannot handle the highly mixed hot/cold 
+data and high rewrite ratio associated with this workload. OCZ 
+also has high PBR readings, but the high readings are located at a 
+few LSA, which represents low garbage collection frequency and 
+high garbage collection cost. 
+According to IOMeter test results, the performance ranking 
+of sequential write is MTRON->Samsung->OCZ->Transcend 
+SLC; while the random access write ranking is MTRON-
+>Samsung->Transcend SLC->OCZ. However, Benchmark Suite 
+test results show that the performance of the SSD is related to the 
+specific workload performed on the device. The reason for this is 
+that the typical access patterns are lack of small data rewrite 
+activities, which does not affect the performance of traditional 
+mechanical hard drive. When the activities have random writes in 
+a large LSA area or high mixed hot/cold data, they will lead to 
+SSD management system bottlenecks. 
+In the random write test, Transcend SLC has much better 
+performance than OCZ does. However, in the Mapping Suite test 
+and GC Suite test, OCZ outperforms Transcend SLC. This is 
+mainly because the workload demands many small writes. When 
+the small write data is distributed randomly in a large LSA area, 
+the space usage utilization depends on the address mapping 
+mechanism. Proper changes of the ratio of data block and log 
+block can increase the space usage utilization, reduce unnecessary 
+garbage collections and management cost. It is difficult to execute 
+garbage collection effectively if the hot/cold data is highly mixed. 
+Garbage collection should be postponed until enough invalid data 
+has accumulated; at the same time hot data should be separated 
+from cold data. As shown in the results, this was why the OCZ 
+SSD with MLC outperformed Transcend SLC. 
+It follows from the discussion above that a necessary 
+characteristic of SSD management is the ability to handle small 
+and hot data. This is best accomplished by selecting an SSD 
+device which offers RAM write buffering. In an IOMeter 
+sequential test, MTRON performed significantly better than 
+Samsung. However, when small data has random writes with large 
+LSA area and the data with larger size than the write buffer 
+capacity, the write back is frequently triggered by the buffer 
+management of MTRON, which causes a higher management cost 
+than Samsung’s. Although MRTOM has larger write buffer size, 
+the write back mechanism is inappropriate. The time cost of data 
+writes can be only achieved by the access time advantage of the 
+RAM. Therefore, the overall performance still depends on the 
+buffer write back mechanism. A good buffer write back 
+mechanism should integrate with the FTL design to process small 
+hot data and reduce the randomness of the data, rather than the 
+size of the write buffer. 
+6. Conclusion 
+This paper discussed the test method for the SSD 
+management performance. We proposed a new performance 
+metric, Per-Byte-Response, to test SSD management performance, 
+and analyzed the typical symptoms of the PBR when the 
+management performance is low. Feedback is given to users so 
+they can diagnose the reason for low performance.  Four 
+benchmark suites were used to evaluate each management 
+performance. These benchmark suites, alongside PBR, yielded 
+different results from traditional test methods. This offers 
+considerable insight into the impact of SSD management 
+mechanisms on actual performance.  
+References 
+[1] Nitin, A., P. Vijayan, et al. 2008. Design tradeoffs for SSD 
+performance. USENIX 2008 Annual Technical Conference on 
+Annual Technical Conference.  
+[2] Po-Chun, H., C. Yuan-Hao, et al. 2008. The Behavior Analysis of 
+Flash-Memory Storage Systems. Proceedings of the 2008 11th IEEE 
+Symposium on Object Oriented Real-Time Distributed Computing. 
+[3] Luc Bouganim., et al., uFLIP: Understanding Flash IO Patterns, 4th 
+Biennial Conference on Innovative Data Systems Research (CIDR) 
+January 4-7, 2009, Asilomar, California, USA. 
+[4] Hyojun, K. and A. Seongjun 2008. BPLRU: a buffer management 
+scheme for improving random writes in flash storage. Proceedings of 
+the 6th USENIX Conference on File and Storage Technologies. San 
+Jose, California, USENIX Association. 
+[5] Sang-Won, L., P. Dong-Joo, et al. 2007. A log buffer-based flash 
+translation layer using fully-associative sector translation. ACM 
+Trans. Embed. Comput. Syst. 6(3):18. 
+[6] Diskmon.http://technet.microsoft.com/en-
+us/sysinternals/bb896646.aspx. 
+ 
+(a) MTRON: 
+22.95MB/sec 
+ 
+(b) Transcend SLC: 
+4.47MB/sec 
+(c) OCZ: 
+5.95MB/sec 
+Figure (10) Mapping Suite Test Result 
+ 
+(a) Transcend SLC:0.98MB/sec 
+ 
+(b) OCZ: 9.5MB/sec 
+Figure (11) GC Suite Test Result 
+Mapping Symptom 
+Figure 1. The set-associative mapping
+scheme whose group size is two. Each
+data-block group is associated with up to
+one log-block group.
+The rest of this paper is organized as follows: Section
+II describes the flash characteristics and the fundamentals
+of flash translation layers. Section III introduces the typi-
+cal composition of the geometry inside of a solid-state disk,
+and discuss how the host system software can use these in-
+formation. Section IV presents a set of tests to detect these
+geometry information and the test results of several off-the-
+shelf products. Section V concludes this work.
+2 Background
+A piece of flash memory is a physical array of blocks,
+and every block contains the same number of pages. In
+a typical flash specification, a flash page is 4096 plus 128
+bytes, while a flash block consists of 128 pages [5]. Solid-
+state disks emulate a collection of logical sectors using a
+firmware layer called the flash-translation layer (i.e., FTL).
+Flash-translation layers update existing data out of place
+and invalidate old copies of the data to avoid erasing a flash
+block every time before rewriting a piece of data. Thus,
+flash-translation layers require a mapping scheme to trans-
+late logical disk-sector numbers into physical locations in
+flash. After writing a large amount of data to flash, flash-
+translation layers must recycle flash pages storing invalid
+data by means of block erase. Before flash-translation lay-
+ers erase a block, it must secure any valid data in this block-
+to-erase by data copying. Garbage collection refers to these
+internal copy and erase operations.
+Flash-translation layers use RAM-resident index struc-
+tures to translate logical sector numbers into physical flash
+locations, and mapping resolutions have direct impact on
+RAM-space requirements and write performance. Solid-
+state drives for a moderate-level performance requirement
+usually adopt hybrid mapping for a good balance between
+the above two factors. Fig. 1 shows a typical design of a
+hybrid mapping flash-translation layer [4]. Let lbn and pbn
+SSD
+Controller
+8
+16 24
+Chip 0
+2 10
+18 26
+Chip 1
+4 12
+20 28
+Chip 2
+6 14
+22 30
+Chip 3
+1 9
+17 25
+Chip 4
+3 11
+19 27
+Chip 5
+5 13
+21 29
+Chip 6
+7 15
+23 31
+Chip 7
+Ch 0
+Ch 1
+ 
+ 
+2-Channel
+4-Way 
+Interleaving
+Physical Block 0
+0
+CE#2 CE#3 CE#4CE#1
+Figure 2. The effective page size is eight
+times as large as a flash page in a solid-state
+disk using a two-channel, four-way interleav-
+ing architecture. Disk sectors are mapped to
+flash chips using the RAID-0 style striping.
+in Fig. 1 stand for a logical-block number and a physical-
+block number, respectively. A logical block is a collection
+of logical sectors. Hybrid mapping maps logical blocks to
+physical blocks via a block mapping table (i.e., BMT in this
+figure).
+Hybrid mapping uses spare flash blocks as log blocks to
+serve new write requests, and uses a sector mapping table
+(SMT in this figure) to redirect read requests to the newest
+versions of data in spare blocks. In Fig. 1, term lsn rep-
+resents a logical-sector number, and disp is the page offset
+in a physical block. A group of logical blocks can share a
+number of flash blocks as their log blocks. In this example,
+a mapping group size has two logical blocks, and a group
+can have up to two log blocks. Whenever garbage collec-
+tion is necessary, the flash-translation layer “applies” the
+updates of sector data in the log blocks to logical blocks,
+and erases log blocks to reclaim spare (free) blocks. Ap-
+plying data change is basically a form of garbage collection
+because it involves data copy and block erase.
+3 SSD Geometry Basics
+This section introduce the composition of the geometry
+of solid-state disks and discuss how the system software can
+use these geometry information for data placement.
+3.1 Effective Pages
+Flash pages are relatively larger than disk sectors (4096
+bytes compared to 512 bytes). The former is the small-
+est unit for flash read/write, while the latter is the small-
+est addressable unit in the host software. The effective unit
+for read and write in solid-state disks can even be several
+flash pages because many solid-state disks adopt multichan-
+nel architectures for parallel data transfer. Fig. 2 shows an
+example architecture, which uses two channels and 4-way
+4 Experimental Results
+4.1 Experimental Setup
+This section is meant to explore the geometry of SSDs
+by a series of experiments. The experiments are con-
+ducted over a personal computer with Intel Pentium 4 CPU
+(3.4GHz). The operating system is Windows XP. To elim-
+inate disturbance from the file system, we adopt Windows
+API, i.e., ReadFile() and WriteFile(), to access underlying
+storage devices. Using DeviceIoControl() in conjunction
+with IOCTL ATA PASS THROUGH as parameter, we can
+send ATA command to storage devices directly. Therefore,
+we can impose special controls, such as DISABLE READ
+CACHE, DISABLE WRITE CACHE, or FLUSH WRITE
+CACHE over SSDs.
+We evaluate the management overhead inside SSDs in
+terms of read/write response time. To achieve a precise
+measurement, the RDTSC (read time stamp counter) in-
+struction is used to obtain a proper cycle count (which is
+incremented every clock cycle). Since the response time
+incurred by a garbage collection varies widely, trigger of
+a garbage collection is detected based on the throughput.
+For detection of SSD geometry, we disable read cache or
+write buffer to precisely assess how FTL adopted in vari-
+ous SSDs operates over underlying NAND flash memory
+for read/write requests. Table 1 summarizes SSDs evalu-
+ated in our experiments. Since MLC SSD is unstable in
+write performance, we focus on SLC SSD to present our
+experimental results.
+Table 1. Devices under tests.
+Brand Model Type Size
+Transcend TS16GSSD25S-S SLC 16 GB
+Transcend TS32GSSD25S-M MLC 32 GB
+SAMSUNG MCBQE32G5MPP-0VA SLC 32 GB
+Mtron MSP-SATA7525-032 SLC 32 GB
+Intel SSDSA2MH080G1GC MLC 80 GB
+OCZ OCZSSD2-1C64G MLC 64 GB
+OCZ OCZSSD2-1VTX60G MLC 60 GB
+4.2 Detecting Effective Page Size
+4.2.1 Detection Method
+When a write request is not aligned with the effective page
+size, one or two read-modify-write operations might be re-
+quired depending on amount of the request data. The ex-
+periment is conducted by issuing two update requests with
+adjacent starting addresses to the target SSD iteratively. For
+x
+x
+x
+x
+1 KB
+1 KB
+Figure 4. Effective Page Size Detector.
+each iteration, amount of the updated data is incremented by
+1KB. Once the difference between the response time of re-
+quests exceeds a threshold, the effective page size can thus
+be detected.
+As shown in Fig. 4, two possible cases might be en-
+countered as amount of the updated data increased. When
+amount of the updated data x is smaller than the effective
+page size of the target SSD, as shown in Case 1, the starting
+address of update requests either from 0KB or 1KB would
+have no impact on response time since both of them would
+require one read-modify-write operation. When amount of
+the updated data x is equal to the effective page size of the
+target SSD, as shown in Case 2, the request with its starting
+address from 0KB requires only one write operation. How-
+ever, the request with the starting address from 1KB would
+incur two read-modify-write operations, which is time con-
+suming compared with only one write operation. Thus the
+effective page size can be detected by comparing response
+times of two requests with adjacent starting addresses. Note
+that we must disable write buffer to have a precise measure-
+ment.
+4.2.2 Detection Results
+Fig. 7(a) and 7(b) shows the experimental result of ef-
+fective page size detection for Transcend TS16GSSD25S-
+S and Samsung MCBQE32G5MPP-0VA. As shown in
+the figure, there is an obvious distinguishability on re-
+sponse time of update requests with starting address from
+0KB and 1KB when amount of written data is 4KB
+for Transcend TS16GSSD25S-S and 16KB for Samsung
+MCBQE32G5MPP-0VA, respectively. We also conduct an
+experiment for read requests. As shown in Fig. 7(c), since
+read-modify-write has no impact on read, there is no sig-
+nificant difference on read response times whether we align
+the request with the starting address of an effective page or
+not. However, for those target SSDs that cannot have write
+buffer disabled, we must explore the effective page size
+from read operations. As shown in Fig. 7(d), a read request
+aligned with the starting address of an effective page would
+have a shorter response time for Mtron MSP-SATA7525-
+032 when data amount of the request is fixed to 8KB. It
+Read
+A
+Read
+B
+Increase the start address of B
+Zone 1
+Need to reload mapping-table frequently
+Case 1 :  distance(A,B) =  zone size Case 2 :  distance(A,B)  > zone size 
+A B
+Zone 1
+A B
+Zone 2
+A ane B look up the same 
+mapping-table
+Figure 6. Zone Size Detection.
+steady amount due to the overhead of mapping table load-
+ing. Therefore, we can conclude the zone size of Transcend
+TS16GSSD25S-S is 422MB.
+5 Conclusion
+The management of flash memory in solid-state disks
+imposes non-uniform response times on random sector ac-
+cesses. Being aware of the geometry information inside of
+solid-state disks can help the host system software to change
+data placement for matching the host write pattern and the
+storage device characteristics. This work demonstrates a
+collection of black-box tests that successfully detects the
+geometry of flash storage devices. We believe that these
+techniques are beneficial to not only enhancing existing sys-
+tem software but also designing new file systems.
+References
+[1] M.-L. Chiang, P. C. H. Lee, and R. chuan Chang. Using data
+clustering to improve cleaning performance for flash memory.
+Software Practice and Experience, 29(3):267–290, 1999.
+[2] S.-W. Lee, D.-J. Park, T.-S. Chung, D.-H. Lee, S. Park, and
+H.-J. Song. A log buffer-based flash translation layer us-
+ing fully-associative sector translation. Trans. on Embedded
+Computing Sys., 6(3):18, 2007.
+[3] Y. Lee, J.-S. Kim, and S. Maeng. Ressd: a software layer for
+resuscitating ssds from poor small randomwrite performance.
+In Proceedings of the 2010 ACM Symposium on Applied Com-
+puting, SAC ’10, pages 242–243, New York, NY, USA, 2010.
+ACM.
+[4] C. Park, W. Cheon, J. Kang, K. Roh, W. Cho, and J.-S. Kim.
+A reconfigurable ftl (flash translation layer) architecture for
+nand flash-based applications. ACM Trans. Embed. Comput.
+Syst., 7(4):1–23, 2008.
+[5] Samsung Electronics Company. K9MDG08U5M 4G * 8 Bit
+MLC NAND Flash Memory Data Sheet, 2008.
+[6] J. Schindler, J. Griffin, C. Lumb, and G. Ganger. Track-
+aligned extents: matching access patterns to disk drive char-
+acteristics. In Conference on File and Storage Technologies,
+2002.
+ 0
+ 0.5
+ 1
+ 1.5
+ 0  1  2  3  4  5  6  7  8
+R
+es
+po
+ns
+e 
+Ti
+m
+e 
+(m
+s)
+Starting Address (KB)
+(a) Transcend, Page = 4KB
+ 0
+ 0.4
+ 0.8
+ 1.2
+ 1.6
+ 0  2  4  6  8  10  12  14  16  18  20  22  24  26  28  30  32
+R
+es
+po
+ns
+e 
+Ti
+m
+e 
+(m
+s)
+Starting Address (KB)
+(b) Samsung, Page = 16KB
+ 0
+ 0.1
+ 0.2
+ 0.3
+ 0.4
+ 0  1  2  3  4  5  6  7  8
+R
+es
+po
+ns
+e 
+Ti
+m
+e 
+(m
+s)
+Starting Address (KB)
+(c) Transcend, Read
+ 0.1
+ 0.12
+ 0.14
+ 0.16
+ 0  1  2  3  4  5  6  7  8  9  10  11  12  13  14  15  16
+R
+es
+po
+ns
+e 
+Ti
+m
+e 
+(m
+s)
+Starting Address (KB)
+(d) Mtron, Read, Page = 8KB
+ 0
+ 5
+ 10
+ 15
+ 20
+ 25
+ 30
+0.0625 0.125 0.25 0.5 1 2 4 8 16 32
+R
+eq
+ue
+st
+ S
+ize
+ (M
+B)
+Throughput (MB/s)
+(e) Transcend
+ 0
+ 10
+ 20
+ 30
+ 40
+ 50
+ 60
+ 70
+0.0625 0.125 0.25 0.5 1 2 4 8 16 32
+R
+eq
+ue
+st
+ S
+ize
+ (M
+B)
+Throughput (MB/s)
+(f) Samsung
+ 0
+ 20
+ 40
+ 60
+ 80
+ 100
+ 120
+0.0625 0.125 0.25 0.5 1 2 4 8 16 32
+R
+eq
+ue
+st
+ S
+ize
+ (M
+B)
+Throughput (MB/s)
+(g) Mtron
+ 0
+ 0.1
+ 0.2
+ 0.3
+ 0.4
+ 0.5
+ 0.6
+ 0  100  200  300  400  500  600  700  800  900  1000
+N
+um
+be
+r o
+f R
+ea
+d 
+Re
+qu
+es
+t
+Response Time (ms)
+(h) Transcend, Zone Size= 422MB
+Figure 7. Experimental Results.
+快閃記憶體目前發展看好，除了當做外部儲存的媒體之外，未來會逐
+漸對系統軟體以及程式語言的層面發生影響。因此，雖然 LCTES 主
+軸是嵌入式系統的程式語言支援與技巧，但快閃記憶體相關的議題仍
+然引起與會學者的莫大興趣，而我亦透過現場的問答得到了許多寶貴
+的觀點與意見。 
+過程： 
+本次會議，我在 LCTES 報告了一篇論文，而時程上相關的研究
+在同屬 CPS Week 的 RTAS 剛好有錯開，所以我就同時參與了兩個會
+議，並且進行了一些意見交流。 
+我這次報告的論文題目，是討論如何設計一個簡單、有效、而又
+能自我調適的平均磨損演算法。目前業界使用的平均磨損演算法，大
+多基於靜態平均磨損，其效果不佳。但既有成果之中，效果好的演算
+法其實作複雜度又頗高，所以這篇研究切入了這個議題，設計出效果
+又好，實作又簡單的平均磨損方法。而這研究成果亦多加探討關於平
+均磨損的積極程度，應該要根據寫入儲存裝置的樣式來作自我調整。
+故這篇論文也探討了這樣的調整應該怎麼做，以及調整的結果如何。 
+與會學者大多對於該方法的簡單與自我適應能力表示贊同，亦提
+出了關於多通道架構下的平均磨損該如何處理的問題。也就是說，先
+進的快閃儲存裝置都會使用多個記憶體通道來平行操作，藉以提升資
+將所有通道綁在一起來同步使用。這次與會之後，深深感受到這邊將
+是一個火熱的研究題目，值得進入好好探討。 
+此外，就相關研究領域的發展，目前我個人觀察到除了台灣與韓
+國的學者之外，目前有一批原本作即時系統或者記憶體系統的香港學
+者亦開始研究快閃記憶體的議題，而且他們最近在頂級的會議與期刊
+也有許多斬獲，而美國西岸一些大學以及微軟的研究中心也持續地發
+表成果。個人覺得，與會過程中接收到這類的資訊，對於將來研究題
+目的規劃也是有些戰略性的價值。 
+ 
+三、 攜回資料 
+本次會議攜回 LCTES 論文紙本一本，以及 CPSWeek 論文集光碟
+一片。 
+ 
+A Low-Cost Wear-Leveling Algorithm
+for Block-Mapping Solid-State Disks ∗
+Li-Pin Chang
+Department of Computer Science, National Chiao-Tung
+University, Hsin-Chu, Taiwan 300, ROC
+lpchang@cs.nctu.edu.tw
+Li-Chun Huang
+Department of Computer Science, National Chiao-Tung
+University, Hsin-Chu, Taiwan 300, ROC
+kellemes13@gmail.com
+Abstract
+Multilevel flash memory cells double or even triple storage den-
+sity, producing affordable solid-state disks for end users. However,
+flash lifetime is becoming a critical issue in the popularity of solid-
+state disks. Wear-leveling methods can prevent flash-storage de-
+vices from prematurely retiring any portions of flash memory. The
+two practical challenges of wear-leveling design are implementa-
+tion cost and tuning complexity. This study proposes a new wear-
+leveling design that features both simplicity and adaptiveness. This
+design requires no new data structures, but utilizes the intelligence
+available in sector-translating algorithms. Using an on-line tuning
+method, this design adaptively tunes itself to reach good balance
+between wear evenness and overhead. A series of trace-driven sim-
+ulations show that the proposed design outperforms a competitive
+existing design in terms of wear evenness and overhead reduction.
+This study also presents a prototype that proves the feasibility of
+this wear-leveling design in real solid-state disks.
+Categories and Subject Descriptors D.4.2 [Operating Systems]:
+Garbage collection; B.3.2 [ Memory Structures]: Mass Storage
+General Terms Design, Performance, Algorithm.
+Keywords Flash memory, wear leveling, solid-state disks.
+1. Introduction
+Solid-state disks are storage devices that employ solid-state mem-
+ory like flash as the storage medium. The physical characteris-
+tics of flash memory differ from those of mechanical hard drives,
+necessitating different methods for memory accessing. Solid-state
+disks hide flash memory from host systems by emulating a typi-
+cal disk geometry, allowing systems to switch from a hard drive to
+a solid-state disk without modifying existing software and hard-
+ware. Solid-state disks are superior to traditional hard drives in
+terms of shock resistance, energy conservation, random-access per-
+formance, and heat dissipation, attracting vendors to deploy such
+storage devices in laptops, smart phones, and portable media play-
+ers.
+∗ This work is in part supported by research grant NSC-98-2220-E-009-048
+from National Science Council, Taiwan, ROC.
+Permission to make digital or hard copies of all or part of this work for personal or
+classroom use is granted without fee provided that copies are not made or distributed
+for profit or commercial advantage and that copies bear this notice and the full citation
+on the first page. To copy otherwise, to republish, to post on servers or to redistribute
+to lists, requires prior specific permission and/or a fee.
+LCTES’11, April 11–14, 2011, Chicago, Illinois, USA.
+Copyright c© 2011 ACM 978-1-4503-0555-6/11/04. . . $10.00
+Flash memory is a kind of erase-before-write memory. Because
+any one part of flash memory can only withstand a limited number
+of erase-write cycles, approximately 100K cycles under the current
+technology [17], frequent erase operations can prematurely retire a
+region in flash memory. This limitation affects the lifetime of solid-
+state disks in applications such as laptops and desktop PCs, which
+write disks at very high frequencies. Even worse, recent advances in
+flash manufacturing technologies exaggerate this lifetime issue. In
+an attempt to break the entry-cost barrier, modern flash devices now
+use multilevel cells for double or even triple density. Compared to
+standard single-level-cell flash, multilevel-cell flash degrades the
+erase endurance by one or two orders of magnitude [18].
+Localities of data access inevitably degrade wear evenness in
+flash. Partially wearing out a piece of flash memory not only de-
+creases its total effective capacity, but also increases the frequency
+of its housekeeping activities, which further speeds up the wearing
+out of the rest of the memory. A solid-state drive ceases to func-
+tion when the amount of its worn-out space in flash exceeds what
+the drive can manage. The wear-leveling technique ensures that the
+entire flash wears evenly, postponing the first appearance of a worn-
+out memory region. However, wear leveling is not free, as it moves
+data around in flash to prevent solid-state disks from excessively
+wearing any one part of the memory. These extra data movements
+contributes to overall wear.
+Wear-leveling algorithms include rules defining when data
+movement is necessary and where the data to move to/from. These
+rules monitor wear in the entire flash, and intervene when the flash
+wear develops unbalanced. Solid-state disks implement wear lev-
+eling at the firmware level, subjecting wear-leveling algorithms to
+crucial resource constraints. Prior research explores various wear-
+leveling designs under such tight resource budgets, revealing three
+major design challenges: First, monitoring the entire flash’s wear
+requires considerable time and space overheads, which most con-
+trollers in present solid-state disks cannot afford. Second, algo-
+rithm tuning for environment adaption and performance definition
+requires prior knowledge of flash access patterns, on-line human
+intervention, or both. Third, high implementation complexity dis-
+courages firmware programmers from adopting sophisticated wear-
+leveling algorithms.
+Standard solid-state-disk microcontrollers (controllers in the
+rest of this paper) cannot afford the RAM space overhead required
+to store the entire flash’s wear information in RAM. Chang et al.
+[2] proposed caching only portions of wear information. However,
+periodic synching between the wear information in RAM and in
+flash introduces extra write traffic to flash. Jung et al. [9] proposed
+a low-resolution wear information method based on the average
+wear of large memory regions. Nevertheless, this approach suffers
+from distortion whenever flash wearing is severely biased. Chang et
+al. [5] introduced bit-indicated recent wear history. However, recent
+Figure 2. The fully-associative mapping scheme. All data blocks
+are in one group and all log blocks are in the other.
+Let the group size denote the number of blocks in a group. In
+Fig. 1, the group size of data blocks is exactly two, while the group
+size of log blocks is no larger than two. This mapping scheme,
+called set-associative mapping, associates a data-block group with
+one log-block group or none. This design has two important vari-
+ants: set-associative sector translation (SAST), developed by Park
+et al. [15], and block-associative sector translation (BAST), de-
+veloped by Chung et al. [22]. SAST uses two variables, N and
+K, to set the group sizes of data blocks and log blocks, respec-
+tively. BAST (Block-Associative Sector Translation) [22] is sim-
+pler, fixing N=1 and K=1 always. Figure 2 depicts another map-
+ping scheme, called fully-associative mapping. This method has
+only two groups associated with each other, one for all data blocks
+and the other for all log blocks. Fully-associative sector translation
+(FAST), developed by Lee et al. [12], is based on this design.
+2.3 The Need for Wear Leveling
+FTLs write new data in log blocks allocated from spare blocks.
+When they run low on spare blocks, FTLs start erasing log blocks.
+Before erasing a log block, FTLs collect the valid data from the
+log block and from the data block associated with this log block,
+copy this valid data to a blank block, remove the sector-mapping
+information related to the log block, re-direct block-mapping in-
+formation to the copy destination block, and finally erase the old
+data block and log block into spare blocks. This procedure is called
+either merging operations or garbage collection.
+For example, in Fig. 1, the FTL decides to erase the group
+consisting of log blocks at pbns 3 and 6. This log-block group is
+associated with the group of data blocks at pbns 0 and 2. The FTL
+prepares a group of two blank blocks at pbns at 7 and 8. Next, the
+FTL collects four valid sectors at lsns 0 through 3, and writes them
+to the blank block at pbn 7. Similarly, the FTL copies valid sectors
+at lsns 4 through 7 to the blank block at pbn 8. Finally, the FTL
+erases the physical blocks at pbns 0, 2, 3, and 6 into spare blocks,
+and then re-maps lbns 0 and 1 to physical blocks at pbns 7 and 8,
+respectively.
+Log-block-based FTLs exhibit some common behaviors in the
+garbage-collection process regardless of their grouping and associ-
+ating policies. FTLs never erase a data block if none of its sector
+data have been updated. In the set-associative mapping illustration
+in Fig. 1, erasing the data blocks at pbn 5 does not reclaim any
+free space. Similarly, in the fully-associative mapping illustration
+in Fig. 2, erasing any of the log blocks does not involve the data
+block at pbn 5. This is a potential cause of uneven flash wear.
+Figure 3(a) shows a fragment of the disk-write traces recorded
+from a laptop PC’s daily use1. The X-axis and the Y-axis of this
+1 This workload is the NOTEBOOK workload in Section 5.1.
+Figure 3. Flash wear in a solid-state disk under the disk workload
+of a laptop. (a) A fragment of the disk-write workload and (b) the
+final distribution of flash blocks’ erase counts.
+figure represent the logical time and the lsns of write requests, re-
+spectively. This pattern biases write requests toward a small collec-
+tion of disk sectors. Let a physical block’s erase count denote how
+many write-erase cycles this block has undergone. After replay-
+ing the trace set on a real solid-state disk which adopts an FAST-
+based FTL (Section 6.1 describes this product in more detail), Fig.
+3(b) shows that the final distribution of erase counts is severely un-
+balanced. The X-axis and Y-axis of Fig. 3(b) represent the pbns
+and erase counts of physical blocks, respectively. Nearly 60% of
+all physical blocks have zero erase counts, as the horizontal line at
+the bottom of Fig. 3(b) shows. In other words, this workload retires
+only 40% of all blocks, while the rest remain fresh. Evenly dis-
+tributing erase operations can double the flash lifespan compared
+to that without wear leveling.
+2.4 Prior Wear-Leveling Strategies
+This section provides a conceptual overview of existing wear-
+leveling designs. Static wear leveling moves static/immutable data
+away from lesser worn flash blocks, encouraging FTLs to start eras-
+ing these blocks. Flash vendors including Numonyx [14], Micron
+[13], and Spansion [20] suggest using static wear leveling for flash
+lifetime enhancement. Chang et al. [5] described a static wear lev-
+eling design, and later Chang et al. [2] showed that this design is
+competitive with existing approaches. However, the experiments in
+this study reveal that static wear leveling suffers from uneven flash
+wear on the long-term.
+Hot-cold swapping exchanges data in a lesser worn block with
+data from a badly worn block. Jung et al. [9] presented a hot-cold
+swapping design. However, Chang et al. [2] showed that hot-cold
+swapping risks erasing the most worn flash block pathologically.
+Cold-data migration relocates immutable data to excessively worn
+blocks and then isolates these worn blocks from wear leveling until
+they are no longer worn blocks compared to other blocks. Chang
+et al. [2] described a design of this idea. This design adopts five
+priority queues to sort blocks in terms of their wear information
+and a cache mechanism to store only frequently accessed wear lev-
+eling. However, synching the wear information between the cache
+and flash introduces extra write traffic to flash, and its higher im-
+plementation complexity may be a concern of firmware designers.
+Unlike the wear-leveling designs above that treat wear leveling
+and garbage collection as independent activities, Chiang et al. [6]
+and Kim et al. [11] proposed heuristic functions that score flash
+blocks with considering garbage collection and wear leveling. In
+this case, FTLs erase the most scored block. However, erasing a
+block can require re-scoring all flash blocks. This task excessively
+stress the controllers and delay ordinary read/write requests.
+There are compromises between algorithm concept and im-
+plementation, because the controllers can offer very limited re-
+sources. Even though different wear-leveling designs are based on
+Algorithm 1 The lazy wear-leveling algorithm
+Input: v: the victim block for garbage collection
+Output: p: a substitute for the original victim block v
+1: ev←eraseCount(v)
+2: if (ev − eavg) > ∆ then
+3: repeat
+4: l← lbnNext()
+5: until lbnHasSectorMapping(l)=FALSE
+6: erase(v);
+7: p← pbn(l)
+8: copy(v, p); map(v, l)
+9: ev ← ev + 1
+10: eavg ← updateAverage(eavg , ev)
+11: else
+12: p← v
+13: end if
+14: RETURN p
+The temporal localities of write requests can change occasion-
+ally. Disk workloads can start updating a logical block which pre-
+viously had a low update recency. If this logical block was re-
+cently re-mapped to an elder block for wear leveling, then the new
+updates neutralize the prior re-mapping operation. However, lazy
+wear leveling will perform another re-mapping operation for this
+elder block when the FTL is about to erase this elder block again.
+3.3 Interaction with FTLs
+This section describes how lazy wear leveling interacts with its
+accompanying firmware module, the flash translation layer. Lazy
+wear leveling and the FTL operate independently, but the FTL pro-
+vides some information to assist wear leveling. Algorithm 1 shows
+the pseudo code of the lazy wear-leveling algorithm. The FTL in-
+vokes this procedure every time it erases a victim block for garbage
+collection. This procedure determines if wear leveling needs inter-
+vene in the erasure of the victim block. If so, this procedure looks
+for a logical block that has not been updated recently, re-maps this
+logical block to the victim block, and then selects the physical block
+previously mapped to this logical block as a substitution for the
+original victim block. Notice that the FTL needs not consider wear
+leveling when selecting victim blocks. In other words, lazy wear
+leveling is independent of the FTL’s victim-selection policy.
+In Algorithm 1, the FTL provides the subroutines with leading
+underscores, and wear leveling implements the rest. The algorithm
+input is v, the victim block’s physical block number. Step 1 obtains
+the erase count ev of the victim block v using eraseCount(). Step
+2 compares ev against the average erase count eavg . If ev is larger
+than eavg by a predefined threshold ∆, then Steps 3 through 10
+will carry out a re-mapping operation. Otherwise, Steps 12 and 14
+return the original victim block to the FTL intact.
+Steps 3 through 5 find a logical block with a low update re-
+cency. Step 4 uses the subroutine lbnNext() to obtain l the next
+logical block number to visit, and Step 5 calls the subroutine
+lbnHasSectorMapping() to check if the logical block l has
+any related mapping information in the FTL’s sector-mapping ta-
+ble. These steps cycle through all logical blocks until they find a
+logical block not related to any sector-mapping information. As
+mentioned previously, to give all junior blocks (which are related
+to logical blocks with a low update recency) an equal chance to
+get erased, the subroutine lbnNext() must evenly visit all logical
+blocks. The implementation of lbnNext() can be any permuta-
+tions of all logical block numbers, such as the Linear Congruential
+Generator [16]. Using permutations also maximizes the interval
+between two consecutive visits to the same logical blocks, reduc-
+ing the probability of re-mapping a logical block with a low update
+recency from an elder block to another.
+1
+B
+4
+A
+D
+C
+F
+E
+H
+G
+b
+a
+d
+c
+f
+e
+g
+b
+a
+d
+c
+f
+e
+g
+B
+A
+D
+C
+F
+E
+H
+G
+2
+b
+a
+d
+c
+f
+e
+g
+B
+A
+D
+C
+F
+E
+H
+G
+3
+b
+a
+d
+c
+f
+e
+g
+B
+A
+D
+C
+F
+E
+H
+G
+Figure 5. A scenario of running the lazy wear-leveling algorithm.
+Crosses indicate write requests to logical blocks.
+Steps 6 through 8 re-map the previously found logical block l.
+Step 6 erases the original victim block v. Step 7 uses the subroutine
+pbn() to identify the physical block p that the logical block l
+currently maps to. Step 8 copies the data of the logical block l from
+the physical block p to the original victim block v, and then re-maps
+the logical block l to the former victim block v using the subroutine
+map(). After this re-mapping, Step 9 increases ev since the former
+victim block v has been erased, and Step 10 updates the average
+erase count. Step 14 returns the physical block p, which the logical
+block l previously mapped to, to the FTL as a substitute for the
+original victim block v.
+3.4 Algorithm Demonstration
+Figure 5 shows a four-step scenario of using the lazy wear-leveling
+algorithm. In each step, the left-hand side depicts the physical
+blocks and their erase counts, and the right-hand side shows the
+logical blocks and their updates marked with bold crosses. This
+example shows only the mapping of logical blocks with a low
+update recency to elder physical blocks.
+Step 1 shows the initial condition. Let the erase counts of the
+elder physical blocks B, F , G, and H be greater than the average
+by ∆. Step 2 shows that lazy wear leveling re-maps logical blocks
+of a low update recency f , b, d, and e to elder physical blocks B,
+F , G, and H , respectively. As garbage collection avoids erasing
+physical block with no invalid data, Step 3 shows that physical
+blocks other than B, F ,G, andH increase their erase counts, after
+processing a new batch of write requests. In this case, the wear of
+all blocks is becoming even.
+In Step 3, the write pattern generates several updates to the
+logical block b. However, previously in Steps 1 and 2, this logical
+block had a low update recency, and wear leveling already re-
+mapped it to the elder physical block F . As previously mentioned
+in Section 3.2, these new updates to the logical block b will cause
+further wear of the elder physical block F , making the prior re-
+mapping operation of the logical block b ineffective in terms of
+wear leveling. Step 4 shows that lazy wear leveling re-maps another
+logical block g with a low update recency to the elder physical
+block F as soon as it learns that the FTL is about to erase the elder
+physical block F .
+4. Adaptive Self Tuning
+Tuning the threshold parameter ∆ helps lazy wear leveling to
+achieve good balance between overhead and wear evenness. This
+tuning strategy consists of two parts: Section 4.1 presents an ana-
+lytical model of the overhead and wear evenness of wear leveling.
+Values of Δ
+O
+v
+e
+r
+h
+e
+a
+d
+ r
+a
+t
+io
+s
+g(Δ)=K/(2Δ)
+Δcur Δnext
+
+
+Solve K cur  using Δcur and (g Δcur)
+Find Δnext at which the tangent slope to
+(g Δnext)=K cur (2/ Δnext)  is λ.
+
+tangent slope=λ(g Δcur)
+Figure 7. Computing ∆next subject to the overhead growth limit
+λ for the next session according to ∆cur and the overhead ratio
+g(∆cur) of the current session.
+For example, when λ=-0.1, if the overhead ratio g(∆cur) and∆cur
+of the current session are 2.1% and 16, respectively, then∆next for
+the next session is
+√
+100
+0.1
+√
+2.1%× 16 = 18.3.
+The ∆-tuning method adjusts ∆ on a session-by-session basis.
+It requires the session length as the period of adjusting ∆, and λ
+as a user-defined boundary between linear and super-linear over-
+head growth rates. The later experiments show that λ=-0.1 is a rea-
+sonably good setting, and wear-leveling results are insensitive to
+different session lengths.
+5. Performance Evaluation
+5.1 Experimental Setup and Performance Metrics
+We built a solid-state disk simulator using System C [8]. This sim-
+ulator includes a flash module for behavioral simulation on read,
+write, and erase operations. This flash module can also accept dif-
+ferent geometry settings. Based on this flash module, the simulator
+implements different FTL algorithms, including BAST [22], SAST
+[15], and FAST [12], which are representative designs at the current
+time. We tailored the lazy wear-leveling algorithm to accompany
+each of the FTL algorithm. This simulator also includes the static
+wear-leveling algorithm based on Chang’s design [5]. Static wear
+leveling is widely used in industry [13, 14, 20] and has been proven
+competitive with existing wear-leveling algorithms [2].
+The input of the simulator is a series disk requests, ordered
+chronologically. These disk requests were recorded from four types
+of real-life host systems: a Windows-based laptop, a desktop PC
+running Windows, a Ubuntu Linux desktop PC, and a portable me-
+dia player. The user activities of the laptop and desktop workloads
+include web surfing, word processing, video playback, and gam-
+ing, while those of the media player workload are to copy, play,
+and delete MP3 and video files. These choices include popular op-
+tions of operating systems (e.g., Linux or Windows), file systems
+(e.g., ext4 or NTFS), hard-drive capacity, and system usages (e.g.,
+mobile or desktop). Table 1 describes the four disk workloads.
+This study adopts two major performance metrics for flash-wear
+evenness and wear-leveling overhead. The standard deviation of
+all flash blocks’ erase counts (the standard deviation for short)
+indicates the wear evenness in the entire flash. The smaller the
+standard deviation is, the more level is the wear in flash. The
+mean of all flash blocks’ erase counts (the mean for short) is
+the arithmetic average of all blocks’ erase counts. The difference
+between the means of with and without wear leveling reveals the
+overhead of wear leveling in terms of erase operations. The smaller
+the mean increase is, the lower is the wear-leveling overhead. It is
+desirable to achieve both a small standard deviation and a small
+mean increase.
+Unless explicitly specified, all experiments adopted the follow-
+ing default settings: The threshold parameters ∆ and TH of lazy
+Workload Operating Volume File Total
+system size system written
+Notebook Windows XP 20 GB NTFS 27
+Desktop 1 Windows XP 40 GB NTFS 81
+Desktop 2 Ubuntu 9 40 GB ext4 55
+Multimedia Windows CE 20 GB FAT32 20
+GB
+Table 1. The four experimental workloads.
+0
+400
+800
+1200
+BAST SAST FAST
+A
+v
+e
+ra
+g
+e
+ E
+ra
+s
+e
+ C
+o
+u
+n
+ts No wear leveling
+Lazy wear leveling
+Static wear leveling
+0
+400
+800
+1200
+BAST SAST FAST
+S
+ta
+n
+d
+a
+rd
+ d
+e
+v
+ia
+ti
+o
+n
+s No wear leveling
+Lazy wear leveling
+Static wear leveling
+Figure 8. Evaluating lazy wear leveling and static wear leveling
+with FTL algorithms BAST, SAST, and FAST under the notebook
+disk workload.
+wear leveling and static wear leveling were both 16. TH refers
+to the ratio of the total erase count to the total number of re-
+cently erased flash blocks (i.e., the blocks indicated as one in the
+erase bitmap). Dynamic ∆ tuning will be evaluated in Section 5.3.
+The flash page size and block size were 4KB and 512KB, respec-
+tively, reflecting a typical geometry of MLC flash [18]. The in-
+put disk workload was the notebook workload, and the FTL al-
+gorithm was FAST [12]. The sizes of the logical disk volume and
+the physical flash were 20GB and 20.5GB, respectively. Thus, the
+over-provisioning ratio was (20.5-20)/20=2.5%. The experiments
+replayed the input workload one hundred times to accumulate suffi-
+ciently many erase cycles in flash blocks. This helped to differenti-
+ate the efficacy of different wear-leveling algorithms. These replays
+did not manipulate the experiments. Provided that wear leveling is
+effective, replaying the input disk workload once sufficiently erases
+the entire flash one time.
+5.2 Experimental Results
+5.2.1 Effects of Using Different FTL Algorithms
+Figure 8 shows the results of using BAST, SAST, and FAST with
+lazy wear leveling and static wear leveling. The Y-axes of Fig. 8(a)
+and 8(b) indicate the standard deviations and the means, respec-
+tively. First consider the results without using wear leveling. These
+results show that FAST achieved the smallest mean among the three
+FTL algorithms. This is because FAST fully utilizes free space in
+every log bock [12]. On the contrary, BAST suffered from very
+high garbage-collection overheads, because BAST has poor space
+utilization in log blocks. These observations agreed with that re-
+ported in prior work [12, 15, 22].
+Lazy wear leveling consistently delivered low standard devia-
+tions under the three FTL algorithms. Its standard deviations were
+between 10 and 12, almost not affected by FTL algorithms. In con-
+trast, static wear leveling’s standard deviations were much larger
+than that of lazy wear leveling, and was very sensitive to the use of
+different FTL algorithms. In particular, its standard deviations were
+137 and 66 under BAST and FAST, respectively. Regarding wear-
+leveling overhead, the mean increase of lazy wear leveling was very
+small, which was no more than 3% in all experiments. Static wear
+leveling’s mean increase was slightly larger, reaching 6%.
+Figure 8(b) shows that when the FTL algorithm was SAST,
+lazy wear leveling introduced a slightly larger mean increase than
+010
+20
+30
+40
+50
+60
+0 20 40 60
+ Δ values
+S
+t
+a
+n
+d
+a
+r
+d
+ 
+d
+e
+v
+ia
+t
+io
+n
+s
+C1
+C2
+0%
+4%
+8%
+12%
+16%
+20%
+0 20 40 60
+ Δ values
+O
+v
+e
+r
+h
+e
+a
+d
+ r
+a
+t
+io
+s
+C1
+g(Δ) with K=1.2
+C2
+g(
+Δ
+) with K=0.76
+Figure 12. Under system configurations C1 and C2, (a) the stan-
+dard deviations and (b) the overhead ratios with respect to different
+∆ settings.
+0
+10
+20
+30
+40
+50
+0 20 40 60 80
+Wear-leveling erase counts (units: 1000)
+ΔΔ ΔΔ
+ 
+v
+a
+lu
+e
+s
+0
+5
+10
+15
+20
+25
+S
+t
+a
+n
+d
+a
+r
+d
+ 
+d
+e
+v
+ia
+t
+io
+n
+s
+Δvalues
+Standard deviations
+0
+10
+20
+30
+40
+50
+0 20 40 60 80
+Wear-leveling erase counts (units: 1000)
+ΔΔ ΔΔ
+ 
+v
+a
+lu
+e
+s
+0
+5
+10
+15
+20
+25
+S
+t
+a
+n
+d
+a
+r
+d
+ 
+d
+e
+v
+ia
+t
+io
+n
+s
+Δvalues
+Standard deviations
+Figure 13. Runtime ∆ values and standard deviations in system
+configurations C1 and C2 with the ∆-tuning method enabled. The
+final overhead ratios of C1 and C2 were 2.22% and 1.95%, respec-
+tively.
+∆-tuning was 1,000, meaning that ∆ adjusted every time after
+lazy wear leveling erased 1,000 blocks. The value of λ was -0.1.
+Figure 13 plots the ∆ values and the standard deviations session-
+by-session. The∆ value dynamically adjusted during experiments,
+and the standard deviations occasionally increased but remained
+at controlled levels. Overall, even though C1 requires more wear
+leveling than C2 (as Fig. 12(a) shows), the tuning method still
+refrained from using small ∆ values in C1 because in C1 the
+overhead grew faster than in C2 (as Fig. 12(b) shows).
+The third part reports results of using different settings of λ and
+session lengths. This part used λ=-0.2 in comparison with λ=-0.1 in
+configuration C2. When switching λ from -0.1 to -0.2, the overhead
+ratio increased about 1.7 times (from 1.95% to 3.37%), while the
+standard deviation improved by only 15% (from 14.46 to 12.28).
+This is because the overhead growth (when decreasing ∆) can
+become super-linear when the tangent slope to g(∆) is smaller than
+-0.1 (as Fig. 12(b) shows). Therefore, using λ=-0.2 produced only
+marginal improvement upon the standard deviation which is not
+worth the large overhead increase. This part also includes results
+of using different session lengths. The final standard deviations of
+C1 with session lengths 1000, 2000, and 3000 were 14.46, 14.86,
+and 14.51, respectively. The final overhead ratios with these three
+session lengths were 1.95%, 2.02%, and 2.05%, respectively. Thus,
+the efficacy of the∆-tuning method is insensitive to session-length
+settings.
+5.4 Wear-Leveling Stability
+Keeping the standard deviation stable is as important as keeping it
+low. This experiment observed the change history of standard de-
+viations using different wear-leveling algorithms. The experiment
+settings here are the same as those in Section 5.2.2. The trace-
+collecting duration of the notebook workload was one month. Thus,
+the experimental setting emulated an eight-year session of disk ac-
+cess by replaying the trace 100 times.
+0
+20
+40
+60
+80
+3 5 8 10 13 15 18 20 23
+Total data written (units: 100GB)
+S
+t
+a
+n
+d
+a
+r
+d
+ d
+e
+v
+ia
+t
+io
+n
+s
+Notebook
+Multimedia
+Desktop 1
+Desktop 2
+0
+20
+40
+60
+80
+3 5 8 10 13 15 18 20 23
+Total data written (units: 100GB)
+S
+t
+a
+n
+d
+a
+r
+d
+ d
+e
+v
+ia
+t
+io
+n
+s Notebook
+Multimedia
+Desktop 1
+Desktop 2
+Figure 14. History of changes in standard deviations when using
+lazy wear leveling and static wear leveling.
+Figure 15. The final distribution of blocks’ erase counts under the
+notebook workload.
+Figure 14 shows the standard deviations when using lazy wear
+leveling and static wear leveling under four types of disk work-
+loads. The X-axes and Y-axes indicate the total amount of data
+written into the disk and the standard deviations, respectively. Let
+the stable interval of a wear-leveling algorithm be the longest time
+period [t, t′] in which the standard deviations at time points t and
+t′ are the same. A wear-leveling algorithm is stable if its stable
+interval increases as the total amount of data written into the disk
+increases. Figure 14(a) shows that lazy wear leveling was stable
+under all workloads. On the contrary, Fig. 14(b) shows that static
+wear leveling was instable. Figure 15 shows the final distribution of
+erase counts under the notebook workload. As static wear leveling
+was instable, the belt of erase counts gradually grew thicker dur-
+ing experiments. A closer inspection of the static wear leveling’s
+results revealed two causes of this instability.
+Static wear leveling proactively moves static data away from
+physical blocks with a low erase recency (called static blocks here-
+after), giving static blocks a chance to participate in garbage col-
+lection. Erasing a static (physical) block forcibly re-maps the log-
+ical block previously mapped to this static block to a spare block.
+However, static wear leveling conducts this re-mapping regardless
+of whether the spare block is also static or not. Under the note-
+book workload, there was a 70% probability that static wear lev-
+eling would re-map a logical block of a low update recency from
+a static block to another static block. This impeded the aging of
+static blocks only. The second problem is that static wear leveling
+erases static blocks regardless of their (absolute) erase counts. Un-
+der the notebook workload, there was a 50% probability that the
+block erased by static wear leveling was an elder block. Erasing an
+elder block does not help wear leveling in any way.
+6. An SSD Implementation
+6.1 Hardware Architecture
+This study reports the implementation of the lazy wear-leveling al-
+gorithm in a real solid-state disk. This implementation used Global
+UniChip Cooperation’s GP5086 system-on-a-chip (i.e., SoC) con-
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/10/31
+國科會補助計畫
+計畫名稱: 子計畫四:嵌入式網路通訊裝置儲存裝置效能評比基準與工具之研發(中心分
+項)(2/2)
+計畫主持人: 張立平
+計畫編號: 99-2220-E-009-047- 學門領域: 自由軟體暨嵌入式系統
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+期刊論文部分，目前仍在撰寫中。 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

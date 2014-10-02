@@ -1,0 +1,757 @@
+accuracy, as well as multi-threaded performance of 
+the current state of libraries. 
+英文關鍵詞： multi-core, low-power, compiler, power-estimation, 
+SpMT 
+ 
+II 
+ 
+內容 
+中文摘要 ..................................................................................................................................................... III 
+英文摘要 ..................................................................................................................................................... III 
+一、 前言及研究目的 .............................................................................................................................. 1 
+二、 文獻探討 .......................................................................................................................................... 4 
+3.1 Dynamic voltage and frequency scaling .......................................................................................... 4 
+3.2 Dynamic resource configuration and hibernation .......................................................................... 8 
+3.3 Multi-Threading APIs and Languages ............................................................................................ 9 
+3.4 Power and thermal estimation ....................................................................................................... 11 
+3.5 energy/power management and thermal management ................................................................ 13 
+3.6 Other optimizations ......................................................................................................................... 15 
+三、 研究方法 ........................................................................................................................................ 16 
+4.1 高效率多核心功耗估算模型 .................................................................................................... 16 
+4.2 Reliable, adaptive variable power & thermal management ........................................................ 19 
+4.3 Reliable, adaptive variable thermal management ........................................................................ 21 
+4.4 純軟體為基礎的 TLS 平行化技術程式模型的設計與實作 .......................................................... 23 
+四、 結果與討論 .................................................................................................................................... 27 
+5.1 實作項目 .......................................................................................................................................... 27 
+5.2 Power estimation 結果 ................................................................................................................... 27 
+5.3 power optimization 結果 ................................................................................................................. 29 
+5.4 SpMT 結果 ....................................................................................................................................... 30 
+5.5 論文成果 .......................................................................................................................................... 31 
+5.6 討論 .................................................................................................................................................. 32 
+ 
+  
+1 
+ 
+ 
+一、 前言及研究目的 
+ 
+半導體的電晶體數量目前依然根據摩爾定律(Moore 's Law)所描述的狀況，持續在成長，
+如圖一所示，由於電晶體製程等技術的提升，在同樣面積的下可以放入數量更多的電
+路元件，這樣子的成長狀態，雖然增加了電路設計的複雜度，但是設計出來的元件也
+因為如處，更可以提高效能，而在這方面的成長也是相對的非常可觀，不論在 DRAM，
+DSP，Microprocessor 等產品上都可以看到這樣的趨勢。 
+ 
+ 
+圖一 技術趨勢 
+ 
+這樣的趨勢在處理器方面，就存在一些不同的變化。在過去處理器的發展趨勢上，就
+是不斷去使處理效能增加，盡可能提高電路的速度，以便增加系統的速度，會這樣發
+展，主要是因為處理器的效能為 IPC(Instruction per cycle)乘上處理器時脈(Clock rate)，
+要針對 IPC 方面的改良，即微處理器每個時脈周期可以處理更多的指令，在單一處理
+器架構上，要達到較好的成效就只有修改指令集架構及微處理器架構，但是這樣子的
+修改並不符合效益，所以過去所使用方式就是不斷的拉高處理器的時脈，這樣單位時
+間內可以完成的指令數量也可以大量的提升，但是不斷提升的結果遇到了瓶頸，這樣
+的結果導致了過高的功率消耗，根據公式(1)，c 是電容常數，V 是電壓，F 是時脈，P
+是功率，而時脈 F 又跟電壓 V 成正比，也就是說綜合這點以及公式(1)來看功率 P 和電
+壓 V 三方成正比。 
+ 
+P = c V
+2
+ F                        (1) 
+ 
+由此來看，提高時脈的結果會導致，過高的功率消耗，而過高的功率消耗則伴隨著溫
+度的上升，因為溫度會因為功率密度過高而提升，所以綜合以上結果，就是高時脈會
+導致高溫。而高溫對電子元件的影響是非常大的，過高的溫度可能會導致結果異常，
+甚至出現錯誤，嚴重甚至可能導致元件的永久損壞，所以溫度的管理，也是目前很重
+要的一個研究議題。而如果不往高時脈發展的話，則有另外一個利用面積的方式，就
+是在單一塊晶片上，放入多個處理器的核心，由單核處理器增加到雙核處理器，如果
+頻率不變的話，IPC 理論上可以提高一倍，功耗理論上也就最多提高一倍，因為功耗
+3 
+ 
+理器內運算單元充分的被使用，被閒置的時間最少，效能最佳，但是在多核心時代，
+要擴展 ILP 到 TLP(Thread level parallelism)方面，如何使得處理器中，每一個核心都能
+充分被利用，是很重要的議題，每一個核心的利用度越高，系統表現出的效能越好。
+因為這些原因，所以在軟體的設計上，也必須要有許多轉變，像是平行化處理的概念，
+將程式分成許多部分，指派給每一個核心去執行，發揮出多核心的效能。 
+ 
+ 
+圖四 OpenMP 程式寫作範例 
+ 
+不過平行化卻增加了程式設計時的複雜度，程式設計師除了要針對程式本身目標去設
+計及實作之外，還必須花費額外的時間在完成多執行緒的程式血坐上，不能完全的專
+注在程式本來的目的上，針對這方面，也開始有越來越多改良的方法。有許多針對平
+行處理的 API(Application program interface)被開發出來，像是 MPI、OpenMP、GASNet、
+SVM、Charm 、Cell SDK、CellSs、HTA 等，也有許多瓶性化程式語言被提出來，像
+是 Co-Array Fortran、Titanium、UPC、ZPL、Chapel 、X10、Brook、Cilk，這些方式，
+透過編譯器的支援，提供程式設計師用簡單的方式，寫出平行處理的程式，設計師只
+需要簡單呼叫函式，甚至只要在程式之中加入一些提示，靠著編譯器自動處理，即可
+產生出平行處理的程式。這些方法提供了程式設計師額外的選擇，使得設計師可以專
+注在本來程式的功能上，將原本程式設計師的工作，轉移給編譯器去完成，這些都要
+靠著編譯器技術的提升，才能達到，所以如何去設計這樣的編譯器，使得編譯器功能
+越來越強大，便是以後編譯器發展的方向。圖四是 OpenMP 的範例，在程式中加入平
+行處理的提示，這樣編譯器就會將程式變成如圖右邊那樣的多執行緒的平行化程式，
+這樣的方式並不會需要很高深的平行化程式寫作技巧，但是卻可以將程式轉成可平行
+處理，這些都是藉由編譯器的幫助，透過程式設計師的提示，將程式轉化成這種形式，
+提高執行的效能。 
+ 
+當然除了效能上的考量之外，能量使用效率也是很重要的一環，除了追求效能上的最
+佳化之外，也希望可以提高能源使用的效率以及系統的穩定度，將這些加入評估的依
+據，過去已經有許多相關的研究在省電方面，相關的研究提出了許多低功率的設計方
+法，如省電的周邊裝置、CMOS 設計、電路設計、VLSI 邏輯設計、計算機結構如動態
+電壓調整(dynamic voltage scaling)等，這些硬體的技術一直有許多學者持續研究中，但
+5 
+ 
+ 
+主要的缺點在於：並未考量 
+ 編譯器、硬體、與 real time OS 之間的互動 
+ voltage 和 frequency 變換的 overhead 
+ 開發 thread level parallisim  
+ 
+Referenece 
+ 
+C.-H. Hsu, U. Kremer, and M. Hsiao.Compiler-directed dynamic voltage/frequency 
+scheduling for energy reduction in microprocessors. In Proceedings of the International 
+Symposium on Low-Power Electronics and Design , August 2001. 
+ 
+C.-H. Hsu and U. Kremer. Dynamic voltage and frequency scaling for scienti.c applications. 
+In Proceedings of the 14th annual workshop on Languages and Compilers for Parallel 
+Computing , August 2001. 
+ 
+C.-H. Hsu and U. Kremer. Compiler-directed dynamic voltage scaling for memory-bound 
+applications. Technical Report DCS-TR-498, Department of Computer Science, Rutgers 
+University, August 2002. 
+ 
+C.-H. Hsu and U. Kremer. Single region vs. multiple regions: A comparison of di.erent 
+compiler-directed dynamic voltage scheduling approaches. In Workshop on Power-Aware 
+Computer Systems , 2002. 
+ 
+A. Azevedo, I. Issenin, R. Cornea, R. Gupta, N. Dutt, A. Veidenbaum, and A. Nicolau. 
+Pro.le-based dynamic voltage scheduling using program checkpoints in the COPPER 
+framework. In Proceedings of Design,Automation and Test in Europe Conference, March 
+2002. 
+ 
+H. Saputra, M. Kandemir, N. Vijaykrishnan, M.J.Irwin, J. Hu, C.-H. Hsu, and U. Kremer. 
+Energy-conscious compilation based on voltage 
+scaling. In ACM SIGPLAN Joint Conference on Languages, Compilers, and Tools for 
+Embedded Systems and Software and Compilers for Embedded 
+Systems , June 2002. 
+ 
+D. Moss, H. Aydin, B. Childers, and R. Melhem. Compiler-assisted dynamic power-aware 
+scheduling for real-time applications. In Workshop on Compiler and Operating Systems for 
+Low Power , October 2000. 
+ 
+C.-H. Hsu and U. Kremer. The Design, Implementation, and Evaluation of a Compiler 
+Algorithm for CPU Energy Reduction. In Proceedings of the ACM SIGPLAN Conference 
+on Programming Languages Design and Implementation , June 2003. 
+7 
+ 
+Workshop on Complexity-E.ective Design, June 2000. 
+ 
+F. Xie and M. Martonosi and S. Malik. Compile time dynamic voltage scaling settings: 
+Opportunities and limits. In Proceedings of the ACM SIGPLAN Conference on 
+Programming Languages Design and Implementation , June 2003. 
+ 
+A. Miyoshi, C. Lefurgy, E. Hensbergen, and R. Rajkumar. Critical power slope: 
+Understanding the runtime effects of frequency scaling. In Proceedings of the 16th Annual 
+ACM International Conference on 
+Supercomputing, June 2002. 
+ 
+D. Moss, H. Aydin, B. Childers, and R. Melhem. Compiler-assisted dynamic power-aware 
+scheduling for real-time applications. In Workshop on Compiler and Operating Systems for 
+Low Power , October 2000. 
+ 
+T. Pering, T. Burd, and R. Brodersen. The simulation and evaluation of dynamic voltage 
+scaling algorithms. In Proceedings of 1998 International Symposium on Low Power 
+Electronics and Design , pages 76-81,August 1998. 
+ 
+P. Pillai and K. Shin. Real-time dynamic voltage scaling for low-power embedded operating 
+systems. In Proceedings of the 18th Symposium on Operating Systems Principles, October 
+2001. 
+ 
+H. Saputra, M. Kandemir, N. Vijaykrishnan, M.J. Irwin, J. Hu, C.-H. Hsu, and U. Kremer. 
+Energy-conscious compilation based on voltage scaling. In ACM SIGPLAN Joint 
+Conference on Languages, Compilers, and Tools for Embedded Systems and Software and 
+Compilers for Embedded Systems , June 2002. 
+ 
+D. Shin and J. Kim. A profile-based energy-efficient intra-task voltage scheduling algorithm 
+for hard real-time applications. In Proceedings of the International Symposium on 
+Low-Power Electronics and Design , August 2001. 
+ 
+T. Simunic, L. Benini, A. Acquaviva, P. Glynn, and G. De Micheli. Dynamic voltage scaling 
+for portable systems. In Proceedings of the 38th Design Automation Conference , June 2001. 
+ 
+A. Sinha and A. Chandrakasan. Dynamic voltage scheduling using adaptive .ltering of 
+workload traces. In Proceedings of the 14th International Conference on VLSI Design, 
+January 2001. 
+ 
+S. Murali, A. Mutapcic, D. Atienza, R. Gupta, S. Boyd, and G. De Micheli. 
+Temperature-aware processor frequency assignment for MPSoCs using convex optimization. 
+In Proceedings of the 5th IEEE/ACM international Conference on Hardware/Software 
+9 
+ 
+Computer Engineering Department, Iowa State University, 2000. 
+ 
+R. Rajamony and R. Bianchini. Energy management for server clusters. In Tutorial, 16th 
+Annual ACM International Conference on Supercomputing, June 2002. 
+ 
+3.3 Multi-Threading APIs and Languages 
+ 
+這類的研究主要是在提供程式設計師程式介面或是平行化的的程式語言，讓程式設計
+師以更簡單的方式來寫出多執行緒的程式。在過去寫多執行緒程式需要使用者去控制
+每一個 thread 的運作方式，這樣的方式有點麻煩，在程式的編寫上，也會複雜不少。
+透過使用這類的API，程式設計師不太需要像過去那樣需要去寫出那樣複雜的程式碼，
+只需要簡單的加入一些程式碼，甚至只需要加入一些 hint，就可以產生出多執行緒的
+程式了。 
+ 
+像是 OpenMP 已經被許多的編譯器所支援，在 C、C++、Fortran 的編譯器上， 
+像是 GNU、IBM、Sun Microsystems、Intel、Portland Group Compilers and Tools、Absoft 
+Pro FortranMP、Lahey/Fujitsu Fortran 95、PathScale、HP、Microsoft 等。 
+ 
+這樣降低了平行運算(parallel computing)的難度和複雜度，這樣程式設計師可以把更多
+的精力投入到程式目的本身，而非其具體實現細節，將多執行緒的複雜度轉移到 API，
+甚至編譯器身上，這樣可以。使用這類的 API 可以提供更好的靈活性，甚至使程式很
+容易就可以移到其他平台上。 
+ 
+Reference 
+ 
+MPIF. MPI: A message passing interface standard. In International Journal of 
+Supercomputer Applications, pages 165–416, 1994.  
+ 
+MPIF. MPI-2: Extensions to the Message-Passing Interface. Technical Report, University of 
+Tennessee, Knoxville, 1996. 
+ 
+L. Kal e´ and S. Krishnan. CHARM++: A portable concurrent object oriented system based 
+on C++. In A. Paepcke, editor, Proceedings of OOPSLA’93, pages 91–108. ACM Press, 
+September 1993. 
+ 
+F. Labonte, P. Mattson, I. Buck, C. Kozyrakis, and M. Horowitz. The stream virtual machine. 
+In Proceedings of the 2004 International Conference on Parallel Architectures and 
+Compilation Techniques, Antibes Juan-les-pins, France, September 2004. 
+ 
+D. Bonachea. Gasnet Specification, V1.1. Technical Report. UMI Order Number: 
+CSD-02-1207., University of California at Berkeley. 
+ 
+11 
+ 
+to UPC and language specification. University of California-Berkeley Technical Report: 
+CCS-TR-99-157, 1999. 
+ 
+S. J. Deitz, B. L. Chamberlain, and L. Snyder. Abstractions for dynamic data distribution. In 
+Ninth International Workshop on High-Level Parallel Programming Models and Supportive 
+Environments, pages 42–51. IEEE Computer Society, 2004. 
+ 
+B. Chamberlain, D. Callahan, and H. Zima. Parallel Programmability and the Chapel 
+Language. Int. J. High Perform. Comput. Appl. 21, 3, 291-312. Aug. 2007 
+ 
+I. Buck, T. Foley, D. Horn, J. Sugerman, K. Fatahalian, M. Houston, and P. Hanrahan. Brook 
+for GPUs: Stream computing on graphics hardware. ACM Trans. Graph., 23(3):777–786, 
+2004. 
+ 
+R. Blumofe, C. Joerg, B. Kuszmaul, C. Leiserson, K. Randall, and Y. Zhou. Cilk: An 
+efficient multithreaded runtime system. In Proceedings of the 5th Symposium on Principles 
+and Practice of Parallel Programming, 1995. 
+ 
+ 
+3.4 Power and thermal estimation 
+ 
+這一類的研究主要的目的是針對硬體設備做電量以及溫度上的估算，以模擬 CPU 運作
+的方式，如 ALU 的計算、register filer 的動作、memory access 的狀況、I/O 的使用等等，
+藉由紀錄這些資訊，來計算出電量的使用情形，甚至可以算出每個元件溫度的狀態，
+可以提供做為改良的依據，用以修改設計，來得到更好的結果。編譯器專家常以步驟
+進行此項最佳化： 
+(1) 進行程式分析 
+(2) 將應用程式分成區塊 
+(3) 給予每一區塊一個電量值 
+(4) 以機率的方式推算總共耗電的情形 
+ 
+用軟體的方式來做這方面的評估，主要的優點如下 
+ 比較簡單 
+ 成本較低 
+ 設備需求較少 
+ 比較有彈性 
+ 
+主要的缺點在於： 
+ 估量的結果比較不準確 
+ 並未考慮與硬體同步、溝通的問題 
+ 
+Reference 
+13 
+ 
+ 
+M. Mutyam, F. Li, V. Narayanan, M. Kandemir, and M. Irwin. Compiler-directed thermal 
+management for VLIW functional units. In Proceedings of the 2006 ACM 
+SIGPLAN/SIGBED Conference on Language, Compilers, and Tool Support For Embedded 
+Systems, June 2006. 
+ 
+J. Lin, H. Zheng, X. Zhu, E. Gorbatov, H. David, and Z. Zhang. Software thermal 
+management of dram memory for multicore systems. In Proceedings of the 2008 ACM 
+SIGMETRICS international Conference on Measurement and Modeling of Computer 
+Systems June 2008. 
+ 
+J. Xu, Y. Zhu, L. Jiang, J. Ni and K. Zheng. A Simulator for Multi-Core Processor 
+Micro-Architecture Featuring Inter-Core Communication, Power and Thermal Behavior. In 
+Proceedings of the 2008 international Conference on Embedded Software and Systems 
+Symposia - Volume 00. July 2008. 
+ 
+S. Singhai, M. Ko, S. Jinturkar, M. Moudgill, and J. Glossner. An integrated ARM and 
+multi-core DSP simulator. In Proceedings of the 2007 international Conference on 
+Compilers, Architecture, and Synthesis For Embedded Systems. September 2007. 
+ 
+N. Eisley, V. Soteriou, and L. Peh. High-level power analysis for multi-core chips. In 
+Proceedings of the 2006 international Conference on Compilers, Architecture and Synthesis 
+For Embedded Systems, Seoul, Korea, October 22 - 25, 2006 
+ 
+W. L. Bircher and L. K. John. Analysis of Dynamic Power Management on Multi-Core 
+Processors. In Proceedings of the 22nd Annual international Conference on Supercomputing, 
+Island of Kos, Aegean Sea, Greece, June 2008. 
+ 
+3.5 energy/power management and thermal management 
+ 
+關於能量管理以及功率管理的相關研究，這部分的研究包括了作業系統的排程，由於
+這部分的排程，在多核心得系統上是屬於 NP-hard 的問題，在這邊存在多個排程器同
+時去管理工作，所以要如何得知是最佳解是一個困難的。而有些方法是由單核心處理
+器所延伸過來得方式，而這些延伸過來之後也觸發了更多的問題要來解決。最後這些
+方法結合上一些省電技術，就可以達到最佳化過的低功率程式。 
+在溫度管理上也是很之前提到有類式的狀態，但是溫度方面的問題處理上卻和功率的
+策略不盡相同，雖然這是本計畫第二年度的工作，不過經過研究也可以帶來一些不錯
+的改進空間。 
+ 
+References 
+ 
+E. Seo, J. Jeong, S. Park, and J. Lee. Energy eﬃcient scheduling of real-time tasks on 
+15 
+ 
+A. Weissel et al., \Dynamic thermal management for distributed systems," in Proc. Wkshp. 
+Temperature-Aware Computer Systems, June 2004. 
+ 
+3.6 Other optimizations 
+其它的的研究較為分散，這些研究議題包含如何減少記憶體、快取記憶體的存取以減
+少電力的損耗、快取記憶體的大小對省電的影響、利用 just in time instruction delivery
+的技術達到省電的目的、利用 buffering 的技術處理程式中 loop 結構以達到省電的目
+的、減少 pipelining hazards 以達到省電的目的等，不易歸類。以下僅列相關文獻做為
+參考 
+ 
+References 
+ 
+N. AbouGhazaleh, D. Moss, B. Childers, and R. Melhem. Toward the placement of power 
+management points in real time applications. In Proceedings of the Workshop on Compilers 
+and Operating Systems for Low Power, September 2001. 
+ 
+D. Bailey. 21st century high-end computing. In Invited Talk, Applications, Algorithms, and 
+Architectures Workshop for BlueGene/L, August 2002. 
+ 
+F. Bellosa. The benefits of event-driven energy accounting in power-sensitive systems. In 
+Proceedings of 9th ACM SIGOPS European Workshop, September2000. 
+ 
+S. Borkar. Design challenges of technology scaling. IEEE Micro, 19(4):23?9, July/August 
+1999. 
+ 
+D. Brooks, V. Tiwari, and M. Martonosi. Wattch: A framework for architectural-level power 
+analysis and optimizations. In 27th International Symposium on Computer Architecture , 
+June 2000. 
+ 
+D. Burger. Hardware Techniques to Improve the Performance of the Processor/Memory 
+Interface. PhD thesis, Computer Sciences Department, University of Wisconsin-Madison, 
+1998. 
+ 
+R. Gonzalez and M. Horowitz. Energy dissipation in general purpose microprocessors. IEEE 
+Journal of Solid-State Circuits, 31(9):1277?284, September 1996. 
+ 
+K. Lahiri, A. Raghunathan, S. Dey, and D. Panigrahi. Battery-driven system design: A new 
+frontier in low power design. In Asia South Paci.c Design Automation Conference / 
+International Conference on VLSI Design, January 2002. 
+ 
+K. Masahiro, K. Kazuo, H. Kazuo, and O. Eiichi. WT110/WT130 digital power meters. 
+Yokogawa Technical Report 22, 1996.  
+17 
+ 
+ 
+(A) 多核心功耗估算模型計算之流程 
+ 
+(B) 功率估算之模擬器內部流程 
+ 
+圖五 流程 
+ 
+由於使用電路模擬的方式來測量執行所需要的能量通常需要花費大量的時間，因為這
+類的模擬通常需要很清楚的模擬每一個元件所被使用到的情況，而這種方式就會導致
+需要數小時到數天的等待，縱使得到的結果是非常精確的，但是這樣無法即時反映出
+實驗的結果，在加上實驗過程可能需要不斷的修改，微調一些小細節來達到最好的效
+果，這樣可能導致整個實驗無法連過，到至沒有效率，所以在這部分，想要利用 criti-core
+本身就有的指令集模擬器(Instruction set simulator)來做為基礎，讓程式可以在模擬器執
+行完畢之後，一併得到相應的功率/能結果，甚至可以對此功能做延伸而得到完整的溫
+度模擬。 
+ 
+為了達到很精準的效果，我們採用了子計畫四提供的功率資訊，而這些資訊就是前面
+19 
+ 
+LS1,3,5 2 1 0 1 0 0 … 
+LS2,4,6 3 1 0 1 0 0 … 
+LS7 N+1 N/N-1 0 1 1 0 … 
+MUL1 3 0 1 1 0 0 … 
+MULL 4 0 1 1 0 0 … 
+LDP 1 1 0 1 0 0 … 
+ 
+而結果的準確性來說，我們採用另外一個程式，然後分別在兩者上取得結果，比較兩
+者結果的誤差狀況，而這隻程式不應該是之前用來計算的程式，這樣可以得到比較客
+觀的結果。 
+ 
+4.2 Reliable, adaptive variable power & thermal management 
+ 
+分成三個部分，第一部分是 analysis，第二部分是 hint，第三部分是 power & thermal 
+management。 
+1. Analysis 
+分析的方向還可以細分為以下三項。當然除此之外，還有許多的方向可以加入分析
+的部分，當然除了這些之外，可能分析這些項目也同時還可以分析出其他資訊。 
+ 
+a. Latency analysis and deadline requirement 
+主要是針對程式本身的時間需求，針對時間上最大的容忍度，以及必須要完成
+的時間等因素，由這些點來計算出程式在受到電源管理時，可以降低的效能量，
+因為只要在城市本身需求的時間內可以完成程式本身的話，這樣即使程式可以
+提早完成，但卻需要消耗更多的電量，這樣顯得就不是很需要，所以透過這個
+分析，可以求得程式可以接受的延遲量，以及必須完成的期限，透過這些加上
+電源管理的機制，可以在消耗較少能量的情況上，達成要求。 
+ 
+b. Power evaluating model for number of available cores 
+是透過分析，去求得程式在平行化時，分別使用不同核心量時，所消耗能量的
+情況，夠過這個分析，可以找出程式使用多少核心可以在能量/功率表線上，得
+到最佳的解。當然這部分可以再加入更多的因素，像是效能的部分，這樣可以
+在數個方面求得一個叫通用的結果，可以避免掉太過極端的情況。 
+ 
+c. Power evaluating model for performance tolerance 
+去分析出程式本身對於效能的容忍度，這類的分析通常是因為多執行緒程式中，
+每一個程式的執行緒需要的執行時間要求不同所導致的，換句話說就是工作量
+(workload)不平均，這樣當執行緒之間需要有資料交換時，這時候可能較快的執
+行緒，就必須等待那些較慢的執行緒，而這樣的話其實我們可以說那些較快的
+執行緒可以擁有較高的效能容忍度，這邊便有一些機會，可以提供做為電源管
+理的空間，因為那些較快的執行緒本身就算做完本身的工作，還是需要等待其
+他執行緒完成工作，所以這些等待時間便是可以套用管理機制的地方，。附帶
+一提，工作量不平均因為程式碼中存在太多相依性的問題，導致會有些執行緒
+21 
+ 
+ 
+在來是主要目的是要提供多執行緒函式庫，在加上具可靠性動態頻率調整技術(DFS)，
+利用功率評估模型將程式分析且平行化處理之後，產生多執行緒之程式，這個程式在
+多核心處理器平台上運作時，OS 會針對程式之中的 power hint，調整多核心處理器的
+速度，讓運算量較低之處理器以較低的頻率運行，這樣在幾乎不影響整體效能的情況
+下，完成所指派的部分，並達到省電之效果。以下將詳細描述研究方法的每一步驟： 
+ 
+a. 首先先做 code analysis，利用平行化分析之結果，將分出來的每個執行緒視為一個
+單位，建立出有向圖形（directed graph），其中的節點（node）為一執行緒，節點之
+間根據 control flow 產生連結（edge）。 
+ 
+b. 利用前一步驟有向圖形，針對每個節點做 latency 及 deadline requirement 等分析，
+計算出每個節點所需要的時間以及必須何時完成，依照這些資訊，決定各個節點的
+執行頻率。 
+ 
+c. 依據每個 multiple thread 的情形，指派執行的處理器核心，若是並加入 thread 間的
+頻率不同，必須加入 overhead，將指派的結果，作 power 以及程式執行時間的頻估。 
+ 
+d. 調整使用的核心總數，重新指派工作，反覆的執行，求出各種情況下的耗電量，及
+執行時間。 
+ 
+e. 將上面產生出來的情報，加入到程式當中，並配合編譯器及底層硬體的回饋機制
+（power hint）做為動態排程的參考基礎，提供給作業系統使用，產生 low-power 
+application。 
+ 
+整體的架構如圖六所示。 
+ 
+4.3 Reliable, adaptive variable thermal management 
+ 
+分成三個部分，第一部分是 analysis，第二部分是 hint，第三部分是 thermal management。 
+1. Analysis 
+分析的方向還可以細分為以下三項。當然除此之外，還有許多的方向可以加入分析
+的部分，當然除了這些之外，可能分析這些項目也同時還可以分析出其他資訊。 
+ 
+a. Latency analysis and deadline requirement 
+主要是針對程式本身的時間需求，針對時間上最大的容忍度，以及必須要完成
+的時間等因素，由這些點來計算出程式在受到溫度管理時，可以降低的效能量，  
+ 
+b. Thermal evaluating model for number of available cores 
+是透過分析，去求得程式在平行化時，分別使用不同核心量時，對各個核心造
+成的溫度結果，夠過這個分析，可以找出程式使用多少核心可能表現較好溫度
+結果。當然這部分可以再加入更多的因素，像是效能的部分，這樣可以在數個
+23 
+ 
+單位，建立出有向圖形（directed graph），其中的節點（node）為一執行緒，節點之
+間根據 control flow 產生連結（edge）。 
+ 
+b. 利用前一步驟有向圖形，針對每個節點做 latency 及 deadline requirement 等分析，
+計算出每個節點所需要的時間以及必須何時完成，依照這些資訊，決定各個節點的
+執行頻率。 
+ 
+c. 依據每個 multiple thread 的情形，指派執行的處理器核心，若是並加入 thread 間的
+頻率不同，必須加入 overhead，將指派的結果，作溫度以及程式執行時間的頻估。 
+ 
+d. 調整使用的核心總數，重新指派工作，反覆的執行，求出各種情況下的耗電量，及
+執行時間。 
+ 
+e. 將上面產生出來的情報，加入到程式當中，並配合編譯器及底層硬體的回饋機制
+（thermal hint）做為動態排程的參考基礎，提供給作業系統使用，以便可以判斷是
+否需要做核心間的工作交換，或是降溫程序。最後，產生 temperature-aware 
+application。 
+ 
+ 
+ 
+4.4 純軟體為基礎的 TLS 平行化技術程式模型的設計與實作 
+ 
+我們設計與實做 Thread-Level Speculation (TLS)平行化技術的程式執行模型，以純軟體
+的方式來實現 TLS 平行化技術，讓一般使用者也可以利用 TLS 技術來積極的開發程式
+的平行度，提升程式執行的效能。本部分包含兩個主要的貢獻： 
+(1) 純軟體為基礎的 TLS 平行化技術程式模型的設計與實作 
+我們根據不同的 loop-carried data dependence relationship 和 data type 做為分類，設計相
+對應的程式撰寫模型。程式模型分為四個類型，分別為：Type 1: 處理 atomic operation、
+Type 2: 處理 scalar variable 所造成的 true dependency、Type 3: 處理 array variable 所造
+成的 true dependency、Type 4: 處理 output dependency。 
+(2) 針對 TLS 平行化技術之自動化轉換技術的研發 
+我們設計了一個可以讓使用者很簡易的使用我們所研發的程式模型的 translator。使用
+者只要在有 loop-carried dependency 的 for-loop 前加上我們設計的 compiler directive，
+並給予正確的參數，該 translator 便可自動產生利用 TLS 技術平行化之程式碼。 
+ 
+1 純軟體為基礎的 TLS 平行化技術程式模型的設計與實作 
+ 
+首先，我們簡述整個程式模型的執行與控制流程。如圖七所示，一開始 Main thread 會
+執行 Assistance thread 做 TLS 執行的整體初始化工作，以及產生數個 Working thread。
+當 Assistance thread 結束後，會將 assistance_ready 設為 1，表示初始化已經結束，且
+Working thread 已經準備好可以接受工作之指派與執行。 
+ 接著我們描述看到 start 這個變數，這個變數是用來紀錄現在要執行第幾個
+25 
+ 
+設計 pragma 的方式有很多種，不過我們學習的對象是 OpenMP 的格式，主要的原因是
+希望之後有機會能與 OpenMP 做整合。 
+ 
+再來看到 Clause 的部份，可以使用 var_s、var_raw 兩種。Var_s 是針對 Type 1 所設計
+的，參數的部份則是放入 Type 1 的變數名稱。Var_raw 則是對 Type 2, Type 3 所設計，
+參數的部份則是放入有的變數名稱。下面是一個例子： 
+ 
+ 
+我們撰寫 translator 所採用的是 Nanos group 所研發提供的 Mecurium Compiler。
+Mercumium Compiler 是一個 source-to-source 的 compiler，目前可以支援 C/C++、Fortran
+三種語言。它可以針對輸入的程式碼做重寫、插入、刪除、轉換等工作，因此他是一
+個相當適合拿來測試即將被實做的新語法。Mercurium Compiler 本身也支援 OpenMP  
+pragma 的轉換，而關於這部份的轉換可以使用 Mercurium Compiler 已經寫好的，也可
+以自行重新設計一個新的轉換方式。  
+#pragma SpMT parallel var_raw(sum) 
+for (j = 0; j < 10000; j++)  
+  if (sum == 100)  
+    sum = j * 12; 
+27 
+ 
+四、 結果與討論 
+ 
+本研究計畫的目的在於提升 low power compilation techniques及 thermal management 至
+世界水準，設定研究技術指標作為研究追求的目標，並打算將研究成果投稿至 low 
+power、temperature 或者 compiler 相關一流的國際會議以及期刊，具體的敘述如下表
+所列。 
+ 
+研究題目 擬達成之指標 
+擬發表之研討
+會 
+擬發表之
+期刊 
+Reliable, adaptive variable DFSs 
+Power saving up to 
+20% - 30% in total 
+ACM 
+ISLPED’09,    
+ACM PLDI’09, 
+IEEE ICPP’09   
+or others 
+ACM TECS,  
+ACM TPLS, 
+or others 
+ 
+5.1 實作項目 
+ 
+ Power estimation 
+ Reliable, adaptive variable DFSs 
+ Multithreading library 
+ Application program interface 
+ Runtime library 
+ Power optimization tool 
+ Code analysis 
+ Evaluating power model 
+ Multiple & variable DFSs 
+ Thermal optimization tool 
+ Code analysis 
+ Evaluating thermal model 
+ Multiple & variable DFSs & Migrations 
+ 
+5.2 Power estimation 結果 
+ 
+利用之前所提到的方法，求出的結果如表四所示，其中列出了每個功能單元的功率結
+果，與實際結果之誤差，表中 pattern-1、pattern-3、pattern-4、pattern-5 是使用來逼近
+之程式，pattern-6是用來驗證整體誤差的程式。就單一功能單元來說ALU、MULTIPLY、
+SHIFTER 等誤差值目前還過於龐大，但是由於消耗功率最多之功能單元可以估算的很
+準確，所以最後總合之結果誤差為 6.04%，算是很準確之結果，一般 high level 之估算，
+誤差通常可能在 10%以上。 
+ 
+表四 評估之結果 
+FU/pattern  Pattern-1 Pattern-3 Pattern-4 Pattern-5 Pattern-6 
+ALU sp4 23964.63  31261.23  37589.98  26059.24  38649.67  
+ ours 24119.05  32123.78  34513.78  27601.51  34749.73  
+29 
+ 
+ 
+圖九 每個功能單元之動態功率所占之比例 
+ 
+ 
+圖十 正規劃之平均動態攻略消耗 
+ 
+而在於整體而言，那些誤差較大的功能單元是因為有些因素尚未考慮進去，這部分將
+會去參考子計畫一實際硬體設計的資料，從這部分抓到更準確的行為，進而估算出更
+準確的值。 
+ 
+5.3 power optimization 結果 
+ 
+圖十一顯示出使用我們 power 最佳化之效能結果，Load balance 方法可以在某些情況下
+增加效能，而加上 dvfs 之後由於 dvfs 一定會降低效能，所以效能表現上較不好。而在
+圖十二中顯示，有加上 dvfs 之後，功號都有明顯的改善。圖十三是 ED2P 的結果，因
+為在整體來說，程式的效能希望還是主要考慮的因素，所以用 ED2P 來做比較，整體
+來說除了 lu 之外都有更好的結果，而 lu 是因為程式效能下降太大了，導致無法在節能
+方面達到更好之結果。 
+7% 
+2% 
+4% 
+5% 
+0% 
+18% 
+1% 12% 6% 
+45% 
+Dynamic power(ours) 
+ALU 
+BRANCH 
+DataToRF 
+DECODER 
+ENCODER 
+MULTIPLY 
+OPRm 
+REG_CONTROLSIGNAL 
+SHIFTER 
+mrf_top 
+0.40 
+0.60 
+0.80 
+1.00 
+1.20 
+pattern-1 
+pattern-3 
+pattern-4 
+pattern-5 
+pattern-6 
+pattern-7 
+31 
+ 
+表五 執行之結果 
+dotprod 4 threads 16 threads 
+Whole program Task body Whole program Task body 
+pthread 70,513us 61,449us 200,154us 154,923us 
+SpMT 65,510us 57,291us 198,583us 162,900us 
+improvement 7% 6% 7% -5% 
+Each thread data size = 100 
+Int_sort 4 threads 16 threads 
+Whole program Task body Whole program Task body 
+pthread 1,175us 87us 1,918us 279us 
+SpMT 679us 63us 1,087us 206us 
+improvement 42% 27% 43% 26% 
+Data Size = 3000 
+Program: Pi 4 threads  16 threads 
+Whole program Task body Whole program Task body 
+pthread 2,458,545us 2,454,297us 1,322,732us 1,321,260us 
+SpMT 2,562,150us 2,561,194us 1,641,723us 716,622 us 
+improvement -4% -4% -24% 45% 
+  
+Program: Prime 4 threads  16 threads 
+Whole program Task body Whole program Task body 
+pthread 522us 129us 1,576us 105us 
+SpMT 377us 118us 933us 111us 
+improvement 27% 8% 40% -5% 
+Number range = 3000 
+5.5 論文成果 
+ 
+期刊論文 
+[1] Chih-Yuan Chen, Jhong-Yi Ciou, Rong-Guey Chang, "Multi-level simultaneous 
+multithreading scheduling to reduce the temperature of register files," Concurrency and 
+Computation: Practice and Experience. 2011 
+[2] Shuenn-Yuh Lee, Chih-Yuan Chen, Jia-Hua Hong, Rong-Guey Chang, Mark Po-Hung 
+Lin, "Automated synthesis of discrete-time sigma-delta modulators from system architecture 
+to circuit netlist, " Microelectronics Journal, Volume 42, Issue 2, Pages 347-357, February 
+2011. 
+[3] Yuan-Shin Hwang, Tzong-Yen Lin, Rong-Guey Chang, "DisIRer: Converting a 
+Retargetable Compiler into a Multi-Platform Binary Translator," ACM Transactions on 
+Architecture and Code Optimization. Volume 7 Issue 4, Article 18, 36 Pages, December 
+2010. 
+33 
+ 
+ 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。 
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+ ▓ 達成目標 
+□ 未達成目標（請說明，以 100 字為限） 
+□ 實驗失敗 
+□ 因故實驗中斷 
+□ 其他原因 
+說明： 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：□已發表 □未發表之文稿 ▓撰寫中 □無 
+專利：□已獲得 □申請中 □無 
+技轉：□已技轉 □洽談中 □無 
+其他：（以 100 字為限） 
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以
+500 字為限） 
+ 
+這個子計劃的研究主要是三個大方向，功耗評估、功耗及溫度管理、TLS 平
+行化技術程式模型 
+ 
+功耗評估則是提供一個快速的測量方法，而且提高準確度，考慮更多因數，
+達到更準確的結果，而且不像傳統的方式需要花費那麼多時間。 
+ 
+功耗及溫度管理，是一個整合功耗及溫度的管理機制，讓作業系統排成考慮
+這方面的因素，對於現代追求效能之外，綠能也是很重要的議題，我們的方
+法可以提供這方面一個起始點，若加以延伸可以有很大的價值。 
+ 
+TLS 平行化技術程式模型，提供程式設計者一個正確且有系統的方法，應用
+TLS 技術來積極的開發程式的平行度。我們希望未來有機會可以與 OpenMP 
+programming model 結合，提供一個簡單又有效率的積極地平行化技術，會有
+相當革命性的影響。 
+附件二 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2012/02/13
+國科會補助計畫
+計畫名稱: 子計畫三：俱多線程函示庫之Criti-Core高可靠度與省電控溫系統軟體技術
+開發(2/2)
+計畫主持人: 張榮貴
+計畫編號: 99-2220-E-194-010- 學門領域: 晶片科技計畫--整合型學術研究
+計畫
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

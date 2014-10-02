@@ -1,0 +1,716 @@
+ 面，如何在 SMT平台上作行程間的同步處理及耗電評估也是我們的重點。 
+研究目的 
+SMT/CMP(簡稱 multithreading processor, MTP)二項技術已經被證明為一個有
+效率、並且省電的設計。這二項技術都利用平行處理的技術以提升效能。二者的
+不同在於 SMT幾乎共用了所有的 hardware resources ，而 CMP只共用 level-1 
+cache以下的 hardware resources。在相同的硬體限制下(i.e., the limitation 
+of die size)，SMT能更有效的提高硬體使用率，但 CMP擁有較高的 scalability。
+最近的一些研究指出 SMT及 CMP混和設計是較佳的選擇。 
+大部分的 MTP 沿用傳統的 cache 設計方式，但 SMT/CMP processor 的 memory 
+reference string (MRS)相當不同於傳統的 super-scalar/pipeline processor
+（簡稱 single-threading processor, STP）的 MRS。SMT/CMP 在 instruction 
+level 上混和來自不同 program 的 MRS，因此 spatial locality 及 temporal 
+locality 變得比較差。operating system (OS)的 multiprogramming 技術同樣
+的可以並行處理多個 program，但大部分的 OS 每秒鐘只發生 10~1000 次的
+context switch。相對於 MTP，OS對於 temporal locality及 spatial locality
+的影響非常小。 
+對於系統設計者而言，locality 的改變所造成的影響有三個方面。首先，WCET
+變得非常難以預估，目前已經有相當多的研究分別針對 inter-process 及
+intra-process的 cache behavior進行探討。並提出在這二種情況下 WCET如何
+估計，但據我們所知，沒有論文討論如何在 MTP上精確的估計 WCET。由於 WCET
+的估計是許多 embedded system及 real-time system的基礎，因此這將會造成
+軟體設計上的困難。其次，instruction level的平行處理可能導致 thrashing 。
+當 thrashing 發生時 processor 內部會產生大量的 cache miss，因此造成每秒
+鐘所能完成的指令 數突然地降低。當平行處理的 programs的 working sets 被
+對應到 cache上的同一群 cache line時，這些 program將會互相的覆蓋掉對方
+的 working set，因而造成 thrashing。技術人員已經發現到在 hyperthreading  
+enabled的 Intel P4/Xeon上執行 SQL Server 及 Citrix Terminal Server時，
+在 heavily load 的情況下，系統效能將顯著的降低。而系統效能低落的原因即
+來自於 cache的設計並未考慮 SMT processor的特性。除此之外，一個 malicious 
+program 也可以藉由引起 thrashing 以癱瘓電腦。第三，一般的 OS 都假設每個
+mini-processor 都能夠公平的使用所有的硬體資源並且不會互相影響，如果不
+對 cache做任何限制，那麼同一個 program與 memory intensive的 program並
+行處理或與 CPU intensive的 program並行處理將會有不一樣的執行效果，這種
+差異性將會增加 OS scheduler的設計難度。 
+在這篇論文中，我們將提出一種新的 cache memory 設計方法，這個新方法允許
+SMT/CMP處理器內的 logical/simple processor（簡稱：mini-processor, mini-p）
+ Symposium on Applied Computing, 2006. 
+[11] I. Rhee and G. Martin. “A Scalable Realtime Synchronization Protocol 
+for Distributed Systems,” IEEE Real-time System Symposium, 1995. 
+[12] P. Gai, G. Lipari, M. D. Natale. “Minimizing Memory Utilization of 
+Real-Time Task Sets in Single and Multi-Processor Systems-on-a-chip,” 
+IEEE Real-Time Systems Symposium, 2001. 
+[13] A. K. Mok. “Fundamental design problems of distributed systems for 
+the hard real time environments,” Ph.D. dissertation, M.I.T., 1983. 
+[文獻分類二] 
+在快取記憶體及 worst case execution time的估計上，前人也想相當可觀的研
+究，唯這些都是探討單顆處理器或多處理器的情況，對於 SMT或 CMP處理器的情
+況著墨較少。 
+[1] S. Kaxiras, Z. Hu, and M. Martonosi. Cache decay: exploiting 
+generational behavior to reduce cache leakage power. In Proc. of the 28th 
+annual Int’l Symp. 
+on Computer Architecture (ISCA’01), pages 240-251,2001. 
+[2] David A. Wood, Mark D. Hill, R. E. Kessler. A model for estimating 
+trace-sample miss ratios. In Proc. of the 1991 ACM SIGMETRICS, pages 79-89, 
+1991. 
+[3] Seongbeom Kim, Dhruba Chandra, Yan Solihin. Fair Cache Sharing and 
+Partitioning in a Chip Multiprocessor Architecture. In Proc. Of the 13th 
+Int’l. Conf. on Parallel Architecture and Compilation Techniques 
+(PACT’04), pages 111-122, 2004. 
+[4] Francisco J. Cazorla, Alex Ramrez, Mateo Valero, Enrique Fernndez. 
+Dynamically Controlled Resource Allocation in SMT Processors. In Proc. 
+Of the 37th Symp. On Microarchitecture (MICRO-37’04), pages 171-182, 
+2004. 
+[5] Y. Tan ,V. Mooney. WCRT Analysis for a Uniprocessor with a Unified 
+Prioritized Cache. In Proc. of the 2005 ACM SIGPLAN/SIGBED Conf. on 
+Languages, Compilers and Tools for Embedded Systems (LCTES’05), pages 
+175-182, 2005. 
+[6] Z. Hu, S. Kaxiras, M. Martonosi. Timekeeping in the memory system: 
+predicting and optimizing memory behavior. In Proceedings of the 29th 
+annual int’l symp. 
+on Computer architecture (ISCA’02), pages 209-220,2002. 
+[7] A. Agarwal, S. D. Pudar. Column-associative caches: A technique for 
+reducing the miss rate of direct-mapped caches. In Proc. of the 20th Int’l. 
+Symp. on Computer Architecture (ISCA’93), pages 169-178, 1993. 
+ 複製到較高層的 cache時，新的 data可能需要置換掉 least recently used (LRU) 
+data 。沿用慣用的的 terminology，每一次的 cache miss會造成該 cache line
+上產生一個新的 generation。，第 ith次 miss所帶入的 data是該 cache line
+的第 ith generation。一個 generation又可以進一步的分割成 live period及
+dead period。從第 ith次的 cache miss開始到該 generation的最後一次存取
+為止，這段時間稱之為 live period。從第 ith 個 generation 的最後一次存取
+開始到第(i+1) th次的 cache miss為止是第 ith generation的 dead period。
+很多研究已經指出 dead period的長度往往大於 live period的長度，並且在同
+一個 cache line上相鄰的二次 hit其時間長度(稱之為: access interval)往往
+非常短。一些論文探討如何判斷一個 cache line 是否正處於 dead period。我
+們稱一個被判定為dead的cache line為declared-dead cache line。由於access 
+interval遠小於 dead interval，因此這些演算法往往非常有效率且正確。這個
+研究的目標即在於允許 mini-processor 間分享正處於 dead-period 的 cache 
+line。因此二個 mini-processor 可以在不互相干擾的情況下分享彼此的
+sub-cache。 
+The Predictable Cache Design 
+在這篇論文中，每個 data 只可以放在 cache 中的某些地方（ i.e., 
+set-associative）。對某個 data而言，這些可以放置的地方就稱之為這個 data
+的 corresponding cache set。為了讓讀者可以清楚的瞭解 predictable cache
+的概念，因此在這一節中，假設每一個 physical processor 上只有二個
+mini-processor。讀者可以很容易的將這個概念擴展到一個 physical processor
+上有 n個 mini-processor的情況。 
+ 
+ 
+Figure 1. The cache architecture which supports pri-access and sec-access 
+ 
+以 Figure 1中的 level 1 cache為例，每個 mini-processor mini-pi有一個專
+屬的 sub-cache sub-cachei。當 mini-pi 存取 memory 時，首先 access 
+sub-cachei，如果 sub-cachei 內沒有 mini-pi 所要存取的 data，那麼緊接著
+mini-pi會 access sub-cachej (j≠i)。如果在這二個 sub-cache中都未找到所
+需之 data（i.e., level 1 cache miss），那麼 mini-pi會到 low-level memory 
+system (e.g., L2 cache/memory)中尋找所需的 data。當 cache controller從
+mini-p1 mini-p2
+sub-cache1 sub-cache2
+L2 cache / memory
+1st-access
+2nd-access
+legend
+core
+Level 1 cache
+Low-level 
+memory system
+ 結果與討論 
+在這個研究計畫中，我們首先指出 SMT及 CMP上 cache sharing所可能造成的問
+題。因此我們提出了一個新的 cache sharing algorithm。在 SMT上我們加強了
+每個程式的 predictability。在 CMP上我們允許不同的 simple processor之間
+共享 cache。實驗結果顯示這個方法的確非常有效率。 
+就未來的研究而言，我們希望能在硬體上同時結合 predictable cache及 cache 
+decay的概念，藉以提昇 cache的使用率並降低電耗 。除此之外 data cache和 
+instruction cache 或許也可以共享同一塊 cache memory 以提升效能。最後，
+我們希望發展新的技術使得 processor (含 core及 cache memory)能更充分的支
+援 QoS，並降低 WCET及 average-case execution time（ACET）間的差距。 
+此外，目前已有部分成果發表於 ACM 的會議上(SAC2005)，另外還有一篇論文在
+準備中中預計於今年末投稿。 
+ 
+計畫成果自評 
+在這次的計畫中幾乎完成了原本所計畫的各個子項目，雖然有些論文目前還在撰
+寫階段，但已經有了初稿及實驗結果，再加以整理，期望能夠有些表現以不負國
+科會於經費上對於我們實驗室的支持。 
+除此之外，在人員培訓上也達到預期的目標，實驗中各個成員除了專精於作業系
+統的設計於實作外，還對於硬體特別是處理器設計與作業系統的互動有深刻的體
+認，我們都知道硬體設計是台灣的強項，在有如此好的先天環境下，我寄望這群
+學生畢業後，能從參予這次國科會計畫中所獲得的一些知識，以及認真負責的態
+度帶到職場，凡事努力觀察背後設計的創意及動機，用最有開創性的設計技巧及
+理念將為他們的人生及台灣的產業推向另一個高峰。  
+  	 
+   
+
+∗
+  
+  	
+ 	   
+		 
+	   
+   !"!!
+	
+	
+
+  
+Although there are many real-time task synchronization pro-
+tocols designed for uniprocessor and multiprocessor systems,
+most of them do not ﬁt the needs in accommodating si-
+multaneous multithreading (SMT). Real-time synchroniza-
+tion protocols are expected to bound the maximum number
+of priority inversions and to meet task deadlines. Synchro-
+nization protocols for simultaneous processing need to ex-
+plore the possibility in executing multiple tasks at the same
+time to increase the system concurrency level to utilize the
+abundant computing resources of simultaneous multithread-
+ing computer systems. This work proposes the concept of
+“LP-Time Inheritance” to manage the period of blocking
+time without signiﬁcantly decreasing the level of task par-
+allelism. The schedulability tests for the proposed protocol
+are also presented.
+	
+	  	 	
+C.0 [GENERAL]: Hardware/software interfaces; D.4.1 [Process
+Management]: Synchronization; C.3 [ SPECIAL-PURPOSE
+ANDAPPLICATION-BASED SYSTEMS]: Real-time
+and embedded systems
+		 	
+Design, Performance
+	
+Real-time, Scheduling, Simultaneously Multithreading
+  !"! 
+In the past decades, researchers have proposed excellent
+task synchronization protocols for the management of prior-
+ity inversion and to meet task deadlines. Many of them are
+∗The author is supported in part by the National Science
+Council, Project No. NSC 94-2213-E-194-017, Taiwan, Re-
+public of China.
+  	 
+ 	
+  
+   
+  
+	  	  
+
+  
+   
+	 		   	
+	  
+
+	 
+  		  	  
+ 
+
+	
+ 
+ 	
+	 
+
+ 	 	 
+ 	  	
+	  	 	 
+   	 	
+ 	 	    	 		 	 	   
+ 
+ 
+ 
+    ! ""# $% &
+
+'	 ""( ') * (+(+ *", "#""-    $(""
+proposed for uniprocessor environments, and many of their
+variations and new methodologies are explored for multi-
+processor systems. With the advance of hardware technol-
+ogy, SMT is now widely adopted in many modern micro-
+processors. Unfortunately, task synchronization protocols
+proposed for multiprocessor systems might not ﬁt the needs
+of SMT systems because logical processors (LPs) of an SMT
+processor might compete with each another in hardware re-
+sources (such as ALU, reorder buﬀer and so forth). As a
+result, tasks running over diﬀerent (logical) processors of an
+SMT processor might interfere with their executions even
+though they do not share any logical resources, such as
+semaphores. Such an observation motivates the exploring
+of proper task synchronization protocols for SMT systems.
+Task synchronization for uniprocessor systems has been
+an active research topic in the past years. In particular, Sha
+and et al. proposed the priority ceiling protocol (PCP) [2]
+in which tasks can inherit the priority of a higher-priority
+task they block. The lock request of a task is blocked if its
+priority is no higher than the priority ceiling of any resource
+which is locked by another task, where the priority ceiling of
+a resource is the highest priority of the tasks that might lock
+the resource. Related protocols based on the same concept
+of implicit locking have been proposed by many researchers.
+In particular, the stack resource policy (SRP) proposed by
+Baker [3] reduces the maximum number of context switch-
+ings per task to two and can handle certain dynamic pri-
+ority assignments. Oﬀ-line schedulability tests have been
+proposed for all of the above protocols.
+With the popularity of multiprocessor systems, task syn-
+chronization for multiprocessor systems is strongly demanded.
+Variations of protocols for uniprocessor systems are pro-
+posed for multiprocessor systems, and new methodologies
+are presented. For example, MPCP, that is an extension
+of PCP, partitions and allocates tasks statically on selected
+processors. Synchronization activities of tasks must be per-
+formed on the processor in which the corresponding resources
+reside. Kuo, et al., [5] proposed an approach called pri-
+ority cap to control the number of priority inversions suf-
+fered by a higher-priority task in multiprocessor systems.
+An important observation in the work is that the locker
+can raise the priority ceiling of its semaphore to prevent
+lower-priority tasks, which later enter a critical section, from
+blocking higher-priority task on another processor. Paolo
+Gai, et al. [8] proposed the Multiprocessor Stack Resource
+Policy (MSRP) for scheduling tasks and sharing resources
+in multiprocessor-on-chip architectures. The major bene-
+ﬁt, compared to that of MPCP, is that MSRP allows the
+Since there are tasks ready for executions on the two log-
+ical processors, both LP1 and LP2 are activated. As shown
+in Figure 1.a, task3 locks R successfully at time 4 because
+there is no resource locked by any other task. At time 6,
+the lock request of task1 is blocked because its priority is
+not higher than the priority ceiling of R. As a result, task2
+is scheduled for execution on LP1 at time 6 because it is
+the only ready task on LP1. Although the dispatching of
+task2 seems reasonable for multiprocessor systems, it might
+not be a proper decision for SMT systems in terms of pri-
+ority inversion management because LPs of the same SMT
+processor do compete for hardware resources. Such a com-
+petition could result in the lengthening of the blocking time
+of task1. An alternative solution is to deactivate LP1 such
+that LP2 could utilize all of the hardware resources of the
+SMT processor (originally shared with LP1) such that task3
+would ﬁnish its critical section that blocks task1 earlier. The
+rationale behind the deactivation of LP1 is because the pri-
+ority of task1 is higher than that of task2, and task3 now
+blocks the execution of task1. Based on the concept of prior-
+ity inheritance, the execution of task2 should not delay the
+execution of task1 and, thus, the execution of task3. The
+activation of LP1 in executing task2 would delay the execu-
+tion of task3 and, thus, task1. The decision as to when to
+activate or deactivate an LP motivates our work in terms of
+the concept for processor-speed inheritance (referred to as
+the LP-Time Inheritance for the rest of this paper).
+Although the deactivating of LP1 could reduce the block-
+ing time of task1 considerably, it unavoidably results in an
+unfair treatment on the execution of task2. It is because
+the deactivating of LP1 results in the loss of the computing
+power (or the servicing capability) of LP1 in servicing its
+tasks. In order to compensate for the loss of the servicing
+capability of LP1, we propose to return the borrowed proces-
+sor speed of LP1 back to LP1 for a proper time interval when
+the blocking is ﬁnished (referred to as the LP-Time Return-
+ing for the rest of this paper). With LP-Time Inheritance
+and Returning, Figure 1.b shows that the blocking time of
+task1 could be reduced from 10 time units to 5 time units.
+In the next section, we shall use the Priority Ceiling Proto-
+col to illustrate the idea in task synchronization. We must
+emphasize that the concept of LP-Time Inheritance and Re-
+turning could be applied to many other task synchronization
+protocols other than the Priority Ceiling Protocol.
+& '()$*  +*  * (!!!'
+In this section, we assume that the processor speeds of
+LPs on the same SMT processor can be adjusted in an ar-
+bitrarily way. Note that when it is not possible to do such
+an adjustment, we could emulate such an adjustment using
+intelligent ways in activating and deactivating LPs. We also
+refer interested readers to [9] to the processor speed emula-
+tion method.
+The priority assignment of each task is in accordance with
+the rate-monotonic scheduling algorithm. A task with a
+shorter period would be given a higher priority. Let each
+task be statically assigned to execute on its LP. The idea
+behind the LP-Time Inheritance is to let the LP which ex-
+ecutes a task taski that blocks another task taskj inherit
+the processor speed of the LP on which taskj is executing.
+The idea behind the LP-Time Returning is to return the
+inherited amount of computing time (in terms of processor
+speeds and the inheritance period) from the beneﬁted LP
+back to the deactivated LP. The revised version of the Pri-
+ority Ceiling Protocol by incorporating the concept of LP-
+Time Inheritance and Returning (referred to as the LP-Time
+Inheritance Protocol) is deﬁned in the following sections.
+& ,	 	- - ,	 '()	 ,		
+( .'((/
+Let RCi denote the processor speed of each logical pro-
+cessor LPi. Suppose that the processor speeds of LPs are
+determined initially (although we would modify them based
+on the LP-Time Inheritance and Returning concepts). Let
+each resource be guarded by one unique semaphore such that
+a resource could be accessed by a task only if its correspond-
+ing semaphore is locked by the task. The details of LPTIP
+are as follows.
+ Scheduling Rule of Tasks over Each Logical Processor
+LPm:
+1. When (an instance of) a task taskx arrives, the priority
+of the task is equal to its originally assigned priority.
+2. If the highest priority task taskh in LPm is blocked
+by another task executing on another LP, all of the
+other tasks in LPm which have priorities lower than
+the priority of taskh are said being “LP-time-blocked”
+by taskh and remain non-ready for executions until
+taskh is not blocked.
+3. The CPU scheduler on LPm always selects a ready task
+taski with the highest priority for execution. (Tie-
+breaking could be done arbitrarily.)
+ Allocation Rule of Tasks over Each Logical Processor
+LPm:
+The following rules are applied when a task taski tries to
+lock a resource R. A task is said being in a critical sec-
+tion if it locks a semaphore that guards the access of the
+corresponding resource. A task leaves a critical section if it
+unlocks the corresponding semaphore.
+1. A lock request of a taski on a resource R is blocked if
+the priority of taski is not higher than the maximum
+priority ceiling of resources [2] (i.e., their correspond-
+ing semaphores) currently locked by other tasks. If so,
+taski is said being directly blocked by the task taskj
+that locks the semaphore with the maximum priority
+ceiling. Note that taski and taskj might or might not
+execute on the same LP.
+2. Let RCm and RCn denote the current processor speeds
+of LPm and LPn, respectively. When a taski on LPm is
+directly blocked by another task taskj on LPn (where
+LPm = LPn), tasks executing on LPn would run at
+the processor speed equal to (RCm +RCn), and LPm
+is deactivated, while the highest priority task on LPm
+is lower than the priority of taski. (This is called LP-
+Time Inheritance, and transitive inheritance is possible
+such that the processor speed of a processor could be
+inherited from several processors). The total duration
+of the deactivation of LPm, denoted as LendingT imes
+n
+j ,
+is used to speedup the execution of taskj in LPn.
+1
+1Note that whenever a task with a priority higher than the
+priority of taski becomes ready on LPm after LPm is de-
+activated (because of LP-Time Inheritance), LPm would be
+Lemma 3. The maximum number of local blocking for
+any task under LPTIP is one.
+Proof. Due to the space limitation, the proof is not given.
+Lemma 4. The maximum number of remote blocking for
+any task under LPTIP is m, where m is the number of
+semaphores locked by the task.
+Proof. Due to the space limitation, the proof is not given.
+Note that although Lemma 4 shows that the maximum
+number of remote blocking for any task is not more than
+the number of semaphores locked by the task, the maximum
+number is, in fact, bounded by the number of outmost criti-
+cal sections for the task (i.e., the number of critical sections
+of the task after the removing of nested critical sections).
+Lemma 5. Let a task taski on LPm remotely block an-
+other task taskj on LPn. The remote blocking would not
+introduce any delay to the completion time of taskj if the
+priority of taski is higher than that of taskj.
+Proof. Since the priority of taski is higher than that
+of taskj , taski would not inherit the priority of taskj, and
+the other way around. Although LP-Time Inheritance ac-
+celerates the execution of taski, the amount of borrowed
+computing time is returned right after the ending of the re-
+mote blocking such that the completion time of taskj would
+be as the same as that of taskj without the occurrence of
+remote blocking. 
+Lemma 6. Let a task taski on LPm remotely block an-
+other task taskj on LPn. The remote blocking time of taskj
+is x in the single threading mode if the priority of taskj is
+higher than that of taski, and the length of the critical sec-
+tion of taski that remotely blocks taskj is x in the single
+threading mode.
+Proof. Since the priority of taskj is higher than that of
+taski, taski inherits the priority of taskj until the remote
+blocking ends. As a result, LP-Time Inheritance gives taski
+an (extra) amount of computing time equal to x in the single
+threading mode to execute with LPm borrowing computing
+time from taskj. 
+Schedulibility Analysis for Task Sets under LPTIP
+Let Tk = {task1, task2, . . . , taskn} be a set of periodic
+tasks assigned on LPk, where tasks are listed in the increas-
+ing order of their priorities. Each task taski is associated
+with a period pi and a computation time ci (in the single
+threading mode). Let HPCj be the set of tasks in Tk with
+priorities no lower than taskj .
+Theorem 3. [2] Task taskj is schedulable under PCP
+with the rate-monotonic priority assignment if the following
+equation can be satisfied:
+X
+taski∈HPCkj
+(
+ci
+pi
+) +
+bj
+pj
+≤ m(21/m − 1) (1)
+where bj and m are the worst case blocking time of taskj
+and the number of tasks with priorities no lower than taskj,
+respectively. Note that bj is the longest duration of a critical
+section that could block taskj.
+Theorem 4. Task taskj is schedulable under LPTIP with
+the rate-monotonic priority assignment if the following equa-
+tion can be satisfied:
+X
+taski∈HPCkj
+(
+ci
+pi
+) +
+bj
+pj
+× (ξj +1) ≤ m(21/m − 1)×RCk, (2)
+where bj , ξj, m, and RCk are the worst case blocking time,
+the number of semaphores locked by taskj, the number of
+tasks in HPCkj , and the processor speed of LPk, respectively.
+Proof The correctness of this schedulability analysis fol-
+lows directly from Theorem 3 and Lemmas 3, 4, 5, and 6.
+
+Remark 1. The concept of “priority cap” [5] proposed by
+Kuo and et al can be used to reduce the number of priority
+inversions.
+0 ! '"! 
+This work is motivated by the needs of proper task syn-
+chronization protocols for SMT systems. We ﬁrst show that
+multiprocessor task synchronization might not ﬁt the design
+of SMT systems. We then propose the concept of “LP-Time
+Inheritance” to manage the period of blocking time without
+signiﬁcantly decreasing the level of task parallelism. The
+goal is to balance the task execution parallelism and the
+number of priority inversion for each task. The properties
+of the protocol are presented. The well-known PCP is taken
+as an example to illustrate the ideas. The schedulability
+tests for the proposed protocols are also presented.
+1 *2** *
+[1] R. Rajkumar, L. Sha, J. Lehoczky. “Real-Time
+Synchronization Protocols for Multiprocessors,” IEEE
+Real-Time Systems Symposium, pp. 259–269, 1988.
+[2] L. Sha, R. Rajkumar, J. Lehoczky. “Priority
+Inheritance Protocols: An Approach to Real-Time
+System Synchronization,” IEEE Transaction on
+Computers, vol. 39, pp. 1175–1185, 1990.
+[3] T. P. Baker. “Stack-based scheduling of real-time
+processes,” Journal of Real-Time Systems, vol. 3, pp.
+67–99, March 1991.
+[4] D. M. Tullsen, J. L. Lo, Susan J. Eggers, H. M. Levy.
+“Supporting Fine-Grained Synchronization on a
+Simultaneous Multithreading Processor,”
+International Symposium on High Performance
+Computer Architecture, pp. 54–58, 1999.
+[5] T. W. Kuo, J. Wu, H. C. Hsih. “Real-Time
+Concurrency Control in a Multiprocessor
+Environment,” IEEE Transaction on Parallel and
+Distributed Systems, vol. 13, pp. 659–671, 2002.
+[6] Microsoft Corporation. “Windows Support for
+Hyper-Threading Technology,” White Paper, 2003.
+[7] The Linux Kernel Archives. “The Stable Linux Kernel
+2.6.9,” www.kernel.org.
+[8] P. Gai, G. Lipari, M. D. Natale. “Minimizing Memory
+Utilization of Real-Time Task Sets in Single and
+Multi-Processor Systems-on-a-chip,” IEEE Real-Time
+Systems Symposium, 2001.
+[9] S. W. Lo, T. W. Kuo, K. Y. Lam. “Real-Time Task
+Scheduling for SMT Systems,” IEEE Real-Time
+Computing Systems and Applications, 2005.
+A Preditable Cahe Design for CMP and SMT Proessors
+ABSTRACT
+Simultaneous multithreading (SMT) and chip-multiprocessor
+(CMP) are currently two important trends in the design of
+processors. As the processor executes more than two pro-
+grams simultaneously, these programs will compete keenly
+for the use of the cache. This makes it more difficult to pre-
+dict the worst case computation time (WCET), and might
+even lead to an overall low efficiency in certain circum-
+stances. Even though the traditional cache partitioning
+method can solve the foregoing two problems, it reduces the
+utility rate of the cache as well as the performance of the
+processor. The method presented in this paper allows the
+processors to share the cache without affecting each other.
+This method could enhance the utility rate of the cache to
+xx%, and reduce the interaction of the processors to xx%.
+Categories and Subjet Desriptors
+D.4.1 [Process Management]: Modeling and prediction;
+D.3.3 [Design Styles]: Cache memories; C.3 [ SPECIAL-
+PURPOSE AND APPLICATION-BASED SYSTEMS]:
+Real-time and embedded systems
+General Terms
+Algorithms, Design, Performance
+Keywords
+Worst Case Execution Time (WCET), Real-time Operating
+System, Dynamic Cache Partitioning, Simultaneously Mul-
+tithreading (SMT), Chip Multiprocessor (CMP), Embedded
+System
+1. INTRODUCTION
+The technologies of SMT [17]/CMP [18] (chip-multithreading
+, CMT [20]) have already been proved to be effective and
+power-saving designs [14, 15, 16]. Both these two technolo-
+gies utilize the simultaneous processing technology for en-
+hancing efficiency. The difference between SMT and CMP
+lies in that SMT nearly shares all the hardware resources,
+while the CMP shares only the hardware resources under
+level-1 cache. With the same hardware limitation (i.e., the
+limitation of die size), SMT could enhance the utility rate
+of hardware resources more effectively, while CMP could
+possess better scalability. In the recent researches, it’s indi-
+cated that the mixed design of SMT and CMP is the better
+choice [?, 19, 20].
+The traditional cache design is continuously used in most
+of the SMT/CMP processors. However, the memory refer-
+ence string (MRS) of SMT/CMP processors is largely dif-
+ferent from the MRS of the traditional super-scalar/pipeline
+processors. In the instruction level, as SMT/CMP mix the
+MRS from different programs, the spatial locality and tem-
+poral locality decrease. The multiprogramming technology
+of the operating system (OS) could also process several pro-
+grams simultaneously. However, for most of the OS, context
+switches occur only about 10 ∼ 1, 000 times per second. In
+comparing with SMT/CMP, the influence of OS on temporal
+locality and spatial locality is quite small.
+For system designer, the influences of the changes of lo-
+cality could be seen from three aspects. First of all, WCET
+becomes very unpredictable. To date, there are lots of re-
+searches on the cache behaviors of inter-process [5, 21, 22]
+and intra-process [23, 24], and on how to evaluate theWCET
+in these two situations. There are researches on how to
+“roughly” evaluate the WCET in SMT/CMP [3, 4]. As the
+evaluation of WCET is the foundation of many embedded
+systems and real-time systems, this will cause difficulties
+in the design of software. Secondly, the simultaneous pro-
+cessing in the instruction level might result in thrashing [3].
+When thrashing occurs, as a great number of cache misses
+may be caused in the processor, the number of the instruc-
+tions completed per second may reduce suddenly. When
+the working sets of the simultaneous processing programs
+map to the same cache lines in the cache, as these pro-
+grams will overwrite the working sets of each other, it may
+lead to thrashing. Technicians have found that in executing
+SQL Server and Citrix Terminal Server in the Intel Pentium
+4/Xeon with hyper-threading enabled, the efficiency of the
+system will be significantly reduced under heavy load. The
+reason for the reduction in performance/throughput lies in
+that the specialties of SMT processor are not taken into
+account in the design of cache[25]. Besides, a malicious pro-
+gram could also paralyze the computer by causing thrash-
+ing (microarchitectural denial of service [10]). Thirdly, gen-
+erally, in OS, it’s assumed that every logical/simple pro-
+cessor (mini-processor, mini-p) in the SMT/CMP proces-
+memory). When the cache controller brings the data from
+low-level memory system to level 1 cache, the newly-brought-
+in data will be located in a cache line of the corresponding
+cache set in the following sequence: 1. The declared-dead
+cache line of the corresponding cache set in the sub-cachei
+2. The declared-dead cache line of the corresponding cache
+set in the sub-cachej(j 6= i) 3. The newly-brought-in data
+will replace the LRU data in the corresponding cache set of
+the sub-cachei. In order to maximize the hit probability of
+the lst-access, the system will try to locate the MRU data
+of the mini-pi in sub-cachei [7].
+3.3 Considerations about Real-TimeComput-
+ing
+The accurate computation of WCET is the foundation of
+many real-time scheduling algorithms (i.e., EDF, RM [13]).
+The sharing of hardware resources will make it even more
+difficult to compute theWCET. The difference between SMT
+and CMP lies in that simultaneous processing programs
+share the hardware resources in different degrees. The SMT
+processor share almost all the hardware resources unrelated
+to the context. Currently, there are papers on how to share
+these hardware resources so that the program with higher
+priority could complete its work with more hardware re-
+sources. However, the focuses of these papers are limited to
+the pipeline-like hardware resources. For the memory-like
+hardware resources, generally, either no control or fully par-
+tition is made. The simple processors in the CMP share only
+the lower level memory system. Therefore, the major con-
+cern of CMP in the aspect of real-time computing support is
+how to share the cache among the simultaneous processing
+programs.
+As there is no knowing of how the cache memories are
+shared by the mini-processors (in an SMP or CMP proces-
+sors) during the execution phase, in the estimation of WCET
+(i.e., profiling phase), we restrain the program processing in
+mini-pi to use only the cache memory sub-cachei. In the
+profiling phase, the advantages of sharing cache memory
+are not taken into account. However, in practical appli-
+cation (i.e., execution phase), as the system often contains
+real-time and non-real-time applications, the surplus slack
+time could be used to improve the QoS, or turn the proces-
+sor into power-saving mode. Furthermore, the cache sharing
+algorithm proposed in this paper can be extended easily to
+allow every sub-cache to have different sizes. As it’s indi-
+cated in the research of [26], giving the programs of different
+priorities with different sub-cache sizes will contribute to en-
+hancing the QoS of the system.
+4. CONCLUSION
+In this paper, we have first brought up the problems that
+might be caused by the cache sharing in SMT and CMP.
+Thus, we present a new cache-sharing algorithm. In SMT,
+we strengthen the predictability of every program. As for
+CMP, we permit different simple processors to share the
+cache. From the experiment, it’s shown that this method is
+indeed very efficient.
+Concerning the future researches, in hardware, we hope
+that we could integrate the concepts of predictable cache and
+cache decay [1] at the same time to enhance the utility rate
+of the cache, and reduce the power consumption. Moreover,
+maybe it’s also possible to have the data memory system and
+instruction memory system share the same cache memory
+so as to enhance the efficiency. Finally, we hope that we
+could develop an innovative technology to have the processor
+(including core and cache memory) support the QoS more
+adequately and also reduce the gap between WCET and
+average-case execution time (ACET).
+5. REFERENCES
+[1] S. Kaxiras, Z. Hu, and M. Martonosi. Cache decay:
+exploiting generational behavior to reduce cache
+leakage power. In Proc. of the 28th annual Int’l Symp.
+on Computer Architecture (ISCA’01), pages 240-251,
+2001.
+[2] David A. Wood, Mark D. Hill, R. E. Kessler. A model
+for estimating trace-sample miss ratios. In Proc. of the
+1991 ACM SIGMETRICS, pages 79-89, 1991.
+[3] Seongbeom Kim, Dhruba Chandra, Yan Solihin. Fair
+Cache Sharing and Partitioning in a Chip
+Multiprocessor Architecture. In Proc. Of the 13th
+Int’l. Conf. on Parallel Architecture and Compilation
+Techniques (PACT’04), pages 111-122, 2004.
+[4] Francisco J. Cazorla, Alex Ramrez, Mateo Valero,
+Enrique Fernndez. Dynamically Controlled Resource
+Allocation in SMT Processors. In Proc. Of the 37th
+Symp. On Microarchitecture (MICRO-37’04), pages
+171-182, 2004.
+[5] Y. Tan ,V. Mooney. WCRT Analysis for a
+Uniprocessor with a Unified Prioritized Cache. In
+Proc. of the 2005 ACM SIGPLAN/SIGBED Conf. on
+Languages, Compilers and Tools for Embedded
+Systems (LCTES’05), pages 175-182, 2005.
+[6] Z. Hu, S. Kaxiras, M. Martonosi. Timekeeping in the
+memory system: predicting and optimizing memory
+behavior. In Proceedings of the 29th annual int’l symp.
+on Computer architecture (ISCA’02), pages 209-220,
+2002.
+[7] A. Agarwal, S. D. Pudar. Column-associative caches:
+A technique for reducing the miss rate of
+direct-mapped caches. In Proc. of the 20th Int’l.
+Symp. on Computer Architecture (ISCA’93), pages
+169-178, 1993.
+[8] S. Chappell, J. Stark, S. Kim, S. Reinhardt, Y. Patt.
+Simultaneous subordinate microthreading. In Proc. of
+the Int’l. Symp. on Computer Architecture (ISCA’99),
+pages 186-195, 1999.
+[9] James R. Bulpin, Ian A. Pratt. Multiprogramming
+Performance of the Pentium 4 with Hyper-Threading.
+In the Third Annual Workshop on Duplicating,
+Deconstructing and Debunking (WDDD2004), pages
+53-62, 2004
+[10] Dirk Grunwald, Soraya Ghiasi. Microarchitectural
+denial of service: insuring microarchitectural fairness.
+In Proc. of the 35th Annual Int’l. Symp. on
+Microarchitecture (Micro’02), pages 409-418, 2002.
+[11] Alex Settle, Joshua L. Kihm, Andrew Janiszewski,
+Daniel A. Connors. Architectural Support for
+Enhanced SMT Job Scheduling. In Proc. Of the 13th
+Int’l. Conf. on Parallel Architecture and Compilation
+Techniques (PACT’04), pages 63-73, 2004.
+[12] Yan Meng, Timothy Sherwood, Ryan Kastner. On the
+Limits of Leakage Power Reduction in Caches. In
+Proc. Of Int’l. Symp. On High-Performance Computer
+Architecture (HPCA-11), pages 154-165, 2005.
+ 附件三: 出席國際學術會議心得報告 

@@ -1,0 +1,780 @@
+  
+中文摘要 
+稀疏矩陣運算經常應用在科學與工程
+的研究上，例如稀疏矩陣向量積(SpMV)等運
+算。因此，如何在提昇運算效能上，又能減
+少稀疏矩陣的儲存空間，是一個很重要的課
+題。近年來，由於圖形處理器(GPU)具備高
+速運算及價格合理的特性，利用圖形處理器
+之硬體優勢以達成高效率的稀疏矩陣運算
+策略陸續被提出，這些策略大多以特殊規劃
+的儲存格式並搭配合適的演算法來達成高
+效能運算的目的。其中最受關注的儲存格式
+為 ELLPACK-R，然而許多研究在討論如何
+提昇稀疏矩陣向量積之效能，而非它所佔用
+的儲存空間。本研究提出了一個稱為 JAD-R
+的混合儲存格式與對應之演算法，它以 JAD
+節省資料儲存空間的格式為基礎，結合
+ELLPACK-R 適用於高速運算的特性，讓它
+在儲存空間與運算時間上取得一個折衷點。 
+ 
+關鍵詞：圖形處理器、稀疏矩陣、向量積、
+儲存格式 
+ 
+Abstract 
+The sparse matrix computation is often 
+used in scientific and engineering researches. 
+An example is sparse matrix-vector product 
+(SpMV). Thus, it is important to find a useful 
+strategy that performs effective computation 
+with minimal storage requirement.  A graphic 
+processing unit (GPU) has the advantage of 
+high computation speed and low cost.  
+Recently, many data storage formats s 
+associated with their algorithm have been 
+developed for performing sparse matrix-vector 
+product.  Among the format, ELLPACK-R 
+has attracted many attentions. Although its 
+speedup is significant, the format may 
+consume a lot of memory space in many cases. 
+In this research, we propose a data storage 
+format called JAD-R for performing efficient 
+sparse matrix-vector products. It combines the 
+characteristics of the space-saving format JAD 
+as well as the computation-efficient format 
+ELLPACK-R. By applying the format with its 
+associated algorithm, we can achieve the 
+compromise between the storage space 
+requirement and the running time needed by 
+performing sparse matrix-vector products. 
+ 
+Keyword：GPU, sparse matrix, matrix-vector 
+product, storage format 
+ 
+  
+ 
+ 
+3
+列，以配合全域記憶體的存取策略，使得
+GPU內所有的 thread能一次性讀取該陣列的
+資料。此外，以下所對應之矩陣與向量演算
+法，均是設計成每個 thread僅負責一列之運
+算，也就是整個 SpMV 由 M 個 thread 負責
+運算。矩陣可拆解成多筆向量，因此相當於
+每個 thread各自進行向量積運算。 
+ 
+3.1. ELLPACK-R 
+ 
+ 
+圖2. ELLPACK-R儲存格式 
+ELLPACK-R 是 ELLPACK 的一種變
+型，其矩陣壓縮方式與 ELLPACK相同，僅
+增加儲存每列非零元素數量之陣列 RL，如圖
+2 所示。將稀疏矩陣使用行數壓縮，並將壓
+縮後之陣列內，數量不足 N’之列，以補零的
+方式補足，使得 A與 Col_Idx陣列成為矩形。
+圖 3為 ELLPACK-R的 SpMV演算法，因為
+A與 Col_Idx陣列為矩形，因此在第 6、7步
+驟的推算位移量上，僅用 M值來推算下一項
+的資料位置，因此位移量的運算時間上較為
+快速。它與 ELLPACK SpMV演算法的差異
+[6,7]，在於利用 RL 陣列來設定迴圈終止點
+與消去迴圈內避免運算錯誤的分支判斷，讓
+GPU之 block工作提早結束並釋放資源：當
+block 內執行最長的 thread 完成向量積後，
+即可離開迴圈，提早結束 block 的工作，並
+將資源釋出給尚未執行的 block；而
+ELLAPCK 則是每個 block 的迴圈終止點設
+置為 N’，不僅延長整個 block的運算時間，
+且會有部份時段並無運算向量積。 
+ 
+ 
+圖3. ELLPACK-R SpMV演算法 
+ 
+3.2. JAD 
+ 
+ 
+圖4. JAD儲存格式 
+JAD 是一種類似 CSR 的儲存格式[6,8] 
+如圖 4所示。JAD在壓縮之前，會依每列的
+非零元素數量，以非遞增的方式重新整理列
+的順序，第一列擁有最多的非零元素，數量
+依序遞減，並將重整的順序記錄至 Permu陣
+列，之後才開始行數壓縮的動作；另一個主
+A
+1 5 2
+2 1
+3 2
+4
+0 1 3 
+0 2  
+1 2  
+2   
+1 5 0 2
+2 0 1 0
+0 3 2 0
+0 0 4 0
+New Sparse Matrix Permu
+1 
+0 
+3 
+2 
+Col Idx 
+Ptr
+0 
+4 
+7 
+8 
+Input：M, N’, A, Col_Idx, RL, X, Y  
+Output：Result Y of multiplication  
+01. tid = blockDim.x × blockIdx.x + threadIdx.x 
+02. If tid＜M then 
+03.   sum = 0 
+04.   rl = RL[tid] 
+05.   For i = 0 to rl  
+06.     val = A[i × M + tid] 
+07.     col = Col_Idx[i × M + tid] 
+08.     sum += val × X[col] 
+09.   End For 
+10.   Y[tid] = sum 
+11. End If  
+A Col Idx 
+2 1 0 
+1 5 2 
+4 0 0 
+3 2 0 
+0 2 0 
+0 1 3 
+2 0 0 
+1 2 0 
+RL
+2
+3
+1
+2
+  
+ 
+ 
+5
+ELLPACK-RP 的壓縮特點在於執行行
+數壓縮前，先使用 JAD的矩陣重整，將非零
+元素數量較多的集中至陣列上方，而後續的
+動作與 ELLPACK-R相同，儲存空間上也僅
+增加了 Permu陣列。這種重整的方式看似負
+載不均，運算量較多的列被集中至矩陣上方
+的 block運算，但矩陣下方的 block卻分配到
+運算量少的列數，以致下方的 block 得以提
+早結束工作，並將資源釋放給尚未工作的
+block。在隨機的稀疏矩陣下，ELLPACK-RP
+對 ELLPACK-R 幾乎都能獲得加速比 1.5～
+1，僅有少部份的情況會慢於 ELLPACK-R 
+[8]。然而，該研究並無探討為何會出現慢於
+ELLPACK-R的現象。 
+由於本研究已定義每個 thread負責一列
+的向量積，因此本研究修改 ELLPACK-RP
+對應之 SpMV 演算法，其演算法的架構與
+ELLPACK-R 相同，差異在於 Input 增加
+Rermu陣列，並在第 10步驟中，將 Y[tid]修
+改成 Y[Permu[tid]]。  
+ 
+四、研究方法 
+ELLPACK 系列在經過行數壓縮後，以
+補零的方式來維持矩形，倘若出現資料極端
+分佈的狀況，可能結構內會有多數的空間都
+被零元素佔用；零元素在向量積上，僅為了
+獲得高速的位移量推算而存在，其資料本身
+不會在向量積上進行運算；ELLPACK-RP設
+計重點，在於避免因資料分佈方式而影響運
+算效能，因而採用 JAD的矩陣重整。本研究
+提出了一個稱為 JAD-R 的儲存格式與對應
+之 SpMV 演算法，它以 JAD 為基礎，混合
+ELLPACK-R的結構與運算特性。 
+在 JAD 的 SpMV 演算法中可以發現，
+第 4 步驟迴圈終止點與第 6 步驟的分支判
+斷，將會影響運算時間，且該現象與
+ELLPACK之 SpMV演算法所遭遇的狀況相
+同。因此本研究比照 ELLPACK-R的改良特
+色，在 JAD的結構上，增加記錄每列非零元
+素數量的 RL 陣列，因此儲存空間上僅增加
+該陣列，並將 ELLPACK-R之 SpMV架構混
+合至 JAD 的 SpMV 演算法上，成為 JAD-R
+的 SpMV演算法。 
+然而，JAD-R最致命的位移量推算仍尚
+未解決。由於 JAD 的架構，無法使用
+ELLPACK 系列的位移量推算技巧。但由計
+算過程中發現，GPU warp 內所有 thread 都
+在同一時間讀取 Ptr 陣列內相同的位置。既
+然 thread都存取同一個記憶體位置，本研究
+將 Ptr 陣列儲存至共享記憶體內，利用共享
+記憶體的廣播特性與媲美於暫存器的存取
+延遲，加速位移量的推算，如圖 7。 
+TpB 是每個 block 內 thread 之數量，由
+於 block 的共享記憶體有限，無法完全儲存
+Ptr 陣列，因此本研究將 Ptr 陣列，以 TpB
+為單位切割成數份區段，並採用雙重迴圈的
+方式進行運算：內層的迴圈負責一般的向量
+積，一旦該列的向量積運算結束，抑或是該
+份的 Ptr 陣列區段已使用完畢，則會離開迴
+圈；外層的迴圈則是將一份 Ptr 陣列區段複
+製到共享記憶體，由每個 thread負責一筆資
+料，共有 TpB筆資料。此外，由於 block內
+所有的 thread 負責複製資料，即便有 thread
+完成向量積運算，但仍必須進行 Ptr 陣列複
+製工作，已協助其他 thread完成運算。 
+以巨集宣告 TpB 的原因，在於 CUDA
+比較適合執行單精準度浮點數運算，對於處
+理整數除法或模除(mod)運算，需要較多的執
+行週期才可完成，因此程式設計上應盡量避
+免或改用位元運算代替，例如 TpB為 2的次
+方倍，則(C / TpB)與(C>>log2TpB)、(C mod 
+TpB)與(C & (TpB-1))是等價的，若 TpB在程
+式中已固定為 2的次方倍，則編譯器會自動
+進行上述轉換，以減少執行開銷[9]。原則
+上，block 內的 thread 數量，會設置成 warp
+的倍數，以滿足最大的運算能力。由於稀疏
+  
+ 
+ 
+7
+[4] S. Ryoo, I. Rodrigues, S. Stone, S. 
+Baghsorkhi, S. Ueng, and W. Hwu, 
+“Program Optimization Study on a 
+128-Core GPU.” The First Workshop on 
+General Purpose Processing on Graphics 
+Processing Units, October 2007. 
+[5] S. Ryoo, I. Rodrigues, S. Stone, S. 
+Baghsorkhi, S. Ueng, A. Stratton, and W. 
+Hwu “Program Optimization Space 
+Pruning for a Multithreaded GPU.” 
+Proceedings of the International 
+Symposium on Code Generation and 
+Optimization”, April 2008. 
+[6] A. Wafai, “Sparse Matrix-Vector 
+Multiplications on Graphics Processors.” 
+http://elib.uni-stuttgart.de/opus/volltexte/2
+010/5033/pdf/DIP_2938.pdf. 
+[7] N. Bell, and M. Garland,” Efficient Sparse 
+Matrix-Vector Multiplication on CUDA”, 
+December 2008. 
+[8] W. Cao, L. Yao, Z. Li, Y. Wang, and     
+Z. Wang. “Implementing Sparse 
+Matrix-Vector Multiplication using CUDA 
+based on a Hybrid Sparse Matrix Format”, 
+November 2010. 
+[9] 張舒, 褚艳利, 趙開勇, 張鈺勃, “GPU
+高性能運算之 CUDA”, 2009. 
+ 
+六、計畫成果自評 
+因為稀疏矩陣一直都是科學與工程計
+算上的要角，再加上 GPU 所帶來的高速平
+行處理特性，因此有許多研究探討如何提昇
+稀疏矩陣的運算效能。本研究提出一個稱為
+JAD-R的混合儲存格式，該格式不僅考慮運
+算效能的提昇外，更考量在相同的運算效能
+下，節省到更多的儲存空間。目前本研究將
+探討不同的矩陣壓縮形狀，對於各種儲存格
+式的儲存空間、SpMV運算效率所造成的影
+響，篩選出各種儲存結構最為合適的應用範
+圍。 
+ 
+ 
+圖8. 各種儲存格式運算 SpMV之時間 
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+                                    日期：100 年 11 月 25 日 
+                 
+一、參加會議經過 
+ 
+在會議前一天下午台北時間下午二點半左右搭長榮航空的飛機前往澳門參加學術研討會，因為是
+直飛且路途近，所以大約兩小時就到達目的地，出海關提取行李後，得知研討會舉辦地點(也就是我未
+來幾天住宿的地點)威斯登酒店沒有提供機場酒店之間的穿梭巴士，又不想等久久才一班的巴士，只好
+搭乘計程車前往。到了酒店才知這是一間沒有賭場的五星級大飯店，大概是怕我們沉迷於賭博而遺忘
+了上台報告，因此特別找了這家飯店。雖然如此，但我認為位於島南邊的這家酒店，旁邊就是著名的
+黑沙灘風景區，可能是沙灘地處偏遠，觀光客不多，是非常適合舉辦研討會的地方。此研討會共舉行
+三天，有兩到三個 parallel tracks，但大會沒有安排任何參訪活動，我的報告被安排在會議第一天
+的下午第一場報告。第一場的報告者皆有出席，共有講者 6人，有來自紐西蘭、芬蘭、台灣、韓國。
+每人報告 15 分鐘含 Q&A，session chair 為日本來的教授，對會議時間的掌控非常嚴謹，絕對要求講
+者在時間內完成報告，不可壓縮到他人的時間，在本論文中，我們將提出工作分配到 H系統的演算法，
+演算法的策略是以減少等待資源所造成的浪費為出發點，透過演算法事先決定混合型工作的排入順
+序，使得各項資源達到更有效的利用，進而降低完成所有工作所需的時間。我們透過模擬的方式來驗
+證我們演算法在不同數目運算核心 H系統下的效果，在多數的情況下我們演算法都比其它演算法來的
+好，並取得最高 19.4%的平均加速比。在報告的過程中順利，雖有幾張投影片跳過，但應不至於影響
+聽者對整體的理解。報告完後有兩人舉手提問，但因時間關係，session chair 只讓其中一人現場問，
+第一個問題是詢問有關測試資料的取得的問題，這是一個只要是有測試數據的論文一定會被提問的問
+題。因時間不夠，第二個問題 session chair 則希望我們自行找時間解決，我利用第二場 keynote speech
+的時間找到剛好坐在我旁邊的提問者，到飯店大廳討論，他提出為何 GPU 的排程不能利用既有的為許
+多異質運算系統所設計的排程演算法，而需另外再設計，我提出我的看法，而我也從他那裏獲得許多
+有用建議。下午的 sessions 結束後就有連續兩場 keynote speeches。只聽了第一場是由 Prof Wang 講
+有關於研究者在追求一個真理時可能面對的絆腳石與如何去克服它，Prof Wang 是來自美國 Department 
+of Electrical and Computer Engineering, Duke University 的教授。過來的第二天和第三天的皆
+是對有興趣的論文到不同場次聽講，並在第二天傍晚自行到鬧區的古蹟的欣賞並在晚上觀賞大型劇
+場，回國的飛機是第三天的中午，登機手續相當快速，因此第三天早上也可聽一下論文發表，不到兩
+個小時就回到桃園機場。 
+ 
+計畫編號 NSC 99-2221-E-197-015 
+計畫名稱 於通用圖形處理器執行無結構運算所需的資料佈局策略之研究 
+出國人員
+姓名 林作俊 
+服務機構
+及職稱 
+國立宜蘭大學電子系 
+教授 
+會議時間 2011年10月24日至 2011 年 10 月 26 日 會議地點 澳門 
+會議名稱 
+(中文)第五屆資訊科學與服務科學國際研討會  
+(英文)The 5th International Conference on New Trends in Information Science 
+and Service Science 
+發表論文
+題目 
+(中文) 具 GPU 的多核心異質系統之排程演算法 
+(英文) A Scheduling Algorithm for GPU-Attached Multicore Hybrid Systems 
+ Invitation Letter
+Name#1 : CHO-CHIN LIN / Relation : Author 
+Paper#1 ID : NISSRS01-017006O / Title : A Scheduling Algorithm for GPU-Attached Multicore Hybrid Systems 
+- Conference Venue: The Westin Resort Hotel 
+   (http://www.starwoodhotels.com/westin/index.html)
+   The Westin Resort Hotel
+   1918 Estrada de Hac Sa, P.O. Box 1429, Coloane, Macau
+Dear Prof. CHO-CHIN LIN 
+The Program Committee of The 5th International Conference on New Trends in Information Science and Service Science 
+(NISS) is pleased to invite you to attend and/or present your paper(s) in our conference to be held on October 24 - 26, 2011, 
+Venetian, Macao. 
+As you may know, NISS is a premium international conference on all areas related to the Theory, Development, 
+Applications, Experiences and Evaluation of Networked/Ubiquitous Computing and Advanced Information Management. 
+NISS gathers fellow students, researchers, and practitioners from these areas.
+In this year, over 300 scholars/researchers from more than 30 countries will participate in 2 workshops and 3 invited 
+sessions touching the various aspects of Networked/Ubiquitous Computing, Content and Multi Media and Advanced 
+Information Management. The NISS will be held in Macao. We appreciate your contribution to NISS and are ready to 
+manage the publication of your paper titled as 'A Scheduling Algorithm for GPU-Attached Multicore Hybrid Systems' in the 
+conference proceedings. If you have any questions or concerns, or if I may be of assistance in any way, please do not 
+hesitate to contact me.
+Dr. Franz Ko,
+General Chair, NISS2011
+President, AICIT
+Program Committee of NISS2011 
+                                   
+  
+2011-09-30 
+Address: 707, Seokjang-dong, Gyeongju-si, Gyeongbuk, 780-741, Korea(Rep. of) 
+Registration Number: 505-10-96301 
+TEL: +82-70-7730-2833 
+proposed to increase the utilization of streaming processors
+and to reduce memory access latency. The first principle
+suggested that an enough number of threads needs to be built
+for thread-level parallelism and explained how to have good
+use of on-chip memory to reduce bandwidth pressure. The
+second principle suggested programmers to use loop unrolling,
+prefetching and some traditional optimization techniques to
+balance instruction stream efficiency and hardware utilization.
+A kernel segment is a code designed for performing work on
+a GPU and a core segment is a code designed for performing
+work on one core of a multicore processor. A concurrent
+segment which combines a kernel segment and a core segment
+is a work piece to be performed at a core and a GPU
+simultaneously. A task consists of a sequence of core segments
+and concurrent segments is defined as a complex task. The
+researches made in [2], [3], [4], [8], [9] focused on enhancing
+system performance either by optimizing kernel segments or
+by selecting a segment of appropriate type for a piece of
+work. Our research focus on developing an effective strategy
+of scheduling a set of complex tasks on H system.
+III. MODEL
+In this section, a work load model which is used to charac-
+terize task features is provided and a computing model which
+defines the operation capability of H system is also given.
+A. Work Load Model
+A complex task consists of several stages of two distinct
+computation characteristics. Each stage performs either a core
+segment routine or a concurrent segment routine. A core
+segment is a piece of code to be executed on one core and a
+concurrent segment is the one to be executed on one core and
+one attached device concurrently. The work of a complex task
+proceeds alternately between core segments and concurrent
+segments. Let τi be the ith task in a task set of size n,
+where 0 ≤ i < n. For a task τi with s segments, the
+start and end time points of the jth segment routine, where
+1 ≤ j ≤ s, is denoted as τi j−1 and τi j , respectively. Thus,
+task τi can be modeled using a sequence of s ending time
+points (τi1, τi2, τi3, · · · , τi s). The weight of task τi is τi s.
+Similarly, the weight of the jth work segment of task τ i is
+τi,j − τi,j−1. Note that τi 0 is zero and τi j is not the exact
+time but a relative time to τi 0. Since the work performed at
+an attached device is initialized by a core, the first segment
+must be a core segment. A special type of task which does not
+perform any concurrent work is called a simple task. A work
+load to a GPU-attached multicore hybrid system is a task set
+consisting of simple and complex tasks.
+B. Computing Model
+An H(c, d) system is a hybrid computing system which
+consists of c processing cores built in the CPUs of the
+system and d attached processing devices such as GPUs.
+The computations performed at an attached device must be
+launched by a processing core. After the device agrees to
+accept the work passed from the core, the core and the
+Algorithm DO1(T , A)
+1. (D, C)← TaskClassification(T )
+2. D′ ← MakeList(D, ”start-time”, ”non-decreasing”)
+3. A← MapToCore(D′ , A, ”earliest-complete”)
+4. C′ ← MakeList(C, ”weight”, ”non-increasing”)
+5. A← MapToFreeSlot(C′ , A, ”earliest-complete”)
+EndDO1
+Fig. 1. Algorithm DO1 for H(c, 1) system
+device perform their assigned computations asynchronously.
+The computations performed at any device may be initialized
+by different cores. In H(c, d) system, any task is not allowed
+to preempty any other ongoing task. That is, the ongoing task
+will hold the processing core (device) until it does not need the
+core (device) in the future. Given a set of complex tasks, the
+scheduler of H(c, d) system is responsible for mapping each
+complex task to a core-device pair. In this paper, we assume
+all processing elements (cores or devices) possess the same
+computing capability.
+IV. TASK SCHEDULING ON H(c, 1) SYSTEM
+In this section, a scheduling algorithm for mapping tasks H
+system is proposed first. Then, an example is given to clarify
+the steps in the algorithm.
+A. Scheduling Algorithm
+Our scheduling algorithm uses two phases for mapping a
+task set consisting of simple and complex tasks to the H(c, 1)
+system. We target the complex tasks with one concurrent
+segment. In the first phase, the complex tasks are sorted into
+a list in non-decreasing order using the start time of the
+concurrent segment as the key. Then, the complex tasks are
+scheduled to a core-device pair one by one from the head
+of the list using earliest complete time strategy. After the first
+phase, many free time slots may be found during the execution
+of the cores. In the second phase, the simple tasks are sorted
+into a list in non-increasing order using the task weight as
+the key. Then, the simple tasks are scheduled to the free time
+slots of the cores using earliest complete time strategy. Let
+A = [aij ] be a matrix which indicates the assignment of
+tasks to processing units. Note that processing units include
+all the c cores and one attached device. The size of matrix
+A is r × t, where r is the number of cores plus one and t
+is equal to the number of total tasks. If ahi = (x, y) then
+the hth processing unit is assigned to task τi during the time
+period [x, y). Our algorithm accepts two input parameters: a
+set of tasks T and assignment matrix A. The steps employed
+by our algorithm DO1 (device-oriented for 1 device) is given
+in Figure 1. The algorithm has five steps. In the first step,
+function TaskClassification partitions task set T to two task
+sets D and C. Each of the tasks in group D needs the device
+and a core to complete its work but the tasks in group C
+only needs cores to complete their work. Note that we only
+consider the complex tasks with one concurrent segment in
+this paper. Thus, a complex task τi in D is represented by a
+- 27 -
+segments 1st core concurrent 2nd core
+f -type 4-6 2-4 1-2
+m-type 1-2 4-7 1-2
+b-type 1-2 2-4 4-6
+simple-task 2-7 0 0
+Fig. 4. The weight ranges for segments of various types
+in C ′ . If there are more than one free time slot to which it can
+fit, then the algorithm selects the slot with the earliest start
+time. The result for assigning tasks τ6 and τ4 are given in
+Figure 3(d).
+V. EXPERIMENTS AND ANALYSIS
+In this section, experiments are conducted in two aspects
+for observing the effectiveness of our scheduling algorithm.
+The first aspect is to compare the performance achievable by
+algorithm DO1 for scheduling complex tasks of specific types.
+The second aspect is to evaluate the performance achievable
+by algorithm DO1 for scheduling the complex tasks of many
+different types included in the same set. The experiments are
+conducted for various numbers of cores using a simulation
+approach.
+A. Sets of Identical Complex Task Types
+The complex tasks in our experiment are classified into
+three categories: front-heavy task, middle-heavy task and back-
+heavy task. They are abbreviated as f -type task, m-type task
+and b-type task. Note that the complex task τi considered
+in this paper has three segments: the first core segment, a
+concurrent segment and the second core segment in sequence.
+Their ending time are τi1, τi2 and τi3. A task of f -type (b-type)
+has most weighted work in its first (second) core segment;
+a task of m-type has most weighted work in its concurrent
+segment. Figure 4 gives the weight ranges for the segments
+of a complex task in various types and that for a simple task
+used in our simulation. The segment weights are generated
+randomly in the ranges defined for their specified types.
+The comparisons on the performances achievable by our
+algorithm applied to the three categories is given in Figure 5.
+The input to the simulator is the set combining simple tasks
+and complex tasks of a specific type. Note that H system
+does not allow a task to be preemptied. That is, a task keeps
+the right of using computing resources (the GPU device and
+CPU cores) if the resources will be used by the task in the
+future. The ratios of complex tasks to total tasks are in the
+ranges of 10% to 89% which are given in the x axis. For
+comparison purpose, an algorithm which randomly selects a
+task and maps the task to one of the cores without employing
+insertion technique is used as the base algorithm. That is, the
+base algorithm maps tasks to cores based on earliest complete
+time first without any predefined sequence. The execution time
+of a task set is denoted as T . Let the execution time of the
+same task set under our scheduling strategy be TDO1. The y
+axis in the figure is the speedup which is defined as the ratio
+of T to TDO1 and it is derived by averaging the speedups
+ıįĺķ
+ıįĺĹ
+Ĳ
+Ĳįıĳ
+Ĳįıĵ
+Ĳįıķ
+ĲįıĹ
+ĲįĲ
+ĲıĦ ĲĶĦ ĳıĦ ĳĶĦ ĴıĦ ĴĶĦ ĵıĦ ĵĶĦ ĶıĦ ĶĶĦ ķıĦ ķĶĦ ĸıĦ ĸĶĦ ĹıĦ ĹĶĦ
+Ŕű
+ŦŦ
+ťŶ
+ű
+œŢŵŪŰ
+ŧĮŵźűŦ ŮĮŵźűŦ ţĮŵźűŦ
+(a) H(2,1) system
+ıįĺĶ
+Ĳ
+ĲįıĶ
+ĲįĲ
+ĲįĲĶ
+Ĳįĳ
+ĲıĦ ĲĶĦ ĳıĦ ĳĶĦ ĴıĦ ĴĶĦ ĵıĦ ĵĶĦ ĶıĦ ĶĶĦ ķıĦ ķĶĦ ĸıĦ ĸĶĦ ĹıĦ ĹĶĦ
+Ŕű
+ŦŦ
+ťŶ
+ű
+œŢŵŪŰ
+ŧĮŵźűŦ ŮĮŵźűŦ ţĮŵźűŦ
+(b) H(3,1) system
+ıįĺĶ
+Ĳ
+ĲįıĶ
+ĲįĲ
+ĲįĲĶ
+Ĳįĳ
+ĲıĦ ĲĶĦ ĳıĦ ĳĶĦ ĴıĦ ĴĶĦ ĵıĦ ĵĶĦ ĶıĦ ĶĶĦ ķıĦ ķĶĦ ĸıĦ ĸĶĦ ĹıĦ ĹĶĦ
+Ŕű
+ŦŦ
+ťŶ
+ű
+œŢŵŪŰ
+ŧĮŵźűŦ ŮĮŵźűŦ ţĮŵźűŦ
+(c) H(4,1) system
+ıįĺĶ
+Ĳ
+ĲįıĶ
+ĲįĲ
+ĲįĲĶ
+Ĳįĳ
+ĲıĦ ĲĶĦ ĳıĦ ĳĶĦ ĴıĦ ĴĶĦ ĵıĦ ĵĶĦ ĶıĦ ĶĶĦ ķıĦ ķĶĦ ĸıĦ ĸĶĦ ĹıĦ ĹĶĦ
+Ŕű
+ŦŦ
+ťŶ
+ű
+œŢŵŪŰ
+ŧĮŵźűŦ ŮĮŵźűŦ ţĮŵźűŦ
+(d) H(5,1) system
+ıįĺĶ
+Ĳ
+ĲįıĶ
+ĲįĲ
+ĲįĲĶ
+Ĳįĳ
+ĲıĦ ĲĶĦ ĳıĦ ĳĶĦ ĴıĦ ĴĶĦ ĵıĦ ĵĶĦ ĶıĦ ĶĶĦ ķıĦ ķĶĦ ĸıĦ ĸĶĦ ĹıĦ ĹĶĦ
+Ŕű
+ŦŦ
+ťŶ
+ű
+œŢŵŪŰ
+ŧĮŵźűŦ ŮĮŵźűŦ ţĮŵźűŦ
+(e) H(6,1) system
+Fig. 5. Comparisons on the performances of various task sets of identical
+types
+- 29 -
+ıįĺĶ
+Ĳ
+ĲįıĶ
+ĲįĲ
+ĲįĲĶ
+Ĳįĳ
+ĲıĦňőŖġūŰţŴ ĵĲĦňőŖġūŰţŴ ķĹĦňőŖġūŰţŴ ĸĴĦňőŖġūŰţŴ ĺıĦňőŖġūŰţŴ
+Ŕű
+ŦŦ
+ťŶ
+ű
+ĸıĻĲĶĻĲĶ ĲĶĻĸıĻĲĶ ĲĶĻĲĶĻĸı ĴĵĻĴĴĻĴĴ ĲıĻĵĶĻĵĶ ĵĶĻĲıĻĵĶ ĵĶĻĵĶĻĲı
+(a) H(2,1) system
+ıįĺĶ
+Ĳ
+ĲįıĶ
+ĲįĲ
+ĲįĲĶ
+Ĳįĳ
+ĲıĦňőŖġūŰţŴ ĴĶĦňőŖġūŰţŴ ĶĲĦňőŖġūŰţŴ ĸĶĦňőŖġūŰţŴ ĺıĦňőŖġūŰţŴ
+Ŕű
+ŦŦ
+ťŶ
+ű
+ĸıĻĲĶĻĲĶ ĲĶĻĸıĻĲĶ ĲĶĻĲĶĻĸı ĴĵĻĴĴĻĴĴ ĲıĻĵĶĻĵĶ ĵĶĻĲıĻĵĶ ĵĶĻĵĶĻĲı
+(b) H(3,1) system
+ıįĺĶ
+Ĳ
+ĲįıĶ
+ĲįĲ
+ĲįĲĶ
+Ĳįĳ
+ĲıĦňőŖġūŰţŴ ĳĵĦňőŖġūŰţŴ ĴĴĦňőŖġūŰţŴ ĶıĦňőŖġūŰţŴ ĺıĦňőŖġūŰţŴ
+Ŕű
+ŦŦ
+ťŶ
+ű
+ĸıĻĲĶĻĲĶ ĲĶĻĸıĻĲĶ ĲĶĻĲĶĻĸı ĴĵĻĴĴĻĴĴ ĲıĻĵĶĻĵĶ ĵĶĻĲıĻĵĶ ĵĶĻĵĶĻĲı
+(c) H(4,1) system
+ıįĺĶ
+Ĳ
+ĲįıĶ
+ĲįĲ
+ĲįĲĶ
+Ĳįĳ
+ĲıĦňőŖġūŰţŴ ĲĹĦňőŖġūŰţŴ ĳĵĦňőŖġūŰţŴ ĵıĦňőŖġūŰţŴ ĺıĦňőŖġūŰţŴ
+Ŕű
+ŦŦ
+ťŶ
+ű
+ĸıĻĲĶĻĲĶ ĲĶĻĸıĻĲĶ ĲĶĻĲĶĻĸı ĴĵĻĴĴĻĴĴ ĲıĻĵĶĻĵĶ ĵĶĻĲıĻĵĶ ĵĶĻĵĶĻĲı
+(d) H(5,1) system
+ıįĺĶ
+Ĳ
+ĲįıĶ
+ĲįĲ
+ĲįĲĶ
+Ĳįĳ
+ĲıĦňőŖġūŰţŴ ĲĶĦňőŖġūŰţŴ ĲĺĦňőŖġūŰţŴ ĴıĦňőŖġūŰţŴ ĺıĦňőŖġūŰţŴ
+Ŕű
+ŦŦ
+ťŶ
+ű
+ĸıĻĲĶĻĲĶ ĲĶĻĸıĻĲĶ ĲĶĻĲĶĻĸı ĴĵĻĴĴĻĴĴ ĲıĻĵĶĻĵĶ ĵĶĻĲıĻĵĶ ĵĶĻĵĶĻĲı
+(e) H(6,1) system
+Fig. 6. Comparisons on the performances of various task sets of different
+types
+boundl peakm cross peakfb boundr
+(70:15:15) (+0,-0) (+0,-4) (0,-4) (+0,-0) (+0,-0)
+(15:70:15) (+5,-0) (+5,-0) (+2,-1) (+0,-5) (+0,-5)
+(15,15,70) (+0,-5) (+0,-1) (+0,-0) (+1,-0) (+0,-0)
+(34,33,33) (+0,-0) (+0,-0) (+1,-0) (+0,-0) (+0,-0)
+(10,45,45) (+0,-0) (+0,-0) (+2,-0) (+0,-0) (+0,-0)
+(45,10,45) (+0,-0) (+0,-0) (+0,-0) (+4,-0) (+5,-0)
+(45,45,10) (+0,-0) (+0,-0) (+0,-0) (+0,-0) (+0,-0)
+Fig. 7. The suitability of Algorithm DO1
+peakm for all core numbers. However, the other combinations
+outperform it at peakfb and boundr for all core numbers.
+VI. CONCLUDING REMARKS AND FUTURE WORK
+Multicore systems incorporated with special computing
+devices such as GPUs emerge the capabilities of meeting the
+computation requirements of many applications. This paper
+has proposed a scheduling algorithm called DO1 for mapping
+tasks to H(c, 1) system such that the device computing facility
+can be effectively utilized. The usefulness of our algorithm has
+also been demonstrated by a simulation approach. It is shown
+that our scheduling algorithm has good performance for the
+tasks running on 2, 3, 4, 5 and 6 cores. In addition, analyses
+have also been made for various combinations of complex task
+types. In the future, we will study the scenario that the tasks
+consisting of multiple concurrent segments are scheduled on
+more than one computing devices.
+ACKNOWLEDGMENT
+This research is supported by National Science Council
+under the grant 99-2221-E-197-015
+REFERENCES
+[1] M. M. Baskaran, J. Ramanujam and P. Sadayappan, ”Automatic C-to-
+CUDA Code Generation for Affine Programs,” Lecture Notes in Computer
+Science, 6011, pp. 244-263, 2010.
+[2] M. Guevara, C. Gregg, K. Hazelwood and K. Skadron, ”Enabling Task
+Parallelism in the CUDA Scheduler,” Proc. the Workshop on Program-
+ming Models for Emerging Architectures, pp 69-76, 2009.
+[3] Y. C. Huang, ”A Two-Stage Task Scheduling Scheme on CUDA Sys-
+tems,” Master Dissertation, Department of Computer Science and Infor-
+mation Engineering, National Cheng Kung University, Tainan, Taiwan,
+2010.
+[4] V. J. Jime´nez, L. Vilanova, I. Gelado, et al, ”Predictive Runtime Code
+Scheduling for Heterogeneous Architectures,” Proc. High Performance
+and Embedded Architectures and Compilers, pp. 19-33, 2009.
+[5] O. Maitre, N. Lachiche and P. Collet, ”Fast Evaluation of GP Trees
+on GPGPU by Optimizing Hardware Scheduling,” Lecture Notes in
+Computer Science, 6021, pp. 301-312, 2010.
+[6] S. A. Manavski and G. Valle, ”CUDA Compatible GPU Cards as Efficient
+Hardware Accelerators for Smith-Waterman Sequence Alignment,” BMC
+Bioinformatics, 2008.
+[7] C. Men, X. Gu, D. Choi, et al, ”GPU-based Ultrafast IMRT Plan
+Optimization,” Physics in Medicine and Biology, pp 6565-6573, 2009.
+[8] S. Ryoo, C. I. Rodrigues, S. S. Stone, et al ”Program Optimization
+Study on a 128-Core GPU,” Proc. the 1st Workshop on General Purpose
+Processing on Graphics Processing Units, 2007.
+[9] S. Ryoo, C. I. Rodrigues, S. S. Stone, et al, ”Program Optimization
+Space Pruning for a Multithreaded GPU,” Proc. the Int’l Symp. on Code
+Generation and Optimization, 2008.
+[10] S. S. Stone, J. P. Haldar, S. C. Tsao, et al, ”Accelerating advanced MRI
+reconstructions on GPUs,” Proc. the Int’l Conf. on Computing Frontiers,
+2008.
+[11] NVIDIA CUDA C Programming Guide, Version 3.2, 2010.
+- 31 -
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：林作俊 計畫編號：99-2221-E-197-015- 
+計畫名稱：於通用圖形處理器執行無結構運算所需的資料佈局策略之研究 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 1 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 2 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

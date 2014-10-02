@@ -1,0 +1,1077 @@
+ I
+Boosting 方法與理論在電腦視覺之應用(2/2) 
+摘要 
+ 
+本計畫第二年的重點，在針對 boosting 演算法進行更深入的研究，尤其著重於多類別
+(multi-class) 的物件的處理上，以及其應用在快速多類型人臉偵測，與手寫數字識別。在
+boosting 演算法應用在人臉偵測的部分，我們提出了分類器共享 (classifier sharing) 的概
+念，亦即多個類型之人臉資料共用相同的分類器之模組，但各個類型均擁有各自最適合的
+分類界線 (decision boundary)，在模組共用下，分類時間可以非常顯著地減少，而各個類別
+有其分類界線，準確率亦可維持，我們提出分類器共享的具體實作之演算法，也在數學理
+論的推導上，提供了演算法分析，錯誤上界 (error upper bound) 的推導證明，因此將其運
+用在開發的偵測系統中，於一般的個人電腦上，我們達成多類型人臉的即時偵測。在手寫
+數字的辨識方面，我們發展了一套適合 boosting 進行多類型分類的架構，由於目前有許多
+強健的分類器，如支持向量機 (SVMs)，基本上僅支援二元分類 (binary classification) 的問
+題，須加上適當的分類架構方可進行多類型分類的工作，而一般較為常用的分類架構為一
+對一  (one-against-one) 架構，一對多  (one-against-all) 架構，錯誤修正輸出碼  (error 
+correcting output code, ECOC)，或有向非循環圖 (directed acyclic graph, DAG) 架構，然而這
+些架構並未將所包含的二元分類器之複雜度列入考量，因此在執行分類的時間並不是最佳
+的，我們提出了最低複雜度優先-有向非循環圖 (lowest cost first-DAG, LCF-DAG) 的架構，
+使用遞迴的方式建立分類架構圖，在 MNIST 數字資料庫進行測試，於相同準確率下，所發
+展的架構執行速度為一對一架構的 8.43 倍，為有向非循環圖架構的 1.83 倍。 
+ 
+關鍵詞：boosting、人臉偵測、手寫字辨識、分類器共享、多類型分類架構。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ III
+ 
+ 
+目錄 
+ 
+摘要………………………………………………………………………………..………I 
+ 
+一、前言 
+ 
+1. 研究目的………………………………………………………………………….………1 
+ 
+2. 文獻探討……………………………………………………………………….…………2 
+ 
+二、研究方法 
+ 
+ 1. 多類型人臉即時偵測系統.........…………...……………………………….……………4 
+  
+  1.1. 定義弱分類器………………………………………….…………….……………4 
+ 
+  1.2. 多類型提昇演算法……………………………………………….……………….5 
+ 
+  1.3. 多類型串接結構……………………….……………………………….…………7 
+ 
+ 2. 手寫數字識別系統…………………………………………….…………………………8 
+ 
+  2.1. 最低複雜度優先-有向非循環圖分類架構………………………...………….....8 
+ 
+三、結果與討論……………………….……….……….……………………………………….10 
+ 
+ 1. 多類型人臉即時偵測.................…………...……………………………….……..……10 
+ 
+ 2. 手寫數字自動識別…………………………………………….……………………..…13 
+ 
+四、計畫成果自評……………………………..……………………………………………..…14 
+ 
+五、論文發表…………………………………..…………………………………………..……14 
+ 
+附件二……………………………………………………………………………………………18 
+ 
+會議心得報告及論文……………………………………………………………………………19 
+ 
+ 
+ 2
+2. 文獻探討 
+近年來國內外關於 boosting 演算法與人臉偵測的研究蓬勃發展，許多電腦視覺的幾個
+重要國際會議中，如 ICCV、CVPR、ECCV，均有相關的論文陸續被發表，因此我們僅對
+多類型人臉偵測及 boosting 演算法相關文獻探討進行探討。根據偵測系統的架構與處理機
+制的不同，我們大致將多類型人臉偵測分成三個類型： 
+第一類型我們稱之為 view-based 系統，在這類型的系統中，每一類型人臉資料被獨立
+地應用在訓練每一類型的分類器，亦即分類器仍用於處理二元分類的問題，而每一類型人
+臉，均有一個分類器針對此類型人臉設計並進行偵測的工作。在給定一影像後，每個分類
+器獨立運作，而偵測的結果，就是所有分類器的聯集，Schneiderman 與 Kanade [28] 在 2000
+年提出一套使用小波 (wavelet) 特徵的 view-based 人臉偵測系統，用於正臉與側臉的偵測，
+此系統有著很高的正確度，在近幾年，也鮮有偵測器有較此系統為高的準確率，另一個例
+子為 Levi 等人 [18] 提出系統，他們的重心則是在強調人臉特徵選取的重要性。然而這個
+類型系統的缺點就是偵測時間過慢，假設我們有 n 個類型的人臉，這類系統需要同時執行
+n 個獨立的二元分類器。 
+第二類型我們稱之為 estimate-before-detect 系統，這類的偵測器利用 n 種類型的人臉間
+的相異性，進行對多型類人臉偵測時的加速。如同 view-based 的系統，此類型系統亦需要
+事先訓練 n 個獨立的二元分類器，然而在一圖形樣版 (pattern) 輸入到系統中時，不論這個
+圖形樣版真為人臉與否，此系統便會對此樣版的類型進行估測，在得到估測結果後，再將
+此樣版分配到與估測結果相對應的二元分類器進行驗證，因此此類型的偵測器，不需要同
+時執行 n 個獨立的二元分類器，只需要對輸入的樣版作一次類別估測，與一次的二元分類，
+這類型的系統代表性作品為，Rowley 等人 [24] 所提出的雙層類神經網路架構，外層類神
+經網路用於估測樣版可能所屬類型估測，內層類神經網路用於後續的驗證工作，此架構能
+用於偵測在影片平面上旋轉的人臉。另一作品為 Jones 與 Viola [11] 所提出，在估測上用
+C4.5 決策樹實作，後續驗證便使用原作者所提出的提昇串接架構 (boosted cascade)，這類
+型方法計算量就簡化成一次類型的估測，再加上一次的二元分類。然而這類型偵測器的缺
+點就是偵測率不高，原因在於多類型的估測不是一簡單的問題，尤其在所須的計算量不能
+太高的要求下，要得到一個高快速及高準確度的類型估測器並不容易達成。 
+第三類型我們稱之為 classifier sharing 系統，相對於 estimate-before-detect 系統, 這類的
+偵測器利用 n 種類型的人臉間的相似性，進行對多型類人臉偵測時的加速。Li 等人 [14] 提
+出了一個金字塔型偵測器 (detector-pyramid)，用於正臉及側臉的偵測，每個偵測器根據自
+身在金字塔中的位置，而決定這個偵測器是由哪些人臉類型共用。我們之前亦提出過分類
+器共享的概念，在 2004 年的論文 [17] 中，一個弱分類器 (weak learner)，根據它萃取的特
+徵在人臉中的位置，這個分類器就由無遮蔽的人臉類型與若干有遮蔽人臉類型共享，因為
+在分類器共用的情況下，此類型的偵測器往往具有比較快的偵測速度，但缺點就是較缺乏
+一般性，例如須要知道側臉類型間，哪間類型比較類似，才可以定得出合理的金字塔，或
+事先必須知道遮蔽類型間的遮蔽區域，才可訂出共用的規則，因此這些方法並無法直接應
+二、研究方法 
+ 
+本計畫中我們主要的考量點，在於發展新的 boosting 演算法用於電腦視覺的應用中，
+在本計畫的第二年度中，我們發展出一套實作分類器共享原則的多類型偵測 boosting 演算
+法，我們將其運用在建立多類型人臉偵測系統上；另一方面，我們也發展出一個適合結合
+多個二元的 boosting 分類器的多類型分類架構，我們將其應用在手寫數字識別系統中，以
+下我們分別針對這二個主題進行說明。 
+ 
+1. 多類型人臉即時偵測系統 
+我們所建立的多類型臉偵測系統，可適於不同多類型人臉偵測的議題，例如側臉偵測，
+旋轉人臉偵測，不同光線變化下的人臉偵測，不同表情下的人臉偵測，以下我們就分若干
+個部分進行敘述： 
+ 
+1.1. 定義弱分類器 
+假設所要偵測人臉類別的集合為 ，以圖二為例，總共要偵測人臉的類型有九類且
+。令
+Γ
+},...,,{ IBA=Γ Γ∈X ，我們定義為 類別的人臉所收集具標記 (label) 的訓練資料為
+，所有人臉的訓練資料則為 。 
+X
+−+ ∪== XXDDX DDyxyxyxD XX )},(),...,,(),,{( ||||2211 ∑Γ∈Γ = X XDD
+ 
+[圖二] 九個要偵測的人臉類別。 
+ 
+假設每一個弱分類器都含有一個投影方向 (因為此類型的弱分類在許多應用中均得到
+不錯的效果，如 [17, 19, 27])，因此所有的弱分類器均可投影每一筆資料至一維的實數空
+間。令所有的投影方向集合為 Φ，針對任一弱分類器之投影方向ψ ，我們將其一維的投影
+空間切割成 m 個等距的區段，即 ，並定義以下的二個索引集合 mkkb 1}{ =
+})(|{)( k
+X
+i
+XX
+i
+X
+k bxDxii ∈∩∈= ++ ψψ , 
+})(|{)( k
+X
+i
+XX
+i
+X
+k bxDxii ∈∩∈= −− ψψ . 
+ 
+因此我們可以經由ψ投影後，將每一類型訓練資料，例如類別 ，表示成二個具權重
+長方圖 (weighted histogram)，也就是在長方圖中的第 個區段的分佈值可分別由下式計算 
+X
+k
+∑
++
+=+
+)(
+)()(
+ψ
+ψ
+X
+ki
+XX
+k iwP  與 ∑
+−
+=−
+)(
+)()(
+ψ
+ψ
+X
+ki
+XX
+k iwP  
+在其中， 為類別 中第 i 筆資料在 boosting 演算法運算中所被維持的權重。在圖三中，)( Xiw X
+ 4
+ [圖四] MBHboost 演算法。 
+ 
+ 
+為了驗證分類器共享概念能否達到降低分類時間且維持正確率的功效，我們就針對所
+有類別的人臉資料 進行測試，一是使用多個二元分類器 (separately training)，每一個分
+類器只針對一個類別的人臉資料作訓練，另一是使用 MBHboost，只訓練出一個可共用的分
+類器 (jointly training)，我們將使用弱分類器的數目和分類錯誤率的關係圖記錄在圖五中，
+二種訓練方式的訓練 (training) 及測試 (testing) 的曲線均有記錄。由圖五我們可以清楚地
+看出，在有著同樣的分類錯誤率 (如 0.1, 0.05, 0.02)，可共用的分類器所需要的弱分類器個
+數遠較獨立訓練時來得少，又因為共用分類器模組的關係，對同一輸入樣版，一個共用的
+弱分類器執行時間並不會比不共用的弱分類器執行時間來得長，因此 MBHboost 所訓練出
+的分類器大幅度地提高了分類速度，在準確率方面，我們亦可從圖五看出，二種訓練方式
+測試時的分類錯誤率大約都收斂至同樣的錯誤率，由此可知，MBHboost 實行分類器共享並
+不會造成最終的準確性下降。 
+ΓD
+ 
+ 
+[圖五] 二種訓練方式的比較。 
+ 6
+出此樣版是否為相對應類型的人臉，圖七中完整地定義多類型串接偵測架構的在給定一圖
+形樣版的測試流程。 
+ 
+ 
+[圖七] 多類型串接偵測架構 (multi-class cascade) 的測試演算法。 
+ 
+2. 手寫數字識別系統 
+ 
+本計畫年度的第二部分研究的重點在於如何將多個二元分類的分類器結合，以利於進
+行多類別 (multi-class) 物件分類，許多強健的分類器本身只能處理二元分類的問題，如支
+持向量機，而在 boosting 中，學習出的分類器是否能處理多元分類，則是受限於所包含的
+弱學習器，若其弱學習器僅能作二元分類，則透過 boosting 演算法學出的分類器亦只能作
+二元分類，在這樣的情況下，多類型分類架構就是一個重要的研究議題，有效率分類架構
+可以利於訓練及測試的進行，在類型數目較大的情況下，這就顯得格外的重要。 
+ 
+2.1. 最低複雜度優先-有向非循環圖分類架構 
+ 
+之前我們介紹過一對多，一對一，與有向非循環圖等分類架構，假設在 n 種目標類別
+的測試情況下，一對一的分類架構須透過 n(n-1)/2 個分類器進行分類；而在一對多的分類
+架構下須經由 n 個分類器進行分類，但每個分類器在訓練時是包含所有 n 種類別的訓練資
+料，因此複雜度或計算量明顯較高；而有向非循環圖等分類架構僅須透過 n-1 個分類器進
+行分類，且每個二元分類器在訓練時只包含二個類別的訓練資料，因此在很多論文的實驗
+結果中，都顯示有向非循環圖分類架構在同準確度的情況下，比一對多與一對一分類架構
+具有更的效率，而我們所提出的最低複雜度優先-有向非循環圖分類架構就是植基於其上。 
+在圖八 (a) 中顯示了一個四類別的有向非循環圖分類架構，對於每一個輸入的圖形樣
+版，於有向非循環圖的分類路徑就是從 root 到其中一個 leaf，也就是輸入的圖形會經過每
+ 8
+ 三、結果與討論 
+ 
+1. 多類型人臉即時偵測 
+ 
+在之前的敘述的 MBHboost，以及多類型串接偵測架構中，我們並沒有限制多類型人臉
+是為何種多類型，亦無限制類型的數量，因此我們的方法是具有廣適性 (general) 的。在人
+臉偵測的議題中，不是僅有側臉偵測受到注視，其他議題，如在影像平面上旋轉的人臉、
+不同光線變化下的人臉、部分被遮蔽的人臉、不同表情的人臉 (如圖九所示)，這些都是人
+臉偵測中具有挑戰性的議題。 
+ 
+ 
+[圖九] 多類型人臉偵測的應用：(a) 旋轉人臉；(b) 不同光線變化下的人臉；(c) 部
+分被遮蔽的人臉；(d) 不同表情的人臉。 
+ 
+為了偵測數種不同多類型人臉偵測，我們收集了許多不同的人臉資料庫，包括
+MIT-CBCL (http://cbcl.mit.edu/software-datasets/FaceData2.html)、AR [20]、PIE 
+[30]、Yale [10]、與一些網路上的人臉影像。在收集非人臉的資料部分，我們收集了一個十
+分龐大的影像集，大約有 20,000 張高解析度的影像，容量約為 3GB，每張影像中均不包含
+人臉。在起始時，每個類型的人臉，均有 10,000 張 24x24 大小正例訓練影像，以及 10,000
+張同大小反例訓練影像。我們總共測試了四種多類型人臉偵測的議題，包含側臉偵測、旋
+轉人臉偵測、不同光線變化下人臉的偵測、與部分被遮蔽的人臉之偵測。我們比較我們的
+方法與 view-based 的方法，準確度上使用 ROC 曲線 (ROC curve) 進行呈現，由圖十中可
+以看出，我們的方法可以達到與 view-based 方法一樣的準確度，在偵測速度上，提出的方
+法比 view-based 方法在四種應用中，約快了 3~5 倍 (如圖十一所示)。圖十二中顯示一些偵
+測的結果。 
+ 10
+  
+ 
+[圖十二] 多類型人臉偵測系統的偵測結果：(a) 側臉； (b) 旋轉人臉；(c) 不同光線入
+射角下的人臉；(d) 部分被遮蔽的人臉。 
+ 
+ 12
+ 14
+ 
+四、計畫成果自評 
+ 
+本計畫為兩年期的研究計畫，總結兩年計畫研究成果，在此期間，我們提出了： 
+1. 新的 boosting 演算法。在計畫的第一年中，我們提出了 BHboost，在其中以
+Bhattacharyya coefficient 來當作選取弱學習器的原則，並證明了在如此的選取原
+則下，可以直接最小化 boosting 演算法中的錯誤上界，在正臉及手寫數字識別
+的應用中，除了改進了分類器的準確性外，並可較 AdaBoost 使用較少的弱學習
+器，因此對於分類速度上也具有提昇的功能。延續 BHboost，我們提出了分類
+器共享的概念，並發展出 MBHboost，在多物件類型的問題中，所有的類型共
+享分類器的模組，但各自有其決策邊界，在提供的理論基礎上，MBHboost 可
+於不損失準確性的情況下，大幅增加了多類型問題的分類速度。 
+2. 即時多類型人臉偵測系統。在發展出 MBHboost 後，我們將其應用在多類型人
+臉偵測問題上，為了可於一般的 PC 上達到即時的偵測，我們提出了多類型串
+接的偵測架構，其中的每一個 stage 上的分類器都是由 MBHboost 所學出，以架
+構的垂直方向來看，stage 分類器從上至下是由簡單至複雜，以水平方向來看，
+每個 stage 中的所有類型均作到了分類器共享的效果，因此在四種多類型人臉偵
+測的議題中 皆可在 PC 上穩定地達到即時執行的速度。 
+3. 自動化手寫數字識別系統。在其中我們提出了手寫數字在經 chamfer distance 轉
+換後的表示法，為了與 BHboost 配合，我們介紹了如何產生由濾鏡組所生成的
+弱學習器，其可萃取全域性及區域性的手寫字特徵，最後在最低複雜度優先-
+有向非循環圖分類架構下，於手寫數字的標竿資料庫 MNIST 中，達到幾乎與
+目前最佳的識別系統相同的準確率，並具有更快的辨識速度。 
+ 
+五、論文發表 
+以下僅列出、執行本計畫所發表之相關論文。 
+1. Yen-Yu Lin, Tyng-Luh Liu, and Chiou-Shann Fuh. “Fast Object Detection with Occlusions,” 
+Appeared in 8th European Conference on Computer Vision, Lecture Notes in Computer Science 
+3021, pp. 402-413, Prague, Czech Republic, May 2004. 
+ 
+2. Yen-Yu Lin and Tyng-Luh Liu, “Shape Recognition Using Fast Boosted Filtering,” Appeared in 
+IEEE International Conference on Image Processing, Genova, Italy, September 2005. 
+ 
+3. Yen-Yu Lin and Tyng-Luh Liu. “Robust Face Detection with Multi-Class Boosting,” Appeared in 
+IEEE Computer Society International Conference on Computer Vision and Pattern Recognition, 
+volume 1, page 679-686, San Diego, CA, USA, June 2005. 
+ 16
+[16] Y.-Y. Lin and T.-L. Liu, “Shape Recognition Using Fast Boosted Filtering,” Proc. Int’l Conf. on 
+Image Processing, 2005. 
+[17] Y.-Y. Lin, T.-L. Liu, and C.-S. Fuh, “Fast Object Detection with Occlusions,” Proc. Euro. Conf. on 
+Computer Vision, vol. 1, pp. 402–413, 2004. 
+[18] R. Lienhart and J. Maydt, “An Extended Set of Haar-Like Features for Rapid Object Detection,” 
+Proc. Int’l Conf. on Image Processing, vol. 1, pp. 900–903, 2002. 
+[19] C. Liu and H. Shum, “Kullback-Leibler boosting”, Proc. Conf. Computer Vision and Pattern 
+Recognition, vol. 1, pp. 587-594 Madison, Wisconsin, USA, 2003 
+[20] A.M. Martinez and R. Benavente, “The AR Face Database,” Tech. Rep., CVC Technical Report #24, 
+1998. E.  
+[21] E. Osuna, R. Freund, and F. Girosi, “Training Support Vector Machines: An Application to Face 
+Detection,” Proc. Conf. Computer Vision and Pattern Recognition, pp. 130–136, 1997. 
+[22] J. Platt, N. Cristianini, and J. Shawe-Taylor, “Large Margin Dags for Multiclass Classification,” 
+Advances in Neural Information Processing Systems, 2000. 
+[23] H. Rowley, S. Baluja, and T. Kanade, “Neural Network-Based Face Detection,” IEEE Trans. Pattern 
+Analysis and Machine Intelligence, vol. 20, no. 1, pp. 23-38, January 1998.  
+[24] H. Rowley, S. Baluja, and T. Kanade, “Rotation Invariant Neural Network-Based Face Detection,” 
+Proc. Conf. Computer Vision and Pattern Recognition, pp. 38–44, 1998. 
+[25] Y. Rubner, C. Tomasi, and L.J. Guibas, “The Earth Mover’s Distance as a Metric for Image 
+Retrieval,” Int’l J. Computer Vision, vol. 40, no. 2, pp. 99–121, 2000. 
+[26] R.E. Schapire, “The Strength of Weak Learnability,” Machine Learning, vol. 5, pp. 197-227, 1990. 
+[27] R.E. Schapire and Y. Singer, “Improved Boosting Using Confidence-rated Predictions,” Machine 
+Learning, vol. 37, pp. 297–336, 1999. 
+[28] H. Schneiderman and T. Kanade, “A Statistical Method for 3D Object Detection Applied to Faces 
+and Cars,” Proc. Conf. Computer Vision and Pattern Recognition, vol. 1, pp. 746-751, Hilton Head 
+Island, South Carolina, 2000.  
+[29] T.B. Sebastian, P.N. Klein, and B.B. Kimia, “Shock-based Indexing into Large Shape Databases,” in 
+Proc. Euro. Conf. on Computer Vision, 2002, vol. 3, pp. 731–746. 
+[30] T. Sim, S. Baker, and M. Bsat, “The CMU PIE Database of Human Faces,” Tech. Rep. 
+CMU-RI-TR-01-02, The Robotics Institute, CMU, 2001. 
+[31] J. Sun, J.M. Rehg, and A. Bobick, “Automatic Cascade Training with Perturbation Bias,” Proc. Conf. 
+Computer Vision and Pattern Recognition, vol. 2, pp. 276–283, 2004. 
+[32] K.-K. Sung and T. Poggio, “Example-Based Learning for View-Based Face Detection,” IEEE Trans. 
+Pattern Analysis and Machine Intelligence, vol. 20, no. 1, pp.39–51, January 1998.  
+[33] A. Torralba, K.P. Murphy, and W.T. Freeman, “Sharing Features: Efficient Boosting Procedures for 
+Multiclass Object Detection,” Proc. Conf. Computer Vision and Pattern Recognition, vol. 2, pp. 762– 
+ 可供推廣之研發成果資料表 附件二 
+□ 可申請專利  ■ 可技術移轉                                    日期：95 年 10 月 30 日 
+國科會補助計畫 
+計畫名稱：Boosting 方法與理論在電腦視覺之應用(2/2) 
+計畫主持人：劉庭祿 
+計畫編號：NSC 94-2213-E-001-005     學門領域：資訊學門二
+技術/創作名稱 多類型人臉測即時偵測技術 
+發明人/創作人 劉庭祿 
+結合我們所導出的 MBHboost 演算法與多類型分類器串接
+(multi-class cascade) 的偵測架構，可用來建構快速偵測多人臉的電
+腦視覺系統。MBHboost 執行了分類器共享的原則，所有的類型共
+享分類器的模組，但卻各自有其決策邊界，於提供的理論基礎上，
+可於不損失準確性的前提下，大幅增加了多類型問題的分類速度。
+我們將這些技術應用在四個多類型的人臉偵測的議題上，可在一般
+的 PC 上，達到即時偵測的效果。 
+技術說明 Based on the proposed MBHboost, coupling with an efficient cascade
+implementation, we have established a real-time multi-class face
+detection system. In essence, MBHboost carries out a new way of 
+classifier sharing: while all classes of face data share the same 
+projection direction in formulating their weak learner, each class still
+has its own decision boundary. We apply this new method to four 
+distinct scenarios of face detection, and the resulting experimental 
+results are promising. 
+可利用之產業 
+及 
+可開發之產品 
+可用於人機互動介面，或智慧型機器人視覺等。亦可搭配需要自動
+化快速偵測人臉的各項電腦視覺應用，如居家安全、保全等。 
+技術特點 
+本項技術是以學習演算法為主，因此具有易模組化的特點；對於不
+同的多類型人臉資料庫，只需重新訓練分類器，即可用來執行人臉
+偵測。 
+推廣及運用的價值 
+本項技術可作為多數自動化電腦視覺系統的核心技術，具有實用性
+與可廣泛應用的特點。 
+ 
+ 
+ 
+ 
+ 18
+The authors have made an extensive study on various methods based on linear subspace methods, 
+namely those related to LDA. The other paper I like to address has the title of “Recognition of 
+Human Activities Using Space Dependent Switched Dynamical Models.” The system relies on 
+modeling the activities as banks of switched dynamical systems. The human activity is represented 
+by the trajectory of the centroid, and the evolution of the centroid in each activity is represented by 
+a space-dependent dynamical model. The authors also describe a MAP classification scheme for 
+recognizing the various activities. 
+ 
+Overall, I would consider my attending of this ICIP quite fruitful. More importantly, I have been 
+motivated by many exciting and useful ideas directly or indirectly related to my research. However, 
+I would prefer that the technical program of ICIP could be made more focused; otherwise, it may 
+eventually become a conference without a clear identity. 
+ 
+20
+∂IF be the boundaries. The signed distance transform of I
+is denoted as DT (I) and defined by
+DT (I(x, y)) =
+
+
+−d((x, y),Γ), if (x, y) ∈ IF − Γ,
+0, if (x, y) ∈ Γ,
+d((x, y),Γ), if (x, y) /∈ IF ,
+(1)
+where d((x, y),Γ) is the Euclidean distance from pixel (x, y)
+to its nearest pixel in Γ. Clearly, the DT transform of a
+shape encodes both its local and global information in that
+foreground and background pixels are simultaneously eval-
+uated. Examples of shape images after the signed distance
+transform are illustrated in Fig. 1e–Fig. 1h. Note that the
+formulation in (1) is different from the 2-D level-set repre-
+sentation, of which the level-set signed distance is defined
+with respect to a unique zero level set.
+3. CLASSIFICATION BY BOOSTED FILTERING
+To use the representation (1) for shape recognition, we first
+investigate a fundamental case of dealing with two-class
+data, denoted as D = DA ∪ DB . Intuitively, one could
+just try to experiment with most of the well-known similar-
+ity measures, e.g., shape context [2], earth mover’s distance
+(EMD) [7], and Chamfer distance [8], and then use nearest
+neighbor criterion to accomplish the task of shape recogni-
+tion. Nevertheless, evaluating such similarity measures are
+often slow, and the situation is further deteriorated by the
+computations of nearest neighbors. Our approach therefore
+focuses on efficiently performing shape recognitions, where
+its effectiveness is resulting from a boosted filtering frame-
+work using the DT transform.
+f(·) si sj θ(·)
+Fig. 2. (a) A filter f is specified by three parameters, in-
+cluding a pair of samples, say si and sj , and their com-
+mon ROI, θ. Thus, the filtering applying to a sample s is
+denoted as f(s) = (si − sj) · θ(s).
+3.1. Filter Bank for Two-Class Data
+Let FD = {f1, f2, ..., fm} be a filter bank of size m over
+the training data D. And each filter f ∈ FD is uniquely de-
+fined by three parameters, including a pair of shapes from
+different classes, and an area of region of interest (ROI).
+More precisely, let sAi ∈ DA, sBj ∈ DB and θ be some
+ROI. Since we choose to limit the ROIs into square regions,
+we could simply write θ = (center, length) to specify the
+(a) (b)
+Filtered Value
+Fr
+eq
+ue
+nc
+y
+Histogram of D0
+Histogram of D1
+Filtered Value
+Fr
+eq
+ue
+nc
+y
+Histogram of D0
+Histogram of D1
+(c) (d)
+Fig. 3. D = D0 ∪D1, where D0 and D1 contain various
+shapes of digits 0 and 1, respectively. (a), (b) The two
+filters selected in the first two iterations of BHBoost [9].
+Since each filter (weak learner) yields a pair of weighted
+histograms for the two-class data, we also show the two
+corresponding pairs of weighted histograms in (c) and (d).
+location and the size of an ROI. Consequently, we can rep-
+resent a filter f by a particle of three parameters, and write
+out the correspondence as f ⇔ (sAi , sBj , θ). (See Fig. 2 for
+illustration.) In constructing FD, we randomly sample m
+particles from the parameter space. Notice that to ensure a
+more uniformly distributed sampling over principal modes
+of shapes in the same class, we have used K-means to cluster
+each class of shapes into mixtures. Finally, filtering an in-
+put sample, s, with f is simply the pixel-wise inner product
+between sAi − sBj and θ(s), i.e.,
+f(s; sAi , s
+B
+j , θ) = (s
+A
+i − s
+B
+j ) · θ(s), (2)
+where θ(s)(x, y) = s(x, y) if pixel (x, y) is in the ROI of θ,
+and 0, otherwise. Thus f is a real-valued filter that, depend-
+ing on the location and the size of the ROI, the outcome of
+applying f to a sample s emphasizes either the local or the
+global correlations of s with the underlying parameters.
+3.2. Discriminating Filter Selection via Boosting
+In practice, the total number of filters in a typical FD is
+quite large, and their discriminating power could vary sig-
+nificantly. This is indeed a critical issue if one intends to
+build an efficient classifier based on as few filters as possi-
+ble. Take, for example, the illustrations in Fig. 3, the data
+D = D0 ∪ D1 have around 6, 000 images of digit 0 and
+another 6, 000 images of digit 1. (Each image is of size
+28 × 28.) Even with random sampling, the filter bank FD
+in this example still has around 30, 000 filters. We therefore
+adopt the BHBoost [9] for filter selection. Since each fil-
+ter f projects a sample s into some real value, it will cause
+a pair of distributions for the two-class data D0 and D1.
+22
+0→ 6 2→ 0 2→ 1 3→ 5 3→ 8 4→ 9 5→ 6
+6→ 1 6→ 4 7→ 2 7→ 9 8→ 9 8→ 7 9→ 7
+Fig. 5. Some of the misclassified test data.
+sample 30, 000 filters into the filter bank. The ROIs of fil-
+ters are squares with various scales, ranging from 4 × 4 to
+28 × 28, and the number of bins used in each weak learner
+is set to 16. Then, the described boosting scheme over an
+LCF-DAG is used to construct the recognition system.
+Table 1. Recognition results on MNIST data.
+Class 0 1 2 3 4 5 6 7 8 9
+0 976 0 0 1 0 0 1 1 1 0
+1 0 1131 2 0 0 0 1 0 1 0
+2 3 1 1020 4 1 0 0 2 2 0
+3 0 0 1 1002 0 2 0 2 3 0
+4 0 0 0 0 974 0 2 0 2 4
+5 1 0 0 4 0 883 3 0 1 0
+6 4 2 1 0 1 2 947 0 1 0
+7 1 2 4 0 0 0 0 1014 2 5
+8 2 0 2 1 1 3 0 1 960 4
+9 2 1 1 2 5 1 0 5 2 991
+Concerning the accuracy, the error rate yielded by our
+system is 1.04% (104/10000). The result is superior to
+many well-known methods, such as linear classifier, RBF
+network, nearest neighbor classifier, and polynomial classi-
+fier, is compatible to the Reduced Set SVM [11], and falls
+slightly behind the boosted LeNet-4 [1] (0.7%) and the shape
+context [2] (0.63%). The detailed outcomes are given in
+Table 1, where each row gives the classification accuracy
+of the corresponding digit class. To illustrate, some of the
+misclassified samples are displayed in Fig. 5.
+The efficiency gain is even more impressive. Owing to
+the high convergence rate of BHBoost, the resulting clas-
+sifiers often need fewer weak learners to achieve satisfac-
+tory recognition rates. For instance, the average numbers of
+weak learners used in the 45 two-class classifiers to attain
+error rates 2.37%, 1.53%, and 1.04% are 10.6, 34.3, and
+87.3, respectively. In addition, to see the advantage of using
+an LCF-DAG, our system is compared with one-against-one
+and DAG (leaf nodes are arranged in an ascending order),
+given the same classifiers and testing data. The quantita-
+tive results are listed in Table 2. While delivering almost
+the same accuracy rate, LCF-DAG is 1.83 times faster than
+DAG, and 8.42 times faster than one-against-one.
+Table 2. Comparison: One-against-One, DAG, LCF-DAG.
+Architecture Error Rate CPU Time (10,000 testings)
+One-against-One 1.02% 8.42t
+DAG 1.08% 1.83t
+LCF-DAG 1.04% t(= 7.7secs)
+6. CONCLUSION
+We have described a new approach for 2-D shape recog-
+nition, and demonstrated with an example of hand-written
+digit classification. The proposed image representation pro-
+vides richer information in the regions inside and outside a
+given shape, and is nicely coupled with the boosting algo-
+rithm to effectively capture useful features, i.e., the differ-
+ences between two classes, in learning the classifiers. As
+a result, our system can efficiently accomplish the task of
+shape recognition through a multi-class formulation.
+7. REFERENCES
+[1] Y. LeCun, L. Bottou, Y. Bengio, and P. Haffner, “Gradient-
+based learning applied to document recognition,” Proceed-
+ings of the IEEE, vol. 86, no. 11, pp. 2278–2324, 1998.
+[2] S. Belongie, J. Malik, and J. Puzicha, “Shape matching and
+object recognition using shape contexts,” PAMI, vol. 24, no.
+4, pp. 509–522, April 2002.
+[3] L. Lee, G. Dalley, and K. Tieu, “Learning pedestrian models
+for silhouette refinement,” in Proc. Int’l Conf. on Computer
+Vision, 2003, vol. 1, pp. 663–670.
+[4] T.B. Sebastian, P.N. Klein, and B.B. Kimia, “Shock-based
+indexing into large shape databases,” in Proc. Euro. Conf. on
+Computer Vision, 2002, vol. 3, pp. 731–746.
+[5] P.F. Felzenszwalb, “Representation and detection of de-
+formable shapes,” in CVPR, 2003, pp. I: 102–108.
+[6] D. Geiger, T.L. Liu, and R.V. Kohn, “Representation and
+self-similarity of shapes,” PAMI, vol. 25, no. 1, pp. 86–99,
+January 2003.
+[7] Y. Rubner, C. Tomasi, and L.J. Guibas, “The earth mover’s
+distance as a metric for image retrieval,” Int’l J. Computer
+Vision, vol. 40, no. 2, pp. 99–121, 2000.
+[8] D.M. Gavrila and V. Philomin, “Real-time object detection
+for smart vehicles,” in Proc. Int’l Conf. on Computer Vision,
+1999, pp. 87–93.
+[9] Y.Y. Lin, T.L. Liu, and C.S. Fuh, “Fast object detection with
+occlusions,” in Proc. Euro. Conf. on Computer Vision, 2004,
+vol. 1, pp. 402–413.
+[10] J. Platt, N. Cristianini, and J. Shawe-Taylor, “Large margin
+dags for multiclass classification,” in Advances in Neural
+Information Processing Systems, 2000.
+[11] C.J.C. Burges and Bernhard Scho¨lkopf, “Improving the ac-
+curacy and speed of support vector machines,” in Advances
+in Neural Information Processing Systems, 1997.
+24
+Copyright c© 2005 IEEE Computer Society Conference on Computer Vision and Pattern Recognition (CVPR).
+Robust Face Detection with Multi-Class Boosting
+Yen-Yu Lin Tyng-Luh Liu
+Institute of Information Science, Academia Sinica, Nankang, Taipei 115, Taiwan
+{yylin, liutyng}@iis.sinica.edu.tw
+Abstract
+With the aim to design a general learning framework for
+detecting faces of various poses or under different light-
+ing conditions, we are motivated to formulate the task as a
+classification problem over data of multiple classes. Specif-
+ically, our approach focuses on a new multi-class boost-
+ing algorithm, called MBHboost, and its integration with a
+cascade structure for effectively performing face detection.
+There are three main advantages of using MBHboost: 1)
+each MBH weak learner is derived by sharing a good pro-
+jection direction such that each class of data has its own
+decision boundary; 2) the proposed boosting algorithm is
+established based on an optimal criterion for multi-class
+classification; and 3) since MBHboost is flexible with re-
+spect to the number of classes, it turns out that it is possible
+to use only one single boosted cascade for the multi-class
+detection. All these properties give rise to a robust system
+to detect faces efficiently and accurately.
+1. Introduction
+Accuracy and efficiency are two of the most important is-
+sues in evaluating a face detection system. For accuracy,
+a number of learning techniques have been used to accom-
+plish satisfactory results, including, e.g., SVMs [8], neural
+network [9], multi-layer perceptron [15], Fisher linear dis-
+criminant [18]. For efficiency, Viola and Jones [17] intro-
+duce a framework to elegantly combine Adaboost with a
+cascade scheme to detect faces in real time. Subsequently,
+several variants have been proposed to extend or improve
+the detection through a boosted cascade, [4], [6], [14].
+The foregoing works consider mainly one type/class of
+faces, e.g., frontal faces. Such a restriction may limit their
+practical use because faces in images can occur with vari-
+ous poses like in-plane or out-of-plane rotations, or under
+various situations such as lighting conditions, expressions,
+and occlusions. So, the visual appearances and features of
+faces could vary significantly with respect to different sce-
+narios/circumstances. It is therefore more reasonable to for-
+mulate a face detection task as a multi-class learning prob-
+lem. With that, we aim to address the task in a general man-
+ner without compromising accuracy and efficiency.
+1.1. Previous Work
+According to the system structure and the mechanism, we
+divide the following recent works that detect faces based on
+multi-class learning into three categories.
+View-based systems. In general, for such approaches,
+multiple detectors are specifically designed and indepen-
+dently trained so that each can deal with one particular class
+of faces. A testing pattern will be examined in parallel by
+all the detectors, and the outcome is the union of their re-
+spective detection results. Schneiderman and Kanade [12]
+train view-based detectors with features formed by a set
+of wavelet coefficients. Their system has been shown to
+achieve high accuracy rates for profile face detection. Nev-
+ertheless, the computation time of a view-based system is
+directly proportional to the number of detectors used, i.e.,
+the number of face types it aims to handle.
+Estimate-before-detect systems. By investigating the dis-
+similarities among faces from different viewpoints, the pose
+of an input pattern can be first estimated. Then, according to
+the estimation, the pattern is dispatched to the correspond-
+ing detector for further verification. Rowley et al. [10] use
+two separate neural networks to carry out this strategy for
+detecting faces with in-plane rotations. Jones and Viola [2]
+apply the C4.5 decision tree followed by cascaded detec-
+tors to handle faces with in-plane or out-of-plane rotations.
+Clearly, using the scheme, the computation time is reduced
+to one estimation and one detection instead of multiple par-
+allel detections. The main disadvantage is that it is generally
+difficult to establish a reliable (pose) estimator, especially
+when the number of face classes is large, that guarantees
+both low computational costs and high accuracy rates.
+Classifier-sharing systems. The similarities among dif-
+ferent types of faces can also be explored to enhance the de-
+tection efficiency. Li et al. [3] propose a detector-pyramid
+system to detect profile faces. Depending on its level in
+the pyramid, each classifier can be shared by a collection
+of face classes. In a related work [5], we have proposed
+an evidence cascading scheme to detect faces with occlu-
+sions. The idea is motivated by the fact that outside the oc-
+cluded regions, faces with partial occlusions have the same
+features as the regular frontal faces, and the information can
+be used to design a classifier sharing mechanism to detect
+26
+(a)
+−4088−3067−2047−1027 −6 1015 2035 3056 4076 5097 6117
+Fr
+eq
+ue
+nc
+y
+1 2 3 4 5 6 7 8 9 10 
+Histogram p−(φ1) Histogram p
++(φ1)
+h(x) = 1.157
+ifφ1(x) ∈ b7 (2035 ≤ φ1(x) < 3056)
+φ1(x):
+Bin index:
+(b)
+(c)
+−4088−3067−2047−1027 −6 1015 2035 3056 4076 5097 6117
+Fr
+eq
+ue
+nc
+y
+1 2 3 4 5 6 7 8 9 10 
+Histogram pA−(φ1)
+Histogram pC−(φ1)
+Histogram pE−(φ1)
+Histogram pA+(φ1)
+HistogrampC+(φ1)
+Histogram pE+(φ1)
+φ1(x):
+Bin index:
+(d)
+(e)
+−5059−4167−3275−2383−1491 −599 293 1185 2077 2969 3861
+Fr
+eq
+ue
+nc
+y
+1 2 3 4 5 6 7 8 9 10
+HistogrampA−(φ2)
+HistogrampC−(φ2)
+HistogrampE−(φ2)
+Histogram pA+(φ2)
+Histogram pC+(φ2)
+Histogram pE+(φ2)
+φ2(x):
+Bin index:
+(f)
+Figure 2: (a) A projection φ1 on a frontal face sample. (b) Two weighted histograms, p+(φ1) and p−(φ1), are derived from
+the projected training set D = D+ ∪D− by φ1. (c) φ1 on face samples from profile face types A, C, and E , respectively.
+(d) Six weighted histograms derived from DA, DC , and DE . (e) & (f) Histograms due to another projection φ2.
+by projecting three classes of data with projections φ1 and
+φ2 shown in Figures 2c, 2e. Understandably, what remains
+to be addressed now is to come up with a definition to ap-
+propriately link each projection φ over training data DΓ to
+its corresponding multi-class weak learner.
+In [3], [5], each weak learner used in the boosting proce-
+dure is shared to detect a pre-defined subset of classes. That
+is, expert knowledge is required to sort the subsets before
+training the system. Torralba et al. [16] instead propose to
+share a weak learner by the most suitable subset that can
+be derived by searching among all possible 2|Γ| − 1 can-
+didates. Even if an approximated search is used, the num-
+ber of candidates is still around O(|Γ|2). More critically
+is that among these works, each weak learner is directly
+shared, i.e., the decision boundary and the output value are
+the same for all sharing classes, and it could restrict the use
+of some discriminant weak learners. For instance, consider
+the projection φ2 and the three pairs of histograms shown
+in Figures 2e, 2f. Although φ2 is discriminant to separate
+the positive and the negative data of each class, its output
+value of each bin is hard to be shared since the three pairs
+of histograms are far differently distributed.
+In view of the issues described above, we relax the idea
+of sharing a weak learner to sharing only a discriminant pro-
+jection direction. Specifically, for each projection φ, the
+vector-valued MBH weak learner f is defined as follows:
+f(x) = [hA(x), ..., hI(x)] (profile faces), (3)
+= [hX (x) | X ∈ Γ] (general case), (4)
+hX (x) = ln
+√
+pX+k (φ)/p
+X−
+k (φ) if φ(x) ∈ bk, (5)
+where X ∈ Γ, and the meaning of pX+(−)k (φ) is the same
+as p
++(−)
+k (φ) in (1), except the training data are limited only
+to DX . From (4), an MBH weak learner consists of |Γ|
+components that share a common projection φ: each com-
+ponent learns its own decision boundary and computes the
+output in each bin using the corresponding pair of weighted
+histograms. In what follows, we summarize some useful
+properties of MBH weak learners.
+• An MBH weak learner is applicable to all classes of
+data. No expert knowledge or search techniques are
+needed to identify a subset of classes for sharing.
+• Unlike direct sharing in [3], [5], [16], each MBH com-
+ponent independently learns outputs for each class of
+training data, and consequently achieve better classifi-
+cation efficiency and flexibility.
+• On the other hand, because all MBH components share
+a same projection, they reference the same bin index k
+in (5) for an arbitrary pattern x. Furthermore, since
+the output value of each component for any bin k has
+been learned in the training phase, the main computa-
+tion cost of evaluating an MBH weak learner in test-
+ing is simply to find the value of k. In other words,
+the extra computation cost to extend weak learners to
+multi-class in our scheme is relatively low.
+2.2. An Optimal Criterion
+Having described the details of MBH weak learners, we are
+now ready to formalize the multi-class boosting algorithm.
+Our discussion will focus on an optimal criterion that is the
+cornerstone of the efficiency of the proposed MBHboost.
+We first begin with a definition to measure the difficulty of
+classifying each class of training data.
+Definition 1 At boosting iteration t, the difficulty to clas-
+sify the type-X data of a multi-class training set is given
+by ∆Xt =
+∑|DX |
+i=1 exp
+(
+−yXi H
+X
+1:t−1(x
+X
+i )
+)
+, where HX
+1:t−1 =∑t−1
+τ=1 h
+X
+τ is the intermediate classifier for DX , derived by
+combining the type-X components of the t − 1 MBH weak
+learners selected in previous iterations.
+28
+Algorithm 2: Multi-Class Cascade: Training
+Input : Training data DΓ; Images without faces Q;
+µ, ν: target detection, false-positive rate.
+Output : A cascade of MBH classifiers {F1, ..., Fs}.
+k← 1; Γk ← Γ;
+while Γk 6= ∅ do
+With DΓk and Φ, use Algorithm 1 to derive Fk =
+[HXk | X ∈ Γk ] s.t. each HXk meets (µ, ν);
+foreach X ∈ Γk do
+DX+ ← {x | x ∈ DX+ ∧HXk (x) ≥ θ
+X
+k };
+DX− ← False-Positives from DX− or
+from Q such that |DX−| = |DX+|;
+if not enough False-Positives then
+sX ← k; Γk ← Γk − {X};
+Γk+1 ← Γk; k ← k + 1;
+only one cascade for the multi-class detection. This is in
+contrast to the systems described in [2], [3], [5] that sev-
+eral cascades are deployed for detecting different classes of
+faces/objects, and thus additional mechanisms are needed to
+choose the most appropriate cascade for each input pattern.
+Through a boosted cascade, the task of face detection be-
+comes a series of classification problems. In our case, there
+are three key factors to be carefully planned during train-
+ing to ensure good detection rates, including 1) the number
+of MBH weak learners used in each stage k; 2) the type-
+specific threshold θXk for HXk of the classifier Fk; and 3)
+the total number of stages, s, for implementing the cascade.
+In addition, besides the training data DΓ we also prepare a
+set Q consisting of images that contain no faces, where its
+function will be self-evident as we describe the approach.
+Suffice it to say now that Q is used to generate new non-
+face data by bootstrap over the course of training.
+Training. Let µ denote the target detection rate and ν be
+the maximal false positive rate for learning a classifier Fk
+at stage k of the cascade structure in Algorithm 2. Thus
+Fk = [H
+X
+k |X ∈ Γk] can be derived by jointly training and
+by tuning the thresholds θXk to ensure all HXk have detection
+rates above µ and false positive rates below ν. (Empirically,
+µ is set between 99.5% ∼ 99.9%, and ν is about 40%.) This
+would give us a way to determine the number of MBH weak
+learners needed to construct a desirable Fk. In practice the
+value of θXi is often negative, and a pattern x is considered
+a type-X face at stage k iff HXk (x) ≥ θXk .
+Note that the number of components in Fk is not fixed
+and is non-increasing as k becomes larger. This is due to
+different degree of difficulty in classifying each class of
+data. Specifically, the completion of the type-X training
+Algorithm 3: Multi-Class Cascade: Testing
+Input : A test pattern x; Face classes Γ;
+A cascade of detectors {F1, ..., Fs};
+Number of stages, sX , ∀X ∈ Γ.
+Output : A vector of boolean outputs, output(Γ).
+k ← 1; Λ← Γ;
+while Λ 6= ∅ do
+Jointly evaluate HXk (x), ∀X ∈ Λ;
+foreach X ∈ Λ do
+if HXk (x) < θXk then
+output(X )← False; Λ← Λ− {X};
+else if k = sX then
+output(X )← True; Λ← Λ− {X};
+k ← k + 1;
+over the multi-class cascade is signaled by the condition
+when not enough non-face data can be generated from Q
+to ensure |DX+| = |DX−| for the subsequent stage. These
+additional non-face data are obtained by applying bootstrap
+to Q to generate false positives that pass all the k type-X
+components, i.e., HX
+1
+, HX
+2
+, . . . , HXk . Each time a type-X
+training is completed at some stage k, we have sX = k, and
+delete X from Γk. The training procedure continues with
+the updated data, and eventually finishes when Γk becomes
+empty. The total number of stages in the cascade can then be
+determined by s = max{sX | X ∈ Γ}. We conclude with
+a remark that our proposed MBHboost is flexible enough
+for handling the stage-wise variable number of classes of
+training data, and that makes it very convenient to deal with
+multi-class classifications with one single cascade.
+Testing. A test pattern x is considered a type-X face if it
+passes all the type-X components of detectors from the first
+to the sX th stages. Like a view-based system, our method
+provides a vector of boolean responses, each element indi-
+cating whether x is a face sample of one particular class.
+(See Algorithm 3.) Sometimes an output vector could have
+more than one positive element. Nevertheless, since a face
+may be detected in multiple nearby sub-windows, such mat-
+ters can be easily resolved by voting or by measuring the
+detection confidences (margins).
+4. Other Applications
+In this section, we look at other cases of face detection.
+With In-Plane Rotations. We divide all possible (in-
+plane) rotated faces into 12 classes according to the angles
+30
+0 100 200 300 400 500 600 700 80065
+70
+75
+80
+85
+90
+ROC Curve
+Number of False Positives
+D
+et
+ec
+tio
+n 
+R
+at
+e 
+(%
+)
+View−based System
+Our System
+0 100 200 300 400 500 600 700 80080
+82
+84
+86
+88
+90
+92
+94
+ROC Curve
+Number of False Positives
+D
+et
+ec
+tio
+n 
+R
+at
+e 
+(%
+)
+View−based System
+Our System
+0 5 10 15 20 25 30 35 40 45 5093
+94
+95
+96
+97
+98
+99
+100
+ROC Curve
+Number of False Positives
+D
+et
+ec
+tio
+n 
+R
+at
+e 
+(%
+)
+View−based System
+Our System
+0 20 40 60 80 100 120 140 16090
+91
+92
+93
+94
+95
+96
+ROC Curve
+Number of False Positives
+D
+et
+ec
+tio
+n 
+R
+at
+e 
+(%
+)
+View−based System
+Our System
+(a) (b) (c) (d)
+Figure 5: ROC curves. (a) Profile face detection on the dataset in [12]. (b) Rotated face detection on the dataset in [10]. (c)
+Detecting faces under various lighting conditions. (d) Detecting faces with partial occlusions.
+Table 1: Quantitative results in terms of speedup and fps.
+Application Profile Rotation Lighting Occlusion
+class #, |Γ| 9 12 5 9
+#-times 3.74 4.96 2.96 3.85
+(320x240) fps 13.8 8.6 26.1 15.2
+#-times speedup by our method over the view-based.
+6. Discussion
+Through the sharing of projection directions and the use
+of only one cascade, our face detection algorithm has been
+shown to have the advantages of generality, efficiency, and
+accuracy. Compared with other related works, the proposed
+method outperforms those described in [2], [10]. Though
+our accuracy for detecting profile faces falls behind that re-
+ported in [12], our system achieves real-time performance
+and is applicable to detect faces of many scenarios.
+Acknowledgements. This work is supported in part by
+NSC grants 93-2213-E-001-010 and 93-2213-E-001-018.
+References
+[1] A.S. Georghiades, P.N. Belhumeur, and D.J. Kriegman,
+“From Few to Many: Illumination Cone Models for Face
+Recognition under Variable Lighting and Pose,” IEEE Trans.
+PAMI, vol. 23, no. 6, pp. 643–660, 2001.
+[2] M. Jones and P. Viola, “Fast Multi-view Face Detection,”
+Tech. Rep. TR2003-96, Mitsubishi Electric Research Labo-
+ratories, 2003.
+[3] S. Li, L. Zhu, Z. Zhang, A. Blake, H. Zhang, and H. Shum,
+“Statistical Learning of Multi-View Face Detection,” 7th
+ECCV, vol. 4, pp. 67–81, 2002.
+[4] R. Lienhart and J. Maydt, “An Extended Set of Haar-Like
+Features for Rapid Object Detection,” ICIP, vol. 1, pp. 900–
+903, 2002.
+[5] Y.-Y. Lin, T.-L. Liu, and C.-S. Fuh, “Fast Object Detection
+with Occlusions,” 8th ECCV, vol. 1, pp. 402–413, 2004.
+[6] C. Liu and H. Shum, “Kullback-Leibler Boosting,” CVPR,
+vol. 1, pp. 587–594, 2003.
+[7] A.M. Martinez and R. Benavente, “The AR Face Database,”
+Tech. Rep., CVC Technical Report #24, 1998.
+[8] E. Osuna, R. Freund, and F. Girosi, “Training Support Vector
+Machines: An Application to Face Detection,” CVPR, pp.
+130–136, 1997.
+[9] H. Rowley, S. Baluja, and T. Kanade, “Neural Network-
+Based Face Detection,” IEEE Trans. PAMI, vol. 20, no. 1,
+pp. 23–38, 1998.
+[10] H. Rowley, S. Baluja, and T. Kanade, “Rotation Invariant
+Neural Network-Based Face Detection,” CVPR, pp. 38–44,
+1998.
+[11] R.E. Schapire and Y. Singer, “Improved Boosting Using
+Confidence-rated Predictions,” Machine Learning, vol. 37,
+no. 3, pp. 297–336, 1999.
+[12] H. Schneiderman and T. Kanade, “A Statistical Method for
+3D Object Detection Applied to Faces and Cars,” CVPR,
+vol. 1, pp. 746–751, 2000.
+[13] T. Sim, S. Baker, and M. Bsat, “The CMU PIE Database of
+Human Faces,” Tech. Rep. CMU-RI-TR-01-02, The Robot-
+ics Institute, CMU, 2001.
+[14] J. Sun, J.M. Rehg, and A. Bobick, “Automatic Cascade
+Training with Perturbation Bias,” CVPR, vol. 2, pp. 276–
+283, 2004.
+[15] K.K. Sung and T. Poggio, “Example-Based Learning for
+View-Based Human Face Detection,” IEEE Trans. PAMI,
+vol. 20, no. 1, pp. 39–51, 1998.
+[16] A. Torralba, K.P. Murphy, and W.T. Freeman, “Sharing Fea-
+tures: Efficient Boosting Procedures for Multiclass Object
+Detection,” CVPR, vol. 2, pp. 762– 769, 2004.
+[17] P. Viola and M. Jones, “Rapid Object Detection Using a
+Boosted Cascade of Simple Features,” CVPR, vol. 1, pp.
+511–518, 2001.
+[18] M.H. Yang, N. Ahuja, and D. Kriegman, “Face Detection
+Using Mixtures of Linear Subspaces,” FGR, pp. 70–76,
+2000.
+32

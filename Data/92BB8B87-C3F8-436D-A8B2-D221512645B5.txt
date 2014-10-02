@@ -1,0 +1,776 @@
+1 Introduction
+Due to increasing market demand, many embedded systems will eventually run multiple applications on a system-
+on-chip platform. In particular, multiple processing elements (PE) (e.g., one or more microprocessors/DSP’s) are
+needed in such platforms, to meet the processing demands of a wide range of applications, from smart phones and
+mobile computing devices to HDTV. On such platforms, there is a need for computational jobs running on multiple
+processing elements to collaborate with each other to accomplish a task such as video encoding/decoding. This
+collaboration is typically achieved through significant amounts of data exchange between the processing elements, and
+thus, data communication can become a performance bottleneck for these systems. To resolve this issue, multi-bus or
+multi-layer architectures (like those based on the Advanced Micro-controller Bus Architecture (AMBA) [1]), have been
+proposed by various vendors. However, empirical designs and implementations of a bus or layer architecture are likely
+to result in resources being over-allocated. To resolve this problem, our work adopts the notion that an approach
+based on rigorous theoretical foundations needs to be taken, for instance, the minimization of the multi-layer bus for
+a system-on-chip (SoC) system.
+In the past decade, successful research results have been achieved by researchers that have proposed to minimize
+data communication costs under various timing constraints over multi-bus architectures, [10, 14, 16, 17, 23, 26–28]. In
+particular, some of these approaches [10, 14, 16, 23] have tried to minimize the number of buses through either using
+simulations or empirical study with system-level EDA tools, while those in [17,26–28,30] have focused their study on
+bus partitioning by applying integer linear programming or heuristics-based scheduling algorithms.
+Although multi-bus architectures provide effective solutions for minimizing communication costs, they suffer from
+inflexibility due to the fixed partitioning of PE’s at the hardware design stage [26, 32]. In order to increase the bus
+capacity and provide more flexibility in resource allocation, the multi-layer bus architecture [3] and a multi-channel
+Network-on-Chip (NoC) [25] architecture have been proposed. However, for those techniques, the drawback is that
+increasing the number of bus layers or channels would imply an increase in the overhead of the cost or area, the
+power consumption and the complexity of SoC systems design [2, 3, 7]. For example, the gate count would grow
+exponentially in the multi-layer bus architecture, when the number of bus layers and the number of PE’s have been
+increased [2]. Unfortunately, little work has been done to study the tradeoff between the resource utilization and the
+system performance of a multi-layer bus or a multi-channel NoC system.
+This work is motivated by the need for applying a design methodology for bus-layer minimization problems in
+the multi-layer bus architecture, and the need of on-line scheduler for dual-core systems. In contrast to existing
+simulation approaches [23] and empirical studies, we explore bus-layer minimization problems concerning different
+design parameters and different graph topologies. By identifying the factors that contribute to the NP-hardness of
+bus-layer minimization problems, the system designer could change program models or software implementations to
+resolve the communication problem with minimal cost. We also propose a scheduling framework for dual-core systems.
+Two separate scheduling policies are presented for the processor and the co-processor according to the properties of
+each. Specifically, the framework deals with the preemption cost of the co-processor, and the cooperation between
+two schedulers for precedence constraints of tasks. A fast on-line admission control is also derived to manage dynamic
+workloads on dual-core systems.
+The main contribution of this project is the recommendation of a suitable scheduler and the reconstruction guide
+for a communication specification of a system, such as a surveillance camera, a portable media player or a transaction
+terminal, so that bus-layer minimization problems can be resolved within tolerable time and cost. In this project, a
+transaction terminal for EFTPOS payment is presented as a demonstration example and used to provide practical
+considerations for real-world system designs. In the first year of this project, we explore dual-core scheduling framework
+to do real-time on-line task scheduling [8]. Different from traditional multiprocessors systems, the processor and the
+co-processor is master-slave in a dual-core system. Each task will be first executed in the processor, and then
+dispatched into the co-processor for executing some specific operations, and final completed in the processor. In the
+second year, we explore existing bus-layer minimization problems with efficient algorithms [9], such as those with unit
+execution time of a bus transaction (i.e., a data transmission activity between two PE’s). We then explore factors
+that contribute to the NP-hardness nature of many bus-layer minimization problems. Following this, a simulated
+annealing (SA) algorithm is presented to be used as comparison with heuristics-based algorithms to provide insight
+into system designs. A series of extensive simulation experiments has also been performed using different graph
+topologies, deadline settings, bus translation populations, etc.
+The rest of this project report is organized as follows: Section 2 defines terminologies and formulates problems.
+Section 3 proposes algorithms for on-line task scheduling under dual-core systems. Section 4 summarizes problems
+1
+Send 
+Strobe Data
+Rotate 
+Motor
+Print
+BT
+1,4
+BT
+1,3
+BT
+1,2
+Dot line
+to
+Strobe line
+ARM
+DMA Printer Head
+Motor
+Print Data
+BT
+1,1
+Memory
+Display
+Message
+Refresh 
+Memory
+BT
+2,1
+Display
+BT
+2,2
+ARM DMA LCD Controller
+Inverse
+Quantization
+Frequency 
+to
+Time 
+Mapping
+Audio
+Devices
+Decoding 
+of 
+Bit Stream
+DSP
+Data 
+Stream
+BT
+3,2
+BT
+3,3
+Read 
+NAND Flash
+BT
+3,1
+Flash Controller Memory
+(3) Voice Indication
+(1) Account Print 
+(2) Message Display 
+(a) Task graphs
+BT
+2,2
+BT
+2,1
+BT
+3,1
+BT
+1,4
+BT
+1,2
+BT
+1,1
+BT
+1,3
+Period=1.67 ms Period=16.67 ms Period = 31.25 ms
+BT
+3,2
+BT
+3,3
+Message Display Voice IndicationAccount Print 
+0.017ms
+0.017ms
+0.751ms
+0.005ms
+0.001ms0.01ms
+0.23ms
+2.4ms
+1.28ms
+(b) Bus transaction graphs
+Figure 2. Applications of a Transaction Terminal
+A bus transaction BTi,j is termed an immediate predecessor of another bus transaction BTi,k, if there is a directed
+edge from BTi,j to BTi,k. BTi,k is an immediate successor of BTi,j . BTi,k cannot start until the completion of BTi,j .
+BTi,j is termed a predecessor of another bus transaction BTi,p if there is a path with one or more directed edges
+between BTi,j and BTi,p. BTi,p is a successor of BTi,j . As shown in Figure 2(b), BT1,2 is an immediate predecessor
+of BT1,4, and BT1,4 is a successor of BT1,1. The execution time of a bus transaction BTi,j , denoted as eBTi,j , is
+the amount of time required to complete BTi,j . We assume that eBTi,j > 0 for all transactions in this project. The
+release time of BTi,j , denoted by rBTi,j , is the time when the bus transaction becomes available for execution (under
+consideration of the precedence constraints). The start time of BTi,j , denoted as sBTi,j , is the time when the bus
+transaction is scheduled for execution. Note that sBTi,j ≥ rBTi,j . The response time of BTi,j , denoted as RespBTi,j ,
+is the amount of time between rBTi,j and the completion time of BTi,j . The deadline of BTi,j , denoted as dBTi,j , is
+the time by which BTi,j must complete its execution. Let pBTi,j indicate the priority of BTi,j , where a smaller value
+denotes a higher priority. Additionally, we assume that the priority of a bus transaction, BTi,j , remains unchanged
+from rBTi,j to dBTi,j . This is because if the priority of a bus transaction can be dynamically changed during that
+3
+BT2,1BT1,1
+mBm  i 
+ ,  B/  e B/
+iBT
+i
+e
+BT
+=Σ≤≤
+<<<
+1,
+1,
+,31
+241
+BT3m,1
+mmB
+ others         ;
+m-,...,,, jB        ;
+e
+jmBTjm eBT
+2,
+1
+23741
+,13,13
++=Σ
+
+
+
+=
+=
+++
+Be
+mBT
+=
++ 1,13
+1
+2,13
+=
++mBT
+e
+1
+3,13
+=
++mBT
+e
+Be
+mmBT
+=
+−+ 23,13
+BT3m+1,1
+BT3m+1,2
+BT3m+1,3
+BT3m+1,3m-2
+BT3m+1,3m-1
+BT3m+1,3m
+3m BTGs from 
+3-partition instance
+Newly added BTG
+BT3m-1, 1BT3m-2,1BT3,1
+(a) One instance of the MBMRD problem with deadline D = mB +m
+Layer
+1
+2
+B B+1 mB+m
+1,1m3 +BT
+13,1m3 −+ mBT
+m
+BT 3,1m3 +
+1,1BT 1,2BT 1,3BT
+23,1m3 −+ mBT
+1,2m3 −BT 1,1m3 −BT 1m,3BT
+2,1m3 +BT
+3,1m3 +BT
+BeBT =+ 1,1m3 Be mBT =−+ 23,1m31 1
+Beee BTBTBT =++ 1,31,21,1 Beee mmm BTBTBT =++ −− 1,31,131,23
+(b) One possible schedule for the MBMRD problem
+Figure 3. NP-complete Proof of the Multi-layer Bus Minimization with Common Release Time and Dead-
+line (MBMRD) Problem
+Proof. This corollary can be proved following the proof of Theorem 1.
+According to Theorem 1, there is no polynomial time algorithm to find a feasible schedule on the multi-layer bus
+architecture. Corollary 1 also shows that there is no optimal method to find the minimal number of bus layers of the
+MBM problem even with pseudo-polynomial time. In later sections, the complexity of the subproblems of the MBM
+problem is explored in two parts: P-Time solvable subproblems and NP-complete subproblems. We then present the
+systematic analysis methodology and propose a near-optimal strategy based on simulated annealing (SA) to resolve
+the MBM problem.
+3 Dual-Core Scheduling
+3.1 Overview
+In this section, we explore dual-core scheduling framework to do real-time on-line task scheduling. Different from
+traditional multiprocessors systems, the processor and the co-processor is master-slave in a dual-core system. Each
+task will be first executed in the processor, and then dispatched into the co-processor for executing some specific
+operations, and final completed in the processor.
+5
+point of interest. It is usually specified by a location in the program in combination with a subset of the program’s
+variables. In other words, we use compiler-based program slicing to slice each subtask, and insert some preemption
+points between some specific slices. By doing so, the extra context switch overhead of a subtask on the “semi-
+preemptive” scheduling, compared to non-preemptive scheduling in the co-processor, could be minimized. However,
+the interval between preemption points shall be bounded for the task schedulability. There is a trade-off between the
+blocking time and context switch overhead of a subtask for preemption point insertion. The heuristic to configure
+values of them might be out of the scope of this project. The main contribution of this idea is to give a way to trade-off
+blocking times and context overhead of subtasks in the co-processor. We also present the admission control in later
+sections to show the impact of different configuration on scheduling result.
+Co-processor subtasks of a task can be taken as a set of sporadic tasks with the similar reason as the above section.
+Constant Utilization Server (CUS) [24] is used to schedule co-processor subtasks. Although the co-processor is “semi-
+preemptive”, the deadline setting of each subtask still follows that of CUS, when the interval between two preemption
+points is taken as a non-preemption portion. When each task is scheduled by a specific CUS with a certain server
+size, the response time of each co-processor subtask is bounded by its local deadline. The other technical issue is
+how to assign the server size of each task, such that the task meets its deadline constraint and the system utilization
+is maximized. Because the issue is NP-complete, it could only be resolved by heuristic or search algorithms. The
+algorithms will be not discussed in this project, but the properties of different CUS size settings will be shown in
+experiments.
+3.4 Scheduling with Precedence Constraints
+In this section, we shall present Dual-Core Scheduling (DCS) algorithm on the framework. The basic idea is using
+deadline assignment to translate the precedence constraint among subtasks into independent subtasks with arbitrary
+arrival times.
+For a given task set, we first assign a processor density Di to each task τi. Following earliest deadline first (EDF)
+rules, each processor subtask is assigned a local deadline by
+di,j = ai,j +
+ci,j
+Di
+where ai,j is the arrival time of τi,j . All processor subtasks are scheduled into the processor by EDF with their local
+deadlines. Each task τi is also assigned a server size Ui of the corresponding Constant Utilization Server (CUS),
+and all co-processor subtasks of task τi are scheduled by the corresponding CUS at preemption points. Notably, all
+co-processor subtasks are inserted preemption points by a compiler during off-line analyzed. Following CUS rules,
+when a co-processor subtask τi,j is arriving, the local deadline of the subtask is assigned by
+di,j = max(ai,j , di,j−2) +
+ci,j
+Ui
+where di,j−2 is the deadline of the immediate preceding co-processor subtask of τi,j . The scheduler is invoked at the
+preemption point, and the ready subtask with shortest local deadline will be scheduled first. The server replenishment
+rules are the same as that of CUS [24]. The local deadline of each (co-)processor subtask is the latest arrival time of
+the succeeded subtask, so scheduling policies of the processor and the co-processor could be different and independent.
+Moreover, the local deadline of each subtask is assigned by its arrival time, so the precedence constraint of each
+subtask will not be violated.
+3.5 Admission Control
+Corollary 2 A periodic system and a collection of sporadic tasks are schedulable by EDF if the sum of utilization of
+the former and instantaneous utilization of the latter is no greater than 1 at any time. [24]
+Theorem 2 Given a task set with the processor density assignment, if the sum of processor density is less than 1,
+the task set is schedulable in the processor under Dual-Core Scheduling (DCS).
+Proof Because any two processor subtasks of a task are without overlap, there is only one processor subtask of
+each task being scheduled at any time. The processor utilization consumed by a task is no more than the maximum
+processor utilization consumed by any subtask of this task, and the utilization is bounded by the processor density of
+a task when DCS is adopted. The correctness follows Corollary 2. 
+7
+Algorithm 1 maximum overlapped bus transactions algorithm
+Input : A set of bus transaction graphs G and a start time sBTi,j for each bus transaction BTi,j in BTGi.
+Output : The number of bus layers m and m bus transaction partitions in a multi-layer bus system.
+1: Let m← 1
+2: Let t← 0
+3: while G is not empty do
+4: Select the earliest start time bus transaction BTi,j in G that has all of its predecessors being executed
+5: Let t← sBTi,j
+6: Find a free bus layer BUSk (timeBUSk < t)
+7: if There are no free bus layers then
+8: Add a new bus layer BUSnew
+9: m← m+ 1
+10: Assign BTi,j to BUSnew
+11: timeBUSnew ← t+ eBTi,j
+12: else
+13: Assign BTi,j to BUSk
+14: timeBUSk ← t+ eBTi,j
+15: end if
+16: Remove BTi,j from G
+17: end while
+Proof. Since the schedule of bus transactions in G is given, the latest start time of each bus transaction is known.
+Therefore, the minimal number of bus layers in a multi-layer bus system is the number of bus transactions which have
+to be executed simultaneously within the timing constraints.
+From the above discussions, it can be noted that the first subproblem of the MBM can be solved in polynomial
+time, and the optimality of the solution is provided by a feasible schedule of G.
+The schedule feasibility of the second subproblem, when G and the number of bus layers are given can be determined
+as follows. Assume that each bus transaction can only be assigned on a single bus layer for data transmission. For
+a given number of bus layers, we found that an optimal schedule of all bus transactions in G could be derived by
+applying the level strategy [15], when the execution times of all bus transactions are equal and each bus transaction
+graph is a tree. The strategy is as follows: Firstly, each bus transaction is assigned a label equal to the level of the
+transaction on the bus transaction graph. Specifically, the level of a bus transaction with immediate successors is
+one plus the maximum level of its immediate successors on the graph, whereas the level of a bus transaction with
+no immediate successor is one. The label of each bus transaction corresponds to the priority of the bus transaction,
+where a larger value denotes a higher priority. After each bus transaction is assigned a label, all bus transactions are
+then scheduled by priority under the precedence constraint, when there is a free bus layer.
+Corollary 4 When all bus transactions have unit execution times and each bus transaction graph in a given set of
+bus transaction graphs G is a tree, the level strategy [15] finds the optimal schedule of G under the given number of
+bus layers, if any feasible solution exists.
+Proof. Each bus transaction can be viewed as a process. The correctness of the corollary directly follows the properties
+of the level strategy [15].
+From the study of this subproblem, we discovered that the MBM problem is difficult because: it is hard to find an
+optimal schedule when the bus transactions in G have precedence constraints. Thus, let us consider the situation when
+there is no precedence constraint and all bus transactions share the same deadline. For real system applications, the
+execution times of bus transactions in Gmight be the same when these bus transactions request an identical destination
+processing element. Assume that there are k types of processing elements on the system, and subsequently, k different
+execution times of bus transactions in G. Under this assumption, we can have a pseudo-polynomial time dynamic
+programming algorithm for finding an optimal solution for the MBM problem.
+Corollary 5 The MBM problem could be solved in pseudo-polynomial time, when there are no precedence constraints
+of all bus transactions, k different execution times of bus transactions, and a common deadline of all bus transaction
+graphs in a given set of bus transaction graphs G.
+9
+BT2,1BT1,1
+mBm  i 
+ ,  B/  e B/
+iBT
+i
+e
+BT
+=Σ≤≤
+<<<
+1,
+1,
+,31
+241
+BT3m,1
+mmB
+ others         ;
+m-,...,,, jB        ;
+e
+jmBTjm eBT
++=Σ
+
+
+
+=
+=
+++ ,13,13
+,
+1
+12531
+Be
+mBT
+=
++ 1,13
+BT3m+1,1
+3m BTGs from 
+3-partition instance
+Newly added BTG
+BT3m-1, 1BT3m-2,1BT3,1
+BT3m+1,2 BT3m+1,2m-1 BT3m+1,2m
+1
+2,13
+=
++mBT
+e Be
+mmBT
+=
+−+ 12,13
+1
+2,13
+=
++ mmBT
+e
+(a) One instance of the MBMDB problem with deadline
+D = mB +m
+Layer
+1
+2
+B B+1 mB+m
+1,1m3 +BT
+mBT 2,1m3 +1,1BT 1,2BT 1,3BT
+12,1m3 −+ mBT
+1,2m3 −BT 1,1m3 −BT 1m,3BT2,1m3 +BT
+BeBT =+ 1,1m3 Be mBT =−+ 12,1m31 1
+Beee BTBTBT =++ 1,31,21,1 Beee mmm BTBTBT =++ −− 1,31,131,23
+(b) One possible schedule of the MBMDB problem
+Figure 6. NP-complete Proof of the Multi-layer Bus Minimization with Dedicated Bus (MBMDB) Problem
+Corollary 6 Let each bus transaction in a given set of bus transaction graphs G be partitioned into a dedicated bus
+layer before scheduling. The Multi-layer Bus Minimization with Dedicated Bus (MBMDB) problem is NP-complete in
+the strong sense.
+Proof. This theorem is demonstrated by reducing any instance of the 3-PARTITION problem to an instance of the
+MBMDB problem. For the multiset S which is an instance of the 3-PARTITION problem, this study constructs a
+set of bus transaction graphs G for the instance of the MBMDB problem from S as follows: Each integer in S forms
+a bus transaction BT in G, and the execution time of each bus transaction is equal to the value of each integer.
+Consequently, there are 3m bus transaction graphs in G with independent bus transactions, and the execution time
+of each bus transaction is inclusively between B/4 and B/2. Then, we add a bus transaction graph BTG3m+1 with
+2m bus transactions into G with precedence constraint, and BTG3m+1 forms a chain as shown in Figure 6(a). The
+execution time of each bus transaction BT3m+1,j , where j ∈ 1, 3, 5, . . . , 2m− 1, in the chain is B and, the execution
+time of other bus transactions in the chain is 1.
+Suppose that there is an algorithm that can solve any problem instance of the MBMDB. Hence, given G with a
+common deadline D = mB + m as aforementioned, we assumed that there is a 2-layer bus on the system, all bus
+transactions with execution time B are partitioned into Layer 1 and that the other bus transactions are partitioned
+into Layer 2. Under these assumptions, the algorithm finds a schedule such that all graphs meet the common deadline.
+If there is a feasible schedule for G, only the corresponding instance of the 3-PARTITION with S and B is solved;
+one possible schedule is shown in Figure 6(b). Following this, each bus transaction in BTG3m+1 with execution time
+B must be scheduled just after the immediate predecessor in BTG3m+1 with execution time 1 because the common
+deadline of G is mB + m. Therefore, the other 3m bus transaction graphs can only be scheduled in m slots with
+duration B in Layer 2. In other words, if there is a feasible schedule, 3m bus transaction graphs can be partitioned into
+m bus transaction graph subsets such that the sum of the execution times in each subset is B. Thus, the corresponding
+instance of the 3-PARTITION problem with S and B is solved. The 3-PARTITION problem is NP-complete in the
+strong sense by the proof shown in [13], and hence MBMDB is also NP-complete in the strong sense.
+Now, consider the other practical implementation issue on an event driven system. In such a system, the task will
+be executed by some special event. Therefore, the release time of each bus transaction graph might not be the same.
+When the given release times and deadlines are not common for all bus transaction graphs, the MBM problem is still
+NP-complete.
+Corollary 7 Let each bus transaction graph in a given set of bus transaction graphs G have a respective release time
+and a deadline. The Multi-layer Bus Minimization with Respective Release Times and Deadlines (MBMRTD) problem
+is NP-complete in the strong sense even when the number of bus layers is 1.
+Proof. This corollary could be proven by transformation from the Sequencing with Release Times and Dead-
+lines (SRTD) problem. The SRTD problem is defined as follows: Given a set tasks of T where, for each task t ∈ T ,
+a length l(t) ∈ Z+, a release time r(t) ∈ Z+0 , and a deadline d(t) ∈ Z+, is there one processor schedule for T that
+satisfies the release time constraints and meets all the deadlines?
+11
+bus transactions based on the well-known deadline revision method [22]. It can be noted that the deadline setting of
+bus transactions satisfies the precedence constraints for the set of bus transaction graphs G and follows the “As-Late-
+As-Possible” policy. Then, the start time and completion time of each bus transaction in the same partition can be
+derived by the priorities of bus transactions, because the bus transactions under consideration are non-preemptive.
+The partition of each solution represents a bus layer in a multi-layer bus system, and so the current time of each
+partition is then advanced to the completion time, (i.e., tBUSk + eBTi,j ), of the bus transaction. Each bus transaction
+in each partition is then checked. If no transaction misses its deadline, the test finishes and reports a success. The
+time complexity of this algorithm is O(n), where n is the number of bus transactions.
+5.2.2 The Energy Function
+The energy function (i.e., the penalty function or the cost function) can be defined by two major factors in SA: (1) the
+deadline satisfaction of bus transactions, and (2) the slack time of each partition. Given a solution, the feasibility of
+a bus transaction could be derived in a similar fashion as the feasibility test. The energy functions EBTi,j , EBUSk of
+BTi,j and BUSk, respectively, with a given solution are defined as follows:
+EBTi,j = −eBTi,j if BTi,j meets its deadline
+EBTi,j = f(eBTi,j ) if BTi,j misses its deadline
+EBUSk = Hyper-period of G+
+∑
+BTi,j∈BUSk EBTi,j
+where f(x) is any increasing function of x (e.g., f(x) = x2).
+The smaller the energy function value of a bus transaction is, the better the schedule of the bus transaction. The
+energy function serves to impose a high penalty on a bus transaction if the bus transaction misses its deadline. The
+slack time of each partition (i.e., bus layer) also serves to exaggerate any potential penalty for a schedule. The value
+Etotal of the energy function of a solution is the sum of the energy function values of each partition (i.e., bus layer)
+under consideration, as shown in the following equation:
+Etotal =
+m∑
+k=1
+EBUSk (1)
+where m is the number of partitions (i.e., bus layers) in the current solution.
+5.2.3 Refinement Strategies
+The four refinement strategies in SA (i.e., Merge(S), Split(S), Swap(S), and Move(S)) are used to derive a new
+state by reassigning bus transactions priorities and partitions. Each refinement strategy reassigns the priorities and
+partitions of one or two bus transactions once and selects bus transactions randomly. In addition, when there are two
+bus transactions with the same priority on the same partition, all bus transactions with priorities not higher than the
+priority of the bus transaction with a new assignment are readjusted by an increment of one.
+Merge(S) stands for the “merging” of two bus transactions into one partition, while the priorities of the two
+bus transactions remain as they are. The rationale is to seek a local optimum in the reduction of the number of
+partitions (i.e., bus layers). To seek a global optimal solution, a Split(S) is used for “splitting” two bus transactions
+on the same partition into different partitions by adding a new partition, while the priority of the bus transaction
+which is in the new partition is given the highest priority of the original partition. Note that the priority of the bus
+transaction that is in the original partition stays the same.
+Swap(S) stands for “swapping” of the priorities of two bus transactions. When two bus transactions are on different
+partitions, the swapping strategy also swaps the partition of these two bus transactions. The swap strategy serves to
+randomize the priority and partition assignments for the bus transactions. For improving the feasibility opportunity
+of the bus transaction, Move(S) is used for “moving” one bus transaction to a randomly selected partition, and the
+priority of the bus transaction is assigned as the highest priority of the selected partition.
+13
+4 75 6 8
+10
+100
+1000
+0
+10000 Exhaustive search
+SA (2000 iterations)
+Number of bus transactions
+R
+u
+n
+n
+in
+g 
+tim
+e 
+(se
+c.
+)
+(a) Running time
+4 75 6 8
+1
+0.7
+Number of bus transactions
+M
+TN
+B
+R
+1.3
+100 iterations
+30 iterations
+(b) Minimal Total Number of Bus layers Ratio
+Figure 7. SA vs. Exhaustive Search
+with the number of bus transactions. Figure 7(b) illustrates the minimal total number of bus layers ratio of the SA
+algorithm as compared to the exhaustive search. As shown in Figure 7(b), the minimal total number of bus layers of
+the SA algorithm is the same as that of the exhaustive search, when SA runs 100 iterations. When the SA algorithm
+runs less iterations, the result is slightly worse than the final solution of exhaustive search (i.e., the optimal solution),
+and the astringency of SA is shown in later figures.
+SA
+A
+N
+B
+PS
+NS
+0 200
+10
+20
+30
+0
+50
+400 600 800 1000
+40
+Iterations
+RS
+1200
+(a) 100 bus transactions
+SA
+NS
+0 1000
+50
+100
+150
+0
+250
+2000 3000 4000 5000
+200
+Iterations
+RS
+AN
+B
+PS
+(b) 500 bus transactions
+Figure 8. Astringency
+Figure 8 shows the comparison between our SA algorithm, the random search (RS) method and the neighborhood
+search (NS) method. The horizontal axis represents the number of iterations in each algorithm, while the vertical axis
+represents the average number of bus layers per system (ANBPS). The RS method produces the optimal solution, if
+there is sufficient running time to search whole solutions randomly. As shown in Figure 8(a), the final solution of the
+SA algorithm is close to the final solution of the RS method and better than that of the NS method after a prolonged
+run time. This is because the NS method has the tendency to be trapped at the local optima and our SA algorithm
+can deviate from the local optima by allowing undesired solutions. It can be noted that when the running time is not
+sufficient, the solution of NS might be better than RS as shown in Figure 8(b). It is because the RS method spends
+the most running time searching for whole solutions randomly, and the NS method spends less running time due to its
+use of the greedy policy that ensures it improves the solution at earlier iterations. The comparisons of the convergence
+speed of the SA algorithm, RS method and NS method under different workloads are also shown in Figure 8. The
+average number of bus layers decreases with the number of iterations in the SA algorithm, and the average number
+of bus layers increases with the number of bus transactions in the given workload. We observe that a larger number
+of bus transactions required more time to converge.
+15
+R
+u
+n
+n
+in
+g 
+tim
+e 
+(se
+c.
+)
+Number of bus transactions
+600 800 1000200 400
+EDF
+SA
+CPM
+10
+0
+1000
+100
+Figure 11. Different Numbers of Bus Transactions
+when the number of out-degrees of a bus transaction graph increases. We also note that the out-degrees of a node
+without the precedence constraint and of a chain are 0 and 1, respectively. In particular, as shown in Figure 10(b),
+SA significantly outperforms EDF as the deadline of each graph is the same. The chain and directed acyclic graphs of
+SA with different depths have also been evaluated, and the results show that the depth of the graphs had little effects
+on the normalized bus layer of SA.
+Figure 11 illustrates the comparison of results for the average running time between different algorithms. The
+horizontal axis represents the running time, while the vertical axis represents the number of bus transactions. In
+comparison, the EDF and CPM spend less running time as the greedy strategy is only considered at each stage, while
+for the SA algorithm, the running time increases with the number of bus transactions. All methods had a longer
+running time with increasing workloads.
+6.2.3 Processing Element Contention Prevention
+In this section, we further extend all algorithms to solve the MBM problem with processing element contention. In
+this problem, any two bus transactions could not send to the same processing element simultaneously. As explained in
+Section 4, this problem is also NP-complete. This implies that the function execution order of each processing element
+might need to be changed. In other words, an optimal solution of the system would need to consider the execution
+and communication problem at the same time.
+In this project, we have focused on the communication problem and thus, the scheduling policy on each processing
+element execution is first-in-first-out in our experiments. Each evaluated algorithm is extended by adding a processing
+element contention checking function. In other words, a bus transaction BTi,j is scheduled only when all of BTi,j ’s
+predecessors are completed and that the destination processing element of BTi,j is free. Specifically, a destination
+processing element is free only when there is no current data transmission by a bus transaction. We tested the revised
+algorithms on the length of the deadline of each bus transaction graph and the number of processing element types
+under the given 10 chains with 100 bus transactions.
+As shown in Table 1, the deadline of each bus transaction graph BTGi in G is set to 2 to 5 times of the execution
+time of all bus transactions in this graph. The experimental results demonstrate that the bus layers of all algorithms
+decrease when the deadlines of the graphs increase. Moreover, when the timing constraint became stricter, some cases
+failed when greedy algorithms, such as EDF and CPM are used. This has been explained in section 6.2.2.
+SA EDF CPM
+Deadline Number of bus layers Number of bus layers Number of bus layers
+5 times 2 2 2
+4 times 2 2 2
+3 times 4 4 failed
+2.5 times 6 failed failed
+Table 1. Different Deadlines
+Table 2 illustrates the results obtained when the number of processing element (PE) types in G is set from 11
+17
+[7] M. Caldari, M. Conti, M. Coppola, P. Crippa, S. Orcioni, L. Pieralisi, and C. Turchetti. System-Level Power
+Analysis Methodology Applied to the AMBA AHB Bus. In Proceedings of the Conference on Design, Automation,
+and Test in Europe, 2003.
+[8] Y.-S. Chen, L.-P. Chang, and C.-M. Jeng. On-line task scheduling for dual-core real-time embedded systems. In
+IEEE 7th International Conference on Industrial Informatics, 2009, NSC 97-2221-E-011-044-MY2.
+[9] Y.-S. Chen, H.-L. Tsai, and S.-W. Lo. Multi-layer bus minimization for soc. Journal of Systems and Software,
+83(1), 2010, NSC 97-2221-E-011-044-MY2.
+[10] R. B. B. Chou, Pai H. Ortega and Gaetano. The Chinook Hardware/Software Co-synthesis System. In Proceedings
+of the International Symposium on System Synthesis, 1995.
+[11] R. P. Dick, D. L. Rhodes, and W. Wolf. TGFF: Task Graphs for Free. In Proceedings of the International
+Workshop on Hardware/Software Codesign, 1998.
+[12] P. Eles, K. Kuchcinski, Z. Peng, A. Doboli, and P. Pop. Scheduling of Conditional Process Graphs for the
+Synthesis of Embedded Systems. In Proceedings of the Conference on Design, Automation, and Test in Europe,
+1998.
+[13] M. R. Garey and D. S. Johnson. Computers and Intractability: A Guide to the Theory of NP-Completeness.
+W. H. Freeman, 1979.
+[14] R. K. Gupta and G. D. Micheli. Hardware-software Cosynthesis for Digital Systems. IEEE Design and Test of
+Computers, 10(3), 1993.
+[15] T. C. Hu. Parallel Sequencing and Assembly Line Problems. Operations Research, 9(6), 1961.
+[16] T. Kambe, A. Yamada, K. Nishida, K. Okada, M. Ohnishi, A. Kay, P. Boca, V. Zammit, and T. Nomura. A C-
+based Synthesis System, Bach, and Its Application. In Proceedings of the Asia South Pacific Design Automation
+Conference, 2001.
+[17] C. M. Lien, Y. S. Chen, and C. S. Shih. On-chip Bus Architecture Optimization for Multi-core SoC Systems. In
+Proceedings of the Workshop on Software Technologies for Future Embedded and Ubiquitous Systems, 2007.
+[18] C. L. Liu and J. W. Layland. Scheduling algorithms for multiprogramming in a hard-real-time environment.
+Journal of the ACM, 20(1):46–61, 1973.
+[19] A. Masrur, S. Dre¨ssler, and G. Fa¨rber. An Off-line Variable-size Bin Packing for EDF. Master’s thesis, Institute
+for Real Time Computer Systems Technische Universita¨t Mu¨nchen, Germany, 2007.
+[20] C. L. McCreary, M. A. Cleveland, and A. A. Khan. The Problem With Critical Path Scheduling Algorithms.
+Master’s thesis, Department of Computer Science and Engineering Auburn University, USA, 1996.
+[21] Z. Michalewicz and D. B. Fogel. How to Solve It: Modern Heuristics. Springer, 2000.
+[22] A. K. Mok. The design of real-time programming systems based on process models. In Real Time Systems
+Symposium, pages 5–17, 1984.
+[23] O. Ogawa, S. B. de Noyer, P. Chauvet, K. Shinohara, Y. Watanabe, H. Niizuma, T. Sasaki, and Y. Takai. A
+Practical Approach for Bus Architecture Optimization at Transaction Level. In Proceedings of the Conference on
+Design, Automation, and Test in Europe, 2003.
+[24] D. J. W. S and L. J. Sun. A scheme for scheduling hard real-time applications in open system environment. In
+ECRTS, 1997.
+[25] C. L. Sanghun Lee and H. J. Lee. A New Multi-channel On-chip-bus Architecture for System-on-chips. In
+Proceedings of the IEEE International Conference on SoC, 2004.
+[26] T. Seceleanu, V. Leppanen, J. Suomi, and O. Nevalainen. Resource Allocation Methodology for the Segmented
+Bus Platform. In Proceedings of the IEEE International Conference on SoC, 2005.
+19
+出席國際學術會議心得報告 
+                                                             
+計畫編號 NSC 97-2221-E-011-044-MY2 
+計畫名稱 多核心即時資料傳輸架構的設計方法 (第 2 年) 
+出國人員姓名 
+服務機關及職稱 
+陳雅淑 
+國立台灣科技大學電機工程系助理教授 
+會議時間地點 Macau SAR, P.R.C, 8/23-8/25 
+會議名稱 
+2010 IEEE 16th International Conference on Embedded and Real-Time 
+Computing Systems and Applications 
+ 
+一、參加會議經過 
+目的: 
+本次參加的國際學術會議是 IEEE RTCSA 2010 研討會，此會議主要討論嵌入式系統相關
+技術與最新研究成果，會議地點在澳門舉行。本會議與會人士皆為嵌入式系統領域著名
+學者與專家，本人於此次會議擔任`` Memory and Storage Management” 場次的主持人，
+該場次主要是探討常用於嵌入式系統中的快閃記憶體相關管理技術。 
+ 
+過程: 
+在`` Memory and Storage Management”場次中，發表的論文著重於嵌入式快閃記憶體架構
+的討論，由於快閃記憶體的迅速發展，許多業者期待下一代更快更可靠的快閃記憶體，
+並期望進一步取代嵌入式系統的儲存裝置。具體而言，我們討論如何設計嵌入式感知裝
+置的快閃記憶體管理，作者著重於揮發性記憶體與儲存記憶體之間的有效管理；針對多
+晶片固態硬碟，作者提出不同以往的檔案轉換層級的設計，大幅提高寫入效率；針對多
+單元快閃記憶體儲存系統，作者提出全新的位址轉換與管理機制，增加儲存系統可靠性。 
+ 
+ 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2010/10/20
+國科會補助計畫
+計畫名稱: 多核心即時資料傳輸架構的設計方法
+計畫主持人: 陳雅淑
+計畫編號: 97-2221-E-011-044-MY2 學門領域: 計算機結構與計算機系統 
+研發成果名稱
+(中文) 多核心系統的即時資料傳輸架構設計方法
+(英文) Real-time Communication Mechanism Synthesis for Multi-core System-on-Chip
+成果歸屬機構
+國立臺灣科技大學 發明人
+(創作人)
+陳雅淑
+技術說明
+(中文) 本設計方法針對高度客製化的多核心嵌入式系統產品，歸類溝通架構最佳化問題
+難度的重要指標，提供系統設計者規劃產品的原則，並考慮產品實作限制，提出
+系統化分析方法減少設計難度，有效減低溝通資源成本以及發展成本。針對多核
+心架構的程式設計模組，該設計方法提出各核心獨立運作的觀念，有效降低程式
+設計複雜度，並針對難以分析的應用程式效能參數，提供可動態調整的排程方法，
+協助系統設計者動態調動整體效能或單一應用程式效能。
+(英文) The methodology classifies communication architecture optimization problems for highly 
+customized multi-core embedded systems, and provides the design principles for system 
+designers. We also propose a systematic analysis with considering the practical 
+constraints to reduce the design complexity and development cost. A framework for the 
+programming model for multi-core systems is presented to reduce programming 
+complexity. The performance of system and applications are reconfigurable under the 
+framework.
+產業別 研究發展服務業
+技術/產品應用範圍 嵌入式相關設備
+技術移轉可行性及
+預期效益
+此設計方法探索多核心即時資索傳輸架構，著重於核心間整合運算的設計規劃，並提供多
+核心溝通介面分析與設計索程，可協助設計高效能低功耗的手持裝置。
+註：本項研發成果若尚未申請專利，請勿揭露可申請專利之主要內容。
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

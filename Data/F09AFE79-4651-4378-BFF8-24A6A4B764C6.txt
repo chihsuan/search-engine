@@ -1,0 +1,308 @@
+ 2
+報告內容 
+摘要 
+我們提出一個以手繪相連輪廓線建構 3D 網格模型（mesh）的技術，我們利用相連輪廓線（connected 
+contours）在微分幾何（differential geometry）上的性質，包括法向量（normal）及曲率（curvature），
+內插出所有網格點的曲面幾何性質，進而計算出平滑而合理的物體網格表面。相較之前相關的研
+究，以相連輪廓線可讓使用者以更直覺易懂的方式繪製模型，且依微分幾何性質可建構形狀更合
+理平滑之 3D 曲面模型。 
+1. 介紹 
+現今 3D 繪圖相關技術無論在動畫或遊戲上都已經被廣泛應用，市面上眾多的 3D 繪圖商業軟體琳
+瑯滿目，如 3D Studio Max、Maya、LightWave 等專業軟體，雖然此類軟體所建構出來的 3D 模型
+較為精細，也能夠提供強大的建模工具，但是對於非專業的使用者來說，如果想要建構一個 3D 模
+型，得花費許多時間才能夠上手。在 1997 年和 2007 在 ACM SIGGRAPH 上發表的 Teddy [17]和
+FiberMesh [2]這兩個研究提供了一個嶄新且簡單的模型建立方法，使用者可以透過手繪線條來快速
+的建立 3D 模型，沒有複雜的使用者介面，有的就只有直觀的建立，即使使用者非此類專業人士依
+然可以隨心所欲的建構出自己想要的 3D 模型出來。 
+我們基於此理念，也以手繪輪廓線為基礎，建構一個易於操作的 3D 建模系統。類似 FiberMesh，
+我們也是以手繪輪廓的方式來建立模型，但 FiberMesh 在繪製完第一個封閉平面輪廓線後就馬上建
+立一個初始模型，之後再繼續以手繪的輪廓線編輯模型，而我們的方法是先將所有的相連輪廓線
+建立完整，再以輪廓線上的幾何性質來計算對應到此相連輪廓線之較合理的 3D 網格模型，相較之
+下，我們的方法在建構部分形體的物體上會更加直覺與容易。 
+2. 相關研究 
+電腦繪圖的繪製方式，隨著電腦周邊技術的發展日新月異，與電腦互動不再只有滑鼠此裝置而已，
+還發展了像是手繪板（graphic tablet）、觸控螢幕（touch panel）及陀螺儀（gyroscope）遙控器等新
+穎的操控界面。但現今的 3D 繪圖軟體多是以滑鼠操作介面為主的編輯系統，若能建立以手繪建模
+的方式，更可讓設計者很直觀又容易的繪製想要的線條形狀，進而建立三維模型。因此，近來在
+電腦圖學領域有許多以手繪介面（sketch-base Interface）來製作或編輯三維模型的相關研究。 
+2.1 手繪建模或編輯系統 
+Teddy [17]以讓使用者隨心所欲的描繪簡單的線條，然後系統會自動的產生網格模型，並可以做形
+變（deform）、切割（cut）、長出（extrude）和挖空等模型編輯功能。但 Teddy [17]所使用的方法比
+較是跟據一些看似合理的經驗法則，而非精確的計算。K. Singh, E. Fiume, [8]提出 wires 模型形變
+技術，使用者可在 3D 模型表面上繪製輪廓線，藉由改變這些輪廓線來對目標模型的形狀做改變。
+R. Schmidt [15] 則是提供了類似 Teddy 方式的建模系統，作者使用一個名為 blob tree 的資料結構來
+建構（blobby inflation）及編輯模型，此系統也提供了 sweep、cut、blend 和 surface drawing 等編輯
+功能。Andrew Nealen [1]也是藉由編輯使用者在模型表面上所繪製的曲線來對模型做形變以達到編
+輯模型的效果，並應用 Laplacian surface editing [14]的技術來做到編輯後模型形狀細節的保持
+ 4
+建立相連輪廓線
+計算幾何性質
+建立封閉迴圈
+建立網格並計算
+網格點之幾何性質
+計算網格點的位置
+ 
+Figure 1. 以相連輪廓線建立三維模型之流程圖。 
+3. 模型的建構 
+3.1 系統架構 
+Fig.1 為我們方法的流程圖。首先，建構一個 3D 的相連輪廓線，接著計算出輪廓線點上的幾何性
+質，再來找出相連輪廓線中的所有封閉迴圈，每個封閉迴圈對應到模型上的一個區塊，再來對每
+個封閉迴圈建立三角網格，最後計算出所有點的幾何性質，把所有網格面聚合成單一封閉網格曲
+面，再計算出所有三維網格點的位置。 
+3.2 建立相連輪廓線 
+首先，我們先論討單一平面輪廓線的建立。使用者可以依自己的喜好在不同的切平面上來繪製輪
+廓線，但是由於是手繪的關係，會因筆畫的快慢關係導致所取的各點間的距離會有所不同，如
+Fig.2(a)所示。為了避免此情況的發生，在取點的時候，我們會先設定一個固定的距離閥值，當使
+用者開始繪製的時候，會依據此距離閥值取點，當點與點的距離小於我們設定的閥值時便不進行
+取樣，當距離太長時則會在兩點中間進行補點，這樣就可以使每一個的間隔能夠盡量相同，如
+Fig.2(b)所示。最後再對所有的點在進行降低取樣（downsampling），讓點的數目變少，我們採用
+Reverse Chaikin Sudbivision [11]的方式來進行降低取樣，每次取樣後的點數會少減一半，在我們的
+實作當中，大約疊代一至二次即可。Fig2.(c)為最後輪廓線所取樣的點，圖中顯示點與點之間的間
+距大約相等。 
+在本論文中相連輪廓線是由平面輪廓線所構成，單一平面輪廓未必是封閉的，但相連輪廓線則
+必須是封閉的，如 Fig.3 所示， Fig.3(a)是由兩個封閉的平面輪廓線所構成的相連輪廓線的結構，
+Fig.3(b)則是一個封閉平面輪線（在水平平面上）與一個不是封閉的平面輪線所構成的相連輪廓線。
+相連輪廓線的取樣則是把上面單一平面輪廓線做些微的修改。 
+ 
+ 6
+p
+1v
+2v
+p 1v
+2v
+pt 
+pn
+ 
+                     (a)                 (b) 
+Figure 4. 連廓線線上點的曲線幾何性質之計算，(a)輪廓線上點 p 的局部區域，v1, v2為 PCA 分析的兩個特徵向量，其中對 v1對應較大
+的特徵質；(b) 點 p 的局部區域轉換到主軸座標。 
+ 
+x
+y
+ 
+                    (a)                   (b) 
+Figure 5. 連廓線法向量的修正。(a)修正前；(b)修正後。 
+3.3.2 相連輪廓線之曲面幾何性質的計算 
+如 Fig.6 所示，Fig.6(a)顯示三個平面輪廓線所在平面的相對關係，Fig.6(b)顯示局部放大且將三個
+平面輪廓線也畫出來，其中綠色輪廓線（CG）在灰色平面上，其相關性質以下標 G 表示；黑色輪
+廓線（CB）在淺藍色平面上，其相關性質以下標 B 表示；紅色輪廓線（CR）在黃色平面上，其相
+關性質以下標 R 表示，其中 CG與 CB相交在點 q，CB 與 CR相交在點 p。 
+ 
+ (a) 
+ 
+CRCG
+CB
+q
+p
+onqG
+tqG
+nqB
+tqB
+noB
+toBno
+nq np
+npB
+tpB
+npRtpR (b) 
+ 
+  (c) 
+Figure 6. 連廓線上點的曲面幾何性質之計算。(a)三個相交輪廓線所在的平面；(b)
+三個相交輪廓線之幾何性質；(c)輪廓線上點 o 的局部放大圖。 
+ 8
+接下來我們要計算相連輪廓線上點的曲面曲率（mean curvature）。依據微分幾何學的定義，曲面的
+mean curvature H 可用式(6)來計算： 
+ 
+2
+21 kkH   (6) 
+如 Fig.8(a)，金色曲面 S（橢球面的一部分）與藍色平面相交的曲線上點 p 之曲率為該點的 k1，
+與綠色平面相交的曲線上點 p 之曲率為該點的 k2。 
+我們先考慮輪廓線交點的 mean curvature 計算，由於輪廓線平面未必相互正交，且輪廓曲線在該
+交點的曲率也未必剛好是 k1 或 k2，甚至未必是 normal curvature，因此我們先假設兩相交平面輪廓
+線之 normal curvature 絶對值較大者為交點之 k1，會做這樣的假設是因為我們認為一般使用者比較
+會畫出曲面上高特徵（高曲率）的輪廓線。接下來要計算出兩曲線之 normal curvature，如 Fig.9 所
+示，S 為一曲面，平面 G 為輪廓線所在平面，平面 B 為通過法向量 np 且與平面 G 相交於通過點 p
+之切線 T，S 與 G 之相交曲線為 CG（即我們方法中的輪廓線），S 與 B 之相交曲線為 CB，跟據 Meusnier 
+theorem [10]，在切線 T 的方向上，曲線 CG上點 p 的曲率 kpG與在曲線 CB上點 p 的曲率 kpB（即 normal 
+curvature）之關為： 
+ cospGpB kk   (7) 
+利用式(7)可計算出兩相交輪廓線在交點上的 normal curvature，而且我們假設曲率較大者為 k1，因
+此只要再求出 k2我們就可以用式(6)求出交點的曲面mean curvature。跟據Euler formula [10]如式(8)： 
+    2221 sincos kkkn   (8)  
+其中  nk 為在點 p 之切平面上方向（見 Fig.8(b)）的 normal curvature，注意 Fig.8 與 Fig.9 中的所
+指的角度是不一樣的。在我們的方法中，我們已求出交點處的 k1 及  nk （即相交輪廓線之 normal 
+curvature 較小者），因此我們可用式(8)求出 k2，再利用式(6)我們就可求出輪廓線交點的 mean 
+curvature。 
+S
+
+BG
+CG
+CB
+p
+npT
+ 
+Figure 9. Meusnier theorem，其中平面 G 通過曲面 S 上的點點 p 與該點之切線 T，平面 B 通過點 p, np及切線 T， 為平面 G 與平面 B
+之夾角。 
+接下來，要求出輪廓線上其他點的 mean curvature。如 Fig.6(b)所示，我們已有與曲率相關的資訊有：
+曲線 CB上點 o 的曲線曲率 koB，曲線 CR上點 p 的曲線曲率 kpR，曲線 CG上點 q 的曲線曲率 kqG。
+我們先將 kpR和 kqG用類似式(2)的方式內插到點上 o，即 
+ 
+qG
+pq
+po
+pR
+pq
+qo
+oN kl
+l
+k
+l
+l
+k   (9)  
+最後，我們用式(7)計算出相對於 koB的 normal curvature koBn，取 oNk 與 koBn 絶對值較大者為點 o 的 k1，
+ 10
+封閉的，在此結構的相連輪廓線上有 3 個封閉迴圈。 
+3.4.2 區塊網格的建構 
+每個封閉迴圈皆對應到物體表面的一個區塊，我們將單一封閉迴圈上所有的點依邊的長度比例對
+應到一個 2D 的圓周上，如 Fig.11(a)所示。接下來我們利用 Jonathan Richard Shewchuk [7] 的三角
+化處理，做適當的參數設定，使得內部三角網格能較接近正三角形且面積大小相近，如 Fig.11(b)
+所示，如此可使式(1)的近似計算結果較為正確。 
+3.4.3 網格點之幾何性質的計算 
+接下來我們要計算出網格內部點之曲面幾何性質：法向量及曲率（mean curvature）。在 3.3 節中，
+封閉迴圈上的點（Fig.11(a)中圓周上的點）的幾何性質已經都計算出來了，內部點則是藉由圓周上
+的點來內插，我們是採用單位化距離反比權重（normalized inverse distance weighted, IDW）的方式
+做內插，如式(10)： 
+ 
+
+
+
+Ck
+ik
+ij
+j
+Cj
+jji d
+d
+ww
+1
+1
+,nn  (10)  
+其中 n 為法向量，下標 i 為內部點的索引值， C 為封閉迴圈上的點的集合，dij或 dik為內部點 i 到
+封閉迴圈上的點 j 或點 k 的距離。 
+4. 結果 
+Fig.12 顯示以兩個近似圓的輪廓線來求解三維模型的結果。Fig.12(a)顯示未計算點的幾何性質而只
+是將所有的i皆給 0（表示一個處處皆盡量平坦的表面）所解出來的形狀，Fig.12(b)則是用我們求
+出來的幾何性質所算出的i去求解的形狀，很明顯，我們方法可求解出較合理也較符合使用者所預
+期之網格形狀。 
+Fig.13 顯示我們以相連輪廓所建構出來的三維網格模型。在我們的系統中，我們會顯示出正在
+繪製平面與目前相連輪廓線的交點，這樣可讓使用者更清楚要把正在繪製的輪廓線畫在何處。
+Fig.13(a), (b), (c)分別為類似老鼠、狐狸、魚的 genus 0 網格曲面，Fig.13(d)則是甜甜圈，為 genus 1
+的網格曲面。Fig.13 顯示我們的方法所做出來的模型皆能符合使用者所繪製輪廓線所要表達的之平
+滑網格表面物體。 
+ 
+      
+(a)                          
+(b) 
+Figure 12. 以兩個近似圓的輪廓線來求解三維模型形狀。(a) 
+所有i 皆給 0 所解出來的形狀；(b) 用我們求出的幾何性質
+所算出的 去求解模型的形狀
+ 12
+surfaces with 3D curves,” ACM Trans. Graph., Vol. 26, No. 3. (2007) 
+[3] Chen Yang, Dana Sharon, and Michiel van de Panne, “Sketch-based modeling of parameterized objects,” 
+In ACM SIGGRAPH 2005. 
+[4] Fabrice Jaillet, Behzad Shariat and Denis Vandorpe, “3D surface modeling from planar sections,” In 
+Optical 3D Measurement Techniques IV, Zurich, CH, pp. 430-435, Sept/Oct. 1997. 
+[5] Florian Levet, Xavier Granier, and Christophe Schlick, “3D Sketching with profile curves,” International 
+Symposium on Smart Graphics 2006. 
+[6] Henny Fuchs, Zvi M. Kedem, and Samuel P. Uselton, “Optimal surface reconstruction from planar 
+contours,” In ACM SIGGRAPH 1977. 
+[7] Jonathan Richard Shewchuk, “A Two-Dimensional Quality Mesh Generator and Delaunay Triangulator,” 
+Computer Science Division University of California at Berkeley, California. 
+http://www.cs.cmu.edu/~quake/triangle.html 
+[8] Karan Singh and Eugene Fiume, “Wires: a geometric deformation technique,” Computer Graphics, Vol. 
+32, No. Annual Conference Series. (1998), pp. 405-414. 
+[9] Lee Markosian, Jonathan M. Cohen, Thomas Crulli, and John Hughes, “Skin: A Constructive Approach 
+to Modeling Free-form Shapes,” In Proceedings of SIGGRAPH 99. 
+[10] Manfredo P. do Carmo, “Differential Geometry of Curves and Surfaces,” Prentice Hall, 1st edition, 1976. 
+[11] Neil Dodgson, Michael S. Floater, and Malcolm Sabin, “Advances in Multiresolution for Geometric 
+Modelling,” Springer, 2004. 
+[12] Olga Karpenko, John F. Hughes, and Ramesh Raskar, “Free-form sketching with variational implicit 
+surfaces,” Computer Graphics Forum, 2002, 585–594. 
+[13] Olga Sorkine and Daniel Cohen-Or, “Least-squares meshes,” Proceedings of the Shape Modeling 
+International 2004. 
+[14] Olga Sorkine, Daniel Cohen-Or, Yaron Lipman Marc Alexa, Christian Rössl, and Hans-Peter Seidel, 
+“Laplacian surface editing,” In proceedings of the Eurographics 2004.  
+[15] Ryan Schmidt, Brian Wyvill, Mario Costa Sousa, and Joaquim Jorge, “ShapeShop: Sketch-Based Solid 
+Modeling with BlobTrees,” Eurographics Workshop on Sketch-Based Interfaces and Modeling 2005. 
+[16] Steve Tsang, Ravin Balakrishnan, Karan Singh, and Abhishek Ranjan, “A suggestive interface for image 
+guided 3d sketching,” In CHI ’04: Proceedings of the SIGCHI conference on Human factors in 
+computing systems, pages 591–598, New York, NY, USA, 2004. ACM Press. 
+[17] Takeo Igarashi, Satoshi Matsuoka, and Hidehiko Tanaka, “Teddy: A sketching interface for 3D freeform 
+design,” ACM SIGGRAPH 1999, pp. 409-416. 
+[18] Youngihn Kho and Michael Garland, “Sketching Mesh Deformations,” ACM SIGGRAPH 2005. 
+ 
+ 
+計畫成果自評 
+ 
+Related Publication about this Project 
+1. Ping-Hsien Lin and Yan-Ting Liu, “以相連輪廓線之幾何性質建構三維模型”, Computer Graphics 
+Workshop 2011, National Taiwan University of Science and Technology, 14~15, July 2011. 
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：林炳賢 計畫編號：99-2221-E-018-024- 
+計畫名稱：以相連輪廓線製作三維模型 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 3 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

@@ -1,0 +1,657 @@
+Z`Ł
+Ìß@~ó<\ÝŁ]P*»À@'b°3@Dºs,
+A¡ÛD.@Dº (PQCrypto 2008)I	ÑJ§ãn7FÕºÈÎBÄ
+×Ý?, &ÆÝPÞ3òÝÞ¼[ÕSAGE Łã8Ù&ÆJ
+@Ý Faugère Ý?, ôµÎEyv«×PÝÙ, F4-F5-XL Õ°, P°ñÒ¼
+ó` &Æô"D%§ Ý¸à, êG|| 1 `|ìÝ` , ¸ànVidia
+GTX 295 Ł 48 óÝëg]PyF2
+n"C: %§ , 92ÐÛDÙ, óÓÛ., Ł]à
+Abstract
+During this year, I have conducted further investigation on system-solving involved in
+cryptanalysis, including design and implementation. Some results had been published
+at conferences like PQCrypto 2008. Some other results have been submitted to other
+workshops, and/or being prepared/revised for submission.
+Through a series of tests, we have compiled software that will be included into the
+SAGE open source software project. We have also veriﬁed the conjecture of Faugère that
+on generic systems our improvement of F4-F5-XL algorithms cannot escape exponential
+time, but in this we have used special hardware such as Graphics Processing Units, and
+today we can solve 48 cubic equations in 48 variables in under 1 hour on a single nVidia
+GTX 295 video card in F2.
+Keywords:, graphic processing units (GPU), multivariate public-key cryptosystems
+(MPKC), algebraic cryptanalysis, system-solving
+2
+Fast Exhaustive Search for Quadratic Equations over F2
+November 1, 2009
+The question discussed here is the following: how to solve systems of u quadratic equations (f1, . . . fu)
+in n variables (x1, . . . , xn) over F2 by exhaustive search?
+Each equation can be seen as polynomial of total degree at most two over F2[x1, . . . , xn], and taken
+together, the u polynomials can be considered as a function: f : Fn
+2
+→ F
+u
+2
+.
+Let us first note that there are exactly n(n + 1)/2 + 1 monomials of degree at most 2 in n variables.
+Therefore, evaluating all the polynomials requires at most un(n + 1)/2 additions, and only n(n + 1)/2 + 1
+products, if these are precomputed. Here, a “product” means the AND of two bits, and a “sum” means the
+XOR of two bits. So, naively evaluating all the possible values of the variables takes nearly:
+u · n2/2 · 2n bit operations.
+It must be noted that computing the ZDD here amounts to pre-computing the products, then computing
+the sums. Storing the fi’s requires u · n(n + 1)/2 bits of memory.
+n u bits required bytes required bit ops required
+32 32 16896 2112 247
+48 48 56448 7056 265
+52 52 71656 8957 269
+56 56 89376 11172 273.5
+60 60 109800 13725 278
+64 64 133120 16640 284
+Figure 1: performance figures of the naive method
+1 Better Algorithms
+Let us denote by (e1, . . . , en) the canonical basis of the vector space F
+n
+2
+. We consider the derivative ∂f
+∂i
+of
+our vector of quadratic f over the i-th variable:
+∂f
+∂i
+x 7→ f(x+ ei) + f(x)
+If f is of total degree 2, then ∂f
+∂i
+is an affine function. It is easy to isolate the constant part (which is a u-bit
+vector), and we call it ci:
+ci =
+∂f
+∂i
+(0) = f(ei) + f(0)
+Now, the function x 7→ ∂f
+∂i
+(x)+f(ei)+f(0) is linear, and can be represented by a u-by-n matrix Mi. Observe
+that for any vector x, we have:
+f(x + ei) =
+∂f
+∂i
+(x) + f(x)
+1
+n u bits required bytes required bit ops required
+32 32 33792 4224 242
+48 48 112896 14112 259
+52 52 143312 17914 263.5
+56 56 178752 22344 267.5
+60 60 219600 27450 272
+64 64 266240 33280 276
+Fig. 2. performance figures of algorithm 2
+According to this lemma, we denote by rk(j) = 2
+k−1 + j · 2k (it follows that ν2(rk(j)) = k). The
+idea is to compute zrk(j+1) knowing zrk(j). Fortunately for us, it is easy to deduce xrk(j+1) from
+xrk(j).
+Lemma 2. xrk(j+1) = xrk(j) + ek + ek+ν2(j).
+So, all in all:
+zrk(j+1) = Mk ·
+[
+xrk(j) + ek + ek+ν2(j)
+]
+= zrk(j) +Mk · ek +Mk · ek+ν2(j)
+This naturally leads to the definition of:
+αk,ℓ = Mk · ek +Mk · ek+ℓ
+such that
+zrk(j+1) = zrk(j) + αk,ν2(j)
+This leads to the definition of algorithm 3. Only 3n bit operations (XOR) are required per
+iteration, which is n2/6 times better than the naive method, but the bookkeeping overhead is a bit
+more important (need to maintain the j[k] counters, and to evaluate ν2 twice per iteration). The
+memory requirements are the same than for algorithm 2, but they could be made smaller (using the
+fact that k + ℓ ≤ n on line 10, so not all the α’s actually have to be stored).
+Algorithm 3 An even faster enumeration
+1: x0 ← 0
+2: y0 ← f(0)
+3: for k from 1 to n do
+4: Initialize z[k]← 0
+5: Initialize j[k]← 1
+6: end for
+7: for i from 1 to 2n do
+8: k ← ν2(i)
+9: ℓ← ν2(j[k])
+10: z[k]← z[k] + αk,ℓ {Here we have z[k] = Mk · xi}
+11: y← y + z[k] + wk {Here we have y = f(xi)}
+12: if y = 0 then
+12: Note i carefully
+13: end if
+14: j[k]← j[k] + 1
+15: end for
+3
+Secure PRNGs from Specialized Polynomial Maps over Any Fq
+Abstract. Berbain, Gilbert, and Patarin presented QUAD, a pseudo random number generator (PRNG)
+at Eurocrypt 2006. QUAD (as PRNG and stream cipher) may be proved secure based on an interesting
+hardness assumption about the one-wayness of multivariate quadratic polynomial systems over F2.
+The original BGP proof only worked for F2 and left a gap to general Fq. We show that the result can
+be generalized to any arbitrary ﬁnite ﬁeld Fq, and thus produces a stream cipher with alphabets in Fq.
+Further, we generalize the underlying hardness assumption to specialized systems in Fq (including
+F2) that can be evaluated more eﬃciently. Barring breakthroughs in the current state-of-the-art for
+system-solving, a rough implementation of a provably secure instance of our new PRNG is twice as fast
+and takes 1/10 the storage of an instance of QUAD with the same level of provable security.
+Recent results on specialization on security are also examined. And we conclude that our ideas are
+consistent with these new developments and complement them. This gives a clue that we may build
+secure primitives based on specialized polynomial maps which are more eﬃcient.
+Keywords: sparse multivariate polynomial map, PRNG, hash function, provable security
+1 Introduction
+Cryptographers have used multivariate polynomial maps for primitives since Matsumoto-Imai [26] but there
+is a dearth of results proving security based on plausible hardness assumptions. Berbain, Gilbert and Patarin
+presented a breakthrough in Eurocrypt 2006, when they proposed a PRNG/stream cipher that is provably
+secure provided that the class of multivariate quadratic polynomials is probabilistically one way:
+Class MQ(q, n,m): For given q, n,m, the classMQ(q, n,m) consists of all systems of m quadratic polyno-
+mials in Fq with n variables. To choose a random system S fromMQ(q, n,m), we write each polynomial
+Pk(x) as
+∑
+1≤i≤j≤n aijkjxixj +
+∑
+1≤i≤n bikxk + ck, where every aijk, bik, ck is chosen uniformly in Fq.
+Solving S(x) = b for anyMQ system S is known as the multivariate quadratic problem.
+It is often claimed that the NP-completeness of this problem [19] is the basis for multivariate public-key
+cryptosystems. We could take instead Pi's to be polynomials of degree d instead of quadratic and get
+the class of multivariate polynomial systems MP (q, d, n,m). This contains MQ(q, n,m) as a subset,
+so solving arbitrary S(x) = b for anyMP system S would be no easier. However, it is not easy to base a
+proof on worst-case hardness; the premise used in [7] is the following average-case hardness assumption:
+Assumption MQ: Given any k and prime power q, For parameters n,m satisfying m/n = k + o(1), no
+probabilistic polynomial-time algorithm can solve (in poly(n)-time) any ﬁxed ε > 0 proportion of systems
+S drawn from MQ(q, n,m), and a vector b = (b1, b2, . . . , bm) drawn from S(Un), where Un is uniform
+distribution over (Fq)
+n
+such that S(x) = b.
+With this premise, [7, Theorem 4] proved the QUAD PRNG secure over F2. However, a looseness factor
+in its security argument in the security proof means that provably secure QUAD instances over F2 are not yet
+of practical speed. It also does not work for ﬁelds larger than F2. A similar result over any Fq is non-trivial
+to prove, which we do here with diﬀerent and more involved techniques. However, instances of QUAD with
+the same-size state over larger ﬁelds are signiﬁcantly less secure [33]. To increase the diﬃculty of solving
+a system of nonlinear polynomial equations, we can plausibly change (a) the ﬁeld size q, (b) the number
+of variables n, or (c) the degree d of the system (cf. [3, 4, 31]). Each costs time and space (for a reduction
+from the MQ problem in Fq case to F2 case, see [30]). Even with a hardware implementation, an increase
+in resource consumption is inevitable.
+A logical next step is to combine all these approaches but ﬁnd polynomials that are easier to evaluate.
+A natural candidate is sparsity in the chosen polynomials. To our knowledge, however, there are no prior
+positive results for provable security of specialized polynomial systems, and speciﬁcally sparse ones.
+So the questions we are trying to answer are:
+ Aumasson-Meier (ICISC 2007) [1] shows that in some cases sparsity in primarily underdeﬁned  more
+variables than equations  systems leads to improved attacks. Results are very intresting and takes more
+study but do not apply to overdetermined systems in general.
+ Bard-Courtois-Jeﬀerson [2] tests SAT solvers on uniformly sparse F2 equations, and gives numbers.
+ Raddum-Samaev [27, 28] attacks clumped systems (even though the title says sparse). Similarly the
+Courtois-Pieprzyk XSL attack [13] requires a lot of structures (i.e., clumping).
+2 PRNG Based on Specialized Polynomial Map in F2
+This section both provides a recap of past results and extends them to specialized maps over F2. We will
+start with deﬁnitions and models, then give the key results on the provable security level.
+Computational Distinguishability: Probability distributions D1 and D2 over a ﬁnite set Ω are compu-
+tationally distinguishable with computing resources R and advantage ² if there exist a probabilistic
+algorithm A which on any input x ∈ Ω outputs answer 1 (accept) or 0 (reject) using computing resources
+at most R and satisﬁes |Prx∈D1 (A(x) = 1)− Prx∈D2 (A(x) = 1)| > ². The above probabilities are not
+only taken over x values distributed according to D1 or D2, but also over the random choices that are
+used by algorithm A. Algorithm A is called a distinguisher with advantage ².
+If no such algorithm exists, then we say that D1 and D2 are computationally indistinguishable with
+advantage ². If R is not speciﬁed, we implicitly mean feasible computing resources (e.g., < 280 simple
+operations, and reasonable limits [usually polynomially many] in sampling from D1 and D2).
+PRNG: Let n < L be two integers and K = Fq be a ﬁnite ﬁeld. The function G : K
+n → KL is said to be a
+Pseudorandom Number Generator (PRNG) if the probability distribution of the random variable G(x),
+where the vector x is uniformly random in Kn, is computationally indistinguishable (wirth distinguisher
+resource R) from a uniformly random vector in KL. Usually q = 2 but it is not required.
+Linear polynomial maps: A linear polynomial map R : (Fq)
+n → (Fq) means R(x) =
+∑n
+i=1 aixi, where
+x = (x1, x2, . . . , xn), and x1, x2, . . . , xn are variables. If we give these variables values in Fq, by setting
+(x1, x2, . . . , xn) = (b1, b2, . . . , bn) for bi ∈ Fq, denoted as b, then R(b) =
+∑n
+i=1 aibi is an element in Fq.
+In the following sections, a random linear polynomial map (or form) has the coeﬃcients ai's randomly
+chosen from Fq. Also, when we mention R or R(x) refers to the function but when we write R(b), that
+means the value of the function R with input vector b.
+Instance from SMP (or MQ): If S is an instance drawn from SMP(q, d, n,m, (η2, . . . , ηd)), then S(x) =
+(P1(x), P2(x), . . . , Pm(x)) (x = (x1, x2, . . . , xn) are variables) is a function that maps (Fq)
+n → (Fq)
+m
+and each Pi(x) has the same probability distribution as that mentioned in section 1.2. For example, if
+b = (b1, b2, . . . , bn) is a vector in (Fq)
+n
+, then S(b) = (P1(b), P2(b), . . . , Pm(b)), a value in (Fq)
+m
+.
+Note: Heretofore we will also say SMP(n,m) for short, if no confusion is likely to ensue.
+Given any PRNG, there is a standard way to stretch it into an old-fashioned stream cipher (Prop. 1), i.e.
+stream cipher without IV and key setup. There are ways to set up an initial state securely, such as in Sec. 3.1.
+Thus we concentrate our eﬀorts on building a PRNG from anyMQ family of map from Fn2 → F
+m
+2 ; in order,
+we need to
+1. show that if an instance S drawn fromMQ is not a PRNG, then for a (secretly) given vector b we can
+predict, with the help of information from the value of S, S(b), and any linear form R, the value of R(b)
+with strictly larger than 1/2 + ² probability; then
+2. use Goldreich-Levin theorem, which states that the value of any linear function R, R(b) is a hardcore bit
+of any F
+n
+2 → F
+m
+2 one-way function S, S(b), and R. I.e., being able to guess with strictly larger than 1/2+²
+probability R(b) from S,S(b), and R means that we can invert S(b) with non-negligible probability.
+3
+2.2 Constructing a PRNG fromMQ (F2 Case)
+Proposition 3 ([25], [7]) Suppose there is an algorithm B that given a system S(: Fn2 → F
+m
+2 ) from
+MQ(2, n,m), a random n-bit to one-bit linear form R and the image S(b) of a randomly chosen unknown
+b, predicts R(b) with probability at least 12 + ² over all possible inputs (S,S(b), R) using time T , then there
+is an algorithm C that given S and the m-bit image S(b) of a randomly chosen n-bit vector b produces a
+preimage of S(b) with probability (over all b and S) at least ²/2 in time
+T ′ =
+8n2
+²2
+(
+T + log
+(
+8n
+²2
+)
++
+8n
+²2
+TS
+)
+Note: This is really the Goldreich-Levin theorem of which we omit the proof here. This essentially states
+that linear forms are hard-core of any one-way function. In fact, the tighter form [7, Proof of Theorem 3]
+(using a fast Walsh transform) can be simply followed word-for-word.
+This above result (which only holds for F2) with Prop. 2 shows that any MQ family of maps induces
+PRNGs over F2. To get a useful stream cipher, we can combine Props. 13:
+Proposition 4 ([25], [7]) If S = (P,Q) is an instance drawn from MQ(2, n, n + r), where P : Fn2 → F
+r
+2,
+Q : Fn2 → F
+n
+2 are the stream cipher as in Prop. 1, then if we can distinguish between λ output blocks of the
+stream cipher from truely random distribution in T time, we can ﬁnd b from S(b), where b is a randomly
+chosen input, with probability at least
+²
+8λ in time
+T ′ =
+27n2λ2
+²2
+(
+T + (λ+ 2)TS + log
+(
+27nλ2
+²2
+)
++ 2
+)
++
+27nλ2
+²2
+TS (1)
+Note: Roughly this means that if we let r = n, want to establish a safety level of 280 multiplications, want
+L = λr = 240 bits between key refreshes, and can accept ² = 10−2, then T ′ . 2230/n. All we need now is to
+ﬁnd a map from F
+n
+2 → F
+2n
+2 which takes this amount of time to invert.
+As we see below, unless equation-solving improves greatly for sparse systems, this implies that a handful
+of cubic terms added to a QUAD system with n = r = 208, q = 2 can be deemed secure to 280. There is no
+sense in going any lower than that, because solving a system with n bit-variables can never take much more
+eﬀort than 2n times whatever time it takes to evaluate one equation.
+3 PRNG Based on SMP in Fq
+In Proposition 3, [7] transformed the problem into a variation of Goldreich-Levin theorem (in F2). The
+transformation still works in Fq; however, Goldreich-Levin theorm gets stuck in this place. Here we show a
+way to extend the main results to Fq, by using a generalization of the Goldreich-Levin hard-core bit theorem.
+Proposition 5 ([25] and our contribution) Let K = Fq. Suppose there is an algorithm B that given a
+system S(: Kn → Km) from SMP(n,m), a random Kn → K linear form R and the image S(b) of a
+randomly chosen unknown b, predicts R(b) with probability at least 1q +² over all possible inputs (S,S(b), R)
+using time T , then there is an algorithm C that given S and the m-bit image S(b) of a randomly chosen
+vector b ∈ Kn produces a preimage of S(b) with probability (over all b and S) at least ²/2 in time
+T ′ ≤ 210
+(nq
+²5
+)
+log2
+(n
+²
+)
+T +
+(
+1−
+1
+q
+)2
+²−2 TS
+Remark [intuition of why argument in F2 cannot be applied in Fq]: If we know that one out of two exclusive
+possibilities takes place with probability strictly larger than 50%, then the other one must happen strictly
+less often 50%. If we know that one of q possibilities takes place with probability strictly greater than 1/q,
+we cannot be sure that another possibility does not occur with even higher possibility. Therefore, we can
+only treat this as a case of learning a linear functional with queries to a highly noisy oracle. Due to this
+diﬀerence, the order of ² in T ′/T is as high as ²−5 in Prop. 5, but only ²−2 in Prop. 3.
+5
+3.3 Intuition of Reconstructing Linear Polynomials
+Now we are given some oracle accesses to a function f : Kn → K, where K is a ﬁnite ﬁeld and |K| =
+q. We need to ﬁnd all linear polynomials which match f with at least 1q + ² fraction of inputs x. Let
+p(x1, x2, . . . , xn) =
+∑n
+1 pixi, and i-th preﬁx of p is
+∑i
+1 pjxj . The algorithm runs n rounds, and in the i-th
+round, it extends all possible candidates from the (i− 1)-th round with all elements in K and screens them,
+ﬁltering out most bad preﬁxes. The pseudocode of the algorithm is presented in Algorithm 2. Since we
+want the algorithm to be eﬃcient, we must eﬃciently screen possible preﬁxes from all extensions. We now
+introduce a screening algorithm to be called TestPreﬁx.
+Algorithm 1 TestPreﬁx(f ,²,n,(c1, c2 . . . , ci))[25]
+Repeat poly1(
+n
+²
+) times:
+Pick s = si+1, . . . , sn ∈R GF(q)
+Let t = poly2 (
+n
+²
+)
+for k = 1 to t do
+Pick r = r1, r2 . . . , ri ∈R GF(q)
+σ(k) = f(r, s)−
+Pi
+j=1 cjrj
+end for
+If there is σ(k) = σ for at least 1
+q
++ ²
+3
+fraction of the k's then ouput accept and halt
+endRepeat
+If all iterations were completed without accepting, then reject
+Algorithm 2 Find All Polynomials(f, ² )[25]
+set a candidate queue Q[i] which stores all the candidates (c1, c2, c3, . . . , ci) in the i-th round
+for i = 1 to n do
+Pick all elements in Q[i]
+TestPreﬁx(f ,²,n,(c1, c2 . . . , ci, α)) for all α ∈ F
+If TestPreﬁx accepts, then push (c1, c2 . . . , ci, α) into Q[i + 1] i.e. it is a candidate in the (i + 1)-th round
+end for
+Supposed we are testing the i-th preﬁx (c1, c2, . . . , ci), we are going to evaluate the quantity of:
+Ps(σ) := Pr
+r1,r2...,ri∈K
+
+f(r, s) = i∑
+j=1
+cjrj + σ
+
+
+where r = (r1, r2, . . . , ri). The value of σ can be thought as a guess of
+∑n
+i+1 pjsj . For every s, we can estimate
+the probability by a sample of several r's, and the error rate can be controlled by the times of sampling. If
+such s makes the probability signiﬁcantly larger than 1/q, then we accept. If no such s exists, we reject. The
+detailed algorithm is stated in the Algorithm 1: TestPreﬁx.
+If a candidate (c1, c2, . . . , ci) passes through the Algorithm 1 for at least one suﬃx s, there is a σ such
+that the estimate of Ps(σ) is greater than
+1
+q +
+²
+3 . For a correct candidate (c1, c2, . . . , ci), i.e. (c1, c2, . . . , ci)
+is the preﬁx of p = (p1, p2, . . . , pn) which matches f for at least
+1
+q + ², and an arbitrary σ =
+∑n
+i+1 pjsj , it
+satisﬁes that Es[Ps(σ)] ≥
+1
+q +². By Markov's inequality, for at least ²/2 fraction of s and some corresponding
+σ, it holds that Ps(σ) ≥
+1
+q +
+²
+2 . In Algorithm 1, we set
+1
+q +
+²
+3 as the passing criteria; thus the correct candidate
+will pass though the Algorithm 1 with great probability. However, [21, Sec. 4] shows that the total passing
+number of candidates in each round is limited. In fact, only a small number of candidates will pass the test.
+This maximum (also given by [21, Sec. 4]) number of preﬁxes that pass the test is ≤ (1− 1q )
+2²−2.
+7
+4 On SMP under Generic Solvers
+To verify that SMP (and SRQ of Appendix C) represent one way property, we need to show that
+1. generic system-solvers do not run substantially faster on them; and
+2. there are no specialized solvers that can take advantage of the sparsity.
+Here generic means the ability to handle any multivariate polynomial system with n variables and m
+equations in Fq. There are two well-known types of generic methods for solving polynomial systems, both
+related to the original Buchberger's algorithm. One is Faugère's F4-F5 and the other is XL-derivatives. In
+the former, sparsity is quickly lost and tests show that there are little diﬀerence in timing when solving
+SMP (or SRQ) instances. With recent versions of XL [33], the sparsity results in a proportional decrease
+in complexity. The eﬀect of sparsity on such generic methods should be predictable and not very drastic, as
+shown by some testing (cf. Sec. 4.1). We brieﬂy describe what is known about XL and F4-F5 in Appendix B.
+4.1 Testing the One-Wayness with Generic Solvers
+We conducted numerous tests on SMP maps at various degrees and sparsity over the ﬁelds F2, F16, and
+F256. For example, Table 1 lists our tests in solving randomMQ(256, n,m) instances where each polynomial
+only has n quadratic terms [we call these instances SMQ(256, n,m, n)] with F4 over GF(256). It takes
+almost the same time as solving anMQ instance of the same size.
+m− n DXL Dreg n = 9 n = 10 n = 11 n = 12 n = 13
+0 2m m 6.03 46.69 350.38 3322.21 sigmem
+1 m ⌈m+1
+2
+⌉ 1.19 8.91 53.64 413.34 2535.32
+2 ⌈m+1
+2
+⌉ ⌈m+2−
+√
+m+2
+2
+⌉ 0.31 2.20 12.40 88.09 436.10
+Table 1. SMQ(256, n,m, n) timing (sec): MAGMA 2.12, 2GB RAM, Athlon64x2 2.2GHz
+For XL variants that use sparse solvers as the last step [33] test results (one of which is shown in Table 2)
+conﬁrms the natural guess: For SMP instances where the number of non-linear terms is not overly small,
+the solution degree of XL is unchanged, and the speed naturally goes down as the number of terms, nearly
+in direct proportion (in Tab. 2, should be close to n/4).
+n 7 8 9 10 11 12 13
+D 5 6 6 7 7 8 8
+SMQ(256, n, n + 2, n) 9.34 · 10−2 1.17 · 100 4.04 · 100 6.02 · 101 1.51 · 102 2.34 · 103 5.97 · 103
+MQ(256, n, n + 2) 2.06 · 10−1 2.92 · 100 1.10 · 10 1.81 · 102 4.94 · 102 8.20 · 103 2, 22 · 104
+ratio 2.20 2.49 2.73 3.00 3.27 3.50 3.72
+Table 2. XL/Wiedemann timing (sec) on Core2Quad 2.4GHz, icc, 4-thread OpenMP, 8GB RAM
+For F2, there are many special optimizations made for F4 in MAGMA, so we ran tests at various densities
+of quadratic terms in version 2.12-20 and 2.13-8. Typical results are given in Fig. 1 (cf. Appendix, samples
+labelled sparse non-random are SRQ tests). Most of the time the data points are close to each other. In
+some tests they overlap each other so closely that no diﬀerence in the timing is seen in a diagram.
+4.2 A Brief Discussion on Specialization and Security
+Since generic system-solvers show no unexpected improvement on our specializations, it remains for us to
+check that there are no other big improvements in solving specialized systems for. We list below what we
+9
+where Q has only quadratic or higher terms and is extremely sparse, we can consider P(x) = y as
+Mx = (y+b)+ perturbation, and use known methods for decoding attacks, i.e., solving overdetermined
+linear equations with perturbation. However, SMP maps with a moderate number of quadratic terms
+will be intractible.
+We note that other specialized polynomials can be constructed that are also easier to evaluate such as the
+SRQ construction (cf. Appendix C) which also can carry through the same arguments as SMP, so our
+process is more general than it looks.
+5 Summary of Uses for Specialized Polynomial Systems
+All information seems to point to the conclusion that we always use totally random linear terms, no matter
+what else we do. With that taken into account, specialized random systems (such as SMP) represent
+improvements over generic systems in terms of storage and (likely) speed.
+5.1 The Secure Stream Ciphers SPELT
+We build a stream cipher called SPELT(q, d, n, r, (η2, . . . , ηd)), which resembles the construction in section 2:
+We specify a prime power q (usually a power of 2), positive integers n and r, a degree d. We have update
+function Qi = (Qi,1, Qi,2, . . . , Qi,n) : F
+n
+q → F
+n
+q and output ﬁlter Pi = (Pi,1, Pi,2, . . . , Pi,r) : F
+n
+q → F
+r
+q, for
+i ∈ {0, 1}. We still do yn = P(xn) [output]; xn+1 = Q(xn) [transition], iterated according to the initial
+vector. To repeat, every polynomial here is of degree d. Aﬃne (constant and linear) term or coeﬃcient are
+still uniformly random. But terms of each degree are selected according to diﬀerent densities of terms, such
+that the degree-i terms are sparse to the point of having only ηi terms. The diﬀerence between Eq. 1
+and Eq. 2, which governs the maximum provable security levels we can get, aﬀects our parameter choices
+quite a bit, as seen below.
+By Eq. 2, if L = λn lg q is the desired keystream length, the looseness factor T ′/T is roughly
+215q6(L/²)5
+n4 lg5 q
+lg2
+(
+2qL
+² lg q
+)
+If we let q = 16, r = n, want a safety level of T = 280 multiplications, L = 240 bits between key refreshes,
+and can accept ² = 10−2, then T ′ . 2354/n4. We propose the following instances:
+ SPELT using q = 16, d = 3 (cubics), n = r = 160, 20 quadratic and 15 cubic terms per equation. Projected
+XL degree is 54, storage requirement is 2184 bytes. T ′ is about 2346 multiplications, which guarantees
+& 288 multiplications security. This runs at 6875 cycles/byte.
+ SPELT using d = 4 (quartics), n = r = 108, 20 quadratic, 15 cubic, and 10 quartic terms per equation.
+Projected XL degree is 65, storage requirement is 2174 bytes. T ′ is about 2339 multiplications guaranteeing
+& 281 multiplications security at a preliminary 5541 cycles/byte.
+ SPELT using q = 2, n = r = 208, d = 3 (cubics), with 20 cubic terms each equation. Preliminary tests
+achieve 11744 cycles/byte. The expected complexity for solving 208 variables and 416 equations is ∼ 2224
+(by brute-force trials, which is much faster than XL here), which translates to a 282 proven security level.
+5.2 Comparisons: A Case for SPELT
+All modern-day microprocessor are capable of doing 64-bit arithmetic at least, and there is a natural way
+to implement QUAD that runs very fast over F2, limited only by the ability to stream data. However, as
+number of variables goes up, the storage needed for QUAD goes up cubically, and for parameter choices that
+are secure, the dataset overﬂows even the massive caches of an Intel Core 2. That is what slows down
+QUAD(2, 320, 320)  tests on a borrowed ia64 server shows that it is almost exactly the same speed as
+the SPELT(2, 3, 208, 208, [480, 20]). Looking at the numbers, it seems that the idea of specializd polynomials
+11
+12. N. T. Courtois, A. Klimov, J. Patarin, and A. Shamir. Eﬃcient algorithms for solving overdeﬁned systems
+of multivariate polynomial equations. In Advances in Cryptology  EUROCRYPT 2000, volume 1807 of
+Lecture Notes in Computer Science, pages 392407. Bart Preneel, ed., Springer, 2000. Extended Version:
+http://www.minrank.org/xlfull.pdf.
+13. N. T. Courtois and J. Pieprzyk. Cryptanalysis of block ciphers with overdeﬁned systems of equations. In Advances
+in Cryptology  ASIACRYPT 2002, volume 2501 of Lecture Notes in Computer Science, pages 267287. Yuliang
+Zheng, ed., Springer, 2002.
+14. C. Diem. The XL-algorithm and a conjecture from commutative algebra. In Advances in Cryptology  ASIA-
+CRYPT 2004, volume 3329 of Lecture Notes in Computer Science, pages 323337. Pil Joong Lee, ed., Springer,
+2004. ISBN 3-540-23975-8.
+15. J. Ding and B.-Y. Yang. Multivariate polynomials for hashing. In Inscrypt, Lecture Notes in Computer Science.
+Springer, 2007. to appear, cf. http://eprint.iacr.org/2007/137.
+16. R. R. Farashahi, B. Schoenmakers, and A. Sidorenko. Eﬃcient pseudorandom generators based on the ddh
+assumption. In Public Key Cryptography, pages 426441, 2007.
+17. J.-C. Faugère. A new eﬃcient algorithm for computing Gröbner bases (F4). Journal of Pure and Applied Algebra,
+139:6188, June 1999.
+18. J.-C. Faugère. A new eﬃcient algorithm for computing Gröbner bases without reduction to zero (F5). In
+International Symposium on Symbolic and Algebraic Computation  ISSAC 2002, pages 7583. ACM Press,
+July 2002.
+19. M. R. Garey and D. S. Johnson. Computers and Intractability  A Guide to the Theory of NP-Completeness.
+W.H. Freeman and Company, 1979. ISBN 0-7167-1044-7 or 0-7167-1045-5.
+20. R. Gennaro. An improved pseudo-random generator based on the discrete logarithm problem. Journal of
+Cryptology, 18:91110, 2000.
+21. O. Goldreich, R. Rubinfeld, and M. Sudan. Learning polynomials with queries: The highly noisy case. SIAM
+Journal on Discrete Mathematics, 13(4):535570, Nov. 2000.
+22. S. Jiang. Eﬃcient primitives from exponentiation in z
+p
+. In L. M. Batten and R. Safavi-Naini, editors, ACISP,
+volume 4058 of Lecture Notes in Computer Science, pages 259270. Springer, 2006.
+23. N. Koblitz and A. Menezes. Another look at "provable security" (part 2). In R. Barua and T. Lange, editors,
+INDOCRYPT, volume 4329 of Lecture Notes in Computer Science, pages 148175. Springer, 2006.
+24. D. Lazard. Gröbner-bases, Gaussian elimination and resolution of systems of algebraic equations. In EUROCAL
+83, volume 162 of Lecture Notes in Computer Science, pages 146156. Springer, March 1983.
+25. L. Levin and O. Goldreich. A hard-core predicate for all one-way functions. In D. S. Johnson, editor, 21th ACM
+Symposium on the Theory of Computing  STOC'89, pages 2532. ACM Press, 1989.
+26. T. Matsumoto and H. Imai. Public quadratic polynomial-tuples for eﬃcient signature veriﬁcation and message-
+encryption. In Advances in Cryptology  EUROCRYPT 1988, volume 330 of Lecture Notes in Computer Science,
+pages 419545. Christoph G. Günther, ed., Springer, 1988.
+27. H. Raddum and I. Semaev. New technique for solving sparse equation systems. Cryptology ePrint Archive,
+Report 2006/475, 2006. http://eprint.iacr.org/.
+28. I. Semaev. On solving sparse algebraic equations over ﬁnite ﬁelds (part ii). Cryptology ePrint Archive, Report
+2007/280, 2007. http://eprint.iacr.org/.
+29. R. Steinfeld, J. Pieprzyk, and H. Wang. On the provable security of an eﬃcient rsa-based pseudorandom generator.
+In X. Lai and K. Chen, editors, ASIACRYPT, volume 4284 of Lecture Notes in Computer Science, pages 194209.
+Springer, 2006. formerly ePrint 2006/206.
+30. C. Wolf. Multivariate Quadratic Polynomials in Public Key Cryptography. PhD thesis, Katholieke Universiteit
+Leuven, 2005. http://eprint.iacr.org/2005/393.
+31. B.-Y. Yang and J.-M. Chen. All in the XL family: Theory and practice. In ICISC 2004, volume 3506 of Lecture
+Notes in Computer Science, pages 6786. Springer, 2004.
+32. B.-Y. Yang and J.-M. Chen. Theoretical analysis of XL over small ﬁelds. In ACISP 2004, volume 3108 of Lecture
+Notes in Computer Science, pages 277288. Springer, 2004.
+33. B.-Y. Yang, O. C.-H. Chen, D. J. Bernstein, and J.-M. Chen. Analysis of QUAD. In Biryukov [9], pages 290307.
+13
+The critical parameter is the diﬀerence between I = dim(spanR), the rank of the space of equations R,
+and T . If T − I = 0, the original system cannot be satisﬁed; if T − I = 1, then we should ﬁnd a unique
+solution (with very high probability). Also, if T − I < min(D, q− 1), we can reduce to a univariate equation
+[12]. We would like to predict D0, the smallest D enabling resolution.
+Note: For any pair of indices i, j ≤ m, among linear combinations of the multiples of Pj = 0 will be PiPj = 0,
+and among linear combinations of the multiples of Pi = 0 will be PiPj = 0 i.e., one dependency in spanR.
+In Fq, (Pi)
+q = Pi which generates a similar type of dependency.
+Proposition 7 ([32]) Denote by [u]s the coeﬃcient of the monomial u in the expansion of s, then:
+1. T = [tD]
+(1− tq)n
+(1− t)n+1
+which reduces to
+(
+n+D
+D
+)
+when q > D, and
+∑D
+j=0
+(
+n
+j
+)
+when q = 2.
+2. If the system is regular up to degree D, i.e., if the relations R(D) has no other dependencies than
+the obvious ones generated by PiPj = PjPi and P
+q
+i = Pi, then
+T − I = [tD] G(t), where G(t) := G(t;n; d1, d2, . . . , dm) =
+(1− tq)n
+(1− t)n+1
+m∏
+j=1
+(
+1− tdj
+1− tq dj
+)
+. (3)
+3. For overdeﬁned systems, Eq. 3 cannot hold when D > DXL = min{D : [t
+D]G(t) ≤ 0}. If Eq. 3 holds
+up for every D < DXL and resolves at DXL, we say that the system is q-semiregular. It is generally
+believed [3, 14] that for random systems it is overwhelmingly likely that D0 = DXL, and indeed
+the system is not q-semiregular with very small probability.
+4. When it resolves, XL takes CXL . (c0 + c1 lg T ) τ T
+2
+multiplications in Fq, using a sparse solver like
+Wiedemann [31]. Here τ is the average number of terms per equation.
+We cannot describe methods F4-F5 [17, 18], which are just too sophisticated and complex to present
+here. Instead, we simply sketch a result that yields their complexities:
+Proposition 8 [3] For q-semiregular systems, F4 or F5 operates at the degree
+D = Dreg := min
+
+D : [tD]
+
+ (1− tq)n
+(1− t)n
+m∏
+j=1
+(
+1− tdj
+1− tq dj
+) < 0
+
+ ,
+and take . (c′0 + c
+′
+1 lg T¯ ) T¯
+ω
+multiplications, where T¯ = [tDreg ] ((1− tq)n(1− t)−n) counts the monomials of
+degree exactly Dreg, and 2 < ω ≤ 3 is the order of matrix multiplication used.
+We do not know what works best under various resource limitations. We take the position of [33], e.g., XL
+with a sparse solver represents the best way to solve large and more or less random overdetermined systems
+when the size of main memory space is the critical restraint.
+C SRQ, a potential candidate for one way function
+An SRQ (Sparse Rotated Quadratics) instance is anMQ system specialized so that it is non-sparse but can
+be computed with fewer computations than normal quadratics.
+Problem SRQ(q, n,m, h): In Fq, solve P1(x) = P2(x) = · · · = Pm(x) = 0. The Pi are quadratics formed
+from sequence of rotations, that is Start with P0 = x1x2 + x3x4 + · · ·+ xn−1xn (where n is even), and
+obtain successive Pj by performing sparse aﬃne maps on x. I.e., x
+(0) := x, x(i) := M (i)x(i−1)+b(i), yi :=
+Pi(x) := P0(x
+(i)) + ci, ∀i. Matrices M
+(i)
+are randomly chosen, invertible and sparse with h entries per
+row.
+15

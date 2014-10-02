@@ -1,0 +1,533 @@
+ 2
+目錄 
+ 
+1. 報告內容……………………………………………………………………3 
+ 
+2. 參考文獻…………………………………………………………………..12 
+ 
+3. 計畫成果自評……………………………………………………………..13 
+ 
+4. 附錄………………………………………………………………………..14 
+ 
+ 4
+二、計畫的緣由與目的 
+地面數位電視廣播(Digital Video Broadcasting-Terrestrial/Handheld, DVB-T/H)系統自九零年代提
+出至現在無論是在歐洲或台灣皆已漸趨普及，台灣目前已有十數家數位電視頻道，當滲透率達 85% 
+時即將全面開播數位電視內容，在消費者端，數位電視廣播的解調模組除了整合在液晶電視內，也
+可見於個人電腦、汽車配備…等，由於數位通訊技術的進步與無線通訊的便利性，當全面開播數位
+電視之後，可以預期的是數位電視廣播解調模組將會成為消費者不可或缺的一項產品，甚至成為汽
+車內的標準配備，著眼於此，本整合型計畫期望藉由新式通訊技術的結合，提高此數位電視廣播解
+調模組在汽車內的附加價值，因此提出將數位電視廣播系統轉為車輛間的行動視訊會議系統，讓消
+費者除了享有原來地面數位電視廣播的寬頻影音服務之外，也可以藉由車輛間的行動視訊會議系統
+來得到道路交通即時訊息的交換、車禍的救援、意外的排除、行動視訊會議的召開… 等。 
+ 
+本子計劃在構建ㄧ基於 TI DM6437 之平台且適用於車輛間行動視訊編/解碼系統，為了達到此
+一目的，本子計畫在系統規格上主要依循 H.264/SVC 標準，並考慮編/解碼配置，除了演算法性能
+的改善之外，也考慮硬體實作之複雜度與可行性，最後即設計晶片來執行此一部份之功能，期望達
+成在車輛高速行駛下之視訊編/解碼系統。 
+ 
+三、 研究方法及成果 
+ 
+圖 2-1 系統架構圖 
+  系統架構圖如圖 2-1 所示，整體系統主要是把 JVT H.264 SVC decoder 之開放源碼，JSVM 
+10.0，移植到 DM6437 上，並且模擬網路上的傳輸環境，來展示 video scalability 的功能，本系
+統概分為五個區塊： 
+A、網路傳輸source端。 
+B、網路傳輸介質端。 
+C、傳輸品質控制端。 
+D、SVC decoder核心端。 
+E、結果顯示端。 
+  首先要傳輸的資料會從 A 區塊開始送出，再經由 B 區塊來以傳輸的情況，此區塊主要是由
+Ethernet controller 所構成，目的在於使用現今網路較成熟的傳輸協定中，來模擬傳輸的環境，
+再來是透過 C 區塊來控制網路傳輸的品質，此區塊在模擬網路傳輸因某些因素而造成的壅塞，
+ 6
+ 
+圖 3-1 TI TM6437 之硬體架構圖 
+如圖 3-1 所示，TI 所提供的 CPU 架構 VelociTITM 可以使 CPU 在每個 CYCLE 利用 CPU 架構中的
+八個處理單元(六個算數運算單元和兩個乘法器)同時執行八條指令，在操作時脈方面我們使用
+600Mhz 的 CPU，此架構也提供了許多 VLIW 的指令集，處理資料時能在一個 CYCLE 理處理多個同樣
+運算的資料，增進解碼速度。因此，根據 6437 的架構規劃特性，我們必須要把開放源始碼的平行
+執行能力提高，如此才能夠完整讓 DSP 內部八個運算單元能夠同時運作，進而百分之的利用到硬體
+的每一個運算資源來提高程式的執行效率。 
+  雖對於 DSP 內部，增加運算單元的平行使用率，可以提升整體執行效率，但是由於一般開放源始
+碼並非為特某一平台來進行最佳化，所以其源始碼本身並無法使完全將 DSP 的內部運算單元使用到
+極致。 
+  在實際操作上，我們提出 parallelism technique 來增加其執行效率，為了明確說明此方法，我們
+以 4x4 IDCT 為例子，來進一步闡述如何使用 parallelism technique 來提升 DM67437 的運算效能。
+對於 IDCT 的資料結構安排如圖 3-2 所示，其 4x4 IDCT 運算式如下(3-1) 
+ 8
+interleaving排列，非常不利於運算單元的執行效率，因此data structure reordering以row-based 
+interleaving的排列方式來取代，因為row-based interleaving排列能夠一次把所又的IDCT係數一次到8
+組運算單元，而這個動作是透過Extend Direct Memory Access (EDMA)來達成，首先從external 
+memory把相關的4x4 IDCT資料都搬到EDMA的buffer，進而再規劃EDMA移動資料的排程，使其能
+夠依據row-based interleaving的排列來送資料，雖然不是每一列資料都是4x4 IDCT係數，但是EDMA
+可已支援抓取不同列的資料，所以在抓取資料的排程中，我們可以只針對係數資料的部分來抓取，
+並針對level資料的部分來抓取，所以對於DSP內部運算單元來說，所接收到的每一筆資料都是IDCT
+中的係數資料，進而更有效率進行運算。 
+Symmetric‐based scheduling 
+00 01 02 03
+10 11 12 13
+20 22 23 24
+30 31 32 33
+( )
+1 1 1 1
+1 1/ 2 1/ 2 1
+1 1 1 1
+1/ 2 1 1 1/ 2
+TX A Y A ZA
+z z z z
+z z z z
+z z z z
+z z z z
+= =
+⎡ ⎤ ⎡ ⎤⎢ ⎥ ⎢ ⎥− −⎢ ⎥ ⎢ ⎥= ⎢ ⎥ ⎢ ⎥− −⎢ ⎥ ⎢ ⎥− −⎣ ⎦⎣ ⎦
+       (3-2) 
+  雖然經過了data structure reordering之後，可以使得8組運算單元都可以獲得IDCT的係數，但是
+由於IDCT本身的運算式有資料相依性，因此必須再經過妥善的安排之後才可以進一步提升使8組運
+算單元的執行效率，而我們所提出的方法就是symmetric-based scheduling，首先必須重新整理(3-1)
+式化成(3-2)式，其中z代表於(3-1)中，前面兩個term的乘績，並且把(3-2)式進一步化成(3-3)式，於
+此式中可以觀察出有明顯的對稱關係，其中z00的結果和z30相互對稱，而z10的結果和 
+30 30
+00 00 10 20 00 20 10
+10 10
+10 00 20 30 00 20 30
+10 10
+20 00 20 30 00 20 30
+30 30
+30 00 10 20 00 20 10
+( ) ( )
+2 2
+( ) ( )
+2 2
+( ) ( )
+2 2
+( ) ( )
+2 2
+c cz c c c c c c
+c cz c c c c c c
+c cz c c c c c c
+c cz c c c c c c
+⎧ = + + + = + + +⎪⎪⎪ = + − − = − + −⎪⎨⎪ = − − + = − − −⎪⎪⎪ = − + − = + − +⎩
+                          (3-3) 
+  
+圖 3-4 Symmetric-based scheduling 
+z20的結果也是相互對稱，能夠相互對稱的原因就是在於這些乘績當中有共同項(common term)的產
+ 10
+  
+圖 3-6 Cycle reduction profiling 
+ 我們提出三項優化的技術：data structure reordering、symmetric-based scheduling 及
+interleaving-parallelism technique。在此可以觀察圖 3-6，這三項優化技術度於 cycle reduction 的表
+現，原本一個 4x4 IDCT 是需要 372 cycle，經過 data structure reordering 的技術後降為 144 cycle，
+再經過 symmetric-based scheduling 之後更簡化為 57 cycle，最後加上 interleaving-parallelism 
+technique，整體的 cycle 數精簡到 20 cycle。而系統在 temporal scalability、SNR scalability、spatial 
+scalability 及 combined scalability 功能上有個別 37%、 33%、 27% 及 24%的效能精進，如表 3-2
+所示。 
+表 3-2 優化 JSVM10.0 之效能評比 
+ 未最佳化 最佳化 效能 提升比 
+Temporal 
+scalable 1,052,103,063 662,391,833 37% 
+SNR 
+scalable 2,494,763,368 1,652,876,148 33% 
+Spatial 
+scalable 5,840,530,801 4,263,587,484 27% 
+Combine 
+scalable 10,581,654,390 7,990,952,797 24% 
+  
+ 
+ 
+ 
+ 
+ 
+ 12
+參考文獻 
+[1] DVB-T2 Call for Technologies including Commercial Requirements, June 2008, available online: 
+http:// www.dvb.org/technology/dvbt2/. 
+[2] http://www.fourcc.org/codecs.php 視頻編解碼器列表  
+[3]Texas Instruments,“TMS320C6414, TMS320C6415, TMS320C6416 FIXED-POINT DIGITAL 
+SIGNAL PROCESSORS”, SPRS146N  
+[4]J.Vieron, M.Wien, and H.Schwarz “Joint Scalable Video Model JSVM-10” ISO/IEC 
+JTC/SC29/WG11 and ITU-T SG16 Q.6, DOC. W202 April,2007 
+[5] Mathias Wien, Renaud Cazoulat, Andreas Graffunder, Andreas Hutter, and Peter Amon “Real-Time 
+System for Adaptive Video Streaming Based on SVC”, IEEE TRANSACTIONS ON CIRCUITS 
+AND SYSTEMS FOR VIDEO TECHNOLOGY, VOL. 17, NO. 9, SEPTEMBER 2007 
+[6] Seon-Tae Kim, Krishna Reddy Konda, Chun-Su Park, Chang-Sik Cho, and Sung-Jea Ko “Fast Mode 
+Decision Algorithm for Inter-Layer Coding in Scalable Video Coding”, IEEE Transactions on 
+Consumer Electronics, Vol. 55, No. 3, AUGUST 2009 
+ 
+ 
+ 14
+附錄 
+論文 
+[1] T.-H. Tsai and Y.-S. Huang, “Compressed domain singer identification approach 
+implemented on Embedded Linux system”, The 21st VLSI Design/CAD, Session7, pp.155-158, 
+Aug. 2010.  
+[2] T.-H. Tsai, Y. N. Pan, and Z. H. Hou, “A Green Computation H.264/AVC Encoder with 
+Reconfigurable Motion Estimation”, International Conference on Green Circuits and Systems, 
+June. 2010.  
+[3] Tsung-Han Tsai, Hsueh-Yi Lin, and Hong-Guang Chen, “Overlapped Block-based Adaptive 
+Bilateral Motion Estimation”, 2010 VLSI Design/CAD, Aug. 2010.  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 16
+2010 國際節能電路與系統研討會 
+2010 International Conference on Green Circuits and Systems 
+  
+國立中央大學電機系 
+蔡宗漢 
+ 
+出  國  報  告 
+  
+一、參加會議過程  
+2010 國際節能電路與系統研討會，於 6 月 21 日至 6 月 23 日在中國上
+海舉行。本次年會有超過 200 篇論文被接受，其中大多為口頭報告。 
+由於論文量極多，可在會議中吸收大量之各種相關議題，而且論文品質的
+控制相當不錯，收穫極大。  
+在這年度的盛會中，組織委員會除了特別邀請學者發表了精彩的主題演講 
+(Keynote Speeches)。此外大會並邀請到數位著名的學者就幾項目前多媒
+體電路系統應用於節能方面相關領域的最新發展方向，開設相關訓練課程。  
+訓練課程演講完畢後，大會技術議程正式展開。大會安排了數十個特殊 
+sessions，以討論 Green Circuits and Systems 的最新發展趨勢。包括：
+Digital Filters, Multimedia, 3D, Signal Processing, Embedded 
+Systems, OFDM, etc.與會學者皆就研究題目，充分討論，相互切磋，場面
+相當熱鬧。 
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+                            日期： 99  年  10 月 25  日 
+一、參加會議經過 
+二、與會心得 
+三、考察參觀活動(無是項活動者略) 
+四、建議 
+五、攜回資料名稱及內容 
+六、其他 
+ 
+計畫編號 NSC98－2220－E－008－005 
+計畫名稱 植基於 DVB-T/H 規格之前瞻性車用無線視訊會議系統傳收機
+系統晶片之研製－子計畫五：視訊-信源聯合編碼平台式設計與
+晶片研製植基於 DVB-T/H 規格下之前瞻性車用無線視訊會
+(2/2) 
+出國人員
+姓名 蔡宗漢 
+服務機構
+及職稱 
+中央大學電機系 
+教授 
+會議時間 
+99 年 6 月 21 日至 
+99 年 6 月 23 日 會議地點 中國上海 
+會議名稱 
+(中文)2010 國際節能電路與系統研討會 
+(英文)2010 International Conference on Green Circuits and Systems 
+發表論文
+題目 
+(中文)一個具有可組態性動作估測節能的 H.264/AVC 編碼器 
+(英文) A Green Computation H.264/AVC Encoder with Reconfigurable 
+Motion Estimation 
+二、與會心得  
+筆者曾多次赴國外參加類似的國際會議，每次都有不同的感受與收穫，最
+大的收穫應是從不同的專家學者汲取更多思考的角度與方式。出席國際會
+議，能與各國從事相同的工作者、或有相同興趣的人士共聚一堂及相互切
+磋，令筆者受益匪淺。雖然遠赴國外參加會議行程十分的緊湊，頗為勞累，
+但是相對的也因此有了不少的收穫。例如在藉由發表及討論論文的過程
+中，使筆者對於自己的研究不周之處加以反省，以及在觀摩他人的成果報
+告中所獲知的經驗與知識等，相信對未來的教學或研究工作有莫大的助益。  
+  
+三、建議  
+ICGCS 每年的規模有愈來愈大的趨勢，所涵蓋的議題也愈來愈廣。好處是
+能一次收集較多的資訊及最新的研究方向；壞處則是與會時易將注意力分
+散。對於我們在台灣從事研究的老師而言，能一次汲取較多的資訊反而比
+較有利，因此 ICGCS 將是國內從事多媒體節能系統設計方面研究的專家學
+者未來應該積極參與的國際會議。 
+ 
+四、攜回資料名稱及內容  
+1. CD-ROM of Proceedings (共乙片，可利用索引快速查閱所需資料，相
+當方便。) 
+ 
+A. PHS+EIMD 
+Fig. 1 shows the proposed power aware algorithm Edge 
+Information Mode Decision (EIMD) [6] + Predict Hexagon 
+Search (PHS). H.264/AVC supports variable block sizes 
+which are 16x16, 16x8, 8x16, 8x8, 8x4, 4x8, and 4x4. The 
+choice of block size depends on the stuff of the MB. 
+Generally, if the textures in a region have similar spatial 
+properties, this region is homogeneous. Many techniques 
+exist for detecting homogeneous regions in an image. A 
+video object boundary normally exhibits strong edges; thus, 
+edge information can be uses to determine the block size. 
+The EIMD uses the edge detection to define the degree of 
+the edge in block 16x16 and 8x8 and uses the edge 
+difference equations to decide the edge difference of 16x8, 
+8x16, 8x4, and 4x8. After the edge values and edge 
+difference values are calculated, all of the values are 
+compared with the threshold values to determine the best 
+block size. 
+PHS [3]-[5] is proposed for the power aware search 
+algorithm. From the motion vector distribution analysis by 
+using 16 kinds of SDTV(720x480) sequences, more than 
+60% of motion vectors are located on (0,0), and more than 
+80% of motion vectors are located on ± 2 range. The 
+searching flow depends on the characteristics of motion 
+vector distribution to minimize the search points. The other 
+characteristic of PHS is that PHS can predict the object 
+movement and use the suitable pattern. Therefore, PHS is a 
+computational efficient algorithm and saves a lot of power 
+computation. By using the PHS, it can save more than 25% 
+searching time compared with other fast search algorithm. 
+The analysis results [6] show that the speed improvement 
+of EIMD+PHS over some popular fast motion estimation 
+algorithms is about 2~15 times. Compared with JM10.2, the 
+speed-up is marvelously enhanced as 20~40 times and can 
+still keep good quality as JM10.2.  
+B. High Efficient ME Architecture 
+Fig. 2 illustrated the high efficient ME architecture. This 
+architecture based on the algorithm which combined with 
+EIMD and PHS. The architecture can support up to real-
+time encoding on QFHD (3840×2160) with 1 reference 
+frame, search range 256×256 at 116.6MHz. The high 
+efficient ME architecture has some important features. The 
+first feature is, the architecture is a high efficient 
+architecture for strict video specifications. The second, it 
+provisioned for a large search range and low processing 
+frequency. The third, the architecture overcomes the 
+bottleneck of the irregular movement and the complex 
+control. The forth, the pipeline scheme is used between the 
+EIMD stage and PHS stage to further improve the operation 
+speed. Table I shows the hardware specification of the high 
+efficient motion estimation architecture. From the results of 
+our previous proposed architecture, the operation frequency 
+to encode the frame size 640×480 only needs 20 MHz for 4 
+reference frames. To encode the frame size 320×240 with 4 
+reference frames, this architecture only needs 6 MHz. 
+For a green power system, a concept is to use the limited 
+power to generate the maximum video coding quality. The 
+high efficient ME architecture with EIMD+PHS can achieve 
+the real time requirement while still mention the good 
+coding quality. On the other hand, the lower operation 
+frequency also correspond to a low power conception. 
+III. POWER AWARE ME ALGORITHM 
+For the general users, the most important is to completely 
+record the interesting things but still keep the mobile 
+working while the power is in the low power condition. The 
+second important is to have a good quality record while the 
+power is in the low power condition. Considered to these 
+two conditions, we proposed a power aware algorithm. Fig. 
+3 shows the power budget of the power aware algorithm. 
+The proposed power aware algorithm has three modes 
+which are normal mode, down sampling mode, and down 
+ 
+Fig. 3. Power budget of the proposed power aware algorithm. 
+ 
+Fig. 2. High efficient ME architecture. 
+ 
+TABLE I 
+HARDWARE SPECIFICATION OF THE HIGH EFFICIENT FAST MOTION 
+ESTIMATION ARCHITECTURE 
+ Hardware Specification 
+Technology UMC.13 
+Gate Counts 300K 
+Memory 12.6KB 
+Max Frequency 125MHz 
+Spec. SDTV/HDTV(720p)/HDTV(1080p)/QFHD
+Max SR 256x256 
+Max Reference 
+Frames 4/1/1/1 
+Frequency 18.66/12.44/27.78/112MHz 
+ 
+Module” will be used in the “EIMD” and “PHS” modules. 
+The “Power Budget Calculator” is used to calculator the 
+frame number to match the power budget. The “Frequency 
+Divider & Gating Clock” works while the battery status is 
+fewer than 60%. The frequency divider in “Frequency 
+Divider & Gating Clock” is a half-frequency divider which 
+is used in down sampling mode. The gating clock generator 
+is used to generate the gated clock. While the number of 
+coded frame is reached to the budget frame rate of the 
+power mode, the “Frequency Divider & Gating Clock” will 
+terminate the clock and stop all the modules. After the 
+power aware system determined the power mode, the 
+“EIMD” and “PHS” start to calculate the best block size and 
+find the best motion vector. By using this power system, the 
+architecture can efficiently control the power consumption 
+with the power budget. 
+V. SIMULATION RESULTS 
+Table III illustrates the mode specification and the power 
+consumptions. For the frame size of 640×480, the operation 
+frequency to achieve the real-time specification is 20 MHz. 
+The power consumption is about 14.1 W. While the frame 
+size is small (320×240), the operation frequency needs only 
+10 MHz to achieve the real-time specification. Although the 
+operation frequency can further decrease in the down frame 
+rate mode, we still use 10 MHz to save the hardware cost of 
+the frequency divider. 
+Fig. 6 shows the power reduction in different power mode. 
+For the median power condition (battery status between 
+60%~40%), the power consumption can reduce about 85% 
+comparing with the normal power condition. For the low 
+power condition (battery status under 40%), the power 
+consumption can reduce about 87%~94% comparing to the 
+original mode. From the simulation results, while the battery 
+status is reduced, the reduced precentage of power 
+consumption is more than the reduced battery status. That 
+means the user can still record the interesting things and 
+keep the mobile applications still work while the battery is 
+reducing. 
+VI. CONCULSIONS 
+While the multimedia system in the mobile is advancement, 
+the power aware architecture for multimedia is important. A 
+power aware system changes the quality mode automatically 
+for suitable power issues. This work proposed an efficient 
+power aware algorithm and its architecture design. The 
+proposed algorithm has three basic power modes. The median 
+power mode uses the down sampling method to reduce the 
+operator frequency to reduce the power consumption. The low 
+power mode uses both down sampling and down frame rate 
+mode to further reduce the power consumption. In the low 
+power mode, there are four additional modes. The proposed 
+architecture is combined with our previous proposed high 
+efficient ME architecture. The hardware cost of the power 
+aware system is small. By using the proposed power aware 
+system, the mobile system can work fine in the low power 
+condition. 
+REFERENCES 
+ 
+[1] C. J. Lin, S. Y. Chien, C. P. Lin, P. C. Tseng, and L. G. Chen  “Power-
+Aware Multimedia: Concepts and Design Perspectives,” IEEE Circuits 
+and Systems Magazine, vol. 7, no. 2, pp. 26–34, Feb. 2007. 
+[2] T. C Chen, Y, H, Chen, C. Y. Tsai, and L. G. Chen, “Low Power and 
+Power Aware Fractional Motion Estimation of H.264/AVC for Mobile 
+Applications,”  in Proc. IEEE Circuits and Systems Conf., vol. 6, May 
+2006, pp. 5331-5334. 
+[3] T. H. Tsai and Y. N. Pan, “A Novel Predict Hexagon Search 
+Algorithm for Fast Block Motion Estimation on H.264 Video 
+Coding,” in Proc. IEEE Asia-Pacific Circuits and Systems Conf., vol. 
+1, Dec. 2004, pp. 609-612.  
+[4] T. H. Tsai and Y. N. Pan, “A 3D Predict Hexagon Search Algorithm 
+for Fast Block Motion Estimation on H.264 Video Coding,” in Proc. 
+IEEE Multimedia and Expo Conf., July 2005, pp. 658-661. 
+[5] T. H. Tsai and Y. N. Pan “A Novel 3-D Predict Hexagon Search 
+Algorithm for Fast Block Motion Estimation on H.264 Video 
+Coding,” IEEE Trans. on Circuits and Systems for Video 
+Technology, vol. 16, no. 12, pp. 1542-1549, Dec. 2006. 
+[6] Y. N. Pan, and T. H. Tsai, “Fast Motion Estimation and Edge 
+Information Inter-Mode Decision on H.264 Video Coding,” in Proc. 
+IEEE Image Processing, vol. 2, pp. 473-476, Sept. 2007. 
+[7] W. C. Chang, G. L. Li, and T. S. Chang, “Power-Aware Coding for 
+H.264/AVC Video Encoder,” 20th VLSI/CAD Symposium, Aug. 
+2009. 
+ 
+0
+2
+4
+6
+8
+10
+12
+14
+16
+100~60 60~40 40 30 20 10
+Power 
+Status 
+(%)
+Power 
+Consumption (W)
+85% 87% 89% 91% 94%
+ 
+Fig. 6. Power reduction in different power mode. 
+ 
+TABLE III MODE SPECIFICATION AND POWER CONSUMPTIONS 
+Power Status (%) 100~60 60~40 40 30 20 10 
+Frame size 640×480 320×240 320×240 320×240 320×240 320×240 
+Fps 30 30 27 23 18 12 
+Frequency (MHz) 20 10 10 10 10 10 
+Power 
+Consumption (W) 
+14.10 2.09 1.88 1.60 1.26 0.84 
+ 
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：蔡宗漢 計畫編號：98-2220-E-008-005- 
+計畫名稱：植基於 DVB-T/H 規格之前瞻性車用無線視訊會議系統傳收機系統晶片之研製--子計畫五：
+視訊-信源聯合編碼平台式設計與晶片研製植基於 DVB-T/H 規格下之前瞻性車用無線視訊會(2/2) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 2 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 6 6 100%  
+博士生 3 3 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

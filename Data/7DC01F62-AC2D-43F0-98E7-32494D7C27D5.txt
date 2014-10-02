@@ -1,0 +1,817 @@
+ 2 
+中英文摘要 
+ 
+以 OpenGL ES 2.0 為主的可程式化管線流程已成為目前設計三維繪圖晶片的主流，功能強
+大的頂點處理器取代了以往 1.x 版本的固定功能管線硬體中的幾何運算引擎，提供使用者編輯
+更有彈性的 API 程式，使繪圖效果更為逼真，其應用在嵌入式系統上更是占了絕大部分。本計
+畫根據不同的資料格式和精確度，以及資料運算所在的數系，採用 SIMD向量架構，設計兩種版
+本的頂點處理器。此外，本計畫另一個工作重點是考慮頂點處理器和其他硬體單元以及軟體之
+整合問題，並且在 FPGA上實際展示整個繪圖處理晶片系統。 
+ 
+關鍵詞：三維電腦繪圖、OpenGL ES 2.0、頂點處理器、對數數系算術、SIMD。 
+ 
+ 
+OpenGL ES 2.0 programmable 3D graphics pipeline is the new standard for embedded graphics 
+processor designs. For more realistic animation effects, the programmable vertex shader replaces the 
+geometry operations in the previous fixed-function graphics pipeline and provides more flexible APIs.  
+In this project, we design two versions of vertex shaders targeting different requiremsnts of precision 
+and fixed/floating-point formats. The first vertex shader is based on conventional binary number 
+system and accepts 32-bit data of both fixed and floating-point formats. The second vertex shader is a 
+low-cost design based on logarithmic number system for 16-bit half-precision floating-point data. Both 
+vertex shaders adopt single-instruction-multiple-data (SIMD) vector architecture with their own 
+instruction sets. Another major work of this project is to integrate the vertex shader with other 
+hareware components (such as fragment shaders) and software parts (such as APIs and compiler), and 
+demonstrate the results on FPGA boards. 
+ 
+Key word: 3-D computer graphics, OpenGL ES 2.0, Vertex Shader, , Logarithmic Number System 
+Arithmetic, SIMD. 
+ 4 
+一、 前言 
+電腦繪圖為電腦輸出的一種方式，早期的電腦以輸出 2D 畫面為主，隨著科技的進步，3D
+繪圖的技術漸趨成熟，越來越多的電子產品也都支援呈現三維圖形，但由於三維圖形的處理
+過於複雜，對於一般的處理器而言是個相當沉重的負擔。所以專門為了處理三維圖形的處理
+器就被廣泛的設計出來了。 
+頂點處理器(Vertex Shader)是三維電腦繪圖晶片系統的核心之一，主要的動作是為了加速
+三維繪圖管線中的座標轉換(Transformation)和光源計算(Lighting)這兩種運算，其中矩陣運算
+佔了一大部份，所以在算數運算單元架構的設計上，必頇要將加速矩陣運算，視為一個重要
+的考量。 
+本計畫所設計的頂點處理器整合在 Opengl ES 2.0 可程式化 3D圖形運算管線流程中並將
+其效能、面積、功耗進行改善。最後將 Vertex Shader 與其他相關軟硬體(包含 OpenGL ES 2.0 
+API、Shader Compiler、Clipping Engine 和 Fragment Shader)進行整合並在 FPGA上驗證以
+及測詴。設計主要目的是配合精準度的要求，設計適合的硬體架構，同時搭配自行定義的指
+令集，規劃出適合的資料路徑(Data Path)，及切割恰當的硬體以求能平均管線化內之動作……
+等等，使得頂點處理器在一定的精準度前提之下，達成面積小，速度快，低功率和低成本的
+目標。 
+ 
+ 
+二、 研究目的 
+3D 繪圖流程依照處理性大致分為 : 幾何轉換子系統 ( Geometry Subsystem )以及著色子
+系統( Render Subsystem )。幾何轉換子系統包含基本的座標轉換( Transformation )、光源照射
+( Lighting )以及刪除多餘運算的 Backface Culling 及 Clipping。要實現幾何轉換子系統的硬體，
+主要可分成兩種方式，一種是固定功能的硬體管線（fixed function pipeline），其架構是採用固
+定的硬體管線，運算流程固定無彈性﹐OpenGL 1.x 採用此固定管線架構；另一種是可程式化
+的頂點處理器（User-programmable Vertex shader），可依使用者的需求來產生不同運算結果，
+運算較為彈性，也逐漸成為目前圖形處理器設計上的主流﹐OpenGL 2.0 採用此可程式化管線
+架構。本計畫的主要目的是設計一個可程式化頂點處理器 (Vertex Shader)，加速三維繪圖管
+線中的座標轉換及光源計算，並且設計其他 OpenGL 2.0 所需的相關硬體﹐主要是物件裁切
+(clipping)。在第一年的工作項目中﹐先設計符合 OpenGL ES 1.0 規格之 fixed-function pipeline 
+之幾何系統；在第二年和第三年﹐再設計可程式化之頂點處理器的指令集和相關的架構、改
+良 Vertex Shader 資料存取架構使其在 SOC 上執行更有效率，最後改良 Vertex Shader 內部資料
+路徑使降低其面積和功耗。本計畫第三年中的工作項目中對於相關幾何運算架構比較，並且
+針對 Geometry engine所負責之運算，分析各種運算的動作，進而修改並整合 Vertex Shader
+需支援的運算及硬體資料路徑上的規畫並與其他子計畫整合，設計溝通的機制;另一方面針對
+成面積小，速度快，低功率和低成本為目標去設計另一類型之頂點運算處理器。 
+ 
+ 
+ 
+ 6 
+和光源計算(Lighting)的部分。而在幾何運算中其他的部分，如 : 裁切(Clipping)、選擇性刪
+除(Culling)則予以保留，或是可以利用頂點處理器完成裁切(Clipping)、選擇性刪除(Culling)
+之運算。 
+頂點處理器是可程式化的(Programmable)運算單元，可依使用者的需求來產生不同運算結
+果，運算較為彈性，是目前的主流。可程式化的意思是說 2個主要運算(Transformation And 
+Lighting)，可以用客製化的指令組合而成，而這些客製化的指令設計就是頂點處理器效能的最
+主要的關鍵所在。在這我們以[圖 4-1-1]簡單表示 Vertex Shader之系統架構圖。 
+ 
+ 
+[圖 4-1-1]Vertex Shader 系統概觀 
+ 
+頂點處理器對程式設計者而言，是個虛擬的 Model，每個頂點被傳送到 Vertex Attribute 
+Buffer(VAB)接著頂點處理器程式對這些頂點做處理，最後放到 Vertex Output Buffer(VOB)。
+而這些頂點的屬性有以下幾種，如 : 頂點的座標、單位法向量(Unit Normal)、顏色或材質座
+標，每次皆為一個頂點進，一個頂點出。頂點處理器只能改變頂點的值，不能改變他的屬性，
+而且也不能產生新的頂點，或去除頂點。例如頂點處理器對某一頂點做座標轉換運算，若此頂
+點原本屬性為座標，處理後的頂點屬性還是座標，只不過座標的值被改變了。 
+頂點處理器主要有 4種型式的暫存器各自存不同型態的資料，分別為 Vertex Attribute 
+Register(VAB)儲存原始的頂點，Vertex Output Register(VOB) 儲存轉換後的頂點，Temporary 
+Register或稱General Purpose Register(GPR)儲存暫態的值，Constant Register或稱Constant 
+Memory(CMEM)儲存計算三維繪圖中的常數值。VAB和 Constant Register儲存來自應用程式給的
+值。頂點處理器只能讀取 VAB 和 Constant Register 裡的值。Temporary Register 可以被頂點
+處理器讀取或寫入。而 VOB 只能被頂點處理器寫入。每個暫存器的每一個 Entry 的寬度為 128 
+Bits，儲存 4個 32 Bits浮點向量成員。 
+頂點處理器的算術運算單元一般分為 SIMD(Single-Instruction Multiple-Data)的向量運
+算單元(Vector Arithmetic Unit)和特殊函數運算單元(Special Function Unit)。由於 3D繪
+ 8 
+[表 4-1-1]Instruction Set 
+ 
+ 
+Function 
+Opcode Description 
+資料搬移 MVI Data Move 
+MVR Register Value Move 
+LD Load The Value Of Memory 
+ST Store The Value Into The Memory 
+基本算術運算 ADD Floating Add 
+MUL Floating Multiply 
+MAD Floating Multiply And Add 
+DP 4,3,2,Or 1 Items Dot Product 
+SHRL Right Or Left Shifter Amount 
+SHRLi Right Or Left Shifter by immediate value 
+基本邏輯運算 XOR XOR opeation 
+AND AND operation 
+OR OR operation 
+特殊函數運算 RCP Reciprocal 
+RSQ Reciprocal Square Root 
+LOG2 Log Bias 2 
+POW2 Exponent Bias 2 
+DSQ Division Square Root 
+DIV Division 
+數值比較運算 MIN Min 
+MAX Max 
+BLE Set On Less Than Or Equal 
+BGE Set On Greater Than Or Equal 
+分支指令 CAL Function Call 
+BEQ Branch If Equal 
+BNEQ Banch If Not Equal 
+ 
+由於我們所自行定義的指令中，可以讓使用者選擇使用 Fixed-point 或是 Floating-point
+運算、要執行四個 component 即 x,y,z,w，或是只取其中 1、2、3個 component，當然也同時支
+援 swizzle、negative之功能，使編譯器在轉譯 Assembly code 時，可以更有彈性、更有效能。 
+ 10 
+Swizzle/Neg Swizzle/neg Swizzle/neg
+F_MAD F_MAD F_MAD F_MAD
+MUX MUX MUX MUX
+Add
+mul mul mul mul
+Reg0.x Reg0.y Reg0.z Reg0.w
+Reg1
+ 
+[圖 4-1-3]vertex shader 4-way SIMD vector unit 
+因為 vertex shader 是以 SIMD的架構來做運算，所以大致尚可看成是四個重複的乘累加區
+塊，每個區塊分別用來產生 xyzw經過運算之後的值，如[圖 4-1-3]所示。在一開始的時候，從
+來源暫存器進來的值需要經過 negative/swizzle的區塊，而後再將值送入主要的運算區塊：乘
+法器和加法器。在這我們使用一個乘法器加上一個加法器而非一個完整乘累加器來做設計的主
+要原因是要能夠完成向量內積(DP)的運算：為了要能執行向量內積的運算，需要取得 x*x，y*y，
+z*z，w*w的值之後再用一個加法器將結果加起來，然後儲存到圖中的 reg2裡面；而其他的運算
+則是利用到個別的乘法器和加法器之後，可以產生加法、乘法、乘累加等等運算，之後將值儲
+存到圖中的 reg1。最後再經由一個多工器來選擇最後輸出的結果，看是要取出 REG1或是 REG2
+之內的值。在這初始設計並配合多工器的情況下，便可以完成指令中的運算。 
+正規化管線階段包含了正規化硬體、指數更新(Exponent Update)器。浮點加法及乘法之運
+算，都需要 Pre-Normalize 跟 Post-Normalize，其中包括 Shifter、Round-To-Even Mode……
+等等之運算，而為了節省硬體面積，實作使用共享硬體之想法來達到面積上的節省，故我們將
+加法跟乘法的 Post-Normalize 之動作合併於一起；加上之實作頂點處理器是可以同時處理
+Floating-Point 跟 Fixed-Point兩種不同的輸入格式，故我們對於乘法器及加法器作共享之處
+理，也因為我們支援定點(Fixed-Point)資料格式為(Q32.0)，而浮點(Floating-Point)的
+Mantissa 之部分為 24bit長度，所以將輸入為浮點(Floating-Point)時，僅需於前面補上 8bits
+的零，這樣可以對於使用到執行定點(Fixed-Point)資料的乘法或加法時，所使用到的 32-bits
+乘法器跟加法器，如此一來即可共享其中之乘法器跟加法器，而無需再另外增加硬體算術單元
+來完成關於浮點的乘法器或是加法器。 
+之提議架構還合併了特殊函數單元及 SIMD向量運算單元之算術運算單元，使其於硬體面積上有
+較好之表現，並利用四份的乘累加器同時應用於計算內積(Dot-product)運算之中， 以減少資
+料路徑(Datapath)中的算術運算單元設計，達到硬體面減少之目的。 
+ 12 
+Wrapper 到外部記憶體去把這些值讀回來作運算。中間藍色的部分是需要 Shader Compiler 提供
+的資訊，我們在下一小節會介紹。而紅色的部分就是 API直接作設定的欄位，包含了裁切引擎
+需要設定的裁切邊界(Clipping Boundary)、整個物件的頂點個數(Vertex Number)以及是否開
+啟裁切引擎的控制訊號(Clip)，剩下的三個 bit則是用來啟動 Vertex Shader 內部三個讀取資
+料的硬體(Instruction Fetch、Uniform Fetch和 Vertex Fetch)，雖然目前來說三塊硬體分別
+都給它啟動訊號是沒有意義的，因為只需要一個 start 訊號 Vertex Shader 就會按照
+InstructionUniformVertex 這樣的順序把值讀取進來，但是將來若是正在處理一個很複雜
+的物件而需要超過 Vertex Shader 內部能容納的 Instruction 或 Uniform個數時，則需要將
+Vertex Shader stall 住，重新設定 VST裡面的資料起始位址和取值硬體的啟動訊號，把剩下的
+資料讀取進來才能完成整個物件所有頂點的處理。 
+ 
+ 
+[圖 4-1-4 系統整體架構圖] 
+ 
+[圖 4-1-4]是將 Vertex Shader 掛上 AMBA之後的示意圖。此圖中 Instruction Fetch、Uniform 
+Fetch、Vertex Fetch和兩個 MUX合併為一個 DMA單元，在這邊的 D-Ram就是真正的 External 
+Memory，而因為需要我們將頂點、指令等資料在 D-Ram中的起始位置設定給DMA單元，所以Vertex 
+Shader 是掛在一個 Slave Wrapper 之下，當 Vertex Shader 被啟動之後，DMA 單元會透過 Master 
+Wrapper 取得 Bus 所有權，到 D-Ram讀取所需的資料。 
+ 
+4.1.5  Master Wrapper 設計 
+因為 Vertex Shader必頇要主動透過 AMBA到 D-Ram 去讀取所需要的 data，因此必頇要設計一個
+Master Wrapper 與 bus溝通。 
+在這邊我所設計的 Master Wrapper 是屬於 single mode 的 wrapper，由一個簡單的 Finite State 
+Machine 所構成： 
+ 14 
+ 
+ CMEM： 
+由於 CMEM(Constant Memory)是 Vertex Shader 內部 Load、Store存取的記憶體，隨著
+新增 Load/Store Vector(LDV/STV)指令，我們也將 CMEM的寬度由 32-bit增加為
+128-bit[圖 4-1-6]。對於 LD/ST來說就變成一個 2維的記憶體空間，除了由 R1 + Offset
+來決定 entry之外，還需要 S/V欄位選擇該 entry中的哪一個 word 來進行存取。 
+ 
+[圖 4-1-6] 將 CMEM的寬度由 32-bit增加為 128-bit 
+ Clipping Engine： 
+當 Vertex Shader 作完使用者自定的運算之後所畫出來的圖形有可能會超出顯示螢幕
+的可視邊界，需要作裁切，但如果以指令控制目前的 Vertex Shader 去處理裁切的運
+算會非常的複雜及沒有效率，所以我們將一塊專門處理裁切運算的 Clipping Engine
+接在 Vertex Shader 之後，用來加速三角形的裁切。Vertex Shader 會將 output出來
+的頂點資料以一個三角形為單位傳給 Clipping Engine，而 Clipping Engine 主要會判
+斷一個三角形是否需要裁切，如果不需要裁切，則有兩種情況，一是整個三角形都在
+可視範圍內，只要將頂點直接 output出去即可；另一個就是整個三角形在可視範圍外，
+那這個三角形就可以直接去掉，不必 output 給 Fregment Shader作接下來的計算，而
+VST中亦有欄位可以設定處理一個物件時是否需要開啟 Clipping Engine。 
+ 
+ FIFO： 
+經由 Vertex Shader 處理完的頂點資料會送到 Fragment Shader作著色和貼圖等效果。
+Fragment Shader 接收到一個三角形之後會根據它的三個頂來內插出該三角形中間的
+所有像素資料，其運算量要比 Vertex Shader 來的大很多，加上當有物件需要作貼圖
+效果，那麼 Fragment Shader 還要到外部 Dram去讀取 Texture，所花的執行時間一定
+會比 Vertex Shader 來的長，如果 Vertex Shader 一直持續不斷的將 output送往
+Fragment Shader，必然會產生錯誤的結果。因此在 Vertex Shader 和 Fragment Shader
+中間我們加入了一個 FIFO，用來緩衝兩邊硬體運算時間不同所帶來的問題。 
+ 16 
+是直接從 VST接過來，告訴 Fragment Shader要從每一筆 FIFO的 Data Out讀取幾個 Attribute。
+當 FIFO是空的時候，Empty 訊號會拉起來，阻止 Fragment Shader 去 FIFO讀取資料。只要 Vertex 
+Shader 開始寫資料進去，Empty 訊號會降為 0，Fragment Shader 就可以到 FIFO中讀取頂點資
+料。若是 Vertex Shader 將 FIFO寫滿，則 FIFO接到 Vertex Out的 Full訊號線會拉起來，使
+的 Vertex Out不能再把 VOB 的資料寫到 FIFO。但是當 Full訊號拉起來的時候 VS_Stall並不會
+立刻跟著拉起來，而是 VOB 中的值確定要輸出的時候才拉起來，這樣的意思是雖然 FIFO已滿，
+但是 Vertex Shader卻可以繼續運算到下一個點要輸出為止，當 Full降下來時馬上就有點可以
+寫入 FIFO，這樣的設計會比 Full訊號一發起來 Vertex Shader就立刻停止動作要來的更有效率。 
+ 
+(B) 16-位元對數數系之 Vertex Shader 處理器設計 
+4.2.1 綜觀整體架構 
+頂點處理器專門負責處理頂點數據(位置、顏色、標準向量和其他屬性)，它們是組成三維幾
+何模型的主要元素。頂點處理器是可程式化的運算單元，可依使用者的需要，彈性產生不同的
+指令來達成目標，至於頂點處理器跟周遭溝通的架構，在[圖 4-2-1]有詳盡的解釋。 
+Constant 
+Memory
+(256B)
+Memory
+(Vertex Data)
+Instruction
+Memory
+(1KB)
+BUS
+General Purpose
+Register
+(16*64bits)
+Special Function Unit General Function 
+Unit
+DMA
+VAB
+(8*64bits)
+ARM
+VOB
+(8*64bits)
+Vertex 
+Shader
+ 
+[圖 4-2-1]低成本之頂點處理器系統架構圖 
+ 
+頂點處理器的主要流程為： 
+(1)ARM先將 Vertex data(頂點資料)存放在外部 Memory。 
+(2)常數部份如矩陣或光影計算的常數放到內部 Constant Memory。 
+ 18 
+(2) 修改對數和反對數查表表格，使其相對誤差更為之前縮小。 
+(3) 增加部份硬體，以降低因為浮點加法串聯所造成的 Delay。 
+LOGC
+X0 X1 Y0 Y1 Z0 Z1 W0 W1X2 Y2 Z2 W2
+ALOGC ALOGC ALOGC ALOGC
+FLP Domain
+Data1Data0 Data2
+Reg
+Compute Shift
+Reg
+Reg
+LNS Domain
+LOGC LOGC LOGC LOGC LOGC LOGC LOGC
+FLP Domain(Exponent)
+ 
+             [圖 4-2-3] Special Function Unit 的設計 
+[圖 4-2-3]為我們 Special Function Unit 的設計，Special Function Unit 是以 SIMD的
+架構來做運算，所以可以看成是四個區塊，每個區塊分別用來產生 xyzw經過運算之後的值。此
+架構的第一級為對數轉換(LOGC)，將浮點數轉換成對數，而對數的表示法為 Q5.11的定點數。
+第二級主要為對數的運算處理(LNS Domain)，LNS Domain 內為 Programmable Multiplier、CPA、
+移位器以及反向器，目的是為了處理對數乘、除、根號和次方等運算，而所做的運算皆為定點
+運算。為了減少浮點加法的 Delay，在第二級增加了 Compute Shift這份硬體，其主要的動作為
+事先計算浮點加法需要移位的位數。第三部份為反對數轉換(ALOGC)，將定點對數轉換成半精準
+度浮點數，並且完成指數部份相加，以及小數部份對齊。第四部份為浮點數加減法，根據第三
+級傳過來的小數部份做串聯的加法，並且將最後結果轉換成半精準浮點表示式。 
+ 20 
+16bx6b 16bx6b 16bx6b 16bx6b
+16b x 12b
+3:2 CSA 3:2 CSA 3:2 CSA 3:2 CSA
+result1
+temp0
+temp1temp2temp3
+temp4temp5temp6
+temp7
+Rs[14:0]
+3:2 CSA
+01
+0
+01
+4:2 CSA
+CPACPACPACPA
+result0 result2 result3
+Rs[46:32]
+3:2 CSA3:2 CSA
+Rs[62:48]
+Rs[30:16]
+>>
+K3 K2 K1 K0
+Single or  Two-way
+01 01 01 01 01 01 01 01
+X0 X1 Y0 Y1 Z0 Z1 W0 W1
+Booth-encoder
+ 
+[圖 4-2-5] 我們的設計之 LNS Domain 之架構圖 
+反對數轉換(ALOGC)，此階段的動作主要為將對數轉換成半精準度浮點表示式。主要架構
+圖如[圖 4-2-6]。ALOGC輸入為 Q5.11，寫成一般式為 fk  ，其中 k 為整數， f 為小數。反對數
+的函式為 fkfkxf 222)(   ，k 為半精準度浮點指數部份， f2 為半精準度浮點 Fraction部份，
+而這部份就需要查表來得知，我們的設計採用的 ALOGC 查表方式和 LOGC 一樣，都是 Uniform 
+Piecewise Method Degree-1， lmm
+f xxaxa  )()(2 10 ，同樣的為了減少延遲和面積，我們也將
+lm xxa )(1 拆成 Shift-add 的型式，而為了降低誤差， )(0 mxa 必頇要有額外的 bits 來修正，所
+以 )(0 mxa 為 12 bits， lm xxa )(1  為了與 )(0 mxa 相加，所以也為 12bits 。但由於輸出為半精準
+度浮點表示式，所以 Fraction 部份只取 10bits。 
+ 22 
+>>
++
+swap
+>>
++
+0    1 0    1
+CSA
+swap
+>>
+>>
++
+>>
+>> >>
+MAD
+MAD
+ABS
+ABS
+ABS
+0    1
+0
++
+ABS
+AL0
+1     0
+X2 AL1 Y2 AL2 Z2
+0    1
+W2 AL3
+Shift0 Shift1
+Shift2 Shift3
+swap0 swap1
+Shift4 Shift5 Shift6
+bias
+Combine
+CombineCombineCombine
+MAD MAD
+TRG
+Reg
+FLP Domain(Exponent)
+FLP Domain
+ 
+[圖 4-2-7] 我們的設計之 FLP Domain(Exponent)和 FLP Domain 架構圖 
+ 
+4.2.3 一般浮點運算單元 
+除了上述的特殊函數指令之外，其他的指令都可以在一般浮點運算單元被實現，為了方便
+起見，我們稱此單元為 General Function Unit，在這個單元內又分為 Pre_mem、Branch和 Binary 
+Domain 這三個模組。而這些指令在實作上，又可分為三大類： 
+(1)分支指令，包含了 BEQ、BNEQ、BLT和 BGT。 
+(2)資料存取，包含 LD 和 ST。 
+(3)基本算術、邏輯和比較指令，內包含了 ADD、ADDi、SHRL、SHRLi、MVR、XOR、AND、OR、 
+ INV、MIN、MAX、Isgreater 和 Select。在分支指令中，BEQ和 BNEQ 基本上可以共用一
+份硬體，BLT和 BGT也可共用一份硬體，而這部份寫在 Branch這個模組中。在資料存取指令中，
+LD 和 ST加法部份可共用，而這部份寫在 Pre_MEM 這個模組中。在基本算術、邏輯和比較指令中，
+ADD 和 ADDi可共用一份硬體，SHRL和 SHRLi也可共用。，MIN和 MAX一樣也能共同，但即使在
+RTL 寫法上沒有共用，但是在合成時，合成器會幫忙化簡，以 MIN和 MAX為例，RTL採取未共用
+ 24 
+五、 結果與討論 
+ 
+ 32-位元 二進位數系之 Vertex Shader 處理器設計 
+合成數據與效能評估 
+[表 5-1 Vertex Shader System 合成數據與各單元面積比例] 
+Vertex Shader System 
+Area(Gate 
+count) 
+Percentage(%) 
+VAB(2 * 8 * 128bits) 8.2K 0.6% 
+VOB(2 *8 * 128bits) 8.2K 0.6% 
+Constant Memory 
+(Two port 1R/1W,8KB) 
+518.2K 34.9% 
+Instruction Memory 
+(One port, 1Ror1W, 8KB) 
+518.2K 34.9% 
+General Purpose 
+Register 
+(4R/1W, 32*128bits, 
+1KB) 
+59.9K 4% 
+Datapath 
+(Include pipeline 
+register) 
+370.5K 24.98% 
+Contorl Unit 0.3K 0.02% 
+Total 1483.5K 100% 
+ 
+上[表5-1]為Vertex Shader在90奈米製程下的合成數據。由[上表]可以看出各8-KB的Constant 
+Memory 和 Instruction Memory 占了將近 70%的面積，這是由於目前沒有 cache 機制，因此我們
+只能把內部暫存器的容量設定為可以容納目前最複雜 Bench Mark所需指令和 Uniform的大小，
+總共需要約 1K 個指令(1000*64-bit = 8K)和 128個 Uniform，其中一個 Uniform的大小最多可
+以是 16個 word，因此最多需要(128*(16*32)) = 8K 這麼大的 Constant Memory。 
+除了 IM和 CMEM之外，所占面積比例最多的就是擁有切成 9級 pipeline 的 register，加上 4-way 
+SIMD MAC Base 架構的 Datapath。 
+如[表 5-2]所示，目前在合成的過程中所下的 Timing Constrain 是 10ns，因此目前最佳工作頻
+率為 100MHZ。而執行最基本 Transformation需要 4 個 DP4指令，即若是以 4個 cycle產生一個
+ 26 
+ 
+[圖 5-1 Vertex Shader 之各部份百分比] 
+下[表 5-4]為合成數據，但在靜態功率消耗(Static power)部份，由於 gate_level沒有繞
+線的資訊，所以估算出來的靜態功率消耗會小於實際下線的靜態功率消耗，而在動態功率消耗
+(Dynamic power)部份，其結果會根據測詴檔的不同，而有所不同。 
+ 
+[表 5-4我們 Vertex Shader 合成之整體結果] 
+PROCESS TECHNOLOGY CBDK018_TSMC_ARTISAN 
+Frequency 200MHz 
+Transistors counts 
+71.45Klogic transistor, 
+1.256KB on-chip memory 
+Static Power 70.7(uW) 
+Dynamic Power 3.2(mW) 
+ 
+ 28 
+ON COMPUTERS, VOL. 53, pp. 254-254, NO. 3, MARCH 2004. 
+[16]. J. Kessenich, “Opengl ES Shading Language”, Language Version 1.10, 2006. 
+[17]. M. J. Schulte, E. E. Swartzlander, “Hardware Designs For Exactly Rounded Elementary 
+Functions”, IEEE TRANSACTIONS ON COMPUTERS, VOL. 43, pp. 964-973, NO. 8, 
+AUGUST 1994. 
+[18] B.-G. Nam, et al., “A 52.4mW 3D Graphics Processor with 141Mvertices/s Vertex Shader and 3 
+Power Domains of Dynamic Voltage and Frequency Scaling”, Digest of Technical Papers, 
+ISSCC, pp. 278-280, 2007. 
+[19] B.-O Schneider and J.-V Welzen, “Efficient Polygon Clipping for an SIMD Graphics Pipeline”, 
+IEEE Transactions on Visualization and Computer Graphics, Vol. 4, No. 3, July-Sep, 1998. 
+ 
+ 
+七、 計畫結果自評 
+本計畫在第一年內先完成符合 OpenGL ES 1.0 fiexed-pipeline 之幾何運算系統之設計﹐在
+第二年和第三年﹐再設計 programmable vertex shader。於第二年進度：實現 vertex shdaer 系統
+設計和 clipping 硬體﹐同時可以處理 fix-point 跟 IEEE 754 floating-point 的資料格式及跟
+Micro-processor 和 Bus 連接之 Interface 設計。第三年的進度：改良 Vertex Shader 資料存取架
+構使其在 SOC 上執行更有效率，以及改善 Vertex Shader 內部資料路徑使降低其面積和功耗。
+另外實作出以低成本為目的頂點處理器，從分析幾何系統所需要的運算，訂定適合的指令集，
+最佳化資料路徑以符合我們的架構、改良對數轉換器（LOGC）和反對數轉換器（ALOGC）
+之部份表格內容、切割硬體管線，實作出每一個運算、控制單元的硬體，再將這些硬體組合
+成一個完整的頂點處理器。總共發表 14 篇論文。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+A New Non-uniform Segmentation and Addressing 
+Remapping Strategy for Hardware-Oriented Function 
+Evaluators Based on Polynomial Approximation
+Hou-Jen Ko, Shen-Fu Hsiao, and Wen-Liang Huang
+Dept. of Computer Science and Engineering
+National Sun Yat-sen University
+Taiwan
+Abstract—This paper presents a new non-uniform segmentation
+method for arithmetic function evaluation based on polynomial 
+approximations.  The merging of several uniform segments can 
+reduce the required ROM size compared with normal uniform 
+segmentation. The previously proposed hierarchical 
+segmentation turns out to be special cases of this new approach.
+In general, non-uniform segmentation leads to irregular address 
+indexing that needs extra computation hardware. Here, an 
+address rearrangement and mapping method is proposed that 
+does not need any additional address computation, and thus the 
+critical path delay can be reduced. Experimental results show
+that this new segmentation and address remapping method can 
+efficiently reduce the table size for some elementary arithmetic
+functions, such as log2x and 1/x.
+Keywords: function evaluation, polynomial approximation, 
+computer arithmetic, non-uniform segmentation.
+I. INTRODUCTION
+Numerical functions such as trigonometric, logarithm,
+exponential, reciprocal, etc., are largely used in many
+applications including communications, computer graphics, 
+scientific computing, and digital signal processing. Hardware 
+implementations of function evaluators have been developed 
+for year to speed up these function approximations. In general, 
+there are three categories of hardware function evaluators: 
+table-bound, compute-bound, and in-between [1]. The in-
+between methods [2] represent a good compromise between 
+computation resources and table sizes, and thus are widely 
+used in many applications that require high-speed function 
+calculation. Piecewise polynomial approximation, an approach 
+in the in-between category, partitions the input interval into 
+uniform segments of equal length, and approximate function 
+values inside each segment using polynomial interpolation [2-
+4]. The approximation accuracy depends on the number of 
+segments which in turns decide the required table size. In 
+general, the table size grows exponentially with respect to the 
+precision. The number of uniform segments of equal length is 
+determined by the maximum approximation error among all 
+the segments.  However, many arithmetic functions have high
+non-linearity, leading to inefficiency using uniform 
+segmentation. Thus, several non-uniform segmentation 
+methods have been proposed recently [5-6]. In [5], a non-
+uniform segmentation is presented using cascaded of look-up 
+tables based on multi-terminal binary decision diagram 
+(MTBDD). In [6], a two-level hierarchical segmentation is 
+proposed where segment length in each level could be the 
+same (uniform segmentation) or varies by power of two (P2S). 
+In this paper, we present a new non-uniform segmentation 
+method that merges a fixed number of uniform segments into 
+a larger segment. The hierarchical segmentation in [6] turns 
+out to be special cases of our more generalized segmentation 
+method. Furthermore, by employing a novel address 
+remapping method, the architecture of our proposed non-
+uniform method requires negligible area and delay overhead 
+compared with uniform segmentation approaches. 
+The algorithm of this non-uniform segmentation method is 
+discussed in Sec. II. Sec. III presents a new address remapping 
+method for the non-uniform segments and Sec. IV describes 
+the corresponding hardware architecture. Sec. IV gives some 
+experimental results to show the table size reduction rate for 
+four different elementary functions under various bit precision 
+requirements. The conclusions are given in Sec. VI.
+II. NON-UNIFORM SEGMENTATION ALGORITHM
+A. Preview
+The traditional uniform segmentation method is to divide 
+the input interval into uniform segments of equal length to 
+achieve a target precision for piecewise polynomial 
+interpolation inside each segment. It uses m most significant
+bits (MSBs) of the input value x to divide the input interval
+into 2m uniform segments. The function values in each 
+segment are approximated by a polynomial, say degree-1 
+polynomial,
+ fn(x) =xf(x) 
+where the polynomial coefficients i for a uniform segment 
+are stored in the coefficient ROM table. Thus, the table size is 
+directly proportional to the number of segments 2m, and takes 
+other words, there is no need to calculate the final address. We 
+just replace the LSBs with the offset value obtained from 
+some bit locations in the original input bits, as shown in Fig. 4.
+1
+1
+1
+1
+1
+2
+2
+4
+1
+1
+1
+0 0 0 0
+0 0 0 1
+0 0 1 0
+0 0 1 1
+0 1 1 1
+1 0 0 0
+1 0 0 1
+1 0 1 0
+0 1 0 0
+0 1 0 1
+0 1 1 0
+0 0 X X
+1 0 0 X
+0 1 X X
+1 0 1 0
+0 0 0 0
+0 0 0 1
+0 0 1 0
+0 0 1 1
+1 1 0 0
+1 1 0 1
+1 1 1 0
+1 1 1 1
+0 1 0 0
+0 1 1 0
+1 0 0 0
+1
+1
+1
+1
+1
+1
+1
+1
+11
+11
+1111
+Fig. 4. New address for coefficient ROM after remapping.
+IV. HARDWARE ARCHITECTURE
+The hardware architecture of the function evaluator based 
+on degree-1 polynomials with our proposed segmentation 
+policy is shown in Fig. 5 where the difference from the normal 
+uniform segmentation is in the address generator unit that is 
+composed of a small table start_address_and_mux_cntl
+(A&M) generator and few 2-way multiplexers (MUXs) as 
+shown in Fig. 6. The MSB bits of the input x are used to 
+access the address generator to produce the address for 
+coefficient ROM while the LSBs of the input x are used for 
+polynomial approximation of equation (1).
+Address 
+Generator
+x ROM for 
+Polynomial Coeff.
+Addr'
+’
+α1 α0
+X + Fn(x)
+Fig. 5. Overall Hardware Architecture of polynomial function evaluator 
+with proposed non-uniform segmentation.
+The A&M generator uses at most m – 1 MSBs, denoted by 
+x[m-1:1], to look up a small table and generate the start 
+address along with control signals for the subsequent MUXs.
+The MUXs are used to produce required offset to be cascaded 
+with the start address from the A&M generator. Fig. 6 is a 
+generic address generator architecture. In reality, only a limit 
+number of MUXs are needed as will be shown in TABLE 1.
+Start Addr 
+& mux ctrl 
+Generator
+(A&M gen)
+SAddr[m-1]
+at most
+MSB(m-1)
+x
+x[m-1]
+Addr’[m-1]
+SAddr[m-2]
+x[m-1:m-2]
+Addr’[m-2]
+SAddr[0]
+x[m-1:0]
+Addr’[0]
+…
+..
+Fig. 6. Generic architecture of the address generator in Fig. 5.
+Fig. 7 shows an example of how to decide whether the 
+MUXs should exist or not. During segmentation, the
+neighboring gray circles with the same size can be clustered
+into a group as highlighted by the shaded bounding box in Fig. 
+7. The offset can be determined by some bits selected from 
+x[3:0], as shown in Fig. 7. For example, we only need to 
+consider x[1:0] for cluster ‘1’, x[1] for cluster ‘2’, etc. Since 
+x[1:0] and x[1] are offset values that will replace the LSBs of 
+the start address SAddr[3:0] generated by A&M generator, the 
+LSB (i.e. Addr’[0]) of the final address may come from x[0], 
+x[1] or SAddr[0] and the second LSB (i.e. Addr’[1]) of the 
+final address may come from x[1] or SAddr[1]. Fig. 8 shows 
+the final circuit for the example, which is much simpler than 
+the generic architecture of Fig. 6.
+1 1
+2
+4
+8
+1 1
+2
+1 1
+2
+4
+1 1
+2
+1 1
+2
+4
+8
+1 1
+2
+1 1
+2
+4
+1 1
+2
+16
+x[0]
+X[1]
+x[2]
+x[3]
+Cluster 1
+Cluster 2
+Cluster 3
+x[0]
+x[0]
+x[1]
+x[0]
+x[0]
+x[1]
+x[1]
+x[1]
+x[0]
+x[0]
+x[1]
+x[0]
+x[0]
+x[1]
+Cluster 1
+Cluster 3
+Cluster 2
+[2][3]
+[2][3]
+[2][3] [1]
+[2][3] [1] [0]
+:Address from Generator:Address replaced by x
+2 bits of address from x[1:0]
+2 bits of address from x[1:0]
+1 bit of address from x[1]
+Without replacement
+Fig. 7. An example showing how to derive the small table of  A&M 
+generator and the control signals for the subsequent MUXs.
+assign {SAddr[3:0], ctrl[2:0]} = result;
+…
+casex( x[3:1] )
+3’b00X: result = 7’b 00XX 1 10;
+3’b01X: result = 7’b 100X 0 11;
+3’b10X: result = 7’b 1010 0 0X;
+3’b11X: result = 7’b 01XX 1 10;
+endcase
+SAddr[3]
+SAddr[2]
+x[3:1]
+Addr’[2]
+SAddr[1]
+x[1]
+Addr’[1]
+SAddr[0]
+x[1]
+Addr’[0]
+Addr’[3]
+ctrl[2]
+0
+1
+Start Addr
+ctrl[1]
+0
+1
+ctrl[0]
+0
+1
+x[0]
+Fig. 8. A&M generator and MUXs for the example in Fig. 7. 
+ 1 
+ 
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+                                     日期：   年   月   日 
+                                 
+一、參加會議經過 
+第一天報到，並參加最後一天 (June 2, 2010)的 poster session (VLSI datapath and 
+arithmetic circuits)，其餘時間即參與早上的 keynote speech 和各個相關的
+technical sessions。第一天的 keynote speech的題目是：【Nanosystems: devices, 
+circuits, architectures and applications】，由國際知名的 VLSI design 領域
+大師 G. De Micheli 主講。第二天的 keynote speech 題目是【From Smart 
+Pacemaker to Remote Monitoring of Cardiac Function】。第三天的 keynote 
+計畫編號 NSC 98 － 2220 － E － 110 －  004  － 
+計畫名稱 三維電腦繪圖晶片系統之 Vertex Shader 處理器設計(3/3) 
+出國人員
+姓名 
+柯厚任 
+服務機構
+及職稱 
+國立中山大學資訊工程系 
+會議時間 
+99年 5月 30日至 
+99年 6月 2日 
+會議地點 法國, 巴黎 
+會議名稱 
+(中文) 
+(英文) The IEEE International Symposium on Circuits and Systems 
+發表論文
+題目 
+(中文) 
+(英文)A New Non-uniform Segmentation and Addressing Remapping 
+Strategy for Hardware-Oriented Function Evaluators Based on 
+Polynomial Approximation 
+附件四 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/01/03
+國科會補助計畫
+計畫名稱: 子計畫四：三維電腦繪圖晶片系統之Vertex Shader 處理器設計(3/3)
+計畫主持人: 蕭勝夫
+計畫編號: 98-2220-E-110-004- 學門領域: 晶片科技計畫--整合型學術研究
+計畫
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

@@ -1,0 +1,498 @@
+ 1 
+GPU Parallelization of an Object-Oriented Nonlinear Dynamic Structural 
+Analysis Platform 
+Yuan-Sen Yang  
+ 
+Abstract  
+This work parallelized a widely used structural analysis platform called OpenSees using graphical 
+processing units (GPU). This paper presents task decomposition diagrams with data flow and the 
+sequential and parallel flowcharts for element matrix/vector calculations. It introduces a Bulk Model 
+to ease the parallelization of the element matrix/vector calculations. An implementation of this model 
+for shell elements is presented. Three versions of the Bulk Model—sequential, OpenMP 
+multi-threaded, and CUDA GPU parallelized—were implemented in this work. Nonlinear dynamic 
+analyses of two building models subjected to a tri-axial earthquake were tested. The results 
+demonstrate speedups higher than four on a 4-core system, while the GPU parallelism achieves 
+speedups higher than 7.6 on a single GPU device in comparison to the original sequential 
+implementation. 
+ 
+Keywords: GPU parallelization, nonlinear dynamic structural analysis, parallel computing 
+ 
+ 3 
+global system is not included in this work. 
+  
+Fig. 1. A basic flowchart for nonlinear dynamic structural analysis. 
+ 
+2. Decomposition and Mapping of the Element-by-Element Parallel Algorithm 
+In the point of view of computer operations, the global effective stiffness matrix/vector 
+calculations (i.e., procedure 4 in Fig. 1) include element matrix/vector calculations and matrix 
+assembly. A structural model is typically composed of thousands of elements, and the global 
+matrix/vector is assembled by thousands of element matrices/vectors. The element matrix/vector 
+calculations are used to generate the effective stiffness matrix of each element. Each element effective 
+stiffness matrix is the linear composition of the element stiffness (k), damping (c), and mass (m) 
+matrices [13]. The element matrix size is relatively small compared to the global system matrix. In the 
+test cases for this work, the size of a shell element matrix was 24×24, but the size of the global system 
+matrix will be in the thousands or millions. The element matrices are generated through a numerical 
+integration considering element shape functions, their derivatives, the materials properties, and their 
+plasticity status. The element matrix computation between different elements is largely independent. A 
+task decomposition diagram with dependency links (as shown in Fig. 2) demonstrates the lack of task 
+Start
+Data processing for next time step
+Force balanced?
+Data processing for next iteration
+Analysis completed?
+Read input files / allocate objects
+End
+Solve global system
+True
+True
+False
+False
+1
+Update model data
+Update model data and output results
+Calculate global effective stiffness 
+matrix and unbalance force vector
+2
+3
+4
+5
+6
+7
+ 5 
+and receives the results when the task is done. Programming code for the kernels need to be either 
+re-programmed or modified to comply with the GPU language syntax. As re-programming takes time, 
+most GPU parallelized problems focus on small portions of the program that take the most execution 
+time. This work focuses on parallelization of the element matrix/vector calculations. 
+While a GPU device contains many cores that are capable of executing instructions in a parallel 
+manner, its memory allocation and manipulation are different from a multi-core CPU that runs in 
+parallel through multi-threaded programming tools such as OpenMP [14]. A GPU device has its own 
+dedicated memory and does not share memory space with hosts. Before delivering a task, the data that 
+this task needs to access must be sent from the host memory to the GPU’s dedicated memory (on the 
+GPU card), and the resulting calculation data needs to be sent back after the task is complete. 
+A GPU device runs a single instruction on multiple threads in parallel. The same computational 
+procedure can be applied to many data fragments at the same time. Therefore, a GPU has great 
+potential for image processing and spatially based numerical simulation, since the problem domain can 
+be separated into a large number of small sections to be processed by the same sub-programs. 
+However, a GPU is not good at handling branching (i.e., conditional execution). While GPU 
+processing cores run the same instruction concurrently, they run each branch at a time. For example, 
+they are not good at calculating different types of elements (beams, shells, bricks, etc.) in parallel, as 
+different elements require different instructions. Even for the same type of element, it is unlikely that 
+one core is processing an element with an elastic status while its neighbor is handling an element with 
+an inelastic status, as elastic and inelastic calculations run different computer instructions. 
+The parallelization is achieved by running tasks in different GPU cores in parallel. Each task that 
+computes the matrix/vector calculation of an element (represented by e in Fig. 2) is to be executed by 
+a single GPU core. While a typical GPU device has dozens to hundreds of cores physically, it is 
+capable of dynamically scheduling the executions of thousands or even millions of tasks to exploit the 
+full parallel capability of the GPU. A GPU parallel algorithm and its program do not need to consider 
+how many physical cores are available and which one is used for each task; it simply submits its 
+independent tasks to the GPU. This is in contrast to a parallel program that runs on a 
+distributed-memory parallel computer, which needs to explicitly specify how many processors are 
+used and which one is used to execute each task. Figure 4 shows a comparison of (a) sequential and (b) 
+GPU-parallelized flowcharts of element matrix/vector calculations (i.e., procedure 4 in Fig. 1). Nodal 
+and element data that are required to do the element matrix/vector calculation are first sent to the GPU. 
+The GPU is then requested to run the element matrix/vector calculation in a parallel manner. Tasks are 
+grouped into blocks when being submitted to a GPU device. A block is composed of several tasks that 
+can share data through a shared memory region. Note that most of the task symbols in Fig. 4(b) do not 
+indicate their element indices because these tasks and blocks are dynamically scheduled by the GPU in 
+runtime and are not presumed in advance [6]. 
+ 
+ 7 
+The ideal way to implement parallelization for a GPU is to identify the repetitive loop that runs 
+the element matrix/vector calculation and convert the code within the loop into a kernel. However, this 
+method is not practical with a software that is as complicated as OpenSees. OpenSees has a 
+well-designed and sophisticated object-oriented framework composed of nearly a thousand classes and 
+half a million lines of C++ code to handle various analysis methods, boundary condition handlers, and 
+hundreds of element types and materials. Figure 5 shows the basic skeleton of the OpenSees 
+framework [15]. The repetitive loop that encapsulates the element matrix/vector calculation 
+encapsulates several layers of virtual function calls. The classes shaded in gray are the ones partially 
+encapsulated in the repetitive loop. In contrast to Fig. 4(a), the actual OpenSees flowchart for element 
+matrix/vector calculation, shown in Fig. 6, contains at least three layers of virtual functions covering 
+hundreds of classes. Instead of manipulating Element objects directly, the repetitive loop manipulates 
+a list of FE_Element objects. A FE_Element object is a broker of one or more Element objects and 
+deals with different constraint handling methods of the boundary conditions. It further encapsulates 
+virtual functions that handle different types of time integration methods and elements. If all of these 
+codes were converted to a kernel, the kernel would contain complicated class hierarchies with 
+hundreds of classes, increasing the difficulty of code maintenance. In addition, it is not wise to put so 
+many virtual functions in a kernel since virtual functions are actually branch structures, which would 
+lower the parallel performance of a GPU device.  
+ 
+Fig. 5. The basic skeleton of the OpenSees framework (re-plotted based on references [15, 16]). 
+AnalysisDomain
+System of Eqn.Solver
+Constraint Handler Integrator Analysis Model
+FE_Element Material
+Eigen Integrator
+Model Builder
+Recorder
+Static Analysis
+Eigen Analysis
+Transient Analysis
+Static Integrator
+EquiSolnAlgo
+NewtonRaphson
+TransformationFE
+PenaltyFE
+LagrangeFE
+...
+...
+...
+Explicit Newmark 
+Element
+...
+Shell 
+Element
+DOF NumbererAlgorithm
+Direct Integration 
+Analysis
+VariableTimeStep 
+Direct Integration 
+Analysis
+Incremental Integrator
+Transient Integrator
+Newmark
+Association
+Aggregation
+Inheritance...
+N-Dimensional 
+Material
+concrete class
+abstract class
+LEGEND
+Inheritance with more 
+sub-classes
+Classes of interests in this work
+J2 Plate Fiber
+Section
+Plate Fiber 
+Section
+...
+...
+ 9 
+ 
+  
+Fig. 7. Time sequence diagram of the Bulk Model parallelization. 
+ 
+Before the first element requests other elements of the same type for matrix/vector calculations, it 
+needs to gather the data of all elements of the same type that are required to do the calculations. This 
+data needs to be sent to the GPU device memory so that the calculations can be performed by the GPU 
+device in parallel. The data model of the Bulk Model is shown in Fig. 8. A set of N-element shared 
+arrays is created to store the data of all the elements of the same type. An N-element shared array of a 
+certain element type is an array that is accessible by all elements of the same type. These arrays 
+include pointers to all objects of that element type (allowing the first element to find others), material 
+properties, inelastic status, coordinates of adjacent nodes, and the matrices and vectors to be calculated. 
+These arrays are declared as static variables in the sub-class of the type of element, so that all elements 
+of that type have access to the shared arrays. Most of the shared arrays are sent to the GPU device by 
+the first element, allowing the GPU device to run the matrix/vector calculations for the element type. It 
+Element 1
+Device 
+(GPU)
+Element 2 Element NE
+LEGEND
+NE Number of elements of 
+this element type
+Data request
+…
+Data transmission
+Request of matrix/ 
+vector calculation of 
+element 1
+Element shared 
+arrays
+Request of matrix/ 
+vector calculations 
+of all elements
+Calculate
+unbalance 
+forces of all 
+elementsCalculated 
+matrices / vectors
+Matrix/vector of 
+element 1
+Repetitive loop of 
+matrix/vector calculation
+Request of matrix/ 
+vector calculation of  
+element 2
+Matrix/vector of 
+element 2
+…
+Request of matrix/ 
+vector calculation of  
+element NE
+Matrix/vector of 
+element NE
+Instance or Device
+Light-weight computing
+Heavy computing
+Build Element 
+Shared Arrays
+Copy calculated results to 
+element shared arrays
+ 11 
+in the element level (ShellMITC4), the section level (MembranePlateFiberSection), and the 
+material level (J2Plasticity), were re-written as C functions. To simplify the tedious 
+implementation, the inheritance relationship was simplified using function calls in the GPU 
+parallelism. Even in the simplified implementation that only focuses on a fixed element type 
+containing fixed section and material types (ShellMITC4, MembranePlateFiberSection, and 
+J2Plasticity), about four thousand lines of C++ code were re-written as C code. 
+4. Numerical Studies 
+Two building models consisting of shell elements, as shown in Fig. 9, were tested in this work. 
+The I-beams and hollow square sections were adopted for beams and columns, respectively. The 
+J2-plasticity material is based on the properties of steel, with an elasticity modulus of 200 GPa. The 
+material is elastic-perfectly plastic as both of the initial and final saturation yield stresses were set to 
+250 MPa, while both of the linear and exponential hardening parameters are set to zeros. Structural 
+masses of approximately 600 kg m
+−2
+ of floor area were uniformly added to all nodes. A classic 
+Rayleigh damping ratio of 3% was applied. A 10-second trilateral acceleration ground motion of 
+recorded by the TCU082 station during the 1999 Chi-Chi earthquake in Taiwan was used as input in 
+the analyses using a uniform excitation load pattern. The nodal responses obtained were relative to the 
+ground rather than absolute values.  
+ 
+  
+(a) Model SHF2×1 (b) Model SHF2×2 
+Fig. 9. Test building models: (a) SHF2×1 and (b) SHF2×2. 
+ 
+The explicit Newmark’s method was used in this work. A constant time increment of 50 μs is 
+used. That is, there are a total of 200,000 time steps in each analysis test. While the implicit and 
+explicit Newmark’s methods are both widely used in earthquake engineering, the explicit method is 
+capable of capturing violent responses when material or component failures occur. It is also suitable 
+for numerical/experimental hybrid structural experiments [20, 21]. In addition, the explicit method is 
+more preferable for very large–scale models due to the system matrix typically being a lumped 
+ 13 
+scattered data in memory reduces the performance. In contrast, the Bulk Model gathers element data 
+into arrays, giving a greater chance of achieving efficient memory access.  
+The speedups achieved by the parallelized part of the simulation were observed by measuring the 
+element matrix/vector calculation times, as shown in Table 3. As expected, when the explicit method 
+was used, the majority of the computing cost was spent on the element matrix/vector calculation. Table 
+4 lists the speedups that OpenMP multi-threading and the CUDA GPU can achieve. It should be noted 
+that the speedups in Table 4 are based on the sequential Bulk Model, not the unmodified OpenSees, 
+since the graph displays different parallel techniques. The contribution made by the sequential Bulk 
+Model itself is removed in this aspect. While the OpenMP multi-threading technique achieves a 
+speedup of about 3.2 to 3.4 in a 4-core system, the CUDA GPU achieves more than 7. This implies 
+that a 8-core system may be needed to achieve the performance of a single GPU device in this type of 
+analysis program. While a workstation allows up to four GPU devices, it is not likely to be easy to find 
+a counterpart with a multi-core CPU system to achieve the performance of four GPUs. 
+ 
+ 
+Table 3. Element matrix/vector calculation times using four different OpenSees versions (in seconds). 
+Model Unmodified 
+Sequential Bulk 
+Model 
+OpenMP Bulk 
+Model (4 cores) 
+CUDA GPU Bulk 
+Model 
+SHF2×1 150,455 88,035 25,638 12,071 
+SHF2×2 272,149 154,317 47,842 21,072 
+ 
+Table 4. Speedup measured in terms of the element matrix/vector calculation time compared with 
+unmodified OpenSees 
+Model 
+Sequential Bulk 
+Model 
+OpenMP Bulk 
+Model (4 cores) 
+CUDA GPU Bulk 
+Model 
+SHF2×1 1 3.43 7.29 
+SHF2×2 1 3.23 7.32 
+ 
+ 
+5. Summary 
+In this work, the element matrix/vector calculation in a widely used structural analysis platform 
+called OpenSees was parallelized for GPU calculation. A GPU parallelization method called the Bulk 
+Model was proposed to aid the parallelization of the element matrix/vector calculations. The Bulk 
+Model was used to implement shell elements in OpenSees. The Bulk Model eases the GPU 
+parallelization of the OpenSees sophisticated framework and avoids parallelizing many layers of 
+virtual function calls that may reduce GPU performance. Three versions of the Bulk 
+Model—sequential, OpenMP multi-threaded, and CUDA GPU parallelized—were implemented. Two 
+structural analysis models composed of shell elements and subjected to a tri-axial 10-second ground 
+ 15 
+Academia Lectures Notes in Computer Science 1947 (2001) 121-130.  
+[10] T. A. Davis, Algorithm 832: UMFPack V4.3 – an unsymmetric-pattern multifrontal method, 
+Journal of ACM Transactions on Mathematical Software 30(2) (2004) 196-199.  
+[11] X. S. Li, An overview of SuperLU: algorithms, implementation, and user interface, Journal of 
+ACM Transactions on Mathematical Software 31(3) (2005) 302-325.  
+[12] C. Ashcraft, D. Pierce, D. K. Wah, J. Wu, The reference manual for SPOOLES, release 2.2: an 
+object oriented software library for solving sparse linear systems of equations, Technical report, 
+Boeing shared services group (1999).  
+[13] A. K. Chopra, Dynamics of Structures 4th Ed., Prentice Hall (2011).  
+[14] L. Dagum, OpenMP: an industry standard API for shared-memory programming," Computational 
+Science & Engineering IEEE 5(1) (1998) 46-55. 
+[15] F. McKenna, Object-oriented finite element programming frameworks for analysis algorithms 
+and parallel computing, Ph.D. dissertation, University of California, Berkeley, California, USA 
+(1997).  
+[16] F. McKenna, M. Scott, G. Fenves, Nonlinear finite-element analysis software architecture using 
+object composition, Journal of Computing in Civil Engineering 24(1) (2010) 95-107. 
+[17] T. T. C. Hsu, Y. L. Mo, Unified Theory of Concrete Structures, second ed., Wiley, USA, 2010. 
+[18] Y. Takahashi, G. L. Fenves, Software framework for distributed experimental–computational 
+simulation of structural systems, Earthquake Engineering & Structural Dynamics 35(3) (2006) 
+267-291. 
+[19] Y. S. Yang, S. H. Hsieh, K. C. Tsai, S. J. Wang, K. J. Wang, W. C. Cheng, C. W. Hsu, ISEE: 
+Internet-based simulation for earthquake engineering. Part I: database approach, Earthquake 
+Engineering & Structural Dynamics 36(15) (2007) 2291-2306. 
+[20] S. Y. Chang, Y. S. Yang, C. W. Shu, A family of explicit algorithms for general pseudodynamic 
+testing, Earthquake Engineering & Engineering Vibration 10(1) (2011) 51-64.  
+[21] Y. S. Yang, K. C. Tsai, A. S. Elnashai, T. J. Hsieh, An online optimization method for bridge 
+dynamic hybrid simulations, Simulation Modelling Practice and Theory 28 (2012) 42-54.  
+表1 9PCEE會議第一天議程(本人簡報如粗框所示) 
+ 
+ 
+ 
+圖 2 於 9PCEE會議遇友人 Dr. Rick Henry 
+ 
+圖 3 於 9PCEE會議遇國內專家林錦隆博士 
+本人於本會議會亦遇到許多國際友人，除了上述 Ingham教授之外，包
+括主辦此會議的 Quincy Ma博士，Rick Henry博士(如圖 3)等人。此外還遇
+到國內專家柴駿甫博士與林凡茹準博士(國家地震工程研究中心)，以及國
+立中興大學林錦隆博士(如圖 4)。我要特別感謝  林錦隆博士幫忙照了很多
+照片。本出國報告圖 1、圖 3與圖 4都是林博士的傑作。 
+三、 專業技術心得 
+由於本次研討會準備期間適逢紐西蘭遭遇強基督城大地震
+(Christchurch Earthquake 2011)，使得得本次研討會格外受到矚目。本次會
+議最受重視的討論議題包括基督城大地震地表運動行為探討、基督城大地
+震結構損壞模式、未來的耐震性能設計規範，地震工程實驗技術與結構安
+全監測方法等議題。 
+紐西蘭南島基督城於 2011年 2月 22日當地時間中午 12:51發生芮氏規
+模 6.3，震源深度 5公里的地震，並造成了 172人死亡和約 2000人受傷，
+以及估計 160 億紐幣(約 3500 億台幣)的經濟損失。這個地震(Christchurch 
+earthquake 2011)是 2010年 9月 4日當地時間清晨 4:35發生芮氏規模 7.1，
+國科會專題研究計畫補助出國參加會議 出國簡短報告 
+ 
+計畫編號：99-2221-E-027-042-MY3 
+會議名稱：The 6th Taiwan-Japan Workshop on Structural and 
+Bridge Engineering（第六屆台日橋樑結構研討會） 
+會議地點：Kyoto University, Kyoto, Japan 
+會議日期：2013/04/04-2013/04/06 
+ 
+投稿文章： 
+(1) Strain fields and crack observations using image analysis 
+in bridge experiments 
+ 
+ 
+一、 參加會議經過 
+第六屆台日橋樑結構研討會 (The 6th Taiwan-Japan Workshop on 
+Structural and Bridge Engineering)是台灣與日本結構與橋樑工程研究領域
+的重要會議之一。此系列之研討會大多數的出席人員，在我方包括我國結
+構工程最大實驗室與研究單位－國家地震工程研究中心，國立台灣大學，
+國立台灣科技大學，與本校國立台北科技大學。日本方面主要包括日本橋
+樑工程優秀學校－京都大學，名古屋大學，大阪市立大學，以及日本各大
+工程設計顧問公司。 
+。 
+二、 會議簡報 
+本人投稿此研討會的文章 Strain fields and crack observations using 
+image analysis in bridge experiments (橋柱實驗之影像式量測與觀測技術)得
+於本次研討會進行口頭簡報。本人藉此機會將本研究團隊所發展的影像式
+橋樑實驗之應變與裂縫量測與偵測方法與本研究團隊研發之 ImPro Strereo
+量測系統介紹予在場所有來賓 (如圖 1)。 
+ 
+與工程界，並同時獲取日本方面在此研發領域的回饋、意見與需求項目，
+對於本研究團隊未來的研發具有相當大的意義。此外，日本工程界在影像
+量測與分析的研發可謂不惶多讓，已經採用高速高解析度相機，搭配精密
+的步進馬達雙向控制，發展出高精度的橋樑裂縫檢測儀器。該公司雖仍未
+發展出本研發團隊所發展的應變量測系統功能，但已經讓本團隊體會到影
+像分析量測技術之研究技術發展的快速發展與競爭速度不能輕視。本團隊
+一方面將與各方合作進行技術交流，另一方面將大力將影像分析技術推廣
+之各界，爭取更多的產學合作機會。 
+ 
+圖 3 本研討會出席人員合影於 FRP 人行步橋 
+ 
+99年度專題研究計畫研究成果彙整表 
+計畫主持人：楊元森 計畫編號：99-2221-E-027-042-MY3 
+計畫名稱：地震工程模擬之 GPGPU 超多核心平行化研究 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 2 2 100%  
+研討會論文 15 15 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 6 6 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 2 2 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 3 3 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+■達成目標 
+□未達成目標（請說明，以 100字為限） 
+□實驗失敗 
+□因故實驗中斷 
+□其他原因 
+說明： 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：■已發表 □未發表之文稿 □撰寫中 □無 
+專利：□已獲得 □申請中 ■無 
+技轉：□已技轉 □洽談中 ■無 
+其他：（以 100字為限） 
+本研究成果已經發表於以下期刊論文，均以本計畫主持人為第一作者與通訊作者。 
+ASCE Journal of Computing in Civil Engineering (SCI) 
+Simulation Modelling Practice and Theory, accepted (SCI) 
+ 
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以
+500字為限） 
+In this work, the element matrix/vector calculation in a widely used structural 
+analysis platform called OpenSees was parallelized for GPU calculation. A GPU 
+parallelization method called the Bulk Model was proposed to aid the 
+parallelization of the element matrix/vector calculations. The Bulk Model was used 
+to implement shell elements in OpenSees. The Bulk Model eases the GPU 
+parallelization of the OpenSees sophisticated framework and avoids parallelizing 
+many layers of virtual function calls that may reduce GPU performance. Three 
+versions of the Bulk Model—sequential, OpenMP multi-threaded, and CUDA GPU 
+parallelized—were implemented. Two structural analysis models composed of shell 
+elements and subjected to a tri-axial 10-second ground motion were tested to 
+investigate the parallel efficiency. 
+The numerical tests showed that both the multi-threaded and CUDA 
+GPU-parallelization methods significantly reduced the total elapsed time. The 
+multi-threaded version exploited the benefits of multi-core CPUs and reduced the 
+total elapsed time of 2–3 days to less than 14 hours, which is about 3.6 times 

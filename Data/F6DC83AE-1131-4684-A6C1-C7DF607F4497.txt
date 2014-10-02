@@ -1,0 +1,961 @@
+  i
+CONTENTS 
+A. 中文摘要 .....................................................................................................................................1 
+B. Abstract (英文摘要)......................................................................................................................2 
+C. MPEG Surround............................................................................................................................3 
+C.1 研究目的與背景 ................................................................................................................3 
+C.2 MPEG Surround Encoder 介紹 ...........................................................................................3 
+C.3 加速方法 ............................................................................................................................4 
+C.3.1 Floating-point to Fixed-point Conversion ...............................................................4 
+C.3.2 Filter Bank Acceleration ..........................................................................................4 
+C.3.3 LFE Channel Acceleration.......................................................................................5 
+C.4 結合 MPEG Surround 和 HE-AAC ...................................................................................5 
+C.5 結論 ....................................................................................................................................5 
+D. MPEG Vidwav 小波轉換視訊編碼.............................................................................................6 
+D.1 前言 ....................................................................................................................................6 
+D.2 研究目的 ............................................................................................................................6 
+D.3 文獻探討 ............................................................................................................................6 
+D.4 研究方法 ............................................................................................................................7 
+D.5 結果與討論 ........................................................................................................................7 
+D.6 結論 ....................................................................................................................................9 
+E. Scalable Extension of H.264 Codec (Part I: Encoder) ................................................................10 
+E.1 前言：研究背景、動機與目的.......................................................................................10 
+E.2 JSVM Encoder 架構介紹 ..................................................................................................10 
+E.3 相關文獻探討................................................................................................................... 11 
+E.4 研究分析...........................................................................................................................12 
+E.5 快速演算法之設計...........................................................................................................13 
+E.6 實驗結果與討論...............................................................................................................14 
+E.7 未來研究方向...................................................................................................................15 
+F. Scalable Extension of H.264 Codec (Part II: Decoder)...............................................................16 
+F.1 JSVM Decoder 介紹 .........................................................................................................16 
+F.2 TI DSP 平台介紹 ...............................................................................................................16 
+F.3 移植流程(從 C 程式至 TI 平台) ......................................................................................16 
+F.4 加速方法 ...........................................................................................................................17 
+F.5 結論 ...................................................................................................................................18 
+G. 國際合作計畫 ............................................................................................................................19 
+H. 參考文獻 ...................................................................................................................................23 
+I. 計畫成果自評 .............................................................................................................................26 
+J. Publications: (含前兩年同一系列計畫產出，於過去一年中發表者) .....................................27 
+ 
+  2
+B. Abstract (英文摘要) 
+Multimedia service is believed to be the driving force for developing wide-band wireless 
+communication systems. However, there are a number of challenges in delivering real-time mul-
+timedia over wideband wireless networks such as packet loss and heterogeneous mobile receivers. 
+Thus, new technologies for video representations, Scalable Video Coding (SVC) technical stan-
+dard, proposed by HHI is now nearly completed by the ISO and ITU joint committee. Moreover, 
+Multi-channel Audio System is widely adopted by the consumer electronics, such as DVD and 
+digital broadcasting service. But the bit-rate of the conventional audio compression techniques is 
+usually proportional to the number of channels and thus the total number of bits is very high. In 
+order to solve this problem, a Multi-channel Audio compression scheme, MPEG Surround, is stan-
+dardized by MPEG committee to achieve low bit-rate and high audio quality. 
+The goal of this project is to study, design, simulate and implement various streaming au-
+dio/video algorithms based on the concepts of the multi-channel audio coding and scalable video 
+coding. The entire duration of this project is 3 years. We will outline the intermediate results of the 
+second year of this report. Our multi-channel audio system is a combination of HE-AAC and pa-
+rametric audio model to achieve high audio quality with very low bit-rate. To make use of the 
+powerful TI DSP platform, we successfully reduce its computational complexity and memory re-
+quirements to provide a significant improvement on encoding speed at about 500 times. Moreover, 
+we also pay attention to the progress of scalable video coding. There are two major coding struc-
+tures. One is the scalable extension of H.264/AVC codec based on the layered approach, and the 
+other is Vidwav based on the concept of motion-compensated wavelet transform. In the H.264 ex-
+tension, the computational load of one enhancement layer is 1.3 to 2.8 times that of a base layer 
+because of H.264 codec. Thus, our goal is to design a low-complexity encoder and decoder that 
+provide up to 75% overall time saving for encoder and 50% time reduction for decoder. Finally, 
+an international collaboration project with Prof. Hwu at University of Illinois at Ur-
+bana-Champaign (UIUC) on highly efficient video codec implementation is reported. The target is 
+to port H.264/AVC codec and other video algorithms to a software/hardware co-design platform. 
+We help them in understanding the operations of compression techniques and in implementing a 
+multi-processor coding scheme pertinent to H.264 coding. Further research results will be reported 
+in the future.  
+Keyword：MPEG, DSP, Audio/Speech Compression, HE-AAC, SBR, MPEG Surround, Psycho-
+acoustic Model, Software/Hardware Co-design, Scalable Video Coding, SVC, Multi-core Archi-
+tecture 
+  4
+的壓縮效果。 
+ 本計畫使用德州儀器 C6416T 這顆 DSP 作為實現平台，同時把 MPEG Surround 編碼器
+實現在 Sundance 所提供的 DSP 平台上，並且針對需大量運算的部分做加速與演算法的改
+善，期望能加速並且降低消耗 DSP 資源。 
+ 
+C.3 加速方法 
+我們將 MPEG Surround Reference Software 程式碼改寫並且放在 DSP 平台上，壓縮 5.1
+聲道的音樂，並利用 DSP 系統所提供的 profile 功能，分析每個 Module 的執行時間，結果
+如Fig. C-2。較耗時部分是下面討論加速的重點。 
+0%
+0%
+0%
+55%
+10%
+16%
+19%
+Initialization
+QMF Analysis
+Hybrid Analysis
+Ottbox
+Hybrid Synthesis
+QMF Synthesis
+others
+ 
+Fig. C-2 MPEG Surround Encoder 複雜度分析 
+ 
+C.3.1 Floating-point to Fixed-point Conversion 
+原本標準提供的 reference software 的資料型太大多為浮點數(Floating-point)，然而，
+C6416T 是一顆定點數(Fixed-point)運算的 DSP，雖然它能夠模擬浮點數的運算，但是相對的
+需要多約 10 倍的運算時間。為了能讓程式更有效率的執行，我們將程式改寫成 Fixed-point。 
+ 在作定點數運算時，我們用查表的方式來計算一些非線性函數，如 Sine、Cosine、Log
+等。另外像 Filter Bank 中用到的係數，也可以事先算好並存在 Table 中，以 Memory 換取時
+間來加速。 
+ 
+C.3.2 Filter Bank Acceleration 
+由 Profile 結果中我們發現，Filter Bank 部份佔了總共運算時間的約 90%。在 MPEG 
+Surround 中結合了兩級的 Filter Bank，分別是 QMF Analysis/Synthesis 和 Hybrid Analy-
+sis/Synthesis，以下我們針對這兩部分作加速。 
+ 第一級的 filter 是 64-channel Quadrature Mirror Filter (QMF) Bank，Prototype Filter 的長
+度為 640。首先利用 DCT-IV 和 DST-IV 分別實現 QMF 的實數和虛數部份，再利用目前已知
+  6
+D. MPEG Vidwav 小波轉換視訊編碼 
+D.1 前言 
+由於目前多媒體視訊的運用廣泛，並且有線/無線網路寬頻的普及，視訊傳輸必須滿足
+不同的傳輸情況以及播放裝置，因此可調式視訊編碼(Scalable Video Coding)也因此開始出現
+需求。MPEG 標準組織在近年來開始進行可調式視訊標準的制定，除了目前已進入標準制定
+流程的 H.264/AVC 可調式延伸版本(Scalable Extension)外，尚有以小波轉換為基礎的編碼方
+式在進行討論中。由於小波視訊編碼具有許多發展潛力，目前為可調式視訊編碼的重要研究
+領域。 
+ 
+D.2 研究目的 
+在小波視訊編碼中，以連續畫面間小波轉換視訊編碼(Interframe Wavelet Video Coding)
+最為著名。連續畫面間小波轉換視訊編碼利用時間軸資料分析(Temporal Analysis)，空間軸
+資料分析(Spatial Analysis)與小波係數資料編碼器(Entropy Coding)，可產生可調式資料流，
+經過適當抽取後，可同時達成三種主要可調要求，分別為空間軸可調 (Spatial Scalability)、
+時間軸可調 (Temporal Scalability)與畫質可調 (SNR scalability)。 
+可調式編碼的主要特點在於可利用單一編碼資料因應不同要求而提供不同型式的影
+像；如：可根據網路頻寬需求動態調整畫質與畫面率(Frame Rate)，亦可根據使用者所要求
+的顯示解析度來調整畫面大小。這種可以針對單一編碼資料進行編碼後調整以符合需求的特
+性，即為可調式編碼最大的特點。可調式編碼方法目前主要有兩大主流：以 DCT 編碼架構
+做為基礎發展的 H.264/AVC 可調式延伸版本(Scalable Extension)與以小波轉換為基礎的視
+訊編碼架構。 
+在本計畫中，針對目前 MPEG Vidwav 小波轉換視訊編碼最新的進展，進行研究與比較，
+並且說明在目前編碼架構上之研究心得，與未來可能的研究方向。 
+ 
+D.3 文獻探討 
+傳統以 DCT 為基礎的視訊編碼是以 DPCM (Differential Pulse Code Modulation)型式做
+為主要編碼架構，由於在編碼路徑中有回饋(Feedback)路徑，整個架構形成一個「封閉迴圈」
+(Closed-loop)，可有效利用過去資料改善預測的精準度；在目前的視訊編碼技術中，又以
+H.264/AVC 為其編碼效能最佳者。基於 H.264/AVC 的編碼方式，並結合數種因應可調式設
+計編碼方式，再進一步發展成為具有多種可調性設計的 H.264/AVC 可調式延伸版本。 
+而不同於傳統以 DCT 為基礎的傳統視訊編碼架構，wavelet 視訊編碼架構可分數種型
+式，可分為 t+2D 與 2D+t 主要兩種編碼架構；而其中又以 t+2D 最早開始發展[4][5]。此外，
+  8
+碼效能已可達到與 JSVM (H.264/AVC 可調式延伸版本參考軟體) [8][9][15][16][17]相較的成
+果。Fig. D-1與Fig. D-2均取自於[17]，其中Fig. D-1即是小波視訊轉換較佳之實例。以目前的
+而言，小波視訊編碼在高解析度影像擁有較好的畫質，在Fig. D-1的 4CIF 格式相當於一般電
+視畫面大小。而Fig. D-2則是在[17]中小波視訊編碼較差的狀況。 
+PSNR Harbour
+30.00
+31.00
+32.00
+33.00
+34.00
+35.00
+36.00
+37.00
+38.00
+4C
+IF 
+60
+ - 3
+07
+2
+4C
+IF 
+60
+ - 2
+56
+0
+4C
+IF 
+60
+ - 2
+04
+8
+4C
+IF 
+60
+ - 1
+78
+0
+4C
+IF 
+60
+ - 1
+53
+6
+4C
+IF 
+30
+ - 2
+04
+8
+4C
+IF 
+30
+ - 1
+79
+2
+4C
+IF 
+30
+ - 1
+53
+6
+4C
+IF 
+30
+ - 1
+28
+0
+4C
+IF 
+30
+ - 1
+02
+4
+4C
+IF 
+15
+ - 1
+53
+6
+4C
+IF 
+15
+ - 1
+28
+0
+4C
+IF 
+15
+ - 1
+02
+4
+4C
+IF 
+15
+ - 8
+96
+4C
+IF 
+15
+ - 7
+68
+CI
+F 3
+0 -
+ 76
+8
+CI
+F 3
+0 -
+ 64
+0
+CI
+F 3
+0 -
+ 51
+2
+CI
+F3
+0 -
+ 44
+8
+CI
+F3
+0 -
+ 38
+4
+CI
+F 1
+5 -
+ 51
+2
+CI
+F 1
+5 -
+ 44
+8
+CI
+F 1
+5 -
+ 38
+4
+CI
+F 1
+5 -
+ 32
+0
+CI
+F 1
+5 -
+ 25
+6
+CI
+F 7
+.5 
+- 3
+84
+CI
+F 7
+.5 
+- 3
+20
+CI
+F 7
+.5 
+- 2
+56
+CI
+F7
+.5 
+- 2
+24
+CI
+F7
+.5 
+- 1
+92
+QC
+IF 
+15
+ - 1
+92
+QC
+IF 
+15
+ - 1
+60
+QC
+IF 
+15
+ - 1
+28
+QC
+IF1
+5 -
+ 11
+2
+QC
+IF 
+15
+ - 9
+6
+PS
+N
+R
+t+2D
+JSVM 3.0
+STool
+ 
+Fig. D-1 小波視訊轉換與 H.264/AVC 可調式延伸版本之效能比較(Harbour 測試片段) [17] 
+PSNR Mobile
+25.00
+26.00
+27.00
+28.00
+29.00
+30.00
+31.00
+32.00
+CI
+F 3
+0 -
+ 38
+4
+CI
+F 3
+0 -
+ 32
+0
+CI
+F 3
+0 -
+ 25
+6
+CI
+F 3
+0 -
+ 22
+4
+CI
+F 3
+0 -
+ 19
+2
+CI
+F 1
+5 -
+ 25
+6
+CI
+F 1
+5 -
+ 22
+4
+CI
+F 1
+5 -
+ 19
+2
+CI
+F 1
+5 -
+ 16
+0
+CI
+F 1
+5 -
+ 12
+8
+CI
+F 7
+.5 
+- 1
+92
+CI
+F 7
+.5 
+- 1
+60
+CI
+F 7
+.5 
+- 1
+28
+CI
+F 7
+.5 
+- 1
+12
+CI
+F 7
+.5 
+- 9
+6
+QC
+IF 
+15
+ - 1
+28
+QC
+IF 
+15
+ - 1
+12
+QC
+IF 
+15
+ - 9
+6
+QC
+IF 
+15
+ - 8
+0
+QC
+IF 
+15
+ - 6
+4
+QC
+IF 
+7.5
+ - 9
+6
+QC
+IF 
+7.5
+ - 8
+0
+QC
+IF 
+7.5
+ - 6
+4
+QC
+IF 
+7.5
+ - 5
+6
+QC
+IF 
+7.5
+ - 4
+8
+PS
+N
+R
+t+2D
+JSVM 3.0
+STool
+ 
+Fig. D-2 小波視訊轉換與 H.264/AVC 可調式延伸版本之效能比較(Mobile 測試片段) [17] 
+  10
+E. Scalable Extension of H.264 Codec (Part I: Encoder) 
+E.1 前言：研究背景、動機與目的 
+多媒體(Multimedia)影音近年來廣泛地應用在各種產品上，在異質的接收與傳輸環境
+下，各種接收機擁有不同傳輸頻寬、運算能力與畫面解析度[18]，Fig. E-1為一應用之例。因
+此，MPEG 與 ITU 組織制訂一個可調式視訊編碼系統，其目的是希望以單一位元流(Bitstream)
+滿足各種接收機的傳輸頻寬、運算能力與解析度。目前所被納入編碼架構是德國 HHI 所提
+出，這新一代之視訊標準是以 H.264/AVC 壓縮技術為基本層架構，可同時提供空間上 
+(Spatial)、時間上 (Temporal)、和畫質 (Quality)可調特性[19]，預計西元 2007 年會制訂完成。 
+ 
+Fig. E-1 可調視訊編碼應用環境 
+目前由 ISO 與 ITU 國際標準組織所制定之可調式視訊編碼標準(Scalable Video Coding 
+Technical Standard) [20]，其基本設計想法乃是擴展目前壓縮比最高之 H.264/AVC 編碼標準，
+繼承 H.264/AVC 大部分的編碼模組，利用層狀架構(Layered Structure)之概念達到可調式編
+碼之目的。而由 HHI 所提供之標準參考軟體(Reference Software)，稱為 Joint Scalable Video 
+Model，採用全域搜尋(Full Search)之方式找尋到最佳之編碼參數。我們測試幾個典型的視訊
+影像，統計出加強層的運算複雜度約略是基本層(Base layer)的 1.3 倍到 2.8 倍。這代表了當
+我們的編碼層數增加時，會使得編碼時間大幅度提高，導致可調式視訊編碼在現階段無法被
+廣泛地應用。因此，在本計畫中，針對目前可調式視訊編碼的運算複雜度，進行相關研究與
+文獻比較，並說明未來可能的研究方向。 
+ 
+E.2 JSVM Encoder 架構介紹 
+ Fig. E-2為一 JSVM 編碼架構之示意圖，圖中的每一層均為一 H.264/AVC 編碼器。如果
+將Fig. E-2中之 Decimation 與 Interpolation 之運算單元拿掉，則此編碼架構會簡化成粗略可
+調特性的例子。為了要增進編碼效率，每一層之間都會利用 Inter-layer Prediction 之機制來
+使編碼效能改善，詳細說明如下，而Table E-1說明Fig. E-2中每一個 SW 之功能： 
+  12
+與 IntraBL 作預測。再者，由於 Intra4x4 預測模式中有九種預測方向可供選擇，其運算
+量仍是相當高，所以在[32]中又將此九種預測方向減少剩水平、垂直與 DC 預測模式。 
+¾ Inter Prediction：在[34][35][36]，利用層狀架構之間的運算相關性，提出了針對可調式
+視訊編碼之快速演算法，其演算法之主要精神為加強層中之宏塊切割必須比基本層中之
+宏塊切割模式來的更精細，類似於[32][33]，其內部預測的模式只測試 Intra4x4 與 IntraBL
+兩種預測模式。 
+¾ 現有方法之缺失與不足：在[32]-[36]中均只考慮到層狀架構為兩層(一基本層與一加強層)
+時之情況作設計，並未考慮到當層狀架構超過兩層時，所應該考慮到之問題。再者，在
+設計演算法上也必須考量到多重參考畫面(multiple reference frames)之需求。雖然是利用
+層狀架構之間的運算相關性作為減少運算量之依據，而層狀架構之相關性不僅僅只有切
+割模式的精細度而已，仍有動作向量的相關性尚未被考量到。 
+ 
+E.4 研究分析 
+在分析與研究前人之作法後，我們期望能夠設計針對多層層狀架構之編碼系統，盡可能
+地善用基本層在編碼時所擁有的資訊，藉由層狀架構之間的相關性，達到大量減少編碼時所
+需之運算複雜度。因此我們以下作了一些數據分析，觀察層狀架構之間所具有之運算相關性。 
+Table E-2 Conditional probability of the macroblock modes at the enhancement layer 
+Enhancement 
+layer
+Inter prediction modes at base layer
+(QpB,QpE) = (39,29) (QpB,QpE) = (27,17)
+16x16 16x8 8x16 8x8 16x16 16x8 8x16 8x8
+16x16 0.44 0.25 0.28 0.04 0.19 0.18 0.15 0.10
+16x8 0.19 0.25 0.12 0.04 0.16 0.18 0.07 0.05
+8x16 0.20 0.12 0.29 0.04 0.17 0.08 0.17 0.05
+8x8 0.17 0.38 0.31 0.88 0.48 0.56 0.61 0.80  
+0 13 26 39
+0
+0.25
+0.5
+0.75
+1
+QpE with QpB=45
+P
+ro
+b
+ab
+ili
+ty
+0 7 14 21
+0
+0.25
+0.5
+0.75
+1
+QpE with QpB=27
+ 
+ 
+intra 16x16
+intra 8x8
+intra 4x4
+intra BL
+ 
+Fig. E-3 Distribution of the intra prediction modes at the enhancement layer 
+¾ Macroblock partition 相關性： 
+根據Table E-2，當基本層之宏塊為 16x8/8x16 之方式作切割時，則加強層中所對應之宏
+塊為 8x16/16x8 的機率就明顯比其他切割模式來的小，尤其當基本層之宏塊為 8x8 模式
+切割時，則加強層所對應之宏塊亦為 8x8 模式切割之機率高達 80%以上。 
+¾ Intra prediction 相關性： 
+根據Fig. E-3所示，加強層中之宏塊所使用之預測模式絕大部分均落在 Intra4x4 與
+  14
+Qp0 of Subordinate Layer ≦ 33
+MB to Be Tested 
+is Inter16x16?
+Exhaustive Search for
+Reference Frame Index
+& Update Context Info
+MB(Partition) at Base Layer
+is Pred_L0?
+MB(Partition) at Base Layer
+is Pred_L1?
+MB(Partition) at Base Layer
+is BiPred?
+Search in ListL0 
+with Index r0
+Search in ListL1 
+with Index r1
+Search in Both Lists 
+with Index r0, r1
+NoYes
+No
+YesNo
+No
+Yes
+Yes
+Yes
+ 
+Fig. E-6 Layer-adaptive selection of reference frame index 
+MV from Base Layer
+16x16, 16x8, 
+8x16, 8x8
+MVP from Enh. Layer
+8x4, 4x8, 4x4
+Look-up Table
+(Table 2)
+Selection Procedure
+(Figure 6)
+Determine MB Modes to be Tested
+at Enh. Layer by Table Look-up
+Adaptively Select Reference Index for 
+Each MB Partition from Base Layer
+Adaptively Determine Initial Search 
+Point for ME by MB Partition
+Determine MB Mode by RD Cost &
+Keep Context Information for Next Layer
+Perform Exhaustive Search in Base Layer
+& Keep Context Information
+ 
+Fig. E-7 Layer-adaptive mode decision 
+Table E-3 Look-up Table for Layer-adaptive Mode Decision 
+Candidate 
+modes in 
+layer N
+Best prediction modes in  layer M with Qp0
+Region 1: Qp0 in (0~33) Region 2: Qp0 in (34~51)
+Inter prediction modes
+Intra
+Inter prediction modes
+Intra
+Direct 16x16 16x8 8x16 8x8 Direct 16x16 16x8 8x16 8x8
+Direct O O O O O O O O O O O O
+16x16 O O O O O O
+16x8 O O O O O O
+8x16 O O O O O O
+8x8 O O O O O O O
+BLskip O O O O O O O O O O
+DirectRES O O O O O O
+16x16RES O
+16x8RES O O
+8x16RES O O
+8x8RES O O O
+BLskipRES O O O O O
+MODE_SR O O O O O
+Intra4x4 O O O O O O O O O O O O
+IntraBL O O
+8x8 prediction mode includes 8x8, 8x4, 4x8, and 4x4 partition modes.
+The suffix, RES, denotes a prediction mode with residual prediction.  
+ 
+E.6 實驗結果與討論 
+根據E.5所提出之多層層狀結構之粗略可調特性與時間可調特性之低複雜度宏塊決定模
+式快速演算法，我們將之實現在JSVM 8.0版之參考軟體上[37]，並且測試了10組測影像，其
+中五組為CIF格式，另外五組是4CIF格式，其詳細之編碼參數列表於Table E-4中。 
+在Table E-5中，採用 PSNR∆ 、 Bitrate∆ 、TS、TSE、CR1 與 CR2 六項數據來展現出所
+提出之演算法的運算複雜度改善與編碼效率差異。實驗數據顯示出所提出之演算法有效地大
+  16
+F. Scalable Extension of H.264 Codec (Part II: Decoder) 
+F.1 JSVM Decoder 介紹 
+Fig. F-1為 JSVM 5.0 Decoder 的架構圖，在可調性上主要分為 Temporal、Spatial、SNR
+三種可調性，在處理 Spatial 可調性時，主要功能為底層和上層間 Inter-Layer prediction 的
+動作，包括 Motion Vector、Residual 與 Intra Texture 三種資訊的傳遞，另外在 Temporal 可調
+性，主要由 Frame Buffer 來提供不同 Reference Frame 的選擇，最後在 SNR 的可調性，我們
+主要是使用 FGS (Fine Grain Scalability)來達到此一目的，主要是底層和上層 residual 累加。 
+Bit-Stream
+Motion
+Compensation
+Intra
+Prediction
+Frame
+Buffer
+Deblocking
+Filter
+Inverse Quantization
+& Inverse Transform
+Entropy
+Coding
+Enhancement
+Output Video
+SW1
+Motion
+Compensation
+Intra
+Prediction
+Frame
+Buffer
+Deblocking
+Filter
+Inverse Quantization
+& Inverse Transform
+Entropy
+Coding
+SW2
+Motion vector
+Residual data
+Intra texture
+Inter-layer prediction:
+Scaling
+Deblocking
+Filter
+Interpolation
+Interpolation
+SW3
+SW4
+SW5
+DEMUX
+Base
+Output Video
+En
+ha
+nc
+em
+en
+t 
+la
+ye
+r
+B
+as
+e 
+la
+ye
+r
+En
+ha
+nc
+em
+en
+t 
+la
+ye
+r
+B
+as
+e 
+la
+ye
+r
+ 
+Fig. F-1 JSVM5.0 Decoder 
+ 
+F.2 TI DSP 平台介紹 
+我們所選用的 DSP 平台為 C6416T，板子部分為 Sundance 的 SMT395 型號，CPU 時脈
+為 1-GHz，為一 32-Bit Fixed-Point 之 VLIW (Very-Long-Instruction-Word) 架構，且擁有 64 個
+32-Bit General-Purpose 暫存器，以及 8 個獨立的運算單元。在記憶體方面，分為外部記憶體
+和內部記憶體兩部分，內部記憶體又分為 L1 和 L2 兩層，L1 部分擁有各 16K-Byte 的 Program 
+Cache 和 Data Cache，主要是供 CPU 隨時做動態資料存取的功能，另外 L2 則為 1024K-Byte，
+也可以用來當作 Cache 使用。 
+ 
+F.3 移植流程(從 C 程式至 TI 平台) 
+主要的程式碼為標準會議所提供的 JSVM 5.0 版本，但是原始程式包含了編碼器、解碼
+  18
+有 Coefficient 的存在，但是程式還是會做相同的 Scaling and Updating 的處理，所有加速
+的方式就是提早告知程式，此方塊沒有 Coefficient 的存在，不需要做 Scaling and Updating
+的處理，避免做無謂的計算。 
+(C) Code Refinement 
+JSVM 5.0 解碼器的程式，在 FGS 的部分中，有些程式是與其他部份共用，例如初始方
+塊設定的程式，但是在這些程式中，有些參數是在 FGS 的部分中，用不到的，例如 motion 
+vector 參數設定等，所以再這一部分我們重新對程式做修改，將所有 FGS 相關的程式獨
+立出來，避免不必要的系統資源浪費。 
+ 
+F.4.2 Inter-layer prediction acceleration 
+Inter-layer Prediction，主要功能為針對 Spatial Scalability (可調適畫面解析度)時，將底層
+的部分有用資訊(Motion Vector、Residual 與 Intra Texture)做插補(Interpolation)處理後，提供
+給上層利用，以不同層次的資訊相關性，來減少不同解析度獨立編碼時所增加不必要的資料
+編碼，在 JSVM 5.0 解碼器中，Inter-layer 也占了部份計算量，所以我們用以下方式作加速，
+可減少 30%左右的計算量： 
+(A) Intra Texture Prediction 
+在 JSVM 解碼器中，會將所有底層的重建的 Intra Texture 畫面，做 Interpolation 計算後
+給上層來利用，但是實際上上層所需要的部份，只有在為 Intra-Base 模式時，才需要底
+層 Intra 的資訊，所以修改方式就是當在上層確定為 Intra-Base 模式時，才從找尋相關的
+底層資訊並做 Interpolation 記算處理，如此可以避免許多不必要的計算。  
+(B) Residual Prediction 
+除了 Intra texture 外，另一個占計算量較大的部份為 Residual 的 Inter-layer 的部份，再做
+此一部份的處理時，會相將畫面分為 Y、U、V 三個部份，但是程式會一次將三個部份
+作 interpolation 的動作，我們可以將此三部份獨立出來，只針對需要的部份作處理。 
+F.4.3 DSP Code Acceleration 
+使用一些 DSP 所支援的特殊加速方法，包括 Intrinsic function、DSP Library 及記憶體重
+新調整的方式，來達到加速的功能。 
+ 
+F.5 結論 
+針對解碼器做加速，所以在解碼後的影像跟原本程式的影像無任何差異性，而程式最佳
+化後速度上可以達到一倍以上的加速。 
+  20
+Level(宏塊層次)與 Sub-macroblock Level(子宏塊層次)，而主要程式核心乃是在宏塊層次
+與子宏塊層次這兩部份，因為在編碼時必須藉由最佳化的技術來挑選出最好的編碼參數
+與預測模式。因此，我們將這兩部分的程式架構作了更精細之分析，如Fig. G-2。由Fig. 
+G-2可以看到，每一個宏塊必須測試過不同的預測模式後，在挑選出最好之編碼參數，
+另外比較特別之處在於，我們在流程圖上都標出了一些數字，這是用來表示出每一個運
+算步驟迴圈所執行的次數，這種分析對於將來在切割程式區塊以及分配運算量會有助
+益，也會使得在模擬多工運算時，可以很快地作配置的動作。 
+¾ 基於我們對 H.264/AVC 壓縮標準演算法的了解與對方對多核心技術的經驗，藉由雙方
+討論，歸納出幾個比較重要的編碼模組 (如： Inter/Intra Prediction、Interpolation、
+Deblocking Filter)，針對這些模組作平行化的處理。其中最消耗時間的乃是 Inter/Intra 
+prediction 之運算，另外我們又發現在 x264 軟體中針對 Inter/Intra Prediction 所作之快速
+演算法並不適合在多核心技術上作實現，因此我們將 x264 之軟體中的 Mode Decision
+部份改回最原始的全域搜尋(Exhaustive Search)方式來找尋到最佳的宏塊切割模式，並
+且利用 VC++ 6.0 內之 Multi-thread 功能來模擬在硬體上作多核心之運算過程，其修改
+完之流程如Fig. G-3，我們將不同的預測模式運算利用多工的方式來處理，可以在同一
+時間內運算許多個預測模式，再從其中挑選出最佳之編碼參數，而未了能夠府何原有之
+演算法流程，我們採取先運算 SKIP 與 Intre16x16 兩種模式，如果符合條件 B，就不將
+切割模式往下細分；反之，由於 Inter16x8、Inter8x16、Inter8x8 與 Intra 四種預測模式的
+運算沒有相關性，因此，我們將這四種運算作平行處理，並且也考量到了每一種預測模
+式所需要的運算量大小，根據分析所得到的結果，運算所需之平均時間並不會相差太
+多，也就表示我們在配置每個運算模組時，不會有某些大量的運算複雜度集中在某一個
+執行緒上，而是平均地分布在各個執行緒上，以發揮各執行緒的最大效能。，另外，亦
+將 Interpolation、Deblocking Filter 兩部份之運算作平行化之處理，將 Y 與 UC 兩部分的
+運算作隔離，達到相同時間內，同時運算 Y 與 UV 的數值。綜合上述所言，當設計多
+核心的架構設計時，在分配各個編碼模組到各處理器上時，必須盡可能地將運算量平均
+地分布在各個處理器上，使各處理器在每個時間點上都是全速執行運算，而不是呈現閒
+置(Idle)狀態，以發揮各處理器之最大效能。 
+  22
+YES
+YES
+NO
+NO
+YES
+NO
+ 
+Fig. G-3 Parallel Process Scheme in Mode Decision 
+ 
+  24
+2005. 
+[18] J.-R. Ohm, “Advances in scalable video coding,” Proceedings of the IEEE, vol. 93, no. 1, pp. 
+42–56, 2005. 
+[19] H. Schwarz, D. Marpe, and T. Wiegand, “Overview of the Scalable H.264/MPEG4-AVC Ex-
+tension,” , IEEE Int’l Conf. on Image Processing, 2006. 
+[20] T. Wiegand, G. Sullivan, J. Reichel, H. Schwarz, and M. Wien, “Joint Draft 8 of SVC 
+Amendment,” ISO/IEC JTC1/SC29/WG11 and ITU-T SG16 Q.6, JVT-U201, 2006. 
+[21] H. Schwarz, D. Marpe, and T. Wiegand, “Inter-layer Prediction of Motion and Residual 
+Data,” ISO/IEC JTC1/SC29/WG11/M11043, USA, July 2004. 
+[22] W.-J. Han, “Modified IntraBL Design Using Smoothed Reference,” ISO/IEC 
+JTC1/SC29/WG11 and ITU-T SG16 Q.6, JVT-R091, 2006. 
+[23] Y.-D. Zhang, F. Dai, and S.-X. Lin, ”Fast 4x4 Intra-prediction Mode Selection for H.264,” 
+IEEE International Conference, vol. 2, 27-30 June 2004, pp. 1151-1154. 
+[24] F. Pan, X. Lin, R. Susanto, K. P. Lim, Z. G. Li, G. N. Feng, D. J. Wu, and S. Wu, “Fast Mode 
+Decision Algorithm for Intra Prediction in JVT,” ISO/IEC JTC1/SC29/WG11 and ITU-T 
+SG16 Q.6, JVT-G013, 2003. 
+[25] C.-L. Yang, L.-M. Po, and W.-H. Lam, ”A Fast H.264 Intra Prediction Algorithm Using Mac-
+roblock Properties,” International Conference, vol. 1, 24-27 Oct. 2004, pp. 461-464. 
+[26] Z. Zhou and M.-T. Sun, ”Fast Macroblock Inter Mode Decision and Motion Estimation for 
+H.264/MPEG-4 AVC,” International Conference, vol. 2, 24-27 Oct. 2004, pp. 789-792. 
+[27] P. Yin, H.-Y.C. Tourapis, A.M. Tourapis, and J. Boyce, “Fast Mode Decision and Motion Es-
+timation for JVT/H.264,” Proceedings of International Conference on Image Processing, 2003, 
+pp. 853-856. 
+[28] K.-H. Han and Y.-L. Lee, “Fast Macroblock Mode Decision in H.264,” IEEE Conference, vol. 
+A, 21-24 Nov. 2004, pp. 347-350. 
+[29] C. Grecos and M.-Y. Yang, “Fast Inter Mode Prediction for P Slices in the H.264 Video Cod-
+ing Standard,” IEEE Transactions,vol. 51, Issue 2, June 2005, pp. 256-263. 
+[30] J. Lee and B. Jeon, “Fast Mode Decision for H.264,” ICME 2004, vol.2, June 2004, pp. 
+1131-1134. 
+[31] F. Zhang and X. Zhang, “Fast Macroblock Mode Decision in H.264”, ICSP 2004 7th Interna-
+tional Conference, vol. 2, 31 Aug.-4 Sept. 2004, pp. 1179-1182. 
+[32] L. Xiong, “Reducing Enhancement Layer Directional Intra Prediction Modes,” ISO/IEC 
+JTC1/SC29/WG11 and ITU-T SG16 Q.6, JVT-P041, 2005. 
+[33] L. Yang, Y. Chen, J. Zhai, and F. Zhang, “Low Complexity Intra Prediction for Enhancement 
+Layer,” ISO/IEC JTC1/SC29/WG11 and ITU-T SG16 Q.6, JVT-Q084, 2005. 
+[34] H. Li, Z.-G. Li, and C.Wen, “Fast Mode Decision for Coarse Grain SNR Scalable Video 
+Coding,” IEEE ICASSP, 2006. 
+[35] H. Li, Z.-G. Li, and C.Wen, “Fast Mode Decision for Spatial Scalable Video Coding,” IEEE 
+  26
+I. 計畫成果自評 
+多媒體服務是寬頻無線網路的最重要應用之一。本計畫重點在先進音、視訊標準編碼
+的演算法加速與實作，也開發設計適合在無線網路上傳送串流多媒體的視訊編碼法設計。本
+專題研究將承繼我們過去的經驗與前人的成果，進一步設計發展解決問題方式。所發展出的
+技術、經驗及成品極具實用價值，可促進國內工業研發技術開發。 
+參與工作人員(研究生)在學理上習得音訊與視訊編碼技術與國際標準。針對寬頻無線網
+路，設計開發可調式編碼等演算法，成員得到此課題研究與開發產品的經驗與知識。畢業後
+進入產業，直接有助於產業界開發新產品，提昇我國工業技術能力，達到人才培育之目的。 
+綜合評估：研究內容與原計畫進度與內容大致相符，已達成學術研究創新與人才培育之
+預目標。整體成效良好。研究成果頗具學術與應用價值，承繼之前的同一系列研究項目，已
+發表三篇學術會議論文，及碩士學位論文三冊如下表。並積極參與國際 MPEG 標準會議，
+將我人研發成果推展到國際舞台。 
+表 Y04 1
+行政院國家科學委員會 補助國際合作心得報告 
+                                                          96 年 5  月 31 日 
+報告人姓名 杭學鳴 
+蔡家揚 
+林鴻志 
+服務機構
+及職稱 
+國立交通大學電子工程學系教授 
+國立交通大學電子工程學系博士班學
+生 
+     時間  95 年 7 月 1 日 至 96 年 7
+月 31 日 
+本會核定
+補助文號
+NSC 95-2221-E-009-146 
+ 計畫名稱 無線串流多媒體之新生代可調式聲視訊編碼技術研究(2/3) 
+國際合作題目 高效率視訊演算法在軟硬體共同設計平台上實現之研究 
+(註 1: 由於主持人與研究生學期中得教學上課，已規劃於 2007 年 7 月初，計畫主持人和兩位
+博士生前往伊利諾大學，進行實質交流合作一個月。此為前一年(2006 年 7 月)之完整報告，
+本年度(2007 年)報告擬於 8 月初差旅結束後繳交。) 
+ 
+一、 背景 
+H.264 是繼 MPEG-4 之後崛起另一種新的影音壓縮技術規格。其之所以會受到矚目，
+主要在於其壓縮效能高於既有的 MPEG-4。因之，對於 Cable 或衛星(廣播/電視)營運業者，
+該技術較 MPEG-4 提供了更高的頻寬，有效解決了 MPEG-4 相對於 MPEG-2 頻寬不足的問
+題。 H.264 在 2003 年完成規格制定、授權機制後，不斷吸引軟硬體廠商提早投入晶片產
+品開發，並將其視為下階段高解析度 DVD/DTV 所必備的壓縮技術之一。相較於
+MPEG-2/MPEG-4，H.264 同樣具備多元豐富的應用市場，包括廣播服務供應商、有線、衛
+星、電信營運商都對 H.264 的壓縮能力充滿興趣。在影音家電方面，DVD Recorders/PVRs
+業者也有意使用 H.264 技術壓縮更多的影像位元於碟片上。在 DTV 的應用方面，業界正
+積極討論以 H.264 技術傳送數位地面電視訊號到行動裝置的成效。 
+然而由於 H.264 的編碼複雜度極高，即使是利用硬體實現仍有一定難度，即使是利用
+ASIC 方式要達成高解析度的 H.264 即時編碼仍非常困難，DSP 軔體實現以目前的 DSP 技
+術更是幾乎不可能。由於單一晶片實現 H.264 編碼器的困難，因此多顆 CPU 核心平行處
+理器的解決方式開始被探討。 
+以目前的電子產品來說，PC 已經是日常生活不可缺的一部份，而多數的多媒體需求也
+可以在 PC 的平台上滿足，而 PC 中最重要的電子元件便是 CPU。隨著 VLSI 技術的發展，
+CPU 的進展也是一日千里，時脈不斷推進，奈米製程也廣泛應用在 CPU 設計中。然而，高
+運算能力的代價便是高耗功率，不管是在運算時散熱技術的限制或是目前的環保需求，都
+使得多核心(Multi-core)的 CPU 成為現今的最佳解決方案。以目前市面上 CPU 大廠 Intel 與
+AMD 為例，都相繼提出新一代的 Pentium Duo Core 與 AM2 的雙核心架構，利用雙核心的
+平行運算概念，可有效分散原先單一核心運算之複雜度，因此而能有效解決 CPU 散熱問
+題，避免多餘功率之消耗。以目前的 VLSI 技術，多核心 CPU 的架構設計已不是問題，然
+表 Y04 3
+之編碼演算法與其基本知識，使對方能夠掌握到目前當紅之視訊壓縮標準的流程與作法，
+另外也比較其他壓縮標準(如：MPEG2)之差異處、增強之編碼模組與運算複雜度分析。 
+對方將多年來研究多核心之經驗與硬體技術所需注意之處分享給我們，如：多核心中，
+CPU 與 CPU 之間該如何作資料傳輸與資料重覆使用(reuse)的問題、資料傳輸中 cache miss
+的問題會嚴重影響到整個系統效能。這些寶貴經驗讓我們知道發展硬體之考量因素為何。
+ 
+圖一： x264 程式執行之流程圖 
+ 
+由於 Joint Video Team (JVT)所提供之 H.264/AVC 壓縮標準參考軟體，其執行之編碼速
+度效率不佳，因此我們採用著名的開放程式碼軟體 x264，並且基於 GPL 原則，以此版本作
+為我們發展之起始點，其流程圖如圖一與圖二。基於我們對 H.264/AVC 壓縮標準演算法的
+了解與對方對多核心技術的經驗，藉由雙方討論，歸納出幾個比較重要的編碼模組，如：
+畫面間/畫面內預測(Inter/Intra prediction)、填補濾波器(Interpolation filter)、除方塊效應濾波
+器(Deblocking filter)，針對這些模組作平行化的處理。其中最消耗時間的乃是畫面間/畫面
+內預測(Inter/Intra prediction)之運算，另外我們又發現在 x264 軟體中針對畫面間/畫面內預
+測(Inter/Intra prediction)所作之快速演算法並不適合在多核心技術上作實現，因此我們將
+x264 之軟體中的模式決定(mode decision)部份改回最原始的全搜尋(exhaustive search)方式
+來找尋到最佳的預測模式。 
+由於在硬體平行化的運算無法利用單一執行序(single thread)之程式進行模擬，因此我
+們利用微軟的程式開發工具 Visual C++ 6.0 來進行多執行序(multi threads)程式之撰寫，其
+主要目的是為了模擬在硬體上作多核心之運算過程。其修改完之流程如圖三。當然我們也
+將填補濾波器(Interpolation filter)、除方塊效應濾波器(Deblocking filter)兩部份之運算作平
+行化之處理，以達到多核心技術之最大效率。 
+在此一個月與美國伊利諾大學胡文美教授研究團隊之合作，我們一同完成了 H.264 平
+行運算的基本架構，並且已進行了初步的程式撰寫。我們將研究進度到一個段落後，進行
+整理與將相關實驗數據留給胡教授團隊進行參考，在確認之後的彼此聯絡方式後，完成此
+次美國的研究工作。 
+ 

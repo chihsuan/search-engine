@@ -1,0 +1,494 @@
+1 
+ 
+前言 
+  近年來，隨著電腦的普及化與網際網路的快速發展，各種網路相關的應用已十分廣泛，雖然便
+利了我們的生活，但也由此而衍生出許多犯罪行為。且因為犯罪者常利用網路不分國界、易於隱匿、
+追蹤不易等特性，藉由殭屍電腦、偽造 IP、使用公眾網路或無線網路等等的匿蹤技術，致使網路犯
+罪的查緝更為困難。 
+  許多攻擊者為了擾亂伺服器，而使用分散式阻斷服務攻擊(DDoS, Distributed Denial of Service)。
+DDoS 攻擊可依攻擊封包的數量，分為大量封包癱瘓服務的攻擊(flooding-based attack)及軟體弱點攻
+擊(software exploits attack) [1]。前者是利用大量偽造的來源封包耗盡目的端有限的資源；後者則使用
+少量的封包攻擊目標主機的弱點。由於大多數位在邊緣的路由器(edge route)不檢查封包的來源位
+址，攻擊者常藉著偽造 IP 位址以躲避追蹤，讓 DDoS 攻擊的防禦較為不易。為此，我們提出了一個
+新的溯源機制以追蹤匿源攻擊者的真實來源。 
+研究目的 
+  為了追蹤偽造或隱匿來源之攻擊者，有許多研究提出各種封包回溯機制，包括了封包轉存機制、
+封包標記機制等方法，但皆有需要大量的儲存空間、需要收集大量的攻擊封包等缺點，因此我們於本
+計畫提出一個結合了封包轉存機制與封包標記機制的單一封包追蹤匿名攻擊來源之方法，這是一種標
+記為32位元的複合式封包溯源機制，將上游路由器進入的介面編號進行編碼，並利用雜湊函數將這些
+記錄在封包上的上游路由器介面標號之計算結果，轉存至路由器輔助記憶空間，藉此解決IP回溯中之
+轉存和標記的問題。不但可做到單一封包追蹤，且在路由器上轉存所需的儲存量極低，不需要定期清
+空路由器上的記錄，也不會有誤判的問題。 
+文獻探討 
+為了追踨大量封包癱瘓服務攻擊封包的真實來源，Burch和 Cheswick[2] 提出了使用 UDP chargen 
+service的連線測試方法，在上游的連線增加額外的負載以擾亂攻擊封包的流量，藉此找到攻擊流量的
+上游路由器。Bellovin 等人[3]提出 iTrack方法，在封包經過路由器時，送出一個包含路由器向前和向
+後連線資訊的 ICMP 封包，再依這些訊息重建攻擊路徑。 
+Belenky和 Ansari [4][5]提出 DPM 溯源機制，邊界路由器(border router)會在通過的封包上記錄其
+IP。Savage等人[6]提出分片標記法(Fragment Marking Scheme, FMS)，使用邊緣取樣(edge sampling)的
+PPM。Song和 Perring [7]提出高級標記法(Advance Marking Scheme, AMS)。Yaar等人[8]提出快速回
+溯(Fast Internet Traceback, FIT)，Al-Duwari 和 Govindarasu [9]提出機率性同步標記法(Probabilistic 
+Pipelined Packet Marking, PPPM)。但這些方法皆依靠收集大量的攻擊封包來追蹤隱匿之攻擊者，並不
+適合用在追蹤軟體弱點攻擊。 
+為此，Snoeren 等人[10]提出 SPIE (Source Path Isolation Engine)，將封包上幾個不變的欄位透過雜
+湊函數轉為 digest，並且使用 bloom filter 記錄，但有需耗費大量儲存空間與因資料碰撞而誤判(false 
+3 
+ 
+2006), Baltimore, Maryland, USA, Aug. 2006, pp. 1-10. 
+[12] K. H. Choi and H. K. Dai, “A Marking Scheme Using Huffman Codes for IP Traceback,” in Proc. The 
+7th International Symposium on Parallel Architectures, Algorithms and Networks (SPAN’04), Hong 
+Kong, SAR, China, May 2004, pp. 421-428. 
+[13] I. Stocia and H. Zhang, “Providing guaranteed services without peer flow management,” in Proc. ACM 
+SIGCOMM’99, Boston, MA, USA, Sept. 1999, pp. 81-94. 
+[14] Malliga, S. and Tamilarasi, A. “A proposal for new marking scheme with its performanceevaluation for 
+IP traceback,” WSEAS Transactions on Computer Research, vol.3, no. 4,pp.259-272, Apr. 2008 
+[15] Appleby, A. (2010). Murmurhash. [Online]. Available: http://sites.google.com/site/murmurhash/ 
+[16] Noll, L. C. (2010). FNV Hash. [Online]. 
+Available:http://www.isthe.com/chongo/tech/comp/fnv/index.html. 
+[17] The MD5 Message-Digest Algorithm, IEFT RFC 1321, 1992. 
+[18] CAIDA. (2010). CAIDA’s skitter project. [Online]. Available: http://www.caida.org/tools/skitter/ 
+[19] Wang, X. J. and Xiao, Y. L. “IP Traceback Based on Deterministic Packet Marking and Logging,” in 
+Proc. SCALCOM-EMBEDDEDCOM'09, Dalian, China, Sept. 2009, pp.178-182. 
+研究方法 
+為了實際的解決攻擊者利用隨機產生 IP 來隱匿攻擊來源的問題，我們應當發展一個可以即使攻
+擊者使用匿蹤技術仍可找出攻擊來源的方法來防制此類攻擊。然而現有的複合式 IP 溯源機制結合封
+包標記和封包轉存追蹤方法儘管可以減少路由器的儲存量，仍無法避免儲存量隨著封包數量遞增而使
+的方法因路由器不可能具有無限量儲存空間而不可行。因為這個理由，我們於本計畫中將提一個以路
+徑紀錄為核心的複合式 IP 溯源方法，使路由器的封包轉存所需的儲存需求不論封包數多大都可以於
+固定的低儲存量完成，且不需要更新轉存資訊；而且達到零誤判且不會重建攻擊路徑不會失敗。 
+如同圖 1 的網路拓撲，一個路由器可能會連接到一個區域網路或是其他的路由器，或者兩者都
+有。邊界路由器(border router)從區域網路中接收封包，中心路由器(core router)從其他路由器接收封
+包。例如，R9在接收從 Host 來的封包時可當作邊界路由器。然而，當它接收從 R8送出封包時則變成
+中心路由器。 
+R9
+R2
+R5
+R4
+R3
+R1
+R7
+R8
+R6
+Victim
+Host
+Attacker
+Legitimate traffic
+Link
+Attack traffic
+ 
+圖 1. 網路拓撲 
+5 
+ 
+UI2當成一對，並且插入雜湊表中，並且取得 index，然後 R2計算 marknew = index × (D(R2) + 1)，這個
+時候的 marknew = 32，沒有發生溢位，所以 R2將封包送到下一個路由器。R3接收到這個封包後用 UI3 = 
+2計算 marknew，marknew = 163，沒有發生溢位，因此 R3將封包轉送到下一個路由器。 
+‧
+‧
+‧
+8
+R1
+D(R1)= 3
+R2
+D(R2)= 3
+R3
+D(R3)= 4
+marknew = ( 60 x 4 + 1 +1 ) = 242
+0
+0
+0
+1
+1
+1
+2
+2
+2 3
+marknew =  242 x 4 + 1 + 1 = 970
+needs to log
+P
+.m
+a
+rk
+ =
+ 2
+4
+2
+P.mark = 32 P.mark = 163
+P.mark = 60
+marknew = ( 32 x 5 + 2 + 1 ) = 163
+Source router
+‧
+‧
+‧
+242
+‧
+‧
+‧marknew =  ( 8 x 4 ) = 32
+markindex
+0
+‧
+‧
+‧
+R2's hash table, m = 16
+UI
+‧
+‧
+‧
+1
+‧
+‧
+‧
+R4
+R5
+R6 R7
+ 
+圖 2. 轉存和標記的例子 
+重建路徑 
+當受害端遭受攻擊，受害端向上游路由器發出重建要求，這個要求包涵攻擊封包的標記欄位，這
+裡稱為 markreq。當路由器接收到一個重建要求，路由器會嘗試找出攻擊封包的上游路由器。首先，
+計算 UIi = markreq % (D(Ri) + 1) - 1，如果 UIi ≠ -1，表示這個封包來自上游路由器，從上游介面號碼
+UIi進入，接著路由器會將標記欄位恢復到上一個標記欄位的狀態。路由器計算 markold = markreq / (D(Ri) 
++1)，所以我們可以得到上游路由器的 markreq，也就是 markold，接著我們用 markold取代要求的 markreq，
+接著向上游路由器送出要求封包。然而，如果 UIi = -1，表示攻擊封包的標記欄位和它的上游介面編
+號已被記錄在該路由器上，另一種情形則是這個路由器正是來源路由器。被要求的路由器計算 index = 
+markreq / (D(Ri) +1)，因此我們可以判斷這個路由器是否為來源路由器。如果 index不是零，表示這個
+路由器有記錄這個封包，接著路由器用 index 存取 HT 並且找出 markold = HT[index].mark 和 UIi = 
+HT[index].UI，接著我們用 markold取代要求的 markreq，並且將要求送到上游路由器。然而，如果 index
+是零，這個被要求的路由器就是來源路由器。 
+7 
+ 
+效能分析 
+我們主要針對儲存量、精準度、以及效能表現做分析。我們發現 Huffman codes、More的轉存機
+制都十分相似，但是 Huffman codes 在封包標記方面卻不甚理想[15]。因此，這邊我們僅針對 MORE
+和MRT 來做比較。在模擬實驗當中，使用了配備 Intel P4 930 3GHz 的個人電腦，2G的記憶體，和
+FreeBSD 6.2。 
+運算量分析 
+接下來我們將比較我們的方法、MRT、MORE在路徑重建和標記方面的計算量。因為該方法是使
+用雜湊表來做轉存，所以無可避免的必須處理雜湊表中的碰撞問題。而我們決定採取開放定址(open 
+addressing)的方式來解決表格中的碰撞。在開放定址中，當一筆資料需要插入轉存表，而要插入的位
+置已有其它資料，則從此位置開始根據特定探測方法搜尋，直到找出空的欄位。當要尋找一筆資料是
+否在轉存表中，則以插入時相同的方法搜尋。為了降低碰撞造成的影響，我們使用平方探測法
+(Quadratic Probing)來尋找空的欄位，因為它的計算量低且可有效避免群集問題(clustering problem)。
+但當使用平方探測法時轉存的路徑數與轉存表大小的比值，也就是轉存表的負載係數(load factor) α會
+影響搜尋時碰撞的次數。 
+當我們要存入該封包之前路徑(包含封包標記及該封包進入介面編號)時，因該路徑是否已經存在
+於該轉存表中而分為兩種情形。第一種是路徑不存在於轉存表中而需要找到一個欄位來儲存該路徑資
+訊，這種情形稱為不成功的搜尋(unsuccessful search)。而找到可用的空欄位前所需的碰撞次數為不成
+功搜尋之碰撞次數。第二種是路徑已存在於轉存表中，我們稱為成功的搜尋(successful search)。而找
+到已存在的標記前的碰撞次數為成功搜尋之碰撞次數。第二種是路徑已存在於轉存表中，我們稱為成
+功的搜尋(successful search)。而找到已存在的標記前的碰撞次數為成功搜尋之碰撞次數。在使用開放
+定址的情形下不成功搜尋的碰撞次數的期望值最多為 ，成功搜尋的碰撞次數的期望值為
+。兩種情形的碰撞次數的期望值如圖4，當負載係數為0.5時，兩種情形的碰撞次數最多只要
+兩次，當負載超過0.5之後，不成功搜尋的碰撞次數會急遽上升，因此後面的實驗轉存表的負載係數
+都設為0.5。 
+9 
+ 
+可找出轉存表中儲存的轉存資料。我們的方法並不需要花費時間在搜尋上，因此我們的路徑重建明顯
+地比MRT 和MORE 和快上許多。 
+儲存量分析 
+我們的方法在路由器上儲存了一個轉存表和一個介面標號表，而 MRT和MORE 則必須在路由器
+上儲存多個轉存表和一個介面編號表。由於介面表只有存放路由器的介面編號，它的大小相對於轉存
+表相當的小，因此在我們的分析中只考慮轉存表的儲存量。我們方法的轉存表大小決定一個路由器上
+所能轉存的路徑數多寡。任意兩封包如果在同一路由器上有相同的標記，則他們到此路由器的路徑將
+會相同。我們的方法中將封包的一個標記欄位視為該封包到達該路由器 R 的一條路徑。轉存表的負
+載係數 α = l / m，l 代表轉存表中轉存的路徑數。如上所述，我們應當將負載係數控制在 0.5以下。
+所以如果該路由器上要轉存的路徑數是 N，其轉存表的大小則應該設為 2N。再者，轉存表中的每一
+欄位儲存了一個 32-bit 的封包標記，以及一個 8-bit 的介面編號 UI。所以表中每一個欄位總共使用了
+40個位元。因此我們提出了以下的定理： 
+Theorem 1：令 N 等於路由器 R 所需轉存的路徑數。則路由器 R 的轉存表大小最多為 2N，最大
+儲存量為 80N 位元。 
+然而在 MRT裡面，轉存表中的一欄位包含了一個 32-bit 的封包摘要以及一個 32-bit 的封包標記。
+在 MORE 中，轉存表的一欄位包含了一個 32-bit 的封包摘要以及一個 16-bit 的封包標記。所以他們
+的儲存量分別是 n ×  64 位元和 n ×  48位元，n表示該路由器上轉存的封包數。在相同路徑上，封包會
+在相同的路由器上被轉存。因此如果遭受泛洪攻擊(flooding-based attack)時，他們的轉存表大小將會
+在短時間內暴增。而我們的方法中轉存表的大小是固定的，將可以有效的防止泛洪攻擊。 
+為了分析路由器的儲存需求，我們使用CAIDA的 skitter data[18]產生一個網路拓撲。skitter data set
+由 Trace Route 產生的多條 IP 路徑構成。資料中因有部分路由器可能因不回應 Ping因而造成部分路徑
+資料不完整。因此我們只取資料中 197,003條完整的路徑建構出我們需要的網路拓樸。根據我們分析
+skitter data 路徑長度的結果如圖 6 所示，該資料中平均路徑長為 15.46，路由器的平均維度為 3.89，
+超過 99.99%的路由器的維度小於 256。 
+ 
+圖 6. 路徑長度分布圖 
+ 國科會出國報告書 
+報告日期：101/1/20 
+報 告 人  中文： 楊明豪 外文：Yang, Ming Hour 
+服務單位及職稱 中原大學 資訊工程系 
+報告主題 
+前往香港參加 IEEE Computing, Communications & Applications Conference，並發
+表論文 
+出國日期 自  101  年  1  月  10  日  至  101  年  1  月  14  日 
+出國目的地   
+(國、城市、 單位
+名稱) 
+ 
+中國香港 Hong Kong University of Science and Technology 
+出國目標 參加研討會並發表論文 
+成果報告 
+  101年 1月 11日至 13日，IEEE在香港主辦 Computing, Communications & Applications 
+Conference 2012會議，此會為電腦資通訊與應用之重要會議。本次研討會主要專精於網路、通訊
+及其應用，共含蓋：Wireless Network、Cloud Computing、Communication Systems and Resource 
+Management、Network Applications、Reliability等方向之 84篇論文，提出了許多網路協定與維護
+網路穩定的文章，對於我們計畫研究之追蹤攻擊者所要討論的網路路由建立協定也有相當多新的研
+究，且對我們未來將有線網路追蹤攻擊者之研究延伸至無線網路的部分相當有幫助。 
+  本次研討會之論文報告涵蓋範圍很廣泛，且多有深入的探討和完整的分析，更具有未來技術發
+展的介紹。因此本人可以於與會期間學習相當多關於無線網路協定及資源管理與應用之相關技術，
+並有機會聽到各國無線網路技術之發展狀況，且能和與會者交流許多有關無線路由協定和通訊之最
+新技術及研究狀況，對於日後進行無線網路安全相關研究有相當大的幫助。 
+  此外，大會的邀請演講之一 Shannon Lab的Wu Chou提出其對於未來 IT以及雲端發展的看法，
+並給予許多方向性的建議，雖然在台灣也能接觸部分相關資訊，但有機會可以聽聽國外學者的意見
+與看法仍是一個很好的經驗，對本人將來投入雲端方面的研究也大有助益。 
+ 
+ 
+Reliability Analysis of Balanced Hypercubes
+Ming-Chien Yang
+Department of Information Application
+Aletheia University
+Tainan 721, Taiwan
+mcyang@mail.au.edu.tw
+Ming-Hour Yang
+Department of Information and Computer Engineering
+Chung Yuan Christian University
+Chung Li City, Taiwan 32023
+mhyang@cycu.edu.tw
+Abstract—The hypercube is a popular interconnection network
+for multiprocessor systems. The balanced hypercube, denoted by
+BHn, is a variant of the hypercube network. The balanced hy-
+percube reserves some properties of the hypercube and enhances
+some other properties of it as well. For a multiprocessor system,
+the reliability of an interconnection network is a major concern.
+It is well-known that connectivity is a important measure for
+the reliability of an interconnection network. In this paper, we
+study a refined reliability measure, called super connectivity, of
+the balanced hypercube. We show that the super connectivity of
+BHn is 4n° 4 for n ∏ 2. That is, at least 4n° 4 vertices need
+to be removed from BHn to get a disconnected graph which
+contains no isolated vertex.
+Keywords-interconnection networks; multi-core architectures;
+reliability; connectivity; super connectivity; balanced hypercube
+I. INTRODUCTION
+Processors are connected based on a specific interconnection
+network in multiprocessor systems. An interconnection net-
+work is usually represented by a graph in which vertices repre-
+sent processors and edges represent links between processors.
+Let G be a simple undirected graph. We use V (G) and E(G)
+to denote the sets of vertices and edges of G, respectively.
+Also, |V (G)| and |E(G)| denote the numbers of vertices and
+edges of G, respectively.
+For multiprocessor systems, the connectedness of a system
+ensures a fault-free communication path between each pair
+of fault-free processors of the system. The connectivity of a
+graph G, denoted by ∑(G), is the minimum number of vertices
+whose removal results in a disconnected graph or a trivial
+graph, i.e. a vertex. A larger ∑(G) means that the network G
+is more reliable. Therefore, the connectivity is an important
+factor for measuring the reliability of an interconnection
+network.
+We use G ° F to denote the graph obtained by removing
+all the vertices in F from G for an arbitrary subset F µ
+V (G). The components of a graph are its maximal connected
+subgraphs. Letting F µ V (G), F is called a super vertex-
+cut of G if G ° F is disconnected and every component has
+at least two vertices. Super vertex-cuts do not always exist.
+The super connectivity of a graph G, denoted by ∑0(G), is the
+minimum cardinality over all super vertex-cuts if there is any.
+The super connectivity of many interconnection networks has
+been studied [1], [2], [3], [4], [5], [8], [9], [11].
+The hypercube is widely known as one of the most popular
+interconnection networks for multiprocessor systems. As a
+variant of the hypercube, the balanced hypercube was pro-
+posed by Wu and Huang [10] to enhance some properties
+of the hypercube. The hypercube as well as the balanced
+hypercube are bipartite and vertex transitive. However, the
+balanced hypercube has a smaller diameter. Also, the balanced
+hypercube is better than the hypercube in that it supports
+an efficient reconfiguration without changing the adjacent
+relationship among tasks [10]. Wu and Huang[10] showed
+that there exist 2n vertex disjoint paths between two arbitrary
+vertices of the n-dimensional balanced hypercube, denoted by
+BHn, for n ∏ 1 and thereby ∑(BHn) = 2n. More desired
+properties of balanced hypercubes can be found in [6], [7],
+[10], [12], [13]. In this paper, we study the super connectivity
+of the balanced hypercube. We prove that ∑0(BHn) = 4n° 4
+for n ∏ 2.
+The rest of this paper is organized as follows. In Section 2,
+we introduce the balanced hypercube and give its some useful
+properties. Section 3 discusses the super connectivity of the
+balanced hypercube. Then we give a conclusion in Section 4.
+II. THE BALANCED HYPERCUBE AND ITS PROPERTIES
+An n-dimensional balanced hypercube, denoted by BHn,
+is defined as an undirected graph [10].
+Definition 1 For n ∏ 1, BHn has 22n vertices with addresses
+(a0, a1, . . . , an°1) where ai is a number with ai 2 {0, 1, 2, 3}
+for 0 ∑ i ∑ n°1. Each vertex (a0, a1, . . . , an°1) connects to
+the following 2n vertices:
+(a0 ± 1, a1, . . . , an°1), and
+(a0 ± 1, a1, . . . , ai°1, ai + (°1)a0 , ai+1, . . . , an°1)
+where i is an integer with 1 ∑ i ∑ n° 1.
+BH1 and BH2 are illustrated in Figure 1.
+Since the proof of our main results is by induction, the
+following recursive definition of BHn is useful to us.
+Definition 2 BHn can be recursively constructed as follows:
+(1) BH1 is a cycle consisting of 4 vertices labeled as
+0, 1, 2, 3 respectively.
+(2) For n ∏ 2, BHn consists of four copies of BHn°1,
+denoted by BHin°1, for every integer i with 0 ∑ i ∑ 3. Every
+978-1-4577-1719-2/12/$26.00 ©2012 IEEE 376
+TABLE I
+VERTICES HAVING DISTANCE 2 FROM (0, 0 . . . 0) AND THEIR NEIGHBORS COMMON TO IT.
+Vertex Neighbors common to (0, 0 . . . 0) C(u, v)
+(2, 0 . . . 0| {z }
+i
+, 1, 0 . . . 0), 0 ∑ i ∑ n° 2 (1, 0 . . . 0| {z }
+i
+, 1, 0 . . . 0) and (3, 0 . . . 0| {z }
+i
+, 1, 0 . . . 0) 2
+(2, 0 . . . 0| {z }
+i
+, 3, 0 . . . 0), 0 ∑ i ∑ n° 2 (1, 0, 0 . . . 0 and (3, 0, 0 . . . 0) 2
+(2, 0 . . . 0| {z }
+i
+, 1, 0 . . . 0, 3, 0 . . . 0| {z }
+j
+) (1, 0 . . . 0| {z }
+i
+, 1, 0 . . . 0) and (3 0 . . . 0| {z }
+i
+, 1, 0 . . . 0) 2
+(2, 0 . . . 0| {z }
+i
+, 3, 0 . . . 0, 1, 0 . . . 0| {z }
+j
+) (1, 0 . . . 0, 1, 0 . . . 0| {z }
+j
+) and (3, 0 . . . 0, 1, 0 . . . 0| {z }
+j
+) 2
+(2, 0, 0 . . . 0) N((2, 0, 0 . . . 0)) 2n
+Proof: Let 8>>>>>>>>><>>>>>>>>>:
+a = (0, 0 . . . 0| {z }
+n°1
+),
+b = (1, 0 . . . 0| {z }
+n°1
+),
+c = (2, 0 . . . 0| {z }
+n°1
+),
+d = (3, 0 . . . 0| {z }
+n°1
+).
+Then C = a ! b ! c ! d ! a is a cycle of length
+4 in BHn. In addition, N(a) = N(c), N(b) = N(d), and
+N(a)
+T
+N(b) = ¡. Let Fv be the set of vertices adjacent to
+C. Then |Fv| = 4n°4 and BHn°Fv is a disconnected graph
+with no isolated vertex.
+Lemma 8: Let F µ V (BHn) be an arbitrary faulty vertex
+set with |F | ∑ 4n° 5 for n ∏ 2. Then, either
+1) BHn ° F is connected,
+2) BHn °F consists of two components, one of which is
+an isolated vertex, or
+3) BHn ° F consists of three components, two of which
+are isolated vertices.
+Proof: The proof is by induction on n. By Lemma 1, we
+have ∑(BHn) = 2n. Then BH2 is connected as 2n ° 1 =
+4n ° 5 = 3 for n = 2. Thus the statement is true for n = 2.
+We assume that the statement is true for BHn°1 with n ∏ 3.
+We shall show that it is true for BHn. For each 0 ∑ i ∑ 3,
+let Fi = F
+T
+V (BHin°1) and fi = |Fi|. We consider the
+following two cases.
+Case 1. fk ∏ 4n ° 8 for some 0 ∑ k ∑ 3. Since fk ∏
+4n ° 8 in this case, there is at most 3 faulty vertex outside
+BHkn°1. Then BHin°1°Fi is connected for each i 6= k since
+∑(BHn°1) = 2n ° 2 > 3 for n ∏ 3. Further, because |F | ∑
+4n°5, by Lemma 4, there exists a safe edge between BHin°1
+and BHi+1n°1 for every 0 ∑ i ∑ 3. Thus BHn°F°V (BHkn°1)
+is connected. On the other hand, by Lemma 6, if BHn ° F
+contains three isolated vertices, then |F | ∏ 4n° 2. Since we
+have |F | ∑ 4n°5, BH1n°1°F1 contains at most two isolated
+vertices. Let A be an arbitrary component of BH1n°1°F1 with
+|V (A)| ∏ 2. Then we show that A is connected to BHn °
+F °V (BH1n°1) as follows. Let (a, b) be an edge of A. Then,
+by the the definition of BHn, a has two neighbors outside
+BH1n°1. Also, b has two neighbors outside BH1n°1. Hence,
+there is a safe edge between A and BHn ° F ° V (BH1n°1).
+That is, A is connected to BHn ° F ° V (BH1n°1).
+Case 2. fi ∑ 4n ° 9 for all 0 ∑ i ∑ 3. We further deal with
+the following two cases.
+Case 2.1. BHin°1°Fi is connected for every i with 0 ∑ i ∑ 3.
+Because |F | ∑ 4n° 5, by Lemma 4, there exists a safe edge
+between BHin°1 and BH
+i+1
+n°1 for every 0 ∑ i ∑ 3. Thus
+BHn ° F is connected.
+Case 2.2. BHkn°1 ° Fk is disconnected for some 0 ∑ k ∑
+3. Without loss of generality, we assume that k = 1, i.e.,
+BH1n°1°F1 is disconnected. Then since ∑(BHn°1) = 2n°2,
+we have f1 ∏ 2n°2 and thus |F |°f1 ∑ (4n°5)°(2n°2) =
+2n ° 3, which implies that BHin°1 ° Fi is connected for
+each i 6= 1. Further, by Lemma 4, there exists a safe edge
+between BHin°1 and BH
+i+1
+n°1 for every 0 ∑ i ∑ 3. Thus
+BHn ° F ° V (BH1n°1) is connected. On the other hand,
+we have f1 ∑ 4n ° 9 = 4(n ° 1) ° 5 and BH1n°1 ° F1 is
+disconnected in this case. Therefore, by induction hypothesis,
+either (1) BH1n°1 ° F1 consists of two components, one of
+which is an isolated vertex or (2) BH1n°1 ° F1 consists of
+three components, two of which are isolated vertices. Let A
+be the component of BH1n°1 ° F1 which is not an isolated
+vertex. Then we show that A is connected to BHn ° F °
+V (BH1n°1) as follows. We have |V (A)| ∏ |V (BH1n°1)| °
+f1 ° 2 ∏ 22n°2 ° (4n ° 9) ° 2 = 22n°2 ° 4n + 7. By
+Lemma 3, there exist |V (A)| disjoint edges between A and
+BHn ° V (BH1n°1). Also, we have |F |° f1 ∑ 2n° 3. Then
+there exists a safe edge connecting A and BHn°V (BH1n°1)°
+F as 22n°2 ° 4n+ 7 > 2n° 3 for n ∏ 2.
+By Lemmas 7 and 8, we have the following theorem on the
+super connectivity of BHn.
+Theorem 1: ∑0(BHn) = 4n° 4 for n ∏ 2.
+IV. CONCLUSION
+The connectivity is an important reliability measure for
+interconnection networks. A more refined measure, namely
+the super connectivity, was introduced to demonstrate the high
+resilience of a network. In this paper, we determine the super
+378
+國科會補助計畫衍生研發成果推廣資料表
+日期:2012/09/04
+國科會補助計畫
+計畫名稱: 有效率的混合式單一封包追蹤攻擊者方法
+計畫主持人: 楊明豪
+計畫編號: 100-2218-E-033-010- 學門領域: 資訊安全
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

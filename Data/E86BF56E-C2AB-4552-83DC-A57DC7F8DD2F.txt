@@ -1,0 +1,665 @@
+ I
+中文摘要 
+關鍵詞：二維動態可自我重組、FPGA、硬體內文儲存與恢復、ICAP 介面 
+ 
+在二維動態可自我重組 FPGA 系統架構中，其內部結構可規劃成多個硬體模組以便進行動
+態切換。而動態可自我重組之硬體模組為了有硬體內文儲存與恢復的能力，往往需使用大量的
+記憶單元來儲存內文。因此我們提出一個高效率之硬體內文儲存與恢復的方法來處理硬體切換，
+並說明如何處理系統移除或載入時硬體狀態儲存與恢復。 
+本計畫工作重點在於提出一個動態硬體內文存取方法可降低使用記憶體空間及減少硬體重組
+的時間。因此，我們分析 FPGA 結構的特性避免儲存重覆性的資料，以及在讀取訊框時利用其
+訊框位址的關連性，避免讀取多餘的訊框，達到節省資料的儲存量，減少讀取硬體內文的時間
+及複雜度。當硬體需要切換回來時再將先前的資料載入回去，被切換之硬體模組內部所需要儲存
+的硬體內文資料則是最關鍵的地方。利用其硬體資源可以任意即時切換的特性，可自我重組系統甚
+至可以根據硬體執行的優先權做排程(schedule)，任意的調用硬體空間與執行的順序，以使可自我
+重組系統架構整體的效率達到最佳化。如此，即可保留硬體執行速度快的性能和並行性，又兼具
+軟體靈活性的優點。而經由實驗結果證明，我們提出的儲存方式與相關研究比較下，我們的方法
+平均可以減少 46.44％之儲存硬體內文的記憶體與減少 4.011％之硬體模組重新配置的時間。 
+本計畫的完成不但訓練動態可自我重組 FPGA 系統設計之人才，同時也產出了 6 篇論文發表
+國內外相關期刊及會議論文。 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 1
+(一) 前言 
+本研究計畫主要是針對二維動態可自我重組 FPGA 系統架構做效能上的提升。在系統運作時，
+動態進行部分配置來改變系統的功能，只重新配置需要的硬體電路模組，而不影響其他正在執行的
+電路。在只改變部分硬體資源的情況下，這可減少 FPGA 的配置時間，提高單一 FPGA 硬體資源
+的重複使用率以增進整體的效能，節省空間以及降低成本。因此提出了硬體內文儲存(Context saving)
+與恢復(Restoring)的方法來實現上述所提到的目標。 
+ 
+(二) 研究目的 
+基於靜態記憶體(Static Random Access Memory, SRAM)的 FPGA 在斷電後所配置的資料即消
+失，每次上電後需要對晶片進行重新配置，這執行的應用程式只有單一種的配置，即使擁有高邏輯
+閘數的 FPGA 其資源的利用率也將有所侷限，如何提高 FPGA 的使用率，發揮更高的效用將可大
+幅的降低成本。一種新型的 FPGA 晶片可在系統中實現動態配置，使得單一 FPGA 能夠滿足不同
+的設計需求，利用動態部分可重組(Dynamic partial reconfiguration)技術可將單一 FPGA 分割成幾個
+可重組態的邏輯模組將既有的硬體資源實現多種可能的系統應用。在系統運作時，利用動態進行部
+分配置來改變系統的功能，只重新配置需要的硬體電路模組，而不影響其他正在執行的電路。因此，
+動態部分可重組技術就是可改善上面所提到之眾多問題，擁有可重組能力之嵌入式系統必然會是目
+前及未來研究的主要發展方向。 
+在運行時，硬體電路模組雖然可以動態的被置換，但卻無法像軟體程式靈活可變，如軟體處理
+器可以隨時地調用當前所需的程式段。一個可重組態的硬體電路模組在執行時必須從一開始到結
+束，才可將硬體空間釋放出來重新再作配置(Reconfiguration)，這樣的結果幾乎完全喪失了動態可
+重組的彈性。在可重組系統(Reconfigurable System)中，如果可以隨時將硬體電路模組作置換
+(Swap)，當有其他硬體電路需要被執行時，可以把正在執行的硬體空間切換出來(Swap-out)給其他
+需要執行的模組使用，而需要時再將之前切換出去的硬電路切換回來(Swap-in)繼續之前的狀態下執
+行未完成的工作，這使可重組系統的硬體資源可以像軟體一樣被使用、動態調用或修改，如此即可
+保留硬體執行速度快的性能和並行性，又兼具軟體靈活性的優點。 
+因此，本計畫目的為提出一個硬體內文儲存(Context saving)與恢復(Restoring)的方法以達到可
+即時(Run-time)動態可自我重組的功能。此方法可增加二維可自我重組系統架構的彈性，並可節省
+硬體內文儲存的資料量與讀取時間。透過此硬體內文儲存與恢復的方法來增加處理硬體切換時的
+效率。計畫重點在於提出一個節省記憶體及可重組時間之動態硬體內文存取方法，讓動態部分可重
+組系統可以即時做硬體模組上的切換。當硬體需要切換回來時再將先前的資料載入回去，被切換之
+硬體模組內部所需要儲存的硬體內文資料是最關鍵的地方，如何儲存較少而有用的硬體內文資料才
+能節省記憶體，進而減少硬體內文資料載回硬體電路的時間。利用其硬體資源可以任意即時切換的
+特性，可自我重組系統甚至可以根據硬體執行的優先權做排程(Schedule)，任意的調用硬體空間與
+執行的順序，以使動態部分可重組系統架構整體的效率達到最佳化。 
+ 
+(三) 文獻探討 
+近幾年隨著半導體製程技術的成熟發展，FPGA 晶片逐漸的普遍化，為了使系統能節省功率消
+耗、面積達到更有效率的資源利用，使有限面積之 FPGA 能發揮最大的效用，這促進了動態部分
+可重組技術的發展。在文獻[1]提出一個解決關於 Hard IP Cores 動態互相連接的問題，提出一個在
+FPGA 正常運作期間允許 IP Cores 重新佈局(Replacement)的溝通介面，且相同的溝通介面也允許在
+不同的 IP Cores 之間作溝通。這個溝通介面使 Hard Cores 在 FPGA 裡能重新使用(Reuse)，這個工
+ 3
+相影響，這個方法的缺點是劣質的資料效率，因為在 Readback Stream 內無用的資料部分相當的高。 
+我們將上述硬體內文儲存與恢復方法的相關文獻中，找出一些與我們較為相關的文獻做出如表
+1 之比較表。主要是針對切換模式、配置介面、平台等等做比較。 
+表 1. 硬體內文儲存與恢復方法相關文獻之比較表 
+Author Placement 動態切換與動態Relocation 模式 
+Configuration 
+Interface Plaform/Chip Tool 
+J.C. Palma  
+[1] 
+－ － － Virtx-XCV300 JBits 
+J.-Y. Mignolet  
+[2] 
+－ Design-Base － VirtexII-XC2V6000 － 
+H. Kalte  
+[3] 
+1-D Reconfiguration-Base SelectMap Virtex-XCV200E － 
+M. Koester  
+[4] 
+1-D Reconfiguration-Base SelectMap VirtexII-XC2V4000 － 
+S. A. Guccione  
+[6] 
+－ Reconfiguration-Base － － JBits 
+H. Simmler  
+[7] 
+－ Reconfiguration-Base － － － 
+ 
+(四) 研究方法 
+自我可重組 FPGA 系統其架構如圖 1 所示，主要分為兩個區域，分別為固定區域(Fixed Area)
+與可重組區域(Reconfigurable Area)。在固定區域內包含了微處理器、ICAP(Internal Configuration 
+Access Port)、及輸入輸出功能方塊，可重組區域可分割成多個模組，以便多功能的切換。固定區
+域與可重組區域之間透過 Bus Macro 作為連接，可使得固定區域內的微處理機與模組間的資料能夠
+正常的傳遞。而 ICAP 為一個處理重組動作之 IP，微處理器處理可透過任務之排程，將想要執行的
+功能的 Bitstream 傳送給 HWICAP，使可重組區域能夠重新配置硬體。如此一來，自我可重組 FPGA
+系統可以達到自我進行動態切換，並且可以充分利用 FPGA 的資源。 
+在 Virtex-ⅡFPGA 中，一個完整的 CLB Column 有 22 個 Frame，每個 Frame 的位址又可以區
+別為 MJA(Major Address)與 MNA(Minor Address)，MJA 表示 FPGA Column 的位置，而 MNA 表示
+FPGA 在 Column 中 Frame 的位置。而一個 CLB 是由四個 Slice 所組成，一個 Slice 有兩個暫存器
+XQ 與 YQ，因此一個 CLB 全部的暫存器有總共有八個，我們根據邏輯配置檔案整理出暫存器 Row、
+Column、Frame 位置與位元索引參數(Y_row)的關係，如表 2 所示。每個 Column 分成兩個 X Column，
+分別為偶數的 X Column(X_even)與奇數的 X Column(X_odd)。而 Row 分成兩個 Y Row。以 C1 
+(Column 1)為例，在 C1 中暫存器只占兩個 Frame 的位址，分別為 00060200(hex)與 00060400(hex)，
+而 Frame 的位址又可分為 MJA 與 MNA。而 MJA 與 FPGA 的 Column 有關係，在 XC2V1000 FPGA
+總共有 32 個 Column，而最大的 MJA=32+2。而 MNA 與 XQ 和 YQ 有關係，設計使用到 XQ 暫存
+器時 MNA 為 1，使用到 YQ 暫存器時 MNA 為 2。 
+我們可以從硬體模組中讀出配置記憶的 Frame，而一個 CLB Column 中全部的暫存器只占用兩
+個 Frame 的位址，因此我們只讀對應的 Frame 而不是一個完整的 CLB Column，所以我們事先取出
+需要回讀的暫存器位址。圖 2 為一個簡單建立任務資料庫的流程，先將 Task 經過 BitGen 產生 task.ll
+後，我們利用文字編輯器找出在 task.ll 中符合暫存器參數語法的暫存器資訊，再將暫存器 Frame
+位址與位元索引參數(Y_row)建成資料庫記憶體。在建立資料庫記憶體時，我們不直接儲存 Frame
+ 5
+表 3. 資料庫記憶體儲存型式 
+Frame Address 1 第 1 個 Frame 位址 
+Bit Index Para. 1 第 1 個位元索引參數 Y_row 
+Bit Index Para. 2 第 2 個位元索引參數 Y_row 
+… … 
+Bit Index Para. n 第 n 個位元索引參數 Y_row 
+Frame Address 2 第 2 個 Frame 位址 
+Bit Index Para. 1 第 1 個位元索引參數 Y_row 
+… … 
+Bit Index Para. n 第 n 個位元索引參數 Y_row 
+ 
+儲存位元索引參數時，在同一個 Column 並且在同一個 X_odd 或 X_even 中，我們也只儲存一
+次有使用的位元索引參數 Y_row。因此我們必需增加一些判斷位元(Bit_Shaer_Flag， X_oe)來區別
+所儲存的 Y_row 是否與第二個相鄰的 Frame 共用及判斷在 X_odd 或 X_even 的 Column 中，如表
+4 所示。00 代表所儲存的資料為 Frame 位址。01 代表出現在 Column 中第一個 Frame 位址的暫存
+器位元索引參數之 Y_row。10 代表出現在 Column 中第二個 Frame 位址的暫存器位元索引參數之
+Y_row。11 代表在 Column 中兩個 Frame 位址都占有暫存器位元索引參數之 Y_row。而 X_oe 是判
+斷 Column 為 X_odd 或 X_even，0 代表為偶數 Column。1 代表為奇數 Column。而整個資料庫記憶
+體的儲存格式，如表 5 所示。我們總共使用了 10 個位元的寬度來儲存資料庫記憶體，在 Frame 位
+址中使用 2-bit 儲存 MNA，6-bit 儲存 MJA 及 2-bit 之 00 的資料判斷所儲存的資料為 Frame 位址。
+在儲存位元索引參數中，使用 7-bit 儲存 Y_row，而 1-bit 之 X_oe 是判斷 X Column 為奇數或偶數，
+及 2-bit 的 Bit_Share_Flag 作為判斷位元索引參數在 Frame 中是否共用。 
+表 4. 暫存器位元索引與 Frame 位址之共用性 
+Bit_Shaer_Flag Describe 
+00 The frame address 
+01 The bit index occupied on the first frame address 
+10 The bit index occupied on the second frame address 
+11 The bit index occupied on the both frame addresses 
+X_oe Describe 
+0 X Column is in the even 
+1 X Column is in the odd 
+ 
+控制 FPGA 配置資料與 Readback 資料，也就是對 ICAP 介面配置的程序與回讀(Readback)的程
+序。部分配置是指載入一個 FPGA Partial Bitstream 到 FPGA 內部配置記憶體的過程。圖 3 顯示部
+分重新配置操作流程，其步驟如下：(1)使用一個同步字元的資料去同步配置邏輯。(2)設置 RCRC
+指令，重置 CRC 暫存器。(3)設置 IDCODE 指令，寫入 IDCODE。(4)設置 WCFG 指令，從 FDRI  
+ 7
+記憶體位置，而透過Readback程序讀取這個位置之暫存器目前的狀態。錯誤! 找不到參照來源。顯
+示暫存器之Readback操作流程，其步驟如下：(1)使用一個同步字元的資料去同步配置邏輯。(2)設
+置GCAPTURE指令，將目前暫存器的值存入配置記憶體內。(3)設置RCFG指令，從FDRO讀取配置
+資料的指令。(4)設置FAR暫存器，寫入一個開始讀取的位址。(5)設置FDRO暫存器，設定為輸出配
+置資料。(6)設置所讀的Packet(Word)數量。(7)寫兩個NOOP字元，清除封包緩衝器。(8)開始讀出配
+置資料。(9)設置DESYNCH指令，為了非同步ICAP介面。(10)最後寫兩個NOOP字元，清除封包的
+緩衝器。 
+ 
+(五) 結果與討論 
+經由實現七段上數計數器、LED顯示控制及N位元除法器等實例後，我們列出硬體模組資料庫
+的記憶體使用資源，如表6所示。可以發現使用我們的方法可以節省較多的記憶空間，我們平均可
+以節省46.44％儲存內文的記憶空間，而所節省的記憶體我們將可以拿來儲存更多硬體模組的內
+文，如此可以設計更多可應用的模組在可重組系統中。 
+表 6. 硬體模組儲存內文所需記憶體之比較 
+                    Method 
+Applications 
+(Used Flip Flops) 
+Kalte [3] Ours Reduced 
+7-LED Up-Counter (28) 476 Bits 160 Bits 66.39% 
+LED Display Control (46) 782 Bits 400 Bits 48.85% 
+Divider 
+8-bit (23) 391 Bits 260 Bits 33.5% 
+16-bit (40) 680 Bits 420 Bits 38.24% 
+32-bit (73) 1241 Bits 680 Bits 45.21% 
+Average 46.44% 
+ 
+在可重組系統中Task之間的切換時間與重新配置時間是一個重要的考量，而我們只儲存重要而
+有用的內文資料，而且我們也只讀取暫存器有占用的Frame，並非讀取全部的Frame，在一個CLB 
+Column中總共有22個Frame，而暫存器只占用兩個Frame，而在讀取每個Frame位址時需要一個Pad 
+Frame，因此需要四個Frame時間來讀取暫存器的資料，分別為兩個暫存器的Frame與兩個Pad Frame 
+[4]。但FPGA是一個有規則的結構，在我們實驗的過程中，我們找出暫存器與CLB之間的關係與特
+性，如表2，每個CLB Column所占用的兩個Frame在FPGA內是相鄰的位址，因此在讀取一個CLB 
+Column中全部暫存器的Frame時，我們只需要花三個讀取Frame的時間，分別為兩個暫存器的Frame
+與一個Pad Frame，與Koester [4]比較我們可以少一個讀取Frame的時間，而且我們可以減少設置一
+半的指令。因此，我們在指令的設置上復雜度較低，所花的時間也較短，如表7所示。 
+本計畫為了動態可重組系統之硬體模組能有內文切換的能力，我們使用FPGA ICAP介面在不
+需要對硬體模組本身增加額外的存取電路之下，去存取硬體模組內文資料，這使硬體模組可利用的
+彈性更大而不受限於硬體電路的行為模式，更不需要去修改硬體電路內路的架構。此外我們提出一
+個減少儲存硬體內文的方法，我們找出FPGA結構的特性，將同一個Column中相鄰的兩個Frame位
+址只儲存一次，在操作Readback時我們可以省下一個讀取Pad Frame的時間並且減少設置指令的時
+間與複雜度。另外，建立模組資料庫的手續非常繁雜，並且隨著硬體模組規模的提升，使得建
+立資料庫的時間也會拉長。所以能夠透過讀取邏輯配置檔自動的建立此資料庫，可以大大減少
+ 9
+研究成果: 論文發表 
+Published List 
+Journal 
+1. Trong-Yen Lee, Che-Cheng Hu, Yang-Kun Huang, and Chia-Chun Tsai, “Adaptive frame length 
+method for hardware context-switching in dynamic partial self-reconfigurable systems,” to appear 
+in International Journal of Innovative Computing, Information and Control, Vol. 7, No. 3, March 
+2011. 
+2. Trong-Yen Lee, Che-Cheng Hu, Li-Wen Lai, and Chia-Chun Tsai, “Hardware context-switch 
+methodology for dynamically partially reconfigurable systems,” Journal of Information Science 
+and Engineering, Vol. 26, No. 4, pp. 1289-1305, July 2010. 
+ 
+Conference 
+1. Trong-Yen Lee, Shiau-Jiun Tseng, and Che-Cheng Hu, “Adaptive hardware context-switching 
+approach for reconfigurable systems,” in Proceedings of the Asia Symposium on Quality 
+Electronic Design, August 3-4, 2010, pp. 140-145. 
+2. Trong-Yen Lee, Che-Cheng Hu, and Chia-Chun Tsai, “Adaptive free space management of online 
+placement for reconfigurable systems,” in Proceedings of the International MultiConference of 
+Engineers and Computer Scientists, March 17-19, 2010, pp. 322-326. 
+3. Trong-Yen Lee, Ku-Yi Cheng, Che-Cheng Hu, and Chia-Chun Tsai, “A new low memory free 
+space recording method for reconfigurable systems,” in Proceedings of the International 
+Conference on High-Speed Circuits Design, October 26-27, 2009, pp. H-15-H-19. 
+4. Trong-Yen Lee, Che-Cheng Hu, and Chia-Chun Tsai, “Multi-strategy online placement for 
+dynamically partial reconfigurable device,” in Proceedings of the International Conference on 
+High-Speed Circuits Design, October 26-27, 2009, pp. H-20-H-26. 
+ 
+ 2
+for Reconfigurable System, Section Chair 為 Ms. Chetna Dabas, 當然與在場的學者有許
+多論文的議題而討論。 
+(3) 會中還遇上來自台灣大學博士班的學生，此學生表現很好。 
+5. 99 年 3 月 19 (會議第三天): 
+(1) 前往會場聽取相關議題，與大陸的教授交換教學研究經驗。 
+(2) 與大會人員請教辦理大型會議的經驗。 
+ 
+二、與會心得 
+ 對論文發表而言: 
+ 1. 增加論文分享的機會 
+ 2. 增加學術間的交流 
+ 3. 認識其他教授，增加視野。 
+ 4. 增加聽力，學習聽懂其他非英語系國家之學者的口音。 
+ 
+ 對國家形象而言: 
+1. 出門在外就是代表台灣，因此表現必須要講究，因此有服務的機會或交流之間
+可以多多介紹台灣的學術或觀光好去處。 
+2. 穿著要得體，說話要注意禮節。 
+ 
+ 4
+ 6
+附件 2: 擔任會議主席證明 
+ 
+ 
+ 
+ 
+ 
+附件 3: 發表之論文  (請參考下一頁) 
+ 
+ 
+ 
+A. Free Space Matrix 
+In [6], the free space matrix uses two forms of 
+one-dimensional array to maintain a two-dimensional array 
+with columns and rows. So, it must scans x axis (column) and y 
+axis (row) two times that is spending time. Moreover, the 
+method only records the free space length of each row and 
+column. Consequently, this method is not apt to find out the 
+continuous free space of rectangle or nonrectangle.  
+For improving the drawback, our proposed method can 
+solve the limit by recording row information only. Assume 
+that a placement situation of FPGA surface is shown in Fig. 1. 
+The proposed method only maintains free space information of 
+rows (called R) in the FPGA surface of two-dimensional 
+arrays, which is given by 
+ 
+R = {ri | i ∈ (1, 2, … , H)}, where i is ith row 
+with 
+{( ) (1 2 )}, if  0
+  2
+(0 0), if  0
+j j i
+i
+i
+Wcs , sp  | j , , ... , FS
+r
+, FS
+⎧ ∈ >⎪= ⎨⎪ =⎩
+ 
+, where 
+j = segmentation quantity of free space in ith row (FSi) 
+csj = continuous space quantity of jth segmentation 
+spj = starting point of jth segmentation 
+ 
+For example, Fig. 1 shows an FPGA dimension with 10 
+rows and 10 columns. In this figure, r3 = (6, 1) represents 6 
+units continuous space (cs) and the starting point (sp) form 
+column 1 respectively in third row. The other example, r8 = 
+{(2, 1), (1, 6), (1, 10)}, represents three segmentations of free 
+space (j) in the eighth row. 
+B.  Resolve Candidate Space 
+The proposed method includes two procedures to search 
+candidate space for online placement. The first procedure 
+(C-Look) searches rectangular candidate space that has to 
+meet the form of incoming task. The second procedure (CSAF) 
+searches nonrectangular candidate that has to equal or exceed 
+the area of incoming task. These two procedures are detailed 
+described in Subsection II.B.1 and II.B.2, respectively. 
+B.1 Circular Look 
+When a new task requires to load into an FPGA, there might 
+be a lot of candidate spaces for devoting the newly incoming 
+task. Therefore, we propose a procedure called circular look 
+(C-Look) [7] to select all feasible rectangular candidate space 
+for incoming task. In this procedure, all of x axis (columns) 
+and y axis (rows) in the FPGA surface must be scanned. But, if 
+there are spaces already used in the scanning range, these 
+spaces will be left out. For example, when a configuration of 
+new task is required, then the scanning range of FPGA surface 
+is illustrated as Fig. 2. Because the scanning range of FPGA 
+surface is according to the column (tCol) and row (tRow) of 
+incoming task (see Fig. 2(a)), the scanning range (sCol and 
+sRow) of FPGA surface can be reduced, as shown in Fig. 2(b). 
+The scanning range of FPGA surface are given by 
+T1
+T2
+T3
+T4
+T7
+T6
+T9
+T8
+1 2 3 4 5 76 8 9 10
+10
+9
+8
+7
+6
+4
+5
+3
+2
+1
+(4, 7)
+(6, 1)
+(2, 1), (1, 6), (1, 10)
+(2, 6)
+(6, 5)
+(6, 5)
+(2, 5)
+(6, 1)
+(1, 6)
+(2, 6)
+T5
+R
+Column (W)
+R
+ow
+ (H
+)
+ 
+Fig. 1: Free space matrices 
+ 
+tCol = 4
+tR
+ow
+= 
+3
+Column
+R
+ow
+sCol
+sR
+ow
+1
+10
+1 10Incoming task
+(a) (b)
+2 3 4 5 6 7 8 9
+2
+3
+4
+5
+6
+7
+8
+9
+ 
+Fig. 2: (a) Incoming task (b) Scanning range of FPGA surface 
+ 
+s
+{1, 2, ... , ( 1)} 
+s {1, 2, ... , ( 1)}
+si
+j
+sRow si Row - tRow + 
+sCol j Column - tCol + 
+∈
+∈
+ 
+and 
+∀(sRowsi, sColsj) ∈ Free space 
+, where 
+si ⊂ i of ri, (sith row in the FPGA surface) 
+sj ⊆ (sj ∩ rsi), (sjth column in the FPGA surface) 
+ 
+In addition, if the C-Look has found candidate space (cas) 
+in sjth column (represented cassj = True), then C-Look could 
+leave sjth column out in the future scanning. Therefore, the 
+new scanning range of sCol is given by 
+ 
+|  { : (   rue)}nsj sjsCol nsj sj cas∈ ∃ ≠ Τ  
+, where  
+nsj = the new scanning rang for column in FPGA 
+ 
+Consequently, the C-Look procedure can reduce a lot of 
+scanning ranges. 
+While searching for candidate spaces, each free space will 
+check resources which are delimited to rectangular have been 
+used or not. If there is a totally free space, this space has 
+candidacy. The candidate space is given by Ck = (sRowsi, 
+sColnsj, tRow, tCol), where k is the number of candidate space. 
+Moreover, the upper bound of k is (Column – tCol + 1). 
+ 
+ 
+ 
+(a)
+acs1 acs2
+acs1={(xl1, xl1`)1, (xl2, xl2`)2, ta}acs1={(x, x`)1, ta}
+acs1 (the same as (b))
+x x`
+(b)
+acs1
+acs1={(x, x`)1, ta}
+x x`
+(c)
+l1 l2
+ 
+Fig. 6: The three kinds of situations in CSAF that may meet: (a) 
+BM, two independent acs merge into one acs (b) MB, a acs 
+has branches (seg = 2) (c) BM mix with MB, a acs has the 
+branch and mergence 
+ 
+Column
+R
+ow acs2
+: Task : Free spaces
+(a) (b)
+acs1
+ 
+Fig. 7: A set of existing arbitrary continuous spaces (white) on 
+a partially reconfigurable FPGA 
+ 
+these acs(ta) have to equal or exceed the area of incoming task. 
+If the acs(ta) is smaller than the area of incoming task, this acs 
+will not has candidacy. Therefore, the acs must accord with 
+the following condition that is given by 
+ 
+⎩⎨
+⎧
+×<
+×≥
+candidacy no,    
+candidacy has,    
+ )(
+tColtRow
+tColtRow
+taacs  
+ 
+In the CSAF procedure, the candidate space Ck is redefined 
+as following. The Ck area can be a continuous space of 
+arbitrary (acs) form. The Ck area has to equal or be greater than 
+the area of incoming task. Note that the acs area may be 
+greater than the area of incoming task. Therefore, each acs 
+may has a lot of candidate spaces. 
+The candidate spaces for newly arriving task are selected by 
+C-Look procedure or CSAF procedure in free space 
+management. A fitter is used to find the best candidate space 
+from all feasible candidate space to allocate for newly arriving 
+task. The fitter has been developed in [5]. The fitter considers 
+time factor, fragmentation factor and modifiability factor, in 
+order to improve time overhead and placement quality, such as 
+rejection rate and fragmentation. A more detailed description 
+of fitting strategy is described in [5]. 
+C. Adaptive Free Space Management Algorithm 
+The detailed flow of proposed adaptive free space 
+management (AFSM) will be described in this subsection. The 
+algorithm proposed adaptive free space management is shown 
+in Fig. 8. The AFSM algorithm consists of two procedures 
+which describe in the following. 
+Adaptive Free Space Management (AFSM)
+Input: FPGA resources status, incoming task information (tRow and tCol)
+Output: All feasible candidate space for newly arriving task
+begin
+1 If (ASFM has newly arriving task requirement) 
+2 { If (the number of free space greater than incoming task area) 
+3 { csÅ C-Look(tRow, tCol); /*Find all candidate spaces (cs).*/
+4 If (cs > 0) 
+5           Return all candidate spaces;
+6 Else
+7     { csÅ CSAF(tRow, tCol); /*Find all candidate spaces (cs).*/
+8 If (cs > 0)
+9              Return all candidate spaces;
+10           Else
+11 Return the incoming task is rejected;
+12 }
+13     }
+14     Else
+15       Return the incoming task is rejected;
+16  } 
+end  
+Fig. 8: Adaptive free space management algorithm 
+ 
+In step 1, the AFSM receives a newly arriving task 
+requirement from DPR FPGA system. Next, if the number of 
+free space in DPR FPGA is greater than newly incoming task 
+area, then steps 3 to 13 are executed. Otherwise, AFSM will 
+return a message that newly arriving task is rejected (step 15). 
+In step 3, C-Look procedure will find all feasible candidate 
+space for arriving task according to task information, tRow and 
+tCol. If candidate space for arriving task is found by C-Look 
+(cs > 0, step 4), the AFSM will return all feasible candidate 
+space to fitter (step 5). Moreover, the flow of AFSM will be 
+end. If the C-Look procedure failed to get the candidate space, 
+then the second procedure CSAF is used to search candidate 
+space (Step 7). If candidate space for arriving task is found by 
+CSAF (cs > 0, step 8), the AFSM will return all feasible 
+candidate space to fitter (step 9). Moreover, the flow of AFSM 
+will be end. If the CSAF procedure failed to get the candidate 
+space, then AFSM will return a message that newly arriving 
+task is rejected (step 11). 
+III. EXPERIMENT RESULTS 
+The proposed adaptive free space management of online 
+placement has been evaluated and compared in this section. 
+The experiment environment uses Dev-C++ compiler to 
+evaluate the performance of proposed method. Moreover, 
+measurement environment have been implemented on a 
+Pentium D 3GHz PC running under the Windows XP 
+operating system. We assume an FPGA with size of 96x40 
+CLBs, corresponding to the Xilinx Virtex device. 
+In the experimentation framework, we have randomly 
+generated three different kinds of task sets. All of task sets are 
+composed of 1000 tasks which have to be placed on the FPGA. 
+In other words, all of tasks must be executed. Moreover, we 
+assumption those tasks are independence and there are no 
+priority. The size of task dimensions is between 5 to 100 CLBs. 
+In addition, the execution time and the arrival time of tasks are 
+distributed form 20 to 200 time units and 1 to 3 time units, 
+respectively. 
+國科會補助計畫衍生研發成果推廣資料表
+日期 2010年10月28日
+國科會補助計畫
+研發成果名稱
+發明人
+(創作人)
+技術說明
+技術移轉可行性及
+預期效益
+技術/產品應用範圍
+產業別
+計畫名稱:
+計畫主持人:
+計畫編號: 學門領域:
+(中文)
+(英文)
+成果歸屬機構
+(中文)
+(英文)
+應用於FPGA可重組系統之即時工作配置與硬體內文處理演算法設計與實現
+(I)
+李宗演
+98 -2221-E -027 -071 - 積體電路及系統設計
+應用於可重組系統之可調整硬體資源即時排程管理方法
+Adaptive hardware resource management of online placement for
+reconfigurable systems
+國立臺北科技大學 李宗演,胡哲郕,曾筱君
+在二維動態可自我重組FPGA系統架構中，其內部結構可規劃成多個硬體模組以
+便進行動態切換。而動態可自我重組之硬體模組為了有硬體內文儲存與恢復的
+能力，往往需使用大量的記憶單元來儲存內文。因此我們提出一個高效率之硬
+體內文儲存與恢復的方法來處理硬體切換，並說明如何處理系統移除或載入時
+硬體狀態儲存與恢復。
+本計畫工作重點在於提出一個動態硬體內文存取方法可降低使用記憶體空間及
+減少硬體重組的時間。因此，我們分析FPGA結構的特性避免儲存重覆性的資料
+，以及在讀取訊框時利用其訊框位址的關連性，避免讀取多餘的訊框，達到節
+省資料的儲存量，減少讀取硬體內文的時間及複雜度。當硬體需要切換回來時
+再將先前的資料載入回去，被切換之硬體模組內部所需要儲存的硬體內文資料
+則是最關鍵的地方。利用其硬體資源可以任意即時切換的特性，可自我重組系
+統甚至可以根據硬體執行的優先權做排程(schedule)，任意的調用硬體空間與
+執行的順序，以使可自我重組系統架構整體的效率達到最佳化。如此，即可保
+留硬體執行速度快的性能和並行性，又兼具軟體靈活性的優點。而經由實驗結
+果證明，我們提出的儲存方式與相關研究比較下，我們的方法平均可以減少
+46.44％之儲存硬體內文的記憶體與減少4.011％之硬體模組重新配置的時間。Hardware module can be reconfigured dynamically and partially in
+field programmable gate arrays (FPGAs). By using two-dimensional
+dynamic self-reconfigurable FPGA system architecture, it maybe can
+share hardware contexts between various hardware tasks. But dynamic
+self-reconfigurable hardware module costs a lot of memory to save the
+content in context switching. Therefore, a hardware context saving
+and restoring method of high efficiency to handle hardware switching
+will be implemented in this project.
+The detail contribution of this work are list in the following:
+	This method reduced the memory size and hardware reconfiguration
+time.
+	This method have speed-up the execution time in hardware and
+software parts.
+	Compared with related work, the experimental results show that the
+研究發展服務業
+數位積體電路, 嵌入式系統
+暫時不做技術轉移
+註：本項研發成果若尚未申請專利，請勿揭露可申請專利之主要內容。
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：李宗演 計畫編號：98-2221-E-027-071- 
+計畫名稱：應用於 FPGA 可重組系統之即時工作配置與硬體內文處理演算法設計與實現(I) 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 4 4 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 2 2 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 4 4 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

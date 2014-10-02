@@ -1,0 +1,62 @@
+研究方法
+(a)理論介紹
+Filtered back-projection algorithm是由 Bracewell and Riddle[9]所提出，為 CT
+scanner常採用的演算法。主要的理論包含了 Radon transform、Filtered Projection
+以及 Back Projection這幾個部分，請參考[2]，下面是對所用到理論的簡單說明。
+Figure 1：Radon transform 示意圖
+如上圖我們以二維函數  yxf , 來描述物體，加上 t, 參數，以線性積分 tP
+來描述 t, 參數對應的 x-ray射線對物體作投影而得到衰減係數總和。
+    t dsyxftP , , (1)
+使用 delta function後可將公式(1)改寫如下
+   dxdytyxyxftP 
+
+
+ sincos, (2)
+公式(2)就是函數  yxf , 的雷登轉換(Radon Transform)。若集合所有同一個角度
+的 )(tP 值就成為該角度的投影資料。
+濾波反投影演算法是利用傅立葉理論(Fourier Theory)與投影資料 tP 來求
+得問題的封閉解(closed form solution)繼而重組出截面圖。所以首先定義角度為
+的投影資料及其傅立葉轉換如下式(3)：
+  dtetPS tj  2
+
+ (3)
+會先對影像作一個前處理，也就是將影像切割，然後在針對每一個小區塊去作處
+理，最後再合併成一個完整的影像，Figure 3是ML310 Development Board 的系
+統內部架構圖。
+平台的核心是一顆 Virtex-Ⅱ pro FPGA(Field Programmable Gate Array)，型號
+是 XC2VP30。這顆 FPGA共有 30,816 Logic Cells提供邏輯合成的電路資源，且
+具有 2顆內建的 PowerPC 405處理器，可以當作嵌入式系統的核心處理器。主要
+的匯流排是 Process Local Bus(PLB)與 On-chip Peripheral Bus(OPB)，PLB bus與
+OPB bus是 IBM CoreConnect的標準匯流排，其中 PLB bus是高速匯流排用來和
+高速設備相連接，而 OPB bus是低速匯流排與低速設備相連接，兩個匯流排中間
+有個 Bridge作連接，形成整個嵌入式系統的骨幹。
+Figure 3 以 PowerPC 405為核心的嵌入式系統架構
+由於我們採用 soc的設計方式，因此在設計剛開始便要先決定軟硬體的劃分
+工作，我們主要將工作劃分成四個部分，分別是：
+(a) 將影像資訊讀入以及將最後重建好的影像寫出。
+(b) 計算重建每個 block所需資訊。
+(c) 將資料作 fft、filter、以及 ifft。
+(d) 針對每一個 block做影像重建。
+其中(a)本身是處理記憶卡(CompacFlash card)與軟體間的資料傳輸，包含一
+些 driver以及 library的使用，因此直接以軟體來實作。 (b)則是因為實作時會將
+影像切割成小區塊，因此必須計算重建時每個 block所需的資訊，譬如每一個區
+塊要對應到 Filtered Sinogram的哪一個區段，這個部分由於運算次數以及所耗時
+間在可容忍範圍內，因此為增加實作的便利性，也將以軟體直接實作。至於(b) 、
+(d)由於所需的運算量較高且亦較耗時，因此自然成為實作成硬體的重點部份。
+Figure 5 backprojection示意圖
+上圖 Figure 5中的 Detector Array指的就是相對於這個區塊的 Filtered
+Sinogram data，而反投影的過程就像是我們在 Detector Array反射出一道道的光
+束，並紀錄光束經過的所有點，然後將 Filtered Sinogram內的值加入此光束所經
+過的點。而在實際上我們令光束每次向前傳播的的單位 k =1，如此計算下一點
+的 X方向的變化量就是 sink ，而Ｙ方向的變化量為 cosk ，可輕易的算
+出下一個將要經過的座標。
+為了加速其執行效率，我們會將 Detector Array上的點區分成奇、偶數點，
+譬如 3MS 、 1MS 、 1MS 、 3MS 一組而 2MS 、 MS 、 2MS 一組，然後奇數點與偶
+數點各自做平行處理，以加快整體執行效率，之所以分成奇、偶數點主要是為了
+確保反投影過程中不會有資料衝突的情形，如 Figure 6所示，若不分奇、偶數點
+則相鄰的訊息在做反投影的時候，有可能會在同一時脈加到同一個格子點上，造
+成資料衝突。
+Figure 6
+圖 8-1 原始圖 圖 8-2 sinogram影像
+圖 8-3 圖 8-4
+圖 8-5 圖 8-6

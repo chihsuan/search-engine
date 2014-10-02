@@ -1,0 +1,635 @@
+ii
+中文摘要
+我們設計出一套快速並且穩定的影像監控系統，用來追蹤人們目前所處的位置，並且判
+斷是否有任何異常行為發生，像是爬牆或是跌倒等。藉由把時間和背景的差值列入考慮後，
+計算物體運動遮罩時明亮度的影響會大幅度的減少，為了得到更可靠的物體運動遮罩，我
+們做了一些特別的運算，像是空洞填補、影子削減、雜訊削減等。然而，物體遮罩相對應
+的是可能互相遮蔽的移動人群，通常會比設定的物體寬度值還要大上許多，所以藉由遞迴
+式 bi-modal thresholding 來分割成幾個連接的運動物體，同時，背景也能經由物體遮罩的精
+細改進，做進一步的更新；為了追蹤物體，我們將 location-based 和加權過後的 block-based
+比對，整合為一體達成快速的追蹤。其中，物體相似度是定義在 weighted matched block 上，
+用以做物體的判別。最後，定義幾個準則來判斷物體停止、消失、爬牆或者是跌倒；實驗
+的結果證實我們系統的強健性。
+關鍵詞：數位視訊監控、向量群聚、物體比對、物體追蹤、物體遮蔽
+4一、 前言
+越來越多的人為了安全的目的而逐漸留意影像監控系統，目前有很多的影像監控系統
+應用在我們週遭的環境上，像是機場、火車站、大賣場而且甚至是私人環境區域。物體的
+運動偵測和物體追蹤是影像監控系統最重要的環節。同時，許多物體的運動偵測和物體追
+蹤都已經被提出來過。W4[1]這篇論文是一個即時影像監控系統，透過結合形狀分析和追蹤
+的技術來偵測和定位人的出現。Kim 和 Kim[2]則利用一種基於 region-based 來分割移動物
+體區域，進而抽取出每一個移動的物體，來進行影像監控；由 Cucchiara et al. [3]提出的
+Sakbot，採用分割物體的統計資料和知識，進而增強背景模組化和運動物體的偵測；
+Anderson et al. [4]提出一個輪廓分析法，來偵測物體跌倒的狀況。籬笆攀爬偵測系統[5]則
+是以區塊為基礎的 HMM 連續狀態解碼，來處理攀爬情況。
+本論文在運動物體的偵測上，結合兩種典型的方法：背景相減和時間差異[6,7]。背景
+相減是參考一種完整的背景模型；而時間差異是著重在比較兩個連續的畫面。背景相減可
+以抽取出比較完整的物體遮罩，但是通常為了維持背景模型會較耗時間。相反的，時間差
+異的缺點是物體遮罩較不完整。我們合併了這兩種方法來做運動區域的偵測。對破碎的運
+動遮罩可參照原始畫面來填補缺口。對每一個偵測出來的運動遮罩而言，可用垂直投影分
+析來分割出每個運動物體。再以一個基於位置估計和加權區塊相似度物件測量的快速物體
+追蹤方法來追蹤所有的移動物體。最後，對應於每一個抽取出來的運動物體遮罩，藉由分
+析其大小、位置 、和水平方向的投影來辨別他的行為，例如停止、消失、攀爬或者是跌倒。
+整體的系統架構如圖 1。
+6的顏色或灰度值的話，則在鄰近的非移動物體像素和空洞將會被重新分類。以下就是演算
+法：
+輸入:未加工的物體遮罩 P
+輸出:已加工的物體遮罩
+步驟 1.在運動遮罩上，對於每一個移動物體像素 P(x, y)，檢查所有在 P(x, y)的八方向
+鄰近像素 Padj(i, j)。
+步驟 2.假如 Padj(i, j)是一個非移動物體像素而且| Padj(i, j)－P(i, j) |小於指定的門檻值，
+這樣 Padjt(i, j)就是一個移動物體像素。
+步驟 3.重複步驟 2 直到所有的 Padj(i, j)被找到並且重新被分類。
+步驟 4.重複步驟一直到沒有新的移動物體像素被找到。
+(a) 時間 t-1 的影像 (b) 時間 t 的影像
+(c) 初始的物體遮罩 (d) 填補後的運動遮罩
+圖 2：運動遮罩的精細改進。
+當沒有新的移動物體像素新增到運動遮罩後，空洞填滿的程序就會停止。執行的結果
+如圖 2(d)。大多數的空洞都會被成功的填滿。但是有些區域因為尺寸太小沒有被覆蓋。
+(二) 影子削減
+由於物體將光線中斷才會產生出影子。這種情況常常會發生，尤其是在戶外環境下。
+然而，影子會使得很難抽取出精確的運動遮罩。在本篇論文裡，我們採納了由 Cucchiara et
+al. [8]提出的的影子偵測演算法。因為 Red-Green-Blue(RGB)色彩空間比起明亮度的改變敏
+感度較低，所以我們使用了 Hue-Saturation-Value(HSV)替代。灰階度和色度在影子的偵測
+上是有用的資訊。假設每一個像素在最近的影像的ＨＳＶ顏色是 PH(x, y)，PS(x, y)和 PV(x,
+y)，而且在背景模組的像素是 BH(x, y)，BS(x, y)和 BV(x, y)。以下定義影子遮罩ＳＤ。
+
+
+
+
+
+
+
+
+
+
+
+
+Otherwise
+TyxByxPand
+TyxByxPand
+yxB
+yxP
+if
+yxSD
+H
+HH
+s
+ss
+v
+v
+0
+),(),(
+)),(),(((
+),(
+),(
+1),(
+
+(1)
+8三、 物體抽取
+(一) 遞迴雙模式切割
+所抽取出之物體運動遮罩，可能對應一至多個運動物體，如果物體是互相遮蔽的就會
+黏接在一起。因此，在一個有界限的物體運動遮罩就可能包含許多個運動物體。例如，兩
+個相互走過的人。為了處理這個問題，垂直投影分析被發展用來抽取出每一個獨立的移動
+物體。垂直投影是將物體遮罩垂直地計算像素的個數所形成， 而且人的投影形狀是屬於鐘
+型的 bell-shape，可用一個標準的正規分佈描述，其中標準誤差可用來定義每一個物體的
+中心至邊界的距離。假如每一個標準誤差大於一個門檻，就會被認定是一個有多個運動物
+體的運動遮罩。標準誤差的定義如下：
+(2)
+在這裡 M 是所有 pi的平均值。參考被提出的 bi-modal thresholding [9]，設定一個視窗大小
+為 2k+1，將原來的垂直投影分割成幾個子區間 Hx。在所有的區間內計算出像素數量 S(Hx)。
+假如 S(Hx)比所有的 S(Hx-k)和 S(Hx+k)小的話，x 在這裡就會被認定為最小值而被設置。當
+局部性的最小值被找出來後，則許多物體就能被分割成獨立的物體。
+(3)
+在這裡 S(Hx)是在 Hx 範圍內的所有像素數量，N 則是 k 的最大值，大概是運動遮罩寬度的
+一半。事實上，變數 k 是用來決定容忍誤差的程度，藉由正確的設定 N 值，可以避免產生
+錯誤的山谷。圖 4 是切割出獨立物體的容錯垂直投影分析圖。在真實的情況下，物體遮罩
+的容錯垂直投影可能包含兩個以上的運動物體。因此，假如我們知道物體的寬值，我們可
+以遞迴地應用雙模式切割來抽取出多個運動物體。圖 5 顯示出一個真實例子。每一個被抽
+  ,1DeviationStandard
+1
+2
+
+
+n
+i
+i MPn
+,
+otherwise,not valley0
+Nto1kallfor),()(and
+)()(if,valley1
+
+
+
+
+
+
+ 
+
+kxx
+kxx
+x HSHS
+HSHS
+H
+10
+(4)
+圖 5:容錯垂直投影的物體分割。(a)原始圖像。(b) 所抽取出的物體遮罩。(c)相對應(b)
+的垂直投影。(d)多個物體分割的結果。
+這裡 Db(x,y)是計算過後有場景變化的地方。圖 6 顯示系統在不同時間如何更新背景。
+在測試的影像中，有一個人躺在地上有一段時間而且被認為是背景的一部分。然後這個人
+又開始移動，如圖 6(a)。隨著時間變化，圖 6(b)會顯示出正確更新後的背景圖片。
+(a)
+(a) (b)
+(c) (d)
+12
+,%100)),(1(
+1
+Similarity
+1 1
+
+
+
+
+
+
+
+
+
+
+
+
+  
+ 
+M
+x
+N
+y
+xy yxDwMN
+(7)
+這裡 D(x, y) 代表一個運動物體的區塊和在模型中相對應區塊的最小 NMAD 值。圖 7 就是
+一個運動物體經由區塊權重比對法而被正確的追蹤的一個例子。
+(a) (b)
+圖 7: 物體的相似度測量方法。(a)正確模型比較的最大相似度 49.03。 (b)不正確模
+型中的最大相似度 42.12。
+(二)遮蔽偵測
+在前一節中，物體追蹤的方法仍然有效，因為我們可先在遮蔽前就將物體模型儲存起
+來。然而，最重要的環節是如何決定將物體當成模型儲存起來的精確時間。因此，我們在
+Eq. (8)的公式發展下，描述遮蔽的偵測情形。當兩個物體重疊時將會觸發警告。在等式中，
+在時間 t 內一個物件的最小界限矩形和在時間為 t-1 的最小界限矩形做比較。
+,
+),()(if1
+initially0,inobjecteachFor
+11
+
+
+ 
+
+
+x
+tttx
+x
+xt
+C
+frameinyobjectyMBRxMBRC
+C
+Cframex (8)
+假如 Cx 的值大於 2，物體 x 範圍內即含有兩個以上的運動物體，因此即判斷有遮蔽發
+生。當遮蔽被偵測到，追蹤系統仍會保持追蹤此發生遮蔽的整個運動體的模型，繼續追蹤
+此一暫時性重疊的物體模型。當此重疊物體再次分開時，則追蹤系統會再準確地偵測和追
+蹤。
+五、行為分析
+(一)停止和消失
+現實的情況下，人們不會持續的移動，他們有可能突然停下來。然而，在物體持續靜
+止的情形下，影像不會改變。在我們的系統，每一個運動物體的位置都會被記錄下來；假
+如一個位置被一個運動物體 i 所佔據，但是卻又在下一張影像被釋放了，則物體 i 就被認
+14
+圖 8: 不正常行為偵測。(a)兩個人互相走近並且停下握手。(b)一個人在走路時忽然跌倒。
+(c)有人攀爬圍牆。
+六、實驗結果
+為了證實所提出系統的完整性，我們測試了一系列的情境。以解析度為 352x240 在戶
+外拍攝許多不同環境下的影像。我們的程式則在 Intel® Pentium®4 3.4 GHz 的處理器，512
+MB RAM 和 60 GB 的硬碟下執行。
+這個系統是設計用來偵測和追蹤即時影像中的運動物體。為了要確認這個系統的準確
+性和效率性，有五個影像序列被用以測試。表一是以位置估計做比對以及加權區塊做比對
+的成功率。錯誤的位置估計導因於在鄰近邊緣而未偵測到的物體遮蔽和錯誤的運動遮罩引
+起的。而加權區塊比對的錯誤，是因為相似的物體引起的，像是人們穿著相同顏色的衣服。
+表二是統計所花的時間和處理影像的速度。
+表１：準確分析
+表２：效率分析
+以上的實驗結果，顯示出我們的系統在許多情況下，能成功地偵測和追蹤移動物體。
+16
+[8] R. Cucchiara, C. Grana, M.Piccardi, A. Prati, and S. Siroti , “Improving Shadow
+Suppression in Moving Object Detection with HSV Color Information”, Proceedings of
+IEEE Intelligent Transportation System Conference (ITSC 2001), Oakland, CA, USA,
+pp.334-339, Aug., 2001.
+[9] H. Shen and C. R. Johnson, “Semi-Automatic Image Segmentation: A Bimodal Thresholding
+Approach”, UUCS-94-019.
+[10] M. F. Abdelkader, R. Chellappa, and Q. Zheng, “Intergrated Motion Detection and Tracking
+for Visual Surveillance”, The Fourth IEEE Conference on Computer Vision Systems, 2006.
+[11] A. Gyaourova, C. Kamath and S. Cheung, “Block Matching for Object Tracking”, Tech.
+Rep. UCRL-TR-. 200271, Lawrence Livermore National Laboratory, 2003.
+[12]H. Fujiyoshi and A. J. Lipton, “Real-time Human Motion Analysis by Image
+Skeletonization”, Applications of Computer Vision, Fourth IEEE Workshop, October 1998.
+[13] 「基於運動遮罩的快速智慧型監控系統」，許書碩，大同大學九十五學年度資訊工程
+所碩士論文。
+18
+可供推廣之研發成果資料表
+□ 可申請專利 ■ 可技術移轉 日期：96 年 10 月 22 日
+國科會補助計畫
+計畫名稱：以向量群聚為基礎之多動態物體偵測與追蹤系統
+計畫主持人：謝禎冏
+計畫編號：NSC 95－2221－E－036－003
+學門領域：影像處理
+技術/創作名稱 結合位置估計與權重區塊比對的快速行為監控系統
+發明人/創作人 謝禎冏、許書碩
+中文：我們設計出一套快速並且穩定的影像監控系統，用來追蹤人們
+目前所處的位置，並且判斷是否有任何異常行為發生，像是爬牆或是
+跌倒等。藉由把時間和背景的差值列入考慮後，計算物體運動遮罩時
+明亮度的影響會大幅度的減少，為了得到更可靠的物體運動遮罩，我
+們做了一些特別的運算，像是空洞填補、影子削減、雜訊削減等。然
+而，物體遮罩相對應的是可能互相遮蔽的移動人群，通常會比設定的
+物體寬度值還要大上許多，所以藉由遞迴式 bi-modal thresholding 來分
+割成幾個連接的運動物體；為了追蹤物體，我們將 location-based 和加
+權過後的 block-based 比對，整合為一體達成快速的追蹤。技術說明
+英文：We designed a simple and fast visual surveillance system to track
+human position and to determine if any abnormal behavior like wall
+climbing and falling happened. By taking both time and background
+difference into considerations, illumination effects could be greatly reduced
+while calculating motion masks. Refinements including holes filling,
+shadow removal, and noise reduction are done to obtain much more
+reliable motion masks. However, motion masks corresponding to occluded
+moving people, greater than a given width, are segmented recursively into
+smaller ones by bi-modal thresholding. Integrated location-based and
+weighted block-based matching is done for object tracking.
+可利用之產業
+及
+可開發之產品
+產業：安全監控、智慧型交通運輸系統等。
+產品：IP Camera, Web Cam。
+技術特點
+1. 不受光源變化影響，可自行調整。
+2. 容忍物體部份重疊，並可自動追蹤物體。
+3. 容忍強烈光源所造成之影子。
+4. 可偵測不當行為，如爬強、跌倒、跳躍等。
+推廣及運用的價值
+與攝影機搭配出售，成為一完整監控系統；或者因應實際使用狀況，
+可進行行為定義與調整。
+20
+A Simple and Fast Surveillance System for Human Tracking and Behavior
+Analysis
+Chen-Chiung Hsieh and Shu-Shuo Hsu
+Department of Computer Science and Engineering, Tatung University, Taipei, Taiwan R.O.C
+cchsieh@ttu.edu.tw
+ABSTRACT
+In this paper, we designed a simple and fast visual
+surveillance system to track human position and to
+determine if any abnormal behavior like wall climbing
+and falling happened. By taking both time and
+background difference into considerations,
+illumination effects could be greatly reduced while
+calculating motion masks. Refinements including holes
+filling, shadow removal, and noise reduction are done
+to obtain much more reliable motion masks. However,
+motion masks corresponding to occluded moving
+people, greater than a given width, are segmented
+recursively into smaller ones by bi-modal thresholding.
+Meanwhile, background could also be updated by the
+refined motion masks. Integrated location-based and
+weighted block-based matching is done for object
+tracking. A similarity is defined from these weighted
+matched block for object classification. Finally, a
+couple of criterions are defined to analyze whether
+objects stop, disappear, climb, or fall. Experimental
+results are given to demonstrate the robustness of our
+system.
+Keywords
+Video Surveillance; Motion Detection; Object Tracking;
+Behavior Analysis;
+1. Introduction
+More and more people pay attention to visual
+surveillance systems for the purpose of security. There
+have been many surveillance systems applied to our
+surrounding environments, such as airports, train
+stations, shopping malls, and even private residential
+areas. Motion detection and object tracking are the
+most significant tasks in a video surveillance system.
+Meanwhile, many motion detection and object tracking
+schemes have been proposed. W4 [1], a real time
+surveillance system, detects and locates people through
+a combination of shape analysis and tracking. A video
+monitoring system designed by Kim and Kim [2]
+utilizes a method for region-based motion
+segmentation to extract each moving object. Sakbot
+proposed by Cucchiara et al. [3] adopts statistics and
+knowledge of segmented objects to improve
+background modeling and moving object detection.
+Moreover, Derek Anderson et al. [4] presented a fall
+detection system achieved by silhouette analysis. A
+fence climbing detection system [5] was also proposed
+to deal with climbing situations by decoding the state
+sequence of the block based HMM.
+There are two typical approaches for motion
+detection: background subtraction and temporal
+differencing [6,7]. Background subtraction refers to a
+robust background model while temporal differencing
+focuses on two consecutive frames. Background
+subtraction can extract complete motion masks, but it
+usually takes much time to maintain the background
+model. On the contrary, the drawback of temporal
+differencing is the incomplete motion masks. We
+integrate these two methods for moving regions
+detection. Source frame referencing is utilized to fill
+the holes. For each motion mask, vertical projection
+analysis is applied to segment each moving object. A
+fast object tracking method based on location
+estimation and weighted block-based similarity
+measurement is proposed to track all the moving
+objects. Finally, segmented motion mask
+corresponding to each moving object will be analyzed
+by size, location, and horizontal projection to classify
+its behavior such as stopping, disappearing, climbing
+or falling. The overall system architecture is as shown
+in Fig. 1.
+Section 2 focuses on extraction and refinement of
+the motion masks. Object extraction by recursive
+bi-modal thresholding of the vertical projection is
+discussed in Section 3. Object tracking by location
+estimation and weighted block matching is described in
+Section 4. A couple of criteria are defined in Section 5
+for behavior analysis. Experiments are then given in
+Section 6 to demonstrate the feasibility and robustness
+of the proposed system. Finally, conclusions are made
+in the last section.
+22
+Assume the HSV color of each pixel in the
+current frame are PH(x, y), PS(x, y), and PV(x,
+y), respectively and the pixels in background
+model are BH(x, y), BS(x, y), and BV(x, y). The
+shadow mask SD is defined as follows:
+
+
+
+
+
+
+
+
+
+
+
+
+Otherwise
+TyxByxPand
+TyxByxPand
+yxB
+yxP
+if
+yxSD
+H
+HH
+s
+ss
+v
+v
+0
+),(),(
+)),(),(((
+),(
+),(
+1),(
+
+(1)
+Thevalue of α depends on the strength of 
+the light source. On the other hand, β is
+always less than one providing the flexibility
+to avoid the small changes in the background.
+According to Eq. (1), motion masks with
+SD=1 are excluded. Fig. 3 demonstrates that
+the algorithm is effective to remove shadows.
+(a)
+(b) (c)
+Figure: 3: Motion masks refinement. (a) Original frame. (b)
+Without shadow removal. (c) With shadow removal.
+2.3. Noise Removal
+Frame subtraction produces motion mask as well as
+noises caused by illumination changes. The noises
+should be removed in order to obtain more accurate
+motion masks. Morphological opening and closing
+operations, corresponding to erosion and dilation, are
+performed to remove noises. However, morphological
+operations are not guaranteed to remove all the noises.
+To be more robust, the size filter is applied to remove
+all small size noises.
+3. Object Extraction
+3.1. Recursive Bi-modal Thresholding
+Motion masks, corresponding to one or more
+moving objects, are connected if objects are occluded.
+Thus, a bounding region of the motion mask probably
+includes multiple moving objects. For example, two
+people walk passing by each other. To tackle this
+problem, vertical projection analysis is developed to
+extract each individual moving object. The vertical
+projection, formed by projecting a motion mask
+vertically, is assumed to be bell-shaped for a single
+person. By formulating as a normal distribution, the
+standard deviation could be used to define the
+boundary for each object. If the standard deviation of a
+peak is greater than a threshold, the area is regarded as
+a moving region containing multiple objects. The
+standard deviation is defined as follows:
+  ,1DeviationStandard
+1
+2
+
+
+n
+i
+i MPn
+(2)
+where M is the mean value of all pi.
+Referring to the proposed bi-modal thresholding [9],
+the original vertical projection H is divided into several
+sub-intervals Hx by sliding a window of size 2k+1.
+The total pixel number S(Hx) within each Hx is
+computed. If S(Hx) is smaller than S(Hx-k) and
+S(Hx+k), x is where a valley or local minimum will be
+located. Multiple objects can be separated into
+individuals when a local minimum is found.
+,
+otherwise,not valley0
+Nto1kallfor),()(and
+)()(if,valley1
+
+
+
+
+
+ 
+
+kxx
+kxx
+x HSHS
+HSHS
+H
+(3)
+where S(Hx) is the total pixel number within Hx and N,
+the maximum of k, is approximating half of the interval
+number. In Fact, the parameter k determines the level
+of fault tolerance. False valley resulted from aliasing
+noises can be eliminated by giving a proper N. Fig. 4
+illustrates the vertical projection analysis for individual
+object segmentation.
+Figure 4: Vertical projection analysis. S(Hx) is the total pixel
+number within Hx
+S(Hx)
+Hx+Hx+Hx- HHx-
+Valley
+……
+24
+4.1. Weighted Block-based Similarity Measurement
+An unlabelled moving object is firstly divided into
+blocks of size 8 × 8. There are some well-known
+distance measurement methods, such as MSE (Mean
+Square Error), MAD (Mean Absolute Difference), and
+NCCF (Normalized Cross Correlation Function). To
+consider both computational cost and correctness, we
+adopted NMAD (Normalized Mean Absolute
+Difference) for the distance measurement.
+ ,255),(),(1NMAD
+1 1
+2211
+ 
+
+m
+i
+n
+j
+jyixPjyixP
+mn (5)
+where P(x1, y1) and P(x2 , y2) are the intensity of the
+pixel located in (x1, y1) and (x2, y2), respectively. The
+parameters m and n, denote the block size.
+Experimental results showed that the corresponding
+blocks would distribute uniformly if we search in the
+correct model. On the contrary, if we search the
+corresponding blocks in a wrong model, most of the
+blocks found would distribute disorderly and overlap
+each other. Therefore, each block is given a weight to
+represent its reliability. The area of the overlapped
+pixels is counted for each matched block. The greater
+the overlapped area is, the greater the weight is as
+shown in Eq. (6):
+blockaofArea
+pixelsoverlappedofArea
+wxy  (6)
+The similarity is defined by Eq. (7). Each extracted
+moving object is assigned as the model with the largest
+similarity.
+,%100)),(1(
+1
+Similarity
+1 1
+
+
+
+
+
+
+
+
+
+
+
+
+  
+ 
+M
+x
+N
+y
+xy yxDwMN
+(7)
+where D(x, y) represents the minimum NMAD between
+a block of a moving object and the corresponding
+block in the model. Fig. 7 gives an example that both
+moving objects were accurately labelled by this
+weighted block-based matching method.
+(a) (b)
+Figure 7: Similarity measurement for object 1. (a) The
+correct one with larger similarity of 49.03 (b) The incorrect
+one with smaller similarity of 42.12.
+4.2. Occlusion Detection
+The object tracking proposed in the pervious section
+works even occlusion occurs because we have saved
+the object models before occlusion. However, the
+significant issue is how to determine the exact time for
+saving objects as models. The models must be saved
+before the objects overlap. Therefore, an occlusion
+detector described by Eq. (7) is developed. An alarm
+will be triggered when two objects overlap. In the
+equation, the MBRs of the objects at time t are
+compared with those at time t-1.
+,
+),()(if1
+initially0,inobjecteachFor
+11
+
+
+ 
+
+
+x
+tttx
+x
+xt
+C
+frameinyobjectyMBRxMBRC
+C
+Cframex (8)
+If the value of Cx is greater than 2, occlusion occurs
+within object x. When occlusion is detected, the
+tracking system still keeps the model of each object
+and turns to track with a temporary overlapping object
+model. As soon as the overlapping objects separate
+again, each of them can be detected and tracked
+accurately by the saved models in the tracking system.
+5. Behavior Analysis
+In order to recognize abnormal behaviors, a couple
+of criteria are defined in our system. Once the
+suspicious behaviors are detected, the system will set
+off an alarm to the security officers. Several typically
+abnormal behaviors, including wall climbing, stopping,
+disappearing, and falling, are discussed in this section.
+5.1. Stopping and Disappearing
+In real situations, pedestrians are not always moving.
+They possibly stop in a sudden. However, frame
+difference does not work well when objects keep still.
+In our system, each moving object’s location is
+recorded. If a location is occupied by object i but
+released in the next frame, object i is recognized as a
+stationary object. Moreover, if object i keeps still for a
+while and its location is close to the boundaries, the
+system would consider object i disappeared.
+
+
+
+
+
+
+ 
+,,Lif,Normal0
+otherwise,Stopping1
+)(
+otherwise,Normal
+and1if,ngDisappeari
+)(
+1-t ill
+iS
+S(i)MBR(i)S
+iD
+t
+BDtt
+t
+(9)
+(10)
+where Lt is a set of existing label number at time t and
+SBD is a set of predefined boundary areas.

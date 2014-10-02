@@ -1,0 +1,1943 @@
+II
+ 
+Abstract 
+In the third year of this project, we organize the previous research, propose the CR switch 
+architecture and study further implementation issues. The CR switch is a load-balanced switch 
+with contention and reservation. Load-balanced switches have received a great deal of attention 
+recently as they are much more scalable than other existing switch architectures in the literature. 
+However, as there exist multiple paths for flows of packets to traverse through load-balanced 
+switches, packets in such switches may be delivered out of order. The UFS scheme in [23] 
+proposed by Stanford University and the mailbox switches in [10] proposed by our research team 
+are scalable solutions to solve such an out-of-sequence problem. Though the UFS scheme is 
+shown to achieve 100% throughput [23], the packet delay is large (even in light traffic). This is 
+known as the starvation problem. On the other hand, the mailbox switch (with ?= 0 in [10]) was 
+shown to have only 58% throughput. The advantage of the mailbox switch is its low packet delay 
+in light traffic. 
+Our first contribution in this project is to find the throughput limitations in the mailbox 
+switch. We found that there are two kinds of throughput limitations in the two extreme schemes 
+of the mailbox switches, i.e., the ?=0 scheme and the ?=? scheme. In the?=0 scheme, we 
+study the throughput for the frame-based mailbox switches with frame size F. We find that the 
+throughput goes to 1.0 in the order of 1/?F as F goes to ?. On the other hand, in the ?=? 
+scheme, we found that the maximum stable throughput is 0.6748. An interesting phenomenon is 
+that the throughput keeps growing with the arrival rate when the arrival rate is greater than the 
+maximum stable throughput. In particular, we show that the maximum unstable throughput is 
+0.6786 when the arrival rate reaches 1.0. 
+The main contribution of our whole work is to propose a switch architecture, called the CR 
+switch, that can have the advantages of both the UFS scheme in [23] and the mailbox switch with
+?= 0 in [10]. We show that the CR switch achieves 100% throughput and delivers packets in 
+order (as in the UFS scheme), while maintaining low packet delay in light traffic (as in the 
+mailbox switch with ?= 0). The main idea, as pointed out in the pioneer work by Tobagi and 
+Kleinrock [51] for a multiple access channel, is to have the CR switch operating in two modes: 
+the contention mode (in light traffic) and the reservation mode (in heavy traffic). The difference 
+between our scheme and [51] is that our system has multiple parallel channels while there is only 
+one in [51]. The challenge in multiple CR (Contention and Reservation) channels is to maintain 
+packets in sequence. The key innovation that enables us to do this is a new buffer management 
+scheme, called I-VOQ (virtual output queue with insertion). With the I-VOQ technique, we give 
+rigorous mathematical proofs for 100% throughput and in order packet delivery of the CR switch. 
+By computer simulations, we also demonstrate that the average packet delay of the CR switch in 
+light traffic is almost the same as that in the mailbox switch and it is considerably smaller than 
+that in the UFS scheme. Moreover, when compared with the Padded Frame scheme [21], an 
+improved scheme proposed by the University of Illinois at Urbana Champaign for the starvation 
+problem in the UFS scheme, our delay performance is also much better in light traffic and 
+comparable in heavy traffic. 
+Keywords: load-balancing, contention, reservation, packet order, throughput, average delay 
+3.1.1 Symmetric TDM switches . . . . . . . . . . . . . . . . . . . . . . 43
+3.1.2 I-VOQs . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 44
+3.1.3 Contention mode and reservation mode . . . . . . . . . . . . . . . 45
+3.2 In order delivery . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 48
+3.2.1 General properties of I-VOQs . . . . . . . . . . . . . . . . . . . . 48
+3.2.2 The proof for the in-order-delivery . . . . . . . . . . . . . . . . . 49
+3.3 100% throughput . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 50
+3.3.1 WC(K,D) queues . . . . . . . . . . . . . . . . . . . . . . . . . . 50
+3.3.2 A memory bound for input buffers . . . . . . . . . . . . . . . . . 52
+3.3.3 A memory bound for central buffers . . . . . . . . . . . . . . . . . 53
+3.4 Simulation studies on the average delay . . . . . . . . . . . . . . . . . . . 56
+3.4.1 Average delay under the uniform i.i.d. traffic . . . . . . . . . . . . 56
+3.4.2 Methods to advance the contention pointers . . . . . . . . . . . . 58
+3.4.3 Compared to the padded frame scheme . . . . . . . . . . . . . . . 61
+3.4.4 Compared to the iSLIP and to the ideal output-buffered switch . 64
+3.5 Fairness issues in the average delay . . . . . . . . . . . . . . . . . . . . . 68
+3.5.1 The contention priorities due to the TDM connections . . . . . . 68
+3.5.2 Re-mapping ports to balance the contention priorities . . . . . . . 68
+3.5.3 Blocking of service in the contention mode . . . . . . . . . . . . . 70
+4 Conclusions and Discussions 73
+4.1 Discussions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 74
+4.2 Future studies . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 77
+5 Self-evaluation 78
+A Proof for Lemma 10 80
+IV
+Chapter 1
+Introduction
+1
+2
+M
+1
+2
+N
+M×N
+Switch
+Figure 1.1: The M ×N switch.
+A network switch is a network element with multiple inputs and multiple outputs. In
+Figure 1.1, we show an M × N switch which has M inputs and N outputs. There are
+two functions in switching: forwarding and message copying. In forwarding, the switch
+lookups the routing table to map the headers of the arrival packets into their output
+addresses. Then, in message copying, the arrival packets are copied to their destined
+outputs. In this report, we study the function of message copying.
+Throughout this report, we have the following assumptions. We assume the number
+of inputs and outputs are the same, i.e., M = N. Also, each input and its corresponding
+output are built in the same line card. We assume every input and output have the
+same transmission line speed. All the N parallel transmissions of packets in the inputs
+and the outputs are also slotted and synchronized. Arrival packets are segmented into
+fixed size packets before entering the switch and reassembled after leaving the switch.
+1
+limt→∞ P
+{[∑N
+i=1
+∑N
+j=1 q
+2
+i,j(t)
+]1/2
+> B
+}
+< ². Furthermore, a switch is said to be strongly
+stable if lim supt→∞ E
+[[∑N
+i=1
+∑N
+j=1 q
+2
+i,j(t)
+]1/2]
+<∞. It is well-known from the theory of
+probability that if a switch is strongly stable, then it is weakly stable and if a switch
+is weakly stable, then it achieves 100% throughput. In [15], a switch is said to be rate
+stable if with probability 1, limt→∞ 1t
+∑t
+s=1 bi,j(s) = ρi,j where ρi,j is the long run average
+arrival rate in (∗) for all i and j. This means that the long run average of the departure
+rate is the same as the long run average of the arrival rate. In fact, this is equivalent to
+achieving 100% throughput as stated below.
+Proposition 2 A switch achieves 100% throughput for an arrival traffic if and only if
+it is rate stable for such a traffic.
+Proof. To see this, note that in general, the number of packets in a queue at time t is
+simply the difference of the number of the accumulated arrivals by time t and the number
+of accumulated departures by time t. Thus we have
+qi,j(t) =
+t∑
+s=1
+ai,j(s)−
+t∑
+s=1
+bi,j(s), (1.1)
+for all i and j. Divide (1.1) by t and let t go to ∞. We have
+lim
+t→∞
+qi,j(t)
+t
+= lim
+t→∞
+∑t
+s=1 ai,j(s)−
+∑t
+s=1 bi,j(s)
+t
+(1.2)
+= ρi,j − lim
+t→∞
+∑t
+s=1 bi,j(s)
+t
+, (1.3)
+where we use (∗). As such, a switch achieves 100% throughput (left hand side of (1.2)
+equals 0) if and only it is rate stable (right hand side of (1.2) equals 0).
+In the following, we introduce basic switch architectures including output-buffered
+switches and input-buffered switches. Then we introduce a much more scalable archi-
+tecture, the load-balanced Birkhoff-von Neumann switches. Though scalable, the load-
+balanced switches could reorder the transmitted packets for infinitely many time slots.
+We then introduce recently developed solutions to the packet reordering problem. Based
+on the easiest to implement schemes, we introduce the motivation of our contention and
+reservation (CR) switch. Finally, we present the results of our CR switch followed by the
+organization of this report.
+3
+reads/writes. As there are at most N packet arrivals and N packet departures in each
+time slot, the utilized memory needs to speed up to 2N times of the speed of transmission
+lines. Such a memory speedup requirement is non-scalable due to the surging transmission
+line speed.
+1.1.2 Input-buffered switches
+Crossbar Connection Bipartite MatchingPermutation Matrix
+
+
+
+
+
+
+
+
+
+
+
+
+0010
+1000
+0100
+0001
+Figure 1.2: The permutation connection, its corresponding matrix and bipartite matching
+The memory speedup problem in the output-buffered switches can be solved by the
+input-buffered switches. In the input-buffered switches, one block of memory is used in
+each input. These N input buffers are connected to N outputs by a crossbar switch
+fabric. The limitation in such an architecture is that in one time slot, each input can
+transmit at most one packet and each output can at most receive one packet. Under
+such a constraint, only the sub-permutation connection patterns can be set up in the
+crossbar switch fabric. We call such constraints as permutation constraints. A sub-
+permutation connection pattern is a crossbar connection pattern with a corresponding
+sub-permutation matrix. A sub-permutation matrix P is an N ×N {0, 1}-valued matrix
+in which there is at most one element with value 1 in each row and each column. On the
+other hand, a permutation matrix is a sub-permutation matrix in which there is exactly
+one element with value 1 in each row and each column. Value 1 corresponds to a dot in
+the crossbar connection pattern. A dot in row i and column j of the crossbar connection
+pattern represents that input i is connected to output j.
+Each permutation connection pattern corresponds to a matching in a bipartite graph.
+In the corresponding bipartite graph, each node on the left corresponds to an input and
+each node on the right corresponds to an output. A link is connected between a left node
+and a right node if their corresponding input and output are connected. In Figure 1.2,
+we show these correspondences by an example. In this example, input 1 (resp.2, 3, 4)
+is connected to output 1 (resp. 3, 4, 2). We call such a sub-permutation connection a
+permutation connection, as there is exactly one dot in each row and each column.
+5
+Crossbar Switch
+VOQ
+.
+.
+.
+.
+.
+.
+1
+N
+Figure 1.4: The input-buffered switches with virtual output queuing
+constraint in the input. Moreover, the accepted output establishes a link in the matching.
+Then the HOL packet of the scheduled VOQ will be transmitted.
+There have been various ways to find matchings in the VOQ scheme. These include
+maximum weighted matching (MWM) with the longest queue first (LQF) policy and with
+the oldest cell first (OCF) policy in [41] and neural networks algorithms in [1, 6, 31, 35, 52].
+In the MWM algorithm, a matching with maximum weight is selected. The weight of a
+matching is the sum of the weight of every link in the matching. The weight assignment of
+the links depends on the scheduling policy. In the LQF policy, the link weight is defined
+as the queue length of the scheduled VOQ. In the OCF policy, the link weight is defined
+as the elapsed waiting time of the HOL packet in the scheduled VOQ. Both policies are
+proved to achieve 100% throughput for independent and identically distributed (i.i.d.)
+arrival traffic. However, computing the MWM requires O(N2.5 logN) computation over-
+heads [17]. In the neural network algorithms, the maximum sized matching (MSM) is
+selected. Note that a maximum sized matching is a MWM with {0, 1} weight. If the
+selected VOQ is nonempty, the link has weighting value 1; otherwise value 0. Finding
+such matchings by the neural network algorithms can be very fast due to parallelism and
+high connectivity in the neural networks. In [1, 52], finding the maximum sized matching
+(MSM) is formulated into traveling salesman optimization problem (TSP) and solved by
+its corresponding neural network solution, the Hopfield model in [19]. The convergence
+becomes faster by adding positive self-feedback in [35]. In [31], the hystersis McCulloch-
+Pitts neural network in [48] is utilized to find the MSMs. Such a neural network converges
+faster than the Hopfield neural network. An approximation method is also provided to
+utilize only MN neurons instead of N2 neurons. Though the neural network algorithms
+compute the MSMs fast, proofs of 100% throughput can only be given under uniform
+i.i.d. traffic.
+7
+switches, however, either requires the a priori information of the arrival rate matrix or
+requires heavy communication and computation overheads. The load-balanced Birkhoff-
+von Neumann switch [8] is an architecture that achieves 100% throughput with O(1)
+computation overheads, no communication overheads and without the a priori informa-
+tion of the arrival rate matrix. It has received a great deal of attention recently as it is
+much more scalable than other existing switch architectures in the literature (see e.g.,
+[9, 10, 13, 21, 23, 24]). A typical load-balanced switch (see Figure 1.5) consists of two
+stages: the first stage is for load-balancing that converts the incoming traffic into the
+uniform traffic, and the second stage is for switching of the uniform traffic. The con-
+nection patterns in the switches of both stages are deterministic and periodic. As such,
+there is no need to find matchings as required in most input-buffered switches.
+The problem of the load-balanced switches is that packets from the same input to the
+same output could be delivered out of order. This is because there are multiple paths
+between each input and each output. If we simply load balance the arrival packets to the
+central buffers according to their arrival time, then there would be no upper bound on
+the difference of the number of arrivals in the N central buffers. Then the delay difference
+among packets in different central buffers can go to infinity. Thus the reordering time
+can be unbounded.
+To cope with the packet reordering problem, there are several tentative solutions pro-
+posed in the literature. Among them, one category of the solutions is to bound the
+difference of the number of arrivals in the N central buffers [9, 13, 23]. Since such a dif-
+ference of the number of arrivals in the central buffers can be bounded, adding bounded
+resequencing buffers at the output ports is enough to guarantee that packets are deliv-
+ered in order. These solutions include the jitter control scheme and the Earliest Deadline
+First (EDF) scheme in [9], the byte-focal scheme in [13] and the Full Ordered Frame
+First(FOFF) scheme in [23].
+Another category of solutions is to prevent the packet reordering from taking place
+[10, 12, 11, 21, 23, 24]. These include the full frame first (FFF) scheme in [24], the
+frame-based guaranteed rate service in [12], the mailbox switch in [10], the frame-based
+mailbox switch with δ = 0 in [11] and the padded frames (PF) scheme in [21]. Among
+them, the FFF scheme requires three dimensional queuing structures (3-DQ) which is
+much more complicated to implement than the two dimensional VOQs. The frame-based
+guaranteed rate service scheme in [12] does not require the given rate matrix. However,
+it imposes stricter constraints for the non-overbooking condition. If the frame size is
+larger, the additional constraints becomes less strict. But the average delay of arrival
+packets becomes larger.
+9
+S-TDM switchS-TDM switch
+1
+N
+1
+N
+I-VOQ
+...
+VOQ
+...
+...
+1
+N
+...
+...i m j
+Figure 1.7: The architecture of the CR switch
+low packet delay in light traffic (as in the mailbox switch with δ = 0). The main idea,
+as pointed out in the pioneer work by Tobagi and Kleinrock [51] for a multiple access
+channel, is to have the CR switch operating in two modes: the contention mode (in light
+traffic) and the reservation mode (in heavy traffic). As in the UFS scheme, when there
+is a full-framed VOQ, the CR switch operates in the reservation mode and transmits
+a full frame of packets. However, when there is no full-framed VOQ, it is operated in
+the contention mode like the mailbox switch with δ = 0. The difference between our
+scheme and [51] is that our system has multiple parallel channels while there is only
+one in [51]. The challenge in multiple CR (Contention and Reservation) channels is to
+maintain packets in sequence.
+In summary, the CR switch has the following advantages:
+1. The CR switch achieves 100% throughput.
+2. The CR switch maintains packets in order.
+3. The communication overheads of the CR switch is O(1).
+4. The online computation overheads of the CR switch can be in the order of logN .
+5. In light traffic, the average delay of the CR switch is about N/2 as in the mailbox
+switch.
+6. In heavy traffic, the average delay of the CR switch is still finite as in the UFS
+scheme.
+7. The CR switch transits between the contention mode and the reservation mode
+based on local queue lengths at each input. Hence, the control of the CR switch is
+distributed.
+8. The size of each input buffer is bounded by N2.
+Before we present our results of the CR switch, we first present our results in the study
+of the throughput limitations of its precedence, the mailbox switch. The mailbox switch
+11
+with δ = 0 in Section 2.2 and the mailbox switch with δ =∞ in Section 2.3. In Chapter
+3, we propose the CR switch as a solution to solve the packet reordering problem in the
+load-balanced switches while maintaining its hardware simplicity and throughput-delay
+performance. By doing this, in Section 3.1, we present the CR switch architecture and
+its scheduling algorithms. We then show that the CR switch delivers packets in order in
+Section 3.2 and achieves 100% throughput in Section 3.3. In Section 3.4, by computer
+simulations, we study the average delay of the CR switch. Then we study how to update
+the contention pointers in the CR switch. We also compare its average delay with the
+padded frame scheme, the renowned iSLIP input-buffered switches and the ideal output-
+buffered switches. In Section 3.5, we study fairness issues in the average delay among
+packets from different input ports to the same output port. These issues include the
+contention priorities and the blocking of service for contention flows. Then, we conclude
+and discuss this report in Chapter 4, where we also point out several research problems
+in the CR switch for further studies. Finally, we self-evaluate our results and list our
+publications which are supported by this project.
+13
+S-TDM switch
+S-TDM switch
+1
+N
+1
+N
+Ma
+ilbox
+.
+.
+.
+1
+N
+.
+.
+.
+.
+.
+.
+.
+.
+.
+...
+...
+FIFO
+FIF
+O
+.
+.
+.
+.
+.
+.
+cell
+bin
+1
+N
+.
+.
+.
+.
+.
+.
+1
+F
+. . .
+Figure 2.1: The generic mailbox switch architecture [10].
+to N), and each bin contains F cells (indexed from 1 to F ). Each cell can store exactly
+one packet. Cells in the ith bin of a mailbox are used for storing packets that are destined
+for the ith output port of the second switch. In addition to these, a First In First Out
+(FIFO) queue is added in front of each input port of the first stage.
+Now we describe how the connection patterns of these two crossbar switch fabrics are
+set up. In every time slot, both crossbar switches in Figure 2.1 have the same connection
+pattern. During the tth time slot, input port i is connected to the output port j if
+(i+ j) mod N = (t+ 1) mod N. (2.1)
+In particular, at t = 1, we have input port 1 connected to output port 1, input port 2
+connected to output port N , . . ., and input port N connected to output port 2. Clearly,
+such connection patterns are periodic with period N . Moreover, each input port is
+connected to each of the N output ports exactly once in every N time slot. Specifically,
+input port i is connected to output port 1 at time i, output port 2 at time i + 1, . . .,
+output port N at time i+N − 1. Also, we note from (2.1) that such connection patterns
+are symmetric, i.e., input port i and output port j are connected if and only if input
+port j and output port i are connected. As such, we call a switch fabric that implements
+the connection patterns in (2.1) a symmetric Time Division Multiplexing (TDM) switch.
+Note that one can solve j in (2.1) by the following function
+j = h(i, t) =
+(
+(t− i) mod N
+)
++ 1. (2.2)
+Thus, during the tth time slot the ith input port is connected to the h(i, t)th output port
+of these two crossbar switch fabrics.
+As input port i of the first switch and output port i of the second switch are on the same
+line card, the symmetric property then enables us to establish an inband bi-directional
+communication link between a line card and a mailbox. As we will see later, such a
+property plays an important role in keeping packets in sequence.
+The mailbox switch solves the out-of-sequence problem a priori. The idea is that we do
+know the packet departure time once it is placed in a mailbox as the connection patterns
+15
+(iiiA) Updating virtual waiting times: all the flows that do not send mails (packets)
+at time t update their virtual waiting time as follows:
+Vi,j(t+ 1) = max[Vi,j(t)− 1, 0]. (2.3)
+This includes flows that have blocked transmissions. To update the virtual waiting
+time for flow (i, j), suppose that the HOL packet is successfully placed in the f th
+cell of the jth bin of the h(i, t)th mailbox. As described in (iiA) for the mail retrieval
+operations, one can easily verify that the departure time for this packet is simply
+t+ (f − 1)N + (j − i− 1) mod N + 1. As such, the number of time slots that has
+to be waited at time t + 1 for flow (i, j) is (f − 1)N + (j − i − 1) mod N and we
+can update the virtual waiting time as follows:
+Vi,j(t+ 1) = (f − 1)N + (j − i− 1) mod N. (2.4)
+11
+10
+0
+1
+48
+59
+37
+26
+1
+2
+3
+4
+1
+2
+3
+4
+Figure 2.2: The packet departure time of a cell in the mailbox
+Example 5 Packet departure time Here, we give an example to illustrate the de-
+parture time of packets once they are stored in the mailboxes. In Figure 2.2, we consider
+packets destined to output 3. Assume (t mod N) = 2. Then output 3 is connected to
+central buffer 4 at time t. Thus the packet departure time for the first cell of the 3rd
+bin of the 4th mailbox is t + 0. As output 3 will be connected back to input 1 at time
+t + 1, the first cell of the 3rd bin of the 1st mailbox has departure time t + 1. As the
+connection is sequential and periodic, the departure time of the remaining cells can be
+easily figured out. As such, each cell corresponds to a packet departure time. In this way,
+the contention of the cell storage in the mailboxes can be interpreted as the contention
+in the output departure time.
+17
+of the virtual waiting time when divided by N . The counter gi,j(t) is essentially the
+remainder of Vi,j(t) when the virtual waiting time is divided by N .
+Note that the mailbox switch resolves conflict implicitly over time and space. First,
+packets are distributed evenly to the N mailboxes via the symmetric TDM switch at
+the first stage. Intuitively, one may view this as conflict resolution over space. Once a
+packet is transmitted to a mailbox, the mailbox switch has to find an empty cell with
+its cell index not smaller than the cell index of the virtual waiting time of the packet.
+As cells in the same bin are ordered in the FIFO manner, this can be viewed as conflict
+resolution over time. In the search for an empty cell to place the packet, there might be
+several tries until an empty cell is found. For each unsuccessful try, it may be viewed as a
+“collision,” and each collision leads to back off N time slots for the packet departure time.
+Such backoff not only affects the packet being placed, but also affects all the subsequent
+packets that belong to the same flow because the virtual waiting time of that flow is also
+increased by N time slots. If there are many collisions, the increase of the virtual waiting
+time will be large and eventually packets will be distributed over time sparsely. This will
+result in low throughput and large delay. To avoid such an event, it might be better to
+block the packet by putting a limit on the amount of virtual waiting time that can be
+increased for each placement. This leads to the following modified scheme.
+(iiC) Sending mails: let δ be the maximum increment of the cell index of the virtual
+waiting time. We only search for an empty cell from the cell fi,j(t) to the cell
+min[fi,j(t) + δ, F ]. If successful, the index of that cell, say f , is transmitted to the
+ith output port of the second switch. If no such empty cell can be found, an error
+message, say f = 0, is transmitted to the ith output port of the second switch to
+indicate a HOL blocking.
+2.2 The throughput limitations in the frame-based
+mailbox switch with δ = 0
+In this section, we show the throughput limitations of the frame-based mailbox switch
+with δ = 0 under the uniform i.i.d. traffic. We first present the architecture of the frame-
+based mailbox switch (frame size F ) with δ = 0 and then show that such a switch has
+a similar HOL blocking problem as the input buffered switch with line grouping (group
+size F ). When F = 1, the frame-based mailbox switch with δ = 0 reduces to the mailbox
+switch with δ = 0 and the input buffered switch with line grouping reduces to the input
+buffered switches. Then we derive the generalized Pollaczek-Khinchin formula for the
+throughput analysis in Section 2.2.2. We then develop an exact algorithm to find the
+throughput in Section 2.2.3. When the frame size F is large, we resort to bounds and
+19
+Example 6 (Input-buffered switch with line grouping) In Figure 2.3, we consider
+an input-buffered switch with M inputs and N outputs. Each input maintains a FIFO
+queue. Each output has F parallel links. As such, there are FN output links and these
+FN output links are connected to the M inputs via an M × FN crossbar switch. A
+packet destined for a particular output can use any of the F links of that output. This is
+known as channel grouping in [36, 44], trunk grouping in [32] and line grouping in [33].
+To analyze the maximum throughput of this switch, we consider the well-known uniform
+i.i.d. traffic model as in [8, 22]. We assume that packets are of the same size and time
+is slotted so that a packet can be transmitted within a time slot. Moreover, the arrival
+processes to the input ports satisfy the following conditions.
+(A1) Arrivals at each input port are independent and identical Bernoulli processes.
+(A2) All arrival processes have the same arrival rate ρa and every arrival process is
+independent of others.
+(A3) The destination of every arrival at each input port is uniformly distributed over
+N outputs.
+(A4) N is large.
+To find out the maximum throughput, we may assume that there are already infinite
+many packets queued at the input buffers. As such, there are exactly M HOL packets.
+Since the traffic is uniform, it suffices to look at a particular output due to symmetry.
+Let q(t) be the number of HOL packets destined for output port 1 at time t and a(t)
+be the number of packets that become HOL packets and choose output port 1 as their
+destination at time t. Since there are F parallel links for output 1, there are at most F
+HOL packets that can be transmitted to output 1. Thus, we have the Lindley equation
+in (2.6). Moreover, as argued in [22], the quantity a(t) is a (random) sum of independent
+Bernoulli random variables and it converges to a Poisson distribution as N → ∞. As
+there are exactly M HOL packets at any time, we then have from symmetry that
+E[q(∞)] = M
+N
+. (2.8)
+Thus, the maximum throughput of an input-buffered switch with line grouping can be
+found by solving the fixed point problem in (2.6) and (2.7) (with s =M/FN).
+Example 7 (Frame based mailbox switch with δ = 0) In Section 2.1, a two-stage
+input buffered switch called the mailbox switch was proposed. In this example, we present
+a frame based version with δ = 0. This architecture is identical as in the mailbox switch
+21
+of the first stage maintains a counter. These counters are reset to one in the beginning
+of every frame. Denote by ci(τ, t) the value of the counter of the i
+th input port in the
+tth time slot of the τ th frame. In every time slot in a frame, the following operations are
+repeated for each input/ouput port.
+(i) Retrieving mails: in the tth time slot of the τ th frame, the ith output port of the
+second switch is connected to the h(i, τ)th mailbox. The packet in the first cell of
+the ith bin is transmitted to the ith output port. Packets in cells 2, 3, . . . , F of the
+ith bin are moved forward to cells 1,2,. . . , F − 1.
+(iiA) Sending mails: Assume that the destination of the ci(τ, t)
+th packet is j. If the jth
+bin is completely full, this information is fed back to the input port by the second
+switch fabric. The ci(τ, t)
+th packet is blocked at the input port and the counter
+is incremented. If the jth bin is not full, the ci(τ, t)
+th packet is placed in the first
+empty cell in the jth bin, and all the packets after the ci(τ, t)
+th packet are moved
+one place forward in the input buffer.
+To analyze the maximum throughput of this switch, we also consider the well-known
+uniform i.i.d. traffic model as in [8, 22]. Assume that the arrival processes to the
+input ports of the first switch satisfy conditions (A1-A4) in Example 6. As the traffic
+is uniform, we only need to consider a particular output port of the second switch, say,
+the first output. During the tth frame, it is connected to the h(1, t)th mailbox, and this
+mailbox is also connected to the first input port of the first switch. Since the frame size
+is F , at most F packets can be transmitted from the first bin of the h(1, t)th mailbox
+to the first output port of the second switch. If the first bin of the h(1, t)th mailbox is
+occupied at the beginning of the tth frame, then all the packets are retrieved by the first
+output port and the first bin becomes empty. In any event, we know that the first bin of
+the h(1, t)th mailbox is equivalent to be empty at the beginning of the tth frame.
+Let Yi(t) be the number of packets in the first F positions from the head of the queue
+at the ith input port that are destined for the first output port of the second switch in
+frame t. Let
+q(t) =
+N∑
+i=1
+Yi(t+ i− 1). (2.10)
+As the h(1, t)th mailbox is connected to the first input port during the tth frame, it will
+be connected to the ith input port in frame t + i − 1. Thus, q(t) is the total number of
+HOL packets that can be placed in the first bin of the h(1, t)th mailbox from frame t to
+frame t+N−1. If q(t) ≥ F , then there are exactly F HOL packets that will be placed in
+the first bin of the h(1, t)th mailbox as the bin is empty at the beginning of the tth frame.
+23
+each input. This then limits the number of HOL packets to s. The maximum throughput
+is the solution of the fixed point equation
+1
+2
+2ρ− ρ2
+1− ρ = s. (2.13)
+This shows that the maximum throughput is s+ 1−√s2 + 1 [26, 50].
+For the general case F > 1, solving the Lindley equation involves the Wiener-Hopf
+spectral decomposition for GI/GI/1 queues, and E[q(∞)] can be derived by the Spitzer
+identity (see e.g., [25]) as follows:
+E[q(∞)] = E[a(1)] +
+∞∑
+t=1
+1
+t
+E[(
+t∑
+s=1
+a(s)− tF )+]. (2.14)
+However, the Spitzer identity involves an infinite sum. As such, it is difficult to compute
+E[q(∞)] based on (2.14).
+To solve the Lindley equation for the general case F > 1, we derive the generalized
+Pollaczek-Khinchin Formula as follows. Note that such generalized Pollaczek-Khinchin
+formula can be found in the literature [11, 32, 36]. For instance, a sketch of the proof
+were given in [36, 32]. Also, a more detailed proof can be found in [11].
+We consider the Lindley equation in (2.6). As long as the average arrival rate E[a(1)]
+is smaller than the capacity F , we know from the classical queueing theory (see e.g., [3])
+that q(t) converges in distribution to a unique steady state random variable q(∞) that
+satisfies
+q(∞) =st (q(∞)− F )+ + a(1), (2.15)
+where a(1) is independent of q(∞) and =st denotes the stochastic identity, i.e., X =st Y
+if the two random variables X and Y have the same distribution.
+Let i =
+√−1,
+pj = P(q(∞) = j), j = 0, 1, . . . (2.16)
+and
+P (z) =
+∞∑
+j=0
+pjz
+j = E[zq(∞)] (2.17)
+be the generating function of q(∞). Also, let
+A(z) = E[za(1)] (2.18)
+be the generating function of a(1),
+ρ =
+E[a(1)]
+F
+(2.19)
+25
+Note that if F = 1, then
+E[q(∞)] = σ
+2 + ρ− ρ2
+2(1− ρ)
+and (2.27) reduces to the well-known Pollaczek-Khinchin mean value formula. If a(1) is
+a Poisson random variable with mean ρF , then
+A(z) = eFρ(z−1). (2.28)
+and
+σ2 = ρ/F. (2.29)
+Using (2.29) in (2.27), we have the following corollary.
+Corollary 9 If a(1) is a Poisson random variable with mean ρF and ρ < 1, then
+E[q(∞)] = 1− F (1− ρ)
+2
+2(1− ρ) +
+F−1∑
+j=1
+1
+1− αj , (2.30)
+where αj is the unique root within the unit circle of the following equation:
+z − ei2pij/F eρ(z−1) = 0, (2.31)
+for j = 0, 1, . . . , F − 1.
+The proof of Theorem 8 is based on a sequence of lemmas. In Lemma 10 below, we
+first show that there is a unique root within the unit circle for (2.26). The proof is based
+on Rouche´’s theorem and is shown in Appendix A.
+Lemma 10 If ρ < 1, the equation
+z − ei2pij/F (A(z))1/F = 0
+has exactly one root on or within the unit circle for any j = 0, 1, . . . , F − 1.
+In Lemma 11 below, we derive the generating function of q(∞) in terms of pj, j =
+0, 1, . . . , F − 1.
+Lemma 11 If ρ < 1, then
+P (z) =
+∑F−1
+j=0 pj(z
+F − zj)
+H(z)
+, (2.32)
+where H(z) is defined in (2.24).
+27
+= p0(z
+F − 1) +
+F−1∑
+j=1
+p˜j(z
+F − zj)
+−
+F−2∑
+j=0
+p˜j(z
+F − zj+1)
+= p0(z − 1) + p˜F−1(zF − zF−1)
++
+F−2∑
+j=1
+p˜j(z
+j+1 − zj)
+=
+F−1∑
+j=0
+p˜j(z
+j+1 − zj)
+= (z − 1)
+F−1∑
+j=0
+p˜jz
+j
+Lemma 13 The following identity holds:
+F−1∑
+j=0
+p˜jz
+j = G(z), (2.35)
+where G(z) is defined in (2.25).
+Proof. In view of (2.34), we can rewrite (2.32) as follows:
+P (z) =
+A(z)(z − 1)∑F−1j=0 p˜jzj
+zF − A(z) . (2.36)
+Note that the denominator of (2.36) can be factorized into
+zF − A(z) =
+F−1∏
+j=0
+(
+z − ei2pij/F (A(z))1/F ) ,
+where i =
+√−1. According to Lemma 10, there exists a unique root αj on or within the
+unit circle for the equation
+z − ei2pij/F (A(z))1/F = 0.
+29
+It is easy to verify that
+G(1) = F (1− ρ), (2.40)
+G′(1) = F (1− ρ)
+F−1∑
+j=1
+1
+1− αj ,
+H(1) = 0,
+H ′(1) = F (1− ρ),
+H ′′(1) = −F (σ2F − Fρ2 − ρ+ 2Fρ− F + 1)
+Applying L’Hoˆspital’s rule, we then obtain
+lim
+z→1
+(z − 1)G′(z)
+H(z)
+= lim
+z→1
+(z − 1)
+H(z)
+G′(1)
+= lim
+z→1
+1
+H ′(z)
+G′(1)
+=
+G′(1)
+H ′(1)
+.
+Also,
+lim
+z→1
+G(z)(H(z)− (z − 1)H ′(z))
+(H(z))2
+= G(1) lim
+z→1
+H(z)− (z − 1)H ′(z)
+(H(z))2
+= −G(1) lim
+z→1
+(z − 1)H ′′(z)
+2H(z)H ′(z)
+= −G(1) H
+′′(1)
+2H ′(1)
+lim
+z→1
+(z − 1)
+H(z)
+= −G(1)H
+′′(1)
+2(H ′(1))2
+.
+Thus,
+E[q(∞)] = P ′(1) = G
+′(1)
+H ′(1)
+− G(1)H
+′′(1)
+2(H ′(1))2
+(2.41)
+=
+F−1∑
+j=1
+1
+1− αj +
+σ2F − Fρ2 − ρ+ 2Fρ− F + 1
+2(1− ρ) .
+31
+Note that for F = 1 the upper bound is the same as the lower bound and we have
+ρ = s+ 1−
+√
+s2 + 1, (2.46)
+as in [26, 50] Moreover, for s = 1, the lower bound for the throughput tends to 1 in the
+rate of 1/
+√
+F as F → ∞. This shows that the throughput of the frame based mailbox
+switch in Example 7 can be increased to 100% by increasing the frame size F to ∞.
+Proof. Note from Lemma 12 and Lemma 13 that
+F−1∑
+j=0
+pj(z
+F − zj) = (z − 1)G(z). (2.47)
+Differentiating (2.47) and applying (2.40), we have that
+G(1) =
+F−1∑
+j=0
+pj(F − j) = (1− ρ)F (2.48)
+and
+G′(1) = −1
+2
+F (1− ρ) + 1
+2
+F−1∑
+j=0
+pj(F
+2 − j2). (2.49)
+Substituting (2.49) into (2.41) and using the identity σ2 = ρ/F , we have another form
+of E[q(∞)] as follows:
+E[q(∞)] = Fρ− F
+2(1− ρ)2 +∑F−1j=0 pj(F 2 − j2)
+2F (1− ρ) . (2.50)
+Let
+β =
+F−1∑
+j=0
+pj(F
+2 − j2). (2.51)
+It then follows from (2.50) that the maximum throughput ρ satisfies the following equa-
+tion:
+sF = E[q(∞)] = Fρ− F
+2(1− ρ)2 + β
+2F (1− ρ) . (2.52)
+Note from (2.48) that
+F 2(1− ρ) ≤
+F−1∑
+j=0
+pj(F − j)(F + j) ≤ (2F − 1)F (1− ρ). (2.53)
+33
+Proof. Let Z = q(∞)− F and Y = a(1)− F . From (2.42), it follows that
+Z =st Z
++ + Y, (2.57)
+and Y is independent of Z+. Note that Z = Z+ −Z− (with Z− = max(0,−Z)). Taking
+expectation on both sides of (2.57) yields
+EZ− = −EY. (2.58)
+Also, note that Z2 = (Z+)2 + (Z−)2 as Z+Z− = 0. Thus, squaring both sides of (2.57)
+and taking expectation yields
+E(Z−)2 = 2EZ+EY + EY 2. (2.59)
+As the variance of a random variable is nonnegative, we then have from (2.59) and (2.58)
+that
+0 ≤ E(Z−)2 − (EZ−)2
+= 2EZ+EY + EY 2 − (EZ−)2
+= 2EZ+EY + EY 2 − (EY )2
+Thus,
+EZ+ ≤ −EY
+2 − (EY )2
+2EY
+. (2.60)
+As a(1) is a Poisson random variable with mean ρF , we have EY = ρF − F and EY 2 −
+(EY )2 = ρF . From (2.57) and (2.60), it then follows
+Eq(∞) ≤ −EY
+2 − (EY )2
+2EY
++ EY + F
+= ρF +
+ρ
+2(1− ρ) . (2.61)
+Since Eq(∞) = sF in (2.43), it then follows from (2.61) that
+2Fρ2 − (1 + 2(s+ 1)F )ρ+ 2sF ≤ 0. (2.62)
+Solving (2.62) yields the lower bound in (2.55).
+For the case s = 1, it is possible to obtain a better approximation for the throughput
+than the asymptotic lower bound in (2.56). The idea is that the steady state queue
+length of M/GI/∞ queues has a Poisson distribution and we may approximate q(∞) by
+a Poisson random variable for large F [18]. Since we are looking for the value of ρ such
+35
+2.2.5 Numerical Studies and Simulations
+F Eq. Eq. Eq. exact simulation simulation
+(2.64) (2.68) (2.56) (N=128) (N=500)
+1 0.601 0.615 0.500 0.586 0.589 0.587
+3 0.770 0.754 0.667 0.736 0.740 0.737
+5 0.822 0.803 0.730 0.790 0.793 0.790
+7 0.849 0.831 0.766 0.820 0.823 0.820
+10 0.874 0.856 0.800 0.848 0.850 0.848
+30 0.927 0.914 0.879 0.910 0.912 0.910
+60 0.948 0.939 0.913 0.935 0.938 0.936
+90 0.958 0.950 0.928 0.947 0.950 0.948
+Table 2.1: Comparison of bound and approximations with simulation results for N ×N
+frame based mailbox switches.
+In this section we report our numerical study of the queueing results and the ap-
+proximation methods presented in Section 2.2.4. We simulate the frame based mailbox
+switches described in Example 7 in Section 2.2.1. Two cases are considered. In the first
+case, N = 128 and in the second case, N = 500. The maximum throughput of these
+two cases is shown in Table 2.1. We compare the simulation results with the analytical
+results. The column with label “exact” corresponds to the numerical solution of the algo-
+rithm presented in Section 2.2.3. From this table, we see that the maximum throughput
+increases with F . With F = 30, the throughput is more than 90%. The lower bound in
+(2.56) is a little bit conservative comparing with the simulations results. However, both
+the Poisson approximation in (2.64) and the normal approximation in (2.68) work quite
+well, even for small F .
+2.3 The throughput limitations in the mailbox switch
+with δ =∞
+In this section, we consider the mailbox switch in Section 2.1 with δ = ∞ and infinite
+bin size. Since δ = ∞ and the bin size is infinitely large, every arrival packet can be
+transmitted to the connected mailbox immediately. As such, there is no need to buffer
+packets at the input ports of the first switch. Our objective of this section is to show
+that the mailbox switch with δ =∞ achieves 67.5% throughput under the uniform i.i.d.
+traffic model. To see this, consider a particular flow, say flow (i, j). Let W (n) be the
+37
+To find E[B(n)], we first find the expected number of “collisions” that occurs in a time
+slot at an output port. From symmetry, this is equivalent to finding the expected number
+of “collisions” in a cell of a particular mailbox. Let q˜(k) be the number of packets that
+are ever tried to be placed in the kth cell for that particular mailbox. Also, let a˜(k) be
+the number of packets that are placed to the kth cell as their first trial. As the Poisson
+assumption used in the case with δ = 0, we may assume that a˜(k) is a Poisson random
+variable. As the kth cell can only hold one packet and the rest of packets have to try the
+k + 1th cell, we then have the following Lindley recursion:
+q˜(k + 1) = (q˜(k)− 1)+ + a˜(k + 1). (2.77)
+Note that P(q˜(k) > 0) is the probability that the kth cell is occupied and hence it equal
+to the throughout ρd. Using a similar argument to that in the case with δ = 0, we have
+P(q˜(k) > 0) = E(a˜(k)) = ρd (2.78)
+and
+E[q˜(k)] =
+2ρd − ρ2d
+2(1− ρd) . (2.79)
+Since the first packet can be placed in the kth cell successfully, the number of collisions
+in the kth cell is (q(k)− 1)+. Thus, the expected number of ”collisions” in a time slot is
+E[(q˜(k)− 1)+] = E[q˜(k)]− ρd = ρ
+2
+d
+2(1− ρd) . (2.80)
+As E[B(n)] is the expected number of ”collisions” when a packet is placed in a cell, it
+can be computed by the following limit
+E[B(n)] = lim
+t→∞
+Nc(t)
+Np(t)
+, (2.81)
+where Nc(t) is the cumulative number of ”collisions” by time t at an output port and
+Np(t) is the cumulative number of departures by time t at an output port. If the system
+is ergodic, i.e., the ensemble average is the same as its time average, then we have from
+(2.80) and (2.81) that
+E[B(n)] = lim
+t→∞
+Nc(t)
+Np(t)
+=
+limt→∞
+Nc(t)
+t
+limt→∞
+Np(t)
+t
+=
+ρ2d
+2(1−ρd)
+ρd
+=
+ρd
+2(1− ρd) . (2.82)
+From (2.74), (2.76), and (2.82), we have
+E[S(n)] =
+ρd
+2(1− ρd) ·N + (
+1− e−ρa − ρae−ρa
+ρa(1− e−ρa) ) ·N. (2.83)
+39
+0.0 0.2 0.4 0.6 0.8 1.0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+ 
+ 
+T
+h
+r o
+u
+g
+h
+p
+u
+t
+Arrival Rate ρ
+a
+Figure 2.4: The throughput of the mailbox switch with δ =∞.
+41
+3.1 The switch architectures
+In Figure 1.7, we showed the switch architecture for an N ×N CR switch. In the N ×N
+CR switch, there are N input ports (resp. output ports), indexed by i = 1, 2, . . . , N
+(resp. j = 1, 2, . . . , N). As in the generic load-balanced switches [8, 9], the CR switch
+also consists of two crossbar switches. The buffers between the two crossbar switches
+are called central buffers, indexed by m = 1, 2, . . . , N and the buffers in front of the first
+crossbar switch are called input buffers, indexed by i = 1, 2, . . . , N. In the CR switch, we
+assume that packets are of the same size. Also, time is slotted and synchronized so that
+a packet can be transmitted within a time slot. We index time slots by t = 1, 2, . . . ,∞.
+Unless otherwise specified, by input/output ports we mean those of the whole CR switch
+instead of a single crossbar switch.
+In each input buffer, there are N Virtual Output Queues (VOQs). Each VOQ stores
+packets of the same output destination. We index the VOQ in input buffer i with output
+destination j by VOQ (i, j). Packets arriving at an input port are stored in one of the
+N VOQs according to their output destinations. Then packets in the N input buffers
+are sent to the N central buffers by the first N × N symmetric TDM (S-TDM) switch.
+There are two modes to send packets from the input buffers to the central buffers. One is
+the contention mode; the other is the reservation mode. A packet transmitted under the
+contention (resp. reservation) mode is called a contention (resp. reservation) packet. In
+the central buffers, there are N I-VOQs (VOQ with Insertion). Similar to a VOQ, each
+I-VOQ stores packets of the same output destination. We index the I-VOQ in cental
+buffer m with destination j by I-VOQ (m, j). Finally, packets stored in the N central
+buffers are transmitted to the N output ports through the second N × N symmetric
+TDM switch.
+In the following subsections, we will illustrate the function of the S-TDM switch, the
+I-VOQ, and the contention and reservation modes. Finally, we present an example to
+visualize the operation of the whole CR switch.
+3.1.1 Symmetric TDM switches
+As shown in Figure 1.7, there are two N×N symmetric TDM switches in the CR switch.
+The connection patterns of these two switch fabrics are identical at the same time slot.
+Each symmetric TDM switch consists of N input ports (resp. output ports) generically
+indexed by is = 1, 2, . . . , N (resp. js = 1, 2, . . . , N). As in the mailbox switch [10], an
+N ×N symmetric TDM switch is merely an N ×N crossbar switch that implements the
+following periodic connection patterns: input is is connected to output js at time t if and
+only if
+(is + js) mod N = (t+ 1) mod N. (3.1)
+43
+3.1.3 Contention mode and reservation mode
+As pointed out in the pioneer work by Tobagi and Kleinrock [51] for a multiple access
+channel, one should have the CR switch operating in the contention mode under light
+traffic to have low delay, and in the reservation mode under heavy traffic to maintain
+system stability. The question is then how the CR switch knows whether the traffic is
+light or heavy without measuring it.
+To answer this question, we operate the CR switch in a frame-based manner as in
+the UFS scheme [23]. Every frame consists of N consecutive time slots. However, the
+beginning time slots of frames are different for different inputs/outputs. Specifically,
+frame f of input i (resp. output j) begins at the f th time when input i (resp. output
+j) is connected to the first central buffer. As such, we have from (3.1) that frame f of
+input i (resp. output j) consists of time slots i+ (f − 1)N, . . . , i− 1 + fN (resp. output
+j + (f − 1)N, . . . , j − 1 + fN). If the number of packets in a VOQ at an input port is
+not less than N , that VOQ is called a full-framed VOQ. At the beginning of a frame, if
+an input has a full-framed VOQ, then it is considered in heavy traffic and is operated
+in the reservation mode. That frame is then called a reservation frame. Otherwise, it
+is considered in light traffic and is operated in the contention mode. Accordingly, that
+frame is called a contention frame.
+Now we describe the detailed operations for these two modes.
+The reservation mode: each input i keeps a reservation pointer for selecting a full-
+framed VOQ as in iSLIP [40]. At the beginning of a reservation frame, the full-framed
+VOQ that is clockwise the closest to the pointer is selected. The pointer is then incre-
+mented clockwise to one location beyond the selected VOQ. Suppose that VOQ (i, q) is
+selected. In each time slot of that frame, the HOL packet from VOQ (i, q) is sent to the
+connected central buffer m. One bit of information is also transmitted to indicate that
+this packet is a reservation packet. The packet is then stored at the tail of I-VOQ (m, q).
+The contention mode: each input i keeps a contention pointer for selecting a nonempty
+VOQ as in iSLIP [40]. In each time slot of a contention frame, the nonempty VOQ that is
+clockwise the closest to the pointer is selected. The pointer is then incremented clockwise
+to one location beyond the selected VOQ. Suppose that VOQ (i, q) is selected in a time
+slot of that frame. The HOL packet of VOQ (i, q) is copied and sent to the connected
+central buffer m in that time slot. One bit of information is also transmitted to indicate
+that this packet is a contention packet. If the HOL packet of I-VOQ (m, q) is a fake
+packet, we replace the HOL packet of I-VOQ (m, q) by this contention packet and feed
+back one bit of information to indicate a successful transmission. Otherwise, we reject the
+contention packet and feed back one bit of information to indicate a failed transmission.
+If the transmission is successful, the HOL packet of VOQ (i, q) is removed and packets
+behind it are moved up one position. Otherwise, the HOL packet remains the HOL
+45
+I-VOQs are transmitted to their connected outputs. Specifically, since the connection
+patterns are symmetrical, central buffer 1 transmits a fake packet to output 1 and moves
+the newly arrived packet to the HOL position of I-VOQ (1, 1). I-VOQ (2, 3) transmits
+a packet to output 3 and inserts a fake packet to its HOL position. Similarly, central
+buffer 3 is connected to output 2. Thus, I-VOQ (3, 2) transmits the fake HOL packet to
+output 2 and moves the newly arrived packet to its HOL position. The resulting buffer
+contents are shown in Figure 3.1 (b).
+At time t+ 1, input 2 is connected to central buffer 1. Since input 2 has a full-framed
+VOQ (VOQ (2, 2)), it chooses to operate in the reservation mode (see Figure 3.1 (c)). At
+time t+ 2, input 3 is connected to central buffer 1. Input 3 does not have a full-framed
+VOQ and it can only operate in the contention mode in this frame (Figure 3.1 (d)).
+47
+consecutive time slots, can only be stored at the tails of I-VOQs. As in the UFS scheme
+[23], one might expect that any N reservation packets transmitted in the same frame
+from an input are also stored in the same position of N I-VOQs. Moreover, as w` in
+(3.3) does not depend on m, it follows from Proposition 16(ii) that any N reservation
+packets transmitted in a frame of an input are also sent to their output consecutively in
+a frame of their output. This is stated in the following property. Its formal proof is given
+in Appendix B.1.
+Proposition 17 Suppose that frame f of input i is a reservation frame that contains
+packets for output j.
+(i) For m = 1, 2, . . . , N , the packet transmitted in the mth slot of frame f is stored as
+the pth packet in I-VOQ (m, j) for some fixed p ≥ 2.
+(ii) For m = 1, 2, . . . , N , the packet transmitted in the mth slot of frame f is sent to its
+output in the mth time slot of frame f˜ of output j for some f˜ .
+In view of Proposition 17(ii), a frame of an output can also be classified as a reservation
+frame if it contains all reservation packets, and as a contention frame otherwise.
+3.2.2 The proof for the in-order-delivery
+Now we show that packets of the same flow are always delivered in order. Recall in the
+beginning of Section 3.2 that packet k represents the kth packet of flow (i, j). To prove
+in order delivery, we will prove that packet k departs earlier than packet k + 1 for any
+integer k. There are three cases that need to be considered: (i) packet k is a contention
+packet, (ii) both packet k and packet k + 1 are reservation packets, and (iii) packet k is
+a reservation packet and packet k + 1 is a contention packet.
+Firstly, if packet k is a contention packet, then packet k departs earlier than packet
+k + 1, no matter whether packet k + 1 is a contention packet or a reservation packet.
+This is because packet k is a contention packet and it is stored as the HOL packet of an
+I-VOQ. From Proposition 16(ii), we know that if packet k is transmitted to an I-VOQ
+at time t1, it will depart the switch at time t1 + w1. Also, if packet k + 1 is transmitted
+at time t2, it will depart the switch at time t2 + wp, for some p ≥ 1. Since t1 < t2 and
+w1 ≤ wp, packet k departs earlier than packet k + 1.
+Then, if both packet k and packet k + 1 are reservation packets and they are in the
+same reservation frame, this is the case addressed in Proposition 17(ii). On the other
+hand, if packet k + 1 belongs to a later frame, it is clear that packet k + 1 departs in a
+later frame.
+49
+Clearly, each output queue of an output-buffered switch is in the work conserving mode
+for every time slot. However, both the input buffers and the I-VOQs of the CR switch
+are not in the work conserving mode for every time slot. They fall in a weaker concept
+of work conserving mode defined below.
+Definition 20 (WC(K,D) queue) A queue is work conserving with response workload
+K and response delay D (denoted by WC(K,D)) if it satisfies the following: when the
+queue length is smaller than K at time t − 1 and becomes longer than or equal to K at
+time t, this queue begins to be in the WC mode not later than time t+D. Moreover, this
+mode must continue until the queue length becomes smaller than K again.
+In the following lemma, we derive a bound between the queue length of a WC queue
+and that of a WC(K,D) queue.
+Lemma 21 Let QWC(t) ( resp. QWC(K,D)(t) ) be the number of packets in a WC (resp.
+WC(K,D) ) queue at time t. Suppose that both queues are subject to the same arrival
+process and they both are empty at time 0. Then
+QWC(K,D)(t) ≤ QWC(t) +K +D − 1. (3.4)
+Proof. Let a busy period of a WC(K,D) queue be the period of time in which there
+are more than or equal to K packets in the WC(K,D) queue. All we need to proof is
+that (3.4) holds for every time slot in a busy period of the WC(K,D) queue.
+Let the busy period of the WC(K,D) queue start from time a. Also, let A(τ) be the
+cumulative number of packets arriving at the WC(K,D) queue by time τ . We first show
+that if a ≤ t ≤ a+D − 1, then (3.4) holds. By definition, we have
+QWC(K,D)(a− 1) ≤ K − 1. (3.5)
+As there is at most one departure in each time slot, we have
+QWC(t) ≥ QWC(a− 1) + A(t)− A(a− 1)− (t− a+ 1). (3.6)
+As a WC(K,D) queue might have no departure, we have
+QWC(K,D)(t) ≤ QWC(K,D)(a− 1) + A(t)− A(a− 1). (3.7)
+From (3.5), (3.6) and (3.7), we have
+QWC(K,D)(t) ≤ QWC(t) + (t− a+ 1) +K − 1. (3.8)
+Thus, (3.4) holds at t where a ≤ t ≤ a+D − 1.
+51
+3.3.3 A memory bound for central buffers
+In this section, we show that the number of packets in the central buffers is bounded
+by the sum of the number of packets in the ideal output-buffered switch and a finite
+constant. This is through a work conserving property for the I-VOQs. To show the work
+conserving property for the I-VOQs, we need to introduce the following definition.
+Definition 24 We define Qj as a conceptual queue which contains the union of non-
+HOL packets in I-VOQ (m, j) for m = 1, 2, . . . , N.
+As a fake packet or a contention packet can be stored only as a HOL packet in an
+I-VOQ, a non-HOL packet must be a reservation packet. Thus, Qj contains all non-HOL
+reservation packets with destination j stored in the N I-VOQs.
+Proposition 25 For each j = 1, 2, . . . , N, Qj is work conserving with response workload
+1 and response delay N − 1.
+Proof. Suppose Qj is empty at time t− 1 and becomes nonempty at time t. Since the
+first packet of a reservation frame of any input is always transmitted to the first central
+buffer, there is exactly one packet, called packet k, transmitted at time t to I-VOQ (1, j)
+and stored as the second packet of I-VOQ (1, j). Without loss of generality, assume that
+packet k is transmitted from input i. From Proposition 16(i), we know that at time t+w1
+packet k becomes the HOL packet of I-VOQ (1, j) and thus leaves Qj. Since w1 ≤ N −1,
+the response time of Qj is at most N − 1 time slots and the response workload is 1.
+It remains to show that there is exactly one departure in each time slot from Qj after
+t + w1 until Qj becomes empty again. From Proposition 17(i) and Proposition 16(i),
+there are packets departing Qj from time t+ w1 to time t+ w1 +N − 1. Also, we know
+that t + w1 is the beginning time slot of a frame of output j. At the beginning time
+slot of the next frame of output j, i.e., t + w1 + N , if Qj is empty, then we complete
+our argument. On other hand, if Qj is still nonempty at t + w1 + N , then there is a
+reservation packet stored as the second packet of I-VOQ (1, j) (since the first packet of a
+reservation frame of any input is always transmitted to I-VOQ (1, j)). Using Proposition
+17(i) and Proposition 16(i) again, there are packets departing Qj from time t + w1 +N
+to time t + w1 + 2N − 1. Repeating the same argument, we conclude that there is a
+departure from Qj until Qj is empty.
+Using Proposition 25 and Lemma 21, we derive in the following lemma a bound for the
+difference between the queue length of Qj and that of the corresponding ideal output-
+buffered switch. The proof is given in Appendix B.2.
+53
+Applying (3.13) to (3.12), we have
+qCRi,j (t) ≤
+N∑
+i=1
+qOi,j(t) +N
+3 +N2 + 2N. (3.14)
+As the ideal output-buffered switch achieves 100% throughput, for all i and j, we have
+lim
+t→∞
+qOi,j(t)
+t
+= 0 (3.15)
+with probability 1. Taking the long run average on (3.14) and applying (3.15), we have
+lim
+t→∞
+qCRi,j (t)
+t
+≤ lim
+t→∞
+∑N
+i=1 q
+O
+i,j(t)
+t
++ lim
+t→∞
+N3 +N2 + 2N
+t
+=
+N∑
+i=1
+lim
+t→∞
+qOi,j(t)
+t
+= 0 (3.16)
+with probability 1. As qCRi,j (t) is nonnegative, by (3.16) we have
+lim
+t→∞
+qCRi,j (t)
+t
+= 0 (3.17)
+with probability 1. Thus the CR switch achieves 100% throughput.
+55
+VOQs. In Figure 3.2, we observe that the advantage of the contention scheme yields
+very low delay under light traffic while the advantage of the UFS scheme is maintaining
+system stability under heavy traffic. The CR switch, however, has both advantages.
+0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+8
+16
+32
+64
+128
+256
+512
+1024
+2048
+ 
+ 
+A
+v
+e
+r
+a
+g
+e
+ 
+D
+e
+l
+a
+y
+ 
+(
+C
+e
+l
+l
+s
+)
+Arrival Rate
+ Contention
+ CR
+ UFS
+Figure 3.2: The average delay of the contention scheme, the UFS scheme and the CR
+switch.
+For the contention scheme, the maximum throughput seems to be around 1−e−1 ≈ 0.63
+and the average delay seems to be around N/2 before reaching the maximum throughput.
+The intuition behind this is that there are few collisions under light traffic. A packet,
+upon its arrival, is transmitted immediately to the central buffer as a HOL packet. Thus,
+the delay of a packet is almost the same as the time that a HOL packet needs to wait for
+the connection to its destined output. Therefore, the average delay is around N/2 = 16
+under light traffic. The quantity, 1 − e−1, is known as the maximum throughput of an
+input-buffered switch with collision dropping [22] or the throughput limitation of the
+Parallel Iterative Matching (PIM) with single iteration [2]. As argued in Section 2.2 for
+the mailbox switch with δ = 0, one can argue that the contention scheme has the same
+maximum throughput as that of the PIM scheme of input-buffered switch with single
+iteration. The difference between the mailbox switch with δ = 0 and the contention
+scheme is that the input buffers maintain VOQs instead of single FIFO queues. Thus
+the definition of the head-of-line packet in Example 7, Yi(t), is different here. Here,
+Yi(t) = 1 if the contention pointer in input port i is pointed to output port 1 at time
+t; otherwise Yi(t) = 0. Then q(t) in (2.10) does not satisfies the Lindley equation (2.6)
+anymore. In contrast, as the contention pointer is updated in round robin, Yi(t) and
+Yi(t + 1) seems to be independent. Thus we may assume every contention pointer is
+uniformly distributed among all the N destinations and independent in time. That is
+57
+slot. Thus, when the previous transmission is failed, it might be better to select another
+input VOQ by advancing the contention pointer. On the other hand, if the previous
+transmission is successful, it might be better to select the same input VOQ until it is
+empty. This leads to the so-called “SPFA” (Success: Persist/Failure: Advance) scheme
+of advancing the contention pointer. Clearly, there are three other combinations: SAFA
+(Success: Advance/Failure: Advance), SAFP (Success: Advance/Failure: Persist), and
+SPFP (Success: Persist/Failure: Persist). In the generic algorithm presented in Section
+3.1.3, the contention pointer is advanced using the SAFA scheme as the contention pointer
+is always advanced. To verify the intuition, we simulate these four methods for all the
+four kinds of traffic in Figure 3.3, Figure 3.4, Figure 3.5 and Figure 3.6. As shown in these
+figures, the SPFA scheme has the lowest average delay for the entire region of the arrival
+rates. As such, we suggest the SPFA scheme be used in the CR switch for advancing the
+contention pointers.
+0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+8
+16
+32
+64
+128
+256
+512
+1024
+2048
+ 
+ 
+A
+v
+e
+r
+a
+g
+e
+ 
+D
+e
+l
+a
+y
+Arrival Rate
+ SPFA
+ SAFA
+ SAFP
+ SPFP
+Figure 3.3: The average delay of various methods of advancing the contention pointers
+based on the success or failure of the last transmission under the uniform i.i.d. traffic
+In the SPFA scheme, we simply advance the pointer to the next non-empty VOQ when
+the previous transmission is failed. The question is whether there is a better choice.
+Intuitively, the longer the VOQ is, the more consecutive packets can be transmitted
+successfully to reduce the average delay. In this experiment, three methods of selecting
+VOQs are investigated: (i) the next nonempty VOQ (NQ), (ii) the next VOQ whose queue
+length is Longer than or equal to the Medium Queue length (LMQ) of the nonempty
+VOQs in the input, and (iii) the longest VOQ (LQ) among the VOQs in the input. In
+Figure 3.7, Figure 3.8, Figure 3.9 and Figure 3.10, we plot the average delay for these
+three methods of selecting VOQs under all the four kinds of arrival traffic respectively.
+As expected (from the intuition of selecting a longer queue to reduce the average delay),
+59
+0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+8
+16
+32
+64
+128
+256
+512
+1024
+2048
+ 
+ 
+A
+v
+e
+r
+a
+g
+e
+ 
+D
+e
+l
+a
+y
+Arrival Rate
+ SPFA
+ SAFA
+ SAFP
+ SPFP
+Figure 3.6: The average delay of various methods of advancing the contention pointers
+based on the success or failure of the last transmission under the hotspot Pareto traffic
+the curve of the nonempty queue is higher than that of the curve of the LMQ. However,
+to our surprise, the curve of the longest queue is higher than that of the curve of the
+LMQ in most traffic conditions. This might be explained as follows: if the longest queue
+is selected and it results in a failed transmission, then with high probability the longest
+queue will be selected again. As such, it behaves like the SPFP scheme that yields large
+delay. As such, the right intuition is to select a VOQ long enough to have consecutive
+successful transmissions, but not too long to keep the freedom of advancing to other
+VOQs when there is a failed transmission. It seems that the LMQ method fits the
+intuition very well as there are often several VOQs with queue length longer than the
+median queue length. As such, there is no problem to advance the contention pointer to
+other VOQs in the LMQ method. To summarize, we suggest the contention pointer be
+advanced using the SPFA-LMQ scheme (Success: Persist/Failure: Advance to the next
+queue Longer than the Median Queue).
+3.4.3 Compared to the padded frame scheme
+In this section, we compare the average delay between the Padded Frame (PF) scheme
+in [21] and the CR switch with SPFA-LMQ. The PF scheme is an improved version of
+the UFS scheme. As the UFS scheme, it also operates in frames. If there is a full-framed
+VOQ, the longest VOQ is selected and N packets from that VOQ are sent to the N
+central buffers. Otherwise, the longest VOQ is selected and the partial frame of that
+VOQ is padded with fictitious packets to form a padded frame with N packets. The
+61
+0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+4
+8
+16
+32
+64
+128
+256
+512
+1024
+2048
+ 
+ 
+A
+v
+e
+r
+a
+g
+e
+ 
+D
+e
+l
+a
+y
+Arrival Rate
+ SPFA-NQ
+ SPFA-LMQ
+ SPFA-LQ
+Figure 3.9: The average delay of various methods of advancing the contention pointers
+based on the local queue lengths under the hotspot i.i.d. traffic
+0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+8
+16
+32
+64
+128
+256
+512
+1024
+2048
+ 
+ 
+A
+v
+e
+r
+a
+g
+e
+ 
+D
+e
+l
+a
+y
+Arrival Rate
+ SPFA-NQ
+ SPFA-LMQ
+ SPFA-LQ
+Figure 3.10: The average delay of various methods of advancing the contention pointers
+based on the local queue lengths under the hotspot Pareto traffic
+63
+3.14 that the average delay of the CR switch is very close to that of the ideal output-
+buffered switch under the heavily loaded Pareto traffic. This observation is consistent
+with the theoretical result in [8] that the average delay of the generic load balanced switch
+converges to that of the ideal output-buffered switch for a certain uniform bursty traffic
+model in heavy load. As the average queue length can be derived from the average delay
+by using Little’s formula, we also expect that the average memory requirement for the
+CR switch should be comparable to that for the ideal output-buffered switch when the
+traffic is heavy and bursty (even though the worst case memory bound in Corollary 27 is
+O(N3)). Finally, we note that there exist switches in the literature that guarantee O(1)
+delay bounds (see e.g., [14] [54]). However, these delay bounds are at the cost of speedup
+of 2.
+0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+0.1
+1
+10
+100
+1000
+ 
+ 
+A
+v
+e
+r
+a
+g
+e
+ 
+D
+e
+l
+a
+y
+ 
+(
+C
+e
+l
+l
+s
+)
+Arrival Rate
+ 
+CR_avg
+ 
+PF_avg
+ 
+4SLIP
+ 
+Output_Buffered
+Figure 3.11: The average delay of the PF scheme, the CR switch, the iSLIP algorithm
+and the ideal output-buffered switch under the uniform i.i.d. traffic
+65
+0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+1
+10
+100
+1000
+ 
+ 
+A
+v
+e
+r
+a
+g
+e
+ 
+D
+e
+l
+a
+y
+ 
+(
+C
+e
+l
+l
+s
+)
+Arrival Rate
+ 
+CR_avg
+ 
+PF_avg
+ 
+4SLIP
+ 
+Output_Buffered
+Figure 3.14: The average delay of the PF scheme, the CR switch, the iSLIP algorithm
+and the ideal output-buffered switch under the hotspot Pareto traffic
+67
+0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+0.1
+1
+10
+100
+1000
+ 
+ 
+A
+v
+e
+r
+a
+g
+e
+ 
+D
+e
+l
+a
+y
+ 
+(
+C
+e
+l
+l
+s
+)
+Arrival Rate
+ 
+CR_avg
+ 
+CR_(32,32)
+ 
+CR_(1,32)
+ 
+CR_remap_max
+ 
+CR_remap_min
+Figure 3.15: The average delay of the CR switch with and without port re-mapping
+under the uniform i.i.d. traffic
+0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+1
+10
+100
+1000
+ 
+ 
+A
+v
+e
+r
+a
+g
+e
+ 
+D
+e
+l
+a
+y
+ 
+(
+C
+e
+l
+l
+s
+)
+Arrival Rate
+ 
+CR_avg
+ 
+CR_(32,32)
+ 
+CR_(1,32)
+ 
+CR_remap_max
+ 
+CR_remap_min
+Figure 3.16: The average delay of the CR switch with and without port re-mapping
+under the uniform Pareto traffic
+69
+to build up when its arrival traffic is bursty and heavy. As the MWM-LQF algorithm
+assigns the weight of an input VOQ proportional to its queue length, the input VOQ
+with bursty and heavy traffic will be matched most of the time and result in blocking of
+service for other input VOQs.
+0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+0.1
+1
+10
+100
+1000
+ 
+ 
+A
+v
+e
+r
+a
+g
+e
+ 
+D
+e
+l
+a
+y
+ 
+(
+C
+e
+l
+l
+s
+)
+Arrival Rate
+ 
+CR_avg
+ 
+PF_avg
+ 
+CR_remap_cold
+ 
+CR_remap_hot
+ 
+PF_cold
+ 
+PF_hot
+Figure 3.17: The blocking of service phenomena in the PF scheme and the CR switch
+equipped with port re-mapping under the hotspot i.i.d. traffic
+71
+Chapter 4
+Conclusions and Discussions
+In the first part of this report, we study the throughput limitation of the frame-based
+mailbox switch with δ = 0 and the mailbox switch with δ = ∞. Under the uniform
+i.i.d. traffic, we show that the throughput of the frame-based mailbox switch with δ = 0
+approaches to 1 in the order of 1/
+√
+F . For the mailbox switch with δ =∞, the maximum
+stable throughput is 0.6748 while the maximum unstable throughput is 0.6786.
+In the second part of this report, we propose a new switch architecture, called the
+CR switch, which solves the reordering problem in load-balanced switches. This is done
+without using any resequencing buffers. Also, we show that the number of packets in
+the CR switch is bounded by the sum of the number of packets in the corresponding
+output-buffered switch and a constant that only depends on the size of the switch. As
+such, the CR switch still achieves 100% throughput.
+The key invention of the CR switch is the I-VOQ buffer management scheme that
+allows the CR switch to be operated in two modes: (i) the contention mode in light
+traffic and (ii) the reservation mode in heavy traffic. By so doing, the CR switch has
+low average delay in light traffic and still maintains system stability in heavy traffic.
+By computer simulations, we also demonstrate that the average packet delay of the CR
+switch is considerably lower than other schemes in the literature, including the Uniform
+Frame Spreading scheme [23], the Padded Frame scheme [21] and the mailbox switch
+[10]. We also compare the average delay to the renowned iSLIP input-buffered switch
+[40] and the ideal output-buffered switch. In the end, we address two fairness issues in
+the average delay among different flows. These including fixed contention priorities and
+the blocking of service for contention flows. For the problem of fixed contention priorities,
+we propose a port re-mapping method as a possible solution.
+Finally, we note that there are still some issues and problems that require further study
+for the CR switch as listed below.
+73
+Architecture CR PF UFS mailbox iSLIP OB
+(SPFA-NQ) (NQ) (RR) (δ > 0) (distributed)
+computation PE(N) PE(N) PE(N) PE(F ) PE(N) NULL
+communication O(1) O(N/N) O(1) O(logF ) O(N) O(1)
+IB (# of pointer) 2 2 1 N 2 0
+IB (# of queue) N N N 1 N 0
+IB (# of packet) N2 N2 N2 ∞ ∞ 0
+CB (# of queue) N N N N 0 0
+CB (# of packet) ∞ ∞ ∞ NF 0 0
+OB (# of queue) 0 0 0 0 0 1
+OB (# of packet) 0 0 0 0 0 ∞
+memory speedup 1 1 1 1 1 N
+# of switch fabric 2 2 2 2 1 1
+Table 4.1: The computation complexity, the communication overheads (per port per
+time slot), the memory complexity (per port) and the number of utilized switch fabrics
+of various switch architectures.
+vector round robin starting from the highest priority index for the first value 1
+indicator. Then the encoder outputs the index of the searched indicator. The
+computation overheads of the CR switch and the PF scheme is to find the next
+nonempty VOQ in round robin and to find the next full-framed VOQ in round
+robin. Thus a vector of N bits of nonempty indicators and a vector of N bits of
+full frame indicators need to be kept in each input buffer. In the UFS scheme, the
+computation overheads is to find the next full-framed VOQ in round robin. So a
+vector of N bits of full frame indicators needs to be kept in each input buffer. In
+the iSLIP, the computation overheads is to search for the next requested VOQ in
+round robin. This means that a vector of N bits of request indicator needs to be
+handled in each input buffer. All such computations perform round robin search in
+N entries. Such a search can be done by the priority encoder (PE) with N entries
+and the computation complexity for these switches is denoted by PE(N). In the
+mailbox switch, the computation overheads are to find a nonempty cell within δ
+forward tries in the bins of the mailboxes. Note that as the size of each bin is F,
+F bits of empty indicator needs to be kept for each bin. Then such a search is the
+same as the round robin search with F entries except that the forward tries can
+only search entries within δ away and can not wrap around. By masking the vector
+of F bits of empty indicators, such a limited forward search can be made the same
+as the round robin search in F entries. Thus the complexity is PE(F ). Finally,
+for the output-buffered (OB) switches, nothing needs to be computed. Thus the
+computation complexity of the OB switch is NULL.
+75
+and the UFS scheme need large memory space and maintain N VOQs while the
+mailbox switch maintains N bins in each central buffer and needs only limited
+central buffer size F for each bin. Finally, the number of switch fabrics in the load-
+balanced switches is 2 while that of the input-buffered switches and the output
+buffered switches is only 1. Though everything seems to be ideal in the ideal
+output-buffered (OB) switch, the memory speedup of the OB switch is N while
+that of the other switches is only 1.
+4.2 Future studies
+1. Large propagation delay:
+In the CR switch, we need one bit of feedback information from the connected
+central buffer to indicate whether a transmission is successful or not. There might
+be a problem if the propagation delay from the connected central buffer to an input
+is large. Because at each time slot each input buffer needs to wait for the acceptance
+information feedback from its connected central buffer. It is until the information
+is feedback that the input buffer can decide whether to remove the transmitted
+HOL packet from the selected VOQ.
+2. Priority services:
+In order to provide quality of service in the CR switch, one might need to consider
+the problem of providing priority services in the CR switch. A simple and straight-
+forward method is to provide priority services directly in the input VOQs. However,
+we might not be able to to retain the 100% throughput property by doing that.
+The problem arises when there does not exist a full-framed VOQ of high priority
+packets while there are still full-framed VOQs of low priority packets. If we choose
+to serve the high priority packets in the contention mode, then we will waste some
+bandwidth and cannot maintain 100% throughput for low priority packets. One
+tentative solution for this is to set a threshold like the PF scheme in [21], and serve
+the high priority packets in the contention mode only when the total queue length
+of full-framed VOQs is below the threshold. However, how to set the threshold to
+achieve the right tradeoff between high priority packets and low priority packets
+requires further study.
+77
+lines for exact emulation of FIFO multiplexers with variable length bursts,” Journal on
+Selected Areas in Communications, Vol. 24, No. 4, pp. 108-117, 2006.
+(J4) Po-Kai Huang, Cheng-Shang Chang, Jay Cheng and Duan-Shin Lee, ”Recursive
+constructions of parallel FIFO and LIFO queues with switched delay lines,” IEEE Trans-
+actions on Information Theory, Vol. 53, pp. 1778-1798, 2007.
+(C1) Cheng-Shang Chang, Yi-Ting Chen, Jay Cheng, and Duan-Shin Lee, ”Multistage
+constructions of linear compressors, non-overtaking delay lines, and flexible delay lines,”
+Proceedings of IEEE INFOCOM 2006.
+(C2) Cheng-Shang Chang, Tsz-Hsuan Chao, Jay Cheng, and Duan-Shin Lee, ”Con-
+structions of fault tolerant linear compressors and linear decompressors,” Proceedings of
+IEEE INFOCOM 2007.
+(C3) Yi-Ting Chen, Cheng-Shang Chang, Jay Cheng, and Duan-Shin Lee, ”Feedfor-
+ward SDL constructions of output-buffered multiplexers and switches with variable length
+bursts,” Proceedings of IEEE INFOCOM 2007.
+(C4) Duan-Shin Lee, Cheng-Shang Chang, Jay Cheng and Horng-Sheng Yan, ”Queue-
+ing analysis of loss systems with variable optical delay lines,” Proceedings of IEEE IN-
+FOCOM 2008.
+(C5) Jay Cheng, Cheng-Shang Chang, Tsz-Hsuan Chao, Duan-Shin Lee, and Ching-
+Min Lien, ”On constructions of optical queues with a limited number of recirculations,”
+Proceedings of IEEE INFOCOM 2008.
+79
+We will show that as z travels the unit circle once in the counter clockwise direction, the
+increase of argument of φ(z) is exactly 2pi. Then by the argument principle, the number
+of roots of φ(z) within the unit circle is 2pi/2pi which is exactly 1. As 2pij/F 6= 2pik/c
+for any k = 0, 1, . . . , c − 1, it is still easy to see from the above Feller’s results that
+| ei2pij/F
+z
+B(z)| ≤ 1 and ei2pij/F
+z
+B(z) 6= 1 for any z on the unit circle. Hence, u(z) is always
+within or on the circle which is centered at 1 and with radius 1. Moreover, u(z) never
+passes the origin. Therefore, ∆arg u(z) = 0 as z traverses the unit circle exactly once.
+Because of (A.2), we see that ∆arg φ(z) = ∆arg z + 0 = 2pi. Thus, φ(z) has exactly 1
+root within the unit circle. In conclusion, there is exactly one root within the unit circle
+and no root on the unit circle. This completes the proof for the first case.
+Now consider the second case in which 2pij/F = 2pik/c for some k = 0, 1, . . . , c− 1. In
+such a case, we will prove by applying the Rouche´’s theorem [25]. On the unit circle, i.e.,
+|z| = 1, it is easy to see that z = ei2pij/F is the only root for (A.1). On the other hand,
+within the unit circle, i.e., |z| < 1, we have∣∣∣∣ ddzB(z)
+∣∣∣∣ ≤ ∣∣∣∣ ddzB(z)
+∣∣∣∣
+z=1
+= ρ
+< 1. (A.3)
+To simplify notation, we let z2 = exp(i2pij/F ). Note that B(z2) = 1. Thus, Eq. (A.3)
+implies that for any z inside the unit circle we have
+|z2(1−B(z))| =
+∣∣∣∣z2 ∫ z2
+z
+d
+dv
+B(v) dv
+∣∣∣∣
+≤
+∫ z2
+z
+∣∣∣∣ ddvB(v)
+∣∣∣∣ |dv|
+<
+∫ z2
+z
+|dv|
+= |z2 − z|, (A.4)
+where the integration is carried out along the straight line that connects z and z2. To
+apply Rouche´’s theorem [25], we choose a circle D = {z : |z| = 1 − ²} for small ² and
+define
+f(z) = z − z2
+g(z) = z2(1−B(z)).
+Eq. (A.4) implies that |f(z)| > |g(z)| for each point on D. It follows from Rouche´’s
+theorem that f(z) and f(z)+g(z)(= φ(z)) has the same number of roots inside D. Since
+81
+Appendix B
+Proofs for the CR switch
+B.1 Proof of Proposition 17
+We prove (i) and (ii) simultaneously by induction on time. Suppose that Proposition 17(i)
+and (ii) are true up to time t as the induction hypothesis. Without loss of generality,
+assume that t is the mth slot of frame f of input i. Moreover, frame f is a reservation
+frame that contains packets for output j. As such, a packet, say packet h, is transmitted
+to I-VOQ (m, j) at time t and stored as the pth packet for some p ≥ 2. As a reservation
+packet is always attached to the tail of an I-VOQ, to prove Proposition 17(i), it suffices
+to argue that before transmitting another packet from input i at t+ 1, the queue length
+of I-VOQ (m+ 1, j) is exactly p− 1.
+We first show that the queue length is at least p − 1. If p = 2, nothing needs to be
+proved as an I-VOQ contains at least one packet. For p ≥ 3, it suffices to show that
+the (p− 1)th packet of I-VOQ (m + 1, j) exists at t + 1. Since packet h is stored as the
+pth packet in I-VOQ (m, j) at time t, the (p − 1)th packet of I-VOQ (m, j), say packet
+h1, exists at time t. From Proposition 16(ii), packet h1 will depart the switch at time
+t+wp−1. As p ≥ 3, packet h1 must be a reservation packet and it is transmitted to I-VOQ
+(m, j) at some time t1 < t from some input i1. As reservation packets are transmitted
+consecutively in each reservation frame, there is another reservation packet, say packet
+h2, transmitted from input i1 to I-VOQ (m + 1, j) at time t1 + 1 ≤ t. Thus from (ii) in
+the induction hypothesis, packet h2 will depart the switch at time t + wp−1 + 1. From
+Proposition 16(ii), the (p− 1)th packet in I-VOQ (m+ 1, j) at time t+ 1 will depart the
+switch at time t+1+wp−1 which is the same as packet h2. Thus, packet h2 exists as the
+(p− 1)th packet of I-VOQ (m+1, j) at time t+1. Thus there are at least p− 1 packets.
+Now we show that the queue length is at most p− 1. Suppose that the pth packet, say
+83
+As the packets arriving at the central buffers are the packets departing from the input
+buffers, we have
+A2(t) ≤ A1(t). (B.5)
+Also, Let QI(t) be the number of packets destined to output j stored in the input buffers
+of the CR switch at time t. Then, we have
+QI(t) = A1(t)− A2(t). (B.6)
+Since the number of packets in an input buffer cannot exceed N2 (see Corollary 23), we
+have QI(t) ≤ N ·N2. This leads to
+A1(t) ≤ A2(t) +N3. (B.7)
+Using (B.7) and (B.5) in (B.2), we have
+QO2 (t) ≤ QO1 (t) +N3. (B.8)
+Finally, (B.3) together with (B.4) and (B.8) implies
+QR(t) ≤ QO1 (t) +N3 +N. (B.9)
+This completes the proof.
+85
+[12] C.-S. Chang, D.-S. Lee, and C.-Y. Yue. Providing guaranteed rate services in the
+load balanced Birkhoff-von Neumann switches. In Proceedings of IEEE INFOCOM,
+2003.
+[13] H. J. Chao, J. Song, N. S. Artan, G. Hu, and S. Jiang. Byte-focal: a practical load
+balanced switch. In IEEE HPSR, May 2005.
+[14] S.-T. Chuang, A. Goel, N. McKeown, and B. Prabhakar. Matching output queueing
+with a combined input output queued switch. IEEE Journal on Selected Areas in
+Communications, 17:1030–1039, 1999.
+[15] J. Dai and B. Prabhakar. The throughput of data switches with and without
+speedup. In Proceedings of IEEE INFOCOM, pages 556–564, Tel Aviv, Isreal, March
+2000.
+[16] W. Feller. An introduction to probability theory and its applications, volume 2. Wiley,
+New York, 2 edition, 1971.
+[17] H. N. Gabow and R. E. Tarjan. Faster scaling algorithms for network problems.
+SIAM J. Comput., 18:1013–1036, 1989.
+[18] D. Gross and C.M. Harris. Fundamentals of Queueing Theory. Wiley, New York, 3
+edition, 1998.
+[19] J. J. Hopfield. Neural networks and physical systems with emergent collective com-
+putational abilities. In Proc. Natl. Acad. Sci., pages 2554–2558, April 1982.
+[20] C.-H. Huang, J.-S. Wang, and Y.-C. Huang. Design of high-performance cmos prior-
+ity encoders and incrementer/decrementers using multilevel lookahead and multilevel
+folding techniques. IEEE Journal of Solid-State Circuits, 37(1):1030–1039, January
+2002.
+[21] J.-J. Jaramillo, F. Milan, and R. Srikant. Padded frames: a novel algorithm for stable
+scheduling in load balanced switches. In Proceedings of IEEE CISS, Princeton, NJ,
+March 2006.
+[22] M. J. Karol, M. G. Hluchyj, and S. P. Morgan. Input versus output queueing on
+a space-division packet switch. IEEE Transactions on Communications, 35(12),
+December 1987.
+[23] I. Keslassy, S.-T. Chuang, K. Yu, D. Miller, M. Horowitz, O. Solgaard, and N. McK-
+eown. Scaling internet routers using optics. In Proceedings of ACM SIGCOMM,
+Karlsruhe, Germany, August 2003.
+[24] I. Keslassy and N. McKeown. Maintaining packet order in two-stage switches. In
+Proceedings of IEEE INFOCOM, New York, 2002.
+87
+[40] N. McKeown. The iSLIP scheduling algorithm for input-queued switches.
+IEEE/ACM Transactions on Networking, 7:188–201, 1999.
+[41] N. McKeown, A. Mekkittikul, V. Anantharam, and J. Walrand. Achieving 100%
+throughput in an input-queued switch. IEEE Transactions on Communications,
+47(8):1260–1267, August 1999.
+[42] E. Oki, R. Rojas-Cessa, and H. J. Chao. A pipeline-based approach for maximal-
+sized matching scheduling in input-buffered switches. IEEE Commun. Letters, 5,
+June 2001.
+[43] A.K. Parekh and R.G. Gallager. A generalized processor sharing approach to flow
+control in integrated service networks: the single-node case. IEEE/ACM Transac-
+tions on Networking, 1:344–357, 1993.
+[44] A. Pattavina. Multichannel bandwidth allocation in a broadband packet switch.
+IEEE Journal on Selected Areas in Communications, 6(9), December 1988.
+[45] S. M. Ross. Stochastic Processes. New York: J. Wiley & Sons, 1983.
+[46] M. Schwartz. Broadband Integrated Networks. New Jersey: Prentice Hall, 1996.
+[47] D. Stoyan. Comparison Methods for Queues and Other Stochastic Models. Berlin:
+J. Wiley & Sons, 1983.
+[48] Y. Takefuji and K.-C. Lee. An artifical hystersis binary neuron: a model suppressing
+the oscillatory behaviours of neural dynamics. Biologic Cybern, 64:353–356, 1991.
+[49] Y. Tamir and H.-C. Chi. Symmetric crossbar arbiters for vlsi communication
+switches. IEEE Transactions on Parallel and Distributed Systems, 4:13–27, 1993.
+[50] G. Thomas. Bifurcated queueing for throughput enhancement in input queued
+switches. IEEE Communications Letter, 1:56–57, March 1997.
+[51] F. Tobagi and L. Kleinrock. Packet switching in radio channels: Part III –polling
+and (dynamic) split-channel reservation multiple access. IEEE Transactions on
+Communications, 24(8):832–844, August 1976.
+[52] T. P. Troudet and S. M. Walters. Hopfield neural network architecture for crossbar
+switch control. IEEE Trans. Circuits Syst., 38:42–57, January 1991.
+[53] C.-Y. Tu, C.-S. Chang, D.-S. Lee, and C.-T. Chiu. Design a simple and high per-
+formance switch using a two stage switch architecture. In Proceedings of IEEE
+Globecom, 2005.
+89

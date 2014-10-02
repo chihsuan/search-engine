@@ -1,0 +1,657 @@
+impossible to meet the requirement of real-time 
+reconstruction. This project aims to parallelize and 
+implement a variety of 3D analytical and iterative 
+image reconstruction algorithms on the GPU platform 
+systems. Here, the report focuses on GPU realizations 
+of the Order Subset–Simultaneous Iterative 
+Reconstruction Technique (OS-SIRT) using a unified 
+architecture, called Compute Unified Device 
+Architecture (CUDA), based on a variety of parallel 
+strategies with the applications into the GPU-based 
+reconstruction implementation. 
+英文關鍵詞： Computed Tomography (CT), Graphic Processing Unit 
+(GPU), hardware acceleration, iterative image 
+reconstruction, parallel processing 
+ 
+ 2 
+異而有不同程度的衰減，再由相對應之多
+排偵測器接收到每個角度的 X-ray訊號，或
+稱之為該角度下的投影，將此每一角度之
+投影輸入計算機，透過適當的演算法在計
+算機上運算，最終重建出被掃描部分的切
+面影像，藉此分析生物內部的器官或組織
+分佈的情況。如組織內有發生病變，會因
+與正常組織的阻射密度相異而顯現在影像
+差異上。若進一步利用多個連續的二維影
+像切面透過堆疊，則可重建出三維立體影
+像。然而在初代 CT 系統中，礙於當時的計
+算機技術瓶頸與效率，即使是重建一幅解
+析度極低的 2D 橫切面影像便需要花上相
+當長的重建時間。 
+另一方面，隨著半導體製程技術的進
+步，計算機無論是在硬體效能上、體積、
+泛用性等等上，自發明至今這五、六十年
+間各方面都有爆炸性的成長。製程技術使
+處理器內的電晶體數量得到符合摩爾定律
+(Moore’s Law)預測的躍升並且不斷提昇處
+理的時脈，硬體效能上的改良使重建的時
+間得以縮短，重建影像的解析度也得以提
+高。而近幾年來，平行運算 (Parallel 
+Computing)概念更是已經廣泛應用於計算
+機處理器(Central Processing Unit，簡稱
+CPU)上，主要是由於半導體製程和物理極
+限上的限制，加上設計製造的成本和高時
+脈散熱、功耗問題的考量，使得計算機處
+理器的效能無法再透過提升時脈所達成，
+並且在應用軟體和系統設計越來越複雜的
+情況下，CPU 趨於同時處理多項執行工
+作，多核心處理器(Multi-Core Processors)
+的架構就是因應這樣的環境，而發展出將
+多顆獨立的處理器封裝在一起的技術。然
+而在多核心架構下，為了達到最佳的硬體
+使用率，有別於序列式的程式編程，必須
+導入平行式的程式編程，這勢必衝擊並徹
+底改寫原有的程式設計結構，需針對不同
+演算法的需求以及硬體特性，發展出一套
+合適的新演算法和流程，同時管理資料的
+流向，無疑是對程式設計者和研發團隊的
+一個新挑戰。 
+此外，處理器發展的另一個分支，圖
+形處理器(Graphic Processing Unit，簡稱
+GPU)，歸因於近年市場上娛樂產業和工業
+設計等等，大量 3D 運算需求，使得 GPU
+的發展快速崛起。原始設計是為分擔 CPU
+在大量的 3D 繪圖和顯示運算上的負擔，而
+開發出的獨立於 CPU 的處理器。由於 GPU
+是專門處理 3D 圖像所設計出的處理器，在
+硬體結構和特性上與原有的CPU設計理念
+不同，為了能夠快速計算貼圖座標，和即
+時運算影像效果，其特化出密集的運算單
+元與高度平行化的資料存取架構，可以有
+更多的電晶體用於運算而非快取或流程控
+制，其 GPU 上的核心數量超越 CPU 了百
+倍。一些需要大量且密集運算的程式開發
+者，希望能夠將 GPU 的密集運算能力應用
+於原本只能透過 CPU 完成的通用計算上，
+藉此提昇效能。 
+事實上，早期要對 GPU 作通用運算的
+開發是很困難的，因為需要理解硬體結構
+和計算機圖學的驅動編程，只有同時專攻
+計算機圖學的工程師才有可能作開發；而
+這近幾年來，GPU 製造廠商致力於推廣
+GPU 於一般通用程式的應用開發，發展出
+一套中介的介面工具，如 NVIDIA 所推出
+的 CUDA(Compute Unified Device 
+Architecture)，是能夠讓使用者用傳統的高
+階語言如 C++等，透過 CUDA 軟硬體整合
+技術直接驅動 GPU 來做加速。使用者不需
+要額外學習 GPU 本身的硬體驅動編程，而
+可集中於演算法和程式平行化的開發上，
+不只提升了便利性、實用性和節省了開發
+時間，更能讓一般程式開發者也能投入到
+GPU 硬體加速的開發上。 
+綜合以上所述，GPU 在運算效能上的
+突破，使得醫療影像的重建找到了新的出
+路。目前以 CT 為主的醫療影像技術，由傳
+統的二維影像邁向三維立體影像發展，其
+高密集運算量，使得重建的硬體需求甚
+高，往往需利用到工作站層級的高速運算
+設備來做重建。而本研究之主要目的在
+於，透過 GPU 的硬體加速功能、不同重建
+演算法的比較分析與研究、開發平行化的
+編程設計，以及硬體使用率和演算法效率
+的最佳化，藉以實現快速高解析度的影像
+即時重建，滿足即時分析的需求。 
+ 
+三、研究方法 
+3.1 CT 之成像與重建原理 
+關於電腦斷層掃描(CT)的成像原理，
+ 4 
+ 
+圖 4. 投影代數模型 
+ 
+在代數重建部份，三維影像重建和二
+維影像重建原理上是相同的，差別在於座
+標系統由平面轉為空間。在此，以二維 CT
+影像重建為例說明，首先建立疊代式影像
+重建的代數數學模型，如圖 4 所示。假設
+Vi 向量為重建物體內第 i 個元素的阻射係
+數，N 為重建物體所包含的總元素個數，
+Pj 向量表示為第 j 條射線所造成的投影像
+素值，M 為投影資料所包含的總射線數，
+Gji為投影系統矩陣中的貢獻值，表示為第
+j 條射線對於第 i 個元素的貢獻值，因此透
+過此數學模型，可推得(3.1)的投影公式： 
+     (3.1) 
+ 
+3.3 有序子集的同步疊代演算 (Order 
+Subset - Simultaneous   Iterative 
+Reconstruction Technique ; OS-SIRT) 
+同 步 疊 代 演 算 法 (Simultaneous 
+Iterative Reconstruction Technique，簡稱 
+SIRT)，是由Gilbert所提出，以ART為基礎
+所改良的演算法，主要與ART不同點在
+於：第一，每一次反投影重建是考慮所有
+射線的投影資料對作重建影像更新，依序
+使用所有的投影值，再根據貢獻值，分配
+回所有經過的重建物體內的元素後加總，
+如(3.2)所示。修正權重w也將所有射線上的
+投影資料納入考量，由加總射線路徑上所
+有的貢獻值與加總同一元素內所有經過的
+射線的貢獻值，兩者相乘得到修正權重w
+如(3.3)所表示，這樣能夠使得在疊代過程
+中能達到更好的收斂效果。第二，貢獻值
+權重Gji根據經過重建元素內的射線長度所
+決定，強化權重分配的正確性，減少雜訊
+和偽影的產生。 
+  (3.2) 
+    (3.3) 
+而在OS-SIRT演算法中對投影的資料
+導入了有序子集(Order Subset，簡稱OS)的
+概念，最主要的目的，是在不增加計算量
+的情況下加快SIRT演算法的收斂速度，使
+其疊代次數減少，進而使重建速度提昇。
+依照不同角度下的投影資料分成若干個子
+集 (Subset) ，並且決定對子集做排序
+(Order)，而在排序上Klaus Mueller等人提出
+了六種不同的投影序列如：連續順序
+(Sequential Access，簡稱SAS)、隨機排序
+(Random Access，簡稱RAS)、固定角度
+(Fixed Angle，簡稱FAS)、多階層正交
+(Multilevel Scheme，簡稱MLS)、加權距離
+法 (Weighted Distance Scheme ， 簡 稱
+WDS)。在本研究中是使用固定角度(FAS)
+的方式，以一個具有12幅投影資料下，在
+OS數量為3的情況下，使用固定角度90度方
+式將投影分成3組，在子集內順時針排序後
+進到下一個子集，如圖5所示。 
+ 
+ 
+圖5. 投影資料在不同OS數量下的排序(左)
+和分組情形(右) 
+ 
+在原始SIRT中必須執行完所有角度下
+的投影資料才對重建物體作一次更新，而
+在OS-SIRT中當執行完一個子集內的投影
+資料後就對重建影像做一次更新，如此可
+提升每次疊代內的更新次數，加速重建影
+像的收斂，隨著子集所切割的數量越多，
+收斂速度與之成正比關係。因此在OS-SIRT
+中對於反投影重建必須改寫為： 
+  (3.4) 
+ 6 
+由圖7中我們可以發現，在正向投影
+時，同步運算執行緒的結果可分散寫入到
+不同索引的投影區塊；然而在反投影重建
+時，同步運算執行緒的結果，有部分則會
+重複寫入相同索引的重建區塊(如圖中的
+Thread 1&Thread 2；Thread 4&Thread 5)，
+在程式記憶體劃分上，相同索引的重建區
+塊擁有相同的記憶體位置。由於voxel值的
+重建必須以累加的方式進行，同步寫入相
+同記憶體區塊將會造成資料競爭的情況出
+現，此時只能有單筆資料被寫入，另一筆
+資料則被棄置，故將導致重建的修正值出
+現誤差。為避免此一情形，我們在此將執
+行緒處理的資料作分散處理，如圖8所示。 
+ 
+ 
+圖8. 反投影重建時，執行緒分散寫入的分
+配情形示意圖(注意，灰色虛線為因資料重
+疊而移除之執行緒) 
+ 
+四、結果與討論 
+在 OS-SIRT 演算法測試平台資訊：搭
+載 Intel Core i7 X980(6-core CPU,3.33GHz)
+處理器之 PC，12GB 雙通道 DDR3 記憶體，
+作業系統為 Windows 7 Pro 64 位元版，使
+用 Visual C++ 2008 版 X64 編譯器，支援
+CUDA 2.0 版本 Fermi 架構(NV100 晶片)的
+顯示卡 GeForce GTX480，具有 480 個
+CUDA Core，內建 1.2G GDDR5 記憶體。 
+在輸入資料部分，使用自訂的三維圖
+像產生的原始的投影資料。圖 9 所示為旋
+轉角度在 0 度、30 度、60 度、90 度時所得
+之錐狀投影圖像(數值經過 normalization灰
+階化後)，解析度大小為 2562pixels。 
+    
+0 度 30 度 60 度 90 度 
+圖9. 投影資料 
+ 
+而在此吾人採用模擬的 3D 圖像，利用
+8位元 2562像素大小的灰階BMP格式影像
+作為在 XY 平面上的圖像，再經由電腦程
+式往 Z軸堆疊 256 張成 2563的三維立方的
+結構體，類似一圓柱狀圖像。座標系原點
+設置於結構體中心，如圖 10 所示。 
+ 
+圖 10. 模擬輸入大小 2562的二維 BMP 圖
+在程式中堆疊情形 
+ 
+輸出部分則為可由程式設定輸出任意
+方向和位置的重建 BMP 切面圖像，亦可使
+用自定的 3D 資料格式作為輸出，交由其他
+軟體如 MATLAB 進行後續結果比對分析。 
+首先訂定重建圖像的品質門檻，用以
+決定疊代式影像重建的收斂標準。在此令
+Vo為原始資料，Vr為重建資料，取兩者的
+之間所有元素差異的均方根值，再進行
+normalization 後平方，藉以定義出兩張圖
+像的誤差能量百分比 (Percentage Error 
+Energy)，以數學型式描寫為： 
+ 
+圖 11所示為原始輸入圖像和實際重建
+出來圖像結果比較，分別以不同方向的切
+面來檢視，重建大小為 2563 voxel，投影資
+料為 88 幅，每幅 2562 pixel，誤差能量百
+分比(PEE)0.64%，有序子集數量為 11，疊
+代次數 7 次，CUDA 中 kernel 使用 Grid 大
+ 8 
+圖13 原始與重建圖像訊號(Z=0,Y=0) 
+另一方面，為測試不同演算法設定下
+影像重建的效果，首先設定兩張圖像的誤
+差能量百分比(PEE)門檻值為0.64%，在
+OS=1，影像初始值設為0時(此時OS-SIRT
+即為SIRT原始的演算法)，結果在疊代超過
+50次情況下仍無法達到所設定PEE<0.64%
+的門檻；相較於影像初始值設為0，如SIRT
+採用FDK解析式重建的結果為影像初始值
+時，則可稍微改善重建效果，但仍無法達
+到所設定標準。而真正對重建品質有關鍵
+性的改善則是在使用了有序子集(OS)對投
+影作分組排序之後，也就是OS-SIRT演算
+法，能使重建品質大幅度的提升，即使在
+初值為0的情況下，僅疊代9次即可達到
+PEE=0.616%；而在採用FDK為初值的情況
+下，OS-SIRT演算法更僅需疊代7次就可達
+到PEE=0.64%的標準。上述結果摘要於表1
+中。 
+ 
+表1. 不同演算法設定下，欲達到相同PEE
+門檻之疊代次數的比較 
+Percentage 
+Energy Error 
+(<0.64%) 
+OS=1  OS=11  
+Initial=0  Iteration>50 
+(>0.99%) 
+Iteration=9  
+(0.616%)  
+Initial=FDK  Iteration>50  
+(>0.89%) 
+Iteration=7 
+(0.64%)  
+圖14所示為在不同演算法設定下，固
+定疊代次數為7次時，投影數為88幅2562，
+重建2563，所得到在Z=0時XY切面的重建
+圖像，從肉眼可以很明顯的觀察出，重建
+品質在使用了有序子集(OS)後對影像的清
+晰度有決定性的影響，也再次證實了有序
+子集確實的能加速重建圖像的收斂，減少
+疊代次數。 
+ 
+  
+Initial=0 
+OS=1 
+PEE=5.86% 
+Initial=0 
+OS=11 
+PEE=0.71% 
+  
+Initial=FDK 
+OS=1 
+PEE=3.46% 
+Initial=FDK 
+OS=11 
+PEE=0.64% 
+圖14 不同參數設定下之重建結果比較
+(Z=0,XY slice) 
+ 10 
+表 4. 比較過去類似演算法的研究成果
+演算法 實現平台 重建大小 投影數量 執行時間 
+This work 
+(OS-SIRT) 
+GPU(GTX480) 128
+3
+ 88×128
+2
+ 6.87(s) 
+Wai-Man Pang 
+et al.[11] 
+(SART) 
+ 
+CPU-based 
+(Core2 Quad 
+Q6600 CPU) 
+128
+3
+ 
+ 
+80×1282 
+ 
+1112.1(s) 
+ 
+GPU approach 
+(8800GTX) 
+128
+3
+ 
+ 
+80×1282 
+ 
+7.52(s) 
+ 
+Klaus Mueller et 
+al.[12] 
+(TMA-SART) 
+SGI Octane 
+(MIPS R10000) 
+128
+3
+ 80×128
+2
+ 72(s) 
+ 
+五、參考文獻 
+[1] R. Gordon, R. Bender, and G. T. Herman, 
+“Algebraic reconstruction techniques 
+(ART) for three-dimensional  electron 
+microscopy and X-ray photography,” J. 
+Theor. Biol., vol.29, pp.471–482, 1970. 
+[2] G.M. Stevens, R. Fahrig and N.J. Pelc, 
+“Filtered backprojection for modifying 
+the impulse response of circular 
+tomosynthesis,” Med. Phys. vol.28, 
+pp.372-380, 2001. 
+[3] L.A. Feldkamp, L.C. Davis, J.W. Kress, 
+“Practical cone-beam algorithm,” J Opt 
+Soc Amer., vol.A1, pp.612-619, 1984. 
+[4] P. Gilbert, “Iterative methods for the 
+three-dimensional reconstruction of an 
+object from projections,” J. Theor. Boil., 
+vol.36, pp.105-117, 1972. 
+[5] H.M. Hudson, “Accelerated image 
+reconstruction using ordered subsets of 
+projection data,” IEEE Trans. Medical 
+Imaging, vol.13, pp.601-609, 1994. 
+[6] K. Muller, R. Yagel, and J.F. Cornhill, 
+“The weighted-distance scheme: a 
+globally optimizing projection ordering 
+method for ART,” IEEE Trans. Medical 
+Imaging, vol.16, pp.223-230, 1997. 
+[7] X. Jia, Y. Lou, and J. Lewis, “GPU-based 
+fast low-dose cone beam CT 
+reconstruction via total variation,” 
+Medical Physics, vol.19, pp.139-54, 
+2011. 
+ 
+ 
+[8] C.-Y. Chu and S.-W. Chen, “Parallel 
+implementation for cone-beam based 3D 
+Computed Tomography (CT) medical 
+image reconstruction on multi-core 
+processors,” IFMBE proceedings, 
+vol.25/IV, pp.2066-2069, 2009. 
+[9] S.-W. Chen and C.-Y. Chu, “Graphic 
+Processing Unit (GPU) based hardware 
+acceleration for high speed 3D 
+cone-beam Computed Tomography (CT) 
+reconstruction”, IFMBE Proceedings 
+vol.37, pp.567–570, 2011. 
+[10] S.-W. Chen and C.-Y. Chu, “A 
+comparison of 3D cone-beam Computed 
+Tomography (CT) image reconstruction 
+performance on homogeneous 
+multi-core processor and on other 
+processors,” Measurement, vol.44, 
+pp.2035–2042, 2011. 
+[11] W.-M. Pang, J. Qin, Y. Lu, Y. Xie,  
+C.-K. Chui, P.-A. Heng, “Accelerating 
+simultaneous algebraic reconstruction 
+technique with motion compensation 
+using CUDA-enabled GPU,” CARS, 
+vol.6, pp.187-199, 2011.  
+[12] K. Mueller and R. Yagel, “Rapid 3D 
+cone-beam reconstruction with the 
+Simultaneous Algebraic Reconstruction 
+Technique (SART) using 2D texture 
+mapping hardware,” IEEE Trans. 
+Medical Imaging, vol.19, pp.1227-1237, 
+2000. 
+ 
+國際學術會議報告 
+                                                        2012 年 9 月 10 日 
+報告人姓名 
+ 
+陳思文 
+ 
+服務機構 
+及職稱 
+ 
+長庚大學電子工程學系副教授 
+ 
+     時間 
+會議 
+     地點 
+2012/08/28-2012/09/01 
+San Diego, USA (美國聖地牙哥 ) 
+會議 
+名稱 
+ (中文) 第 34 屆 IEEE 醫學與生物工程學會國際研討會 
+ (英文) 34th Annual International Conference of the IEEE Engineering in 
+Medicine and Biology Society (EMBC’12) 
+發表 
+論文 
+題目 
+Compressed Sensing for Integral Pulse Frequency Modulation (IPFM)-based 
+Heart Rate Variability Spectral Estimation 
+一、參加會議目的與經過 
+第 34屆 IEEE醫學與生物工程學會國際研討會(34th Annual International Conference of the 
+IEEE Engineering in Medicine and Biology Society (EMBC ‘12))於八月二十八日至九月一
+日期間在美國加州聖地牙哥的希爾頓海灣大飯店(Hilton Bayfront Hotel)召開，前後共
+計五天，本人特前往與會。此行主要目的為發表一篇名為 Compressed Sensing for Integral 
+Pulse Frequency Modulation (IPFM)-based Heart Rate Variability Spectral Estimation 的論
+文，所發表的論文為 Poster Session。本人的研究興趣主要為醫學訊號處理的演算法開發
+與應用，而本論文則是利用一種名為壓縮感知(Compressed Sensing，簡稱 CS)的技術，
+結合積分脈波頻率調變模型(Integral Pulse Frequency Modulation, 簡稱 IPFM)，應用於心
+率變異度(Heart Rate Variability，簡稱 HRV)的頻譜估計上。事實上，CS 的主要特點在於
+其可以從少量的測量中，回復或重建出近乎無失真的原始訊號，而其主要精神乃是基於
+原始訊號稀疏特性來最佳化重建效。目前 CS主要已應用於以下四個領域：資料壓縮(data 
+compression)、通道編碼(channel coding)、反運算問題(inverse problem)，以及資料擷取(data 
+acquisition)。有鑒於 IPFM 模型的概念是將交感與副交感神經對竇房結的交互作用，想
+像其為一調變訊號 m(t)，該模型可以用來模擬自律神經控制心跳的機制。另一方面，傳
+統上通常直接將所得到的心率訊號(或 RR 間距)進行頻譜運算與分析，藉以定義 HRV評
+估指標。在此，我們透過結合 CS 理論與 IPFM 模型的創新做法，從已經量測到的少量
+或失真的心率訊號中，重建出調變訊號 m(t)的頻譜，如圖一所示，並將其應用於心率變
+異度的頻譜分析。 
+0.1 0.2 0.3 0.4 0.5 0.6
+0
+0.002
+0.004
+0.006
+0.008
+0.01
+0.012
+0.014
+0.016
+0.018
+0.02
+frequency (Hz)
+m
+a
+g
+n
+it
+u
+d
+e
+Spectrum of the RR intervals of a normal subject. R = 0
+0.1 0.2 0.3 0.4 0.5 0.6
+0
+0.002
+0.004
+0.006
+0.008
+0.01
+0.012
+0.014
+0.016
+0.018
+0.02
+frequency (Hz)
+m
+a
+g
+n
+it
+u
+d
+e
+Spectrum of the RR intervals of a normal subject. R = 0.1
+ 
+圖一 左：調變訊號 m(t)的真實頻譜；右：利用 CS 估計出的 m(t)頻譜 
+ 圖三 上：力量測試結果圖；下：位置測試結果圖 
+ 
+此外，還有一個團隊利用表面肌電圖來評估肢體障礙，此研究的實驗對象為三個健全的
+人和三個有肢體障礙的病人，藉由NMF (non-negative matrix factorization)演算法來評估
+這兩個族群間肌電訊號的差別。如下圖四所示，利用實驗告知他們完成指定動作，讓正
+常人和肢體障礙的病人控制一個二維平面的虛擬物體，並藉由各組間EMG訊號來檢視差
+異。利用此研究，肢體障礙者可即時且同時達到控制動作，這項控制動作是利用他們殘
+缺的肌肉活動來達成的。參與此一實驗的肢體障礙者表示，他們發現此研究的控制法很
+直觀且有效，此研究將在日後對於發展多方向控制的義肢有貢獻。 
+ 
+圖四 
+有鑒於生醫訊號的分析通常假設該訊號的結構為線性，但該假設事實上與實際的訊號並
+不吻合。此次會議中有研究提出一個非線性且低複雜度的方法來降低生醫訊號的維度，
+此方法是基於 manifold learning來找尋生醫訊號中潛在的資料結構。本方法還可將降低
+維度後的生醫訊號用圖像表示，進而達到後續分析與分類的目的。四個資料庫被使用於
+驗證本方法的可行性，實驗結果顯示這方法可達到預期的表現，且最後成為另一種視覺
+上分析的方法，如圖七所示。 
+ 
+ 
+圖七 
+另一方面，還有一些關於目前最新科技在醫療應用上的研究成果也被廣為發表於本次研
+討會中，其中有一篇論文提到利用智慧型手機進行心律不整判讀的研究令本人印象深
+刻。心房顫動(Atrial Fibrillation，簡稱 AF)是一種常見的心律不整的疾病，由於心房顫動
+都是短暫且突發的，以往判斷是否有心房顫動最高正確率僅 98%，而本研究提出藉由手
+指觸碰 iPhone4s 的攝影鏡頭和光學感測器，量測 2 分鐘的手指脈衝的時間序列，由於脈
+衝時間序列與心率波動相似，故可藉此判斷出心房顫動和正常的心律，該研究指出其準
+確率可高達 100%，如圖八所示‧  
+ 
+圖八 利用 iPhone4s 判斷心房顫動的操作介面 
+三、建議 
+一如往常，本次會議期間看到也聽到了相當多不錯的研究成果發表，可以看出不少研究
+所投入的人力或物力資源均相當龐大。對照台灣的現況，雖然比起許多國家來說我們所
+擁有的研究資源似乎也不少，然而無可諱言，這些研究資源實際上缺乏有效的整合，是
+以和世界上許多先進的國家相比，我們仍存在著進步的空間。故在此建議政府相關部門
+或許可以考慮在各項既定現有的研究領域上分別先規劃幾個未來重點發展方向，並應同
+時研究如何將政府與民間資源進行充分整合與最有效的分配，鼓勵並補助具前瞻性且大
+型的整合性計畫，最終以發展具本土特色的研究為目的，這或許是未來可以努力的方向
+之一，如此對本國各方面科學研究品質與內容的實質提升，也應能產生一定程度的助
+力。此外，本人亦深感研究工作如要做得好，首先需要具高度熱誠的教授和研究生等研
+究人員參與其中，此乃最基本也最為重要的條件，故而如何利用獎勵或其他誘因，吸引
+更多學者從事研究工作，對於本國研究品質與內容的實質提升，應可產生一定程度的助
+力。以上所提為本人的一點淺見，供各界參考指教。 
+四、攜回資料及內容 
+34th Annual International Conference of the IEEE Engineering in Medicine and Biology 
+Society (EMBC’12) 議程手冊一本、論文摘要一本，以及論文隨身碟一張。 
+ 
+ 
+100年度專題研究計畫研究成果彙整表 
+計畫主持人：陳思文 計畫編號：100-2221-E-182-002- 
+計畫名稱：圖形處理器 GPU 應用於三度空間醫學影像重建加速之研究 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 2 2 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 1 1 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 2 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+■達成目標 
+□未達成目標（請說明，以 100字為限） 
+□實驗失敗 
+□因故實驗中斷 
+□其他原因 
+說明： 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：■已發表 □未發表之文稿 □撰寫中 □無 
+專利：□已獲得 □申請中 ■無 
+技轉：□已技轉 □洽談中 ■無 
+其他：（以 100字為限） 
+本計畫研究之成果堪稱豐碩，已先後發表 2篇國際會議論文，分別於 2009年世界醫學物
+理暨生物醫學工程研討會，以及 2011年第五屆歐洲國際醫學生物工程聯盟研討會中，兩篇研
+討會論文均被收錄於在 EI論文集中(IFMBE Proceedings)，同時並發表了 1 篇 SCI 期刊論文
+(2011 Measurement)。 
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以
+500字為限） 
+本研究計畫應用 GPU 的高度平行化計算能力之特性，成功實現了以 OS-SIRT 疊代式演算法
+為基礎的 3D 醫學影像即時重建之硬體加速，並且利用 GPU 上的硬體特性對程式架構做了
+一系列最佳化的過程，得到比程式最佳化前更為顯著的效能增益。與過去相關的研究，所
+得成果中的傳統 CPU 版本比較，在效能上更是得到了約 200 倍的增益。此外，在比較不同
+演算法各項參數或條件的設定或搭配上，以 FDK 為初值可以適度改善重建品質，即在疊代
+次數較少的情況下可以得到較為顯著的重建效果；此外，使用有序子集分組投影資料則可
+以大幅度的加速重建的收斂。而在 GPU 的平台部分，有鑑於其高度平行化的運算和記憶體
+架構，非常適合用來做即時運算，如欲取得較佳的效能增益，主要設計重心應放在對外部
+記憶體存取加速的最佳化上。 
+ 
+如前所述，本計畫旨在研究利用 GPU 其高度平行化處理之特性，實現 3D 醫學影像即時重
+建之硬體加速，截至目前為止，已先後分別完成解析式與疊代式 3D 影像重建的硬體加速
+之設計工作，經系統模擬與驗證後，除與原計畫所設定研究內容與成果大致相符外，亦已
+充分達成預期目標。而另一方面，未來在後續發展上仍可針對下列項目進行更深入之探討
+與改良： 

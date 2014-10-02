@@ -1,0 +1,519 @@
+II 
+摘要 
+ 
+一般的應用程式都是使用 TCP 與 UDP 傳輸協定來進行資料的傳輸，然而在無線網路
+中，由於使用者具有移動性，因此在移動的過程中會有換手的行為發生並使 IP 位置相對應
+改變，使得藉由此兩種協定的傳輸需要再重新建立連線。Stream Control Transmission 
+Protocol 是新的傳輸層協定，其中延伸而出的 DAR 機制可以不需再重新建立連線。目前已
+有許多學者從事 SCTP 協定之研究，其中也有學者對於 SCTP 的 DAR 換手進行效能分析。
+然而卻很少有研究於換手時能決定出選擇最好的路徑，一般只考慮訊號強度進行選擇。我
+們將設計一個路徑決策的系統，並結合 SCTP，找出在無線網路中最好的路徑出來再進行換
+手的行程，提昇檔案傳輸的效能。 
+因此本計畫延續先前執行之計畫，並綜合過去相關學者的文獻探討以及我們的研究累
+積與成果，設計出一個在以資源競爭為基礎之疊加無線網路(Overlay Wireless Network)環境
+中具高效能之網路傳輸機制，提升網路傳輸效能。 
+ 
+關鍵字：SCTP、DAR、無線網路、換手、Socket API 
+ 
+ 
+Abstract 
+ 
+Applications have not supplied handoff by using TCP or UDP since the connection needs to 
+be re-established while handoff. The Stream Control Transmission Protocol (SCTP) is a novel 
+transport layer protocol. SCTP provides handoff with Dynamic Address Reconfiguration (DAR) 
+mechanism. There are studies about the SCTP, and parts of them are about the handoff with DAR 
+of SCTP. They utilize the signal strength from AP to decide handoff by using DAR but can not 
+select the best path. Therefore, in this paper we proposed the system that can decide handoff and 
+select the best path in wireless network. 
+ 
+Keywords: SCTP, DAR, Wireless Network, handoff, Socket API
+1 
+壹、前言 
+隨著網路技術不停的演進與發展，行動式設備漸漸的普遍成為流行的趨勢，為追求更
+快、更可靠、更有效率的網際傳輸技術，使行動設備能夠滿足各種不同的服務的需求，所
+以必須有快速且可靠的無線網路環境；因此舊一代的網路傳輸協定不斷的被改進，而新一
+代的網路傳輸協定，也不斷的被探討、被提出。尤其在針對如何做路徑的選擇及行動管理
+以提升整體服務效能的方法，也被愈來愈多的人所討論。 
+在傳統的Transmission Control Protocol (TCP)網路傳輸協定中，由於本身設計的特性，
+因此將會造成一些的問題，如：(1) Head-of-Line (HOL) blocking問題：當資料傳輸的過程之
+中，遺失了某一個封包(Package)，而儲存於暫存空間(Buffer Space)等待向上層傳送的資料
+封包(Package)，因遲未等待到遺失的封包(Package)到來，所以持續暫存在暫存空間(Buffer 
+Space) 之中，封包無法向上層傳送，造成整個傳輸時間也因此一直延遲的問題、(2)訊息採
+串流導向(stream-oriented)，使得Sequence Number在高速網路中產生Out of Sequence的問題
+及 控 制 訊 息 與 資 料 傳 送 必 須 藉 由 不 同 的 Connection 達 成 、 (3)TCP 不 支 援 多 宿
+(Multi-homing)，因此為多重介面必須個別設置多重個別Connection、(4) TCP 無法避免主機
+資源耗盡的阻斷式攻擊Denial of Service (DoS)，因此TCP在現行網路傳輸機制下，不斷的被
+人所垢病；因此更快速可靠的網路傳輸協定不斷的被提出討論。 
+網路工程組織Internet Engineering Task Force(IETF)的信號傳輸工作組織(SIGTRAN 
+Working Group)在2000年10月正式制訂了一個新興的傳輸層協定，稱為SCTP (Stream 
+Control Transmission Protocol)[5]。SCTP協定並且在2007年9月完成更新[6]，SCTP具有優異
+的機制設計，因此能獲得較佳的傳輸效能表現[19]。SCTP與TCP、UDP同為架構於IP層上
+的傳輸層，因此可以同時適用於IPv4及IPv6兩種不同的IP協定，SCTP主要的特性如：(1) 
+Multi-streaming的特性，可允許端點設置多重的Stream Queue Buffer，因而能相對降低
+Head-of-Line (HOL) blocking問題、(2)區塊綁定(Chunk bundling)使得多個應用程式類型資料
+可集合於一封包中傳送、(3)支援多宿( Multi-homing support)，使兩端點之間所建立的
+Association 能支援多重IP界面，而Session的維持是植基於Association之上，經由IP集合與
+Port的對應，因此可轉換使用的IP界面，並且保持Session的連線不為單一路徑斷裂而中斷，
+因此在傳輸機制上能提供更可靠且穩定的傳輸效能、(4)在連線建立方面，SCTP藉由四向交
+握連線機制，能有效防止避免在傳統TCP半開啟連線方式，所造成阻斷攻擊(DoS)之問題
+等；由於SCTP具有如上四項特性，因此可以解決傳統TCP上的問題。 
+此外 SCTP 還具有：(1)簡化標頭及選擇性的擴充、(2)多重傳輸模式(Multiple delivery 
+modes)、(3)繼承 TCP 壅塞控制機制(TCP-friendly congestion control)、(4)選擇回覆(Selective 
+acknowledgments)、(5)最佳的封包切割( User data fragmentation)、(6)網路連線存活狀態偵測
+(Heartbeat keep-alive mechanism) 等六種特性。在RFC 2960中也定義數個不同的Chunk Type 
+及用途，並保留許多 Type number 做為延伸定義使用。另外 SCTP 更具備有序、無序、部份
+有序等多重傳輸模式及其他更可靠強健的特性，可完全取代 TCP，基於上述之種種特性，
+證明 SCTP 在機制上比 TCP 機制具有更強健穩定的特性。使之成為新一代網際網路傳輸協
+定。對於 SCTP 實作方式，目前亦由 Stewart 等人提出 SCTP socket 與實作 API 的指南[8]，
+日前正不斷的修改與實作。 
+而 SCTP 傳輸協定提供之可靠傳輸機制，在眾多實驗數據中皆証明其優異的傳輸效
+能，尤其是在高遺失率的網路環境下。然而 SCTP 機制管理 IP 介面於初始連線建立時，在
+3 
+IP 清單中選擇訊號最強之 IP 並設定其為主要傳輸路徑 IP，最後當舊的 IP 已無訊號時，則
+從 Association 維護之清單刪除，往後在不斷移動的過程重覆以上程序以達到 Seamless 
+handoff 的目的，然而此傳統的選徑方式植基於原訊號的無法維持，因此其進行選徑時需花
+費較大的延遲時間，持續性的換手選徑將造成其效能的低落。 
+繁複的進行完整的Handoff 程序，MN會產生疲於維護IP清單之問題。為解決IP存續時
+間問題，S.J. Koh等學者接著提出觸發mSCTP handoff之程序[9]。其設計觸發ADD_IP程序分
+為主動式觸發及被動式觸發兩個規則，當訊號強度大於 10106.3 −× dB時主動式觸發需啟動
+ADD_IP程序，而被動式觸發需判斷實際接收到之訊號強度大於目前使用的訊號強度才觸發
+ADD_IP程序。藉由觸發ADD_IP程序，增加可選擇IP界面，供設定主要傳送路徑之選擇。
+接著再設計觸發其主要路徑設定門檻值，主動式觸發門檻值為 10108.6 −× dB；被動式觸發門
+檻為 10107.4 −× dB，當訊號到達觸發設定主要路徑門檻值時，會變更其傳送之主要路徑。最
+後得到結果為主動式觸發IP和被動式設定主要路徑此模式能得到最佳的效能。這是由於在
+乒乓效應的移動模式下，愈早加入可用IP介面愈能夠使切換之選擇更具彈性，然而頻繁地
+轉換主要路徑及維護IP清單無法獲得較佳的效能，且其啟動訊號的門檻值依據無線網路環
+境條件而可能會有不同的變化，因此需反覆測量實驗以取得各項最佳門檻值，並且訊號強
+度並不能完全表示基地台與網路狀態。 
+2. 運用低延遲時間為基礎的選徑技術 
+以衡量傳輸路徑之延遲時間，作為選擇主要傳輸路徑的依據，可達到較佳的傳送結果，
+因此J. Funasaka等學者[15]提出以傳輸延遲時間來衡量路徑選擇的依據，其設計在擁有二個
+可選擇之傳輸界面之SCTP機制下探討五個不同案例的路徑傳輸條件，其區分案例的條件為
+主要路徑與替換路徑是否能夠滿足於頻寬之需求之組合條件，而其選徑的依據則為傳輸延
+遲時間與需求延遲時間的組合，然而單一路徑的延遲時間較難表示整體網路的使用情況，
+且於無線網路時需負擔較大的競爭頻寬成本。 
+肆、研究方法 
+在本研究中，我們將設計一個以 mSCTP 架構為基礎，基於不同的資源配置方法的環境
+下，取得基地台服務的機率，作為選徑的基礎，進而改善以訊號強度作為選徑基礎而產生
+的缺失之有效率的選徑方式。因為原本 mSCTP 的傳送機制僅以訊號強度作為路徑選擇的考
+量參數，造成可能會有其中一個基地台的訊號強度最強，但服務的 MN 數量也最多，而其
+他的基地台的訊號雖然較弱，但服務的 MN 卻相當少，甚至有閒置的狀況發生。 
+我們將無線網路狀態範例描述如圖一所示，在圖一範例中，三個基地台的訊號彼此之
+間相互的交疊，其中 BS1 的訊號最強、BS2 次之，BS3 最弱，以訊號強度為換手依據的 m-SCTP
+機制，將會選擇訊號最強之基地台，為其主要換手的基地台，因此 MN1 與 MN2 將選擇 BS1
+為為其主要換手的基地台，如圖一中 AreaⅠ中箭頭所示。因此 MN1 競爭到基地台資源的機
+率為 BS1 訊號範圍內 MN 個數的倒數，因此當 MN 的個數越多，MN1 與 MN2 能夠取得基地
+台頻寬服務機會相對較少，在有多數競爭者的情況下將導致其傳輸的效能降低，因此當訊
+號交疊區域的 MN1 與 MN2 要再加入要求 BS1 提供服務，將造成 MN1 與 MN2 將會與原本已
+接受 BS1 服務的其他 MN 一起競爭 BS1 的有限頻寬資源，進而付出更多的頻寬資源的競爭
+成本，而無法取得較佳的服務，造成網路效能的降低；反之，與圖一中 AreaⅡ之 BS2 相較，
+雖然 BS2 的訊號強度較 BS1 低，但由於服務的 MN 個數較少，因此相對的可能提供的服務
+5 
+           
+圖三、System Module                  圖四、Handoff Procedure of system 
+2. 基於資源競爭之mSCTP動態決策換手機制 
+本計畫所提出的系統是定義在多個AP的信號交覆的重疊地區中。該系統的最佳路徑決
+策機制將使用DAR的SCTP協定，以提升無線網絡傳輸效能。圖三顯示了系統的模組包括六
+個主要部分。初始模組提供的初始化系統的開始；此外，初始模組利用檢測模組選擇訊號
+最強的AP當做主要路徑；檢測模組更週期性的傳送Heartbeat封包來偵測各個AP的訊號強度
+與網路品質；網絡列表模塊則儲存檢測網絡模塊所得到的狀態資訊；換手模組則依據網路
+列表模組中的資訊進行比對計算後，所得到的結果還進行換手的決定；DAR模組執行SCTP
+的DAR運作並控制發送/接收模塊；發送/接收模組進行資料的傳輸。 
+ 在圖四中，則為換手程序系統的流程圖。當MN進入AP1與AP2的交疊區域時，將可以
+從AP2獲得IP2的資料，並利用ASCONF將增加IP2的訊息傳送到CN；CN收到ASCONF封包
+後將IP加到List中並回傳ACK。當檢測模組週期性送出Heartbeat封包檢測AP資訊後，換手
+決策模組藉由得到的資訊進行運算，當其發覺AP2可以得到比較好的傳輸效能後，則更改
+主要路徑由IP1換到IP2。最後當漸漸離開AP1的傳輸區域時，則送出Del IP1的訊息來刪除
+IP1。 
+ 在本篇研究中，我們設計了一個路徑選擇的衡量方法，並在圖三的換手模組中執行。
+衡量方法如公式(1)所示。 
+)1(LLLNPVOPV ⋅< α  
+在公式(1)中，OPV為原始路徑值(Original Path Value)，NPV為新的路徑值(New Path Value)，
+α 為使用者定義的權重值。當 NPV⋅α 大於OPV時才會進行換手，這是要避免乒乓效應的產
+生。而OPV與NPV計算方式如公式(2)所示。 
+( ) )2(1.. LLL⎥⎦
+⎤⎢⎣
+⎡ ⎟⎠
+⎞⎜⎝
+⎛⋅+⋅⋅
+RTT
+PsSS γβ  
+在公式(2)，S.S.為AP的訊號強度，Ps為成功傳送Heartbeat封包的機率，RTT為傳送Heartbeat
+封包的延遲時間(Round Trip Time)， β 與γ 為使用者定義的權重值。 
+伍、實驗結果與分析 
+在本計畫的實驗中，我們使用SCTP Socket API來進行實作及效能實測。我們在Linux 
+7 
+柒、研究成果 
+本計劃之相關成果已投稿至相關研討會中，如以下所列，未來更計畫將整合完整之研
+究成果投稿至相關期刊論文。 
+1. L.H. Chang, P.H. Huang, H.C. Chu, H.H. Tsai, “Mobility Management of VoIP services 
+using SCTP Handoff Mechanism”, The 6th International Conference on Ubiquitous 
+Intelligence and Computing (UIC-09), Brisbane, Australia, Jul. 7-10, 2009 [EI] 
+2. C.C. Wang, J.J. Liaw, and L.H. Chang, “A Handover Mechanism Using MIPv6 Based on 
+IEEE802.21 in Heterogeneous Networks”, presented at Mobile Computing 2009 The 14th 
+Mobile Computing Workshop, Ilan, Taiwan, June 26, 2009 
+3. 連祐正、簡鈺軒、張林煌, “基於優先權之WiMAX排程機制”, presented at Mobile 
+Computing 2009 The 14th Mobile Computing Workshop, Ilan, Taiwan, June 26, 2009 
+4. 王朝棨、楊智鈞、廖俊鑑、朱鴻棋、張林煌, “運用IEEE802.21換手機制於異質性3G與無
+線網路”, presented at The Fifth Workshop on Wireless Ad Hoc and Sensor Networks (WASN 
+2009), Hsinchu, Taiwan, Sep. 10-11, 2009 
+5. 連祐正、簡鈺軒、張林煌, “PGS排程機制於WiMAX系統”, presented at The Fifth Workshop 
+on Wireless Ad Hoc and Sensor Networks (WASN 2009), Hsinchu, Taiwan, Sep. 10-11, 2009 
+6. 張林煌, 陳源泰, 簡碩瑤, 簡鈺軒, “實作Web-Base Skype監控系統於嵌入式IXP平台”, 
+presented at Taiwan Academic Network Conference (TANET 2009), Changhua, Taiwan, Oct. 
+28-30, 2009 
+參考文獻 
+[1] L. H. Chang, H. J. Lin and I. C. Chang, “Dynamic Handover Mechanism Using Mobile SCTP 
+in Contention Based wireless Network,” Lecture Notes in Computer Science, vol. 4742, pp. 
+821-831, Aug. 2007. 
+[2] D. P. Kim, J. S. Ha, S. T. Kim and S. J. Koh, “Use of SCTP for IP handover support,” IEEE 
+Fourth Annual ACIS International Conference on Computer and Information Science 2005, 
+pp.122 – 126, 2005. 
+[3] S. J. Koh, M. J. Chang, and M. Lee,” mSCTP for Soft Handover in Transport Layer,” IEEE 
+Communications Letters, Vol. 8, Issue 3, pp. 189-191, March 2004. 
+[4] S. Lahde, M. Doering and L. Wolf, “Dynamic transport layer handover for heterogeneous 
+communication environments,” Computer Communications, Vol. 30, Issue 17, p.p. 3232-3238, 
+30 November 2007. 
+[5] R. Stewart and Q. Xie et. Al.,”Stream control transmission protocol,” IETF RFC 2960, 
+October 2000. 
+[6] R. Stewart, et al., “Stream Control Transmission Protocol,” IETF RFC 4960, September 2007 
+[7] R. Stewart and Q. Xie et. Al.,” Stream Control Transmission Protocol (SCTP) Dynamic 
+Address Reconfiguration,” IETF RFC 5061, September 2007. 
+[8] R. Stewart and Q. Xie et. Al.,” Sockets API Extensions for Stream Control Transmission 
+Protocol,” IETF Internet Draft, draft-ietf-tsvwg-sctpsocket-15.txt, July 2007. 
+[9] S. J. Koh, M. J. Chang and M. Lee, “mSCTP for Soft Handover in Transport Layer,” IEEE 
+9 
+<附錄一> 
+ 
+自評內容表 
+ 
+一、 計畫執行結果與目標達成評估 
+本研究計畫之執行，均與當初評估之應完成項目符合。此外，於本計劃執行期間所遭
+遇之相關問題，如 LK-SCTP 設定與核心編譯等相關問題，均在本研究成果中獲得解決。 
+ 
+ 
+二、 研究成果學術成就價值評估 
+ 本計劃之相關成果已投稿至相關研討會中 
+1. L.H. Chang, P.H. Huang, H.C. Chu, H.H. Tsai, “Mobility Management of VoIP services 
+using SCTP Handoff Mechanism”, The International Workshop on Ubiquitous Service 
+Systems and Technologies (USST 2009), Brisbane, Australia, Jul. 7-10, 2009 [EI] 
+ 
+Abstract: Voice over Internet protocol (VoIP) is a prevalent multimedia application nowadays. 
+For mobile nodes (MNs) using VoIP services in wireless networks, the handoff issues need to be 
+taken into account. Stream control transmission protocol (SCTP) is a potential transport layer 
+protocol with multi-homing and multistreaming functions. Mobile SCTP with dynamic address 
+reconfiguration (DAR) extends SCTP to mobile wireless network. In this paper, we design and 
+implement a handoff mechanism using multi-homing, DAR and partially reliable SCTP 
+(PR-SCTP) of mobile SCTP to transport VoIP applications. The switch from UDP or TCP to 
+SCTP for VoIP transport provides the seamless handoff ability for MNs using real-time 
+applications such as VoIP service. This paper also provides the performance analyses of the 
+proposed scheme on the implemented Linux testbed. 
+ 
+三、 學術期刊發表與專利申請可行性評估 
+本研究計畫中之內容已彙整並且預計發表於相關的期刊。 
+ 
+ 
+四、 其他有關價值 
+在計劃中，我們利用 LK-SCTP 函式庫來實作 SCTP 於 Linux 系統上，並藉由路徑衡量
+機制讓 MN 在一個多個 AP 的交疊環境中，選擇傳輸效能較佳的 AP 來進行傳輸。藉由本計
+畫可以讓研究生深入了解 Linux 核心的運作方式與 Kernel 的編譯。 
+ 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 NSC 97-2221-E-142-004 
+計畫名稱 基於資源競爭與資源分配之無線行動 SCTP 效能分析與實作(II) 
+出國人員姓名 
+服務機關及職稱 
+張林煌  國立台中教育大學 資訊科學系  副教授兼主任 
+會議時間地點 July 7-10, 2009, Brisbane, Australia (澳洲布里斯本) 
+會議名稱 The 6th International Conference on Ubiquitous Intelligence and Computing (UIC-09) 
+發表論文題目 Mobility Management of VoIP services using SCTP Handoff Mechanism 
+ 
+一、 參加會議經過 
+ 
+本次 UIC-09(The 6th International Conference on Ubiquitous Intelligence and Computing)會
+議與 ATC-09 (the 6th International Conference on Autonomic and Trusted Computing)會議共同於
+澳洲布里斯本舉行，其中 UIC-09會議另包括 6個 Special Session與Workshop -- WiMo-09 (The 
+First International Workshop on Wireless & Mobile Networks)，PerMedia2009 (The International 
+Workshop on Pervasive Media)，ICA-IN-WIRELESS 2009 (2009 International Symposium on 
+Intelligence，Context-Awareness and Autonomy in Wireless Networks)，Ufirst-09 (International 
+Symposium on UbiCom Frontiers - Innovative Research, Systems and Technologies)，
+CPI-09 (The 1st International Symposium on Cyber-Physical Intelligence)，USST-09(The 2009 
+International Workshop on Ubiquitous Service Systems and Technologies)。而 ATC-09 會議
+另包括 3 個 Workshop -- MANS09 (International symposium on Multidiscipline-inspired 
+Autonomous Networks and Systems)，CPSC2009 (International Workshop on Cyber Physical 
+and Social Computing)，CTC-2009 (International workshop on Cybercrime and Trustworthy 
+Computing)。 
+ 
+會議的第一天包含三場 Keynote Speech，包括 Tharam S. Dillon 教授(Curtin University of 
+Technology, Australia) 主講 “Web of Things as a Framework for Ubiquitous Intelligence and 
+Computing” ，Jean Camp 教授(Indiana University, USA) 主講 “Design for Trust in Ambient & 
+Ubiquitous Computing” 以及 Mohan Kumar 教授(The University of Texas at Arlington, USA) 主
+講 “Distributed Computing in Opportunistic Environments”。 
+ 
+各 Keynote Speech 之後即展開六個 concurrent session 之主題論文報告與討論，此次會議
+之主要討論 session 議題包括 Ubiquitous Intelligent/Smart Objects，Ubiquitous Intelligent/Smart 
+Environments，Ubiquitous Intelligent/Smart Systems，Personal/Social/Physical Aspects，Trust 
+Models and Specifications，Trust-related Security and Privacy，Trusted Reliable and Dependable 
+Systems，Trustworthy Services and Applications，Trust Standards and Non-Technical Issues 等議
+Mobility Management of VoIP services using SCTP Handoff Mechanism 
+ 
+ 
+Lin-Huang Chang1, Po-Hsun Huang2, Hung-Chi Chu 2, Huai-Hsinh Tsai2 
+1Department of Computer and Information Science, 
+National Taichung University, Taichung, Taiwan 
+2Department of Information and Communication Eng., 
+Chaoyang University of Technology, Taichung, Taiwan 
+lchang@mail.ntcu.edu.tw 
+ 
+ 
+Abstract 
+Voice over Internet protocol (VoIP) is a prevalent 
+multimedia application nowadays. For mobile nodes 
+(MNs) using VoIP services in wireless networks, the 
+handoff issues need to be taken into account. Stream 
+control transmission protocol (SCTP) is a potential 
+transport layer protocol with multi-homing and multi-
+streaming functions. Mobile SCTP with dynamic 
+address reconfiguration (DAR) extends SCTP to 
+mobile wireless network. In this paper, we design and 
+implement a handoff mechanism using multi-homing, 
+DAR and partially reliable SCTP (PR-SCTP) of mobile 
+SCTP to transport VoIP applications. The switch from 
+UDP or TCP to SCTP for VoIP transport provides the 
+seamless handoff ability for MNs using real-time 
+applications such as VoIP service. This paper also 
+provides the performance analyses of the proposed 
+scheme on the implemented Linux testbed.  
+ 
+1. Introduction 
+ 
+Wireless networks have provided users with 
+mobility functions. Users can use some applications 
+and transfer data anywhere at anytime. However, 
+mobile nodes (MNs) move and handoff from one base 
+station (BS) to another. On the other hand, the voice 
+over Internet protocol (VoIP) is a prevalent multimedia 
+application nowadays. VoIP is transported using 
+Transmission Control Protocol [1] or User Datagram 
+Protocol [2]. For wireless VoIP applications, when an 
+IP address of an MN is changed due to the handoff to 
+different points of attachment, the applications using 
+TCP or UDP will be terminated and the re-connection 
+results in the discontinuousness of the sessions. 
+Stream control transmission protocol (SCTP) is a 
+potential transport layer protocol proposed by the 
+Internet Engineering Task Force (IETF) Signaling 
+Transport (SIGTRAN) working group in October 2000 
+and updated in September 2007 [3]. Similar to TCP, 
+SCTP offers the characteristics of end-to-end, 
+connection-oriented and reliable delivery over IP 
+networks. Especially, SCTP provides two prominent 
+functions: multi-homing and multi-streaming. These 
+functions increase the data transfer efficiency. Fig. 1 
+shows the architecture of internetworking using SCTP 
+as a transport layer protocol. Dynamic address 
+reconfiguration (DAR) [4] is extended by SCTP to be 
+used in wireless network. DAR allows SCTP to 
+dynamically add and delete an IP address to and from 
+the IP list of SCTP association. It also allows SCTP to 
+set the primary address dynamically. The primary 
+address is used by the source endpoint to communicate 
+with the destination endpoint. Users do not need to re-
+establish association because DAR in SCTP will not 
+abort the association after handoff. 
+ 
+ 
+Figure 1. The architecture of internetworking 
+using SCTP 
+ 
+In this paper, we design a handoff mechanism using 
+SCTP to transport VoIP applications. This design is 
+˦˖˧ˣʳ˨̆˸̅ʳ
+˔̃̃˿˼˶˴̇˼̂́
+˦˖˧ˣ
+˧̅˴́̆̃̂̅̇
+˦˸̅̉˼˶˸
+˜ˣʳˡ˸̇̊̂̅˾
+˦˸̅̉˼˶˸
+˦˖˧ˣʳ˨̆˸̅ʳ
+˔̃̃˿˼˶˴̇˼̂́
+˦˖˧ˣ
+˧̅˴́̆̃̂̅̇
+˦˸̅̉˼˶˸
+˜ˣʳˡ˸̇̊̂̅˾
+˦˸̅̉˼˶˸
+˦˖˧ˣʳ˔̆̆̂˶˼˴̇˼̂́
+ˠ̈˿̇˼ˀ̆̇̅˸˴̀˼́˺
+˦˖˧ˣʳˡ̂˷˸ʳ˄ ˦˖˧ˣʳˡ̂˷˸ʳ˅
+ˡ˜˖
+ˡ˜˖
+ˡ˜˖
+ˡ˜˖
+ˡ˸̇̊̂̅˾ʳ˄
+ˡ˸̇˪̂̅˾ʳ˅
+ˠ̈˿̇˼ˀ˻̂̀˼́˺
+ʻˠ̈˿̇˼ˀ˜́̇˸̅˹˴˶˸ʼ
+Symposia and Workshops on Ubiquitous, Autonomic and Trusted Computing
+978-0-7695-3737-5/09 $25.00 © 2009 IEEE
+DOI 10.1109/UIC-ATC.2009.74
+330
+Fig. 4 shows the handoff scenario of the MN using 
+mobile SCTP DAR. We assume that the MN adapts 
+two network cards and has established an association 
+with Internet address 1 (IP1) to correspondent node 
+(CN) via access point 1 (AP1). When the MN moves 
+from AP1 to AP2 and arrives at the overlapped region, 
+it gets IP2 from AP2. This is followed by sending an 
+ASCONF (Add IP Address, IP2) message to the CN to 
+add IP2 to the SCTP association. Upon receiving 
+ASCONF chunk from the MN, the CN responds an 
+ASCONF-ACK to the MN and adds IP2 to keep IP list 
+consistent between two end points. While the MN 
+continues to move toward AP2 and the signal from 
+AP2 becomes strong enough, the MN might need to 
+change the new IP (IP2) as the primary address for the 
+SCTP association. Therefore, the MN sends an 
+ASCONF (Set Primary, IP 2) message to the CN. The 
+CN responds ASCONF-ACK to the MN upon 
+receiving an ASCONF from the MN. 
+ 
+ 
+Figure 4. The handoff scenario using mobile 
+SCTP 
+ 
+ 
+Figure 5. The handoff procedure of mobile 
+SCTP 
+ 
+As the MN keeps moving toward AP2 and if the 
+signal form AP1 becomes too weak to support 
+communications, the MN will delete IP1 from its IP 
+list and send an ASCONF (Delete IP 1) message to the 
+CN. The CN responds ASCONF-ACK to the MN upon 
+receiving an ASCONF from the MN. This will reduce 
+unnecessary heartbeat signals between AP2 and MN. 
+The handoff procedure of the MN using mobile SCTP 
+DAR is shown in Fig. 5. 
+ 
+2.3. Related work 
+ 
+In recent years, lot of scholars conducted research 
+into SCTP and VoIP related issues. One important 
+study focuses on the handoff delay time in handoff 
+process for VoIP applications. This paper proposes a 
+handoff mechanism which internally translates UDP or 
+TCP transport protocol to the SCTP transport protocol 
+for forwarding SIP and RTP messages. The proposed 
+mechanism provides the seamless handoff for using 
+VoIP and other multimedia applications. However, the 
+handoff delay and data transfer during handoff process 
+need to be taken into account. Therefore, related 
+research is addressed next.  
+Yeh et al. [5] focused on the SIP handoff 
+mechanism. They implemented SIP UA and used SIP 
+signal re-INVITE to achieve handoff request. Their 
+experimental results show obvious reduction in 
+handoff delay as compared with NDDS UA [6]. 
+However, the session discontinuity problem due to the 
+change of points of attachment during handoff still 
+exists. 
+Wang et al. [7] proposed an SIP signal to transfer 
+data with PR-SCTP instead of using UDP protocol. 
+They used the lifetime characteristics in PR-SCTP to 
+control the retransmission mechanism and then to 
+avoid unnecessary retransmission of the provisional 
+messages, such as 100 Trying and 180 Ringing 
+messages. However, the implementation will cause the 
+existed UAs incompatible with it. 
+Therefore, to provide seamless handoff for VoIP 
+applications in wireless networks and in the meantime 
+to be compatible with the existed UAs, we designed a 
+handoff mechanism using mobile SCTP DAR for the 
+existed VoIP UAs and applications. We thus 
+implemented an embedded middleware to transfer the 
+SIP signaling and RTP messages from using UDP or 
+TCP to SCTP protocol. This design will solve the 
+above issues for mobile VoIP services. 
+ 
+3. System Design 
+ 
+332
+ASCONF chunk is transmitted via DAR module. 
+(8)DAR: the module is responsible for ASCONF 
+chunk transmission. SIP SCTP Socket and RTP SCTP 
+Socket will add, remove or change SCTP association 
+IP list after the DAR transmission. 
+In Handoff Resolution module, the handoff decision 
+is based on the following two equations, 
+ 
+ 21 .... WNICWNIC SSSS D           (1) 
+ 12
+.... WNICWNIC SSSS D           (2) 
+ 
+where S.S.WNIC1 and S.S.WNIC2 corresponds to the 
+signal strength of number 1 and 2 network interface 
+cards, respectively. Because the signal strength is the 
+major concern in this paper, equation (1) is used if 
+network card number 1 detects a strong signal first. To 
+avoid the handoff ping-pong effect, the weight Į is 
+used in the formula. 
+ 
+4. Evaluation 
+4.1. Experimental environment 
+ 
+Fig. 9 illustrates the test-bed of the experimental 
+measurements for SIP and RTP transmission along 
+with handoff analysis. Linux Ubuntu 7.10 and 6.06 [10] 
+are used for the SIP server and Router operation 
+systems, respectively. We employ the Linux Kernel 
+Stream Control Transmission Protocol (lksctp) [11] as 
+the base of SCTP handoff system. The SIP Express 
+Route [12] and kphone [13] are applied for the SIP 
+server and UA, respectively. The SIP signaling and 
+RTP packets are analyzed via Wireshark [14] packet 
+capture tool. 
+ 
+ 
+Figure 9. Test-bed for the experimental 
+measurement 
+ 
+ 
+4.2. Experimental results 
+ 
+In this paper, we conducted a series of analyses on 
+the proposed SCTP handoff system with the 
+comparison of traditional VoIP system. The 
+measurements focus on the SIP signaling delay, RTP 
+delay, RTP jitter and handoff latency. The SCTP 
+handoff system is expected to provide seamless 
+handoff mechanism with as less cost as possible on 
+transmission delay. 
+Fig. 10 illustrated the SIP register signal delay 
+analysis for traditional VoIP and SCTP handoff 
+systems. The measurements were conducted for one 
+hundred times. From the experimental results, the 
+average SIP register time is 1.205 ms and 1.491 ms for 
+traditional VoIP using UDP system and SCTP handoff 
+SCTP system, respectively. The additional signal delay 
+in SCTP system is because the signal needs to be 
+transformed from UDP to SCTP. The SIP Register 
+delay, regardless of UDP or SCTP cases, however is 
+relative small. 
+ 
+ 
+Figure 10. Register signaling delay analysis 
+ 
+ 
+Figure 11. RTP delay analysis 
+ 
+R o u te r
+A P  1 A P  2
+A P  3
+C N
+S I P  S er v e r
+1 9 2 .1 6 8 . 9 9 .0
+1 9 2 . 1 6 8 .8 8 . 0 1 9 2 . 1 6 8 .7 7 . 0
+1 9 2. 1 6 8 . 6 6 .0
+M N
+334

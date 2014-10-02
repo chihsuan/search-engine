@@ -1,0 +1,498 @@
+ 1
+行政院國家科學委員會補助專題研究計畫期中成果報告 
+嵌入式 DVB-H 接收系統之開發 
+子計畫四：DVB-H 傳輸串流解碼軟體之開發(1/2) 
+計畫編號：NSC 98-2220-E-027-005 
+執行期間：98 年 8 月 1 日至 99 年 7 月 31 日 
+計畫主持人：陳偉凱 
+ 
+計畫參與人員：杜秉穎、李華興、沈政文、王榮麒 
+黃琮聖、倪旻暄、李宗翰、王偉焱 
+王正誠、蘇旭昱 
+國立台北科技大學資訊工程系 
+ 
+摘要 
+行動數位電視技術 DVB-H 在全球及台灣都是目前眾所矚目的焦點，有鑑於
+其重要性，本自由軟體計劃設計與實作 DVB-H 接收系統中所需之傳輸串流
+(Transport stream)解碼軟體。在 DVB-H 接收系統中，傳輸串流層介於接收器之硬
+體與鏈結(LINK)層之間，依據 MPEG-2 與 DVB-H 傳輸串流標準，剖析傳輸串流
+中的節目特定資訊(PSI)與服務資訊(SI)，並將指定的節目解多工(Demux)後傳送
+至鏈結層，做 MPE 與 MPE-FEC 的解碼。本子計劃配合總計劃擬定的進度，已
+實作適用於 Android 平台的傳輸串流解碼軟體。本子計畫以自由軟體方式開發與
+推廣，並將開發經驗與過程提供給業界作為開發 DVB-H 相關產品的參考模型。 
+ 
+關鍵詞：自由軟體、DVB-H、MPEG Transport Stream 
+ 
+Abstract 
+DVB-H is currently one of the most popular digital mobile television 
+technologies around the world. This project develops a DVB-H transport stream 
+software decoder that can be used in a DVB-H receiver. The decoder decodes the 
+received DVB-H transport stream from the hardware module. Based on the standard, 
+the decoder parses PSI (program specific information) and SI (service information) 
+tables and de-multiplexes the target program to DVB-H LINK layer for MPE and 
+MPE-FEC decoding. This project implements the decoder on the Android platform 
+and the decoder is released and popularized as an open-source software component. 
+The experiences serve as a reference model for industries to develop DVB-H related 
+products. 
+ 3
+由 MPEG-2 系統標準[13]所定義的，提供傳輸串流解碼時所需的相關資訊，如節
+目數量、視訊與音訊封包的 PID、解密資訊等；而服務資訊則是由 DVB-H 標準
+[7]所定義的，提供網路資訊、IP/MAC 等其他解碼所需的資訊。DVB-H 使用 10
+個節目特定資訊與服務資訊表格，如表 1 所示。 
+DVB-H 針對解碼的需要，在各種表格中使用了許多的描述器(Descriptor) 
+[2][7]，用來精確地描述各種資訊。例如網路名稱描述器(network_name_descriptor)
+出現在 NIT 表格中，描述實體網路的名稱(例如：公視)，又如 PMT 表格中會出
+現資料廣播識別描述器(data_broadcast_id_descriptor)，而該描述器則會指出 INT
+表格的 PID，供進一步的解碼之用。DVB-H 使用的描述器有 20 個，這些描述器
+並不是可以任意出現在表格中的，因此，傳輸串流的解碼器必須針對特定的表格
+處理特定的描述器，以提升解碼器的穩定性與可靠性，避免當傳輸串流有誤時，
+解碼軟體做出不正確的反應，甚至導致當機。 
+ 
+表 1 提供節目特定資訊與服務資訊的表格 
+類別 PID 表格縮寫 表格全名 
+0x0000 PAT Program Association Table 
+0x0001 CAT Conditional Access Table 
+0x0002 TSDT Transport Stream Description Table 
+節目特定資訊 
+(MPEG-2) 
+0x0010…0x1FFE PMT Program Map Table 
+0x0010 NIT Network Information Table 
+0x0011 BAT Bouquet Association Table 
+0x0011 SDT Service Description Table 
+0x0014 TDT Time and Date Table 
+0x0014 TOT Time Offset Table 
+服務資訊 
+(DVB-H) 
+由PMT指定 INT IP/MAC Notification Table 
+ 
+本年度為本計劃的第一年，目標以解碼軟體在 Android 平台的實現為主，在
+暫時不考慮接收器硬體的情況下，先完成傳輸串流解碼器的主要功能，對於解碼
+功能的測試，則以預錄的傳輸串流檔案(台灣地區試播的 DVB-H 傳輸串流)作為
+輸入，驗證解碼器的正確性。第二年起本計畫會把重點轉移到硬體模組的介接，
+接收實際的 DVB-H 訊號，這部分牽涉到驅動程式設計、硬體與時序控制，是比
+較困難的地方。以下以條列的方式敘述本計劃的目的： 
+¾ 設計與實作傳輸串流解多工器的架構 
+ 同步位元組(sync byte)之搜尋機制 
+ 傳輸封包遺失時之處理方式 
+¾ 依據傳輸串流的標準，剖析傳輸串流中的表格 
+ 設計與實作節目特定資訊(PSI)所需的 PAT, PMT, CAT, TSDT 等四個
+表格解碼器 
+ 5
+元測試、整合測試與驗收測試，為求程式的執行效率，本子系統所有程式均以
+C/C++開發。 
+ 
+三、 系統整合與監控 
+本計畫使用符合 CMMI ML2 的 Scrum 專案流程，因此所有產出物，如程式
+碼及文件等都需要版本控管(使用 Subversion)，並採用總計畫規範的簽入與簽出
+標準，並作為 Sprint Demo 時判斷 Story 及 Task 是否完成的依據。在文件與程式
+碼的撰寫也採用總計畫規範的標準與規範，並將文件與程式碼的 Review 加到
+Technical Backlog 中，於每個 Sprint 的執行中監控所有的產出物。專案初期，搭
+配總計畫的介面討論會議，定義模組間的內部介面與其他子計畫間的外部界面
+(Interface)，因此模組的單元與整合測試必須涵蓋所有內部介面，在子系統的驗
+收測試須涵蓋所有外部介面。 
+四、 成果 
+本計畫採用 Scrum 流程，每月的 Sprint planning 配合總計畫整合進度，建立
+Sprint Backlog，因此開發與測試是交錯進行的。計畫執行至 2010 年 5 月，
+Information Retriever 模組已經完成整個解碼流程所需的四個表格解碼器(PAT、
+PMT、NIT 與 INT)及十四個描述器解碼器(表 2)，並通過單元測試，Input Streamer
+已經通過讀取檔案的測試，Input Stream Buffer 與 Output Stream Buffer 也已經通
+過在 Multi-thread 情境下的測試，Section Parser 已經可以從 Information Retriever
+建立的 PSI 與 SI 資訊過濾並重組 Section 給 LINK 子系統；Façade 模組已完成並
+通過簡單的驗收測試。 
+表 2 已完成的描述器解碼器 
+time_slice_fec target_ip_slash ip_mac_stream_location 
+data_broadcast_id ip_mac_platform_name ip_mac_platform_provider_name
+network_name terrestrial_delivery_system linkage 
+call_list cell_frequency_link service 
+data_broadcast stream_identifier  
+ 
+至目前為止，雖然還有六個表格解碼器與六個描述器解碼器尚未實作完畢，
+但並不影響一般播放所需的功能，且 Information Retriever 已經能正確處理傳輸
+串流，不會因為無法辨識的表格解碼器或描述器而造成系統不正常結束(Crash)。
+在未來剩餘的時間，將繼續完成未完成的解碼器，與其他子系統進行整合，並撰
+寫更多測試案例(目前有 21 個測試案例)以增加程式的可靠度。 
+ 7
+ETSI TS 102 471 v1.2.1 (2006-11) (ESG) 
+[9] Digital Video Broadcasting (DVB); IP Datacast over DVB-H: Content Delivery Protocols, ETSI 
+TS 102 472 v1.2.1 (2006-12) (RTP/FLUTE) 
+[10] Digital Video Broadcasting (DVB); IP Datacast over DVB-H: Content Delivery Protocols (CDP) 
+Implementation Guidelines, ETSI TS 102 591 V1.1.1 (2007-10) 
+[11] G. Faria, J. A. Henriksson, E. Stare, and P. Talmola, “DVB-H: digital broadcast services to 
+handheld devices,” Proceedings of the IEEE, vol. 94, no. 1, pp. 194 - 209, Jan. 2006. 
+[12] ISO/IEC International Standard 11172-1, Information technology – Coding of moving pictures 
+and associated audio for digital storage media up to about 1.5 Mbits/s – Part 1: Systems, first 
+edition, Aug. 1993. 
+[13] ISO/IEC 13818-1, Information technology – Generic coding of moving pictures and associated 
+audio information: Systems, Part 1, April 1996. 
+[14] ISO/IEC 13818-2, Information technology - Generic coding of moving pictures and associated 
+audio information: Video. 
+[15] ISO/IEC 13818-3, Information technology - Generic coding of moving pictures and associated 
+audio information - Part 3: Audio. 
+[16] ISO/IEC 10646-1, Information technology - Universal Multiple-Octet Coded Character Set (UCS) 
+- Part 1: Architecture and Basic Multilingual Plane. 
+[17] M. Kornfeld and G. May, “DVB-H and IP datacast－broadcast to handheld devices,” IEEE Trans. 
+Broadcasting, vol. 53, no. 1, pp.161- 170, March 2007. 
+[18] 楊士萱、尤信程、陳偉凱，「數位電視之多媒體技術」，全華圖書， 2007。 ISBN 
+978-957-21-5914-9。 
+表 Y04 
+行政院國家科學委員會補助國內專家學者出席國際學術會議報告 
+                                                          99 年 6 月 25 日 
+報告人姓名 沈政文 服務機構 及職稱 
+國立台北科技大學 
+資訊工程研究所博士班五年級 
+時間 2010/06/23 – 2010/06/25 會議 地點 Chengdu, China 
+本會核定 
+補助文號  
+會議名稱 2nd International Conference on Software Engineering and Data Mining (SEDM2010) 
+發表論 
+文題目 GUI Test-Case Generation with Macro-Event Contracts 
+ 
+一、 參加會議經過 
+ICIS 2010 (International Conference on Information Sciences and Interaction 
+Sciences) & SEDM 2010 (2nd International Conference on Software Engineering and 
+Data Mining )是由韓國主辦、四川協辦的第二屆國際軟體工程與資料挖掘學術研討
+會 (http://www.aicit.org/icis2010/)，主要收錄 Software Engineering (如 software 
+development、 software testing, test case selection)、及 Data Mining (如 business 
+intelligence、fuzzy neural network、genetic algorithm 等)相關論文，報告方法分為 oral
+及 poster，論文集為由 IEEE 出版 (http://ieeexplore.ieee.org/xpl/mostRecentIssue.jsp?punumber=5510904)，
+提供 EI 和 ISTP 檢索。 
+SEDM 2010 會 議 場 所 舉 辦 在 四 川 省 成 都 市 三 環 路 上 的 望 江 賓 館 
+(http://www.wangjianghotel.com/)，為一間五星級的飯店，位於成都市東隅，距市中
+心天府廣場 5 公里，火車站 9 公里，飛機場 15 公里。這三天行程的吃住都是在望
+江賓館，主要提供中式的自助餐，口味與台灣的還算相似，倒也吃的習慣。 
+我是從 06/23 早上六點多由桃園機場出發，到香港等候轉機，之後才飛到成都
+機場，在機場搭乘計程車至望江賓館，到達會場已經是中午的時間，此時大會已舉
+行完開幕儀式，已經是各領域先進的 keynote 演講。keynote 演講結束之後，已經是
+晚餐時間，之後 check-in 入住房間休息，結束第一天的行程。第二及第三天則是參
+與有興趣的場次，我的論文報告是安排在第三天早上 Session B6 (09:00~10:30)，進
+行 15 分鐘的簡報。由於回程班機的時間關係，因此我報告完自己的論文之後，就
+直接 check-out 離開望江賓館，去成都機場搭機至香港轉機，再回來台灣桃園機場
+已經是晚上七點多了，至此結束這三天的行程。 
+ 
+二、 與會心得 
+參與研討會的論文作者主要是來自台灣、中國、韓國、日本、印度，由於大會
+工作人員為成都「電子科技大學」學生，講的是中文，所以語言溝通上也就方便許
+附件三
+ 
+表 Y04 
+驗。 
+ 
+三、 考察參觀活動(無是項活動者省略) 
+無 
+ 
+四、 建議 
+無 
+ 
+五、 攜回資料名稱及內容 
+ SEDM 2010 研討會論文集電子檔一份 
+ 4 GB USB 隨身碟一份。 
+ 
+六、 其他 
+無 
+ 
+ 
+GUI Test-Case Generation with Macro-Event Contracts
+Woei-Kae Chen and Zheng-Wen Shen
+Department of Computer Science and Information Engineering
+National Taipei University of Technology
+Taipei, Taiwan
+Email: {wkchen, s4599003}@ntut.edu.tw
+Abstract—To perform a comprehensive GUI testing, a large
+number of test cases are needed. This paper proposes a GUI
+test-case generation approach that is suitable for system testing.
+The key idea is to extend high-level GUI scenarios with contracts
+and use the contracts to infer the ordering dependencies of
+the scenarios. From the ordering dependencies, a state machine
+of the system is constructed and used to generate test cases
+automatically. A case study is conducted to investigate the quality
+of the test cases generated by the proposed approach. The results
+showed that, in comparison to creating test cases manually, the
+proposed approach can detect more faults with less human effort.
+Keywords—GUI testing, test-case generation, contract-based
+testing, event contract, system testing
+I. INTRODUCTION
+GUI (Graphical User Interface) testing plays an important
+role in ensuring the correctness of GUI-based applications [1]–
+[5]. A GUI is driven by events. A primitive event is triggered
+when a user interacts with a GUI widget such as a button,
+textﬁeld, etc. Typical primitive events are clicking a button,
+selecting an item from a list, etc. In general, testing a GUI is
+accomplished by developing a set of GUI test cases (or test
+scripts), which are composed of sequences of primitive events
+and assertions. The test cases can be automatically executed
+to test whether the GUI behaves correctly [6]–[9].
+For an application with GUI, it is important to test the GUI’s
+use-case operation scenarios thoroughly, because use cases are
+high-level functions of the application and are a good basis for
+system testing [10]. A sophisticated GUI has a large number
+of widgets and usually supports a lot of use-case operation
+scenarios. In general, testing the correctness of a particular
+operation scenario is accomplished by developing a test case
+that exercises the scenario. However, given 𝑛 distinct operation
+scenarios, the number of legal execution orders of all the
+scenarios can be as large as 𝑛!. It is very difﬁcult to create all
+different combinations of execution orders by hand. Therefore,
+automatic test-case generation approaches are desired.
+Nebut et al. [10] proposed a contract-based approach for
+automatic system testing. The idea is to extend use cases
+with contracts (preconditions and postconditions) so that the
+execution order of the use cases can be inferred automatically.
+They used the ordering information to build UCTS (Use Case
+Transition System), which represents the transitions between
+use cases. A UCTS is like a use-case-level state diagram of the
+software application. It can be used to generate test cases for
+all the valid sequences of use cases to check their consistency
+and correctness.
+This paper extends Nebut et al.’s approach to the case
+of system-level GUI testing. The idea is to replace use-case
+contracts with GUI event contracts, i.e., deﬁne contracts for
+GUI events, infer the ordering of events, build ETS (Event
+Transition System), and then use ETS to generate GUI test
+cases. However, a primitive event is not a good candidate for
+the extension of contracts, because a system testing focuses on
+high-level operation scenarios, not low-level primitive events.
+Fortunately, an earlier work of our research proposed the
+concept of component abstraction [8], which can encapsulate
+high-level GUI operation scenarios in macro events. Therefore,
+extending macro events with contracts becomes an attractive
+approach.
+We propose a method to extend macro events with the
+support of contract deﬁnitions, and describe the algorithms
+that can generate ETS and test cases. We use three GUI-
+based applications to study the quality of the test cases
+generated by the proposed approach. The results showed that
+automatic GUI test-case generation with macro-event contracts
+is feasible, and, in comparison to creating test cases manually,
+the proposed approach can detect more faults with less human
+effort.
+The rest of the paper is organized as follows. Section II
+describes the proposed approach. Section III uses three GUI-
+based applications to study the test cases generated by the
+proposed approach. Section IV discusses related work and
+Section V concludes the paper.
+II. THE PROPOSED APPROACH
+We will introduce component abstraction, macro-event con-
+tracts proposed in this paper, the algorithm that builds ETS,
+and test-case generation algorithms.
+A. Component Abstraction
+Component abstraction [8] is a way of organizing GUI test
+cases (scripts). With component abstraction, an application’s
+GUI is modeled as a macro model consisting of hierarchical
+objects (called macro components), which have attributes
+(states of widgets) and behaviors (called macro events). An
+important characteristic of component abstraction is that high-
+level GUI operation scenarios can be modeled as macro
+events. Therefore, macro events are perfect for the extension
+of contracts. To save space, we will only brieﬂy describe
+component abstraction. Please refer to [8] for more details.
+A group of strongly related widgets in a GUI is considered
+a macro component. For example, the menu of Crossword
+145
+the targets for the deﬁnition of contracts. In general, a tester
+can break an operation scenario into a series of sub-scenarios
+and, conversely, group a few consecutive scenarios into a
+bigger one. Therefore, the number of top-level macro events
+(scenarios) is adjustable. For example, instead of AddWord
+(line 43), BeginAddWord (line 44), SelectSqaure (line
+45), SelectWord (line 46), and AddClue (line 47) can be
+promoted to the top-level and considered as use-case operation
+scenarios. Such a promotion will increase the number of
+top-level macro events and, thus, the number of contracts.
+In Section III, we will study how the number of contracts
+inﬂuences the quality of the test cases generated by the
+proposed approach.
+B. Macro-Event Contracts
+We now present a technique to express the ordering con-
+straints existing between macro events. Each macro event is
+given a contract (i.e., precondition and postcondition) in the
+form of logical expressions, which can be used to infer the
+ordering of the macro events. The technique is similar to the
+use-case contract proposed in [10], but is adapted so that it is
+suitable for GUI testing.
+In a GUI, whether a macro event is executable depends
+on the state of the application. For example, the macro event
+SelectSquare (line 16 of Fig. 3) can only be executed after
+BeginAddWord (line 25). The condition (state) that allows
+the execution of a macro event is called the precondition of
+the macro event. After the macro event is executed, the state
+of the application is changed. The condition of the new state is
+called the postcondition of the macro event. Formally, a macro
+event contract is deﬁned as follows.
+Deﬁnition 1 (Macro event contract): Let 𝐸 be a macro
+event. The contract of 𝐸 is the precondition 𝑃 and postcondi-
+tion 𝑄 such that the execution of 𝐸 must start in a state where
+𝑃 holds and will terminate in a state where 𝑄 holds.
+When the precondition of a macro event 𝑥 satisﬁes the
+postcondition of another macro event 𝑦, 𝑥 can be executed
+after 𝑦. We call such a relationship an ordering dependency
+between macro events.
+To simplify the development of event contracts, we use a
+set of state attributes to represent the state of a GUI. A state
+attribute is an identiﬁer (string) used to indicate a particular
+condition (fact) of a state. For example, the state set {START}
+can be used to represent the initial state of Crossword Sage,
+where START is a state attribute indicating that the application
+has been started. Suppose the macro event AddWord_FOUL
+(line 6 of Fig. 4) is executed to add the word “FOUL” to the
+puzzle, then the state set becomes {START, WORD_FOUL},
+indicating that the application has been started and the word
+“FOUL” has been added. In other words, when a macro event
+is executed and the application’s state is changed, the state
+change is expressed by adding and/or removing state attributes.
+A precondition or postcondition is written in a ﬁrst-order
+logical expression combining predicates with logical operators
+(AND, OR, and NOT). A predicate can be used to assert
+the existence of a particular state attribute. For example,
+1 Component CrosswordSage {
+2 . . .
+3 @PRE e x i s t (NEW PUZZLE) && ! e x i s t (WORD FOUL)
+4 @ACT add (WORD FOUL)
+5 @POST e x i s t (WORD FOUL)
+6 Event AddWord FOUL ( ) {
+7 // Add the word "FOUL" (puzzle of Fig. 1)
+8 AddWord ("5_2_5_5" , "FOUL" ,
+9 "A ball hit out of bounds." ) ;
+10 }
+11 . . .
+12 }
+Fig. 4. The contract of AddWord_FOUL macro event
+TABLE I
+EXAMPLE MACRO-EVENT CONTRACTS FOR CROSSWORD SAGE
+Macro Event Precondition Action Postcondition
+NewPuzzle !exist(S1) add(S1) exist(S1)
+PrintPuzzle exist(S1) exist(S1)
+AddWord BASE exist(S1) && !exist(S2) add(S2) exist(S2)
+AddWord FOUL exist(S1) && !exist(S3) add(S3) exist(S3)
+Note: S1 ≡ NEW PUZZLE; S2 ≡ WORD BASE; S3 ≡ WORD FOUL
+the predicate exist(C) evaluates to true if the current
+state of the application contains the state attribute C. Fig. 4
+shows an example contract (lines 3-5) for the macro event
+AddWord_FOUL. In the example, the precondition (@PRE)
+is that the state attribute NEW_PUZZLE must exist and the state
+attribute WORD_FOUL does not, i.e., a puzzle has been created
+and the word “FOUL” has not been added yet. The postcon-
+dition (@POST) requires that the state attribute WORD_FOUL
+exists, i.e., after the execution of AddWord_FOUL, the word
+“FOUL” has been added to its target position.
+The precondition and postcondition of a contract specify
+the state attributes that are required before and after a macro
+event is executed. In order to make the transition from a
+certain precondition to its postcondition explicit, a macro event
+contract also includes an action (@ACT) statement, which uses
+add and remove operators to manipulate state attributes.
+For example, the ACT statement (line 3) in Fig. 4 means
+that when AddWord_FOUL is executed, a new state attribute
+WORD_FOUL is added to the state set of the application.
+Therefore, the postcondition is satisﬁed.
+Table I shows the contracts of four macro-events for Cross-
+word Sage. The contracts are very simple, but enough to reveal
+the ordering dependencies between these macro events. For
+example, no macro events can be executed before the execution
+of NewPuzzle; PrintPuzzle can be executed even if no
+words have been added (an empty puzzle can be printed); the
+same word can not be added twice. A directed graph showing
+the ordering dependencies of the macro events is given in
+Fig. 5. The algorithm that produces such a graph will be
+described in the next subsection.
+C. ETS: Event Transition System
+Deﬁning contracts for each macro event allows the ordering
+dependencies among macro events to be inferred. A represen-
+tation of the valid transitions of the macro events can be built
+147
+TABLE II
+BASIC INFORMATION AND TEST CASES OF THE AUTS
+WP CS SM
+Basic Information
+LOC 1508 7991 12796
+Primitive Events 81 126 302
+Manual (test cases prepared manually)
+Test Cases 44 39 430
+Total Size 1046 656 4996
+High (test cases generated from High model)
+Operation Scenarios 27 28 33
+ETS States 1024 2337 609
+ETS Transitions 768 13394 91033
+Test Cases 512 1168 3024
+Total Size 24576 33872 347088
+Low (test cases generated from Low model)
+Operation Scenarios 5 7 13
+ETS States 32 48 144
+ETS Transitions 80 128 416
+Test Cases 16 24 72
+Total Size 2352 2736 20708
+ETS. The results, called High test cases and Low test cases,
+are shown in Table II. For example, SM’s High test cases has
+33 operation scenarios (contracts), from which an ETS with
+609 states and 91033 transitions is produced; and the ETS is
+used to generate 3024 test cases that contains a total of 347088
+primitive events.
+From Table II, a High model ETS is signiﬁcantly larger
+than a corresponding Low model ETS and, not surprisingly,
+the size of the generated test cases shares the same trend. In
+comparison to Manual test cases, both High and Low test cases
+have a much larger size. For example, the total size of SM’s
+High test cases is 63 (347088 ÷ 4996) times larger than its
+Manual test cases. Therefore, in terms of size, the proposed
+approach does produce larger test cases, and to manually create
+test cases of comparable size is obviously expensive.
+The results of Table II indicated that using the proposed
+approach is practical and a large number of GUI test cases
+can be generated. However, do the test cases detect faults?
+We will address this question in the next subsection.
+B. Fault Detection
+We use mutation [22], [23] technique to evaluate the quality
+of each set of test cases. The process is outlined in Fig. 6. A
+mutant generator is used to generate a number of mutants from
+each AUT. Each mutant is a copy of the AUT with an injected
+fault. The original AUT is considered a defect-free (golden)
+version and its mutants are defective ones. We use the original
+AUT to obtain the test oracle (expected results) of the test
+cases. Each test case is executed on each mutant. A mutant
+is killed if there is a mismatch between the mutant’s GUI
+state and the corresponding test oracle. Therefore, a set of test
+cases is considered better when it can kill more mutants. The
+number of killed mutants for each set of test cases is recorded.
+The fault-detection rate for a set of test cases is computed as:
+fault-detection rate =
+number of killed mutants
+total number of mutants
+Fig. 6. The process of mutation analysis
+TABLE III
+THE NUMBER OF MUTANTS FOR EACH AUT
+Mutation type WP CS SM
+AODU 10 NA NA
+AOIS 10 10 10
+AOIU 10 10 10
+AORB 10 10 10
+AORS 10 10 10
+ASRS 10 NA 10
+COI 10 10 10
+COR 10 NA 10
+LOI 10 10 10
+ROR 10 10 10
+TOTAL 100 70 90
+We use MuJava [24], a popular mutant generator, to produce
+mutants. To keep the overall test-case execution time within a
+reasonable time period, the total number of mutants must be
+limited. Our choice was to randomly take 10 mutants from all
+the different mutation types supported by MuJava. However,
+depending on the nature of the AUT’s source code, some types
+of mutants are not available. Overall, a total of 100, 70, and
+90 mutants are generated for WP, CS, and SM, respectively.
+Table III shows the types and the number of mutants used in
+our experiments.
+Table IV shows the experimental results, including the
+number of mutants that are killed and the fault-detection rate
+for each set of test cases. For example, CS’s High test cases
+killed 63 out of 70 mutants, i.e., a fault-detection rate at about
+90% (63/70). From Table IV, for all three AUTs, Manual
+test cases detected less faults. Fig. 7 uses Venn diagrams to
+illustrate the relationships of the faults detected by the three
+sets of test cases. From Fig. 7, a mutant killed by Manual
+test cases is always killed by High test cases, and almost
+always killed by Low test cases (with two exceptions shown
+in Fig 7(a)). The results suggested that, in comparison to
+preparing test cases manually, the proposed approach is highly
+effective in detecting faults.
+In the experiments, all faults detected by Low test cases
+149

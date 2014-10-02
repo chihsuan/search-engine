@@ -1,0 +1,401 @@
+I 
+ 
+摘要：經歷數十年驚人的成長，單執行緒處理器的效能在許多應用上已顯露疲態，遭遇到
+熱障礙及 ILP 障礙，半導體業界紛紛投入多核心處理器範式的研發，試圖善加利用摩爾定
+律所提供指數成長的電晶體。在未來，所有的處理器都將以多核的型式出現，所有的電腦
+都是大規模平行電腦，所有的程式都將是平行程式，這對現有的應用軟體程式設計師是一
+大挑戰。在本計畫中，我們將利用因數分解做為基準應用，詳細檢視幾個具有潛力的大規
+模平行電腦架構，包括 NVIDIA CUDA、IBM Cell Broadband Engine、以及即將問世的
+Intel Larrabee、及業界標準 OpenCL。我們將探討關鍵的抽象觀念，如執行緒的階層組織、
+晶片上的共享記憶體、同步機制等，並將研究這些觀念如何幫助產生良好的程式設計技術
+以提供精確的硬體觀念模型，將硬體架構設計上最重要的決定與特點，明白地顯露出來。
+另一方面，好的程式設計技術也應將不重要的枝微末節隱藏起來，盡量將單調無趣的工作
+自動化，減少程式設計者的負擔。我們選擇因數分解做為基準應用，除了因為因數分解牽
+涉到大量資料流動與多樣化的算數運算，對處理器架構設計帶來極大的挑戰外，本身也是
+一個異常重要的破密方法。舉例來說，RSA 加密演算法需要用到很難分解的大整數，目前
+最有效的攻擊方法為 NFS 因數分解法，這個方法的有效性直接影響了資訊安全界對 RSA
+金鑰長度的建議，所以因數分解方法是非常重要的研究。
+關鍵字：多核心處理器、因數分解
+1 
+ 
+一、前言
+網際網路商業憑依公鑰加密結構來確保安全，也就是說安全性都建立在幾個主要的加密演
+算法。其中，最主要的加密演算法是 RSA (Rivest-Shamir-Adleman)演算法，將安全建立在
+分解兩個大質數乘積的困難性。在過去的幾十年間，非常多重大的發展都跟分解質數乘積
+有關。其中，NFS(Number Field Sieves)是目前主要用來分解 RSA 乘積的演算法，目前已
+經締造了許多新近的分解紀錄，包括了 1000-bit 數字分解以及 RSA-768。
+ECM 在現代的 NFS 當中，是非常重要的子程序。它是由 H. Lenstra 在二十年多前公諸於
+世的演算法。這個是個平行化而且非常節省空間的演算法，因此是今天用來對 1060以下的
+因數。ECM 多年來透過使用更好的曲線以及更快速的方程式表示法，來加速橢圓曲線的
+算術運算。
+Cell 處理器是在 2005 年由 Sony，Toshiba 以及 IBM 一起對外公開的。從最近的 500 強與
+500 最環保超級電腦排名內，Cell 處理器因為同時有高速運算能力以及極佳的省電能力，
+因此在兩個排行榜上都榜上有名。每個 Cell 處理器都包還了一個 Power Processor
+Element(PPE)以及八個同步處理的 Synergistic Processor Elements(SPEs)，通通都用具有相
+當寬廣頻寬的 Element Interconnection Bus(EIB)相連接。SPE 是特殊設計並且調校用來處理
+多媒體以及科學運算，因此擁有了兩條管線，相當大的暫存器，以及高速的 DMA 處理器。
+我們的研究發現這樣的設計對於大量整數處理應用例如 ECM 也是相當有幫助的。我們的
+實驗結果支持了這樣的論點:根據我們的 ECM 實作結果，最新的 PowerXCell 8i Cell 處理
+器可以每秒處理 2862 條針對 192-bit 整數的橢圓曲線。跟現存的成果做比較，目前最佳的
+結果，透過使用 NVIDIA GTX 295 作為運算單元，每秒可以處理 401 條針對 280-bit 整數
+的橢圓曲線，也就是大約 852 條 192-bit 的橢圓曲線換算。
+二、研究目的
+在本計畫中我們在 Cell 處理器上面實作橢圓曲線整數分解法(ECM)。ECM 通常被認定為
+尋找中等大小的質數(230~2100)的最佳方法。一個良好的 EMC 實作將會是針對諸如 RSA 之
+類的安全系統進行安全性評估的重要關鍵，特別是今天我們主要用來攻擊 RSA 的主要方
+法如 NFS 依賴著 ECM 之類的整數分解法。我們利用 ECM 作為效能評估標準，並在這樣
+的過程當中了解 Cell 處理器的特殊設計，包括了寬廣的運算導線、額外的導線設計來處理
+排程工作、以及大量的同晶圓記憶體，對於整數處理應用的效能評估有怎麼樣的好處。而
+也因為這些特殊設計，我們的 ECM 實作在 PowerXCell 8i Cell 處理器上面勝過了所有現存
+文獻的硬體平台實作，包括利用了圖形處理單元(GPU)的版本。舉例來說，與現存的最佳
+已公開結果，在 NVIDIA GTX 295 上面的實作表現，我們的結果大約是他們的絕對速度的
+3 
+ 
+顯示卡透過高度平行化的設計達到了高度的總吞吐量。以 NVIDIA GeForce GTX 295 顯示
+卡當作例子，這張顯示卡上面有 480 個”cores”用 1.242GHz 的時脈在運行。雖然通常顯
+示晶片是設計來處理浮點運算，但是前人的言教已經顯示這樣的平行運算對於 ECM co-
+factorization in NFS 也是相當適合的。
+Bernstein 等人的研究同時也顯示了因為顯示晶片因為 on-die 記憶體的量非常有限，通常顯
+示晶片只好被強迫使用單一的資料集合，因此表示了大量的執行序間同步冗餘。而在本篇
+論文接下來的部分，我們將會看到因為 Cell 處理器具有更大量的高速 on-die 記憶體可供各
+執行序進行運算，因此他們擁有更好的 ECM 計算表現。
+Cell 處理器是由 Sony，Toshiba 以及 IBM 在 2005 年合作開發出來的晶片。每個 Cell 處理
+器是由一個 PPE，八個 SPEs 透過具有非常大頻寬的 EIB 連接起來，每個處理器核心以
+4GHz 的時脈運作，EIB 則是該時脈的一半。EIB 並不只是連接 PPE 以及 SPE，他還擔負
+起記憶體以及 IO 控制器的工作。EIB 是由四個 ring 所購藤，每個都支援多重同步傳輸。
+PPE 則是一個比較傳統的 PowerPC 處理器，裡面具有 2 個階層的 on-chip 快取，多執行序
+能力，以及向量多媒體擴充指令。PPE 的主要工作是用來運行一個作業系統。
+每個 SPE 則是由一個 Synergistic Processor Unit(SPU)以及一個記憶體控制單元(MFC)所構
+成。SPU 的運作基本上跟 RISC 處理器類似，主要是計算用。每個 SPU 都有一個 SIMD(單
+指令多重資料源)單元，讓他擁有整數與浮點的多重長度向量運算能力。SIMD 單元也是非
+常重要的高效能運算工具。
+每個 SPU 都擁有一個 256KB 的快取，用來儲存指令以及執行程式所需要使用到的資料。
+指令與資料都需要再發送 DMA 指令到 MFC，然後搬運到快取以後才能使用。MFC 在這
+裡的作用與 DMA 處理器類似，並且處了關於近觀 SPE 核心與其他核心，主記憶體，以及
+IO 控制器之間的溝通。在這裡透過使用 DMA 讓記憶體頻寬可以有效的被使用，並且確保
+了運算與通訊可以同時進行。
+每個 SPU 都擁有一個 128-entry, 128-bit 寬的暫存器。所有的運算元類型都儲存在一個獨立
+的暫存器檔案。每個 SPU 都有兩個循序的管線，稱呼為 even 與 odd 管線。因此可以在一
+個 cycle 內完成兩個指令。這兩條管線處理的指令類型並不相同，如 Figure2 所顯示。粗略
+來說，數值運算將會使用到 even 管線，而存取快取(包括位址計算)將會使用 odd 管線。
+SPU 裡面的邏輯運算單元是設計用來支持 128-bit 寬的 SIMD 運算，因此每個 cycle 裡面
+CLU 都可以平行處理最多 8 個 short 整數運算，四個單精度浮點運算，或者是兩個雙倍精
+度浮點運算。這些 ALU 同時也內建了乘-加運算指令，對於許多信號處理運用是相當有用
+的。但是，我們必須提出這接 ALU 並不知元 32-bit 的 SIMD 整數乘法，一個簡明的證據
+關於這些 ALU 並非設計來做大量的整數處理運算。
+5 
+ 
+的雙重緩衝機制讓計算行為與資料交換動作同時進行。因此，我們的 ECM 實作理論上可
+以使用各種 window 的大小。這樣做可以大幅的加速。
+ECM 的核心運算是針對特定大小的整數進行模運算。在我們的實作裡面，我們使用一個
+浮點陣列來表示一個巨大的整數。在任何情況下，我們都只使用陣列中的浮點數表示法當
+中的 mantissa 來計算，所以所有的計算都是確切，而不會有進位誤差等。
+PowerXCell 8i 處理器擁有較佳的完全管線化設計來處起雙精度浮點運算，讓我們在處理磨
+運算上有相當的優勢。但因為在原本的 Cell 處器上面雙精度的吞吐量過低，因此在這裡我
+們還是採用單精度浮點運算。
+對於用浮點運算來實作巨大整數模運算，主要的工作將會落在控制所有運算當中的近位動
+作，藉此維持在運算當中所有結果都是精確的。對於 IEEE-754 標準的單精度浮點運算來
+說，我們如果將所有的運算符控制在 223 到 2-23 之間就可以維持計算結果的精確，而雙精
+度的情況則是 252到 2-52之間。
+為了要避免在多精度整數乘法的部分積產生越位，我們選擇使用略小於 IEEE-754 所規範
+的浮點數最大數值的一半作為半徑。我們同時也希望有一些多餘的空間讓我們可以將一些
+部份積先加在一起處理，之後再來將他們減縮到正常的範圍內。因此，我們使用的半徑為
+29 來實作單精度浮點運算，224 作為雙精度浮點運算的半徑。因為我們希望專注在分解約
+在 200-bit 左右的數字，也就是說單精度的情況下 198-bit modulus in 22 limbs，192-bit
+modulus in 8 limbs 來處理雙精度浮點運算。
+在 ECM 運算當中，加法、減法跟乘法都是同餘於 N，N 逮比的是要被分解的數。我們決
+定使用 Montgomery 法來避免計算模運算的時候需要用到的減法嘗試。使用 Montgomery
+法的時候，加法與減法做 N 同餘是非常直觀的，因為我們可以直接對兩個運算符作加減動
+作。在此我們附註其實在這邊我們可以忽略一些收斂回主運算區間的動作，因為我們儲存
+的資料結構有預留了一些空間。
+至於乘法模運算則是更複雜的情況，因為這牽扯到了一個乘法動作後需要進行收斂動作。
+對於乘法階段，課本告訴我們有許多更先進的演算放，像是 Karatsuba 乘法，當 limbs 的數
+目處於我們所鎖定的範圍內時可以輕易地超越課本上面提的的單純做法。但是，實際上課
+本的標準做法卻可以良好的使用 Cell 處理器原生的乘後加指令，因此我們選擇使用一般計
+算機結構課本的作法。
+模乘法運算的第二階段是關於同餘的收斂。在 Montgomery 同餘收斂的多精度版本下，我
+們將會把 C 的下半部照順序去除掉，因此在畫檢步驟之後，C 剩下的高位部分將會包含了
+Montgomery乘法的結果。
+7 
+ 
+在我們針對整個 ECM 第一階段在 Cell 處理器上面的效能做評估之前，我們先針對
+Montgomery 模乘法的效能做討論，因為這是 ECM 第一階段所會遇到的主要效能瓶頸運算
+動作。如果我們之前所提到的，關於 limb 的型態有兩種主要的實作，也就是單精度跟雙
+精度的浮點運算。兩種運算各有不同的暫存器需求以及 SIMD 使用策略。為了要把資料相
+依性 stall 隱藏起來，我們將數個曲線的計算合併到一個在各 SPE 上運行之獨立執行序。
+我們將這個策略稱呼為”synchronous software multi-threading”。
+結果顯示如果有足夠多的處理器內暫存器可供使用，synchronous software multi-threading
+確實有效地降低了只擁有簡單的循序性管線的處理器所產生的相依性 stall 問題。針對雙精
+度浮點運算的情況，需要 8 limbs 來儲存一個 192-bit 的數字，單精度則是需要 22 limbs 來
+儲存同樣的數字。因此，使用雙精度的情況下我們可以有更多空閒的暫存器，並利用這些
+暫存器進行 synchronous software multi-threading 策略而降低相依性 stalls。
+Dual-issue 率以及存取指令數在不同的組態下有相當大幅度的壁畫。當暫存器的數量不足
+以儲存所有用來最內層迴圈的計算資料時，必須插入其他的存取指令來存取這些資料。因
+此，dual-issue 率將會上升，因為運算以及存取指令使用了 SPE 內不同的管線。在雙精度
+的情況下，當我們和量三個 2-way SIMD 動作時，dual-issue 率從 3.5%上升到 10%。相較
+之下，因為單精度需要更多的暫存器，因此 dual-issue 率在五們將三個 4-way SIMD 運算
+合併在一起後從 5%大幅度的上升到 66%，一個非常明顯的暫存器不足指標。
+ALU 使用率則是計算效率的指標。輔助管線不只可以協助資料的存取，也可以負擔位址
+寄宿的工作，因此在編譯器的協助下輔助管線也扮演了類似 prefetch 的工作。實驗結果顯
+示，在擁有大的暫存器檔案協助下，SPE 的雙管線設計可以有效的在我們的實作裡面將資
+料相依 stall 隱藏起來，從而得到在 ECM 第一階段可以有相當高的 ALU 使用率。
+我們在此附註，雖然 float(4,2)擁有比起 float(4,1)更好的模乘法效能，前者很不幸地使用了
+過多的暫存器，因此效能的增長被我們實作的其他部分當中所需要的資料造成的大量資料
+存取所抵銷。因此，我們已 float(4,1)以及 double(2,5)作為我們在 ECM 第一階段的最佳選
+擇，也就是說在單精度的情況下各個 SPE 同時計算四條曲線，以及雙精度時同時在各 SPE
+計算十條曲線。
+我們的實作使用了 SPE 的 MFC 載入在主記憶體裡面預先計算的點，因此 signed sliding
+window 的大小可以非常的大。這讓我們可以非常有效的降低 group addition 運算的次數，
+透過在預先計算好的點來取代。而如果 B1的值增加，更大的 window 大小的好處就會更明
+顯。
+ECM 計算的主要瓶頸是多精度整數乘法的計算。所有我們用來比較的實作所使用的教科
+書乘法在最內層迴圈的複雜隊將會隨著乘法符的位元數增加而二次成長。因此，我們需要
+9 
+ 
+六、參考文獻
+[1] K. Aoki, J. Franke, T. Kleinjung, A. Lenstra, and D. Osvik,“A kilobit special number field
+sievefactorization,” in Proceedings of ASIACRYPT 2007, (Kuching, Sarawak, Malaysia),
+December 2007.
+[2] T. Kleinjung, K. Aoki, J. Franke, A. K. Lenstra, E. Thom´e, J. W. Bos, P. Gaudry, A.
+Kruppa, P. L. Montgomery, D. A. Osvik, H. te Riele, A. Timofeev, and P. Zimmermann,
+“Factorization of a 768-bit RSA modulus.” Cryptology ePrint Archive, Report 2010/006, 
+2010. http://eprint.iacr.org/2010/006.
+[3] H. W. Lenstra, “Factoring integers with eliptic curves,” TheAnnals of Mathematics, vol.
+126, no. 3, pp. 649–673, 1987.
+[4] D. J. Bernstein, T.-R. Chen, C.-M. Cheng, T. Lange, and B.-Y. Yang, “ECM on graphics 
+cards,” in Proceedings ofEUROCRYPT 2009, (Cologne, Germany), April 2009.
+[5] “50 largest factors found by ECM.” htp:/www.loria.fr/~zimmerma/records/top50.html.
+[6] H.-C. Chen, C.-M. Cheng, S.-H. Hung, and Z.-C. Lin, “Integer number crunching on the 
+Cel processor,” to appear in the 39th International Conference on Paralel Processing (ICPP 
+2010), San Diego, CA, USA, Sept. 2010
+[7] N. Costigan and M. Scot, “Accelerating SSL using the vector processors in IBM’s Cel 
+Broadband Engine for Sony’s Playstation 3.” Cryptology ePrint Archive, Report 2007/061,
+2007. http://eprint.iacr.org/2007/061.
+[8] D. J. Bernstein, P. Birkner, T. Lange, and C. Peters, “ECM using Edwards curves.” 
+Cryptology ePrint Archive, Report 2008/016, 2008. http://eprint.iacr.org/2008/016.
+[9] H. M. Edwards, “A normal form for eliptic curves,” Buletin of the American Mathematical 
+Society, vol. 44, no. 3, pp. 393–422, 2007.
+[10] D. J. Bernstein and T. Lange, “Faster addition and doubling on eliptic curves,” in 
+Proceedings of ASIACRYPT 2007, (Kuching, Sarawak, Malaysia), December 2007.
+[11] D. J. Bernstein, P. Birkner, T. Lange, and C. Peters, “Optimizing double-base elliptic-curve
+single-scalar multiplication,” in Proceedings of INDOCRYPT 2007, (Chennai, India),
+December 2007.
+[12] D. J. Bernstein and T. Lange, “Inverted Edwards coordinates.” Cryptology ePrint Archive, 
+Report 2007/410, 2007. http://eprint.iacr.org/2007/410.
+[13] D. J. Bernstein and T. Lange, “Analysis and optimization of elliptic-curve single-scalar
+multiplication.” Cryptology ePrint Archive, Report 2007/455, 2007. 
+http://eprint.iacr.org/2007/455.
+[14] H. Hisil, K. K. Wong, G. Carter, and E. Dawson, “Faster group operations on eliptic curves.” 
+Cryptology ePrint Archive, Report 2007/441, 2007. http://eprint.iacr.org/2007/441.
+[15] P. L. Montgomery, “Modular multiplication without trial division,” Mathematics of 
+Computation, vol. 44, no. 170, pp. 519–521, 1985.
+[16] “IBM full-system simulator for the Cel Broadband Engine processor.” 
+http://www.alphaworks.ibm.com/tech/cellsystemsim/.
+1國科會補助專題研究計畫項下出席國際學術會議心得報告
+日期：99 年 9 月 20 日
+計畫編號 NSC 98－2221－E－002－117－
+計畫名稱 大規模平行電腦於因數分解之應用
+出國人員
+姓名
+鄭振牟
+服務機構
+及職稱
+國立台灣大學電機系助理教授
+會議時間
+98 年 9月 6日至
+98 年 9月 10 日
+會議地點
+瑞士洛桑
+(Lausanne, Switzerland)
+會議名稱
+(中文)第十一屆密碼硬體暨嵌入式系統研討會
+(英文)Workshop on Cryptographic Hardware Embedded Systems 2009
+發表論文
+題目
+(中文)
+(英文) Fast exhaustive search for polynomial systems in F2
+附件四
+3Illinois at Chicago, USA)的本斯汀教授(Professor Daniel J. Bernstein)、蘭格
+教授、以及筆者本人所組成的研究團隊，在自由發表會上發表了簡短的
+演說，向與會者報告了本研究團隊近期在顯示卡上進行高速橢圓曲線質
+因數分解計畫的研究近況。
+9/9 早上 8:45 參加 CHES 2009 第三天的議程。下午 4:00 大會議程結束後，
+恰逢中研院楊柏因博士由義大利比薩 (Pisa, Italy)參加完 ISC 2009
+(Information Security Conference 2009)、抵達洛桑，與筆者一同前往參加
+同在瑞士聯邦理工學院舉行的SHARCS’09。晚間則於瑞士聯邦理工學院
+參 加 大 會 晚 宴 ， 與 大 名 鼎 鼎 的 Professor Arjen Lenstra (EPFL,
+Switzerland)、Professor Christof Paar (Ruhr-Universität Bochum, Germany
+and University of Massachusetts at Amherst, USA)、以及去年應邀來台的
+Dr. Thorsten Kleinjung (EPFL, Switzerland)同席，大家相談甚歡。
+9/10 早上 9:00 與楊博士前往參加SHARCS’09 第二天的議程。中午 12:00，楊
+博士代表由楊博士本人、本斯汀教授、蘭格教授、以及筆者所組成的研
+究團隊，發表了三十分鐘的演說，向與會者報告了本研究團隊如何利用
+有限的預算，打造一部具有每秒鐘超過十億次模乘法 (modular
+multiplication)運算能力的個人電腦。下午五點鐘，大會正式結束。
+9/11 早上 8:17 從洛桑搭乘火車至日內瓦機場，上午 11:05 搭乘瑞士國際航空
+第 2809號班次，經由蘇黎世機場與上海浦東機場，於隔日(9/12)下午 12:55
+返回台灣。
+二、與會心得
+CHES 是每年硬體相關密碼學界的年度盛事，許多頗負盛名的學者研究人員都會
+出席，共襄盛舉。第一天第一場演講，是由今年共同獲得最佳論文獎、Emilia
+Käsper 和 Peter Schwabe 共同發表的 Faster and Timing-Attack Resistant AES-GCM，
+由來自比利時荷蘭語魯汶大學的 Käsper 負責報告，獲得了全場的掌聲。這篇最
+佳論文的另一位作者、來自荷蘭艾因多分科技大學的 Schwabe，是筆者長期的朋
+友，曾於去年度訪台，是密碼學界新興之星。隨後筆者向大會報告了筆者與辛辛
+那提大學丁津泰教授、以及中研院楊柏因博士團隊最新的研究成果。
+第一天下午兩場講習，是有關 side-channel analysis，第一場是關於對稱式金鑰系
+統，第二場則是關於非對稱式金鑰系統。第二天第一場講習延續前一天的主題，
+是關於 side-channel analysis 與 fault analysis 的防制方案(counter measure)。這類題
+目不但是CHES主軸之一，也是目前當紅的研究主題，值得國內學者進一步投入。
+台灣在積體電路設計相關領域研發能量向來充沛，且成果異常豐碩，對這兩個研
+究主題將具有相當大的優勢，值得我們進一步投資，假以時日必能在此領域的研
+究達到世界一流的水準。在結束了第一天緊湊而又豐富的議程後，與會者搭乘巴
+5造價也不高，但研發費用可能數倍於其造價。相較於國外研究單位在經費上所獲
+得充裕補助，國內研究團體在經費的使用上不但要斤斤計較，且時常顯得捉襟見
+肘。我國政府實在應該挹注更多的研究經費，讓學者能心無旁鶩的致力於其領域
+的研究上，以達事半功倍之效，早日躋身於國際一流研究之列。
+第二場講習則專注於用於解橢圓曲線上離散對數問題(elliptic-curve discrete
+logarithm problem, or ECDLP)的特殊硬體，第一場是地主 EPFL 的博士班學生
+Joppe W. Bos 所報告、他們怎麼利用 Sony PlayStation 3 (PS3)上面豐沛的運算資
+源來執行 Pollard Rho 演算法。接下來是筆者長期的研究伙伴、荷蘭艾因多分科
+技大學的蘭格教授所率領的團隊報告他們在各式各樣的硬體上實作破解
+Certicom ECC2-X 挑戰的現況。
+第二天的議程則包括了美國伊利諾大學芝加哥分校的本斯汀教授所講授、破除一
+般大眾對量子電腦尋找雜湊函數碰撞(hash function collision)能力的錯誤印象。他
+提到，量子對質因數分解與離散對數問題的確威力強大，但是對於後量子密碼學
+與對稱式金鑰密碼系統的破解並不比傳統電腦要來的厲害。他舉尋找雜湊函數碰
+撞為例，量子電腦能夠在 O(n1/3)的時間內找到雜湊函數的碰撞，但是傳統電腦上
+已有更有效率、在 O(n1/4)的時間內就可找到碰撞的演算法。中午 12:00，楊博士
+發表了三十分鐘的演說，向與會者報告了本研究團隊如何利用有限的預算，打造
+一部具有每秒鐘超過十億次模乘法(modular multiplication)運算能力的個人電腦。
+下午 5:00，大會在第二場有關 Copacobana 的演講後正式結束。
+三、建議
+Side-channel attack 以及 fault analysis 是目前當紅的研究主題，值得國內學者進一
+步投入。台灣在積體電路設計相關領域研發能量向來充沛，且成果異常豐碩，對
+這兩個研究主題將具有相當大的優勢，值得我們進一步投資，假以時日必能在此
+領域的研究達到世界一流的水準。
+此次參與 CHES 2009，發現資訊安全硬體產業正蓬勃發展，建議應該將類似的會
+議資訊提供給國內相關業者作為參考，以利有興趣的業者能有機會進入該產業。
+相較於國外研究單位在硬體經費上所獲得充裕補助，國內研究團體在經費的使用
+上不但得要斤斤計較，且時常顯得捉襟見肘。現代研究團隊所競爭的不再只限於
+軟體上，更有一大部分在於硬體設備上，建議政府實在應該挹注更多的研究經費
+於相關硬體設施的購置上，讓學者能心無旁鶩的致力於其領域的研究上，以達事
+半功倍之效，早日躋身於國際一流研究之列。
+四、攜回資料名稱及內容
+CHES 2009 會議論文集 CD 一張。
+1一、參加會議經過
+本次參加 FSE2010 的目的為進行密碼學方面的國際交流，並向與會密碼學家報
+告本研究團隊的研究近況。
+2/4 於早上 8:10 由台灣桃園機場搭乘中華航空 (China Airlines)第 160 班
+次，於當日 11:00 飛抵韓國首爾(Seoul)仁川機場(Incheon Airport)。
+2/5-6 與筆者合作夥伴、來自荷蘭 Technische Universiteit Eindhoven 博士生
+Peter Schwabe 見面會商合作研究事宜。
+2/7 參加 FSE 2010 於韓國酒店(Koreana Hotel)所舉辦的歡迎酒會。
+2/8 參加 FSE 大會第一天議程。
+2/9 參加 FSE 大會第二天議程，下午並於自由發表會(rump session)上向與
+會密碼學家報告本研究團隊的研究近況。晚上於三清閣(삼청각)參加
+大會晚宴。
+2/10 參加 FSE 大會第三天議程。
+2/11 於下午 1:00 由韓國仁川機場搭乘中華航空第 161 班次返回台灣，因大
+雪之故，延遲至下午 6:00 方飛抵台灣桃園機場。
+二、與會心得
+揭開今年 FSE 序幕的是來自德國 Technische Universität Darmstadt 博士生 Erik
+Tews 對 DECT 系統(Digital Enhanced Cordless Telecommunications, or Digital
+European Cordless Telephone before 1991)所做的攻擊。Tews 本人是享譽已久的破
+密專家，曾於 2008 年底應邀至台灣訪問。DECT 是目前全球最為廣泛使用、室
+內無線電話的標準，因此今年 FSE 大會將破解 DECT 的論文排在第一場發表。
+DECT 密碼系統的破解，說明了歷史不斷重演，總是有些標準的制定者或系統設
+計者錯誤地把密碼系統安全性根基於對於密碼演算法的保密。這樣的秘密無法保
+障密碼系統的安全性，Tews 團隊將 DECT 密碼晶片磨開，用顯微鏡進行逆向工
+程，還原出該密碼的建構方式，由建構方式再加上軟體直接模擬密碼演算法，在
+現代強力的 GPU 之下，大概只消兩個小時就可以破解出該密碼系統使用的金
+鑰。
+第一天上午另一場重頭戲，今年 FSE 大會請到了鼎鼎大名、中國山東大學及清
+華大學的王小雲教授。這是筆者第一次見到這位名人的盧山真面目。王教授演講
+3第二場演講由 Orr Dunkelman 說明了如何使用了類似 DES 中有 complementation
+特性的破密攻擊。年輕新銳學者 Dunkelman 博士目前就職於以色列 Weizmann
+Institute，他的論著經多次刊登於 Asiacrypt、Eurocrypt、FSE，是目前世界上少
+數的對稱式密碼(symmetric cipher)之破密權威之一，也多次應邀來台訪問，與台
+灣密碼學界交情深厚。Dunkelman 博士解釋，很多密碼系統(包括 AES)都被發現
+有這種類似 complementation 的性質。他首先展示了一些這樣的性質，然後討論
+怎麼用來攻擊真正的密碼，例如一些 SHA-3 candidates，包括 Lesamnta、PURE、
+以及 ESSENCE。
+三、建議
+今年 FSE 與會有許多來自歐美日韓的博士班研究生，他們認為參加一流的研討
+會絕對是進步的最佳方法之一。現在網路科技發達，資訊安全日益重要，密碼學
+的重要性與日俱增，迫切需要國內科研界大力的支持。台灣密碼學界發展歷史相
+對短，但人才輩出，實在相當難能可貴。可惜台灣科研界制度僵硬，估量科研成
+果方法，僅看 SCI 論文產出數量，非常輕視會議論文，而密碼學界的生態，正好
+反其道而行：因為研究成果不斷推陳出新，非常重視具有時效性的會議論文。國
+際密碼學協會每年舉辦七場國際性密碼相關會議，每場會議皆採用雙盲審查
+(double-blind review process)，過程異常嚴謹，決不下於頂尖國際期刊；因此品質
+極高，所有近年來重大的密碼學進展，多由這七場國際性密碼相關的會議中產出。
+協會歷年來皆委託 Springer 出版社，將這七場會議的論文集結成冊，收錄在
+Lecture Notes in Computer Science 系列中。不幸的是，這個系列因為過於龐雜，
+內容難免良莠不齊，因此遭到 SCI 除名，這連帶嚴重地打擊了國內密碼學研究社
+群，減低了優秀研究人才投入的動力，實為一大憾事。在此筆者呼籲，台灣科研
+界應正視科研成果評估制度僵化這個問題，諸多不下於頂尖國際期刊的會議論文
+不被承認為科研成果，凸顯出國內科研制度實有重大的缺失。
+四、攜回資料名稱及內容
+FSE 2010 會議論文集。
+98年度專題研究計畫研究成果彙整表 
+計畫主持人：鄭振牟 計畫編號：98-2221-E-002-117- 
+計畫名稱：大規模平行電腦於因數分解之應用 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 4 4 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 1 1 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 1 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

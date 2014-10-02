@@ -1,0 +1,997 @@
+1 
+摘要 
+PNN(Pairwise-nearest-neighbor)是一種相當有效的資料分群方法，通常可以產生良好的
+分群結果，但由於計算複雜度高，實用性不高。為了改善這個問題，有許多快速 PNN 方法
+被開發出來，但大部份快速 PNN 方法易受資料集群組分離度影響，以致執行效率不穩定。
+為此，本計劃提出一個可調適性快速 PNN 方法，所提方法首先使用其它快速分群方法將資
+料集分成數個群組，然後記錄群組與群組間以及資料與群組間的距離資訊，最後再利用這
+些資訊在最近鄰居搜尋過程中過濾不可能的群組與資料，加快程式的執行效率。實驗結果
+顯示，與現有的快速 PNN 方法相比，所提方法在不同的群組分離度下均可得到穩定的加速
+效果。 
+ 
+關鍵字：最近鄰居分群方法,  快速演算法 ,  可調適性演算法  
+ 
+Abstract 
+Pairwise-nearest-neighbor (PNN) is an effective clustering method, which can always 
+generate good clustering results than others. Since the computational complexity of the PNN 
+method is high, it is seldom applied to solve clustering problems. To improve this problem, 
+many fast exact PNN methods were proposed. The performance of most existing fast PNN 
+methods are unstable and highly influenced by the cluster separation degree of a data set. To 
+solve this problem, this project proposed an adaptive fast PNN method. In our proposed method, 
+clusters from the data set are first separated into clusters of gorups and then the distance 
+information between every pairs of groups and between a cluster and all groups are recorded. 
+Finally, the distance information is used to filter out impossible gorups and clusters in the 
+nearest neighbor finding process of a cluster to increase the efficiency of the PNN method. 
+Experimental result shows that our proposed method can have better performance than existing 
+method under different cluster separation degrees. 
+ 
+Keywords: Pairwise-Nearest-Neighbor, Fast Algorithm, Adaptive Algorithm 
+3 
+為了降低 PNN 方法的計算複雜度，提高其可用性，Kurita [16] 使用 heap 結構儲存所
+有叢集對的距離，這個方法可以將 PNN 方法的計算複雜度降到 O(N2log2N)，但空間複雜度
+為 O(N2)，對較大的 N 而言，龐大的記憶空間需求與記憶體存取時間，反而使這個方法比
+原來的 PNN 方法更不實用。為了有效降低 PNN 方法的複雜度，Fränti 等人[17]提出一個較
+實用的快速 PNN 演算法(簡稱 FPNN)，該方法只需 O(N)的空間複雜度與 O(τN2)的計算複雜
+度，其中，τ的平均值大約等於 5，也就是在一般情況下，FPNN 的計算複雜度大約為 O(5N2)。
+接著， Fränti 等人 [18]又整合 Lazy PNN[19] 、 PDS(Partial Distance Search)[20] 與
+MPS(Mean-Distance-Ordered Partial Search)[21] 等 技 術 改 善 FPNN 方 法 ( 簡 稱 為
+FPNN_LPM)，這個方法針對不同輸入資料集會有不同的計算複雜度，計算複雜度大約落在
+O(0.08*τN2)到 O(0.5*τN2)之間。藉由 Fränti 等人[17,18]的努力，使得 PNN 的複雜度由 O(N3)
+大幅降低到 O(0.08*τN2)到 O(0.5*τN2)之間。 
+為了進一步降低 PNN 的複雜度，Liaw 提出一個 FPNN 的改良方法[22] (簡稱 MFPNN)，
+該方法利用叢集中心點的四個特徵值（低頻、水平邊、與垂直邊之特徵向量的投影值以及
+一個投影差），在最近鄰居的搜尋過程中，用來過濾不可能的叢集。MFPNN 可進一步將平
+均計算複雜度降到 O(0.025*τN2)，有效降低 PNN 方法的計算複雜度。跟 FPNN 比，
+FPNN_LPM 與 MFPNN 方法雖可得到很大的效能改進，但會受到資料集的資料分佈特性影
+響而有不同的表現，當資料集群聚效應明顯 (群組分離度大)時[15]，FPNN_LPM 與 MFPNN
+方法有較佳的效能表現；反之，效能不佳，在某些特殊情況下，FPNN_LPM 與 MFPNN 的
+表現甚至比 FPNN還差。 
+4.研究方法 
+為了降低資料集群組分離度的影響，本計劃提出一個受群組分離度影響較小的快速
+PNN 方法，所提方法首先利用一個簡單快速的分群方法，將資料集分成 N 個叢集群組，
+再使用叢集於其所屬叢集群組與其它叢集群組之差異向量的映射值作為過濾條件，在最接
+近鄰居搜尋的過程中用來過濾不可能的叢集群組與叢集。本計劃所使用的分群方法以及快
+速最近鄰居搜尋方法分別於 4.1節與 4.2節說明，4.3節則說明如何將所提方法應用到FPNN
+方法上。
+ 
+4.1. 快速分群方法 
+有許多方法可用來將資料分群，此處目的是將資料集內的資料作快速分群，提取資料
+集中可用資訊，供後續使用。為了符合本計劃需求，本計劃修改 Kanungo et al. [15]的 kd-tree
+方法將資料集切割成所要數目的叢集群組，以求均勻分割資料集，然後再執行數次 GLA
+方法[11]調整群組以及確保群組成員距離所屬群組中心點距離較近。本計劃使用的快速分
+群方法說明如下： 
+令快速分群方法的目的群組數目 P= N、Cq=[cq,1, cq,2, …, cq,d]t 是叢集 Rq (q=1, 2, ..., N)
+的中心點、SG 是所有叢集群組的集合、ng 是叢集群組數目。一開始，令 ng = 1、SG={G1}、
+以及 G1={Rq: q=1, 2, ..., N}，也就是一開始只有一個叢集群組 G1，且 G1包含所有的叢集。
+令 spani,k 是叢集群組 Gi 於第 k軸的涵蓋範圍(span)，其定義如下： 
+spani,k = max{cq,k: Rq∈Gi} – min{cq,k: Rq∈Gi} (5) 
+令 lai 是叢集群組 Gi 最長的軸，也就是 
+5 
+jis
+s
+ji vCp ,, ⋅=  (11) 
+令 dmin 是查詢叢集 Rq 及其候選最近鄰居的距離，在全域最近鄰居搜尋過程一開始，
+dmin 的值設定成叢集 Rq與其區域最近鄰居叢集 Rl 的距離。有了 dmin後，針對 GL 之外的每
+個叢集群組 Gi ∈SG，我們可以使用以下不等式檢查是否該叢集群組內不可能有全域最近鄰
+居存在。 
+( ) min2,, 1, dnnpp q q
+I
+Li
+q
+iL
+Li >
++
+×+
+ (12) 
+{ }iss Li
+s
+Li GRpI ∈= :minarg ,,  (13) 
+其中，Ii,L 是叢集群組 Gi 內對差異向量 vi,L 具有最小投影值之叢集的索引值，而 LiI Lip ,, 則是其
+投影值，Ii,L跟 LiI Lip ,, 可事先計算及儲存。  
+如果公式(12)針對某個叢集群組 Gi 成立，則叢集群組 Gi 內的每個叢集都不可能是最
+近鄰居，所以叢集群組 Gi 可以整個被過濾掉。假如叢集群組 Gi 不能被公式(12)過濾，則
+叢集群組 Gi 內的每個叢集必須再使用公式(14)檢查。 
+( ) min2,, d
+nn
+nn
+pp
+sq
+sqs
+Li
+q
+iL >+
+×
+×+
+ (14) 
+其中 s Lip , 是叢集 Rs∈Gi 到向量 vi,L 的投影值。  
+如果叢集 Rs 不能被公式(14)拒絕，則叢集 Rs 與叢集 Rq 必須使用公式(1)計算距離，如
+果該距離小於 dmin 則 dmin 必須被更新。使用上述方法可為所有叢集找到最近鄰居，並找到
+最近叢集對 Ra 與 Rb，然後對叢集對 Ra 與 Rb進行合併動作。 
+叢集合併過程會導致合併後的叢集 Rab 所屬的群組不同於叢集 Ra 所屬的群組，因此，
+在經過合併過程後，叢集 Rab 必須重新尋找其所屬的群組。再者，叢集 Rb 的刪除與叢集
+Rab 的遷移也會導致叢集群組中心的改變，改變叢集群組中心會導致所有叢集必須重新尋
+找最近的中心點，為了避免重新配置所有叢集，在合併過程後，我們並不重算叢集群組中
+心，不過，必須重算叢集 Rab 的投影值以及叢集 Ra 與叢集 Rb 所屬群組的最小投影值。為
+了加速最小投影值的更新速度，當 IL,i 不等於 Ra或 Rb 的索引值且叢集 Rab仍留在叢集群
+組 GL，則叢集群組 GL 對其它叢集群組 Gi 之差異向量 vL,i 的最小投影值的更新過程可簡化
+成只計算叢集 Rab 在向量 vL,i 的投影值，假如叢集 Rab 在向量 vL,i 的投影值小於 PL,i，則設
+定 PL,i 等於叢集 Rab 在向量 vL,i 的投影值並設定 IL,i 等於叢集 Rab 的索引值。 
+4.3. 跟 FPNN方法整合 
+為了提昇所提方法的執行效能，可將 FPNN 方法[17]所用的加速方式應用到本計劃所
+提的方法中。為此，我們必須提供兩個大小為 N 的一維陣列 NN 與 ND 分別用來記錄每個
+叢集的最近鄰居以及與其最近鄰居的距離。除了以上所提公式(12)與公式(14)兩個不等式
+之外，並增加一個額外的不等式 ND[s] ≥ dmin來檢查一個叢集 Rs 是否可能是最近鄰居，如
+果條件成立，則叢集 Rs 不可能是最近鄰居。以上不等式是因為在合併過程中一個叢集的
+最近鄰居距離必然是單調遞增[17]，因此如果叢集 Rs 的最近鄰居距離大於 dmin 那麼叢集
+Rs 便不可能會是叢集 Rq 的最近鄰居。再者，當資料集中有許多叢集的中心點相同時，由
+7 
+表Ｉ：32張實驗影像 
+      
+Airplane Baboon Beach Bird Boat1 Boat2 
+      
+Coast Door Effigy F16 Flower Girl 
+      
+Hats Houses Island Lake Lena Light House 
+      
+Milk Parrot Peppers Race Raft Red House 
+      
+River Sail Boat1 Sail Boat2 Spaceman Tiffany Wall 
+      
+      
+      
+Woman1 Woman2     
+ 
+表二所示為使用三種方法對 32張個別真實影像之影像區塊所產生的資料集分群所需
+的執行時間（表內時間為執行三次後取平均的結果），每個資料集包含 16384 個 4x4 的影
+像區塊，最後將分成 128 群。由表二可見，MFPNN 方法與所提方法在使用真實影像作為
+資料集時，表現明顯比 FPNN 方法好，且大部份比本計劃所提方法好，但在某些特殊情況
+下(Spaceman 影像) MFPNN 的表現則比所提方法差很多，其主要原因在於 Spaceman 影像
+有一大塊黑色背景，所以使用該影像做為資料集會有很多資料點的內容相同（都是黑色），
+因此以 FPNN 為基礎的 MFPNN 表現便不好，由於本計劃所提方法有事先對資料集做處
+理，將內容相同的資料點合併成相同叢集，因此可避免這個現象的發生。
+ 
+由於 MFPNN非常適合拿來處理影像資料，而影像資料又常會出現一大塊相同區域的
+情形，因此，如果要使用 MFPNN 為影像資料分群，可先將相同資料點合併成相同叢集後
+再處理，如此可得到較穩定的表現。表二中最後一行即為將 MFPNN 方法加上前處理後的
+結果，由表二所示，修改後的 MFPNN 方法已無原來的問題，但對原本沒有太大問題的影
+像則會增加一些前處理的時間。
+ 
+9 
+此，本計劃設計及開發一套新的可調適性的快速 PNN 分群方法，所提方法首先將要分群的
+叢集分成多個叢集群組，然後運用叢集群組間的差異向量及叢集到差異向量的映射值以及
+兩個不等式過濾不可能的叢集群組與叢集。配合使用 FPNN 的改善方法，本計劃所提方法
+受資料集的群組分離度影響較小，而且可以比現有方法更快速的產生相同的分群結果。實
+驗結果顯示，本計劃所提方法確實可以有效降低 PNN 所需的執行時間，而且受群組分離度
+的影響小，表現相對穩定。對影像資料而言，本計劃所提方法也可得到跟 MFPNN 近似的
+執行效能，因此本計劃所提方法非常適合處理任意未知資料分佈情況的資料集。 
+參考文獻 
+[1] Rui Xu, and Donald Wunsch II, "Survey of Clustering Algorithms," IEEE Transactions on 
+Neural Networks, Vol. 16, No. 3, pp. 645-678, May 2005. 
+[2] A. Gersho and R. M. Gray, Vector Quantization and Signal Compression, Kluwer 
+Academic Publishers, Boston MA., 1991. 
+[3] S. Theodoridis and K. Koutroumbas, Pattern Recognition, Academic Press, 2nd edition, 
+New York, 2003. 
+[4] U. M. Fayyad, G. Piatetsky-Shapiro, P. Smyth, and R. Uthurusamy, Advances in 
+Knowledge Discovery and Data Mining, MIT Press, Boston MA., 1996, 
+[5]  Y. C. Liaw, J. Z. C. Lai, and Winston Lo, “Image restoration of compressed image using 
+classified vector quantization,” Pattern Recognition, vol. 35, no. 2, pp. 181-192, February 
+2002. 
+[6] J. Z. C. Lai, Y. C. Liaw, and Winston Lo, “Artifact reduction of JPEG coded images using 
+mean-removed classified vector quantization,” Signal Processing, vol. 82, no. 10, pp. 
+1375-1388, October 2002. 
+[7] Jim Z.C. Lai, and Yi-Ching Liaw, "Artifact reduction of interpolated color filter array 
+images using MMRCVQ," Pattern Recognition Letter, Vol. 26, Issue 8, June 2005, pp. 
+1047-1058. 
+[8] D. Liu, and F. Kubala, "Online speaker clustering," Proc. IEEE Conf. on Acoustic, Speech, 
+and Signal Processing, vol. 1, pp. 333-336. 2004. 
+[9] Xiangyang Li and Nong Ye, "A Supervised Clustering and Classification Algorithm for 
+Mining Data With Mixed Variables," IEEE Transactions on Systems, Man, and 
+Cybernetics - Part A, Vol. 36, No. 2, pp. 396-406, March 2006. 
+[10] Shuyuan Jina, Daniel So Yeunga, and XizhaoWangb, "Network intrusion detection in 
+covariance feature space," Pattern Recognition, Vol. 40, Issue 8, pp.2185-2197, August 
+2007. 
+[11] Y. Linde, A. Buzo, and R. M. Gray, “An algorithm for vector quantizer design,” IEEE 
+Transactions on Communications, vol. 28, no. 1, pp. 84-95, January 1980. 
+[12] W. H. Equitz, "A new vector quantization clustering algorithm," IEEE Transactions on 
+Acoustics, Speech, and Signal Processing, vol. 37, no. 10, pp. 1568–1575, October 1989. 
+[13] Mark Junjie Li, Michael K. Ng, Yiu-ming Cheung, and Joshua Zhexue Huang, 
+"Agglomerative Fuzzy K-Means Clustering Algorithm with Selection of Number of 
+Clusters," IEEE Transactions on Knowledge and Data Engineering, Vol. 20, No. 11, pp. 
+1519-1534, November 2008. 
+[14] J. Shanbehzadeh and P. O. Ogunbona, "On the computational complexity of the LBG and 
+11 
+計畫成果自評 
+ 原計畫相符程度與達成預期目標情況 
+本計劃預計完成一受資料集群組分離度影響較小的快速 PNN 分群方法，分析現有過濾
+條件並設計一較佳的過濾條件組合，實作現有快速 PNN 分群方法，以及進行相關實驗比較
+各種快速 PNN 分群方法在不同情況下的效能表現。 
+計劃執行完畢，已完成開發一受資料集群組分離度影響較小且可有效降低執行時間的
+快速 PNN 分群方法，經實驗分析，本計劃所開發出來的方法是目前已知可產生跟 PNN 具
+有相同分群結果之方法中最快的快速 PNN 分群方法。 
+ 研究成果之學術或應用價值 
+學術價值：本計劃已開發完成一套受資料集群組分離度影響較小且可有效降低執行時
+間的快速 PNN 分群方法，部份成果已發表於國際研討會[23]，完整的成果
+預計將投稿至 Pattern Recognition或相同等級的 SCI國際期刊。 
+應用價值：本計劃所開發出來的快速 PNN 分群方法是目前已知可產生跟 PNN 具有相
+同分群結果之方法中最快的快速 PNN 分群方法，此方法可應用到影像壓
+縮、樣型識別、資料探勘與知識挖掘、影像品質改善、語音辨識、入侵偵
+測等相關產業，提高辨識率。 
+ 影像處理人才培育 
+本計劃執行人員，主要包括一位碩士班學生以及多位大學部學生，碩士班學生主要
+負責，閱讀文獻與實作本計劃所需的程式以及進行實驗，對其英文文件閱讀能力，實作
+能力的提昇，做事態度的養成，與實驗方法的熟悉有很大的幫助。大學部學生則幫忙搜
+集資料，閱讀文獻，以及協助撰寫程式等，參與人員對英文文件閱讀能力，實作能力的
+提昇，研究與實驗進行方式的了解，做事態度的養成等方面，都有很大的幫助。 
+ 
+ 出席國際學術會議心得報告 
+                                                             
+計畫編號 NSC 98-2221-E-343-008 
+計畫名稱 可調適性之快速 PNN 分群方法開發 
+出國人員姓名 
+服務機關及職稱 
+廖怡欽 
+南華大學副教授 
+會議時間地點 民國 99 年 8 月 7 日至民國 99 年 8 月 10 日 
+會議名稱 
+7th International Conference Computer Graphics, Imaging, and Visualisation 
+(CGIV2010) 
+發表論文題目 Video Objects Behavior Recognition using Fast MHI Approach 
+ 
+一、參加會議經過 
+此次出國主要目的是到澳洲雪梨參加 CGIV2010 會議發表論文(附件一)，該會議由雪
+梨 科 技 大 學 (University of Technology Sydney, UTS) 、 科 威 科 大 學 (Kuwait 
+University)、以及英國倫敦南部大學(London South Bank University)主辦。會議時間
+8 月 7 日至 8 月 10 日共四天，8 月 7 日是博士生研討會，8 月 8 日會議開幕及論文發表，
+8 月 9 日安排大家到藍山參觀以及晚宴，8 月 10 日為論文發表及閉幕。 
+台灣到雪梨直飛全程需要 9 個小時，台灣的航空公司只有華航直飛，而且國科會計
+劃也鼓勵搭乘華航，因此決定搭乘華航，搭乘華航並且要準時參加會議，因此必須選在
+8/4 日晚上出發，由於投稿時間較晚，又遇到暑假，由台灣出發的經濟艙已沒有座位，
+因此去乘改搭乘商務艙，會議結束隔天 8/11 再搭經濟艙回國。 
+8 月 4 日 23:55 搭機出國，8 月 5 日 11:00 到達雪梨，由於提早到達，因此有時間多
+看一看雪梨。雪梨市不愧為一國際都市，有許多外來移民人口，國外學生，以及許多旅
+客，雪梨交便相當便利，食物種類很多，是一個對外來人口相當友善的國家，也因此有
+許多遊客及外國留學生選擇雪梨作為其旅遊及留學的城市。大部份留學生及遊客來自中
+東、印度、東南亞、大陸、韓國等鄰近國家。其觀光收入及外國留學生收入佔整個城市
+收入相當大的比例。 
+會議 8 月 7 日(六)開始，會議地點在雪梨科技大學(UTS)，雪梨科技大學(UTS) 座落
+在雪梨中央車站及中國城附近，由好幾棟建築物組成，建築物就在一般道路旁邊，與雪
+梨市融為一體，由於前一天已先找好會議地點，因此早上很快到達會場，參與由英國
+Banissi 教授所主持的博士生研討會，會中說明博士學位的緣起，以及互相討論各自的
+研究方向及研讀博士應注意事項，我則提供在台灣讀博士的經驗供參考。 
+8 月 8 日(日)，會議正式開始，早上 10：40 開幕，接著便是一整天的議程，本會議
+共有 70餘篇投稿，最後被接受的論文有 30餘篇，接受率大約 5成，被接受的論文分別
+ 
+ 
+University of Technology, Sydney 
+■ Sydney ■ Australia ■   
+ 
+                  
+ 
+ 
+ 
+The Preliminary Programme 
+7
+th
+ International Conference 
+Computer Graphics, Imaging & Visualisation 
+P
+e
+r
+c
+e
+p
+tu
+a
+ll
+y
+-G
+u
+id
+e
+d
+ D
+e
+si
+g
+n
+ o
+f 
+N
+o
+n
+p
+e
+r
+sp
+e
+c
+ti
+v
+e
+s 
+T
+h
+r
+o
+u
+g
+h
+ P
+ic
+to
+r
+ia
+l 
+D
+e
+p
+th
+ C
+u
+e
+s 
+ 
+K
+en
+ic
+h
+i 
+Y
+o
+sh
+id
+a
+1
+, 
+S
+h
+ig
+eo
+ T
+ak
+ah
+as
+h
+i1
+, 
+H
+ir
+o
+ak
+i 
+O
+n
+o
+1
+, 
+Is
+se
+i 
+F
+u
+ji
+sh
+ir
+o
+2
+, 
+M
+as
+at
+o
+ O
+k
+ad
+a
+ 
+(d
+o
+w
+n
+lo
+a
+d
+e
+d
+ f
+ro
+m
+ W
+ik
+im
+e
+d
+ia
+ C
+o
+m
+m
+o
+n
+s
+).
+ 
+CGIV2010_PROGRAMME           
+CGIV2010_ 1 
+ 
+ 
+U T S A u s t r a l i a  
+ 
+A full-day Event: Saturday 7th August 2010, Time: 9:30 -17:00 
+ 
+Computer Graphics, Imaging and Visualisation 
+DOCTORAL RESARCH WORKSHOP  
+Organised by 
+Visualisation & Graphics Research Unit of LSBU, UK 
+& 
+Department of Computer Systems, Faculty of Information Technology, University of Technology, Sydney, Australia 
+ 
+Computer Graphics, Imaging and Visualization –CGIV- Forum is an annual forum that is held for 7 year running.  This year CGIV 
+forum in collaboration with the Visualisation & Graphics Research Unit of LSBU, UK and the Department of Computer Systems , 
+Faculty of Information Technology, University of Technology, Sydney, Australia are pleased to announce Doctoral Research 
+Workshop within the scope of the 7th International conference on Computer Graphics, Imaging and Visualization (CGIV2010). 
+This workshop provides an opportunity for PhD students to present their work, receive feedback and to meet other researchers 
+working in CGIV area. The focus of this workshop will be on the pros and cons of various Computer Graphics, Imaging and 
+Visualization ideas and solutions and its potential impact on both the research community and the industry in general. 
+ 
+All doctoral students involved in Computer Graphics, Imaging and Visualization research area are welcome to attend. The event 
+is organised in four sessions with up to four PhD students per session. Presenters, which are PhD students at various stages of 
+their PhD, will give an outline of their PhD research in order to benefit from feedback about their work and methodology from a 
+combined industry & research panel.  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+CGIV2010_PROGRAMME           
+CGIV2010_ 1 
+ 
+ 
+U T S A u s t r a l i a  
+ 
+ 
+Sunday 8 August 2010 
+09:30 < UTS - Lecture theatre Foyer > 
+Registration                                                          
+10:40 < UTS - CB10.02.230 Postgraduate Seminar Room > 
+ 
+Opening & Welcome  
+ 
+Welcome & official opening from UTS 
+Conference welcome from cgiv2010 committee 
+Co-Chairman:  Prof.  M. Sarfraz 
+  Department of Information Science, Kuwait University 
+ 
+Prof. Ebad Banissi 
+VGRU, LSBU, UK 
+ 
+Organizing co-Chairman: Prof. Maolin Huang 
+Faculty of Information Technology. University of Technology, Sydney, Australia 
+11:30 < Lecture Theatre # Foyer > 
+Morning Coffee Break  / Photograph Session           
+12:00 < UTS - CB10.02.230 Postgraduate Seminar Room > 
+Session CGIV10_1.1: Computer Graphic, Visualisation and Imaging Application 
+Chair: Prof Ebad Banissi, VGRU, LSBU, UK 
+ 
+Polygonisation of non-Manifold Implicit Surfaces Using a Dual Grid and Points 
+D. J. Harbinson, R. J. Balsys, and K. G. Suffern 
+ 
+Perceptually-Guided Design of Nonperspectives through Pictorial Depth Cues  
+Kenichi Yoshida, Shigeo Takahashi, Hiroaki Ono, Issei Fujishiro, and Masato Okada  
+13:00 < UTS - Dining Hall > 
+Lunch Break 
+CGIV2010_PROGRAMME           
+CGIV2010_ 3 
+ 
+ 
+U T S A u s t r a l i a  
+ 
+ 
+ 
+Monday 9 August 2010 
+ 
+09:00 
+–  
+1800 
+Cgiv2010_Social Networking Event 
+ 
+<To be finalised> 
+ 
+19:30 
+- 
+21:30 
+Cgiv2010_ Social Event  
+Conference Dinner 
+ 
+<To be finalised> 
+ 
+ 
+ 
+ 
+CGIV2010_PROGRAMME           
+CGIV2010_ 5 
+ 
+ 
+U T S A u s t r a l i a  
+ 
+11:00 <Foyer> 
+Break 
+11:30 < UTS - CB02.07.008-g-b LECTURE ROOM  > 
+Session CGIV10_3.7:  CGIV 
+Chair: Prof.  M. Sarfraz, Department of Information Science, Kuwait University 
+ 
+Visual Computer Game Features for Teaching Relativity 
+David Carr  
+ 
+<Keynote Lecture> 
+Sketch-Based Subdivision Models for Graphics and Animation 
+Ahmad Nasri,  Computer Graphics & Animation Lab  and Department of Computer Science , AUB, Lebnan 
+ 
+Conference Closing from cgiv10 committee: 
+Co-Chairman:  Prof.  M. Sarfraz 
+  Department of Information Science, Kuwait University 
+ 
+Prof. Ebad Banissi 
+VGRU, LSBU, UK 
+ 
+Prof. Maolin Huang 
+Faculty of Information Technology. University of Technology, Sydney, Australia 
+13:00 < Lecture Theatre # Foyer > 
+Lunch Break 
+14:00 < meeting room #> 
+cgiv2011-Committee Members Meeting 
+ Close 
+  
+D I G I T A L  A R T  G A L L E R Y  
+a n  o n l i n e  e x h i b i t i o n  
+July 2010 ~ June 2011 
+ 
+V I R T U A L  G A L L E R Y   
+V E N U E   www .g rap h ic s l in k .c o.uk /DART.h t m  
+ 
+ 
+ 
+                     
+  
+V
+is
+u
+a
+l 
+S
+ty
+le
+s
+ o
+f 
+W
+a
+y
+a
+n
+g
+ K
+u
+li
+t 
+K
+e
+la
+n
+ta
+n
+ 
+K
+h
+o
+r 
+K
+h
+e
+n
+g
+ K
+ia
+ &
+ a
+n
+d
+ Y
+u
+e
+n
+ M
+a
+y
+ C
+h
+a
+n
+ 
+ L
+im
+k
+o
+k
+w
+in
+g
+ U
+n
+iv
+e
+rs
+it
+y
+ &
+ M
+u
+lt
+im
+e
+d
+ia
+ U
+n
+iv
+e
+rs
+it
+y
+, 
+M
+a
+la
+y
+s
+ia
+ 
+  
+Published by: 
+Visualisation & Graphics Research Unit 
+London South Bank University, UK 
+ 
+processes. The detail explanation for each process is 
+provided in the following subsections. 
+ 
+ 
+Figure 1. Procedure of a typical MHI approach. 
+2.1 Object extraction process 
+This process is used to find where the moving object 
+is located in the input frame and to generate an object 
+mask for the input frame. There are many methods [10] 
+developed and can be used to deal with this problem. 
+After this process, we can have an object mask for the 
+input frame. An object mask is a binary image. For a 
+pixel in the input frame is an object pixel, its 
+corresponding pixel in the object mask of the input frame 
+is set as 1. Otherwise, it is set as 0. Figure 2 gives an 
+example for the input frame, reference frame, and object 
+mask of the input frame. 
+   
+ (a) (b) (c) 
+Figure 2: An example for (a) reference frame, (b) 
+input frame, and (c) object mask. 
+2.2 History matrix updating process 
+The purpose of the history matrix updating process 
+is to record the appearance history for video objects. To 
+accomplish this goal, a history matrix with the same size 
+as input frames is maintained. Each element in the 
+history matrix is initialized to 0 and updated according to 
+the values of the incoming object masks using a 
+timestamp with an initial value of 1. 
+Let the current value of timestamp be τ and the value 
+for an element in the object mask with coordinate (x, y) 
+at time-point τ be Mτ(x, y). The updating method for an 
+element in the history matrix with coordinate (x, y) at 
+time-point τ is defined in the following: 
+
+
+
+≤=
+=
+=
+− )-(  ),( and 0),( if0
+                                  1),( if),( 1 δτ
+τ
+ττ
+τ
+τ
+yxHyxM
+yxM
+yxH
+  (1) 
+where δ is the number of frames in a motion. 
+Figure 3 gives an example to show how the history 
+matrix is updated under a series of incoming object 
+masks when δ=3. 
+ 
+(a) Initial history matrix 
+   
+ (b) 1st object mask, (c) updated history matrix(τ=1) 
+   
+ (d) 2nd object mask,  (e) updated history matrix(τ=2) 
+   
+ (f) 3rd object mask,  (g) updated history matrix(τ=3) 
+   
+ (h) 4th object mask,  (i) updated history matrix(τ=4) 
+Figure 3. An example to show the updating 
+process of the history matrix. 
+2.3 MHI generation process 
+Once the value of τ is equal to or greater than δ, that 
+means we have enough frames for motion recognition 
+and an MHI can be generated using the following 
+equation: 
+
+
+
+
+=
+≠×
+−−
+=
+0),( if                                 0
+0),( if255)(),(),(
+yxH
+yxHyxHyxMHI
+τ
+τ
+τ
+τ δ
+δτ
+  (2) 
+where MHIτ(x, y) is the value of a pixel in the MHI at 
+time-point τ with coordinate (x, y). Figure 4 gives an 
+example to show how an MHI is generated for δ=8, 
+where the surrounding black area is removed. 
+ 
+Figure 4. An example for (a) input frames, (b) 
+object masks, and (c) the MHI. 
+Let τ
+σ i
+F  be the feature set extracted from the input 
+frames at time-point τ with δ = δi. The procedure of 
+behavior recognition using multiple sets of features is 
+described in figure 6. Where ),( j
+ii
+BFFD σ
+τ
+σ
+ is the squared 
+Euclidean distance function and THR is a threshold value 
+which should be determined experimentally. 
+ 
+ 
+Figure 6: Behavior recognition algorithm using 
+multiple sets of features. 
+As shown in figure 6, the procedure will find the id 
+of behavior which has the less distance to features 
+extracted from input frames. If no behavior is recognized, 
+the value of id will be 0. 
+3.2 Partial distance calculation 
+For two sets of features 1BF  and 2BF , the definition 
+of distance D( 1BF , 2BF ) is given below. 
+ 
+∑
+=
+−=
+9
+1
+2)(),( 2121
+i
+B
+i
+B
+i
+BB OOFFD
+  (7)
+  
+Before using the above distance equation, all 
+features of the input MHI must be determined first. In 
+many cases, we don’t have to fully compute the distance 
+to know if a predefined behavior is not the behavior of 
+the input frames. According to this observation, a partial 
+distance calculation method is proposed. The partial 
+distance calculation method is to divide distance 
+calculation process into 9 steps. Let Di( 1BF , 2BF ) be the 
+ith partial distance for feature sets 1BF and 2BF . The 
+definition of ),( 21 BBi FFD  is given below. 
+2)(),( 2121 BiBiBBi OOFFD −=  (8) 
+From equation (8), we can see that the ),( 21 BB FFD  
+can be computed using the following equation. 
+∑
+=
+=
+9
+1
+),(),( 2121
+i
+BBiBB FFDFFD
+ (9) 
+By dividing the distance computation into 9 steps, 
+we can check the accumulated distance after each partial 
+distance is computed to see whether current accumulated 
+distance is already excess THR or not. If accumulated 
+distances are all excess THR for all predefined behaviors, 
+the distance computation process can be terminated 
+earlier. To further reduce the computational complexity, 
+the feature set for the input frames should not be 
+evaluated at a time. That is, a feature of the input frames 
+is evaluated only when it is needed. In such a case, if the 
+feature set of the input frames is quite different from 
+those stored in the behavior database, a lot of 
+computations can be avoided. Figure 7 gives the 
+procedure of using the partial distance calculation 
+method. Where the order[] is an array to record the 
+computation order for each feature and is defined as 
+{1,2,3,4,6,7,8,9,5}. It is noted that the fifth block must be 
+compared in the last, since the fifth block covers the 
+whole range of the MHI of the input frames. 
+ 
+ 
+Figure 7: Behavior recognition algorithm using 
+partial distance calculation and multiple sets of 
+features. 
+4. Experimental Results 
+To evaluate the performance of the proposed fast 
+MHI method, in the training phase, four behaviors (sit, 
+stand, fall, and hunker) were acted by two persons and 
+captured by a camera from four directions (front, back, 
+left, and right). That is, eight video clips were captured 
+Set  dist[j] = 0,  for 1 ≤ j ≤ M 
+Set  done[j] = false,  for 1 ≤ j ≤ M 
+For  i = 1 to L{ 
+      Generate τδ iMHI  
+For  block = 1 to 9 { 
+Extract the τblkO from 
+τ
+δ iMHI  
+Set terminate=true 
+For  j = 1 to M { 
+If  (done[j] = false)  { 
+          dist[j] += ),( j
+ii
+Bblock FFD δ
+τ
+δ  
+If  (dist[j] > THR) or ( j
+i
+BLFδ = true) { 
+done[j] = true 
+                         } else terminate=false 
+       } 
+} 
+If (terminate=true) { 
+      id=0 
+Return id 
+} 
+    } 
+} 
+Set  id = 1 
+For i = 2 to M  
+If ( dist[i] < dist[id] ) id = i 
+If ( dist[id] > THR )  id = 0 
+Return id 
+Set  dist[j] = 0,  for 1 ≤ j ≤ M 
+Set  done[j] = false,  for 1 ≤ j ≤ M 
+For  i = 1 to L { 
+Generate τδ iMHI and 
+τ
+δ iF  
+For  j = 1 to M  { 
+If ( done[j] = false ) { 
+      dist[j] = D( τδ iF , 
+j
+i
+BFδ ) 
+      If ( (dist[j] > THR) or ( j
+i
+BLFδ = true) ) 
+          done[j] = true 
+}  
+} 
+} 
+Set  id = 1 
+For i = 2 to M  
+If ( dist[i] < dist[id] ) id = i 
+If ( dist[id] > THR )  id = 0 
+Return id 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2010/12/20
+國科會補助計畫
+計畫名稱: 可調適性之快速PNN分群方法開發
+計畫主持人: 廖怡欽
+計畫編號: 98-2221-E-343-008- 學門領域: 影像處理 
+研發成果名稱
+(中文) 可調適性之快速PNN分群方法
+(英文) Adaptive fast exact PNN method
+成果歸屬機構
+南華大學 發明人
+(創作人)
+廖怡欽
+技術說明
+(中文) PNN(Pairwise-nearest-neighbor)是一種相當有效的資料分群方法，通常可以產
+生良好的分群結果，但由於計算複雜度高，實用性不高。為了改善這個問題，有
+許多快速PNN方法被開發出來，但大部份快速PNN方法易受資料集群組分離度影響，
+以致執行效率不穩定。為此，本計劃提出一個可調適性快速PNN方法，所提方法
+首先使用其它快速分群方法將資料集分成數個群組，然後記錄群組與群組間以及
+資料與群組間的距離資訊，最後再利用這些資訊在最近鄰居搜尋過程中過濾不可
+能的群組與資料，加快程式的執行效率。實驗結果顯示，與現有的快速PNN方法
+相比，所提方法在不同的群組分離度下均可得到穩定的加速效果。
+(英文) Pairwise-nearest-neighbor (PNN) is an effective clustering method, which can always 
+generate good clustering results than others. Since the computational complexity of the 
+PNN method is high, it is seldom applied to solve clustering problems. To improve this 
+problem, many fast exact PNN methods were proposed. The performance of most 
+existing fast PNN methods are unstable and highly influenced by the cluster separation 
+degree of a data set. To solve this problem, this project proposed an adaptive fast PNN 
+method. Experimental result shows that our proposed method can have better 
+performance than existing method under different cluster separation degrees.
+產業別 顧問服務業；其他專業、科學及技術服務業
+技術/產品應用範圍 提供相關函式庫或提供技術指導
+技術移轉可行性及
+預期效益
+可技術移轉給相關軟體開發商
+註：本項研發成果若尚未申請專利，請勿揭露可申請專利之主要內容。
+期刊論文 2 2 50% 
+1.Yi-Ching Liaw*, 
+Chien-Min Wu, and Maw-Lin 
+Leou, ＇＇Fast K-Nearest 
+Neighbors Search Using 
+Modified Principal Axis 
+Search Tree,＇＇ Digital 
+Signal Processing, Vol. 
+20, Issue 5, pp. 1494-1501, 
+September 2010. (SCI)  
+ 
+2.Yi-Ching Liaw*, Maw-Lin 
+Leou, and Chien-Min 
+Wu, ＇ ＇ Fast exact k 
+nearest neighbors search 
+using an orthogonal search 
+tree, ＇ ＇ Pattern 
+Recognition, Vol. 43, No. 
+6, June 2010, 
+pp.2351-2358. (SCI；EI) 
+研究報告/技術報
+告 0 0 100%  
+研討會論文 2 2 50% 
+篇 
+1.Yi-Ching Liaw, Jun-Feng 
+Lin, Shen-Chuan Ta, and Jim 
+Z. C. Lai, ＇＇Fast exact 
+pairwise-nearest-neighbor 
+algorithm using groups and 
+clusters rejection 
+criteria,＇＇ The Eleventh 
+IASTED International 
+Conference on Signal and 
+Image Processing, 
+Honolulu, USA, August 
+2009.  
+2.Yi-Ching Liaw, Wei-Chih 
+Chen, and Tsung-Jen 
+Huang, ＇＇Video Objects 
+Behavior Recognition using 
+Fast MHI Approach,＇＇ 
+CGIV2010, Sydney, 
+Australia, Aug. 2010. 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 博士生 0 0 100% 
+人次
+ 
+ 

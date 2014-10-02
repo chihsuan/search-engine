@@ -1,0 +1,260 @@
+2 
+ 
+Haar-like scheme [7], which will be performed by the integral image 
+block in Figure 1(a). The face features are evaluated by summing the 
+pixel values in the rectangular sub-region (shown in Figure 1(b)). 
+The result will then be sent to the detection block which uses 
+cascaded classifiers to scan and find the location of faces.  
+ 
+Figure 1 (a) Viola-Jones face detection procedure  
+    (b) Integral image computation. 
+(1) Integral image: The integral image method was firstly 
+introduced to the digital image processing by Crow [13]. In 
+Viola-Jones face detection, it is used for rapid computation of 
+Haar-like features [7], which are defined as the (weighted) intensity 
+difference between two to four rectangles. The integral image is 
+constructed as follow. I(𝑥,𝑦) =  � 𝑖(𝑥′,𝑦′)
+𝑥′≤𝑥,𝑦≤𝑦′  
+I(x,y) is the integral value of all the image pixels in the 
+rectangular region from (0,0) to (x,y). And i(x’,y’) is the value of the 
+pixel at location (x’, y’). It is fast and efficient to use the integral 
+image to compute the value of the face features in a rectangular 
+sub-region area. As shown in Figure 1(b), for example, the value of 
+point 4 is the sum of the sub-region area A+B+C+D. The value of 
+point 3 is the sum of A+C. If we want to compute the value of the 
+region D, it can be easily obtained by the value of ( I(1) + I(4) ) – 
+( I(2) + I(3) ), which only requires four value references.  
+(2) Cascaded classifier structure with Ada-Boost: Boost is a 
+method of finding high accuracy by combing “weak” classifiers with 
+moderate accuracy [14]. Ada-boost algorithm is a kind of 
+appearance-based method which have shown superior performance 
+compared to others [9]. There are two types of classifiers, “weak” 
+classifiers and “strong” classifiers. Weak classifiers have arithmetic 
+value thresholds in recording human face features. A number of 
+weak classifiers with similar features are combined together as a 
+“strong” classifier. 
+ 
+Figure 2 Cascaded structure of strong classifiers 
+The cascade classifier structure, shown in Figure 2, is a critical 
+component in the Viola-Jones detector. This structure rapidly and 
+efficiently rejects most negative sub-window images while keeping 
+almost all the positive ones. The input sub-window images pass 
+through a series of nodes during detection. Each node represents a 
+strong classifier, which would make a decision on whether the 
+sub-window image should be kept for the next node or rejected. A 
+strong classifier at a later stage contains more weak classifiers to 
+provide better image checks and face detection.  
+4. PARALLELISM IN DIFFERENT LEVELS 
+The parallelism of the face detection exists in different 
+algorithmic levels. This section discusses the potential parallelism at 
+different levels of the face detection implementation. The face 
+detection implementation is adopted and modified from OpenCV 
+library[17], which applies the idea of Viola-Jones face detection 
+algorithm. As shown Figure 3, the implementation can be divided 
+into three parts. (1) Resize. The implementation uses the fixed-size 
+scan window with a well-trained classifier library in the Ada-boost 
+algorithm. Since the scan window size is fixed, an image needs to be 
+resized into different resolutions. (2) Integral. This part performs the 
+evaluation of the Haar-like features by using the integral image 
+method. (3) Detect. By moving the scan window through the image, 
+the sub-image is sent into the cascade classifier structure to detect the 
+location of a face.  
+ 
+Figure 3 The procedure of face detection implementation 
+The parallelism of the algorithm can be extracted from different 
+levels. This paper divides the parallelism into four levels (shown in 
+Figure 4). Top level parallelism is demonstrated when different sizes 
+of images are processed by different threads concurrently. Detection 
+level parallelism can be exposed by performing the “detect” block on 
+different sizes of images concurrently. Other parts (resize and 
+integral) in the algorithm remain in the sequential scheme. Divided 
+detection level is similar to the detection level, but the image is 
+further divided into sub-images. The detection tasks of these 
+sub-images are executed simultaneously by different threads. Weak 
+classifier level exposes the parallelism by executing different weak 
+classifiers in the cascaded structure concurrently. 
+ 
+Figure 4 Different algorithmic levels of the face detection 
+implementation 
+4 
+ 
+(2) Detection level parallelism. This level only parallelizes the 
+detection block. The other parts, including the thread creation, are 
+still executed sequentially. This strategy makes the speed of creating 
+new threads too slow to sustain the demand of parallel execution. 
+Processors are idled waiting for new threads to be created. Besides, 
+the sequential part of the algorithm becomes the critical part of the 
+program. The performance would not improve when the number 
+processors increases. As shown in Figure8, the execution time does 
+not improve when the system has more than 8 processors. 
+(3) Divided detection level parallelism. This level returns a 
+more satisfied result than the previous strategy. More parallelism of 
+detection level can be extracted. Number of threads created in one 
+time is sufficient and the size of different threads is more balanced. 
+However, the sequential part is still plays the critical role in the 
+program. Therefore the run time is similar to the detection level.  
+(4) Weak classifier level parallelism. This is the lowest level in 
+the algorithm. The number of threads is equal to the number of weak 
+classifiers. Although it exposes the maximum potential parallelism, 
+the overhead becomes the limiting factor of the performance 
+enhancement. Since there could be thousands of weak classifiers, the 
+time required to create these threads is already in average 8.17x of 
+the total execution time of the sequential algorithm on a single 
+processor. Another overhead is the sheer amount of synchronization 
+transactions among the huge number of threads. 
+ 
+Figure 8 Result of each parallelism level 
+According to the experimental result, parallelizing the algorithm 
+in higher levels poses the disadvantage of imbalance workload. 
+When parallelizing the algorithm in lower levels, the overhead 
+increases on the aspects of creating new threads and synchronization. 
+The ratio of the sequential part to the algorithm also deteriorates the 
+performance. To achieve the best performance, we should have a 
+scheme to expose the significant parallelism in an appropriate level 
+and avoid the overhead of having too many threads. 
+ 
+7. A HYBRID PARALLEL SCHEME TO ACHIEVE 
+HIGH PERFORMANCE 
+Based on the experience from the previous section, we propose a 
+multi-stages mixed-level parallelism scheme to achieve the 
+maximum performance enhancement.  
+ 
+Figure 9 Result of our modified programs 
+The first implementation is a 2-stage scheme. Stages are executed 
+sequentially. The second stage will start when the first stage is 
+finished. The first stage will initiate multiple threads to perform the 
+resize and integral blocks concurrently. The second stage implements 
+the same scheme as in the “divided detection” level. Since the block 
+“detection” takes most of the execution time in the algorithm and its 
+parallelism can be well scaled in divided detection level. As shown 
+in Figure9, when compared with a single processor, the 2-stage 
+strategy can reach around 16x speed-up on a 16-core system. 
+However, the 2-stage scheme cannot achieve better performance 
+when the processor number is more than 16, due to the imbalanced 
+work load in the first stage. 
+The 3-stage scheme is implemented to further improve the 
+performance. The first stage now only contains a multi-threaded 
+version of the resize block. The second stage will process the integral 
+part and the third stage will perform the parallel execution of the 
+detection block. This scheme has better balanced tasks, and achieve 
+the superior performance scalability. As shown in Figure9, the 
+3-stage parallel strategy reaches a 27.8x and 37.5x speed-up on a 
+32-core and 64-core system respectively. 
+8. CONCLUSION                                                                                                         
+This paper performs a comprehensive analysis of the parallelism 
+of a face detection algorithm at different levels. We have 
+demonstrated that, each parallelism level has its own potential to 
+enhance performance, but also imposes different limiting factors to 
+the overall performance. The imbalanced execution loads among 
+threads adversely impact the performance as well. Based on the 
+analysis results and design experience, this paper proposes a 
+multi-staged hybrid scheme to retain the parallel performance and 
+avoid the limiting factor. With this scheme, we are able to achieve up 
+to 37.5x performance enhancement on a 64-core system.  
+9.  REFERENCES 
+[1] FA626 ULTRA HIGH SPEED 32-BIT RISCCPU 
+http://www.faraday-tech.com/techDocument/FA626_ProdBrief_v1.2.pdf 
+[2] The TILE-Gx™ processor family processor, http://www.tilera.com/  
+[3] ARM cortex-A9 processor, http://www.arm.com/ 
+[4] MIPS Technologies Announces Symmetric Multiprocessing (SMP) 
+Support for Android™ Platform on MIPS-Based™ SoCs, 
+http://www.mips.com/  
+[5] Intel multicore technology, http://www.intel.com/ 
+[6] AMD multi-core processing, http://www.amd.com/  
+[7] C. Zhang and Z. Y. Zhang, “A Survey of Recent Advances in Face 
+Detection ”, Microsoft Research, June 2010.  
+[8] Y. Wei, X. Bing, C. Chareonsak, "FPGA Implementation of AdaBoost 
+Algorithm for Detection of Face Biometrics", In Proc. IEEE International 
+Workshop Biomedical Circuits and Systems, 2004. 
+1 2 4 8 16 32 64
+2stage 3.02 1.494 0.754 0.381 0.203 0.185 0.193
+3stage 3.016 1.484 0.744 0.376 0.194 0.108 0.081
+0
+0.5
+1
+1.5
+2
+2.5
+3
+3.5
+Execute Time
+CORE_NUM
+time(sec)
+(sec/image)
+ 1 
+國科會補助專題研究計畫項下出席國際學術會議心得報告 
+                                     日期：100 年 1 月 30 日 
+                                 
+一、參加會議經過 
+此次會議於加州洛杉磯附近的安納罕城市舉辦。總共六天的會議中包含了一百
+多篇的研究論文報告以及討論。在一樓的展示大廳中也有超過百家的設計自動化
+大廠參展。整個會議內容與議程的安排非常的豐富。 
+在論文報告與研討的部分，所有的研究論文被分成超過五十個議題，分別於四
+天的議程中進行報告與研討。在本年度的設計自動化會議中，先進製程的變異性
+與電路的可靠性成為許多議題中的討論重點。如何在半導體製程持續微縮化的過
+程中維持系統的功能性與提升可靠度，仍舊是一個非常難的問題。參與報告的除
+了世界各地一流的頂尖大學之外，也包含了很多業界的研究成果。這讓議題的討
+論不會只侷限在研究題目的探討中，而能夠跟業界目前最需要解決的困難相結
+合，以期待能夠發展出更符合目前需求的相關設計自動化技術。 
+在一樓的展覽會場中，有超過數百家的廠商參展。參展的廠商除了設計自動化
+工具的一線大廠(如 Cadence, Synopsys, Mentor 等)之外，也包含了許多具有先
+進技術的新成立廠商。會場的佈置和各個廠商攤位活動的安排也十分的活潑，在
+介紹公司的新技術之前都會利用許多不同的表演來吸引人潮。值得一提的是，今
+年的參展廠商中，台積電的攤位占了非常大區域。台積電今年特別強打所提出的
+整合性設計環境 (Open Innovation Platform)，希望讓晶圓代工廠不能再單純提
+供製造服務。台積電將整合本身及第三者的設計工具 EDA電子設計自動化
+（Electronic Design Automation）及矽智財（IP）、製程技術及流程服務等，推
+計畫編號 NSC 98－ 2218 －E －009  － 022 － 
+計畫名稱 多核心系統之跨層級整合設計環境及方法 
+出國人員
+姓名 
+賴伯承 
+服務機構
+及職稱 
+交通大學電子工程系助理教授 
+會議時間 
+99年 6月 13日至 
+99年 6月 18日 
+會議地點 
+Anaheim, CA, U.S.A 
+會議名稱 
+(中文) 2010 計算機器學會設計自動化國際會議 
+(英文) ACM Design Automation Conference 2010 
+發表論文
+題目 
+(中文)無 
+(英文) 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/01/26
+國科會補助計畫
+計畫名稱: 多核心系統之跨層級整合設計環境及方法
+計畫主持人: 賴伯承
+計畫編號: 98-2218-E-009-022- 學門領域: 積體電路及系統設計
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

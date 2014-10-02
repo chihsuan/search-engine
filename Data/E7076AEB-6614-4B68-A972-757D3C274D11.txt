@@ -1,0 +1,498 @@
+ I 
+中文摘要 
+ 
+關鍵字：封包分類、決策樹、防火牆 
+ 
+封包分類執行封包檔頭欄位與規則的比對，藉由在封包檔頭中的欄位所構成的多維空間中執行點
+定位，藉由預先設定好的規則來將封包分成不同的類別，並執行不同的封包處理動作。目前的封包分
+類演算法通常需要在時間跟空間複雜度中進行取捨而導致擴充性不佳，因此我們希望能夠透過新的演
+算法來改善封包分類演算法的擴充性。 
+近年來封包分類的研究領域已逐漸由軟體演算法轉移到硬體相關演算法的開發，例如利用三元內
+容定址記憶體來進行高速封包分類。然而這類演算法面臨的主要問題在於擴充性不足，因為這類型硬
+體的空間有限，無法支援大量封包，同時耗電、成本以及支援更新的能力都十分有限，在未來發展的
+可能性上勢必無法像以軟體為基礎的演算法提供較佳的彈性。我們也認為近年相關軟體演算法的研究
+發表減少的另一個原因在於相關的資料結構應用都已發表，在缺乏新的觀念挹注下，研究學者將重心
+移往其他領域，而非目前的研究成果已足堪負荷核心網路設備相關的需求。 
+在此計畫中，我們提出一個以多重決策樹來儲存規則資料庫的演算法，以改善現有封包分類演算
+法支援未來大量網路應用時，所導致的規則資料庫擴充的問題。我們的演算法是基於觀察現有的決策
+樹演算法中，如何進行規則分類是決定演算法所需空間與搜尋時間最關鍵的步驟，當規則資料庫很大
+時，規則分類的效果會因為資料庫中可能有大量的未定義欄位(wildcards)而變差，最差情況可能導
+致所需空間跟搜尋時間都會同時上升而大幅降低演算法效能。為了改善此一規則分類的問題，我們提
+出了將規則依據欄位內容分群，每一群對應到一棵決策樹，同時每一群的規則也都能適應決策樹建立
+過程中所需的規則分類行為，進而讓每棵決策樹的空間與時間都可以同時最佳化。雖然我們的演算法
+需要多棵決策樹，但是實際上所需的空間遠較單一決策樹的演算法來得小，因此搜尋的速度也會更
+快。我們也提出了進一步改良的方法，包括空間壓縮以及資料結構更新的程序。 
+經過實驗證明，新的演算法可以支援到超過一百萬條規則，而且當規則數目倍增時，搜尋本身的
+效能僅有微量的影響，而所需空間的部分亦呈現與規則數目成正比的線性成長。因此，新的演算法確
+實大幅改善了現有封包分類技術的擴充性。 
+ 1 
+一、報告內容： 
+（一）前言 
+隨著各式網路服務的增加，現今的路由器對於封包的處理漸趨複雜。這是由於不同類型的網路服務對
+於頻寬與延遲有著不同程度的需求，為了對於送達的封須依照其需求分配適當的路由器資源，需要路
+由器支援更複雜的轉送行為，從而也加重了路由器的處理工作。而除了提供新的網路服務之外，目前
+的網路環境中亦存在各種不同的攻擊方式，為了避免各類型的攻擊癱瘓網路的運作，路由器對於封包
+的處理不再只是單純的依照目標位址轉送封包，而是具有分辨該封包是否具攻擊性的能力。不論是根
+據不同層級的網路服務分配不同的頻寬，或者是過濾出惡意攻擊的封包，兩者新的封包轉送需求都明
+顯指出封包處理已漸趨複雜，勢必需要一套機制來有效地處理封包，這就是封包分類在網際網路中所
+扮演的關鍵功能。 
+封包分類的目的是根據封包內容將送達的封包指派至一個由規則所定義的特定群組。由於路由器對於
+不同的群組有各自的處理方式，所以送達的封包被分類至不同的群組後，後續的處理也不盡相同。換
+言之，透過封包分類的機制，能夠將網路上隨機分散的封包分類至具有特定意義的類別，並根據各類
+別決定該封包的處理方式。 
+（二）研究目的 
+我們先定義封包分類演算法所要解決的問題，在一個規則資料庫中，包含了許多的規則與過濾條件，
+每個規則(與過濾條件)都是由封包檔頭中的數個欄位中的值所組成，每個欄位的值可以是變動長度的
+位址字首字串(Variable-length Prefix)、一個任意區間(Range)或是一個數值(Explicit Value)，
+對於一個 d 個欄位的規則 Rj，我們可以定義成 Rj=(Rj [1], Rj [2],…, Rj [d])。通常在封包分類
+中，會使用到的欄位包括 IP 起始位址、目標位址、協定類別、發起端與接收端的傳送層埠號等。 
+一個有效率的封包分類演算法，通常需要具有下列四個特性： 
+1. 搜尋速度：也就是封包分類找到符合的規則所花費的時間，通常在評估時以記憶體的存取次數為
+標準，花費越少的記憶體存取次數處理封包為佳，因為記憶體存取的時間通常為系統效能的瓶頸，在
+網路傳輸速度可達到 10Gb/s 的今天，封包停留在路由器的時間更不能成為拖慢封包傳送的絆腳石。 
+2. 儲存空間：一般封包分類的演算法通常會提出自己設計的資料結構進行比對，該資料結構所需要
+的空間會被預期越小越好。 
+3. 可擴充性：隨著規則表中規則數目的增加，被提出的封包分類演算法不論在搜尋速度或者儲存空
+間都應該避免劇烈增加之現象。 
+4. 更新效率：當規則表內容發生更動時，用來比對的資料結構也需要作更動，一個好的分類方法可
+使該資料結構在最少的時間成本下完成更新。 
+ 
+ 3 
+D. Bitmap 類型 
+Bitmap intersection [10]採用如同 HiCuts的幾何角度去解決封包分類的問題，不同的是它並沒有
+對規則的幾何空間進行切割，而是針對規則在各個維度中對應的幾何位置（也就是區段的起點與終
+點），將各維度分成數個區段，並針對每個區段維護一條 N個 Bit 的陣列，即為 Bitmap，Bitmap的用
+處為記錄該區段所在範圍被哪些規則覆蓋。建構時，透過規則表製作各維度不同區段的 Bitmap，進
+行封包比對時，找出封包在各維度座落的區間後，將各區間的 Bitmap 作交集之結果即為所有符合的
+規則。這類方法的主要問題在於 Bitmap的大小與個數皆與規則數成正比，造成空間複雜度為 O(dn2)，
+因此有論文對於該演算法在空間上的節省提出了相關的討論[7]。 
+ABV [4]的方法在建構時將規則表各維度資訊以 Trie的資料結構儲存，規則的資訊則跟 Bitmap 
+intersection一樣採用了 Bit Vector的方式紀錄，在 ABV的研究中認為 Bit Vector的內容是稀疏
+的，為了減少 Bit Vector 比對的長度，因此提出了 Aggregate Bit Vector的資料結構，Aggregate Bit 
+Vector 的每個位元表示 Bit Vector中連續位元的規則表現，若連續 A個 bits中有至少一個位元被
+設定為 1，則該 Bit對應的 Aggregate Bit Vector位元亦設為 1。舉例來說，若某個 Bit Vector為 
+10001110000，且聚合的大小 A值設為 4，則其對應的 Aggregate Bit Vector為 110。封包搜尋時，
+需要先在各維度的 Trie 作比對，取得對應的 Aggregate Bit Vector 資訊後，再將各維度的 aggregate 
+bit vector 作交集取得可能符合的規則，再進一步到對應的 Bit Vector 搜尋。但由於 Aggregate Bit 
+Vector 的資訊為 A個位元的聚合，所以取得的規則有可能是錯誤比對之情形，因而浪費額外的記憶
+體存取，此問題雖然透過規則的重新排序可改善，但空間的使用上仍舊有改善的空間。 
+E. Cross-product 類型 
+Cross-product建構方式為將規則表中各個規則在各個維度所定義的範圍與其他維度的定義範圍作
+交叉結合，並將交叉結合的結果儲存在查找表中以供比對，查尋時透過封包表頭得知該封包落在各維
+度的區段資訊，再以各維度區段資訊加乘算出至查找表的索引值，查找表中該索引位置紀錄的即為符
+合的規則。這類演算法的缺點在於需要極大的空間儲存，RFC [2]則是 Cross-product類型中最具代
+表性的演算法，其概念如圖 9所示，RFC並不將所有維度一次全部進行 Cross-product，而是分成數
+個階段進行，且在每一階段的 Cross-product中亦可將各維度欄位拆成數組進行，並透過規則組合的
+整理以避免記錄不存在的 Cross-product結果。雖然 RFC降低了 Cross-product所需要的空間，但空
+間複雜度在最差情況下仍為 O(Nd)，也使得如何降低 Cross-product 演算法所需的空間仍為研究的議
+題之一。 
+F. 雜湊表類型 
+雜湊類型的研究認為，雖然規則表的規則數量眾多，但若依規則欄位長度組合區分規則時，長度組合
+的個數比起規則個數相對屬於少數[3]，因此提出將所有的規則依 Tuple分群，分類時由封包表頭搭
+配各群長度以雜湊表的方式至各群比對，便可取得所有符合該封包的規則。 
+以二維的規則為例，在建構搜尋的資料結構時，R2（1*,010*）依其規則長度屬於（1,3）的 Tuple，
+每個 Tuple對應到一個雜湊表(Hash Table)。當封包要比對在(1,3)的群組符合的規則，只需將封包
+第一個維度的前一個位元與第二個維度的前三個位元作雜湊即可找到符合的規則。但 Tuple 的個數仍
+有其一定程度的量，如何有效率的決定出將需要作雜湊的 Tuple以及降低的 Tuple個數等，皆是該類
+ 5 
+我們認為要改善決策樹的問題，最直接的辦法便是改善規則間重疊的情況，同時可以進一步考慮決策
+樹建立的過程以得到更佳的效能。因此，我們提出依據規則的欄位特性將所有規則分為數群，再各自
+建立決策樹的方法。接下來我們介紹方法的流程。 
+ 
+圖 2：由表 I規則所建立的決策樹 
+ 
+我們先針對規則資料庫的各個維度建立二元樹，每個二元樹內記錄相關的規則。我們先針對各個二元
+樹評估葉節點的數目，然後選取葉節點數目較大的二元樹，將葉節點的規則取出放入該維度的規則分
+群中，然後依據剩餘的規則更新原有的二元樹，再重複上述動作，直到所有的規則完成分類。 
+我們以表6的規則為例，說明上述過程。首先，我們建立兩個二元樹，如圖3所示，每個節點內記錄相
+關的規則。接下來由於f1的二元樹有較多葉節點，因此我們由f1的二元樹取出相關的四條規則，並更
+新f1的二元樹，更新後的結果顯示在圖4中。 
+ 
+ 
+圖3：由表I規則所建立的一維二元樹 
+ 7 
+ 
+圖7：各個規則分群的決策樹 
+我們將規則分群演算法虛擬碼顯示於圖8。在此演算法中僅須執行簡單的步驟的即可完成分群的程
+序。因此此演算法的複雜度相當低，整體的複雜度為O(N2)。 
+ 
+圖8：規則分群演算法 
+（五）結果與討論 
+在實驗部分，我們以ClassBench工具產生大量的規則資料庫來進行模擬。我們並實作多個現有演算法
+作為比較。空間與時間效能比較結果分別呈現於表II與表III。其中空間效能是以kilobyte為單位，
+而時間效能是以記憶體存取次數為單位。由數據中可以看出空間效能與時間效能皆有明顯改善，而且
+較現有方法提供更穩定的效能。當規則資料庫的特性改變時，我們的方法受到的影響是最低的。表IV
+進一步呈現當規則資料庫規則增加時對效能的影響。可以看出我們的方法在空間表現上與規則數呈線
+性關西，而時間表線上則無相關。因此我們的方法可以得到相當優良的擴充性。 
+ 
+ 9 
+參考文獻 
+[1] S. Blake et al, “An Architecture for Differentiated Services,” RFC 2475, 1998. 
+[2] P. Gupta and N. McKeown, “Packet Classification on Multiple Fields,” in ACM SIGCOMM, 
+September 1999, pp.147–160. 
+[3] V. Srinivasan, G. Varghese and S. Suri, “Packet Classification using Tuple Space Search,” in ACM 
+SIGCOMM, September 1999, pp. 135–146. 
+[4] F. Baboescu and G. Varghese, “Scalable packet classification,” in ACM SIGCOMM ’01, August 2001, 
+pp. 199–210. 
+[5] Pankaj Gupta and Nick McKeown, “Algorithms For Packet Classification,” IEEE Network Magazine, 
+vol. 15, no. 2, pp. 24–32, 2001. 
+[6] Vijay P. Kumar, T. V. Lakshman and Dimitrios Stiliadis, “Beyond Best Effort: Router Architectures for 
+the Differentiated Services of Tomorrow’s Internet,” IEEE Communication Magazine, vol. 36, no. 5, 
+pp. 152–164, 1998. 
+[7] J. van Lunteren and T. Engbersen, “Fast and scalable packet classification,” IEEE JSAC, vol. 21, no. 4, 
+pp. 560–571, May 2003. 
+[8] Huan Liu, “Efficient mapping of range classifier into ternary-CAM,” in Hot Interconnects X, August 
+2002, pp. 95–100. 
+[9] V. Srinivasan, G. Varghese, S. Suri and M. Waldvogel, “Fast Scalable Level Four Switching,” in ACM 
+SIGCOMM, September 1998, pp. 191–202. 
+[10] T.V. Lakshman and D. Stidialis, “High Speed Policy-based Packet Forwarding Using Efficient 
+Multi-dimensional Range Matching,” in ACM SIGCOMM, September 1998, pp. 203–214. 
+[11] Anja Feldmann and S. Muthukrishnan, “Tradeoffs for Packet Classification,” in IEEE INFOCOM, 
+March 2000, pp. 1193–1202. 
+[12] Thomas Woo, “A Modular Approach to Packet Classification: Algorithms and Results,” in IEEE 
+INFOCOM, March 2000, pp. 1213–1222. 
+[13] Pankaj Gupta and Nick McKeown, “Packet Classification using Hierarchical Intelligent Cuttings,” in 
+Hot Interconnects VII, August 1999. 
+[14] Florin Baboescu, Sumeet Singh and George Varghese, “Packet Classification for Core Routers: Is there 
+an alternative to CAMs?” in IEEE INFOCOM, March 2003, pp. 53–63. 
+[15] M. Buddhikot, S. Suri and M. Waldvogel, “Space Decomposition Techniques for Fast Layer-4 
+Switching.” in IFIP Sixth International Workshop on Protocols for High Speed Networks, August 1999, 
+pp. 25–41. 
+[16] V. Sahasranaman and M. Buddhikot, “Comparative Evaluation of Software Implementations of 
+Layer-4 Packet Classification Schemes.” in IEEE ICNP, November 2001, pp. 220–228. 
+[17] Sumeet Singh, Florin Baboescu, George Varghese and Jia Wang, “Packet Classification Using 
+Multidimensional Cutting,” in ACM SIGCOMM ’03, August 2003, pp. 213–224. 
+[18] M. Waldvogel, G. Varghese, J. Turner and B. Plattner, “Scalable High Speed IP Routing Lookups,” in 
+ACM SIGCOMM, September 1997, pp. 25–36. 
+[19] V. Srinivasan and G. Varghese, “Fast IP lookups using controlled prefix expansion,” ACM Trans. On 
+Computers, vol. 17, pp. 1–40, Febuary 1999. 
+[20] P. Gupta, S. Lin, and N. McKeown, “Routing Lookups in Hardware at Memory Access Speeds,” in 
+IEEE INFOCOM, March 1999, pp. 1240–1247. 
+ 國科會補助專題研究計畫成果報告自評表 
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否適
+合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。 
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估 
+█  達成目標 
+□ 未達成目標（請說明，以 100 字為限） 
+□ 實驗失敗 
+□ 因故實驗中斷 
+□ 其他原因 
+說明：本計畫研究成果與當初計畫內容完全相符。 
+ 
+ 
+2. 研究成果在學術期刊發表或申請專利等情形： 
+論文：□已發表 █未發表之文稿 █撰寫中 □無 
+專利：□已獲得 □申請中 □無 
+技轉：□已技轉 □洽談中 □無 
+其他：（以 100 字為限） 
+ 
+ 
+ 
+3. 請依學術成就、技術創新、社會影響等方面，評估研究成果之學術或應用價
+值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）（以
+500 字為限） 
+ 
+在本研究計畫中我們完成了以決策術為基礎的封包分類演算法，我們同時亦發展了數個改良
+式演算法，輔以詳盡的效能驗證，在實作其他現有的演算法並與之比較後，我們證明我們的
+演算法確實可以大幅增進封包分類的效能，目前已有一篇研討會論文發表，兩篇期刊論文投
+稿中，我們期望此研究成果可以將技術移轉至業界。同時，由於決策樹大量應用在不同的研
+究領域上，因此，此研究成果期望可以應用在其他與計算幾何相關之研究領域，例如GPS圖層
+搜尋與Data Warehouse等。目前我們正在積極建立相關的跨領域合作關係，期能對未來開拓
+新的研究方向。 
+ 
+ 
+ 2 
+處。包括針對封包分類技術改善能源使用效率、以及利用封包分類技術於雲端網路
+設備負載平衡等議題。我們希望未來可以藉此擴展研究領域的廣度。 
+ 
+三、考察參觀活動(無是項活動者略) 
+無考察參觀活動 
+ 
+四、建議 
+無建議事項 
+五、攜回資料名稱及內容 
+研討會論文集光碟: 所有發表於 IWUSP與 ICNP研討會之論文收錄光碟 
+六、其他 
+ 
+ 
+ 
+ 
+infrared signals and affect sensing accuracy. 
+(2) Radio frequency: The RF signal can penetrate through 
+most of the building material; therefore, it has an 
+excellent sensing range for indoor environments. 
+(3) Ultrasound: The ultrasound operates at low frequency 
+bands (typical 40 kHz). It reflects off most of the indoor 
+obstructions, thus it also has limited sensing range. 
+ 
+Fig. 1. Taxonomy of Positioning System 
+Wireless positioning systems can be categorized by their 
+measurement techniques which are used to derive the 
+positions of mobile stations. Currently, there are three 
+measurement techniques used: AOA (Angle of Arrival) [15], 
+RSS (Received Signal Strength) [1, 10] and propagation time. 
+The propagation time based systems can be further divided 
+into two sub‐categories: TOA (Time of Arrival) [17,20] and 
+TDOA (Time difference of arrival) [3,18]. 
+(1) In the AOA-based systems, the device position is 
+calculated via goniometry. With the use of directional 
+antennas or antenna arrays, the angle or bearing relative 
+to the points with known positions is measured. 
+(2) With the TOA and TDOA techniques, the positioning 
+systems use the propagation delay or TOF (Time of flight) 
+to calculate the distance between transmitter and receiver. 
+Thus, these systems heavily rely on the precision of 
+timing between the transmitter and the receiver. A precise 
+synchronization and a high accuracy clock are very 
+important for such systems.  
+(3) In the RSS-based systems, the system first measures the 
+received signal strength from particular locations and 
+then searches for the closest pattern in the database. This 
+technique does not require the mobile station to contact 
+at least three base stations or access points for 
+determining its location. 
+    Next, we present several location services. RADAR [2] is a 
+radio-frequency (RF) based system for locating and tracking 
+objects in indoor environments. It uses multiple measurements 
+of signal strength to determine object locations. At the same 
+time, it tracks an object by collecting four signal strength 
+samples per second at each of the base stations. The median 
+resolution of the RADAR system is within two to three meters. 
+However, RADAR requires an RF-map of the sensing region, 
+where the RF-map must be generated prior to deployment. For 
+each mobile device, storing and processing a large RF-map is 
+an unreasonable request for a wireless sensor network 
+platform. 
+Active Badges [15] use infrared technology for 
+positioning by transmitting a unique signal every ten seconds. 
+Active Badges have two main challenges: line-of-sight (LOS) 
+and short signal transmission distance. Its advantages include 
+low power, low cost and accuracy. 
+UWB [18] (ultra-wide band.) is a radio technology that 
+supports very low energy levels for short range signals. It is 
+suitable for indoor wireless network for the convenient 
+network service between the mobile devices. Because the 
+UWB signal duration is measured in nanosecond, the location 
+error is usually less than one meter. However, it requires over 
+500M Samples/s throughput in time domain synchronization, 
+incurring high power dissipation which is linearly increasing 
+with the number of samples. Therefore, the issue of power 
+management has become the main challenge of UWB design. 
+RFID [7, 9, 11, 19] system consists of at least one reader, 
+which uses a radio link to communicate with at least one tag, 
+as shown in Fig. 2(a). Each tag has a unique identifying 
+number stored in non-volatile memory. The reader reads tag 
+identifiers from tag-list buffer and communicates with host via 
+wire network. The radio frequencies of RFID systems are very 
+wide, form KHz to MHz. These frequencies will be used to 
+support different communication distances, as summarized in 
+Fig. 2(b). 
+ 
+Fig. 2. (a) RFID Systems. (b) Frequency bands for RFID  
+In the anycast mechanism, service providers are assigned a 
+single anycast address within an anycast group. When a client 
+sends packets to an anycast address, routers will attempt to 
+deliver the packets to the closest server which matches the 
+anycast address. Figure 3 illustrates anycast packet flows. In 
+1993, the Internet Engineering Task Force (IETF) defines the 
+basic role of IP anycast in RFC 1546 [12] as “The host 
+transmits a datagram to an anycast address and the 
+8
+ Fig. 6. Construction Multi-Sink Wireless Sensor Networks 
+ 
+Fig. 7. The Pseudo Code of  Anycast Routing Algorithm 
+Fig. 8. An Example of the Anycast Routing algorithm [4] 
+(3) Anycast Routing (Router) 
+The router device functions as both the relay and 
+AnycastGate node. The detailed operation of the router is 
+described as follows. 
+1) When the router device (node 4, 6, 9, 12) receives an 
+RREQ packet, it checks the RREQ packet in the 
+receiving buffer to determine whether it has received a 
+duplicated message. 
+2) If the received packet is not duplicated, then the 
+router device adds a route record to the route table. The 
+router device also broadcasts the RREQ message to its 
+neighbor nodes. 
+3) The router device forwards an RREQ packet to 
+downstream when other relay nodes receive an RREQ 
+packet. 
+4) When a relay node (node 3) receives an RREP 
+packet, the router device will store the gateway address in 
+the list and checks its AnycastGate flag. 
+5) If the AnycastGate flag is TRUE, the router device 
+(node 3) stops replying and discards this RREP packet. 
+Otherwise, it will add a gateway route record to the route 
+table, and the value of the AnycastGate flag in the router 
+node is set to TRUE to avoid transmitting any further 
+RREP messages for the same sender.  
+6) When a frame of location information is received, the 
+router device checks whether the destination address of 
+the received frame is equal to its address. 
+7) If no, then the router device forwards the location 
+frame to the downstream according to its route table. 
+8) Otherwise, the frame is discarded. 
+(4) Multi-Sink (Gateway): 
+The gateway device receives the location packets from 
+the wireless device and extracts the location information 
+from the received packets to the computer through RS-
+232 interface of the programmer board. The detailed 
+operation is described as follows. 
+1) When a gateway device (node 2, 7, 10) receives an 
+RREQ packet, it checks the RREQ packet in the 
+receiving buffer to determine whether it has received a 
+duplicated message. 
+2) If the RREQ message is not duplicated, the gateway 
+device adds a route record to the route table and replies 
+an RREP packet to the sender node. 
+3) When the gateway device receives a DATA message 
+(Location-aware or on-demand call-service), it extracts 
+the DATA from the received packets. 
+4) The gateway device transmits the location 
+information (card ID with location ID) to the computer 
+through its RS-232 interface. 
+10
+reduce the volume of query messages as well as the reply 
+messages. It also reduces the transmission latency. To 
+demonstrate the feasibility of our scheme, we implement a 
+location-aware system based on the contactless smart card 
+with the wireless devices, and emulate the application of order 
+service in fast-food restaurants. The testing results show 
+several benefits. First, it could avoid wasting time of searching 
+for the guests by using the location table information. Second, 
+it improves the service response time by using service-call 
+with the wireless sensor networks. Last, it also helps to 
+maintain the staff productivity at a high level. Therefore, it is 
+feasible for the future applications of patient identify with 
+location, patrol inspection and an intelligent auto call-transfer 
+service based on location-awareness [5]. 
+ 
+REFERENCES 
+[1]  C. Alippi and G. Vanini, "A RSSI-based and calibrated centralized 
+localization technique for wireless sensor networks," Proceedings of 
+Fourth Annual IEEE International Conference on Pervasive Computing 
+and Communications Workshops, Mar. 2006. 
+[2]  P. Bahl and V.N. Padmanabhan, "RADAR: An in-building RFbased user 
+location and tracking system," Proceedings of IEEE INFOCOM, vol. 2, 
+pp. 775-784, Mar. 2000. 
+[3]  M. Bocquet, C. Loyez, and A. Benlarbi-Delai, "Using enhanced-TDOA 
+measurement for indoor positioning," Proceedings of the IEEE 
+Microwave and Wireless Components Letters, pp. 612-614, Oct. 2005. 
+[4]  S. C. Chen, C. R. Dow, S. K. Chen, J. H. Lin, and S. F. Hwang, “An 
+Efficient Anycasting Scheme in Ad-hoc Wireless Networks,” 
+Proceedings of Consumer Communications & Networking Conference, 
+Jan. 2005. 
+[5]  S. K. Chen, Y. T. Fang and P. C. Wang, “An intelligent auto call-transfer 
+service based on location-awareness through wireless sensor network for 
+the traditional phone system,” Proceedings of the 13th IEEE 
+International Symposium on Consumer Electronics, pp. 798-800, May 
+2009. 
+[6]  S. Deering and R. Hinden, "IP Version 6 Addressing Architecture," IETF 
+RFC 2373, Jul. 1998. 
+[7]  K. Finkenzeller, "RFID-Handbook: Fundamentals and Applications in 
+Contactless Smart Cards and Identification, " Wiley & Sons, Apr. 2003. 
+[8]  Jennic, “JN5139 datasheet”, http://www.jennic.com. 
+[9]  W. Jiang, D. Yu, and Y. Ma, "A Tracking Algorithm in RFID Reader 
+Network," Proceedings of the Frontier of Computer Science and 
+Technology, pp. 164-171, Nov. 2006.  
+[10]  W. Klepal and M. P. Dirk, "Influence of Predicted and Measured 
+Fingerprint on the Accuracy of RSSI-based Indoor Location Systems," 
+Proceedings of the Positioning, Navigation and Communication, pp. 145-
+151, Mar. 2007. 
+[11]  H. S. Lim, B. S. Choi, and J. M. Lee, "An Efficient Localization 
+Algorithm for Mobile Robots based on RFID System," Proceedings of 
+IEEE International Conference on SICE-ICASE, pp. 5945-5950, Oct. 
+2006. 
+[12]  T. Mendez, W. Milliken, and C. Partridge, "Host Anycasting Service," 
+IETF RFC 1546, Nov. 1993 
+[13]  W. C. Park and M. H. Yoon, "The Implementation of Indoor Location 
+System to Control ZigBee Home Network," Proceedings of the 
+International Joint Conference, pp.2158-2161, Oct. 2006. 
+[14]  N. B. Priyantha, A. Chakraborty, and H. Balakrishnan,, "The cricket 
+location-support system," Proceedings of MOBICOM 2000, pages 32-43, 
+Boston, MA, Aug. 2000. 
+[15]  R. Want, A. Hopper, V. Falcao, and J. Gibbons, "The active badge 
+location system, " ACM Transactions on Information Systems, 10(1):91-
+102, Jan. 1992. 
+[16]  Xiong, "A selection Model to Suppress NLOS Signals in Angle-of-
+Arrival Location Estimation," IEEE Conference on Personal, Indoor and 
+Mobile Radio Communications, Vol.1, 8-11 Sept, pp.461-465, 1998. 
+[17]  G. P. Yost and S. Panchapakesan, "Improvement in estimation of time of 
+arrival (TOA) from timing advance (TA)," Proceedings of the IEEE 
+International Conference on Universal Personal Communications, pp. 
+1367-1372, Oct. 1998. 
+[18]  D. Young, C. Keller, D. Bliss, and K. Forsythe, "Ultra-wideband (uwb) 
+transmitter location using time difference of arrival (TDOA) techniques, 
+" Conference Record of the Thirty-Seventh Asilomar Conference on 
+Signals, Systems and Computers, vol. 2, pp. 1225–1229, Nov. 2003. 
+[19]  J. Zhao, Y. Zhang, and M. Ye, "Research on the Received Signal Strength 
+Indication Location Algorithm for RFID System," Proceedings of 
+International Symposium on Communications and Information 
+Technologies, Oct. 2006. 
+[20]  E. D. Zand, K. Pahlavan, and J. Beneat, "Measurement of TOA using 
+frequency domain characteristics for indoor geolocation," Proceedings of 
+the IEEE Indoor and Mobile Radio Communications, pp. 2213-2217, 
+Sep. 2003 
+ 
+12
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：王丕中 計畫編號：99-2221-E-005-015- 
+計畫名稱：基於多重決策樹之封包分類演算法設計與分析 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 2 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

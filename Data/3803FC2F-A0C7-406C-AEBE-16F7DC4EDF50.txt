@@ -1,0 +1,568 @@
+2 
+ 
+技術的觀點，一般與可調性技術有密切關係的不外乎無線與網際網路傳輸：在
+無線傳輸技術中，可調性技術是在不同傳輸錯誤的狀況下，針對訊息編碼與錯
+誤更正和保護策略做適當的調節或調整。至於在網際網路的傳輸方面，可調性
+技術則是意味著賦予可變傳輸率和選擇性地捨棄特定位元，抑或如無線傳輸技
+術一般，針對不同數據機的傳輸率，給定不同的訊息壓縮率。 
+分散式視訊編碼 (Distributed video coding): 在影像中相鄰兩張的 Frame 具有相
+當程度的相關性，所以可以利用消息理論中 Slepian-Wolf Theorem [2] 和
+Wyner-Ziv Theorem [3]來達到降低成本的目的，主要是將傳統的 Inter Frame 編碼
+架構改用 WZ Frame 編碼架構取代，且在壓縮效率上面不會有所損失，所以可以
+大幅減少編碼器的硬體複雜度進而降低設計及生產成本，此類的編碼器通常稱為
+分散式編碼 (Distributed Source Coding)  [4]，如果編碼資料為視訊，則稱為分散
+式視訊編碼。 
+H.264 至 SVC 轉碼器設計 (Transcoding): 由圖 2. 可以看出加強層的部份只是
+這個過程的逆操作因此是有可能完美重建的，當這項功能沒有被使用時，由於反
+量化的誤差在解碼的序列中可能會產生飄移誤差。若在基礎層有量化誤差，因為
+會在時間及空間軸上延續下去，可能會導致重大的錯誤，故畫面內預測 (Intra 
+prediction) 所造成的飄移誤差是 SVC 轉碼器的重要議題。 
+ 
+ 
+圖 1. 使用在視訊會議組成部分的集中式架構 
+ 
+文獻探討 
+ 
+Entropy 
+decode 
+Q1
+-1
+ 
+Entropy 
+encode 
+Entropy 
+encode 
+Base layer Q’2 
+Q2
+-1
+ 
+H.264/AVC
+bitstream 
+Q’1 
+－ 
+Enhancement 
+layer 
+ 
+圖 2. H.264-to-SVC 轉碼器 
+4 
+ 
+ 
+圖 4. 使用 2 分割的 H.264-SVC 轉碼器 
+ 
+視訊轉碼器要應用至多媒體串流上頇對其作加速，以滿足即時 (Real time) 
+的需求，但若以最佳品質方式轉碼的串接轉碼器能達到及時轉碼的需求，則不需
+要其他會使轉碼視訊影像品質變差的快速轉碼方式 (如 Reuse motion vector) 。
+為了避免過多的 H.264/AVC 解碼器拖累其效能，所以在串接式轉碼器中的解碼
+端與視訊影像的合成端也使用平行化架構來進行加速。在解碼端透過 OpenMP
+指令集的使用，分別透過不同的 Thread 來進行解碼動作，而 OpenMP 的定義在
+MSDN [7]中有詳細說明，下列以虛擬程式碼 (Pseudo code) 來表示透過不同的
+Thread 來進行解碼動作： 
+#pragma omp parallel sections num_threads(n) 
+{ 
+#pragma omp section 
+{ 
+SVC task (Slice 1) 
+} 
+. . . . . . 
+#pragma omp section 
+{ 
+SVC task (Slice n) 
+} 
+} 
+首先第一行定義了 Threads 的數目 n，接著透過 n 個 "pragma omp section" 分配
+不同的 Thread 對應到 H.264/AVC 解碼器同時進行視訊影像的解碼，以達到基本
+平行加速的特性。 
+  
+  
+  
+  
+  
+  
+Spatial 
+Decimation 
+MC & Intra 
+Prediction 
+Multiplex 
+Progressive 
+SNR Refinement 
+Texture coding 
+Texture 
+Motion 
+MC & Intra 
+Prediction 
+Inter-layer prediction 
+-Intra 
+-Motion 
+-Residual 
+Base layer 
+Coding 
+Scalable 
+Bit-stream 
+  
+  
+ 
+  
+ 
+  
+Base layer 
+Enhancement layer 
+Progressive 
+SNR Refinement 
+Texture Coding 
+Base layer 
+Coding 
+H.264 
+decoder 
+Motion 
+Texture 
+6 
+ 
+decoder 則會藉由編碼端暫存器傳送的初始封包以及由 SIG (Side Information 
+Generator) 產生的資訊進行 LDPCA 解碼程序，Bit-plane 解碼是從 MSB 層開
+始至  LSB 層，過程中若是某 Bit-plane 無法完成解碼，則會透過  Feedback 
+channel 告知編碼端，請編碼端傳送更多的 Syndrome 封包至解碼端，直到解碼
+完成為止。 
+ 在完成通道解碼後，會將所有的 Bit-plane 層數結合成解碼後的影像量化
+數值 Q’，再進行重建 (Reconstruction)為 WZ frames，並與 Key frames 合成重
+建影像序列。 
+ 
+實驗結果 
+平行化視訊轉碼器 (Parallelized transcoder) 
+首先準備四組不同的影像序列，先以 H.264/AVC 作壓縮，再透過 x264 平行
+化視訊轉碼器轉碼過後將影像合成並作 SVC 編碼，使用視訊序列分別為 Foreman、
+Akiyo、Silent與Mother&daughter，其原始影像解析度為QCIF，硬體的規格為 Intel 
+Core i7-920 (2.66 GHz、6GB RAM)。圖 6. 是將影像序列解碼後使用 x264 CGS
+品質可調性將以 Intra 模式作編碼。透過觀察 x264 平行化視訊轉碼器與 JSVM
+的 RD 差距，在基礎層中 x264 平行化視訊轉碼器的 PSNR 較 JSVM 高 2dB 左右，
+而在加強層部分在位元率落在 5M 至 15M 時，x264 平行化視訊轉碼器較 JSVM
+高 1dB 左右。透過 x264 本身優異的壓縮效率，不僅在視訊影像的編碼速率上領
+先，且在視訊畫面的壓縮也優於 JSVM。 
+圖 7. 是將影像序列解碼後使用 x264 空間可調性將以 Intra 模式作編碼，在
+低位元率時 JSVM 與平行化視訊轉碼器有著極相近 RD 品質，但在高位元率時平
+行化視訊轉碼器有著較好的 RD 品質，這是因為 x264 與 JSVM 中使用不同的 Cost
+計算與快速模式判斷的準確與否，皆會造成在原本影像序列有失真的狀況下，在
+位元率漸漸變高的同時差異即會顯示出來。如圖中在較高的位元率後，此平行化
+視訊轉碼器與使用 JSVM 的平行化視訊轉碼器有最大至 2 dB 的差距。 
+接下來則探討平行化視訊轉碼器的轉碼速率，在轉換至不同 GOP 下的各速
+度，其中 JSVM 是使用品質可調性編碼，並將之套用在尚未優化的平行化視訊轉
+碼器，代表解碼端與影像混合的部分都未使用 x264 平行化視訊轉碼器的優化方
+式，因此其轉碼效率都相當低，在 GOP 為 1、2 與 4 時，轉碼速率各為 0.9 fps、
+0.56 fps與0.54 fps。而x264 CGS品質可調性加x264平行化視訊轉碼器在GOP 為
+1、2 與 4 透過使用 CPU 最佳化與平行化處理最終轉碼速率分別可以達到 34.15 
+fps、39.03 fps 與 41.3 fps。當 JSVM 是使用空間可調性編碼，且使用尚未優化的
+平行化視訊轉碼器，可知其轉碼效率較品質可調性的 JSVM 轉碼效率還要好。
+GOP 為 1、2 與 4 分別對應至的轉碼速率各為 1.38 fps、0.88 fps 與 0.71 fps。而
+x264 空間可調性加 x264 平行化視訊轉碼器在 GOP 為 1、2 與 4 時，可透過使用
+CPU 最佳化與平行化處理最終轉碼速率分別可以達到 38.58 fps、41.78 fps 與
+44.02 fps。 
+8 
+ 
+Hall 以及 Akiyo 為測詴序列，表 1. 中 Wyner-Ziv encoder 的編碼速度，也就是 
+fps 明顯比 Intra encoder 快 13 倍，這是因為 DVC 的一個優勢在於 Wyner-Ziv 
+encoder 會讓編碼複雜度大幅降低。雖然目前編碼速度是在 PC 上評估，但未來
+將編碼端實現於嵌入式硬體時，則人眼感受到的延遲會更明顯，由此可知，低複
+雜度的編碼器設計將會是 推廣 DVC 的一大優勢。 
+表 2. 數據是 Server 端實現在嵌入式系統所得到的結果，Host CPU 時脈為 
+P4 3.2 GHz，Target Board 則是 300 MHz，本次實驗假設 Sensor 除了傳送 Intra 
+Encoder 所壓縮的資訊外，Wyner-Ziv Encoder 所壓縮的資訊並不頇全傳，只固定
+傳送其中的 10/66 份封包的資料即可，在 Hall 這組序列，明顯 Intra Decoder 要
+比 Wyner-Ziv Decoder 要快 36 倍，符合之前提到編碼端的複雜度會轉嫁到解碼
+端，在 Target Board 上也是呈現這樣的趨勢。在 Target Board 測詴序列 Hall 以
+及 Akiyo 在 Wyner-Ziv Decoder 的解碼數據呈現 10 多倍的差距是因為 Hall 有
+幾張 Wyner-Ziv Frame 是解碼失敗的，沒辦法完全更正，所以導致該張畫面解
+碼太慢，即使可以完全更正的情況下，Wyner-Ziv Decoder 的解碼速度還是很低，
+這也是 DVC 將編碼端降低的複雜度轉嫁到解碼端所造成的結果。 
+ 
+表 2.  Server 解碼速度 
+ Hall Akiyo 
+ Host(fps) Target Board (fps) Host (fps) Target Board (fps) 
+Wyner-Ziv decoder 8.474 0.00498 8.620 0.054 
+Intra decoder 307.692 11.380 285.714 11.860 
+ 
+結論與建議 
+在本次研究計畫中提出各種方法以解決在 H.264/AVC 轉換至可調性視訊編
+碼的視訊轉碼器上所遭遇的複雜度問題，為了實現多對多視訊轉碼器，本次研究
+計畫中初步實現以 x264 為基礎可調性編碼，而其可調性則是針對品質可調中的
+CGS 架構與空間可調性架構進行設計，接續則設計串接式視訊轉碼器。而其中
+串接式視訊解碼器為一次解碼多個視訊影像並將之結合，給予可調性視訊編碼進
+行編碼，與一般的視訊轉碼不同之處，在於增加了多組影像的 Mixer 功能。 
+本計畫中之也有探討 DVC 於嵌入式系統實現的可能性，並且實作於嵌入
+式系統，將 DVC 的各個編解碼器獨立，用網路傳輸的方式傳到數位處理板並實
+際擷取實際的畫面作編碼，並且最後在嵌入式硬體上播放解碼的畫面，也就是形
+成一套視訊監控系控的雛形，並且在過程中驗證 DVC 的優點，就是 Wyner-Ziv 
+encoder 會比 Intra encoder 快了將近 13 倍，另外實作過程中提出加速方法，使
+用查表方式讓解碼速度增加約 6 倍。 
+未來將進一步整合 H.264AVC、SVC 與 DVC 的視訊串流，形成具備異質
+影像輸入的視訊轉碼器，並持續著重視訊會議即時性的需求。 
+ 
+10 
+ 
+Parallelized H.264-SVC Transcoder with Slice Partition 
+for Video Conference 
+Chih-yuen Chang
+1
+, Chun-Yuan Kuan
+1
+, Chien-Ya Hung
+1
+, Chang-Ming Lee
+1,2
+ 
+1
+Department of Communications Engineering, 
+2
+Department of Electrical Engineering 
+National Chung Cheng University, Chia-Yi, Taiwan 
+{alvin_0128, haungame, kettie19870210}@hotmail.com, changminglee@ee.ccu.edu.tw 
+ 
+Abstract—Video conference provides transmission of 
+full-motion video images and high-quality audio among 
+several locations. To achieve more flexibility for the clients, 
+H.264-SVC transcoder is developed as the kernel of video 
+conference. In this paper, a novel architecture with slice 
+partition and OpenMP is proposed, and thus low-latency 
+system with parallelism is realized. Experiments in quality 
+exhibit the average saving-time with slight degradation in 
+the proposed transcoder about 47.04%, 69.77%, and 74.40% 
+in the architectures of 2-slice, 4-slice, and 6-slice, 
+respectively. 
+Keywords--- Transcoder, Scalable Video Coding (SVC), Video 
+Conference, Slice Partition, Multi-core, Parallel Processing 
+  
+I. INTRODUCTION  
+With the rapid growth of multimedia applications 
+performed in various environments, scalable video coding 
+(SVC) [1] was standardized by the joint video team        
+(JVT) of the international telecommunication 
+union-telecommunication (ITU-T) video coding experts 
+group (VCEG) and the International Organization for 
+Standardization (ISO)/International Electrotechnical 
+Commission (IEC) moving picture experts group (MPEG) as 
+an extension of H.264. SVC suits with the transmission and 
+decoding of partial bit streams to provide video services with 
+lower temporal, spatial resolutions or reduced fidelity while 
+retains a reconstruction quality that is high relative to the rate 
+of the partial bit streams for various requirements about the 
+bandwidth and client limitation. The SVC codec, including 
+the extractor, not only focuses on the compression ratio but 
+also emphasizes the dynamic adjustment in the video content 
+with Temporal, Spatial and SNR scalabilities relative to the 
+various requirements, ex. bandwidth in the transmission 
+channel. These scalabilities are useful to support the service 
+in the wireless communications or heterogeneous networks 
+as long as the resistance for the transmission errors is 
+supported. Since SVC is an extent of H.264/AVC standard, 
+the intra prediction and motion compensation in each layer 
+of SVC are similar to those employed in H.264/AVC. One of 
+the most important techniques in SVC is inter-layer 
+prediction, which can extract redundancy among different 
+layers in order to improve coding efficiency.  
+Today, video conference becomes more easily held lively 
+as a bi-directional connection in separate locations, usually 
+involving audio, text, and  video. Telecommunications of 
+audio and video can serve people at different sites in a 
+meeting. The simple case can be a conversation between two 
+participants in private offices (point-to-point), or 
+complicated as involving several sites (multi-point) with 
+more than one person at different sites. Fig 1 shows the video 
+conference system with varying devices and links. The 
+image or video can be transmitted in two manners: (1) 
+multicast/broadcast to terminals with heterogeneous 
+connectivity where a Media Aware Network Element 
+(MANE) may be concerned to aggregate different sessions; 
+(2) unicast, where the server aggregates in one RTP session 
+possibly more than one layer [2]. The latter is more suitable 
+for the image transmission required by the clients in this 
+paper.  
+ 
+ 
+Fig. 1. Components of video conference system with 
+centralized architecture 
+ 
+The implementation issue of video conference settled as 
+Fig. 1 would be the high complexity in SVC. However, the 
+real-time requirement is not easily satisfied while adopting a 
+single-core processor. Fortunately, the cost of multi-core 
+system is down enough for popularization. The loading of 
+computation can be partitioned into several tasks or threads 
+which can be managed by some cores in the parallel 
+architecture. Since the processing can be shared by 
+multi-core systems, the whole execution time can be reduced 
+in proportion to the number of cores theoretically. In fact, the 
+video conference system can be realized with the real-time 
+requirement not only in the servers but also in the clients. 
+附錄一 
+12 
+ 
+architecture. Fig. 2 indicates a two-thread example, where 
+   means that the parallelization is unavailable because of 
+processing dependency    is for the parallelizable part. The 
+efficiency of throughput in a two-core system can be 
+evaluated by 
+)2/(
+)(
+ps
+ps
+tt
+tt
+
+  
+In general case, if N processors are applied and the overhead 
+O, the quantity where the parallelization is not available, is 
+taken into account, the evaluation formula can be adjusted as 
+)][max(
+)(
+1
+Ott
+tt
+pi
+N
+i
+s
+ps
+
+
+
+  
+Intuitively, the data dependency, unbalance-loading 
+arrangement and overhead should be avoided. 
+ 
+D. Functionality of  H.264- SVC transcoder 
+To access extremely complicated multimedia, database, 
+and electronic mail services,  the functionalities of personal 
+Internet access devices are also gradually enriched with the 
+substantial communication infrastructure (such as optical 
+networks, wireless broadband, etc.). Thus the design cost and 
+bandwidth limitation are not bottlenecks to develop 
+applications for Internet service providers. The most famous 
+services include DVB-H (Digital Video 
+Broadcasting-Handheld), IPTV (Internet Protocol 
+Television), and Video Conference. Besides, requirements of 
+personal Internet access device can also be satisfied and the 
+related computational load will be transferred to powerful 
+servers or base stations. In this scenario, the personal 
+equipment can manage lots of information while maintaining 
+low price or cost. Thus a powerful video compression 
+standard such as Scalable Video Coding (SVC) or 
+H.264/AVC can be adopted to develop an efficient 
+architecture for video conference. Fig. 3 illustrates an 
+example of data flow. Four image sequences are encoded by 
+H.264/AVC and re-coded as SVC bitstream with 
+H.264-SVC transcoder. Then the composited images can be 
+transmitted and decoded with scalability.  
+ 
+ 
+Fig. 3. The data flow of H.264-SVC transcoder for video 
+conference  
+ 
+III. PROPOSED METHOD 
+Video transcoder can enable multimedia devices and 
+heterogeneous communications with different capabilities or 
+constraints. In order to improve the video transcoder 
+throughput, computation tasks can be dispersed in several 
+processors with the assumption of the slice-level 
+parallelization. Fig. 4 shows a conference image consisting 
+of four H.264 decoded images and two-level spatial 
+scalability is applied. In this scenario, “OpenMP” in Sec. II 
+B can realize the parallelization.  
+A. Slice –level parallelism 
+Generally, each frame may have at least one slice. This 
+study considers the efficiency with the number of slices per 
+frame in 2, 4 and 6. The essential issue is about the absence 
+of the intra prediction and inter-layer prediction for motion 
+vector and mode decision in different slices.  
+Fig.4 depicts a 2-slice and 2-layer (base layer, BL and 
+enhancement layer, EL) structure. Two slices are noticed as 
+shaded and normal boxes. In inter-layer prediction for Intra 
+and Inter mode, shaded part cannot reference block modes 
+and motion vectors in the other and vice versa, because all 
+slices are processed independently. Precisely, MBs in the 
+first row of normal part should be assigned as the horizontal 
+mode, because rest modes have correlation with the shaded 
+part. In inter-layer prediction, shaded part in EL can only 
+reference motion vectors and block modes from shaded part 
+in BL and thus the normal part is processed in similar 
+behaviors. 
+ 
+ 
+Fig. 4. H.264-SVC transcoder with 2 slices 
+ 
+B. Parallelization with OpenMP 
+In order to save the computing time, we partition the 
+sequence into several slices, and then process each slice, in 
+distinct CPU cores simultaneously. The technique of 
+OpenMP mentioned in Sec. II B can identify code 
+segments assigned for all threads as follows.  
+ 
+#pragma omp parallel sections num_threads(n) 
+{ 
+#pragma omp section 
+{ 
+SVC task (Slice 1) 
+} 
+. . . . . . 
+#pragma omp section 
+{ 
+SVC task (Slice n) 
+} 
+            
+Spatial 
+Decimation 
+MC & Intra 
+Prediction 
+Multiplex 
+Progressive 
+SNR Refinement  
+Texture coding 
+Texture 
+Motion 
+Texture 
+Motion 
+MC & Intra 
+Prediction 
+Inter-layer prediction 
+-Intra 
+-Motion 
+-Residual 
+Base layer 
+Coding 
+Scalable 
+Bit-stream 
+  
+  
+ 
+  
+ 
+  
+Base layer 
+Enhancement layer 
+Progressive 
+SNR Refinement  
+Texture Coding 
+Base layer 
+Coding 
+H.264 
+decoder 
+Video 
+Conference 
+Transcoder 
+H.264/AVC 
+H.264/AVC 
+H.264/AVC 
+H.264/AVC 
+SVC 
+14 
+ 
+this work can also benefit the decoder in saving the 
+computing time. 
+ 
+VI. ACKNOWLEDGEMENT 
+This paper was supported by National Science Council of 
+Taiwan (NSC 98-2221-E-194-029).  
+ 
+VII. REFERENCES 
+[1] T. Wiegand, G. J. Sullivan, G. Bjontegaard, and A.Luthra, “Overview 
+of the H.264/AVC Video Coding Standard,” IEEE Transactions on 
+Circuits and Systems for Video Technology, vol. 13, no. 7, pp. 
+560-576, July 2003. 
+[2] D. Renzi, P. Amon, S. Battista, “Video Content Adaptation Based on 
+SVC and Associated RTP Packet Loss Detection and Signaling,” 
+WIAMIS, pp. 97-100, May 2008. 
+[3] NVIDIA, “NVIDIA CUDA Compute Unified Device Architecture 
+Programming Guide”, Version 2.1, 2008.  
+[4] OpenMP, “OpenMP Complete Specifications Version 3.0”,May 
+2008. 
+[5] Guan Hui, Wang Hongpeng, “Research of parallel decoding algrithm 
+in H.264 on TILE64,” IC-BNMT, pp. 500–503, Oct. 2009. 
+[6] M.A. Mesa, A. Ramirez, A. Azevedo, C. Meenderinck, B. Juurlink, 
+M. Valero, “Scalability of Macroblock-level Parallelism for H.264 
+Decoding,” ICPADS,  pp. 236-243, Dec. 2009 . 
+[7] V. Sze, A.P. Chandrakasan, “A high throughput CABAC algorithm 
+using syntax element partitioning,” ICIP, pp. 773-776, Nov. 2009. 
+[8] [on-line] http://msdn.microsoft.com/zh-tw/library/2kwb957d.aspx 
+[9] C.-M. Huang, W.-P. Tsai, C.-W. Lin, “A Concurrent Ubiquitous 
+Video Streaming Platform Design Using SVC Techniques and 
+Multi-core Parallelism Programming,” ICS 2008.  
+[10] Amdahl, Gene, “Validity of the Single Processor Approach to 
+Achieving Large-Scale Computing Capabilities”, AFIPS Conference 
+Proceedings, pp. 483-485, 1967. 
+[11] T. Wiegand ,G. Sullivan, J. Reichel, H. Schwarz, M. Wien, "Joint 
+Draft 10 of SVC Amendment," ISO/IEC JTC1/SC29/WG11 and 
+ITU-T SG16 Q.6 JVT-W201, 2007. 
+[12] JVT H.264AVC Reference Software version JM15.1, 
+http://iphome.hhi.de/suehring/tml/download/. 
+ 
+ 2 
+二、與會心得 
+ 
+在這四天的會議中，透過不同主題的議程總共蒐集到 19 篇相關的論文，可供本實驗室三個小
+組(DSC/DVC、SVC/Video conferencing、LDPC) 研究，共有 DVC (Distributed video coding) 相關 1
+篇，SVC (Scalable video coding) 6 篇 (其中較重要的有 network 與 transcoding 各一篇)，LDPC 
+(Low-density Parity-check) codes 11 篇 (較重要屬於 decoding 的討論有 5 篇)。此會議的性質是硬體
+設計為主，所以較能以實用性來檢視一些演算法的設計方式，藉此次的經驗應能調整自己以更務
+實的考量來作研究的工作。 
+ 
+在非關會議的學術交流方面，恰巧得知杭學鳴教授利用這次到巴黎的機會代表交大與昔日的
+母校之一 Supelec (法國排名第二的工程院校，第一是 Polytechnique)建立姊妹校的合作關係，另外
+台大貝書章教授的博士生也正在那裏進行研究(教育部千里馬計畫)，明顯感覺到國內各大學的國際
+交流更加熱絡，在法國這個非英語系國家即便如此，相信在美英地區應該早已開花結果。 
+ 
+有別於 ICASSP 去年(2009 年)在台灣與 2006 年在南法 Toulouse， 這次較讓人詬病的是承辦單
+位的協助不是很貼心，除了大會住宿資料準備不妥當外，現場的網路與餐點並不是讓人很滿意，
+向工作人員反應後不是處理緩慢就是無能為力，不知是不是巴黎人較高傲，不似台灣人較為禮貌
+與熱心，造成在服務方面產生較大的落差。不過相當有意思的是 PhD/GOLD Special Session (這部
+分非關承辦單位)，主要是協助年輕的工程師或是學者進入職場後所需的調適，和求取研究與工作
+間的平衡，從這些議題可感受到 IEEE Circuit and System Society 主事者栽培後進相當用心的一面。 
+ 
+ 
+三、考察參觀活動(無是項活動者略) 
+ 
+四、建議 
+ 
+此次國際會議所需的機票與住宿費用不便宜，再加上會議的註冊費用，國科會補助款相當不
+足，相對於去年在亞太地區的會議，頇自行補貼不少錢，建議這部分的經費每年結餘可保留二至
+三年，若沒有支用才繳回，避免因每年固定核定經費而在實際支領時產生結餘與不足的情況。 
+ 
+五、攜回資料名稱及內容 
+ 
+1. ISCAS 會議手冊與光碟: 主要收錄 905 篇 regular paper，與 176 篇 special session 的 paper。 
+其中較為重要的有 DVC 一篇，SVC 的網路傳輸與轉碼器各一篇，LDPC 的解碼器設計五篇， 
+皆考考慮納入未來研究與學生論文的參考資料。 
+ 
+2. " Bjontegaard "的效能評估: 這是開會時得知杭學鳴教授已有的計算輔助檔案，可協助評估視
+國科會補助計畫衍生研發成果推廣資料表
+日期:2010/12/08
+國科會補助計畫
+計畫名稱: 以可調式視訊處理為基礎的視訊會議編解碼之研究
+計畫主持人: 李昌明
+計畫編號: 98-2221-E-194-029- 學門領域: 網路
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+洪志翰, 徐基華, 官駿原, ＇＇以 DaVinci 平台實現具有低複雜度的分散式視
+訊系統＇＇, 2010 DSP 應用競賽 -台灣區分區競賽 (入圍複賽, 指導老師  李
+昌明博士) 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  

@@ -1,0 +1,166 @@
+ 2
+ 
+中文摘要 
+Photon mapping 是一個有效率且可廣泛應用在不同 scenes 中的一種 global illumination 
+method. 它能夠模擬不同 3D 虛擬 scenes 的視覺效果,尤其有助於合成 caustics 效果. 然而對
+於一些較特別的物體,如 gemstones,光線在內部的反折射的行進軌跡很複雜. 所以使用傳統
+photon mapping 的方法會造成無法忍受的視覺效果. 
+Gemstones 通常切割成多邊形形狀的幾何外觀,而且由類似鏡面般完美琢磨過的高
+specular facets 組成 . 所以在場景中易於產生大量多邊形輪廓為主的 caustics. 此
+外,gemstones 也具有高折射性,如 diamond 由於色散現象的因素,所以能夠呈現彩虹般的火彩
+效果. 這種特性會進一步使得 caustics 變的多彩豐富且難以正確模擬.  
+在這篇 paper中,我們提出 grouped photon sub-map這樣的新方法,去解決上述的問題. 我
+們的計劃是修改 photon mapping 的方法使適用於合成出複雜的 caustics 效果. Grouped 
+photon sub-map 的基本概念是以光線間的連續性及連貫性為基礎,將 photon map 中所有離散
+的 photons,依照各自的 intersection history,而分類成不同連續區域的一群 photons. 換句話說,
+擁有相同 history 的 photons 會被儲存在同一個連續區域內的 data structure 中,即 grouped 
+sub-map.  
+Intersection history意指一條光線從被灑入場景到最後以photon形式儲入map的過程中,
+所有與光線相交過的 surface indices list. 當所有 grouped photon sub-maps 被建立後,每一個
+grouped sub-map 藉由 photons 的位置決定一個 convex hull. 在 rendering 步驟中,每一個 pixel
+就可從那些 convex hulls 有相交的 grouped sub-maps 中取樣 photons 來估計 radiance. 透過
+grouped photon sub-map的使用,可以解決一些傳統photon mapping沒辦法完全或部分解決的
+問題,包括模擬出多邊形輪廓為主的caustics,消除boundary bias, 捨棄會造成noise的photons,
+以及維持 photons 間的連續性和連貫性. 另外,grouped sub map 透過 convex hull 能夠完全避
+免 shadow rays 的使用,以及加快 shaded point(著色點)從 maps 中取樣 photons 的速度. 
+關鍵字： 電腦圖學(CG)、光線追跡法(Ray tracing)、Photon map、Monte Carlo、Density 
+Estimation、色散(dispersion)、聚焦(caustics)、寶石(gemstone) 
+ 
+1. Introduction 
+ Gemstones 的珍貴不僅在於其稀有,也因為其迷人的視覺效果,變的更光彩絢麗. 這些效
+果主要來自於幾個原因.  
+首先,Gemstones與光線互動會產生多樣性的光學現象,包括基本的反射、折射和內部全
+反射[1],以及較複雜的dispersion[2]、polarization[3]和caustics. 內部全反射會影響光線折射出
+gemstones表面時的整體光澤強度. Dispersion會讓進入gemstones內部的白光被分離成不同
+波長的單色光,而產生彩虹般的火彩效果(fire). Polarization會影響光線在model表面上被反射
+或折射的能量配分,造成視覺上明暗的效果. Caustics則是折射出gemstones表面的光線聚焦
+於diffuse surfaces上的結果.  
+第二,幾何切割形狀影響光線在 gemstones 內部的互動行為,如 brilliant-cut(明亮式切割;
+見 figure 1)能夠使進入內部的光線進行多次的全反射,使得大部分光線從 table 面折射出. 因
+此 brilliant-cut 使 gemstones 整體產生較明亮的光澤. 另外,經過琢磨(polishing)的 surfaces,變
+的類似鏡面般的高 specular 材質,使得反射性及 caustics 的效果更明顯.  
+ Photon mapping[13] 是 採 用 一 個 二 回 式 的 ray tracing 技 術 . 相 較 於 其 它 global 
+illumination(全域照明)的方法如以ray tracing(光線追跡)技術為主[5][6][7][8][9]、以radiosity(輻射
+法)技術[17][24][4]為主的和hybrid(混合)技術 [18][17][24]等提供一個更有效率、簡單和廣泛應用的
+方法. 它改變了光源照明的儲存方式,而採用一個與model幾何形狀沒有關聯的一個獨立data 
+structure(資料結構),即photon map.在第一回photon tracing中,建立兩種類型的photon map, 
+global photon map和caustics maps,來儲存surfaces上來自光源直接或間接照射貢獻的照明資
+訊. 當光線與surface有接觸的時候,以photon的形式儲存在一個balanced kd-tree結構的photon 
+map中. 在第二回rendering pass,從photon map中sampling固定範圍內最近的幾個photons以作
+為radiance estimation的計算.  
+ 
+Figure 1. Brilliant-Cut                Figure 2. 光線在gemstones內部的tracing行為 
+ 
+ 雖然利用 photon map 的方法能夠直接簡單的 render 出 caustics. 但對於模擬 gemstones
+較複雜的 caustics 仍有一些不足. 因為 Gemstone 的幾何切割形狀關係,所以不僅能夠產生大
+量的 caustics,而且其輪廓也多以近似polygon(多邊形)為主.以現有 photon map的方法,常容易
+render 出模糊、不連續且圓弧狀的 caustics. 這些都是從 photon map 中 sampling 到不適當
+photons 所造成的結果. 因此我們提出一個延伸自 photon map 概念的 data structure,即
+grouped photon sub-map,能夠去除那些選擇錯誤的photons. grouped photon sub-map的目的是
+ 4
+ 
+Figure 3. 區域連續光                Figure 4. Noise 和不連續的 caustics 
+ 
+相反地,Photon mapping是一種 ray tracing,採用point sampling的方式,取樣光源撒入有限
+數量及無限細的光線到 scene 中. 再使用 Maps 來儲存場景中分佈在 surfaces 上的離散
+photons. 但是我們缺乏資訊得知哪些 photons 是屬於同一個連續區域內的一群光線. 而且這
+群 photons 在數量上也不足以構成無縫隙的連續光線. 自然地,在 rendering 過程中,就可能因
+為 shaded point under-sampling 關係或從 map 中取樣出不適當的 photons,而易於產生 noise
+及不連續性現象,使得 image品質的降低. 當處理如gemstones等因為幾何外觀及光線多次反
+折射的關係,其所產生的 fire 和 caustics 效果更多更複雜,使得 photon maps 更難以去模擬. 如
+figure 4 中產生很多圓弧狀的 noise,可能因為 shaded point 取樣到的 photons 數過少或某一個
+photon 強度遠大於其他 photons 所造成的. 除此之外,因為 photons 之間的不連續性也造成
+caustics 無法維持多邊形的輪廓. 
+有鑑於 photon mapping 上面的缺失,在不提高複雜度太多情況下,我們提出一個方法來
+判斷 maps 中哪些 photons 屬於同一個連續區域內的一群光線,並且使用一個獨立 sub-map 來
+儲存這群光線. 換句話說,一個原本儲存著場景中所有 photons 的 map,依照光線連續性拆成
+數個代表不同連續區域的 sub-maps. 直覺上,當一群光源發射的光線與 objects 互動的時候,
+只要他們經歷一樣的 surfaces 接觸以及相同的光學反應如反射或折射,就可稱這群光線是位
+於同一個連續區域內的光線. 因此利用這樣的架構,在 rendering 過程中,每一個 shaded point
+取樣時,就可以根據交點落於哪些連續區域光線內,而找到正確的 photons. 同樣地,若 shaded 
+point under-sampling 時,也可以利用同一個區域內的 photons 進行 density estimation,以計算
+shaded point 被忽略的 radiance value. 
+  
+3.2 Building Grouped Photon Maps 
+底下figure 5.(a)(b)(c)(d)(e)是建構grouped photon maps的過程. 首先均勻地從場景中光
+源隨機取樣大量的點,以計算photons的起始radiance values及行進方向. 每一個photon以path 
+tracing方式被投入場景中. 每次當一個photon與surface接觸的時候,就會被存入一個map中. 
+而我們建立一個暫存的Intersection History陣列,記錄一個photon終止tracing前,所有曾接觸過
+surfaces的surface index.這個陣列用來判斷一個photon該存入哪一個grouped photon sub-map
+中. 並且採用Russian Roulette[10]計算每一個photon在surface上的radiance weight以及判斷是
+否進行吸收、反射或折射的動作. Monte Carlo策略則是sampling 一個surface上的BSDF以計
+ 6
+ 8
+photons的種類,Grouped photon maps分成grouped direct photon map、grouped indirect photon 
+map及grouped caustics photon map. Grouped direct photon map儲存第一次接觸任何surface的
+photons,即direct photons. Direct photons被用來判斷shaded point是否位於陰影區內,以取替
+shadow rays的使用. 而grouped indirect photon map則儲存Indirect photons-接觸non-specular 
+surface至少一次的photons,用於估算soft indirect illumination之用. Group caustics photon map
+儲存caustics photons. Caustics photon表示接觸於diffuse surfaces之前,曾通過specular surfaces
+至少一次以上的photons. Figure 5.(b)(c)(d) 說明三種direct、indirect和caustics photons,在場景
+中的分佈情況. 
+由於每一個 photon 使用 intersection history 記錄其 tracing 終止前所有曾接觸過的
+surfaces. 因此一群具有相同 intersection history 記錄的 photons 即表示為一群在同連續區域
+內的 photons. 不管是 direct、indirect 或 caustics photons,只要屬於同連續區域內的一群
+photons,我們都會使用一個獨立的 grouped photon map 來儲存. 但是若一個 map 儲存的
+photons 數量過少時,如少於 3 個,會使得 shaded point 可能取樣不到或稀少的 photons,造成
+radiance value 由少數 photons 計算求得,因而容易形成 noise. 所以我們必須捨棄那些 photons
+數量不足 3 個以上的 maps.  
+ 
+3.3 Convex Hull 
+在我們的方法中,不管是 direct、indirect 或 caustics photon map,可能存在多群連續區域
+的 photons,所以會用數個獨立的 maps 儲存. 因此在 rendering 的時候,每一個 shaded point 必
+須先決定要存取哪些 maps 去搜尋最近的 photons. 因為每一個 map 儲存一群位於連續區域
+內的 photons,所以我們可以由這些 photons建構一個 convex hull,表示一個連續區域所涵蓋的
+輪廓範圍.(見 figure 5.(e)) 之後,就可以藉由判斷一個 shaded point 是否位於某些 convex hulls
+內,而決定存取哪些 maps.  
+ 
+4. Radiance Estimation 
+ 為了計算 synthesized image 中每一個 pixel 的 radiance value,我們由視者 shooting 多條通
+過一個 pixel 的 sampled rays 到場景中進行 Monte Carlo tracing 以求取交點,即 shaded point. 
+每一個 shaded point 透過 grouped photon maps 的使用,以估計來自光源的 direct、indirect 及
+caustics illumination 的結果. 
+ 
+4.1 Shadow rays and Direct Illumination 
+photon mapping[12][13]判斷一個shaded point是否位於陰影區的方法,是以shaded point在
+global photon map中所取樣到的photons,去比較direct和shadow photons之間的比例,作為是否
+需要使用shadow rays的依據. 不過可惜的是不僅需要大量的photons才能獲得較正確的判斷,
+而且也沒辦法避免在陰影區邊界上使用shadow rays的機會. 我們知道一個grouped direct 
+photon map由同一連續區域內的direct photons構成. 因此,自然地,當一個shaded point位於至
+少一個map的convex hull內時,就表示沒有位於陰影區內. 透過這種簡單的判斷,能夠完全避
+免使用shadow rays的機會. 另外,場景中若有多光源存在的時候,則每一個grouped direct 
+photon map會額外記錄一個光源標籤. 使得shaded point能夠利用標籤找出光源,計算來自光
+源的direct illumination. 
+ 
+所繪影出figure 4 的鑽石結果,可以清楚發現透過我們的方法,能夠成功產生大量不破碎、不
+模糊以及具有明顯輪廓的彩虹般的caustics效果. 
+ 我們的方法也能夠運用在場景中消除光源漏光的情形. 由於標準 Photon Mapping 在計
+算 radiance 時,是以著色點(shaded point)為中心,取樣聚集在其附近,但不考慮 photons 的位置
+分佈來估算. 也就是說,它可能使得位於如 Figure 7中,與光源中間隔著一面牆的著色點位置,
+因為取樣到實際上不可見的 photons,而產生如左邊圖的牆角附近漏光情形. 在本研究中,我
+們利用 convex hull 所建構出來可見的 group 區域,而能夠自然排除取樣到不適當的 photons. 
+這結果我們可以由右邊圖在牆角附近沒有產生漏光情形得到證實. 
+ 
+Figure 7. 漏光現象的比較,左邊是利用標準 Photon Mapping 所繪影,右邊則是我們的手法 
+ 
+6. Conclusion 
+我們提出延伸自 photon maps 概念的 grouped photon sub-maps 結構,包括 direct maps, 
+indirect maps,和 caustics maps. 每一個map儲存著同一個連續區域內的photons. 結合 convex 
+hull,能夠幫助 shade point 較快速及正確找到 photons 去計算 radiance value. 因此目前研究使
+用這種結構能夠初步成功模擬 gemstones 場景所產生的複雜光學效果,包括捨棄會造成 noise
+的 photons, 消除 boundary bias,以及產生多邊形輪廓為主和連續性的 caustics. 未來研究上還
+有待改進或接下來要實作的方向,包括利用階層式架構如 quad-tree 來加快 convex hull 的判
+斷,加強 caustics 的連續性和輪廓真實性,以及一個更適合 grouped photon maps 使用的 density 
+estimation function. 
+7. References 
+[1] Barak Green, Ilene Reinitz, Mary Johnson and James Shigley, “Diamond Optics Part 1: Reflection,           
+   Refraction and Critical Angle”, GIA on Diamond Cut, 2001.  
+[2] Barak Green, Ilene Reinitz, Al Gilbertson, Mary Johnson and James Shigley, “Diamond Optics Part2: Light 
+Dispersion, Color Wavelengths and Fire”, GIA on Diamond Cut, 2001.  
+[3] Barak Green, Ilene Reinitz, Al Gilbertson, Mary Johnson and James Shigley, “The Effect of Polarization States 
+on Light Behavior”, GIA on Diamond Cut, 2001.  
+[4] Chen, Eric Shenchang, Holly E. Rushmeier, Gavin Miller and Douglass Turner, “A Progressive     
+   Multi-Pass Method for Global Illumination”, in Computer Graphics 25 (4), pp. 164-174, 1991. 
+[5] E. Lafortune and Y. Willems, “Bi-directional path tracing”, in Proceedings of CompuGraphics '93, pp.145–153, 
+1993. 
+ 10

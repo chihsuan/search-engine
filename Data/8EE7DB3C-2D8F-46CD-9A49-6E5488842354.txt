@@ -1,0 +1,340 @@
+行政院國家科學委員會專題研究計畫期中進度報告
+平行計算編譯技術於非結構性網格上求解紊態流場之應用研究
+Applying Compiler Techniques for Parallel Computation on
+Turbulent Flow Simulation with Unstructured Meshes
+計畫編號 ：NSC 96－2221－E－001－011－
+執行期間 ：96 年 08 月 01 日至 97 年 07 月 31 日
+計畫主持人 ：李丕榮
+摘要
+本研究應用平行編譯技術，使數值模擬程式得以在工作站或個人電腦叢集
+(Workstation/PC cluster)上加速執行。為適應外型複雜的工程應用，數值模擬是建立在非結
+構性網格下進行。除了非結構網格的科學計算研究之外，本研究亦導入物理模式處理紊流
+效應。將模擬飛行體在高速運動時的周遭紊態氣流動態，並討論以 MPI、OpenMP 於現行
+多核心處理器組成的個人電腦叢集進行平行計算的效益。
+關鍵詞：計算流體力學、平行計算、個人電腦叢集、紊流、非結構性網格。
+Abstract
+The turbulent flow simulation requires the dense density of unstructured grids in solving the
+Navier-Stokes equation with complex geometry. This project adopts the modern turbulence
+models and also the up-to-date numerical methods based on the unstructured grids into this
+numerical wind tunnel. The heavy load of computation demands the compiler techniques of
+parallel computation on the workstation / PC cluster in order to speed up the performance of
+computation. The performance and the robustness of this numerical wind tunnel are discussed
+with MPI and/or OpenMP on a PC cluster with multi-core CPU.
+Keywords: Computational fluid dynamics, parallel computation, PC cluster, turbulent flow,
+unstructured mesh.
+MIND 形式的電腦 Intel iSPC/860 和 CM-2 計算類似的問題。Cui & Knight [22]
+則是計算二維黏性流場之 Navier-Stokes 方程式，指出對非結構性資料的分割
+策略大幅影響了分散式計算環境的整體效能，關於分割策略以及平衡負載的處
+理技術也可見於 Lohner [23]、Keyser & Roose [24]和 Lanteri [25]等人的研究。
+而為了提升求解速度，引入適當的數值收斂加速法則也是項重要的工作，
+如 Lin [26]以及 Chao [27]使用多重格點 (multigrid)法、Venkatakrishnan [28]和
+Ajmani et al . [29]使用 GMRES 法、Barth [30]採 Newton-Krylov 法，來加速程
+式的收斂效率。關於數值風洞的實際運用，Mavriplis[31,32]應用了平行處理技
+術 於 全 飛 機 大 型 流 場 的 計 算 問 題 上 ， 並 具 體 比 較 了 shared-memory 和
+distributed-memory 架構的電腦性能。更以 13,500,000 個網格配合 multigrid 的
+方法在 CRAY TE3 電腦於 4 小時內完成計算，充分展現了平行處理的能力。其
+他關於平行處理方法於計算流體力學之應用，在 Venkatakrishnan[33]的文章中
+有相當深入的探討。
+為了要能夠確實瞭解及分析真正的不規則科學計算，我們先前也發展了一個二維的數
+值風洞模擬平台，包括了網格產生器[3]及 Euler flow solver [34-36]。但是，對於一個應
+用領域科學家或是程式設計師而言，很難要求其兼顧平行處理所要求的工作量
+平衡最大化與資料傳輸量最少化兩者之間的均衡取捨，致使程式語言的輔助指
+令的效率不高 [37-50]。當然，這最大的原因在於應用程式中包含不規則排列資
+料的計算，使得最佳化問題變則複雜 [51-57]。如何同時平衡各區域內的計算負荷與
+資料溝通延遲，成為當前的一個重要課題[58-67]。
+PC/Workstation clusters 及 Grid computing 這類看似陽春級的分散式平行處
+理電腦，已是平行處理電腦的主流，主要原因是它們的價格低，又可以任意擴
+充單機的個數。如果這類工作站叢集或個人電腦叢集等級的平行電腦，能夠具
+備更成熟的程式編譯器，平行處理的普及化將倍數成長。
+研究方法
+RANS/FANS 早已被廣泛的應用在紊流場的預測上，但其中未知的雷諾應力項需要靠紊
+流模式來使方程組得以封閉(closure)求解。本研究將從傳統的 RANS/FANS 起步，建立基礎
+的紊態流場模擬程式，並逐步結合不同尺度物理模式，建構多重尺度紊流模擬能力。以 FANS
+方程組為例，圖六中的瞬時流場特性可拆分為解析值與模式化的擾動值，因此 FANS
+方程組可以張量(tensor)的形式表示如下：
+質量守衡
+( )
+0j
+j
+u
+t x
+   
+ 
+
+(1)
+2
+2 1 2 1
+( )
+( )
+1 1
+( )( ) (1 ) ( )
+i t
+t
+j
+t t t t
+t b b t t w w
+j j j j
+u
+t x
+C C f C f
+x x x x d
+
+      
+ 
+ 
+ 
+               
+
+   
+(7)
+於程式開發初期先針對數值資料結構進行了解，對於平行程式的開發應有相當助益。針對
+上述微分方程組以較常見且穩定的隱性數值方法進行離散，則離散方程式可表示為
+, 1 1, 1 , 1 1, 1 , 1n t n t n t n t n t
+i i nb nb
+neighbor
+A A B          (8)
+其中 , 1 , 1 , 1, ,n t n t n ti nbA A B
+  為 , 1 , 1 , 1, ,n t n t n ti neighbor wall       的函數。其資料結構呈現空間中特定格點的求解
+需要其週遭格點上的資料，藉由疊代法求解最終收斂的 1ti。
+我們進行應用程式平行化的研究，分析在平行電腦上迴路程式執行空間的
+分割與排程。首先從單機四核心處理器上以 OpenMP 進行迴路程式的排程來
+看，一般以線性分割 schedule(static)將 N 個顯性的計算工作均衡分配給 4 個核
+心進行處理，單機上的各核心各自進行獨立資料區域的計算，如圖 (一)。
+(a) X
+Y
+0 0.2 0.4 0.6 0.8 1
+0
+0.2
+0.4
+0.6
+0.8
+1
+(b) X
+Y
+-4 -2 0 2 4 6 8 10 12 14
+-1
+-0.5
+0
+0.5
+1
+1.5
+2
+2.5
+3
+3.5
+4
+4.5
+5
+(c) X
+Y
+-0.5 0 0.5 1 1.5 2
+-0.4
+-0.2
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+(d) X
+Y
+-0.2 0 0.2 0.4 0.6 0.8 1 1.2
+-0.4
+-0.2
+0
+0.2
+0.4
+II
+IV
+I
+III
+圖(一)、以 diagonal order 排序後，將網格範本的主要區域線性分割為四個獨立計
+算區域(I~IV)的示意圖。
+δi=D -1 i[ΣDm,nγm-ΣUp , qδp] / * 區域內的 implicit 演算 */ (15)
+/* step 4: update x t+1 i ; Ns t a r t≤i≤Nen d */
+x t+1 i=x t i +δi /* 區域內的資料更新 */ (16)
+/* step 5: update x t+1 i ; i<Ns t a r t or i>Nen d */
+MPI_send & MPI_recv /* 跨區域 (PC)的資料交換 */ (17)
+此概念相當於 (1)各區域內的 incomplete LU method 與 (2)跨區域的 Jacobi
+method 之結合。。
+結果與討論
+目前已完成以有限體積法求解 FANS 方程式，利用 MUSCL[68]形式的向風插分求得在
+控制面上的流體狀態，Liou 的 AUSM+-up[69]計算非黏性通量，而黏性通量則是使用 Taylor
+積分法計算。另外，我們使用內含 incomplete LU decomposition 為 preconditioner 的 stablized
+biconjugate gradient method[70]加速 Newton 疊代法對方程式作隱性的時間積分，完成於具
+有 Intel Core2 Quad 處理器的 PC cluster 上完成對典型流場的模擬。上述方法對於求解流場
+將具有二階的空間及時間準確度。圖(二)顯示(a) cavity、(b) backstep、(c) NACA0012 airfoil
+與(d) NASA EET wing 共四種問題，分別以(a) 2,004、(b) 6,724、(c) 23,791 與(d) 26,900 個三
+角形格點進行計算所得的結果。
+(a) X
+Y
+0 0.2 0.4 0.6 0.8 1
+0
+0.2
+0.4
+0.6
+0.8
+1
+(b) X
+Y
+-4 -2 0 2 4 6 8 10 12 14
+-1
+-0.5
+0
+0.5
+1
+1.5
+2
+2.5
+3
+3.5
+4
+4.5
+5
+(c) X
+Y
+-0.5 0 0.5 1 1.5
+-0.4
+-0.2
+0
+0.2
+0.4
+0.6
+0.8
+1
+(d) X
+Y
+-0.2 0 0.2 0.4 0.6 0.8 1 1.2
+-0.4
+-0.2
+0
+0.2
+0.4
+圖(二)、(a) cavity、(b) backstep、(c) NACA0012 airfoil 與(d) NASA EET wing 的
+網格、流線與壓力(紅色代表高壓；藍色代表低壓)分佈圖。
+表(三)、四種流場在六種計算環境之下，各核心約需擔負的計算網格數目。
+Cavity Backstep NACA0012 NASA EET
+(A) 單機單核心 2,004 6,724 23,791 26,900
+(B) 單機四核心 501 1,681 5,948 6,725
+(C) 雙機各單核心 1,002 3,362 11,896 13,450
+(D) 雙機各四核心 251 841 2,974 3,363
+(E) 四機各單核心 501 1,681 5,948 6,725
+(F) 四機各四核心 125 420 1,487 1,681
+Number of PCs
+S
+p
+ee
+d
+up
+0 1 2 3 4 50
+5
+10
+15 NASA EET / single
+NASA EET / quad
+NACA0012 / single
+NACA0012 / quad
+backstep / single
+backstep / quad
+cavity / single
+cavity / quad
+圖(三)、PC 和 core 的數目與 speed up 的關係。
+結論與建議
+本計畫第一年自九十六年八月起至九十七年七月止，使用中央研究院所屬
+的個人電腦叢集作為發展數值模擬程式與驗證平行編譯技術的計算環境。已完
+成工作如下：
+1. 於非結構性網格上建構紊流模式與強健數值計算的程式。
+2. 進行研究迴路程式執行空間的分割與排程，分析各種方法的優劣。
+3. 整合並測試此平行數值模擬程式，檢驗平行加速的效能，以作為進一
+步研究的依據。
+第二年自九十七年八月起至九十八年七月止，預計執行步驟如下：
+1. 結合多重尺度紊流模式於數值模擬程式。
+2. 針對大型程式所使用的非規則性資料陣列，尋找資料陣列分割和儲存
+的最佳化研究。
+3. 針對大型數值問題檢驗平行加速的效能。
+18. Spalart, P.R., Deck, S., Shur, M. L., Squire, K. D., Strelets, M. Kh, and Travin, A., “A new 
+version of detached-eddy simulation, resistant to ambiguous grid densities”, Theor. Comput. 
+Fluid Dyn., vol. 20, pp. 181-195, 2006.
+19.Barth, T. J. & Jesperson, D. C., “The design and application of upwind schemes on
+unstructured meshes,” AIAA paper 89-0336, 27th Aerospace Science Meeting, Reno, 1989.
+20.Venkatakrishnan, V & Simon, H. D., ”A MIND implementation of a parallel Euler solver
+for unstructured grids,” J.  Supercomputing, Vol. 6, pp. 17-137, 1992.
+21.Hammond, S. W. & Barth, T. J., “Eficient massively paralel Euler solver for 
+two-dimensional unstructured grids,” AIAA J., Vol. 30, pp. 947-952, 1992.
+22.Cui, A. & Knight, D., “Implementation of an unstructured grid Navier-Stokes algorithm on
+the connection machine”, AIAA paper 94-0411, 32th Aerospace Science Meetinh, Reno,
+1994.
+23.Lohner, R., “Renumbering stratege for unstruactured-grid solvers operating on
+shared-memory, cache-based paralel machines,” AIAA paper 97-2045, 1997.
+24.Keyser, J. D. & Roose, D., “Run-time load balancing techniques for a paraller unstructured
+multi-grid Euler solver with adaptive grid refinement,” Paralel Computing, Vol. 21, pp.
+179-198, 1995.
+25.Lanteri, S., “Paralel solution of compressible flows using overlapping and non-overlapping
+mesh partitioning strategies,” Paralel Computing, Vol. 22, pp. 943-968, 1996.
+26. Lin, F.–P., “Multigrid solution of the Euler and Navier-Stokes equations on unstructured
+grids,” Int. J. Num. Methods Fluids, Vol. 29, pp. 921-934, 1999.
+27.Chao, M. J., “Unstructured grid generation and agglomeration multigrid method for the 
+Euler solution over complex aircraft configurations,” Ph. D. thesis, National ChengKung
+Univ., Taiwan, R.O.C, 1997.
+28.Venkatakrishnan, V., “Paralel implicit unstructured grid Euler solver,” AIAA J., Vol. 32, pp. 
+1985-1991, 1994.
+29. Ajmani, K., Liou, M.-S., & Dyson, R. W., “Preconditioned implicit solvers for the 
+Navier-Stokes equations on distributed-memory machines,” AIAA paper 94-0408, 32th
+Aerospace Science Meeting, Reno, 1994.
+30.Barth, T. J., “An unstructured mesh Newton solver for compressible fluid flow and its 
+paralel implementation,” AIAA paper 95-0221, 33th Aerospace Science Meeting, Reno,
+1995.
+31.Mavriplis, D. J., “Three-dimensional high-lift analysis using a parallel unstruactured
+multigrid solver,” Technical Report 98-20, ICASE, Maryland, 1998.
+32.Mavrisplis, D. J., Das, R., Saltz, J. & Vermeland, R. E., “Implementation of a paralel 
+unstructured Euler solver on shared- and distributed-memory architectures,” J. 
+Supercomputing, Vol. 8, pp. 329-344, 1995.
+33.Venkatakrishnan, V., “ Implicit schemes and paralel computing in unstructured grid CFD,” 
+ICASE report NO. 95-28, 1995.
+34. Lee, P. Z., Chang, C. H. & Maw-Jyi Chao, “A paralel Euler solver on unstructured mesh,” 
+in Proc. ISCA 13th International Conference on Parallel and Distributed Computing
+Systems (PDCS-2000), Las Vegas, Nevada, Aug. 8-10, 2000, pp. 171-177.
+35. Lee, P. Z., Chang, C. H. & Wu, J. J., “Paralel Implicit Euler Solver on Homogeneous and 
+Distributed Syst., Vol. 6, pp. 815-831, 1995.
+53. Saltz, J., Crowley, K., Mirchandaney, R., & Berryman, H., “Run-time scheduling and
+execution of loops on message passing machines,” Journal of Paralel and Distributed 
+Computing, Vol. 8, pp. 303-312, 1990.
+54.Ujaldon, M., Zapata, E. L., Chapman, B. M., & Zima, H., “Vienna Fortran/HPF extensions 
+for sparse and irregular problems and their compilation,” IEEE Trans. Paralel Distributed 
+Syst., Vol. 8, pp. 1068-1083, 1997.
+55.Wu, J., Das, R., Saltz, J., Berryman, H., & Hirandan, S., “Distributed memory compiler 
+design for sparse problems,” IEEE Trans. Comput., Vol. 44, pp. 737-753, 1995.
+56. Wu, J. J., Optimization and Transformation Techniques for High Performance Fortran, PhD
+thesis, Yale University, 1995.
+57.Zapata, E. L., Plata, O., Asenjo, R., & Trabado, G. P., “Data-parallel support for numerical
+iregular problems,” ParalelComputing, Vol. 25, pp. 13-14, 1999.
+58.Barnard, S. T. & Simon, H. D., “Fast multilevel implementation of recursive spectral 
+bisection for partitioning unstructured problems,” Concurency and Computation: Practice 
+and Experience, Vol. 6, pp. 101-117, 1994.
+59. Chung, Y. C. & Ranka, S., “Applications and performance analysis of a compile-time
+optimization approach for list scheduling algorithms on distributed memory
+multiprocessors,” Proceedings of ACM/IEEE Conference on Supercomputing, pp. 512-521,
+1992.
+60. Chung, Y. C., Liao, C. J., & Yang, D. L., “A prefix code matching paralel load-balancing
+method for solution-adaptive unstructured finite element graphs on distributed memory
+multicomputers,” The Journal of Supercomputing, Vol. 15, pp. 25-49, 2000.
+61. Diekmann, R., Preis, R., Schlimbach, F., & Walshaw, C., “Shape-optimized mesh
+partitioning and load balancing for paralel adaptive FEM,” Paralel Computing, Vol. 26, pp. 
+1555-1581, 2000.
+62.Karypis, G. & Kumar, V., “A fast and high quality multilevel scheme for partitioning
+iregular graph,” SIAM J. Sci. Comput., Vol. 20, pp. 359-392, 1998.
+63.Karypis, G. & Kumar, V., “Multilevel-way partitioning scheme for iregular graphs,” 
+Journal of Parallel and Distributed Computing, Vol. 48, pp. 96-129, 1998.
+64.Karypis, G. & Kumar., V., “Parallel multilevel $k$-way partitioning scheme for irregular
+graphs,” SIAM Review, Vol. 41, pp. 278-300, 1999.
+65.Monien, B., Preis, R., & Diekmann, R., “Quality matching and local improvement for 
+multilevel graph-partitioning,” Paralel Computing, Vol. 26,pp. 1609-1634, 2000.
+66.Schloegel, K., Karypis, G., & Kumar, V., “Wavefront difusion and LMSR: Algorithms for 
+dynamic repartitioning of adaptive meshes,” IEEE Trans. Paralel Distributed Syst., Vol. 12, 
+pp. 451-466, 2001.
+67. Schloegel, K., Karypis, G., & Kumar, V., “Paralel static and dynamic multi-constraint graph
+partitioning,” Concurency and Computation: Practice and Experience, Vol. 14, pp. 219-240,
+2002.
+68.Lu, P. J., Pan, D. Z., Yeh, D. Y., “Transonic fluter suppression using active acoustic 
+excitation,” AIAA J., Vol. 33, pp. 694-702, 1995.
+69.Liou, M. S., “A sequel to AUSM, part I: AUSM+-up for al speeds,” J. Comp. Phys., Vol. 

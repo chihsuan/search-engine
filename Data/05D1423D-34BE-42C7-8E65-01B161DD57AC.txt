@@ -1,0 +1,407 @@
+ 2
+ 
+一、研究背景簡介 
+ 
+近幾年來，隨著科技的發展，電腦速度日益進步、顯示卡的繪圖處理單元(graphics processing 
+units)不斷的增加硬體加速功能與可程式化的硬體技術，3D 影像重建也隨著需求相關應用
+越來越多，製作也越來越精細，例如數位典藏，運用重建技術將珍貴的文物數位化，真實
+的呈現在電腦上，可依照使用者喜好任意旋轉，達到永久典藏與多樣化的目的。動畫、電
+影、遊戲、工業產品初期的樣品製作，運用重建技術將物體重建，可方便製片者搭配所需
+的背景、物體角度或合成多種物體，減少每個場景就重繪物體的成本。在醫學上，運用斷
+層掃瞄和重建技術，重建出人體內器官或組織的影像，方便醫師的診斷。 
+在整個重建領域中，結合了電腦圖學與電腦視覺兩大範疇，其目的是將真實世界的物體在
+電腦上逼真的呈現出來，呈現的效果可依重建技術和需求而有所不同，比如是否可更改視
+角，是否可將重建出來的物體放至使用者設定的場景中，甚至是否可依照使用者的喜好重
+新打光。重建依照幾何模型的需求與否，主要分為兩大類，一個是基於影像的描繪技術
+(Image-Based Rendering)，一個是基於幾何的描繪技術(Geometry-Based Rendering)。兩者的
+優劣大至互補。 
+基於影像的描繪技術是一堆影像的集合，首先在真實的場景中，繞著物體在各種不同角度
+拍攝，或是固定觀測點拍攝四周景像，拍攝而成的照片收集成一個數位資料庫，重建時依
+據觀看者的角度，而抽取出該角度的照片，無該角度的影像時，則使用其他角度的影像內
+插(Interpolate)，或單張角度的轉換(Warp)。這技術的優點為不需要幾何模型，成本低，品
+質精細。描繪的過程中完全由 2D 的相片或材質所組成，故不需要額外建造幾何模型的硬
+體設備與技術，也不會因為物體或光源的複雜度增加而成本增加，只跟相片的解析度有關，
+另外重建呈現出來的是真實的相片或材質，所以擬真的程度相當好。缺點為操控性差，儲
+存影像的容量大，欲製作越平順越連續的影像，所需拍攝的角度越多，耗費的儲存成本相
+對越高。此外基於影像的描繪技術沒有使用到幾何模型，也沒量測材質的特性，所以重建
+的結果並沒有辦法重新打光。合成多樣重建物體於同一影像上時，也會因為當初彼此間場
+景光源的不同而發生問題。 
+基於幾何的描繪技術包含了建立幾何模型 (Modeling) 、取像 (Acquisition) 、表現
+(Representation)、描繪(Rendering)等過程。在 3D 場景中，需要操控或旋轉，就必須建立一
+個幾何模型，模型由頂點和網格所組成，製作方式可由軟體手動建出模型，或是利用 3D
+雷射掃瞄器、視覺空殼(Visual Hull)或探針邊緣偵測…等方式建出真實世界中物體的模型。
+ 4
+3.1 前置處理 
+ 
+整個系統架構如圖 3.1，一開始是擷取模型與取像過程，擷取模型是擷取 3D 的幾何模型，
+製作方式可由軟體手動建構出模型，或是利用 3D 雷射掃瞄器、視覺空殼(Visual Hull)[8]或
+探針邊緣偵測…等方式建構出真實世界中物體的模型，包含頂點的 3D 空間座標、法向量…
+等資訊和網格的資訊。取像是繞著真實世界中的物體拍攝，並且紀錄物體旋轉的情形、相
+機的位置和光源的位置和強度，以作為計算 BRDF 參數的樣本，原則上拍攝的張數越多越
+好，但影像越多張所耗的計算成本也越大。 
+接下來是本章的重點，前置處裡。在計算 BRDF 參數前，先將影像處理成合用的資料，包
+含剔除資料點(Discarding)、映射顏色圖(Colormaping)、和合併顏色圖(Assmbling Colormap)
+等過程，一方面為了篩選資料的可用性，使訓練資料更正確，另一方面尋找 3D 頂點所對
+應的資料點，如果前置處理作的不正確，最佳化 BRDF 參數的過程再精確，所得的結果也
+是錯誤的。 
+樣本一切準備就緒後，接下來是 BRDF 參數計算的過程，找尋適合的 BRDF 模型和參數，
+內容包括獨特的漫射和反射分開計算方式，與最佳化求解的方法。利用所得的參數，重新
+計算顏色值，回推至影像，計算誤差，作為下一步分群的處理的輸入，分群處理包含了分
+群、合併、重新分群等過程，將相同顏色相同特性的材質頂點分在同一堆，不同顏色不同
+特性的材質頂點分在另一堆，丟回 BRDF 參數計算的過程時，會有更正確的樣本來做最佳
+化處理。最後依照最小誤差值選擇 BRDF 模型輸出參數，並加以描繪。 
+3.2 群集的反射特性重建過程 
+ 
+BRDF 模型主要是針對不透明的材質，可分為兩個部分，一個是反射項(Specular)，一個是
+漫射項(Diffuse)。對於反射項的顏色來說，如果光源打在物體上，有反射項的存在，反映出
+來的顏色是光源的顏色，與物體顏色無關，比如白光打在物體上，不論材質顏色如何，高
+亮度區域會呈現白色，真實世界中舉手投足也都可以看到這個現象，光滑的金屬和塑膠、
+塗上釉料的瓷器和磁磚、上了亮光漆的桌面和門牆、烤漆的車體、冰箱和電腦機殼，反射
+了太陽光、檯燈的燈光，甚至反射了周遭的景色，窗外的叢林與樓房、碧藍的天空，映射
+在室內的物體上，就很容易瞭解反射的意義，不同的是反射的形狀和程度，這就跟物體有
+關係了，反射的形狀與物體的幾何和材質特性有關，這裡的材質特性比如說等向性或非等
+向性、是否偏離反射角等特性，可選擇合適的 BRDF 模型來達成，而不同的反射程度，可
+由 BRDF 模型裡反射項的參數變化來詮釋；對於漫射項來說，它決定了物體的顏色，比如
+白光打在紅色的物體上，吸收了綠、藍光，漫射出紅光，真實世界中幾乎都是這種例子，
+ 6
+ 
+四、結果與討論 
+ 
+在實驗硬體方面，我們使用 Intel P4-3.2GHz 中央處理器、1Gbytes DDR2 記憶體，Nvidia 
+Geforce 6600GT 晶片的顯示卡，作業系統為 Window XP sp2，使用 DirectX9.0c SDK 的函式
+庫、開發工具則使用 Visual Studio.NET 2003 與 Matlab 7.0。 
+整個系統包含三個部分： 
+BRDF_simulation  由 VS.NET 編譯，產生虛擬的物體，製作顏色圖 
+BRDF_Fitting   Matlab 編譯，以群集為中心計算 BRDF 參數 
+BRDF_Rendering  由 VS.NET 編譯，描繪結果 
+限於硬體設備的關係，建模的方式由軟體建立或是採用現有的模型，BRDF_simulation 取像
+過程使用之前介紹的五種 BRDF 模型，給予參數值模擬出虛擬物體，當成是真實世界中的
+物體，過程中旋轉物體在不同的視角取像 10-100 張照片，並製作成表格化顏色圖，製作的
+時間端視取像的張數和 3D 幾何頂點的數量而定。將顏色圖輸入 BRDF_Fitting 中，程式依
+照五種 BRDF 模型分別做參數近似，並產生群集，最後由平均頂點均方根誤差最小的 BRDF
+模型，當作是最接近物體表面反射特性的模型，並輸出該模型參數，平均頂點均方根誤差
+定義如下 
+⎟⎟
+⎟⎟
+⎟
+⎠
+⎞
+⎜⎜
+⎜⎜
+⎜
+⎝
+⎛ −
+=
+=
+∑
+∑
+=
+=
+i
+p
+N
+j
+i
+j
+i
+j
+i
+rms
+v
+N
+i
+i
+rms
+rms
+N
+ff
+V
+N
+V
+M
+i
+p
+v
+1
+2
+1
+)ˆ(
+        (5.1) 
+其中             
+個像素輸入值個頂點的第第
+個像素輸出值個頂點的第第
+個頂點的像素數目第
+個頂點的均方根第
+頂點總數
+jif
+jif
+iN
+iV
+N
+i
+j
+i
+j
+i
+p
+i
+rms
+v
+.:
+.:ˆ
+.:
+.:
+.:
+      
+最後 BRDF_Rendering 依照所選的 BRDF 模型與參數，描繪出反射特性重建之後的物體。 
+ 8
+(f)
+(c)
+(a) (b)
+(d)
+(e)  
+圖 4.1 茶壺-各種 BRDF 模型重建反射特性的效果 (a)原圖 (b)Phong 模型 (c)Blinn-Phong 模
+型 (d) Cook-Torrance 模型 (e) Ward 模型 (f) Ashikhmin 模型 
+可看到只有描述非等向性的 BRDF 模型(圖 4.1(e)(f))，在高亮度部分才能對非等向性的材質
+合理的近似，但在漫射部分，都能得到相似的顏色。 
+接下來，我們使用三種材質的圓球，大區塊的綠、黃、粉紅頂點顏色(GKd 、YKd 、PKd)，
+高亮度部分套用 Blinn-Phong 模型的反射行為，反射係數 Ks，反射指數 Ns，拍攝 25 張相片
+(N)，Samples 為取樣的資料點，參數如表 4.3，經過五種不同反射模型的計算後，結果如圖
+4.1(b)~(f)，輸入為圖 4.1(a) 
+ 
+ 
+表 4.3 圓球模型與 Blinn-Phong 模型參數 
+ 10
+接下來我們嘗試重建混合材質的反射特性，使用更精細、顏色變化大的地球相片，幾何模
+型使用三種精細度的圓球，採用 Phong 模型的高亮度，經過系統重建反射特性後，圖 4.3~5.4
+分別為 2307 和 9125 個頂點構成圓球的重建結果，其中(a1~8)為不同角度輸入的原圖，(b1~8)
+為相對(a1~8)重建後的情形。可以從結果得知，重建的結果跟幾何的複雜度也息息相關，因
+為重建模型是根據頂點給予 BRDF 參數，一個色彩變化相當複雜的物體，要描述的很精細，
+頂點數量必須相當的多，但是一般在建立幾何模型時，都是根據幾何的空間變化來決定頂
+點擺放的位置，導致色彩變化複雜的平坦地區，就會有較差的重建效果，唯有增加頂點的
+數量來改進這問題，由圖 4.3~4.4 可以看到頂點數量增加，確實有改善的效果，由模糊的大
+區塊色塊到色彩邊緣較為清晰且豐富，但所耗的時間會隨著增加的頂點數而快速增加。 
+第四個實驗我們重建混合材質的反射特性，並且使用幾何形狀較為複雜的蝙蝠，具有 35313
+個頂點，材質特性為貼圖加 Phong 模式，拍攝 26 張相片，此一幾何結構較為複雜，大部分
+的頂點集中在蝙蝠身體附近，翅膀的部分較為平坦，頂點數量也較少，在顏色圖映射的過
+程中，一個網格所包含的像素很多，頂點只能對應到最近的像素，因此取樣出來的像素資
+料也相對很少，重建的反射特性也只針對取樣出來的像素值，所以在翅膀的地方，細部的
+精緻度不是很好，但整體的顏色還是蠻相近的如圖 4.5，圖 4.5(a1~6)為不同角度輸入的原
+圖，圖 4.5(b1~6)為重建後的情形，另外在高亮度部分重建的情形並不是很好，主要是因為
+輸入的原圖有些區域反射的強度已經超過 1，但像素最大值只能表示 1，並不能把全域的反
+射強度正確的取樣下來，造成反射部分的誤差，這誤差也會影響到漫射項，使得整體的高
+亮度反射偏暗，色澤漫射偏亮。 
+以上都是使用不同漫射參數的複雜材質，接下來我們使用不同反射參數，來證明我們的方
+法不論是漫射或反射參數都可以重建。我們使用具有 1178 個頂點的茶壺，由三種不同反射
+特性的材質組成，分別為茶色低反射的茶壺蓋材質類似陶瓷、藍色中反射的壺嘴壺柄材質
+類似刷過的鋁製金屬、灰色高反射的壺身柄材質類似塑膠，拍攝 50 張照片，結果如圖 4.6，
+(a1~7)為原圖，(b1~7)為重建後的結果。可以從結果得知不論是漫射或是高亮度的反射，我
+們的系統都能真實把反射特性重建。 
+ 12
+ 
+圖 4.4 地球(9125)-重建複雜漫射材質反射特性，(a1~8)原圖 (b1~8)重建後 
+五、計畫成果自評 
+在本計畫中，我們提出了一個使用各種不同的 BRDF 模型來重建反射特性的方法，這對於
+具有不同反射特性的真實世界物體而言，有更多的 BRDF 模型可供選擇，依照誤差大小採
+用最接近該特性的 BRDF 模型，在定性定量上都能得到更好的重建效果。並且我們將漫射
+和反射項分開計算，也能符合自然界中物裡的特性。 
+出席國際學術會議心得報告 
+                                                             
+計畫編號 NSC 95-2221-E-259-024 
+計畫名稱 基於多重 BRDFs之複雜材質反射特性重建系統分析 
+出國人員姓名 
+服務機關及職稱 
+張意政 
+國立東華大學 
+資訊工程學系助理教授 
+會議時間地點 
+2007/1/11~2005/1/16 
+Convention Center, Las Vegas, Nevada, USA 
+會議名稱 IEEE International Conference on Consumer Electronics 
+發表論文題目 Content-oriented Video Summarization 
+ 
+一、參加會議經過 
+ 
+圖一 
+此次 IEEE International Conference on consumer Electronics的會議,其舉辦地點在美國 Las 
+vegas的 convention center(見圖二)，會議舉辦時間為 2007/1/12 ~ 2007/1/14計有三天。 
+ 
+ 
+ 1
+ 3
+z CONSUMER NETWORKS 
+ Wired & Wireless Multimedia, QoS, Security, Peer-to-Peer, Internet Appliances, Home 
+Control, Bridges, Interoperability, Application Control, Home Architecture, IP-TV 
+z AUTOMOTIVE ENTERTAINMENT & INFORMATION 
+ Navigation, A/V Systems, Driver Assistance, Networks, Communication Aspects, Sensors 
+and Control 
+z SECURITY & RIGHTS MANAGEMENT 
+ Copy and Redistribution Protection, Payments, Trusted Computing, Parental Controls, 
+Legal and Regulatory Issues, Data Collection, Biometrics, Privacy, Encryption 
+z ENABLING TECHNOLOGY 
+ Advanced Semiconductors, Algorithms, O/S, Development Tools, Test Equipment, 
+Advanced Displays, Power and Batteries, Smart Fuel Cells, Standards, Intellectual 
+Property, Cost Reduction, Compliance Testing, Human-Computer Interface, 
+Special-Needs/Assistive Technology 
+ 
+我所發表的論文排在 14號上午的 P3(Image/Video algorithms and technology)，見圖三。 
+  Program  At-A-Glance 
+  2007 ICCE Tutorials 
+Jan 10th WEDNESDAY 
+2:30 
+PM  
+6:00 
+PM 
+T1.1: 
+Peer-to-Peer Technology and 
+Its Applications  
+Room 262 
+T1.2:  
+Modern Receiver Architectures:  
+From Superheterodyne to Zero  
+IF Digital Receivers 
+Room 264 
+Jan 11th THURSDAY 
+8:30 
+AM 
+12:00 
+PM 
+T2.1: 
+Copy Protection and Digital 
+Rights Management 
+Room N262 
+T2.2:  
+Perceived Motion Blur and  
+Sharpness in Liquid  
+Crystal Television 
+Room N264 
+2:30 
+PM 
+6:00 
+PM 
+T3.1:  
+Residential DSL Standards 
+Room N262 
+T3.2: 
+Recent Developments in Video Compression 
+Standards: from Scalable to Multi-view Video 
+Coding  
+Room N264 
+  2007 ICCE Conference 
+  ROOM N252 ROOM N254 ROOM N262 ROOM N264 
+    
+Jan 12th FRIDAY 
+9:00 
+AM 
+10:20 
+AM Breakfast / Keynote 
+ 5
+8:30 
+AM 
+10:10 
+AM 
+8.1 
+Healthcare & 
+Networking 
+Systems  
+8.2 
+Acquisition  8.3 Still and Video Cameras 
+8.4 
+Motion-Compensated Video 
+Processing and 3D-TV 
+10:10 
+AM 
+10:30 
+AM Break Break 
+10:30 
+AM 
+12:10 
+PM 
+9.1 
+Gaming & 
+Processing 
+Architectures  
+9.2 
+Equalization 
+ 
+P3  
+Image/Video Algorithms and 
+Technology  
+ 
+(POSTER) 
+ 
+ROOM N256 
+9.4  
+Picture Quality Improvement and 
+Measurement  
+12:20 
+PM 
+2:10 
+PM 
+25 Years Lunch 
+Looking Forward 
+2:20 
+PM 
+4:00 
+PM 
+10.1 
+Applications and 
+Techniques for 
+Audio Players 
+ 
+10.2 
+Wireless Systems 
+P4:  
+AV Systems  
+and Components 
+ 
+(POSTER)  
+N256  
+10.4 
+Mobile  
+Multimedia Applications  
+4:00 
+PM 
+4:20 
+PM Break 
+4:20 
+PM 
+6:00 
+PM 
+11.1 
+Interoperability 
+of Performance 
+Improvements in 
+Mobile and Home 
+Networks 
+11.2 
+Wireless 
+Implementation    
+11.4  
+Photo Organization and Applied 
+Compression 
+ 
+ 
+圖三 會議議程 
+ 
+在三天的會議期間，計有三個 plenary talk，分別介紹如下： 
+（一）"Consumer Electronics: Multi-Disciplinary Sciences In Action" 
+Speaker: William Lumpkins  
+（二）"Consumer Electronics: What to Keep From The Past To Build The Future"  
+Speaker: Leonardo Chiariglione 
+（三）"Digital Television: From Laboratory to Living Room" 
+Speaker: Wayne Luplow  
+ 
+圖四為會議現場照片： 
+ 7
+這次參加會議，在論文發表中和一些與會學者交換意見，多數人的看法是 video processing 仍
+是在蓬勃發展中的技術，而且也有一些商業產品的出現，對未來的發展性是很樂觀的。 
+ 
+三、攜回資料名稱及內容 
+z IEEE Conference CD 一片 
+ 
+ 
+ 9
+ 11
+ 13
+ 15

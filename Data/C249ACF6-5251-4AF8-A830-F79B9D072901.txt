@@ -1,0 +1,174 @@
+目    錄 
+ 
+中文摘要 ............................................................................................................................................................................ I 
+ABSTRACTION.............................................................................................................................................................. II 
+一、  前言...................................................................................................................................................................... 1 
+二、  研究目的 .............................................................................................................................................................. 1 
+三、  文獻探討 .............................................................................................................................................................. 2 
+四、  研究方法 .............................................................................................................................................................. 5 
+五、  結果與討論 ........................................................................................................................................................ 10 
+六、  參考文獻 ............................................................................................................................................................ 11 
+ 
+ 
+- II - 
+Abstraction 
+An SoC is integrated by many different types of components. To debug such an SoC, the most 
+common methods is to use signal tracing mechanism. But simple signal tracing is not suite for every 
+debugging condition, for example, we cannot determine the timing of a bus protocol error, thus we 
+cannot use forward tracing to find the problem. Backward tracing is very useful for this situation; 
+the backward tracing refers to the trace captured before a target point is reached. General backward 
+tracing is used a circular buffer to store the traced data, when the buffer is full, the oldest data would 
+be replaced by the newest data. Real time compression of the backward trace in a circular buffer is a 
+challenging problem since the initial state of the trace currently under compression might be 
+overwritten when wrapping around occurs. We proposed a real time multi-resolution AHB on-chip 
+bus tracer which is capable of capturing and compressing both forward and backward tracing in a 
+circular buffer. The backward trace is accomplished with a ping-pong organization of dual forward 
+trace compression engines. While one module is compressing the trace, the other is clearing up its 
+internal data structure. The roles of the two engines are exchanged periodically. The experiments 
+show that our approach achieves 2.32 to 3.98 times in effective trace depth than traditional circular 
+buffer approaches. The bus tracer has been integrated into a 3D graphics SoC, The backward tracing 
+mechanism and its embedded AHB protocol checker successfully identified a bug of an AHB 
+wrapper of the rendering engine in the SoC. 
+We also implement the Mode Change function with software approach. In previous Bus Tracer, we 
+can capture different abstraction modes with different configurations. But it is in-efficient when we 
+want to observe different abstraction modes in the same traced period. Actually, all the information 
+is already exist in traced data; hence we can change the abstraction by software without hardware 
+configuration and re-capturing.  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Key word: 
+SOC、debug、signal tracing、forward tracing、backward tracing、circular buffer、real time 
+compression、periodically、Mode Change 
+ 
+- 2 - 
+一筆資料遺失了就會導致還原階段產生錯誤而無法正確還原。然而，當我們採取逆向追
+蹤時必須要使用一塊 circular buffer來反覆儲存遇到停止點之前的資料，可是，這卻會照
+成之前儲存的資料被最新一筆資料覆蓋掉而遺失掉。 
+除了逆向追蹤之外，在硬體端，使用者可以透過設定控制暫存器的方式在程式執行期間
+任意改變追蹤模式，以提供使用者在不同的情況下選擇適當的觀察精準度。而這樣的追
+蹤模式轉換在軟體端也可以模擬出來。我們只需透過追蹤分析器內部的追蹤模式模擬
+器，便可以將追蹤到的訊號轉換成不同的追蹤模式以提供使用者能更方便的在不同追蹤
+模式間進行觀察和分析。 
+因此，我們除了原有的 Bus Tracer的架構之外，我們在這個年度也加入的逆向追蹤與軟
+體端 Trace Mode轉換的功能。 
+三、 文獻探討 
+ AHB Trace Buffer 
+於 2007 年，GRLIB IP library 釋放了許多以 AMBA2.0 為基礎而設計的 IP，其中的
+AHBTRACE-AHB Trace buffer就是針對AHB的訊號來做監測的動作並利用一塊 on-chip
+的記憶體來將監測到的資料直接儲存起來以供設計者 bus level的除錯資訊。 
+AHBTRACE-AHB Trace buffer 的整體架構如所示。整個 IP由三個主要的 module所組
+成，分別為 Trace control、Trace buffer RAM和 AHB slave interface。首先，使用者必須
+將 AHB上的待監測的訊號線接到 AHB slave interface上，整個 IP必須透過此 module來
+對外溝通，不論是從 bus上監測到的訊號要存到Trace buffer RAM抑或是想從Trace buffer 
+RAM將欲觀察的資料讀取出來都必須經由此介面來做存取。接著，Trace control會依據
+使用者所設定的 break address register來和 bus上監測到的 address做比對，當這兩個數值
+相同時便會發出 trace enable的訊號並開始追蹤 bus上的訊號，直到追蹤到的 cycle數和
+使用者設定的監測長度(設定在 trace buffer time tag register裡面)一樣時才會發出 disable
+的訊號來停止追蹤的動作。最後，所有從 bus監測到的訊號都會儲存到 Trace buffer RAM
+裡面，Trace buffer RAM是一個寬度為 128 bits的 circular buffer，當 Trace control下達開
+始監測的命令後就會開始不停的將 bus 上的訊號依序儲存到 buffer 裡面，當 buffer 滿了
+之後就會將下一筆進來的訊號覆蓋掉 buffer 的第一筆資料並繼續往下儲存，直到 Trace 
+control 發出停止監測的命令。至於 buffer 的深度則由使用者自行設定，範圍為 0.25K ~ 
+16K。 
+- 4 - 
+追蹤資料的波形呈現。 
+如 Fig. 2所示，整個 AMBA Bus Navigator的硬體架構由三個部分組成，分別為 On-Chip 
+Instrumentation (OCI)、JTAG hardware probe, and on-chip trace RAM。使用者必須透過
+JTAG從 host的軟體端控制和設定整個 AMBA Bus Navigator，當設定完畢之後，OCI會
+依據使用者的設定在正確的條件下觸發追蹤，擷取匯流排上的訊號。同時，如果使用者
+有定義 timestamp，OCI 也會在每筆資料間加入時間的資訊。而透過 OCI 收集到的訊號
+會先送到 on-chip trace RAM進行緩衝，接著再透過 JTAG Port將 on-chip trace RAM的資
+料傳送到 host端。最後，使用者便可透過 host端的軟體觀察追蹤到的訊號。 
+ 
+Fig.1 The Block Diagram of AMBA Navigator 
+ 
+AMBA Navigator除了提供上述的訊號追蹤功能外，其最大的特色在於可以幫助使用者過
+濾掉不重要的訊號。整個 AMBA Navigator提供使用者兩種追蹤模式，第一種模式為 Bus 
+Cycle Mode，顧名思義，在此模式之下每個 cycle都會擷取 AHB上的訊號，也就是我們
+一般常見的追蹤功能。第二個模式為 Bus Transfer Mode，在此模式下，OCI會幫我們過
+濾掉 AHB處於 IDLE、BUSY and not-Ready這三種狀態下的訊號。之所以過濾掉這三種
+狀態的訊號是因為在 AHB上這三種狀態皆不會進行資料的傳輸，所以透過過濾這三種狀
+態的訊號可以幫助使用者擷取 AHB上有意義的訊號，進而方便使用者觀察所欲追蹤的訊
+號。 
+最後我們將整個 AMBA Navigator的幾個重要特色彙整於 Table 2中。 
+ 
+ 
+ 
+ 
+ 
+- 6 - 
+ 
+Fig.3 The Concept of Periodic Triggering with Quartering Trace Memory 
+ 
+讓我們再進一步的舉例來說明週期觸發的概念。假設今天採用逆相追蹤且在周期觸發頻
+率為 4(每隔 1/4塊 Trace Memory大小觸發一次)的情況下，Trace Memory在紀錄了一段
+時間的追蹤資料後剛好把 Trace Memory寫滿，其儲存的狀況如 Fig. 4 (a)所示。從圖中可
+以看到整個 Trace Memory被分成 4個區段，每個區段中的灰色長條表示該區段在經過週
+期觸發而重置後的第一筆封包，並標以一個數字用以區分其儲存到 Trace Memory裡的順
+序。接著，之後的追蹤資料會依序存進來，可是由於接著進來的資料會超過 Segment4的
+臨界值所以匯流排追蹤器會先發出週期觸發的訊號並重置壓縮模組，讓壓縮模組回到初
+始的狀態進行壓縮，所以當新的資料(從標示為 5的 Packet開始)要儲存到 Trace Memory
+並覆蓋掉之前以 Packet 1為起始的的資料時就不再需要參考儲存在之前區段的資料而是
+一個初始過且可獨自還原的壓縮資料區段。最後，經過覆蓋的 Trace Memory情形則如
+Fig. 4 (b)所示，從圖中可以看到原本區段 1中由 Packet1為起始的資料會被以 Packet5為
+起始的新進資料所取代直到遇到追蹤停止點為止。藉由這個例子我們可以看到因為採用
+週期觸發的方式所以從某個區段的第一筆完整封包到下一個區段的第一筆完整封包之前
+的資料都是獨立的，所以都可以完整的還原回來，唯一比較特殊的情況是在追蹤停止點
+所在的區段，如 Fig. 4 (b)，在區段 1裡，從追蹤停止點到下一個區段的第一筆完整封包
+之前，由於這些資料原本是屬於以 Packet1為起始的資料區段，可是由於這些以 Packet1
+為起始的資料，其前半段已經被新進的資料所覆蓋所以已經無法還原了，故在軟體端進
+行還原的時候這些無法還原的資料都將被捨棄掉，可是從 Packet5到追蹤停止點發生前
+的資料依然可以正確的還原回來。 
+- 8 - 
+ 
+Fig.5 Backward Trace Extended Block Diagram 
+ 
+在 triggering module中會依據使用者的設定，將 trace memory等分成若干個虛擬區段(頻
+率為 2表示將整個 trace buffer分成兩塊虛擬區段，頻率為 4表示將整個 trace memory分
+成四塊虛擬區段，以此類推。且頻率需為 2的倍數)，當依序儲存到 trace memory的資料
+從某虛擬區段進入到下一個虛擬區段時就必須發出觸發訊號給壓縮模組來進行重置的動
+作。在設計 triggering module時，除了要依據包裝模組輸出的封包長度(Packet Length)計
+算出每個週期觸發點之外。同時，為了能夠讓後端的解還原軟體能夠正確的找到每個區
+段的第一個封包，在觸發模組裡就必須能夠精準的計算出每個封包的起始是相對於記憶
+體的哪一個位置。 
+Ping-pong controller module會接收從 triggering module所發出的觸發訊號，並在內部產生
+出相對應的控制訊號來控制整個壓縮模組的運作。其主要的控制訊號有四條，分別為
+Input Select、Output Select、TCM0_RSTn和 TCM1_RSTn。接著我們會分別針對這四條
+訊號做一個詳細的描述。 
+z Input Select 
+當 ping-pong controller module收到觸發的訊號時，必須立即判斷出哪一個壓縮模組為執
+行模組(Execution Module)哪一個模組為待機模組(Standby Module)，並且將經過 Signals 
+Monitor/Trace Module處理過的訊號切換給執行模組，讓整個壓縮處理不會產生間斷。同
+時，被切換成待機模組的的壓縮模組也必須將其輸入訊號忽略掉，以免殘留在模組內的
+訊號在之後的壓縮產生錯誤。雖然理論上只需要把待機模組的 Enable訊號拉下來，即可
+將所有輸入的訊號忽略掉，可是在考量到功率消耗(Power Consumption)的因素下，若是
+利用拉下 Enable訊號來忽略所有的輸入訊號，會讓所有的待壓縮訊號依然進入到待機模
+組中而持續產生訊號的變化，進而造成無謂的功率消耗。所以為了減少這樣無謂的功率
+消耗，在做切換的時候會一併將待機模組的所有輸入訊號強制輸入成系統初始的狀態，
+使訊號維持不變，直到該壓縮模組被切換成執行模組為止。 
+z Output Select 
+- 10 - 
+在 All Signals，可是 Timing卻已經抽象成 Transaction Level了，所以對於 Timing是 Cycle 
+Level 的 mode3 會因為 Signals 已經被抽象掉而無法進行轉換，故只能轉換成 mode4 和
+mode5這兩個模式，而後面的追蹤模式所能轉換的模式也都以此類推。 
+ 
+五、 結果與討論 
+針對目前的研究成果，我們已經成功的將我們的 Bus Tracer整合到一個 3D SoC中，並
+真正的利用我們的逆向與正向追蹤找到了一個匯流排協定上的問題。如 Fig. 7(a)所表示
+的是一個透過 3D SoC解碼過後應該要正確畫出來的圖形，但是因為設計上的錯誤，造
+成 3D SoC解出來的圖形變成 Fig. 7(b)。經過我們利用 Bus Tracer與逆向追蹤的功能，擷
+取到如 Fig. 7(c)所示的波形，發現是因為某個 IP所設計的 wrapper，因為對於匯流排的
+協定的不熟悉，而讓 request訊號線太早拉下來，而讓一筆 burst的傳輸過早結束，導致
+資料並沒有傳輸完畢。經過修改解決的這個問題後，我們再用正向追蹤的功能擷取同樣
+一段波形，可以很明顯的發現之前找到的問題已經成功的解決了。 
+ 
+ 
+Fig. 7 Found bus protocol problem from 3D SoC by Bus Tracer 

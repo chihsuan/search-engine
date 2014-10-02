@@ -1,0 +1,779 @@
+ 1
+ 
+摘要 
+ 
+隨著影像相關科技的進步，以及娛樂產業的發達，現今的平面影像已逐漸無法滿足人
+類對於影像真實度的需求，因此，立體影像將成為未來的潮流。而立體影像的建構方式除
+了可以利用現今較為成熟的電腦圖學技術之外，亦可結合電腦視覺的相關技術，進而演變
+出多視角影像 (multi-view)系統。利用多視角影像系統可以合成出任意視角影像
+(free-viewpoint images)，亦可快速產生三維模型資料。 
+然而在多視角影像擷取系統中，需要同時利用多張不同視角的影像來做後續的運算處
+理，其中包括合成新視角影像、建立場景之三維座標資訊等。而這些資訊皆需先建立相機
+及場景之間的空間幾何關係，之後才能利用此關係重建場景三維資訊，進而合成新的視角
+影像。本計畫首先解決投影影像會隨 viewpoint 不同而變形所造成比對不易的問題，再利用
+極線幾何(epipolar geometry)資訊增加足夠的特徵點。接著，取多張影像用 photo-consistency
+來推算特徵點的 3D 座標。利用上述推算的 3D 特徵點建構初始近似網格模型，進而使用精
+緻化方法建構出由粗略至精細的三維模型。最後可得參考影像上的深度資訊圖(depth map)。 
+在本研究計畫中，有別於以往找對應點，我們運用 MSER 來做特徵點偵測，接著再用
+Zernike moments 來做特徵點描述，而特徵點比對也藉由 epipolar line 的資訊，減少比對到
+outlier 的結果。有了對應點之後，便可以計算對應點的 initial depth，然後在利用 evolutional 
+algorithm PSO (Particle Swarm Optimization) 估算每塊 object surface patch 的 3D depth and 
+coordinates，其 evaluation function結合photo-consistency來做評估。為了以合成影像做ground 
+truth，以檢驗 3D depth reconstruction 演算法準確度，我們提出如何使用 3D Studio 來架設虛
+擬攝影機來拍攝不同視角的影像，來驗證演算法的可行性。為了評估重建完後的結果，我
+們也提出如何使用 OpenGL 來架設虛擬攝影機的方法，產生 ground truth 和重建後 model 的
+depth map 來比較重建後的準確度。從 photo-consistency 可行性實驗，我們看到
+photo-consistency 確實有能力可以用來評估更精確的 depth。 
+ 
+ 
+關鍵詞：多視角影像、廣基線、深度圖、極線幾何、單應性 
+ 1
+1. 研究目的 
+本研究計畫在第一年中，利用可程式化控制的轉盤，並搭配相機從不同角度進行拍攝，
+以重建出物體的三維稠密式模型，這些相機於拍攝時皆會面向同樣的一個物體。在此系統
+中的相機皆事先進行校正，也就是說相機的內外部參數皆為已知且固定不變。我們提出一
+個基於多視圖分解理論的稠密式立體重建方法，而非僅合併許多兩兩影像所重建的部份結
+果而已。首先使用我們所提出的楕圓式特徵擷取演算法來取得具仿射不變性的特徵點，此
+方法可以不受因不同視角拍攝的影像所產生變形的影響。採用多張影像的變形區塊比對，
+因此可避免傳統以視窗關聯性測試點對應所造成的失敗，尤其是在較大的拍攝基線情況下。 
+下一步我們將利用初始所在獲得計算對應點的 initial depth 後，再利用 evolutional 
+algorithm PSO (Particle Swarm Optimization) 估算每塊 object surface patch 的 3D depth and 
+coordinates，其 evaluation  function 結合 photo-consistency 來做評估。此模型可以小平面區
+塊為單位，一片接一片地以疊代式對物體做細部的稠密式重建，最後再貼上材質貼圖，以
+得到物體的高擬真三維模型。 
+2. 文獻探討 
+如何自動化地從不同角度的平面影像重建場景 3D 模型的技術，自 1980 年代開始就一
+直在電腦視覺領域當中扮演非常重要的課題。3D 模型重建技術大致可分成兩類：(1) 
+Scene-space method與(2) Image-space method, (Slabaugh[1]、Dyer[2] 與 Seitz[3])。Image-space
+方法主要基於影像比對(image matching)技術來找尋不同影像之間的點對應(correspondence)
+關係，並利用此對應關係以三角測距的方式求出空間中的 3D 點位置，而此類技術以
+SFM(Structure From Motion)技術為主。而 scene-space 方法主要是利用不同角度且校正過後
+的影像，先重建出空間中的場景，透過參數最佳化程序來檢查重建出的場景與各影像之間
+的 consistency 程度，並以此調整 3D 重建結果。經過此多次 iteration 修正後，將能得到一
+稠密式的 3D 模型。 
+為了要判斷重建出來的 3D 幾何是否正確，許多學者提出了不同的演算法，但在絕大
+部份的 scene-space 方法中皆是利用不同影像之間對應區域的關聯程度(correlation)來判斷重
+建結果的優劣，而這種方法通常被稱為顏色一致性(photo-consistency)的量測[11,12]。如果
+各張影像對於場景中物體表面上的某一點觀察到的 intensity 相同，我們就說這個點是
+photo-consistent 的。 
+在物體表面缺少 texture 的情況下，純用平面上的 texture 來做 correlation 會有問題，就
+算有許多影像也不一定能有更好的結果，但若加入 visual hull 的資訊，將有助於找出物體約
+略的空間位置。因此 Furukawa 與 Ponce [5]使用各個角度的 silhouette 影像，先計算出物體
+大致的形狀及空間位置，利用此資訊可以先建置出 visual hull，以得到物體較粗略的表面資
+訊(rim)。當獲得大部份表面資訊之後，再利用 graph cuts 針對物體表面的 photo-consistency
+來做全域最佳化，以找出表面的主要特徵(main feature)，接著使用疊代的方式來針對表面細
+節的部份做更進一步的修正。 
+Furukawa[6]也提出了另一種方式來重建稠密式的 3D 物體模型，此方法不需事先知道
+ 3
+果之間的差異程度來評斷之。比較的最簡單方式是用 window-matching 的方式，如 SSD(sum 
+of squared differences)或是 NCC(normalized cross correlation)。Furukawa 即利用後者來做判
+斷，以圖 2-2 為例，對於一空間中的平面 p ，定義平面投影至影像 i 與 j 之間的 NCC 為
+),,( jipN 。更具體地來說，在平面 p 上先佈滿 μμ × 的格子，將 μμ × 個格子投影至兩影像 i
+與 j 上，再利用 bilinear interpolation 內插出影像 i與 j 上投影點的灰階值或 RGB 值，然後即
+可將投影點的灰階值或 RGB 值代入計算影像 i與 j 上投影點之間的關聯性程度 ),,( jipN 。
+接著就能藉著將 NCC 值最大化來估測平面的位置 )( pc 以及其法向量 )( pn ： 
+( )
+( ) ( )∑≠∈−= pRIpTI IpRpNpTpN , ),(,1)(
+1)(  
+在這邊 Furukawa 將 )( pc 限定在 reference 影像的光學中心與其相對應的影像點的連線
+上，這樣可以將要解的參數減化至三個：(a)沿著這條射線的 depth 值、(b)平面法向量 )( pn 的
+yaw 角度、(c)平面法向量 )( pn 的 pitch 角度，接著使用 conjugate gradient method 來找到最
+佳的參數值。而 ),,( jipN 可以用 mean-removed correlation coefficient 的方式來計算，此計算
+方式常在傳統的 stereo-matching 演算法使用[8]： 
+( )( )
+( ) ( ) ⎥⎦
+⎤⎢⎣
+⎡ −⎥⎦
+⎤⎢⎣
+⎡ −
+−−
+=
+∑∑
+∑
+k
+jjk
+k
+iik
+k
+jjkiik
+IIII
+IIII
+jipN
+22
+),,(  
+其中的 ikI 與 jkI 是投影在影像 i與 j 上區域裡的第 k 個 pixel 的 intensity，而 iI 與 jI 是兩
+投影區域裡 pixel 的平均 intensity 值。 
+使用 photo-consistency 能降低尋找影像之間點對應的難度，Dyer[2]與 Szeliski [9]皆提
+到使用 photo-consistency 有下列的優點： 
+(1) 在某些情況下要取得正確的點對應是非常困難的，尤其是在比對區域內的 intensity
+值幾乎一模一樣時。然而 photo-consistency 只使用到正向投影(forward projection)以及比對
+pixel 的步驟。因此在給定一個 3D 場景模型時，計算 photo-consistency 時只需判斷在各影
+像上的投影結果是否一致，因此不需要個別的點對應關係。 
+(2) 因為要取得「稠密式」的點對應是非常困難的，所以若是使用點對應的演算法來重建場
+景 3D 模型，就必須捨棄影像中點對應正確性較低的點而建出較稀疏(sparse)的 3D 資訊，否
+則點對應錯誤的部份會導致建置出具較差品質的 3D 模型。 
+Habbecke[7]也是利用類似的方式來重建物體的三維模型： 
+Step 1: 利用 homography 對應關係，在兩張影像中計算 seed disks 當做初始對應區域，
+並利用 plane fitting algorithm，綜合其他影像兩兩計算 homography 對應關係的結果來做修
+正。 
+Step 2: 利用上一步驟找出的 seed disks 以 greedy growing 的方式來擴展物體表面的區
+塊。一直擴展直至物體於所有影像中可見的部份都被 disks 覆蓋為止，如圖 2-3 所示。 
+ 5
+ 
+圖 2-5. Poisson Surface Reconstruction 
+ 
+3. 研究方法 
+3.1. 演算法簡介 
+現有三維景物重建方法，必須仰賴視圖所看到景物上的影像特徵點要正確對應。然而
+目前 point features extraction 方法常用的 SIFT detector, Harris corner detector, Maximal stable 
+extremal region 等，在 wide baseline stereo 的情況下，影像通常具有嚴重 image distortion 
+change，影像特徵點即無法正確對應。縱使利用 plane sweeping method，由於掃描的平面方
+向無法確保正確，亦即無法保證 photo-consistency test 的正確。大部份方法之所以還能得到
+不差的重建結果，乃是 dense reconstruction 的 narrow-baseline stereo 利用事先所估算的 depth 
+information 範圍(如 visual hull)，將對應點落點限制在較小範圍內。對應點的 window 比對
+亦未同時考慮三張視圖以上的比對，僅兩兩比對時，容易產生獨立小偏差。 
+在此我們提出整個演算法流程如圖 3-1，採用之方法如下： 
+1. 使用 maximally stable extremal region (MSER)抽取 affine-invariant interest 
+points，以解決投影影像會隨 viewpoint 不同而變形所造成比對不易的問題。 
+2. 在影像特徵點比對時，結合特徵點到 epipolar line 的距離來避免找到 Outliers。 
+3. 取三張以上影像，利用 photo-consistency 推算特徵點 3D 位置。 
+4. 利用上述推算的 3D interest points 建成 initial approximate mesh model。 
+5. 建立參考影像上的 depth map。 
+ 
+圖 3-1. 演算法進行步驟流程圖 
+3.2. 尋找對應點 
+尋找影像之間對應點的演算法流程： 
+ 7
+ 
+圖 3-2. 藍線為偵測到的 MSER，紅線是用一個楕圓來包住它 
+ 
+2. 特徵點描述(feature description)：為了要比對各個 region 是否相同，需要先對 region
+進行描述(description)。一個好的 region descriptor 需要具備強力的分辨能力，而
+Zernike moments (ZMs)在物體辨識和影像分析的領域中已經常常被使用，且有很好
+的表現。對一個影像其二維連續(continuous)的 ZMs 為： 
+θρθρθρπ
+π
+ddVfnZ nmnm ∫ ∫+= 20 10 * ),(),(1 = θρρθρθπ
+π
+ddRfjmn nm∫ ∫−+ 20 10 )(),()exp(1  
+其中，Vnm (ρ, θ) = Rnm(ρ) exp (jmθ) for ρ≤ 1 
+sn
+mn
+s
+s
+nm
+smnsmns
+snR 2
+2/|)|(
+0 )!
+2
+||()!
+2
+||(!
+)!()1()( −
+−
+= −−−+
+−−= ∑ ρρ  
+而對一個影像其二維離散(discrete)的 ZMs 為： 
+∑ ∑
+∈
++=
+,( diskunit )
+* ),(),(1
+ρ θ
+θρθρπ nmnm Vf
+nZ  
+因為 ZMs 的 basis functions 是 orthogonal，所以用 ZMs 做為 descriptor 是不會有
+redundancy。圖 3-3 是 ZMs 中的 Vnm (ρ, θ)用彩圖呈現的一些例子 
+     
+(a) (b) (c) 
+      
+(d) (e) (f) 
+圖 3-3. Vnm (ρ, θ)中的 real 和 imaginary part：(a) 1,5V , (b) 3,5V , (c) 5,5V , (d) 5,7V , (e) 5,9V , (f) 5,11V . 
+ 
+3. 特徵點比對(feature matching)：從圖 3-3 中可以看出，二個 descriptor 會差一個
+rotation，所以在比對時，要先找出 rotation 的角度來轉正，才能進行比對。由於 ZMs
+的 phase 會比 magnitude 更有區辨能力，所以在比對時，是拿 rotation 後的 phase 來
+比較，方法為： 
+ 9
+所以如圖 3-4 所示， 1p 在第二張影像上的 epipolar line 為 12 pFl ⋅= 。而 2p 到 2l 的
+距離為 ( ) 2
+2,2
+2
+1,2
+22
+22 , ll
+lp
+lpd +
+⋅= 。如果比對時 ( ) thresholdlpd >22 , ，則二個 feature region
+不進行比較。 
+3.3. 特徵點深度估測(The Depth of Feature Points Estimator) 
+二張圖有了對應點與事先已知的攝影機內、外部參數之後，便可以求此對應點的
+3D座標。但此3D座標，會隨著對應點評估不夠準確，而造成depth不準，因此，希望能
+夠用photo-consistency來進一步改善depth的評估，其概念為： 3D空間中有一patch，若
+此 patch與物體的 surface很吻合的話，則此 patch投影到各張影像的 block，其
+photo-consistency其結果應該會很相似。所以，我們以對應點求出的depth和Reference 
+Camera的Z軸方向向量做為patch的初始參數：depth和normal vector，然後隨機調整patch
+的depth和normal vector，比較photo-consistency的結果，來找出最吻合物體surface的
+patch。由於PSO是簡單且效果佳的隨機最佳化演算法，所以將應用它來隨機調整patch
+的depth和normal vector。 
+3.3.1. PSO 基本概念 
+粒子群演算法以隨機方式產生粒子(particle)初始解，每一個粒子代表一個個體，也
+表示位於解空間中的潛在解，每個粒子是在D維度(dimension)搜尋空間上的一個點，d = 
+1, 2, …, D，而多個粒子組成粒子群(swarm)，且 i = 1, 2, …, PS，PS為粒子個數
+(population size)，粒子群演算法的相關定義如下： 
+第 i 個粒子定義為： 
+ 1 2
+T
+maxX ( , ,..., ) ,  0,1, 2,...,D
+l l l l
+i i i ix x x l iter= =  
+每一個粒子最好的位置可紀錄並定義為： 
+ 
+T
+i 1 2P =( , ,..., )i i iDp p p  
+粒子群中最佳位置解的粒子定義為： 
+ 
+T
+g 1 2P =( , ,..., )g g gDp p p  
+粒子位置改變的速率可定義為： 
+ 
+T
+i 1 2V =( , ,..., )i i iDv v v  
+初始的粒子位置定義為： 
+ X =1,2,...,PS, =0.
+l
+i i l，  
+初始的粒子速度定義為： 
+ V =1,2,...,PS, =0.
+l
+i i l，    
+粒子移動速度： 
+ 11
+T
+i )c,b,a(),(fN == βα , α 為 yaw 角度，β 為 pitch 角度，roll 角度不管。注
+意：這邊的旋轉角度是以 patch 本身的座標軸來轉的，要記得轉換到世界座標！ 
+⎟⎟
+⎟
+⎠
+⎞
+⎜⎜
+⎜
+⎝
+⎛
+−
+=
+αα
+αα
+α
+cossin
+sincos
+)(Ryaw
+0
+010
+0
+, 
+⎟⎟
+⎟
+⎠
+⎞
+⎜⎜
+⎜
+⎝
+⎛
+−=
+ββ
+βββ
+cossin
+sincos)(Rpitch
+0
+0
+001
+, 
+所以經 yaw, pitch 角度轉換後的 normal 為： 
+i
+patch
+worldpitchyaw
+patch
+world
+New
+i N*)R(*)(R*)(R*)R(N
+1−= βα  
+ Step 3: 設定 PSO 所需的 initial solution。 
+Step 3-1:  
+patch 的depth 部份。如圖 3-5，以 RI 上的特徵點 p 為例，因對應點會有些許誤差，
+故在空間中不會交於一點，因此以兩射線 LR 及 LA來計算兩線的中垂線 L3，LR再
+與 L3 的交點 PR為特徵點 p 的 3D 位置。故depth 的 initial 值為 RO 到 RP 的距離，
+RRinit POdepth = 。 
+ 
+圖 3-5. 對應點的幾何關係示意圖 
+ 
+Step 3-2： 
+patch 的 normal 部份。normal 方向為(-1) * viewing direction of RI ，即圖 3-5 中的
+RL− 。 
+求 viewing direction 的方法如下： 
+由下例子表示 
+Given : M = [KR|KT] 
+3D 上同個平面的四個網格點 P1、P2、P3、P4 
+Image 上的某特徵點(u , v) 
+目標: 計算出(u , v)反投回 3D 的位置 
+根據投影矩陣: 
+PR 
+L3 
+LR LA 
+PA 
+IR IA 
+OR OA
+p 
+p’ 
+ 13
+出的特徵點平均誤差來算 depthv ，例如平均找的特徵點誤差會在 2 個 pixels 以內，
+就看特徵點在 epipolar line 上前後 2 個 pixels 為depth 變動的範圍。 
+Step 4-2:  
+patch 的 normal 部份。yaw 角度的變化範圍為 yawyaw v~v +− ；pitch 角度的變化範圍
+為 pitchpitch v~v +− 。例： yawv =45 度, pitchv =45 度。 
+Step 4-3:  
+三個維度各要切幾等份，也就是說各範圍裡要放幾個 particle。如：
+initdepthinitdepth depth*)v(~depth*)v( +− 11 放 3 個 particles、 yawyaw v~v +− 放 4 個
+particles、 pitchpitch v~v +− 放 4 個 particles，如此就會有 3x4x4=48 個 particles。 
+ Step 5: 利用 photo consistency 當成 PSO 的 evaluation function f ，以評量每次跑
+出結果的好壞。 f 的參數為( βα ,,depth )，利用此三參數在空間中定義一個平面。
+下列步驟描述 given “reference image 上座標為 )v,u( 的特徵點”及”三個參數
+βα ,,depth ”時，並投影至影像 projI ，如何計算 photo consistency。 
+Step 5-1:  
+先將所有影像轉成 gray level，用 intensity 來計算，未來應可改用 RGB 或是其他
+color space 來計算。 
+Step 5-2: 設定 reference image 上欲拿來比對的 patch intensity： refpatch 。 
+以特徵點 )v,u( 為中心，往外的 sizesize patchpatch × 範圍，在這裡要注意的是 MSER
+所求出的特徵點 )v,u( 並非為整數，所以這裡有用 bilinear 方法在 reference image
+中內插出 refpatch 。整個 patch 的座標範圍為： 
+⎟⎟⎠
+⎞⎜⎜⎝
+⎛ −+⎥⎦
+⎥⎢⎣
+⎢ −−−+⎥⎦
+⎥⎢⎣
+⎢ −−
+⎟⎟⎠
+⎞⎜⎜⎝
+⎛
+⎥⎦
+⎥⎢⎣
+⎢ −−⎥⎦
+⎥⎢⎣
+⎢ −−
+150
+2
+150
+2
+50
+2
+50
+2
+size
+size
+size
+size
+sizesize
+patch.patchv,patch.patchu~
+.patchv,.patchu
+ 
+如此， refpatch 共有 sizesize patchpatch × 個 pixels。 
+Step 5-3: 由depth得到 patch 中心的 3D 位置 )Z,Y,X(P center_patch = 。 
+Step 5-4: 由 βα , 得到 patch 的 normal 方向 )c,b,a(N = 。 
+Step 5-5: 算出 patch 在空間中的平面方程式。 
+由於 patch 的 normal 方向為 )c,b,a(N = ，所以令其平面方程式為： 
+0=+++ dczbyax ，將 Step5-3 所得的 center_patchP 代入： 
+ 15
+3.4. 產生深度圖(Constructing depth map) 
+    在重建完物體的3D模型後，為了評估重建結果的準確性，將產生depth map來比較
+結果好壞。由於OpenGL的depth buffer的值介於[0~1]之間，只要將depth buffer的值乘上
+255，便可以很容易得到以灰階表示的depth map。因此，本計畫將透過OpenGL來產生
+depth map，其步驟如下： 
+1. 在OpenGL中設定攝影機內、外部參數 
+2. 載入ground truth和重建出來的3D model(.obj檔) 
+3. Rendering並產生depth buffer 
+4. 將depth buffer陣列值乘上255後，輸出成灰階影像，做為重建效果的評定方法 
+    4個步驟中，只有第1步較難從一般OpenGL書中獲得實作方法，因此接下來將介紹
+如何在OpenGL中設定攝影機的內、外部參數。假設已知影像座標系統轉換到世界座標
+系統的公式為： 
+ TKRpP IW +=  其中，
+⎥⎥
+⎥
+⎦
+⎤
+⎢⎢
+⎢
+⎣
+⎡
+=
+333231
+232221
+131211
+rrr
+rrr
+rrr
+R 、
+⎥⎥
+⎥
+⎦
+⎤
+⎢⎢
+⎢
+⎣
+⎡
+=
+z
+y
+x
+t
+t
+t
+T  
+影像與世界座標系統皆為右手直角座標系統，且物體放置在世界座標系統原點位置，
+攝影機外部參數設定方法是使用gluLookAt函式即可，參數設定方式為：GluLookAt(攝
+影機的原點, 觀測場影的中心, 攝影機的Y軸向量)，即 
+),,,0,0,0,,,( 131211 rrrtttGluLookAt zyx  
+而內部參數的設定方法是使用 gluPerspective(視野角度 fovey, 長寬比 aspect, near, 
+far)，其中 ⎟⎟⎠
+⎞
+⎜⎜⎝
+⎛×= −
+height
+f
+fovy y
+2
+cot2 1 ，
+height
+widthaspect = ，而 near 和 far 則決定可視範圍的
+遠近，超過[near far]範圍的物體，將不會被呈現在 OpenGL 的畫面中。圖 3-6 為 ground 
+truth 和重建結果的 depth map，攝影機視點是俯視的角度，亮度越黑表示離攝影機越近。 
+ 
+圖3-6. 左圖為ground truth的depth map，右圖為重建model的depth map 
+ 
+ 17
+(a) Cube：長寬高各為 40 ㎝、40 ㎝、40 ㎝，cube 的中心點放置於世界座標系統中的
+原點(0, 0, 0)，所以 cube 的 bounding box 範圍為(-20~+20, -20~+20, -20~+20)。 
+(b) Camera：設定鏡頭的 focal length 為 45 ㎜，相機的位置為(0, -150, 0)，也就是相機
+放置在離世界座標系統原點 Y 軸負方向 150cm 的地方。此外，亦設定相機的
+resolution 為 640x480，即模擬數位相機的畫素為 640x480。畫出(render)的影像如
+圖 4-3 所示。 
+ 
+圖 4-2. Cube 及相機的放置情形 
+ 
+ 
+圖 4-3. 依圖 4-2 所擺設的相機所看到的影像，解析度為 640x480 
+ 
+令焦距(focal length)為 f，則 perspective 投影之 2D 與 3D 座標轉換關係式為： 
+ 19
+⎥⎥
+⎥⎥
+⎦
+⎤
+⎢⎢
+⎢⎢
+⎣
+⎡
+⎥⎥
+⎥
+⎦
+⎤
+⎢⎢
+⎢
+⎣
+⎡ −
+=
+⎥⎥
+⎥
+⎦
+⎤
+⎢⎢
+⎢
+⎣
+⎡
+1
+0100
+00
+0
+1
+1
+0
+0
+Z
+Y
+X
+vsin/lf
+ucotkfkf
+Z
+v
+u
+C
+C θ
+θ
+    (3) 
+因為是合成的影像，所以能夠令 skew 參數θ 為 0， 0u , 0v 各為影像長度及高度的
+一半(解析度如為 640x480，則 0u =320, 0v =240)，令影像的寬為 width ，高為
+height，並令 α=kf , β=kl ，此時 
+⎥⎥
+⎥⎥
+⎥⎥
+⎦
+⎤
+⎢⎢
+⎢⎢
+⎢⎢
+⎣
+⎡
+=
+⎥⎥
+⎥⎥
+⎥⎥
+⎦
+⎤
+⎢⎢
+⎢⎢
+⎢⎢
+⎣
+⎡
+=
+⎥⎥
+⎥
+⎦
+⎤
+⎢⎢
+⎢
+⎣
+⎡ −
+=
+100
+2
+0
+2
+0
+100
+2
+0
+2
+0
+100
+0 0
+0 height
+width
+heightkl
+widthkf
+vsin/lf
+ucotkfkf
+K β
+α
+θ
+θ
+ 
+接下來就要計算α 及 β ，以圖 4-3 的 top view 來說明，三度空間中長度E 的投影
+長度為影像上 e個 pixels，而相機中心離物體及成像面的距離分別為D及α，故可
+用下式來求出α ，同理可求出 β ： 
+E
+e*D
+E
+e
+D
+=⇒= αα       (4) 
+ 
+圖 4-4. 計算α 及β ，以 Top View 來說明 
+ 
+舉例來說，以前述設定來計算，如圖 4-4 所示，將成像的圖放大來看可找出三點
+的平面座標值 A:(320,240), B:(443, 240), C:(320,117)，此三點所對應的 3D 位置為：
+(0,-20,0), (20, -20, 0), (0, -20, 20)，而相機中心的 3D 位置為(0,-150,0)，代入(4)中可
+得： 
+ 21
+對 z 軸旋轉γ 度: 
+⎟⎟
+⎟
+⎠
+⎞
+⎜⎜
+⎜
+⎝
+⎛
+−=
+100
+0
+0
+γγ
+γγ
+γ cossin
+sincos
+)(Rz  
+以下說明如何設定合成場景中相機的位置，以及其相對應的 rotation matrix 及
+translation vector，圖 4-6 左圖為系統座標系統，右圖為相機自身的座標系統明：  
+   
+圖 4-6.右手座標系下的：左圖為系統座標系統，右圖為相機自身的座標系統明 
+ 
+在設定相機的方向及位置可以”經緯度”觀念，並依下列步驟，就可以得到相對應
+的 rotation matrix 及 translation vector。假設相機最後想要放在經度 Rθ ，緯度 Rω ，
+且距離世界座標原點 WO 為 r 的地方，且相機向著 WO 觀看，如圖 4-7 所示： 
+ 
+圖 4-7 經緯度方式來放置相機 
+ 
+Step 1: 先依世界座標系統的 z 軸旋轉 Rθ 度 
+Step 2: 先依相機座標系統的 x 軸旋轉( Rω -90)度，因為相機座標系統的 z 軸為相機
+往外的方向，如圖 4-6 右圖，故除了緯度之外，自身就要先延 x 軸迴轉 90 度。 
+Step 3: 在旋轉過後的相機座標系統的 z 軸上移動 r− ，換句話說，原點在移動後
+的座標的+ r 位置 
+Ps. 若有需要，相機可以最後再延相機座標系統的 z 軸旋轉，不過在本實驗中，相
+機不做這樣的移動。 
+ 23
+ 
+圖 4-9. 貼圖用的材質 
+ 
+利用 UV 座標貼圖的方式有很多種，以下畫出較常見的貼圖方式及結果，而在此
+例中是使用 Box 的貼圖方式： 
+1. Planer:  
+ +  Æ  
+2. Cynlindrical with cap:  
+ +  Æ  
+3. Box:  
+ +  Æ  
+4.2.4. 放置相機位置： 
+在 3DStudio 相機可以任意放置於場景當中，以下就一例子來建立拍攝影像。假設
+現在有五台相機且都面向世界座標原點，每台相機的經緯度設定如下： 
+相機編號 經度 (degree) 緯度 (degree) 半徑 (mm) 
+1 0 30 1500 
+ 25
+Front View:  
+相機解析度為 500x800，不同相機所拍攝出來的影像如下： 
+   
+Camera 1        Camera 2        Camera 3 
+  
+Camera 4        Camera 5 
+將模型改成棋子，擺設情況如下： 
+ 27
+5. 實驗結果 
+5.1. Photo-consistency 可行性驗證 
+5.1.1. 固定 depth 為正確解，調整 normal vector 的值 
+此實驗的 patch size 為 13x13，固定 depth 為正確解，調整 normal vector 的值：調整 normal 
+vector 的方法是對 X、Y 軸旋轉±10 度，每 1 度為一個間隔。然後，我們找出對此 patch 中，
+最大的 NCC 值，其對應的旋轉角度為多少。為了顯示方便，我們將最大的 NCC 值的旋轉
+角度(x,y)表示成 22 yx + ，來做為 photo-consistency 找到 patch normal vector 的誤差量。圖
+5-1 秀出 30 組不同 patch 的誤差量，平均誤差為 2.6，誤差標準差為 1.62。從結果顯示，雖
+然 NCC 的最大值不一定是 ground truth，但其誤差量並不會太大。另外，圖 5-2 為各組 patch
+其 NCC 的分佈情形，紅色橫切面為 ground truth 所在的位置。我們可以看到 ground truth 的
+NCC 與最大 NCC 的差距是很小的，所以整體而言，ground truth 的 NCC 會排在很前面的現
+象是成立的。  
+ 
+0
+1
+2
+3
+4
+5
+6
+7
+0 5 10 15 20 25 30
+實驗組別編號
+角
+度
+誤
+差
+量
+ 
+圖 5-1. 最大的 NCC 值的旋轉角度誤差量 
+ 
+ 
+圖 5-2. 各組 patch 其 NCC 的分佈情形 
+ 
+ 29
+5.2. 合成資料 
+我們利用 3D Studio 每隔 15 度來拍攝一個合成的棋子模型，並重建出其 3D model，並
+產生出其 depth map 來評估重建後的結果。圖 5-5 為 3D Studio 拍攝棋子的影像。圖 5-6 為
+重建後 patch based 的 3D 模型。圖 5-7 是用 Poisson Surface Reconstruction 所建成的 3D 模型。
+圖 5-8 是以左圖為攝影機拍攝 ground truth 3D 模型的圖，中間為 ground truth 的 depth map，
+右圖為重建後的 depth map。由於 OpenGL 的可視範圍的大小會影響 depth buffer 的值，例
+如物體的實際 depth 為[200~300]，若可視範圍為[0~1000]被 normalize 到[0~1]，則物體 depth
+的範圍為[0.2~0.3]，若可視範圍為[0~10000]，則物體 depth 的範圍為[0.02~0.03]，為了避免
+可視範圍的大小影響 depth map 準確度的評估，我們要先找出物體 depth 的區間大小，然後
+將誤差值 /區間大小。例如 [0.2~0.3]區間大小為 0.1， [0.02~0.03]區間大小為 0.01，
+[0.2~0.3]/0.1=[0.02~0.03]/0.01。表 5-1 為圖 5-8 ground truth 和重建後的 depth map 比較的結
+果。第一個 depth map 計算範圍為整張影像，其平均誤差為 2.84，標準差為 9.91，但可以發
+現拿整張影像來比較，因為背影留白的範圍太大，所以其結果意義不大。第二個計算範圍
+是以 ground truth 有 depth 值的才做比較，其二張 depth 的平均誤差為 2.56，標準差為 6.57。
+第三個計算範圍是以重建後 model 有 depth 值的才做比較，其二張 depth 的平均誤差為 8.43，
+標準差為 15.26。會造成這麼大的誤差，主要原因可以從圖 5-7 來觀察，重建後 model 的外
+圍會存在著一些 outlier 的 patch，但一做 Poisson Surface Reconstruction 所建成的 3D 模型，
+其輪廓明顯放大了一圈，原本只有些許點 outlier 的面積，經過 Poisson Surface Reconstruction
+的處理，卻被放大成整塊面積，所以二張 depth map 相減後的平均誤差自然就被放大許多。
+但若使用第四種評估方法，只計算 ground truth 和重建後 model depth 有值的部份做 AND 
+operator，其平均誤差為 2.11，標準差為 4.52。此評估方法，可以先排除重建 model outlier
+的部份，單單評估無 outlier 的 depth 準確度評估，其結果顯示，無 outlier 的 depth 其準確度
+和穩定度相當不錯。 
+計算的範圍 分項算法 分項值 
+整張 二張 depth 的平均誤差 2.84 
+二張 depth 的誤差標準差 9.91 
+MSE 560.4733 
+PSNR 20.6453 
+使用多少 pixel 400000 
+只比較 ground truth 的 depth 
+buffer 有值的 pixel 點的 depth 
+buffer 值 
+二張 depth 的平均誤差 2.56 
+二張 depth 的誤差標準差 6.57 
+MSE 266.5979 
+PSNR 23.8722 
+使用多少 pixel 100284 
+ 31
+ 
+ 
+圖 5-6. 重建後 patch based 的 3D 模型 
+ 
+ 
+ 
+圖 5-7. 用 Poisson Surface Reconstruction 所建成的 3D 模型 
+ 33
+  
+圖 5-11. 將圖 5-10 的 patches 之中央點及 patch normal vector 代入 Poisson surface 
+reconstruction 出來的結果。左圖為正視圖，右圖為左側視圖。 
+ 
+ 
+ 
+圖 5-12. 人臉正面重建結果模型貼圖與 wireframe 剪影 
+ 35
+on Computer Vision, 1999, pp.781-788. 
+[10]. S. Seitz, B.Curless, J.Diebel, D.Scharstein, and R.Szeliski. (2007). The Middlebury 
+Computer Vision Pages – The Multi-view Stereo Page. Available: 
+http://vision.middlebury.edu/mview/ 
+[11]. S. M. Seitz and C. R. Dyer, “Photorealistic scene reconstruction by voxel coloring,” Int. J. 
+Computer Vision, vol. 35, no.2, 1999, pp.151-173. 
+[12]. K. N. Kutulakos and S. M. Seitz, “A theory of shape by space carving,” Int. J. Computer 
+Vision, vol. 38, no.3, 2000, pp.199-218. 
+ 
+(3) 3D in the Home : Mass Marketor Niche ? – Dr. Anthony Vetro, Mitsubisshi 
+Electric Research Lab, USA. 
+ 
+論文發表分十二組口頭報告及二組海報解說。此外，尚有三場專題演講，題
+目及講者如下： 
+(1) Compression of 3D Meshes–Drs. N. Stefanoski, L. Vasa and J. Ostermann. 
+(2) Challenges to 3D Realistic Broadcasting System– Yo-Sung Ho, Gwangju Inst. of 
+Science and Techuology, Korea. 
+(3) Computer-Generated Holograms and 3-D Visual Communication – L. P. 
+Yaroslavsky, Tel Aviv Univ., Israel. 
+ 
+此次會議重點在於研發未來十年內可能推出的革命性的 3D 電視系統。3D
+電視系統與目前的 2D 電視系統相當的不同，包括 3D 節目的拍攝(capture/ 
+production) ， 壓 縮 與 儲 存 (compression/storage) ， 傳 輸 與 播 放
+(transmission/broadcast)，以及三維呈現(3Ddisplay)。這些技術問題都是有別於傳
+統 2D 電視系統，當然都是此次學術會議的重點內容。有關這些技術的標準規格
+制定更是落實技術與商品化的重要工作。國際組織 MPEG 工作小組至今召開約
+九十次 MPEG Meetings，徵求對 Multi-view Video Coding(MVC)，Joint Multi-view 
+video Model(JMVM)I.O 等規格草案。 
+  目前提出的 3DTV 系統主要有 Free-viewpoint TV(FTV) 及 3D Video 
+System (3DTV)二種。 
+(1) FTV System 
+ 
+(2) 3DTV System 
+Correction 
+Captured Images Correction 
+Acquisition 
+Camera Array 
+Decoding 
+Ray-Space 
+Generation 
+Free-Viewpoint Images 

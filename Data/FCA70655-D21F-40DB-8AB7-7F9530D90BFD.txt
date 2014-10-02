@@ -1,0 +1,651 @@
+researches usually spin down the hard disks rotation 
+rate to reduce the energy consumption. However, only 
+spinning down the hard disks rotation rate will save 
+little energy. Besides, to save much energy, the 
+system has to centralize frequently accessed data in 
+a small number of hard disks. These hard disks 
+usually become the system bottleneck because only a 
+small number of hard disks provide the service. In 
+this study, we propose an energy-efficient 
+distributed file system by switching the file server 
+state from active mode to sleep mode. We also propose 
+two scheduling algorithm to reduce unnecessary state 
+change. Experimental result shows our proposed method 
+can save about 50% ~ 75% of energy consumption. 
+ 
+英文關鍵詞： distributed file system, energy-efficient, scheduling 
+algorithm. 
+ 
+2 
+ 
+將不明顯。因此，比起降低硬碟轉速的方法，讓 File Servers 直接進入休眠模式可以節省更多的電能
+消耗。 
+因為在我們所提出的系統中，讓 File Servers 進入休眠模式來節省更多的能源，當系統從休眠模
+式被喚醒，進入到正常運作的模式下，需要等待一段時間；而喚醒過程也會產生比正常運作狀態時更
+多的啟動電能消耗。因此，在我們所提出的系統中，避免 File Servers 不必要的喚醒次數將會是個主
+要研究的議題。若過於頻繁的喚醒主機，則系統整體所產生的電能消耗，有可能會比未使用節能機制
+的系統更加耗電。為了減少不必要的系統喚醒次數，我們提出了 Offline 與 Online 兩種排程演算法，
+這兩種演算法分別針對不同情況的使用者進行處理，使得系統只有在必要時候才需要喚醒休眠中的 
+File Servers ，進行存取檔案的動作。而減少不必要的喚醒次數除了可以避免啟動電能消耗過大的問題，
+也可以減少使用者在系統喚醒的這段時間內所產生的等待時間，減少存取檔案的延遲。 
+3. 文獻回顧
+與傳統硬碟相比，將電腦主機的隨機存取記憶體 (Random Access Memory，RAM) 作為 RAM 
+Disks 使用，所消耗的電能更少。因此，在[9][10]所提到的節能檔案儲存系統，利用將熱門檔案置於 
+RAM Disks 中，而將儲存非熱門檔案的硬碟關閉或是降低轉速，來達到系統節能的效果。利用 RAM 
+Disks 可以擁有比起傳統硬碟更好的存取效能，但因為 RAM Disks 本身容量遠不如硬碟，而且具有揮
+發特性，一旦發生系統崩壞或是停電， RAM Disks 上儲存的資料便會消失。因此，要在檔案系統上
+面普遍仍有一定的難度。 
+降低硬碟轉速的概念，在早期是為了減少行動設備上的電能消耗，當這些設備處於閒置狀態時，
+降低硬碟轉速來減少其電能消耗[11]。為了改善使用 RAM Disks 的容量不足以及價格過於昂貴，許多
+利用降低硬碟轉速來達到系統節能的方法被提出來[12][13]。在硬碟中，維持碟片高速旋轉的馬達為主
+要的電能消耗來源；因此，當系統處於閒置狀態時，降低馬達的旋轉速度，可以進行節能。這些研究
+利用將系統的硬碟區分為兩個部份： Buffer Disks 和 Data Disks ，將有較多機會被存取的熱門檔案置
+於 Buffer Disks 中，而較少被存取的非熱門檔案則置於 Data Disks 。因此，相較於 Buffer Disks ， Data 
+Disks 擁有較長的閒置時間。當 Data Disks 閒置時間超過系統所設定的門檻值後，便降低其硬碟的轉
+速來進行節能。當有使用者需要存取 Data Disks 上的資料時，系統會先將 Data Disks 的硬碟轉速恢
+復正常後，再進行存取動作，因此會產生一小段的延遲時間。為了能夠增加 Data Disks 的閒置時間，
+這些研究中也提出了預取檔案的方法，將有可能成為熱門檔案的非熱門檔案，先移動到 Buffer Disks 中，
+因此， Data Disks 便有更長的閒置時間進行節能。而使用 Buffer Disks 作為系統儲存熱門檔案的節能
+檔案儲存系統，因為多數的使用者存取幾乎都由 Buffer Disks 來服務，而 Buffer Disks 又是長期處於
+正常轉速狀態，相較於 Buffer Disks ， Data Disks 的使用率便低很多。由 S. Yin 等人所提出的 Buffer 
+Disks 與 Data Disks 交換演算法[14]，定期的將兩種硬碟進行任務交換，在進行節能的同時，提高系
+統中所有硬碟的使用率以及可靠性。 
+與一般檔案儲存系統相比，節能檔案儲存系統為了進行節能，因此系統效能與一般的檔案系統有
+些微差異。如利用降低硬碟轉速的方法，當使用者要存取 Data Disks 上的資料時，便需要等待系統恢
+復硬碟轉速的時間。為了提高節能檔案儲存系統的存取效能，階層式架構的節能檔案儲存系統被提出
+來[15][16]。在階層式架構中，系統上層作為 Buffer Disks 使用，而使用的設備則為 Flash Memory 或
+是固態硬碟 (Solid State Disk，SSD)；系統的下層則是一般硬碟，並利用降低硬碟轉速來作為系統節能
+的方法。因此，將熱門檔案置於系統的上層，利用 Flash Memory 或是 SSD 來儲存，可以提供使用者
+快速的存取效率；而非熱門檔案則置於系統下層，由容量較大的傳統硬碟儲存，並在閒置時降低轉速
+進行節能。 
+4 
+ 
+定來作為建置 File Server 的基本協定。在 File Server 上，只需要安裝 FTP 的 Server 端程式，即可
+以作為 File Server 提供儲存功能，並接受來自 Metadata Server 的管理。我們在 File Server 上還安裝
+了一支我們自行設計的休眠程式，接收來自 Metadata Server 休眠指令控制 File Server 進入休眠。 
+4.2. 節能排程機制 
+為了使系統中的 File Servers 能夠有閒置時間進行節能，我們希望以少數的 File Servers 來服務多
+數的使用者請求。根據帕雷托法則 (Pareto Principle)的精神，少數的檔案將會被大多數的使用者存取
+[19][20]。因此，我們需要將檔案加以分類，讓少數持續運轉的 File Servers 負責儲存頻繁被存取的熱
+門檔案；而較少被存取的非熱門檔案則儲存於其他 File Servers 中。因此，負責儲存非熱門檔案的 File 
+Servers 便擁有較多的閒置時間，可以進入休眠狀態進行節能。特別的是，在我們系統演算法中，無需
+刻意去分辨系統中所儲存的檔案是熱門檔案還是非熱門檔案，經過排程演算法的執行與使用者多次的
+存取後，熱門檔案會自然的被保留在長期運作的 File Servers 中。 
+因為我們的系統是利用讓 File Servers 進入休眠狀態來進行節能動作，與過去研究使用降低硬碟
+轉速方法相比，我們需要花費一段較長的喚醒等待時間；而在喚醒過程中，產生的啟動電能消耗，也
+會大於 File Servers 處於一般正常運作狀態的電能消耗。因此，在我們的排程演算法中，將著重於如
+何有效的減少系統的喚醒次數。降低系統中的喚醒次數，除了可以減少使用者的平均等待時間，也可
+以避免過於頻繁的喚醒，可能造成系統因為過多的啟動電能消耗，產生比起未使用節能機制還要更多
+的電能消耗。 
+4.2.1. Offline Scheduling Mechanism 
+Offline Scheduling 主要考慮的情況為，使用者的請求是預約性質的；這些在未來特定時間點才會
+進行檔案存取動作，系統在收到使用者的請求後，無需立即回應給使用者。因此，系統必須記錄特定
+時間點時會進行的存取動作，在該時間點到來時，確保能夠提供給使用者存取服務。若系統收到複數
+的使用者，在同一時間點中都預定存取相同一個檔案，則需要考慮系統的負載平衡以及使否有足夠的
+副本數目。而若使用者預定存取的檔案置於休眠中的 File Servers 中，也必須在使用者預定存取時間
+點到來以前，將 File Servers 給喚醒。 
+我們在前面部份已經說明過， Metadata Server 為整個系統的管理者角色。當 Metadata Server 收
+到使用者的請求後，會記錄該請求所要存取的檔案及存取時間，接著會檢查是否有在相同時間有同一
+檔案存取動作，以作為是否超過 File Server 負載門檻值的依據。我們定義系統中負載門檻值為： 
+負載門檻值 = 伺服器頻寬 * 80%   (1) 
+利用 Eq. (1) 計算的門檻值，作為伺服器負載是否過高的依據。當 Metadata Server 在接收完畢一位使
+用者的請求後，發現同一時間下，相同檔案的存取已經超過負載門檻值，則代表系統必須準備其他副
+本和 File Servers 來參與服務。若不增加新的 File Servers 來加入服務，讓過多的使用者集中於一台 
+File Server 上，這一台 File Servers 很有可能成為系統的瓶頸點。 
+若系統有需要複製多份副本，而當前系統中的其他 File Servers 依然處於休眠狀態；抑或是使用
+者預定要存取的檔案，儲存位置於休眠中的 File Server ，則也必須在預定存取時間點來臨之前，完成
+喚醒動作。因為我們使用休眠作為主要節能的方法，休眠喚醒過程中，產生的啟動電能消耗，會大於 File 
+Server 一般正常運作狀態下的電能消耗。因此，我們這邊要討論的是，如何減少不必要的喚醒，以及
+喚醒 File Server 的時間點。若系統在收到使用者請求以後，立即喚醒 File Server ，則除了會造成 File 
+Server 閒置與浪費電能消耗，更有可能使 File Server 在使用者預定存取的時間點到來以前，因為閒置
+過久再度進入休眠，產生不必要的喚醒動作與電能消耗。若太晚喚醒 File Server ，則有可能造成使用
+者預定存取時間點到來時，仍需要等待 File Server 喚醒；若有過多使用者要存取相同檔案，系統還必
+須使用額外的資源進行副本複製動作，不但無法準時提供服務給使用者，還會造成系統負載過高。因
+6 
+ 
+5. 結果與討論 
+在本計畫的執行過程中，我們提出一個節能檔案儲存系統的架構以及節能排程演算法。在本章節
+部份，我們將以個人電腦建立本系統的 File Server 模組以量測基本的執行數據；接著我將利用數學推
+算的模式計算出系統的節能效果。5.1 節將說明數學推算的方式，5.2 節則是實驗的結果數據圖表，最
+後，我們將在 5.3 節做個結論。 
+5.1. 推算系統電能消耗 
+為了作為數學推算的依據，我們量測了一台 File Server 的基礎電能消耗，相關數據如表 5.1。當 
+File Server 由休眠狀態被喚醒後，直到系統恢復到可以正常提供服務的狀態，我們所測量得到的平均
+喚醒時間約為 14 秒。在喚醒這段期間內所產生的啟動電能消耗，相關數據如表 5.2。當 File Server 接
+收到系統的休眠指令後，系統會將記憶體中的資料寫入硬碟中，再將系統電源關閉，只留下足以提供
+網路卡傾聽喚醒封包的電源，這段準備休眠的時間，我們測得平均時間約為 13 秒。 
+表 5.1 File Server 基礎耗電量 
+硬碟數目 1 2 3 4 
+休眠 2W 2W 2W 2W 
+運轉中 51W 54W 60W 66W 
+讀取 52W 56W 61W 66W 
+寫入 52W 57W 62W 68W 
+表 5.2 File Server 喚醒耗電量 
+硬碟數目 1 2 3 4 
+消耗電能 683.5J 864.5J 975.5J 1148J 
+ 利用表 5.1、表 5.2 的數據，我們可以透過收集系統處理請求的時間，系統喚醒休眠中 File Server 的
+次數，以及系統中運作的 File Servers 數量及總共運作的時間，推算出系統所產生的總電能消耗，進
+而求出節能的百分比。 
+ 在我們的系統中，至少有一台 File Server 長期處於運作狀態，系統的檔案存取服務才不會中斷。
+在前面章節提到，我們所提的系統是由 Metadata Server 作為長期處於運作狀態的 File Server 。由於
+系統中會有部份 File Servers 處於運作狀態，部份 File Servers 處於休眠狀態，因此，我們將系統的電
+能消耗分成幾個部份來看：處於運作狀態的 File Servers 電能消耗 Eactive_cost，此部份包含由長期運作
+中的 File Server 處理請求時的電能消耗；處於休眠狀態的 File Servers 電能消耗 Esleep_cost；處理熱門
+檔案存取的電能消耗 Epop，包含喚醒休眠的 File Server 電能消耗以及其他閒置中 File Servers 的電能
+消耗；處理非熱門檔案存取的電能消耗 Eunpop，包含喚醒休眠的 File Server 電能消耗以及其他閒置中 
+File Servers 的電能消耗。這四各部份的電能消耗總和，即為系統的總電能消耗 Etotal_cost ，其關係式為： 
+Etotal_cost = Eactive_cost + Esleep_cost + Epop + Eunpop   (3) 
+ 我們先來計算當系統未使用節能演算法時，經過有 Rtotal 個請求後，所產生的電能消耗 Eno_saving_cost 
+為： 
+Eno_saving_cost =  Eactive ∗  Rtotal ∗  Taccess ∗  Ntotal  (4) 
+其中 Eactive 為運作中 File Server 的電能消耗； Taccess 為處理一個請求所需時間； Ntotal 為使用 File 
+Servers 的數量。 
+ 接著，我們將分別計算當系統使用節能演算法時，四個部份分別所產生的電能消耗。首先是運作
+中 File Servers 的電能消耗 Eactive_cost ，其中 Nactive 為運作中 File Servers 的數量，計算公式如下： 
+8 
+ 
+ 利用 Eq. (5) ~ Eq. (8) 我們可以計算得出 Eq. (3) 所提到的使用節能演算法下的系統電能消耗。將 
+Eq. (3) 與 Eq. (4) 相除我們便可以計算出系統的節能百分比 Esaving ： 
+Esaving = ( 1 −  
+Etotalcost
+Enosavingcost
+) ∗ 100%  (9) 
+5.2. 實驗結果 
+實驗使用的系統環境如下。處理器為 Intel Core2 Q8400，4GB 的 RAM，硬碟為 HITACHI 
+32M/SATA2 1TB ，機殼上會使用電源的設備為 CPU 風扇一顆，散熱用 8cm 風扇一顆；作業系統使
+用 Microsoft Windows 7 32bit 專業版。我們使用兩台 File Servers 進行模擬實驗，其中一台為 Metadata 
+Server ，一台為 File Server。 
+ 
+圖 5.1 節能百分比 
+ 圖 5.1 為我們所提出的節能檔案儲存系統與使用降低硬碟轉速的方法產生的節能百分比之比較。
+而因為使用降低硬碟轉速的方法，恢復轉速所需的等待延遲很小，在實驗中我們將其忽略，因此無需
+要進行檔案複製的動作。我們也針對我們提出的方法如果不進行檔案複製時的比較。由圖片中可以觀
+察出，在 File Server 儲存空間很小時，我們所提出的系統需要不斷地喚醒 File Server 並頻繁置換檔
+案，因此換產生甚至比不使用節能演算法更多的電能消耗。但是當檔案儲存空間逐漸增加時，我們所
+提出的系統可以獲得與過去文獻的節能方法相比，更加良好的節能效果。 
+ 在我們所提出的系統中，因為使用休眠作為主要節能方法，故使用使有時必需要等待系統喚醒休
+眠中的 File Server 才能進行檔案存取。圖 5.2 表示在不同儲存空間的情況下，使用者的平均等待時間
+比較。我們可以觀察到即使只有 25%左右的檔案儲存空間，使用者平均等待時間也只有 2.7 秒。因此
+在我們的系統中，除了可以有效的進行節能，也不會造成使用者過長的等待延遲。 
+ 圖 5.3 表示，在 Offline Scheduling 排程模式下，系統計算喚醒時間臨界點時，所需要加入的懲罰
+參數變化。我們以一秒為間隔進行實驗，可以觀察到在懲罰時間為 2 秒以後，平均的時間差距便為正
+數，表示系統可以在使用者預定存取時間點到來以前，完成檔案複製以及 File Server 的喚醒動作。 
+5.3. 總結 
+-20
+-10
+0
+10
+20
+30
+40
+50
+60
+70
+80
+90
+10 20 30 40 50 60 70 80 90 100
+P
+er
+ce
+n
+ta
+g
+e 
+o
+f 
+E
+n
+er
+g
+y
+ S
+a
+v
+in
+g
+ (
+%
+) 
+Percentage of Storage Space for All Data (%) 
+Our Proposed
+System
+Spin Down HD
+RPS
+Spin Down HD
+RPS Without
+Replica Copy
+10 
+ 
+[5] Where does power go, http://www.greendataproject.org/, March 2012. 
+[6] Energy Star Version 5.0 System Implementation, http://www.intel.com/Assets/PDF/whitepaper/321556.pdf, March 2012. 
+[7] T. J. Liu, C. Y. Chung, C. L. Lee, “A High Performance and Low Cost Distributed File System,” In Proceedings of IEEE 2nd 
+International Conference on software Engineering and Service Science (ICSESS), pp. 47-50, July 2011. 
+[8] T. J. Liu, W. C. Wang, C. M. Tseng, “Organize Metadata Servers by Using Quorum System,” In Proceedings of IEEE/SICE 
+International Symposium on System Integration (SII), pp. 1125-1130, December 2011. 
+[9] I. You and Y. Won, “Dynamic File System Migration for Energy Efficient Storage Management,” In Proceedings of 
+IEEE/ACM International Conference on Green Computing and Communications (GreenCom) & International Conference on 
+Cyber, Physical and Social Computing (CPSCom), pp. 412-417, December 2010. 
+[10] X. Li, Z. Li, F. David, P. Zhou, Y. Zhou, S. Adve and S. Kumar, “Performance Directed Energy Management for Main 
+Memory and Disks,” In Proceedings of International Conference on Architectural Support for Programming Languages and 
+Operating Systems, pp. 271-283, 2005. 
+[11] D. P. Helmbold, D. D. E. Long, T. L. Sconyers and B. Sherrod, “Adaptive Disk Spin-Down for Mobile Computers,” Mobile 
+Networks and Applications, Vol. 5, No.4, pp.285-297, 2000. 
+[12] A. Manzanares, K. Bellam and X. Qin, “A Prefetching Scheme for Energy Conservation in Parallel Disk Systems,” In 
+Proceedings of International Symposium on Parallel and Distributed Processing, pp. 1-5, April 2008. 
+[13] A. Manzanares, X. Ruan, S. Yin, J. Xie, Z. Ding, Y. Tian, J. Majors and X. Qin, “Energy Efficient Prefetching with Buffer 
+Disks for Cluster File Systems,” In Proceedings of International Conference on Parallel Processing (ICPP), pp. 404-413, 
+September 2010. 
+[14] S. Yin, X. Ruan, A. Manzanares, Z. Ding, J. Xie, J. Majors and X. Qin, “Improving Reliability of Energy-Efficient Parallel 
+Storage Systems by Disk Swapping,” In Proceedings of IEEE International Performance Computing and Communications 
+Conference (IPCCC), pp. 87-94, December 2009. 
+[15] H. Akaike, K. Fujimoto, K. Miura and H. Muraoka, “Performance Evaluation of Energy-Efficient High-Speed Tiered-Storage 
+System,” In Proceedings of IEEE International Conference on Industrial Informatics (INDIN), pp. 663-670, July 2010. 
+[16] M. Nijim, A. Manzanares, X. Ruan and X. Qin, “HYBUD: An Energy-Efficient Architecture for Hybrid Parallel Disk 
+Systems,” In Proceedings of International Conference on Computer Communications and Networks (ICCCN), pp. 1-6, 
+August 2009. 
+[17] J. Chou, J. Kim and D. Rotem, “Energy-Aware Scheduling in Disk Storage Systems,” In Proceedings of International 
+Conference on Distributed Computing Systems (ICDCS), pp. 423-433, June 2011. 
+[18] E. Pinheiro, R. Bianchini and C. Dubnicki, “Exploiting Redundancy to Conserve Energy in Storage Systems,” In Proceedings 
+of International Conference on Measurement and Modeling of Computer Systems, pp. 15-26, June 2006. 
+[19] What is 80/20 rule, http://www.80-20presentationrule.com/whatisrule.html, March 2012. 
+[20] K. Ranganathan and I. Foster, “Identifying Dynamic Replication Strategies for a High Performance Data Grid,” In 
+Proceedings of the 3rd IEEE/ACM International Workshop on Grid Computing, in: Lecture Notes on Computer Science, Vol. 
+2242, pp. 75-86, 2002. 
+ 2 
+時、廣泛的蒐集資料並整合到決策支援系統中是系統成功的關鍵。Prof. Pierce 同時也討論如何
+將這些技術整合到 Cloud Based Information Management and Delivery System 中。 
+本次國際會議聚集世界各地從事有關 System Integration 領域中的專家學者，雖然此一 
+會議的領域非 Computer Science。但透過會議中各個學者的經驗分享，讓我們對 Computer 
+Science 的技術在各類系統中的應用有更多的了解及想法，讓我與陪同前往的學生都有相當不
+錯的收穫。 
+三、發表論文全文或摘要 
+ 如附件 
+四、建議 
+ 無 
+五、攜回資料名稱及內容 
+ 參與本次的國際會議，攜回資料名稱及內容如下: Proceedings of 2011 IEEE/SICE 
+International Symposium on System Integration。 
+六、其他 
+ 無 
+  
+II. RELATED WORK 
+A. Distributed File System 
+In order to provide users to access files on the Internet in 
+early stages, many distributed file systems had been 
+proposed, such as Network File System (NFS) [16] and 
+Coda File System [1]. With the increasing capacity of a 
+hard disk and the less cost of the storage equipment, many 
+large-scale distributed storage architecture have been 
+proposed, such as Frangipani [19] and so on. 
+Hadoop Distributed File System (HDFS) [8] is a part of 
+the Hadoop project with cloud computing and it supplies 
+the storage to a large of files. HDFS, only operating on the 
+local area network belongs to the client-server architecture 
+and the distributed file storage system with high reliability 
+as well as high transmission performance. Google File 
+System (GFS) [6], developed by Google to compute and to 
+store the large amount of web-searching data in the file 
+system, takes the hardware failures into consideration. 
+Because the amount of the data, a large part by means of 
+writing as well as reading, reaches multiple gigabytes in 
+GFS, GFS redesigns the I/O operations and the block sizes. 
+Luster File System [11], the file system with high 
+performance and high fault tolerance, provides the standard 
+POIX interface. The metadata servers in Luster File System 
+contains two different servers—the active server and the 
+standby server—to provide the fault tolerant mechanism for 
+the purpose of improving the availability of the whole 
+system.  
+In addition, there are a lot of distributed file systems by 
+means of Storage Area Network (SAN), such like DiFFS 
+[10]. IBM develops Total Storage SAN File System [2] 
+except the above two. It not only owns the characteristics of 
+the general distributed system but also is mainly applied to 
+reducing the complexity of using the SAN technology as 
+the storage structure. Expand (Expandable Parallel File 
+System) [5], a parallel file system, takes advantage of the 
+protocols of RPC and NFS to perform the operations of a 
+distributed file system through modifying the NFS 
+client-side program. EDRFS [4] is a distributed file system 
+used in smaller files and data-intensive applications, so its 
+requirements about data reliability are very high. It will 
+copy the whole file to some duplicates, and then distribute 
+these copies to every server as average as possible in order 
+to make them efficiently downloaded. 
+B. Peer-to-Peer Technology and Data Consistency 
+The P2P systems are composed of structured P2P 
+systems, unstructured P2P systems and hybrid P2P 
+systems. Among them, there are a lot of researches on data 
+consistency as well as duplicate management. For example, 
+Ivy [14] uses DHT (Distributed Hash Table) to construct a 
+ring logical structure to put I duplicates into I successors. If 
+the main copy is lost, one of these copies on successors will 
+take place of its role. Besides, Chord [17] transfers the file 
+name into a key value and puts it into some node in the ring 
+logical structure. Although the needed file object is easily 
+found, the other nodes without the file information 
+originating from the only one node will not look for where 
+the file object is due to its sudden leave. 
+OceanStore [9] capitalizes on the Tapestry DHT to 
+build a tree structure through which the duplicate needs to 
+be updated. In [18], the authors make use of the access 
+percentage to record the access frequency of one file 
+duplicate. If the access percentage of some file is below the 
+threshold value, it will be removed in order to reduce the 
+maintenance cost. In [15], the authors use a three-layer 
+architecture to divide nodes into some groups with their 
+own roots. Every group, owning a few super nodes, can 
+communicate with other ones through its root and these 
+super nodes have their own connections with the root in the 
+same group. Every super node will store the addresses of 
+the original files and the duplicate ones. Through the 
+information on super nodes, it is not only very easy for 
+users to find out any needed files but also very useful for the 
+system to improve the performance. In [7], the authors 
+categorize the files by their attributes into some clusters 
+which will record the access times of files and adjust the 
+number as well as the position of a duplicate according to 
+the access frequency. 
+III. PROPOSED SYSTEM 
+This section describes our proposed architecture on a 
+distributed file system. In Subsection A, we introduce the 
+system overview and the design goal. Subsection B shows 
+how to organize metadata servers into logical structure of 
+the grid quorum system. Subsection C shows the rules for 
+searching metadata, especially the diagonal selection rule. 
+Finally, Subsection D shows the system module 
+architecture and the operation method.  
+A. System Architecture 
+Nowadays, most of distributed file systems have one or 
+two metadata servers to record all metadata about the whole 
+file system. When the requests of searching file objects are 
+increasing endlessly, the overloading of this metadata 
+server will happen. To make matters worse, the users will 
+not get and search the file objects due to the crash of this 
+metadata server. The file system cannot provide the regular 
+service unless the metadata server is completely repaired. 
+Hence, we will take advantage of a few metadata servers to 
+distribute the loading of the whole system into every one 
+and to improve the availability in order to avoid the 
+breakdown of the whole system due to the crash of the 
+single metadata server. The more metadata servers are, the 
+more complicated the metadata searching will be in the 
+system. Consequently, this system consists of these 
+metadata servers by means of the grid quorum system and 
+we propose different searching rules to improve the 
+efficiency to look for the right metadata. Name servers as 
+well as file servers will be also deployed in our proposed 
+distributed file system.  
+Though we make use of a few metadata servers to share 
+the loading of the whole system, it is possible to cause the 
+inconsistency among metadata. The grid quorum system is 
+applied to making sure the consistency of the whole file 
+system. Moreover, it is not possible for the amount of 
+request messages on searching file objects to increase 
+constantly with the scalability of the system. The overview 
+of the whole system architecture is as Fig.1. 
+- 1126 - SI International 2011
+  
+system. Hence, the metadata server will copy metadata to 
+the other one in the same quorum set for the reduction of the 
+original loading. Based on the above metadata management 
+rule, there are three different searching rules including the 
+cross selection rule, the line selection rule and the diagonal 
+selection rule. By the cross selection rule, the quorum forms 
+just like the metadata management rule. For instance, we 
+choose one node (x,y) as the center which the cross way are 
+selected at the basis of and the forming set will be nodes 
+(a,b) = {((x+i) mod n,y) and (x,(y+i) mod n)}, where i = 
+1,2,…,n. By the line selection rule similar to the above, we 
+first assume one node (u,v) as the center of which the nodes 
+of the line way are selected at the basis and the set will be 
+composed of node (c,d) = {((u +j) mod n,v) or (u,(v +j) mod 
+n)}, where j = 1,2,…,n. 
+ 
+ 
+ 
+Figure 3.  Metadata servers using grid quorum system 
+ 
+The set, formed by the diagonal selection rule, is at the 
+basis of node (p,q) to construct a diagonal set, and it will 
+consist of nodes (e,f) = {(p+k) mod n,(q+k) mod n}, where 
+k = 1,2,…,n. By the means of the above selection rules, the 
+sets must have an intersection with the quorum ones 
+owning the correct metadata. Finally, there will be an 
+analysis about the influence on the number of average 
+messages by the use of different rules.  
+When the first request is visiting on the metadata server, 
+the server cannot find out the needed metadata. By the cross 
+selection rule, the line selection rule and the diagonal 
+selection rule, the set composed of the nodes in these rules 
+at the basis of the above metadata server and these nodes 
+will be chosen randomly repeatedly until the right metadata 
+is found. Besides, we will only introduce the procedure of 
+the diagonal selection rule due to the restriction of the paper 
+size. 
+As Fig.4 (a), it is assumed that we do not know the 
+metadata placed on the quorum consisting of these nodes 
+(1,1), (2,1), (3,1), …, (n,1), (2,2), (2,3), …, (2,n). At the 
+first-time searching, node (n,2), the randomly selected 
+metadata server, does not own the needed metadata, so the 
+diagonal set at the basis of node (n,2) is {(n+k) mod n,(2+k) 
+mod n}, where k = 1,2,…,n and the members are (1,3), 
+(2,4), (3,5),…, (n-1,1), separately. These members will be 
+queried randomly one by one until the metadata is located 
+at node (n-1, 1) as Fig.4 (b). With the diagonal selection 
+rule, there are two situations as either Fig.4 (b) or Fig.4 (c). 
+Because the only one node at the intersection of the cross 
+way is based on the first selected one, the above two 
+situations happen. For instance, the node (n, n-1)—the 
+randomly selected metadata server—does not have the 
+needed metadata, the diagonal set—at the basis of node (n, 
+n-1)—is {(n+k) mod n, (n-1+k) mod n}, where k = 1,2,…,n 
+and the members are (1,n), (2,1), (3,2), …, (n-1, n-2), 
+separately. As Fig.4 (c), these members will be queried 
+randomly one by one until the metadata located at node (2, 
+1) is found. 
+ 
+ 
+(a)                          (b)                              
+           
+  (c) 
+Figure 4.  Diagonal selection rule 
+D. System Module Architecture 
+The system module architecture is proposed in the 
+distributed file system as Fig.5 and the whole file system 
+includes Access Daemon, Metadata Daemon and File 
+Daemon. 
+ 
+ 
+Figure 5.  System module architecture 
+Access Daemon provides File Interface, File Manager 
+and Quorum Manager. The former is applied to accessing 
+the distributed file system, and the latter two can provide 
+the related information to connect Access Daemon to 
+Quorum Manager. Not only Write Engine is responsible for 
+writing metadata and objects but also Read Engine is in 
+charge of reading metadata and objects. In addition, File 
+Engine applies FTP (File Transfer Protocol) to three 
+daemons in this system. Metadata Daemon, managing the 
+metadata, takes advantage of the index values in the 
+metadata to communicate with File Daemon in order to get 
+the object in this system easily. 
+The record formats—designed for File Interface, File 
+Manager, File Engine, Write Engine, Read Engine and 
+Metadata—refer to the modules in [12] to expand. 
+However, this paper will focus on Quorum Manager and 
+the whole distributed file system is performed based on it. 
+Quorum Manager mainly makes some metadata server 
+duplicate and update with others in the same grid quorum. 
+- 1128 - SI International 2011
+  
+ 
+Selection Rule Messages Number 
+Cross Selection Rule 22 −N  
+Line Selection Rule N  
+Diagonal Selection Rule 1−N  or N  
+Random Architecture 1)1( 2 +−N  
+Figure 8.  The comparison of numbers of average messages in the worst 
+case 
+B. Experimental Results 
+In this section, we will verify the availability of our 
+proposed distributed file system and will experiment the 
+performance of reading and writing files. Twenty-nine 
+nodes, equipped with Intel Core(TM) 2 Duo CPU E8400 
+@3.00GHz CPU, 2GB memory and 100Mb/s LAN Card, 
+will construct the experiment environment of name servers, 
+metadata servers, file servers and clients. 
+As Fig.9, although more and more metadata servers are 
+constructed by the grid quorum system, the performance of 
+reading and writing of the whole system will not be 
+decreased with the extent of the grid quorum system. 
+V. CONCLUSION 
+A distributed file system, based on the grid quorum 
+system, is proposed in this paper and it will organize 
+metadata servers into the logical grid quorum system. In 
+addition, the performance of the whole system will be kept 
+stable with the growth of the number of metadata servers, 
+so this file system has scalability. In terms of probability, 
+because the number of average messages handled by every 
+single metadata server is stable, the loading of the whole 
+system can be distributed into every server. Bottomed upon 
+the system analysis, the diagonal selection rule will spend 
+least number of average messages among all rules to find 
+correct metadata. Due to file consistency, the file system 
+can regularly find out the corresponding metadata server 
+with correct metadata for users to keep the metadata fresh 
+while writing or reading metadata.  
+ 
+ 
+Figure 9.  Comparison of reading / writing performance among quorum 
+size matrix 1h1, matrix 2h2 and matrix 4h4 
+REFERENCES 
+[1] P. J. Braam, “The Coda Distributed File System,” Linux Journal, pp. 
+46-50, Jun. 1998. 
+[2] C. Brooks, H. Dachuan, D. Jackson, and M. A. Miller, “IBM 
+TotalStorage SAN File System,” IBM Redbooks, Jan. 2006. 
+[3] S. Y. Cheung, M. H. Ammar, and M. Ahamad, “The Grid Protocol: 
+A High Performance Scheme for Maintaining Replicated Data,” 
+IEEE Transactions on Knowledge and Data Engineering, Vol. 4, 
+Issue 6, pp. 582-592, Dec. 1992. 
+[4] B. Cai, C. Xie, and G. Zhu, “EDRFS: An Effective Distributed 
+Replication File System for Small-File and Data-Intensive 
+Application,” In Proceedings of the 2nd International Conference on 
+Communication Systems Software and Middleware, pp. 1-7, Jan. 
+2007. 
+[5] F. Garcia, A. Calderon, J. Carretero, J. M. Perez, and J. Fernandez, 
+“A Parallel and Fault Tolerant File System Based on NFS Servers,” 
+In Proceedings of the 11th Euromicro Conference on Parallel, 
+Distributed and Network based Processing, pp. 83-90, Feb. 2003. 
+[6] S. Ghemawat, H. Gobioff, and S. T. Leung, “The Google File 
+System,” In Proceedings of the 9th ACM symposium on Operating 
+systems principles, Vol. 37, Issue 5, pp. 29-43, Dec. 2003. 
+[7] Y. Gong, F. Yang, S. Su, G. Zhang, and T. Shuai, “ARDC: An 
+Adaptive File Replication Method Based on Dynamic Community in 
+Peer-to-Peer Networks,” In Proceedings of the 2nd IEEE 
+International Conference on Advanced Computer Control, pp. 
+221-226, Mar. 2010. 
+[8] HDFS Architecture, The Apache Software Foundation, 
+http://hadoop.apache.org/core/docs/current/hdfs_design.html. 
+[9] J. Kubiatowicz, “OceanStore: An Architecture for Global-Scale 
+Persistent Storage,” In Proceedings of the 9th International 
+Conference on Architectural Support for Programming Languages 
+and Operating Systems, pp. 190-201, Nov. 2000. 
+[10] C. Karamanolis, M. Mahalingam, D. Muntz, and Z. Zhang, “DiFFS: 
+A Scalable Distributed File System,” Computer System and 
+Technology Laboratory, Hewlett-Packard Company Inc., White 
+Paper, Apr. 2001. 
+[11] Lustre File System: High-Performance Storage Architecture and 
+Scalable Cluster File System, SUN Microsystems Inc., White Paper, 
+2003. 
+[12] T. J. Liu, C. Y. Chung, and C. L. Lee, “A High Performance and Low 
+Cost Distributed File System,” In Proceedings of the 2nd IEEE 
+International Conference on Software Engineering and Service 
+Science, pp. 47–50, Jul. 2011. 
+[13] M. Maekawa, “A N1/2 Algorithm for Mutual Exclusion in 
+Decentralized Systems,” ACM Transactions on Computer Systems, 
+Vol. 3, Issue 2, pp. 145-159, May. 1985. 
+[14] A. Muthitacharoen, R. Morris, T. M. Gil, and B. Chen, “Ivy: A 
+Read/Write Peer-to-Peer File System,” In Proceedings of the 5th 
+Symposium on Operating Systems Design and Implementation, pp. 
+31-44, Dec. 2002. 
+[15] H. Shen, “EAD: An Efficient and Adaptive Decentralized File 
+Replication Algorithm in P2P File Sharing System,” In Proceedings 
+of the 8th International Conference on Peer-to-Peer Computing, pp. 
+99-108, Sep. 2008. 
+[16] S. Shepler and B. Callaghan, “RFC 3530: Network File System 
+(NFS) version 4 Protocol,” Sun Microsystems Inc., Apr. 2003. 
+[17] I. Stoica, R. Morris, D. Karger, M.F. Kaashoek, and H. Balakrishnan, 
+“Chord: A Scalable Peer-to-Peer Lookup Service for Internet 
+Applications,” In Proceedings of the ACM International Conference 
+on Applications, Technologies, Architectures, and Protocols for 
+Computer Communications, pp. 149-160, Oct. 2001. 
+[18] H. Shen and Y. Zhu, “Plover: A Proactive Low-Overhead File 
+Replication Scheme for Structure P2P System,” In Proceedings of 
+IEEE International Conference on Communications, pp. 5619-5623, 
+May. 2008. 
+[19] C. A. Thekkath, T. Mann, and E. K. Lee, “Frangipani: A Scalable 
+Distributed File System,” In Proceedings of the 6th ACM 
+Symposium on Operating Systems Principles, vol. 31, Issue 5, pp. 
+224-237, Dec. 1997. 
+- 1130 - SI International 2011
+100 年度專題研究計畫研究成果彙整表 
+計畫主持人：劉宗杰 計畫編號：100-2221-E-035-068- 
+計畫名稱：一個節能的雲儲存系統之研究 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 6 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 1 2 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

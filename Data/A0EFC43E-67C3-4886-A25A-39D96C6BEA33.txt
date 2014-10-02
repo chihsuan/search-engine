@@ -1,0 +1,593 @@
+-2- 
+中文摘要 
+諸多嵌入式或行動裝置都支援多媒體影音功能，而這些功能都在在強調串流式資料運算
+的效能需求。為了滿足上述應用服務效能需求，處理器的架構也不斷地推陳出新。多處理器
+(Multi-processors) 即是提高效能的新趨勢之一。  
+本計畫設計低電耗機制的多處理器及shared-memory架構來節省處理資料及傳輸資料時所
+需的電耗。我們把多處理器視為一條運算管線，而一個處理器就如同一個pipe-stage。我們假
+設每個處理器皆提供雙重電壓/頻率，各處理器的運速度(頻率)與其供應電壓成正比，且
+streaming data 在管線中每一個處理器的工作量不一定均等。我們透過計算預估每一個處理器
+可工作的時間，在不影響系統效能的條件限制下，如果預估時間大於使用原始電壓/頻率執行
+的工作時間，此處理器便可用較低之供應電壓/頻率來執行運算。反之，若原始工作時間大於
+等於預估可容許的時間，則此處理器必須以較高電壓/頻率全速執行運算。如此可使串流式資
+料在不影響產能的情況下降低系統電耗功率。  
+在實驗中我們使用HyperLAN2的應用程式來評估比較我們所設計的方法。評估的標準是節
+省的電耗百分比。我們將方法應用在四個不同的多處理機架構模型上。實驗結果顯示，各模型
+可節省的電耗百分比可達到68.23(%)、68.23(%)、81.11(%)和81.11(%)。 
+ 
+關鍵詞:多核心微處理器、串流式資料運算、管線化排程、影像監控串流、網管封包串流 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+-4- 
+一、前言 
+由於近年來嵌入式運算(embedded computing) 與
+無所不在運算(ubiquitous computing)的蓬勃發展，越來
+越多的嵌入式或行動式裝置例如 UMPC (Ultra-Mobile 
+PC) 、Notebook、3G 手機、smart phone 等等，都支
+援多媒體的通訊與影音功能。而這些功能在在都強調
+串流式運算(streaming operations)的效能需求。所謂的
+串流式運算是指應用程式的資料以穩定的速度進入系
+統內進行運算，並在 deadline 截止時間前完成運算以
+達成預期的服務品質 (QoS)。傳統的串流式運算如
+MPEG 檔案的編/解碼。 
+為了滿足諸多串流式運算應用服務所需的效能
+需求，處理器的架構也不斷地推陳出新。多處理器
+(Multi-processors)即是提高效能的新趨勢之一。多處理
+器之間透過高速 system bus與 shared memory進行資料
+交換 ，並藉由 各處理器平 行執行多 個執行 緒
+(multi-threads)來提高處理器的效能。繼 Intel 雙核心微
+處理器已漸漸取代傳統單核心微處理器架構的市場
+後，Intel 與 AMD 競相推出四核心(quad-core processor)
+架構，並已有相關產品問世。而在 Network processor
+方面，則早已有微處理器應用多核心架構來加速資料
+封包的處理。已商品化的微處理器如 Intel IXP-network 
+processor (16 cores)[1]、MIPS64 (4~16 cores ) processor 
+[3]等。 
+為了充分發揮多處理器之高效能表現，許多相關
+的研究皆致力於開發 streaming 應用程式之平行度。因
+為每個 streaming 應用程式都有規律且固定的 task 需
+執行，所以我們可以將這些 task 依照每一個 task 的
+workload 的比例將其分配到多處理器的各處理器上來
+做 processing，以提高系統的 throughput。然而將其應
+用於多核心微處理器架構上時，通常會遭遇以下問題： 
+(1) 多核心之間的工作量(workload)不均等，互相傳遞
+的資料量(data communication)也不一致。當程式
+需要進行同步的平行運算時，極可能讓部分核心
+發生空轉現象，導致微處理器整體之效能不如預
+期。 
+(2) 由於多處理器架購需要容納較多的硬體晶片，然
+而 目 前 多 處 理 器 架 構 多 半 未 考 慮 低 電 耗
+(low-power)的問題。電耗過高不僅易產生大量的
+散熱且影響系統穩定度。對於以電池作為供電來
+源的行動裝置，更不容易裝配此類高效能的多處
+理器架構。因此在實作串流式運算的應用服務
+時，便形成效能與耗能兩方面的瓶頸。 
+由於串流式運算的服務越來用多，多處理器架構
+的應用也日益普及。可以想見未來在這方面的研究進
+展將非常快速且益形重要，因此相關的技術開發也非
+常急迫。本研究探討現今新興的串流式運算特性與多
+處理器架構的效能/耗能對應關係，並設計能降低晶片
+電耗的模組，最終目的是將串流式運算應用在多處理
+器架構中進行高效能計算且適用於低電耗系統中。 
+Kavaldjiev et. al. 在[1]中針對串流式運算，提出了
+四種在多處理器架構上執行的管線化運作模型分別為
+(SCSP)、(PCSP)、(SCPP)、 (PCPP)。從四個模型中可
+以發現，其管線運算屬於”非同步”管線設計，如此一
+來每一個 processor 就可能潛在性地發生非常多的閒置
+時間，造成效能和耗能上的損失。 
+ DVS (Dynamic Voltage Scaling) / DVFS (Dynamic 
+Voltage Frequency Scaling [9][10]機制是一種可以動態
+電壓/頻率的調整機制，可將 processor 執行的電壓/頻
+率動態的做升高或降低，以便加快或減慢其運作的速
+度來控制 power 的消耗。因此我們採用 DVS/DVFS 的
+技術來做為我們節省耗能的機制，讓 processor 能夠利
+用會出現waiting time的地方來用較低的電壓去延長執
+行時間，以達到省電的效果。 
+ 
+二、研究目的 
+計畫的目標是針對串流式運算在多處理器的架構下，
+提出保證效能且節能式之管線運算解決方案。為了達
+成目標並解決前面說明的諸多問題，我們歸納出下列
+必要之關鍵設計：  
+(1)以shared-memory架構為基礎之多處理器管線化運
+算模型(Parallelism models in a shared-memory-based 
+multi- processor)  
+Input: processor numbers, shared-memory, 
+interconnection network.  
+Output: sequential/parallel communications and 
+sequential/parallel processing models.  
+Process: 本設計將針對shared memory架構之多核心微
+處理器建構四種管線化運算模型分別為：  
+(a)Build shared-memory-based architecture for 
+sequential communications and sequential 
+processing models.  
+(b)Build shared-memory-based architecture for 
+parallel communications and sequential 
+processing models.  
+(c)Build shared-memory-based architecture for 
+sequential communications and parallel 
+processing models.  
+(d) Build shared-memory-based architecture for 
+-6- 
+為準，利用 DVS/DVFS 機制降低 Pi 的執行電壓來執
+行。以下將介紹我們提出以 shared-memory 為基本架構
+的四種節能式管線化運算模型，說明如何為每一處理
+器預估其可容許做 DVS 的執行時間。 
+(1)以 shared-memory 為基本架構的四種節能式管線化
+運算模型 
+(a)SCSP 模型(Sequential Communication and Sequential 
+Processing) 
+此 model 是 每 一 processor(Pi) 從 前 一 個
+processor(Pi-1)先 receive 資料、processing 資料完後，再
+send 給下一個 processor(Pi+1)出去，再接著重複上述動
+作處理下一筆資料。架構圖如附圖二： 
+在這個 model 下，每個 processor 可能發生的
+waiting time 舉 Pi 為例，在於 Pi將 data processing 完後
+卻還不能將 data send 給 Pi+1，而不能 send 出去的原因
+則在於 Pi+1 尚未做好準備 receive 這筆 data。 
+因此我們在 Pi,n 要開始執行時需計算 Pi,n可用來做
+執行 processing time： 
+Processing time of Pi,n =  
+a. 
+ni,P
+T , 如果
+ni,P
+T 用原始電壓/頻率來 process 的
+processing time 大於或等於 Pi+1 準備好可 receive 
+data item n 的時間。 
+b. 
+ni,P'
+T , 如果
+ni,P
+T 用原始電壓/頻率來 process 的
+process time 小於 Pi+1 準備好可 receive data item n
+的時間。我們依照管線圖可推得(Eq. 1)： 
+ 
+)STt()TT(T
+1-n1,i1-n1,i1-n1,i1i PnowCPP' 
+                   
+(Eq. 1) 
+其中 )TT(
+1-n1,i1-n1,i CP 
+ 為 Pi+1 依序執行完 Pi+1,n-1
+及 Ci+1,n-1 的總時間。 
+我們將這些 model 改為採用 shared-memory 的架
+構，因此當 Pi processing 完一筆資料後，接著做 send
+和 receive 的時候，Pi是不需要任何運作的，因此此時
+我們便可將 Pi 的狀態更改為低頻的狀態，以節省不必
+要的電耗。因此我們在 Pi,n 結束時要判斷 Pi 將花多少時
+間來做 communication (即 Ci,n 及 Ci-1,n+1)，以便計算 Pi
+進入低頻狀態的時間，communication time of Pi 記為
+iC
+T ，計算如(Eq.2)所示： 
+Communication time 
+)T ,(T MAXT _ReceiveP_SendPC i1-ii            (Eq.2) 
+) ST t()TTT(T
+ni,1n1,-i1n1,-i1n2,-i1-i
+PnowCPC_SendP
+
+
+)TT(T
+1n1,-ini,i C
+C_ReceiveP
+
+                           
+由 Pi+1 的 data size 和 frequency 可計算出 Pi+1 的 total 
+processing time，再利用 Pi開始執行的時間減掉 Pi+1 開
+始執行的時間，即為已經執行過多少的時間，減掉後
+便可得出 Pi+1還剩多少的執行時間。 
+(b)PCSP 模型(Parallel Communication and Sequential 
+Processing) 
+此 model 是每一 processor(Pi) 可平行處理
+communication 資料的動作。架構圖如附圖三，虛線部
+份皆可和其它實線的部份平行運作，但實線的部份不
+能互相平行運作。 
+我們以式子 (Eq. 3)計算 Pi 運算結束時進入
+communication 的時間
+iC
+T ，即 send 及 receive 這兩者
+運作結束的時間，以便判斷經過多少時間後 Pi 需要將
+狀態從低頻調整回高頻。 
+Communication time )T ,MAX(TT SendReceiveCi                
+(Eq. 3) 
+)ST-(t-)T(T T
+1n1,-i1n1,-i1n1,-i PnowCPReceive 
+    
+)ST-(t-)T(T T
+1n1,ini,1n1,i PnowCPSend 
+                           
+其中從系統 timer 中取得的 tnow 即為 Pi 要開始
+communication 資料的時間點，而 )T(T
+1n1,-i1n1,-i CP 
+ 為
+Pi-1,n+1 及 Ci-1,n+1 依 序 運 作 完 成 的 總 時 間 。
+)ST-(t
+1n1,-iPnow 
+為時間在 tnow 的時候，減掉 Pi-1,n+1 開始
+執行的時間，即為 Pi-1,n+1 已經 processing 過多少的時
+間，因此 )ST-(t-)T(T T
+1n1,-i1n1,-i1n1,-i PnowCPReceive 
+
+-8- 
+則  T
+ni,P
+= MAX (TReceive, TSend)              (Eq. 5) 
+} Pif  ,  )ST-(t -)T  {(T  T 1n1,-iPnowCPReceive 1n1,-i1n1,-i1n1,-i  
+}P if  ,  )ST-(t -)T  {(T  T -3n1,iPnowCPSend 3-n1,i1ni,3-n1,i  
+因此 Pi 要計算 Pi+1、Pi-1 一共花費多少時間來做
+processing，以便估計何時可做 Ci-1, n+1 的時間，我們需
+要知道以下幾項資訊： 
+ Pi-1：data size、execution frequency、開始執行時
+間 
+ Pi：data size、開始執行時間 
+ Pi+1：data size、execution frequency、開始執行時
+間 
+由Pi-1和Pi+1的 data size和 frequency可計算出 Pi-1, 
+n+1、Pi-1, n+2、Pi+1, n-2和 Pi+1, n-3 各需要要花費的時間，再
+利用 data size 和固定的傳輸頻寬可得知 Ci-1, n+1 和 Ci, n-1
+要花多少時間傳送資料。Pi的 data size 則可估計出 Pi
+可用來運算的總時間，來決定可用何種電壓執行。 
+ 
+五、結果與討論 
+ 我們利用 Processor_status_table 及 Data_table 來
+達到讓每個 processor 在接收到一筆資料時，便可經由
+這兩個 table 來查詢其它 processors 的運作狀況，以計
+算自己可運作此筆資料的時間，計算完的同時也需將
+自己的資訊寫入此兩個 table 以供其它 processors 來查
+詢。我們也為每個 processor 提供兩種 voltage level，當
+processor 計算出可運作的時間時，便會根據實際運作
+時間及 idle 時間的比例來判斷使用 high voltage 或 low 
+voltage。若 processor idle的時間夠充裕到可讓 processor
+用 low voltage 來做運算且運算完的時間不會超過所計
+算出的可運算時間的話，processor 此時便會用 low 
+voltage 來做運算，而達到省電的效果。 
+因為我們設計的 DVS modeling 是利用 processor 
+idle 的時間來做 DVS，並不影響到 processor 原本正常
+的運作，因此可以在不改變原本研究[1]中的 timing 
+constrains及 throughput的情形下，有效的降低 processor
+的 power consumption。 
+ 在實驗中，我們透過 processor 的 utilization 計算
+得到每一個 processor 在每一種模組下可省下的電耗，
+同時也撰寫模擬程式來模擬我們設計方法及運作。而
+利用 processor utilization 來計算出省電的比例和利用
+模擬程式所得到省電的比例相似度非常相近，其中有
+較大的誤差大部份來自於在切換 voltage 時所產生的
+overhead voltage。根據實驗評估結果顯示每一種模型
+皆有可觀的省電空間，省電幅度由最低 50%到最高
+81%。 
+  在未來，若能透過實際的設計，將我們 DVS modeling
+方法加以實作，可能可以應用在未來較高階的 CPU 設
+計上。 
+ 
+六、參考文獻 
+[1] Kavaldjiev, N.K. et al.“Throughput of Streaming 
+Applications Running on a Multiprocessor 
+Architecture,” EUROMICRO Symposium on Digital 
+System Design, 2005. 
+[2]賴欣怡“在多處理器架構上利用動態電壓調整模組
+來執行串流運算 DVS Modeling for Streaming 
+Applications Running on a Multiprocessor 
+Architecture”2008. 
+[3]http://www.intel.com/design/network/products/npfamil
+y/index.htm 
+[4]http://www.cavium.com/OCTEON-Plus_CN58XX.ht
+ml 
+[5] Gang Qu, “What is the limit of energy saving by 
+dynamic voltage scaling?”  Proceedings of 
+IEEE/ACM International Conference on Computer 
+Aided Design, 2001 , Page(s):560 – 563.  
+[6] http://www.eetimes.com/ 
+[7] Ying Tan , Parth Malani , Qinru Qiu , Qing Wu, 
+“Workload prediction and dynamic voltage scaling 
+for MPEG decoding,” Proceedings of the 2006 
+conference on Asia South Pacific design automation, 
+January 24-27, 2006, Yokohama, Japan  
+[8] Po-Kuan Huang, Matin Hashemi, Soheil Ghiasi, 
+“Joint throughput and energy optimization for 
+pipelined execution of embedded streaming 
+applications,” Proceedings of the 2007 ACM 
+SIGPLAN/SIGBED conference on Languages, 
+compilers, and tools LCTES '07, June 2007 ACM 
+SIGPLAN Notices 
+[9] J. A. J. Leiten, et. al, “Stream Communication 
+between Real-Time Tasks in a High Performance 
+Multiprocessor,” Proc. Design Automation and Test 
+in Europe, 1998 
+[10] Fen Xie, Margaret Martonosi, Sharad Malik 
+“Intraprogram Dynamic Voltage Scaling: Bounding 
+-10- 
+可供推廣之研發成果資料表 
+ 可申請專利   可技術移轉                                      日期：98年 10月 01日 
+國科會補助計畫 
+計畫名稱：串流運算在多核心微處理機上之低電耗管線運算 
+機制開發與實例應用 
+計畫主持人：謝萬雲         
+計畫編號：NSC  97 － 2221 － E －182 － 031             
+學門領域：計算機架構 
+技術/創作名稱 
+串流運算在多核心微處理機上之低電耗管線運算 
+機制 
+發明人/創作人 謝萬雲、賴欣怡、方志欣、黃如欽、陳秋縈、陳柏瑋 
+技術說明 
+中文：本技術設計低電耗機制的多處理器及 shared-memory 架構來
+節省處理資料及傳輸資料時所需的電耗。我們把多處理器視為一條
+運算管線，而個別處理器就如同一個 pipeline-stage。我們假設
+每個處理器皆提供雙重電壓/頻率，各處理器的運速度(頻率)與其
+供應電壓成正比，且 streaming data 在管線中每一個處理器的工
+作量不一定均等。我們可以透過資料量的計算預估每一個處理器可
+工作的時間，在不影響系統效能的條件限制下，如果預估時間大於
+使用原始電壓/頻率執行的工作時間，此處理器便可用較低之供應
+電壓/頻率來執行運算。反之，若原始工作時間大於等於預估可容
+許的時間，則此處理器必須以較高電壓/頻率全速執行運算。如此
+可使串流式資料在不影響產能的情況下降低系統電耗功率。 
+ 
+英文： 
+可利用之產業 
+及 
+可開發之產品 
+多處理機設計、低功率 IC設計、多核心系統單晶片設計 
+出席 ICESS-09 國際會議心得報告 
+系所: 資訊工程系      職稱: 助理教授 
+姓名: 謝萬雲 
+會議名稱: The 6th International Conference on Embedded Software and Systems 
+主辦單位: Zhejiang University, China 
+         St. Francis Xavier University, Canada 
+會議組織: IEEE and IEEE Computer Society 
+         IEEE Technical Committee of Scalable Computing 
+會議期間：2009/5/25~2009/5/27 
+會議地點：HangZhou, China 
+1. 前言 
+Embedded System 在業界與學術界的發展非常快速，其牽涉的研究領域也非常廣泛，舉
+凡嵌入式計算、分散式計算、無線通訊、多媒體計算等等相關議題皆涵蓋其中。其應用層面
+也觸及生活中的各項產品，例如智慧型家電、Smart phone 等。本次研討會的主旨即在於提供
+一發表研究與公開討論的平台，透過各界人士的交流與對談，讓與會人士掌握該領域未來的
+前瞻發展。 
+本會議隸屬於 IEEE Computer Society，今年是第六度舉行，由浙江大學主辦，並邀請眾
+多亞、歐、美的學者與會，會議主題涵蓋了了「嵌入系統與演算法設計」、「系統自動化設計
+工具」、與「嵌入式應用設計」等三大範圍。會中並邀請多位嵌入式系統領域中知名的學者擔
+任 keynote speakers 與 Panelists，包括 Yann-Hang Lee(Arizona Univ.)、Jens Palsberg(UCLA)、
+Sanjoy Barush (North Carolina Univ.)、Zili Shao (Hong Kong Polytechnic Univ.)、Tei-Wei Kuo 
+(National Taiwan Univ.)。由於本人的研究領域(Embedded Systems and Applications)是此次會議
+ 1
+Speaker: Prof. Jens Palsberg,  
+University of California at Los Angeles, USA 
+ 一般的程式化規則都是以 time-driven 的樣式較為常見，工程師在撰寫程式時也較為熟悉
+且容易偵錯。然而在較複雜的應用環境中，利用 event-driven 的程式化規則所撰寫的程式，通
+常可靠度較高，且有較佳的效能表現。這種 programming 的原理類似硬體電路的運作原理，
+亦即在輸入訊號(events)發生時，系統必須有相對應的處裡程序來完成運算。Speaker 指出，
+目前 event-driven 的程式應用面非常廣，從高效能的伺服器到嵌入式系統都有其應用的空間。
+發展這類程式應用最大的問題，在於 event 的處理程序(handler)與排程器(Scheduler)的設計。
+此次演講，speaker 就是介紹新的 event-driven 程式設計開發介面，並說明如何利用分析與測
+試來提高程式品質。此外 Speaker 也以其在 TCP server 上的研究成果，說明如何應用該程式
+規則避免發生 stack overflow, deadline miss 等問題。 
+ 
+(3) Scientific Computing using Reconfigurable Hardware 
+Speaker: Prof. Viktor K. Prasanna, University of Southern California, USA 
+    FPGAs(Field Programmable Gate Arrays)由於具有可重編程化、程式化等特性，非常適
+合用來實作諸如浮點數運算，數位訊號處理等較複雜的科學計算應用。現今已有多種 FPGA 的
+晶片配合嵌入式 CPU，在較高階的平台上扮演加速晶片的角色。在這場 keynote 中，演講者
+提出了多種複雜的浮點數計算型態，配合其發展的最佳化演算法，將 FPGA 編程為較有效率的
+計算晶片。演講者並展示此類晶片與現今常用的嵌入式晶片做一比較，說明其效能與實用性
+方面的優勢。 
+ 
+3. Technical Sessions 
+此次會議 17 場的 Technical Sesstions 與附加的兩場 Workshops(SHOES, MINES)。茲將較為重
+要的 session 重點說明如下 
+(1) Embedded Multimedia Systems 
+ 3
+ 5
+4. 總結心得說明 
+ 本次會議由浙江大學主辦，該大學是杭州百年歷史名校，在 2009 年的論文發表世界排名
+中，排名第 96 名，在大陸排名第 1 名。因此近年來有許多的重要國際會議皆在此地召開。尤
+其該校鄰近世界名景-西湖，更能吸引各地的專家學者與會。本次會議估計參與的人數約在
+250~300 人上下，雖然不及若干大型年會的規模，但參與的學者不乏本領域重量級的人物，
+如台大的 Tei-Wei Kuo 教授，UCLA 的 Palsberg 教授，香港大學的 Zili Shao 教授等。尤其會
+中多位專家對嵌入式系統的程式化趨勢與應用有精闢的說明與預測，因此本次會議的重要性
+甚高。 
+ 參與會議期間，本人有多次機會與大陸浙江大學、清華大學、上海交通大學的學者當面
+交換研究心得。尤其近幾年在本校工學院鍾院長與長庚桃園分院黃院長的帶領下參與老人醫
+學與銀髮族照護相關的計畫工作，與計畫團隊共同開發不少的資訊系統(此次會議中也以相關
+的開發成果進行發表)。席間與上述大陸學者交談發現，本校在這些研究方面的跨領域合作與
+計畫成果，已較為領先，且來自政府與企業的支援也較大陸團隊來得充足。大陸政府長期以
+來著眼於生育計畫與平衡城鄉發展等議題，對老年人口比例失衡與健康照護政策迫切性方面
+尚無餘力顧及，也不是科技預算補助的重點項目，可以想見大陸方面的研究團隊尚未大規模
+發展此類研究。相較於歐美與會的學者，後者對銀髮照護的研究發表與討論則較有興趣。所
+以未來台灣在銀髮照護這方面的研究能量與產學合作有機會大幅領先對岸的發展。值得注意
+的是由於大陸的消費性電子產業發展迅速，近年來各式”山寨版”產品充斥，未來結合台灣電
+子產業在開發照護相關的醫療器材時，需注意其仿冒與專利衝突方面的問題。 
+ 整體來說，除了有機會在此次國際會議中發表最新研究成果外，也與世界各地尤其是大
+陸的學者有面對面的討論機會，藉由交換研究心得的過程中學習並瞭解彼此的優缺點。因此
+此行收穫頗多。 
+附：攜回資料 
+1. ICESS2009 Total Conference Programs (with CD) 
+2. Proceedings of the ICESS2009 
+warning message will be sent to other persons via 
+mobile phones.  
+On the other hand, for multiple video streams from 
+different cameras, we partition the process described 
+above into four balanced tasks: image fetch, image 
+processing, human-shape generation, and pattern 
+recognition. Each task is performed by a specified 
+thread, and totally we will have four threads to be 
+executed concurrently. Our goal is to apply the 
+pipelining technology on these threads such that the 
+throughput of a multi-camera system can be improved 
+effectively. Though pipelining would not decrease the 
+time to complete the task of single-camera falling 
+detection, but when we have many tasks (cameras) to 
+do, the improvement of throughput decreases the total 
+time to complete the work [7]. 
+The rest of this paper is organized as follows. 
+Section 2 shows the related works about falling 
+detection via video surveillance. Section 3 shows our 
+falling detection approach for each video stream. 
+Section 4 shows our pipelining approach to enhance 
+throughput on multiple video sources. Section 5 shows 
+the experiment results, and finally Section 6 is our 
+conclusions. 
+ 
+2. Related Works 
+ 
+The falling detection via video surveillance has 
+attracted attentions in recent years. Vinay 
+Vishwakarma et al. [12] used the state transitions to 
+detect a falling process. They used a bounding box to 
+represent the person, and with the analyses of the 
+aspect ratio, the gradient of the object in X-Y plane, 
+and the fall angles, they built a state transition diagram, 
+and confirm a falling by states. 
+Other works, e.g., Rougier et al. [3], observed that 
+if a serious falling occurs, the person is almost little 
+movement or not changing the postures. They 
+quantified the extracted images from human historical 
+motion to find the movements like falling and analyzed 
+the variation on the motion or the orientation of the 
+ellipse to confirm if a person falls.  
+In this paper, instead of detecting the “process” of 
+the falling, we designed a human-shape detection 
+algorithm which is simpler to confirm if a falling 
+accident has occurred, and determine if we have to 
+inform someone as soon as possible. In addition, the 
+most difference between our work and other previous 
+works is that we apply the pipelining and 
+multithreading technique to speedup the image 
+processing from multiple video streams. Such software 
+application is more suitable for current computer 
+architecture which has higher hardware parallelism. 
+ 
+3. Elder Falling Detection via single 
+camera 
+ 
+For each video stream from a single camera, we 
+capture the image and extract the human shape edge in 
+it. Then we perform the falling detection process by a 
+pattern recognition-based approach which compares 
+the extracted human shape with some possible falling 
+postures, e.g., lying or bending down on the ground.  
+The whole processing can be partitioned into four 
+steps: 
+Step 1: Image Fetch 
+To grab a human shape from an image, we use the 
+“background subtraction method” [5], which initially 
+captures a static image as the background. After the 
+system is activated, the camera will capture 
+instantaneous images sequentially in a fixed rate. We 
+then subtract the background from each instantaneous 
+image to fetch the differential objects between them. 
+Figure 1 shows such an example, in which (a) is the 
+background image, (b) is one instantaneous image, and 
+(c) is the object of a human shape fetched after the 
+background subtraction. 
+ 
+ 
+(a)                                         (b) 
+ 
+ 
+(c) 
+Figure 1. An example of the background 
+subtraction (a) background (b) instantaneous 
+image (c) results after subtraction. 
+ 
+Step 2: Image Processing 
+The step after the Image Fetch is to detect 
+(delineate) the edge from a human shape (e.g., Figure 
+1(c)) via image processing techniques [5]. The 
+techniques include the noise reduction, dilation/erosion, 
+and edge thinning, etc. After these processes, the edge 
+of a human shape can be limited in one-pixel wide. 
+34951
+ 
+ 
+ 
+ 
+Figure 4. The pipeline of the multi-video-streaming processing. 
+ 
+Figure 4 shows how the pipeline flows as executing 
+those four threads. The horizontal axis is the time and 
+the vertical axis represents the incoming video streams. 
+At first, the IF thread fetches and stores the image 
+from the first video streams. Next, the IP thread 
+performs the image processing on the image fetched by 
+the IF thread. At the same time, the IF thread turns to 
+fetch the image from the second video stream. After 
+that, the SG thread generates the human-edge sequence 
+for stream 1, the IP thread performs the image 
+processing for stream 2, the IF thread performs the 
+image fetch for stream 3, and so on. All of them 
+communicate through an allocated shared memory, and 
+synchronize by four status bits (like semaphores). Each 
+status bit indicates that one thread has finished its 
+current task. Only when the four threads have their 
+works finished they can switch to next round again.  
+ 
+5. Experiment Results 
+ 
+All above algorithms have been implemented in a 
+falling detection system for functionality proof. We 
+evaluated the system in different places, including the 
+corner of stairs and a long corridor, by the terms of the 
+pipelining throughput, falling-detection precision rate, 
+error rate, and delay time etc. The experiment 
+methodology and the results are demonstrated as 
+follows.  
+ 
+5.1. Experiment Methodology 
+ 
+The system works with four USB web-cameras 
+(QuickCam Orbit AF by Logitech© [10]) to represent 
+the multi-video streaming sources. The falling 
+detection algorithm is implemented in C# using .Net 
+framework 2.0, and the video image is captured via 
+DirectShow [13]. The microprocessor in the system is 
+a 4-core CPU with 2.0 GHz frequency, and 5GB main 
+memory to perform all operations. We setup two 
+cameras at a 100m corridor and other two cameras at 
+the corner of stairs. The testers are standing, walking 
+around, running, falling down, or bending down 
+randomly. Each falling or bending posture will 
+continue over 10 seconds to simulate the “real” falling 
+accidents. (We suppose that a true falling accident 
+required to be alarmed would be the case that the 
+person cannot stand up from falling in 10 seconds.)  
+ 
+5.2. Results 
+ 
+A. Throughput  
+ 
+At first, we evaluate the effects of the pipelining 
+processing on the system throughput. We compare 
+three approaches: 
+(i) Non-pipelining: Apply four independent threads to 
+each video stream; that is, each thread performs whole 
+operations (from image fetch, processing, to pattern 
+recognition etc) just for one video stream.  
+(ii) Unbalanced pipelining: Apply the pipelining 
+technique to four threads as shown in Section 4, but 
+the workloads of each stage are unbalanced. 
+(iii) Balanced pipelining: The same as (ii), but the 
+workloads of each stage are almost equally balanced. 
+Figure 5 shows the speedup ratios of the FPS 
+(frames per second) performed by these three 
+Time
+The parallelism on the thread level (IF, IP, SG, PR) 
+streaming 1 
+streaming 2 
+streaming 3 
+streaming 4 
+streaming 1 
+IF IP SG PR 
+Multi-video 
+streaming 
+IF IP SG PR 
+IF IP PR 
+IF IP SG PR 
+IF IP SG PR 
+SG
+3513

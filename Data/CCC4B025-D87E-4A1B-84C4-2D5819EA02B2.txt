@@ -1,0 +1,720 @@
+ 2
+embedded memory for a large pattern set due to the 
+space efficiency of Bloom filters. 
+We wrote the driver programs and modified the 
+subroutines in ClamAV to make the co-design operate 
+smoothly. After programming the virus signatures in 
+the Bloom filters and loading the text in the buffer onto 
+the memory blocks of the FPGA, ClamAV invokes the 
+subroutine that drives the scanning engine to scan the 
+text buffer. We also modified ClamAV to efficiently 
+support constrained repetitions of wildcard characters 
+in the signatures [6] without false negatives, which 
+may occur in the original ClamAV code. The peak 
+throughput of the hardware engine is near 10 Gbps for 
+scanning with the set of virus signatures in ClamAV. 
+五、研究方法及結果 
+I. System Architecture 
+ 
+The system runs on Xilinx Vertex-II Pro ML310 
+Platform (see Figure 1). The platform has an on-board 
+Xilinx Virtex II Pro (XCVP30) FPGA, on which our 
+hardware design, the Bloom Filter Accelerated 
+Sub-linear Time (BFAST) string matching engine, is 
+performed. ClamAV runs on the MontaVista operating 
+system, which is based on Linux kernel 2.4.20. 
+MontaVista is stored on a 256 MB Flash disk, and is 
+loaded upon the booting time to a PowerPC 405 core. 
+The memory on this system includes the block RAM 
+(BRAM) on the FPGA, and an external memory 
+module of 256 MB. The former stores the virus 
+signatures and the text buffers, while the latter stores 
+MontaVista, ClamAV, and the related driver programs 
+as the interface between the software and hardware 
+parts of the system. 
+ 
+Figure 1. Xilinx Vertex-II Pro ML310 Platform 
+ 
+II. Software and hardware 
+ 
+The embedded MontaVista system runs on a 
+PowerPC 405 core. We first modified the configuration 
+file to port the open-source anti-virus package, 
+ClamAV, onto MontaVista, and cross-compiled the 
+package with ppc_405-gcc, which can generate the 
+executable file for PowerPC. Besides the anti-virus 
+package, we use Xilinx ISE WebPACK as well as 
+related EDKs to design on the FPGA. 
+The scanning engine is implemented on Xilinx 
+Virtex II Pro (XCVP30) FPGA, which has 30,816 logic 
+cells and 136 dual-port embedded memory blocks. 
+Each memory block contains 18 kbits and the width of 
+data bus can be configured in a versatile way.  
+Because a Bloom filter is a bit vector, the memory 
+block is configured to have 1-bit wide data bus. The 
+other features of Virtext-II Pro FPGA are summarized 
+as follows. 
+z High-performance Platform FPGA solution 
+including 
+ Up to twenty RocketIO™ embedded 
+multi-gigabit transceiver blocks (based on 
+Mindspeed's SkyRail™ technology) 
+ Up to two IBM® PowerPC™ RISC 
+processor blocks 
+z Based on Virtex-II Platform FPGA technology 
+ Flexible logic resources, up to 99,216 Logic 
+Cells 
+ SRAM-based in-system configuration 
+ Active Interconnect™ technology 
+ SelectRAM™ memory hierarchy 
+ Up to 444 dedicated 18-bit x 18-bit 
+multiplier blocks 
+ High-performance clock management 
+circuitry 
+ SelectIO™-Ultra technology 
+ Digitally Controlled Impedance (DCI) I/O 
+ 
+III. Implementation 
+ 
+III.1 The algorithm in the scanning module 
+ 
+Figure 2 illustrates the operation of the scanning 
+module with a trivial example, in which the blocks in 
+the pattern set {P1, P2, P3} are grouped by position, and 
+BF(Gj) denotes the Bloom filter storing Gj. These 
+Bloom filters are queried in parallel for the 
+membership of B0 = cdef. The priority encoder 
+determines the shift value s as follows. If at least one 
+Bloom filter reports a hit, s = min{j | BF(Gj) reports a 
+hit}; otherwise, s = m, where m is the pattern length. 
+Because cdef is a member of G2, BF(G2) must report a 
+hit. If no false positives are in BF(G1) or BF(G0), the 
+search window can be safely shifted by 2 characters. If 
+a shift is too short, this design can continue checking 
+the blocks backward from the window suffix to look 
+for a longer one. Figure 3 depicts the function blocks 
+ 
+FPGA
+ 4
+every occurrence of the parts is retained, no matches 
+will be missed. 
+When a new part pt is found…
+if (pt->partno == 1)
+append a new node (cnt(=1)+offset) to pt->sigid->oc_list;
+else {
+ptr = pt->sigid->oc_list;
+while (ptr) {
+if (ptr->cnt + 1 == pt->partno) {
+check maxdist and mindist constraints;
+if (satisfied) {
+if (ptr->partno == pt->sigid->last) { report a match; break; }
+update (cnt+offset) in ptr;
+}
+} 
+ptr = ptr->next;
+}
+}   
+Fig. 4. The pseudo-code of handling signatures with 
+constrained repetitions in ClamAV. 
+ 
+IV. Achieved functions 
+(1) A scalable design to realize sub-linear time string 
+matching in hardware. The efficiency of the design 
+can take advantage of algorithmic heuristics, and 
+thus the hardware complexity is moderate. Figure 
+5 presents the analysis of the average shift distance 
+of the search window that this design can achieve. 
+The analysis shows the shift distance remains 
+above 6 characters even for a large number of 
+signatures, meaning the design can match multiple 
+characters at a time effectively. 
+4
+5
+6
+7
+8
+9
+10
+256 512 1024 2048 4096 8192 16384 32768
+number of patterns
+av
+era
+ge
+ sh
+ift
+ va
+lue
+s
+Totally random Random pattern, Real text Real pattern, Random text
+Real pattern, Real text Real pattern, Real text*
+ 
+Fig. 5. The average shift distance of the search window 
+that the design can achieve. The asterisk behind “Real 
+pattern, Real text” is the result with additional checks. 
+(2) Modifying the open-source package ClamAV to 
+offload virus scanning to a hardware scanning 
+engine. 
+(3) Driver functions to support inter-operation 
+between ClamAV and the hardware. They include 
+loading the text into the buffers, programming the 
+Bloom filters and scanning for the virus signatures 
+as well as verification. 
+(4) Supporting constrained repetitions of wildcard 
+characters in the signatures so that no false 
+negatives will occur. 
+(5) Supporting constrained repetitions of wildcard 
+characters in the signatures so that no false 
+negatives will occur. 
+(6) The DMA and interrupt designs to effectively 
+reduce the CPU load and increase the overall 
+throughput. 
+ 
+V. Integration with Xilinx Virtex II Pro 
+ 
+Besides the string match module, this work needs 
+additional efforts to integrate it into the system to test 
+its functionality on FPGA chip. This work is 
+implemented on a Xilinx SOC FPGA development 
+platform XCV2P30. The well-tested soft IP supported 
+by Xilinx with this chip can be used to quickly integrat 
+the user-defined logic using Xilinx development tool 
+EDK to become a complete and customized system. 
+The user-defined logic only needs to use a generalized 
+IP interface (IPIF) as a wrapper to communicate with 
+the other components in the system without dealing 
+with the timing. The functions in the IPIF can also 
+been customized using the EDK, such as interrupt 
+supporting, S/W register supporting, address range 
+supporting, or DMA supporting. Therefore, we only 
+need to define the communication interface, use the 
+template files generated by development tool, and 
+connect the I/O between IPIF and our designs. 
+The difficulties and solutions are listed as follows. 
+1. Port the ClamAV package to the MontaVista OS. 
+(solution: manually tuning compiler options and 
+cross-compiling) 
+2. Avoid false negatives of matching constrained 
+repetitions in ClamAV. (solution: revising the 
+data structure) 
+3. Increase hardware operating frequency (solution: 
+manually tuning Verilog code) 
+4. Integrate our IP with MontaVista Linux OS. 
+(solution: writing driver for our IP) 
+ 
+The percentage of used resources on the FGPA is 
+summarized in Table 1. 
+Selected Device : 2vp30ff896-6  
+Number of Slices: 2808 out of 13696 20% 
+Number of Slice 
+Flip Flops: 
+2486 out of 27392 9% 
+Number of 4 input 
+LUTs: 
+5181 out of 27392 18% 
+Number of bonded 
+IOBs: 
+575 out of 556 103% 
+Number of TBUFs: 1 out of 6848 0% 
+Number of BRAMs: 85 out of 136 62% 
+Number of GCLKs: 5 out of 16 31 
+Table 1. Percentage of used resources on the FPGA. 
+ 6
+regular-expression pattern matching,” in Proc. of 33rd 
+International Symposium on Computer Architecture 
+(ISCA), Boston, MA, July 2006, pp. 191–202. 
+[4] S. Wu and U. Manber, “A fast algorithm for 
+multi-pattern searching,” Dept. Comput. Sci., Univ. 
+Arizona, Tech. Rep. TR94-17, 1994. 
+[5] B. H. Bloom, “Space/time tradeoffs in hash coding 
+with allowable errors,” Commun. of the ACM, vol. 13, 
+no. 7, pp. 422–426, July 1970. 
+[6] Clam AntiVirus User Manual, 
+http://www.clamav.net/doc/latest/clamdoc.pdf. 
+年來，P2P 相關應用軟體的流量已經躍居Internet 流量之首，因為相關的研究
+格外獲得重視。雖然IPDPS 已經辦到第21 屆，然而HotP2Pworkshop 今年卻只
+是第四屆。可見這個議題相當新，一直到最近才開始到矚目。 
+我們發表的議題是一個位於系統核心之管理P2P 流量的閘道器架構。這個議題
+相較於同一個workshop 其他發表的議題差異頗大，因此與會的聽眾也感到興
+趣，在talk 結束後共發問了三個問題。差異較大的原因在於目前P2P 相關的研
+究主要都比較集中在如何在一個龐大的P2P 網路下分享交換資料，重點是在
+scalability, robustness, storage 的議題。而我們發表的論文則比較偏向網
+路安全管理方面。畢竟現在P2P 流量如此龐大，能有效的管理P2P 流量同樣是
+很重要的研究議題。我們談的管理包含P2P 使用頻寬流量的管理、傳送檔案的
+病毒掃描、傳送內容關鍵字的掃描與過濾等等，都是重要的議題。我們發表的
+論文另一個較現場其他論文比較大的差異就是以實作為主。現場的其他論文比
+較偏向演算法的設計，而且我們的研究則是在Linux 系統上發展一個P2P 流量
+管理的閘道器。雖然其他的論文也有實作方面的議題，但是較沒有開發一個完
+整的系統。 
+這個workshop 本身不算一個很大的workshop，但是在P2P 這個主題之下，卻是
+個重要的workshop。像這一類本身不大，但是在特定領域有其獨特性的workshop 
+仍然很值得參加。而且好處是主題很明確，看到的都是相關的研究。 
+applications ST PE DE DP FV DFP
+FastTrack Yes No No Yes Maybe 1214
+eMule No No No Yes No 4661-4665
+BitTorrent No No No Yes Yes 6881-6889
+Gnutella Yes No No No Yes 6346,6347
+MSN N/A No No Yes Yes 1863
+MSNFTP† Yes No No Yes No No default
+Skype Yes Yes Yes Yes No No default
+TABLE I
+THE CHARACTERISTICS OF P2P AND IM APPLICATIONS.
+(†MSNFTP IS A FILE TRANSFER PROTOCOL OF MSN.)
+ST=SEQUENTIAL TRANSFER, PE=PROTOCOL ENCRYPTION
+DE=DATA ENCRYPTION, DP=DYNAMIC PORT
+FV=FILENAME VISIBILITY, DFP=DEFAULT PORTS.
+cache to handle the packets for reconnection. For the latter,
+this design duplicates a copy of each packet in the kernel for
+ordering and reassembly, and then passes out-of-order packets
+immediately. We call this strategy fast pass.
+This work discusses the practical issues of designing an ef-
+ficient P2P gateway, and proposes several strategies to resolve
+the problems. The rest of this work is organized as follows.
+Section 2 overviews typical P2P applications and surveys
+related packages in this work. Section 3 presents the key ideas
+of the design and the system architecture. The implementation
+will be also detailed in this section. Section 4 presents the
+performance evaluation of this system and analyzes the result.
+The study is concluded in Section 5.
+II. SURVEY OF RELATED WORKS
+A. Overview of P2P Applications
+Table I summarizes the characteristics of popular P2P
+applications: eMule [8], BitTorrent [9], FastTrack [10] and
+Gnutella [11]. Besides, chatting and file transfer in instant
+messengers (IM), such as MSN [12] and Skype [13], also work
+in the P2P mode. Most P2P applications can run on dynamic
+ports to circumvent the filtering of firewalls. The port numbers
+have default values chosen by the applications, but they can be
+either configured by the users or changed by the applications
+later. Some applications, say Skype, can choose the ports of
+HTTP and HTTPS in case of connection failure [7], and thus
+it is impossible to tell which application is being used from
+only the port number. Therefore, deep packet inspection to
+identify the P2P applications is necessary.
+These P2P applications may transfer files in two approaches:
+one is sequential transfer, in which a peer receives a file
+sequentially from another peer, and the other is segmented
+transfer, in which the segments of a file can be received
+in an out-of-order manner. If a file is either encrypted or
+transferred in out-of-order segments, performing virus scan-
+ning and auditing becomes very difficult. For example, a
+user may download a file with a laptop in two different
+locations. The downloaded content is composed of random
+fragments to the gateway in either location, and thus the
+content can only be reassembled by the laptop itself. We do not
+implement both functions for such applications that encrypt
+applications CF FT VS AU BC
+FastTrack Yes No No Yes Maybe
+eMule No No No Yes No
+BitTorrent No No No Yes Yes
+Gnutella Yes No No No Yes
+MSN N/A No No Yes Yes
+MSNFTP Yes No No Yes No
+Skype Yes Yes Yes Yes No
+TABLE II
+FEASIBILITY OF MANAGEMENT FUNCTIONS FOR EACH P2P PROTOCOL.
+CF=CLASSIFICATION, FT=FILTERING, VS=VIRUS SCANNING,
+AU=AUDITING, BC=BANDWIDTH CONTROL
+data or transfer data in an out-of-order manner. If the file name
+is visible, filtering can refer to the file name that contains
+specific keywords. Enterprises may not want employees to
+leak out confidential information via a chatting system such as
+instant messengers. Filtering sensitive keywords or recording
+the message is also needed. Table II summarizes the feasibility
+of these management functions for each application protocol.
+The proposed kP2PADM architecture is designed to implement
+the feasible functions in this table.
+B. Related Packages in the Architecture
+Although some commercial P2P detection tools exists, say
+p2pwatchdog (http://www.p2pwatchdog.com), open-
+source packages are preferred to be integrated into this
+work. Several packages, such as L7-filter and IPP2P (http:
+//www.ipp2p.org), can be used to identify P2P traffic.
+They are both classifiers that inspect the packet payload in
+the Linux Netfilter subsystem (http://www.netfilter.
+org). The L7-filter uses Netfilter’s connection-tracking mod-
+ule and checks only the content in the first eight packets of
+the application data after a connection is established. If the
+application data matches one of the signatures, it marks the
+entire connection as identified by the module. IPP2P checks
+every packet because it does not have a connection-tracking
+module. The signatures of IPP2P are hard-coded in its code,
+while the L7-filter loads signatures from the files. Because
+the L7-filter inspects fewer packets and dynamically loads
+signatures, it has higher performance and better flexibility than
+IPP2P. This work therefore chooses to integrate the L7-filter
+as the classifier in the proposed architecture.
+III. DESIGN OF SYSTEM ARCHITECTURE
+Because P2P connection classification involves examining
+application messages, a TCP connection between two peers
+must be established first. After the connection has been es-
+tablished, redirecting the connection from the kernel to the
+kernel module to perform content filtering is performed in the
+following steps.
+1) The L7-filter performs connection classification and
+marking.
+2) The packets are queued in the kernel and wait the verdict
+from the kernel module.
+Get 
+packet ikernel 
+kernel 
+module
+Process 
+Packet i Set 
+verdict
+Time
+Get 
+packet i
+kernel 
+kernel 
+module
+Process 
+Packet i
+Virus Scan
+Set 
+verdict
+Time
+Get 
+packet 
+i+1
+Get 
+packet 
+i+1
+Process 
+Packet i+1
+another 
+thread
+(a) With  head-of-line blocking 
+(b) Without head-of-line blocking 
+Set 
+verdict
+Virus Scan
+Connection A
+Connection A Connection B
+Connection B
+Fig. 2. Comparison of the packet processing with and without handling the
+head-of-line blocking.
+virus signatures.
+The head-of-line blocking occurs due to the time-consuming
+virus scanning. The subsequent packets queued in Q1 cannot
+be handled until virus scanning on the buffer is finished. This
+will constrain the throughput of the entire system. To solve
+this problem, when virus scanning is needed, the connection
+is marked to be in the processing state, and another thread is
+called to perform virus scanning. The proxy tells the kernel to
+move subsequent packets of the same connection from Q1 to
+Q2. Therefore, the packets in other connections can be imme-
+diately handled. If a virus is found, all queued packets of this
+connection in Q2 will be dropped; otherwise, theses queued
+packets are moved back from Q2 to Q1. Figure 2 compares the
+packet processing time with and without handling the head-
+of-line blocking.
+It is possible that a virus signature may be segmented into
+two contiguous data buffers. To avoid missing a match, when
+the virus scanning finishes, the tail data of s characters will
+be moved to the prefix of the buffer, where s is the maximum
+length of virus signatures. The subsequent data segments are
+appended to this segment in the buffer. A virus signature over
+two consecutive segments can therefore be detected.
+6) Reconnection Problems: A connection cache is designed
+to identify a reconnection by keeping the information of a
+blocked connection, and to block this reconnection. Initially,
+the packets in all connections can pass through the connection
+cache and be processed by kP2PADM because no connections
+have been marked as denied ones. If a connection is blocked,
+its source IP address, source port number, destination IP
+address, destination port number and protocol identifier will
+be stored into the connection cache. The packets having the
+same source IP address, destination IP address, destination
+port number and protocol identifier are viewed as in the
+reconnection, even though their source port numbers may be
+different. A P2P application, say BitTorrent, can switch to
+different source port numbers if a connection is blocked, so
+a connection with only a different source port is considered
+Main Thread
+Get a packet from Q1 in 
+the kernel
+Pass packet
+Drop packet
+ Is checksum correct?
+Packet classification
+No
+Yes
+Packet sequence #
+< correct sequence #
+Yes
+Connection is in 
+processing state
+NO
+Yes
+Packet sequence is rightNo
+NO
+If Q2 has out-of-order packets, 
+inform kernel to move them to Q1
+YES
+Signal application thread &
+wait verdict
+According to verdictt 
+Inform kernel to move 
+packet to Q2 
+Pass packet
+QUEUE
+ACCEPT DROP
+Fig. 3. The flow chart of the main thread.
+as a reconnection. A reconnection of a denied connection can
+be immediately dropped by the connection cache and thus the
+performance is enhanced.
+7) Out-of-order Packets: If a receiver sends three dupli-
+cated ACKs to its peer due to receiving out-of-order packets,
+the peer will assume packet loss and retransmit what appears
+to be a missing packet without waiting the timeout of the
+TCP retransmission timer. However, the retransmission will
+be redundant if it is not due to packet loss, but due to the
+queueing of out-of-order packets inside the gateway for packet
+reassembly and virus scanning. The redundant retransmission
+will decrease the throughput. This design duplicates out-of-
+order packets in the gateway and passes them immediately so
+that the receiver can respond ACKs as usual. Therefore, the
+redundant retransmission can be reduced.
+B. System Implementation
+The architecture design is based on the aforementioned
+ideas. The main thread in the kernel module gets packets
+from Q1 in the kernel and performs the pre-processing tasks.
+Because Q1 contains the packets from various connections, the
+kernel module uses the application number to identify the P2P
+protocol, and the main thread invokes an application thread to
+handle each connection related to that protocol. Figure 3 illus-
+trates the entire flow of the main thread. After performing the
+pre-processing tasks, the main thread checks the connection
+state. If the connection is in the processing state, the main
+thread needs to handle the head-of-line blocking problem;
+otherwise, it signals the specific application thread to handle
+the packets.
+Figure 4 illustrates the entire flow of an application thread,
+which handles a specific application protocol and decides to
+pass or drop the packets. If it needs to perform time-consuming
+content filtering or virus scanning, it marks this connection to
+be in the processing state and sets the verdict to QUEUE, and
+then the main thread can start to process subsequent packets.
+6 Fig. 5. The operation of the kP2PADM architecture.
+8
+85
+223.71
+178.1 164.68
+133.17
+79.09 76.99
+13.8
+266.13
+155.24
+89.25
+69.98
+15.9
+0
+50
+100
+150
+200
+250
+300
+P u
+r e  
+N A
+T
+N A
+T  
++  
+p a
+c k
+e t  
+q u
+e u
+e i n
+g
+N A
+T  
++  
+p a
+c k
+e t  
+q u
+e u
+e i n
+g  +
+L 7
+P 2
+P  
+p r o
+x y
+ +
+ f i
+l t e
+r i n
+g
+P 2
+P  
+p r o
+x y
+ +
+ a u
+d i t
+i n g
+P 2
+P  
+p r o
+x y
+ +
+ v i
+r u s
+ s c
+a n
+n i n
+g
+P 2
+P  
+p r o
+x y
+ +
+ v i
+r u s
+ s c
+a n
+n i n
+g
++  
+a u
+d i t
+i n g
+ +
+ f i
+l t e
+r i n
+g
+T h
+r o u
+g h
+p u
+t  ( M
+b p
+s )
+P2PADM
+kP2PADM
+Fig. 6. Throughput of P2PADM and kP2PADM.
+auditing functions is also light. The throughput of P2P
+proxy+auditing on P2PADM is 69.98 Mbps and 133.17
+Mbps on kP2PADM. kP2PADM always dominates about 100%
+of CPU utilization while the P2P proxy is enabled. It is
+because kP2PADM is implemented in the kernel space and
+kP2PADM always occupies the CPU. If there are other pro-
+cesses to run, such an architecture should pay attention to
+surrendering the CPU to them in time, or the kernel will be
+blocked by kP2PADM for a long time.
+C. Evaluation of the Connection Cache and Fast Pass
+Figure 8 presents the throughput on kP2PADM as the
+connection cache is turned on. In the experiment, we set a
+policy on kP2PADM to block all packets from one of the two
+9
+0
+10
+20
+30
+40
+50
+60
+70
+80
+90
+100
+P u
+r e  
+N A
+T
+N A
+T  
++  
+p a
+c k
+e t  
+q u
+e u
+e i n
+g
+N A
+T  
++  
+p a
+c k
+e t  
+q u
+e u
+e i n
+g  +
+L 7
+P 2
+P  
+p r o
+x y
+ +
+ f i
+l t e
+r i n
+g
+P 2
+P  
+p r o
+x y
+ +
+ a u
+d i t
+i n g
+P 2
+P  
+p r o
+x y
+ +
+ v i
+r u s
+ s c
+a n
+n i n
+g
+P 2
+P  
+p r o
+x y
+ +
+ v i
+r u s
+ s c
+a n
+n i n
+g
++  
+a u
+d i t
+i n g
+ +
+ f i
+l t e
+r i n
+g
+C P
+U  
+U t
+i l i
+z a
+t i o
+n  (
+% )
+P2PADM Kernel CPU Utilization P2PADM Total CPU Utilization
+kP2PADM Kernel CPU Utilization kP2PADM Total CPU Utilization
+Fig. 7. CPU utilization of P2PADM and kP2PADM.
+clients. This policy forces the blocked client to keep sending
+reconnection requests. The connection cache can increase
+the throughput by about 21∼34 Mbps in the latter three
+configurations in Figure 8.
+To emulate packet loss and out-of-order packets, we install
+a WAN emulator called NIST Net from National Institute of
+Standards and Technology (NIST) [14] on Linux. NIST Net
+allows a single Linux PC to act as a gateway to emulate a
+wide variety of network conditions, such as packet loss, out-
+of-order packets, transmission delay and so on. The traffic
+between peers passes through the NIST emulator besides the

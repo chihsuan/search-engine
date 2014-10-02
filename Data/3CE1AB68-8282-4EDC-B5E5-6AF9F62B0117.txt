@@ -1,0 +1,2166 @@
+I 
+ 
+摘要 
+隨著微機電技術的進步與無線傳輸技術之發展，無線感測網路的應用範圍越來越廣，
+如何發展一個針對無線感測網路設計的內嵌式作業系統，使各感測器節點的資源能充分運
+用以滿足低耗能、及時性、無線通訊的要求成為一個重要的課題。本計畫針對無線感測網
+路的需求，設計並實作一個具有延展性之執行環境。此執行環境採用 Java Runtime 
+Environment 為參考對象，進而延展整個感測網路的功能。電源管理是無線感測網路中一個
+重要的研究議題，為了能夠使感測網路的使用壽命達到最久且滿足使用者對感測品質的需
+求，我們必須謹慎設定每一個感測節點的取樣頻率，一般而言，取樣數目越多，感測網路
+應用程式的品質越好，在本計畫中，我們研究如何在滿足總取樣數，及均勻取樣的條件下，
+為每一個節點找到其最佳的取樣頻率，使無線感測網路之壽命達到最久。我們首先證明低
+耗能取樣頻率設定問題在一個有向圖狀網路中是一個 NP-Hard 問題，接著，我們提出一個
+分散式的演算法來設定每一個感測節點的取樣頻率，核心想法是將無線網路切割成數個子
+樹狀網路與數個子圖狀網路，針對每一個子樹狀網路，我們設計一個分散式演算法，同時，
+針對每一個子圖狀網路，我們設計一個集中式演算法，最後在主機上結合。我們證明所提
+的演算法可以在一個樹狀網路中得到最佳解，同時，針對有向圖狀網路，實驗結果顯示可
+以達到接近最佳解的效果。在無線通訊部分，我們規劃出低耗能的感測網路通訊協定來搭
+配低耗能的作業系統與感測系統。此處所指的網路通訊包含設計出能夠在短時間內將網路
+拓樸建立起來的低耗能通訊協定，並設計一低耗能容錯的感測網路廣播協定，以達到低耗
+能的目的。本計畫透過發展以上之感測器相關技術，使得我國在感測網路作業系統的技術
+與世界級之研究機構同步。 
+ 
+關鍵詞：無線感測網路，微核心作業系統，最大化周期，低耗能排程，廣播演算法。 
+ 
+  
+III 
+ 
+目錄 
+摘要 ................................................................................................................................................... I 
+Abstract ........................................................................................................................................... II 
+1.  前言 .......................................................................................................................................... 1 
+1.1.  感測節點的系統架構 .......................................................................................................... 1 
+1.2.  感測節點的資源管理 .......................................................................................................... 1 
+1.3.  感測節點的服務效能 .......................................................................................................... 2 
+1.4.  感測節點的無線通訊 .......................................................................................................... 2 
+2.  Barista：A Light-Weight Java Virtual Machine for Wireless Sensor Networks ..................... 3 
+2.1.  Architecture and Implementation ......................................................................................... 3 
+2.2.  Simplification on Java .......................................................................................................... 4 
+2.3.  Java Runtime System ........................................................................................................... 5 
+2.4.  Evaluation ............................................................................................................................ 6 
+2.4.1.  Code Size of VM .............................................................................................................. 6 
+2.4.2.  Code Size of User Programs ............................................................................................ 7 
+2.5.  Conclusions and Future Works ............................................................................................ 8 
+3.  RIM：A Broadcasting Algorithm in Wireless Sensor Networks with Irregular and Dynamic 
+Radio Coverage ................................................................................................................................ 9 
+3.1.  Related Works ...................................................................................................................... 9 
+3.1.1.  Static Protocols............................................................................................................... 10 
+3.1.2.  Dynamic Protocols ......................................................................................................... 10 
+3.1.3.  Summary ........................................................................................................................ 11 
+3.2.  The RIM Algorithm............................................................................................................ 11 
+3.2.1.  Selection of Rim Neighbors ........................................................................................... 12 
+3.2.2.  Collecting Coverage Information ................................................................................... 12 
+3.2.3.  Forwarding Nodes Selection .......................................................................................... 13 
+3.2.4.  Summary of Parameters ................................................................................................. 14 
+3.3.  Performance Evaluation ..................................................................................................... 14 
+3.3.1.  Metrics and Simulation Parameters ............................................................................... 15 
+3.4.  Simulation Results ............................................................................................................. 16 
+3.4.1.  Radio Irregularity in Coverage Space ............................................................................ 16 
+3.4.2.  Radio Irregularity in Time .............................................................................................. 18 
+3.5.  Conclusions ........................................................................................................................ 19 
+4.  Sampling Rate Allocation for Tree Networks ........................................................................ 22 
+4.1.  Related Work ...................................................................................................................... 23 
+4.2.  System Model and Problem Statement .............................................................................. 24 
+4.2.1.  System Model................................................................................................................. 24 
+4.2.2.  Problem Formulation ..................................................................................................... 25 
+4.2.3.  NP-Hardness .................................................................................................................. 26 
+4.2.4.  Decision Table, Energy Table and Routing Table .......................................................... 27 
+1 
+ 
+1. 前言 
+本研究計畫之目的是發展一個針對無線感測網路的相關技術，使得各感測器節點的資
+源能充分運用以滿足動態規劃、低耗能、及時性、無線通訊、及應用程式的要求。而要達
+到此目的，我們必須先深入探討無線感測網路的架構中四大特性：一，感測節點的系統架
+構；二，感測節點的資源管理；三、感測節點的服務效能；四、感測節點的無線通訊。 
+1.1. 感測節點的系統架構 
+目前最被廣泛使用在感測節點（sensor node）的作業系統為 UC-Berkeley 所發展出來
+的 TinyOS。TinyOS 最大的缺點在於無法動態更新感測節點的應用程式，程式一旦燒錄在
+感測節點上，除非收回感測節點重新燒錄，否則無法執行任何更新的動作。這種模式的感
+測節點功能有限，且因只具備單一應用程式，無法有效率的被重複使用。另一方面，由於
+程式為事先載入，無法針對動態環境改變而調整其程式排程，以至於無法充分利用鄰近結
+點的計算功能與系統資源。最後，目前感測網路上所使用的作業系統都不具備即時功能，
+無法執行一些有 deadline 要求的應用程式，例如在一個及時性的決策系統中，感測網路必
+須藉由及時作業系的支援，針對感測到的訊號作出即時的反應。 
+隨著半導體與微機電技術的快速發展，可預見的未來，每個感測節點都將具備至少一
+個微處理器，在某些功能強大的節點甚至會具備多個微處理器，且隨著莫爾定律的發展，
+微處理器功能將比現在強大。如何透過內嵌式及時作業系統的支援，與鄰近節點合作，充
+分利用微處理器的運算功能，來完成複雜的及時運算，將是感測網路未來發展的重點之一。
+另一方面，感測節點的多功能性也是必然的趨勢，感測節點必須藉由作業系統支援，針對
+環境的變化而動態載入所需執行的程式。同時，為減低動態載入程式所帶來的網路流量，
+感測節點的作業系統必須充分有效的利用鄰近節點的記憶體資源，來儲存常用的程式並彼
+此支援。最後，為滿足感測節點移動性(mobility)應用的需求，作業系統必須支援各感測節
+點自我組態的能力。 
+1.2. 感測節點的資源管理 
+感測節點的資源可略分為能量與儲存空間兩大部分。感測節點的能量一般來自電池，
+當這些感測節點已定位在偵測位置上，受到環境與感測節點數目的限制，感測節點的壽命
+隨電池的耗盡而結束。因此如何降低感測節點的能量消耗，以延長感測節點的壽命，已成
+為一個重要的課題。一般常見的低耗能排程研究，大多著眼於分析 CPU 執行的狀況，找出
+降低CPU 耗費能量的方法。例如著名的dynamic-reclaiming 演算法，其減低耗電量的方式，
+即是回收沒有用到最大執行時間(worst-case execution time)程序的時間，並將之分配給下一
+個執行的程序，使其可用較低的頻率工作。由於電力消耗與工作電壓/頻率程非線性關係， 
+故可逹到省電的目的。然而，無線感測網路系統中的感測節點必須執行大量的 I/O 動作，
+包括網路傳輸與環境偵測，例如擷取溫度、電壓、氣壓、光線、溼度、風速、震動等。因
+此，我們將原本只針對 CPU 排程耗能的研究， 擴展到網路傳輸與 I/O 元件排程，以達到
+整個系統耗能最佳化的要求。 
+3 
+ 
+2. Barista：A Light-Weight Java Virtual Machine for Wireless 
+Sensor Networks 
+ 
+Wireless sensor networks are usually used to monitor the environment. As the environment 
+changes, we will need to change the task running on WSNs. Since WSNs typically contain a large 
+amount of sensor nodes, it is difficult to retrieve them back and download new programs one by 
+one. What is required is a power and resource efficient way of reprogramming the senor nodes in 
+place. This is complicated by the fact that more and more WSNs employ heterogeneous sensor 
+nodes. If we want to update the programs on these different sensors, we need to modify and 
+download the program for each kind of sensor nodes individually. 
+One approach to dynamically reprogramming sensor nodes is to transmit executable binary 
+to the sensor nodes through the wireless interface. However, binary code is usually large and 
+sending such code consumes energy. Another approach is to transmit scripts instead. This is also 
+problematic since scripts are limited in expressiveness. A compromise between binary code and 
+source code reprogramming is intermediate code. The source code could be precompiled into 
+bytecode and then executed on top of a virtual machine (VM). This approach may strike a 
+balance between code size for downloading and programming flexibility. 
+Though VM technology is quite mature, developing a VM for wireless sensors is still very 
+challenging, primarily due to the resource constraints. A new VM architecture is thus needed for 
+resource constrained wireless sensors. In order to design a virtual machine for WSNs, we need to 
+address the following issues: 
+z Due to the low computing power of microcontrollers in wireless sensor devices, the 
+VM cannot be too complicated. 
+z Because of the small memory size, the VM cannot be too large and the resultant user 
+program should be small. 
+z For heterogeneous WSNs, the VM should easily be ported across platforms. 
+ 
+Since Java is one of the most popular high-level programming languages and most 
+programmers have experiences of writing java programs, adopting Java as the programming 
+language of wireless sensors allows a programmer to take part in sensor programming more 
+easily. In addition, there is no need to develop a new compiler. Furthermore, because Java 
+programming language is designed for cross-platform, it is easy to convert its ISA into other 
+platforms, which facilitates the programming in heterogonous WSNs.  
+ 
+2.1. Architecture and Implementation 
+With Barista, we hope to achieve the following goals. 
+z Small: The size of the VM and user programs must be small to fit in the constrained 
+hardware. 
+z Efficient: The execution of the VM must be efficient, because the performance of VM 
+5 
+ 
+With constant pool, we can verify the accuracy of all function calls. In Barista, we move the 
+verification task to gateway or host PC. In this way, we can remove the constant pool of class 
+files on the sensor nodes, which reduces the size of user programs by half. Of course, we need to 
+modify instructions that reference to the constant pool to ensure the correctness of these 
+instructions. 
+ 
+2.3. Java Runtime System  
+An implemented JVM is called a runtime system. We examined the components in a 
+full-fledged JVM and found that some components are not essential for WSNs. We thus adopt a 
+new architecture as shown in Figure 1.  
+Barista uses a split VM architecture in order to save on-device memory. In the host PC, 
+which is the central controller of the whole WSN, classes to be deployed onto the sensors are 
+verified and transformed into Barista’s representation. This allows a smaller VM stored in the 
+sensor device, as well as faster start-up time for the sensor application.  
+Components in the host PC are verifier, preprocessor, and serial sender. Verifier verifies the 
+correctness of the structure and the bytecode dependence to insure that the bytecode interpreter 
+will not crash or the execution engine will not get into fatal errors. For efficiency reason, we put 
+the verifier on the host PC or gateway and use the J2ME verification tool as our verifier. 
+ 
+ 
+Figure 2.1. Barista Java runtime system 
+ 
+Preprocessor converts a standard Java program into Barista codes. The preprocessing 
+processes are the followings. (1) Remove constant pool and useless metadata of a class file and 
+modify instructions that reference to the constant pool. (2) Check if the instructions or types are 
+supported by Barista. (3) Translate some special instructions into general instructions. (4) 
+Generate a new class file. After the Java program is processed by the preprocessor in the host PC, 
+the serial sender transmits the code to the sensor network through a gateway. It also plays the role 
+of watchdog that allows a user to issue commands to control the whole network. 
+In Barista, the VM executing on the sensor device contains the bytecode execution engine 
+ additional
+full Maté,
+On the o
+Barista al
+  
+ 
+2.4.2. 
+We 
+the user c
+native cod
+Barista co
+“SimpleC
+implemen
+transmiss
+ 
+ 
+In o
+basic exe
+ special ins
+ is 86.4KB
+ther hand, 
+so can run o
+Code Si
+use some e
+ode of Ma
+e size is 7
+de. With sp
+md” progr
+ting additio
+ion and exe
+Pro
+CntToLe
+Blink 
+CntToLe
+Oscope 
+OscopeR
+SenseTo
+SenseTo
+ur implem
+cution engi
+tructions. T
+. In Figure 
+Maté is the
+n MICA se
+F
+ze of Us
+xample pro
+té and Bari
+00 times bi
+ecial instru
+am, we ca
+nal special
+cution ener
+Table 3. Co
+grams 
+ds 6
+6
+dsAndRfm 
+F 2
+Leds 9
+Rfm 2
+entation, ab
+ne. We can
+he size of 
+2, we can s
+ smallest 
+rials nodes
+igure 2.2.
+er Progr
+grams to e
+sta is smal
+gger than B
+ctions, the 
+n save 14%
+ instruction
+gy overcom
+mparison o
+Native 
+Code 
+Sour
+Cod
+,736 181
+,516 164
+19,183 263
+14,399 212
+1,562 265
+,413 255
+1,247 256
+out 512 by
+ use 256 by
+7 
+Barista wit
+ee that KVM
+VM, which
+ with a slig
+VM cod
+ams 
+stimate the
+l enough to
+arista code
+size of user
+ packet s
+s makes th
+e the short
+f program s
+ce 
+e 
+Class 
+File
+M
+261 9
+229 n
+315 n
+270 n
+308 n
+292 n
+292 n
+tes RAM 
+tes for stor
+h libraries,
+ is imposs
+ can run o
+htly larger 
+e breakdow
+ size of use
+ fit in a few
+. Even sou
+ programs 
+ize by usin
+e size of V
+coming. 
+ize; all val
+ate’ 
+Code
+Barist
+wit
+spe
+instru
+ 21 
+/a 15 
+/a 26 
+/a 16 
+/a 21 
+/a 16 
+/a 16 
+are used b
+ing user pr
+ which mak
+ible to put 
+n MICA s
+code size. 
+ 
+n 
+r programs
+ TinyOS p
+rce code is 
+can be sma
+g special 
+M bigger, t
+ues in bytes
+a Code 
+hout 
+cial 
+ctions 
+B
+Co
+s
+inst
+20 
+14 
+25 
+16 
+20 
+16 
+16 
+y TinyOS, 
+ogram, 64 
+es it to fun
+inside a MI
+erials and M
+. Table 3 s
+ackets. Th
+11 times b
+ller. For ex
+instructions
+he benefits
+ 
+arista 
+de with 
+pecial 
+ructions 
+system lib
+bytes for V
+ction as a 
+CA mote. 
+ICAdot. 
+hows that 
+e average 
+igger than 
+ample, for 
+. Though 
+ of saving 
+raries and 
+M system 
+9 
+ 
+3. RIM：A Broadcasting Algorithm in Wireless Sensor Networks 
+with Irregular and Dynamic Radio Coverage 
+ 
+The vision of wireless sensor network is to deploy a large number of smart but inexpensive 
+sensors close to the objects and environment for in-situ sensing and actuation. Although dense 
+deployment is desirable in many wireless sensor network applications, it also causes problem 
+with the communication, particularly on broadcast. When a sensor node broadcasts a message, all 
+the nodes within its radio coverage will attempt to relay the message by rebroadcasting, causing 
+excessive radio communication within the region. This not only wastes system resources but also 
+causes network congestion, leading to the broadcast storm problem. 
+Many works have attempted to solve the broadcast storm problem. Most of them assume 
+that the radio coverage of the wireless nodes is a circle with a known and static radius. It is thus 
+easy to determine the neighboring relationship. The general strategy is to determine a minimum 
+set of forwarders from the 1-hop or 2-hop neighbors to rebroadcast the packets and at the same 
+time guarantee that all nodes in the network can receive the packets. 
+In practice, radio signal is very unstable. The radio coverage is irregular in space and 
+changes dynamically with time. It cannot be modeled just by a unit disk graph. This is especially 
+true for wireless sensor networks which employ low quality radio modules for reduced cost. This 
+then raises the question whether it is cost effective for maintaining the neighbor sets. Attempts to 
+maintain the neighbor sets might turn out useless if the radio coverage should change. Increasing 
+the frequency of state update to keep the neighbor sets fresh will incur high communication 
+overhead, even affecting transmissions of normal messages. Moreover, determining neighbors 
+may be difficult as one node may hear the radio signal of another, but not vice versa. Dense 
+deployment in wireless sensor networks also causes problems to existing solutions, which need to 
+maintain fairly large neighbor sets. This stresses the already limited memory in sensor nodes.  
+The goal of this study is to investigate strategies to alleviate broadcast storm in stationary, 
+dense wireless sensor networks with irregular and dynamic radio coverage. Assuming no location 
+information is available, we approach the problem from the aspects of space and time. To solve 
+the irregularity in space in radio coverage, we propose a scheme that is able to find the neighbors 
+on the rim of the irregular radio coverage region to narrow down the choices of the forwarders. 
+We will discuss how to determine the rim according to factors such as radio strength. To solve the 
+dynamic in radio coverage, we consider an on-demand, stateless strategy that do not maintain the 
+neighbor set but still guarantee 2-hop coverage as other works do. Note that the on-demand 
+approach does not exclude the possibility of caching the neighbor sets or even a hybrid approach 
+depending on the dynamicity of the coverage condition. 
+3.1. Related Works 
+Many protocols have been proposed to alleviate the broadcast storm problem in wireless 
+networks. The general strategy is to select a minimum set of forwarders to rebroadcast the 
+packets while still guarantee that all nodes in the network can receive the packets. According to 
+11 
+ 
+based on a greedy method shown to cover the uncover set N(N(Y)) – N(V(Y)) – U(N(F(W))).  
+ 
+3.1.3. Summary 
+The problem with static protocols is that they select the forwarding nodes according to the 
+topological information only, without considering the differences in each broadcast operation. 
+Moreover, since every node uses the same paths for broadcasting, the forwarders become hot spot. 
+To solve the hot spot problem, dynamic protocols use different forwarders for different broadcast 
+operations. This also reduces the broadcast storm problem. These protocols use neighbor 
+information and thus each node needs to update this information periodically, which incurs extra 
+overhead and waste network resources. In this paper, we are interested in the dynamic protocol. 
+The focus of our broadcasting protocol is to handle the irregular and dynamic radio coverage. 
+ 
+3.2. The RIM Algorithm 
+ 
+ 
+Figure 3.1. Rim neighbors and rim selection 
+ 
+Let us consider a node U in the network. The basic idea of our RIM algorithm is to use the 
+1-hop neighbors of U that are present on the rim of the transmission range for collecting 
+information about the 2-hop neighbors. We use the term rim neighbors to refer to such nodes, as 
+illustrated in Figure 1. The rim neighbors of U send a request to their own 1-hop rim neighbors, 
+i.e. 2-hop rim neighbors of node U. These 2-hop rim neighbors record information about all 
+1-hop rim neighbors that cover them and send the information back to node U. After receiving 
+this information, node U can decide its forwarding nodes. Although there can be various criteria 
+for selecting the forwarding nodes, in this paper we use a greedy algorithm that selects the 
+smallest number of nodes to cover all 2-hop rim neighbors. Since each node only uses its rim 
+neighbors to collect the coverage information, we can reduce the number of control packets. 
+Moreover, as rim neighbors are the farthest nodes covered by a node under consideration, they 
+are sufficient to cover a maximum number of 2-hop neighbors.   
+When a node receives a data packet, it checks the header to see whether it is the forwarder 
+13 
+ 
+2-hop rim neighbor records this information and transmits it back to node U, so that U can select 
+the smallest set of forwarding nodes. 
+For collecting the coverage information, we consider the following two parameters. (a) 
+2-hop waiting time is the interval that a 2-hop rim neighbor waits before transmitting the 
+recorded information to one of its sender. The set of nodes V’ receiving this information must be 
+a subset of V, which forwards the same to node U. (b) Compute waiting time is the time interval 
+that node U waits after receiving the first message from some node in set V’. It acts as a timer for 
+receiving information from other nodes in V’. After receiving the coverage information, node U 
+can select its forwarding nodes. In Figure 2, we present an algorithm to perform this operation.  
+ 
+ 
+Figure 3.2. Algorithm for information collection 
+ 
+3.2.3. Forwarding Nodes Selection 
+After collecting necessary information, node U employs a greedy approach to find the 
+smallest set of forwarding nodes to covering all 2-hop rim neighbors. The recursive algorithm for 
+selecting the forwarding nodes begins with node U selecting a 1-hop rim neighbor covering the 
+maximum number of 2-hop rim neighbors. Once a forwarding node is selected, U removes it 
+from the list of possible forwarders and removes the 2-hop rim neighbors it is covering form 
+15 
+ 
+RADIO-RX-THRESHOLD is the Sbound mentioned in Section 3. Each result shown below is an 
+average of 10 different simulations. 
+ 
+Table 1. Settings of the simulation 
+ 
+ 
+Table 2. Environment for irregularity in space 
+ 
+ 
+Table 3. RIM settings for irregularity in space 
+ 
+ 
+Table 4. DCB settings for irregularity in space 
+ 
+ 
+3.3.1. Metrics and Simulation Parameters 
+We used a number of metrics to evaluate the performance of the protocols. However, due to 
+space limitation, we only discuss the followings: 
+ 
+z Broadcast delivery ratio: This is the ratio of number of nodes receiving the broadcast packet 
+over total number of nodes in the network. We use this metric to study the reliability of a 
+protocol in broadcasting a message. 
+z Broadcast forwarding ratio: This is a ratio of number of nodes retransmitting a broadcast 
+message to total number of nodes in the network. The metric indicates the number of 
+forwarding nodes used by a protocol for broadcasting a message in the network. Lower the 
+ratio is, fewer the forwarding nodes used by the protocol. Thus, it shows the effectiveness of 
+17 
+ 
+are selected as rim neighbors of a node. 
+Figure 4 shows the effect of changing DOI values on both protocols. For DOI less than 0.1, 
+performance of both protocols exceeds 99%. When DOI is larger than 0.1, DCB performs better. 
+The reason is perhaps that the irregularity created by such a DOI is very high. For example when 
+DOI = 0.1, 70 meters in the 177-meter radio coverage are irregular, which increases for higher 
+DOI values. DCB performs better because it stores 2-hop neighbor information for selecting its 
+forwarding nodes. When DOI is 0.2, the stable region around a sender is close to 35 meters, with 
+which DCB can select forwarding nodes and cache this information. Furthermore, DCB has a 
+retransmission mechanism, which helps to increase the data delivery ratio of the protocol. When 
+DOI is 0.4, the stable region around a sender is only about 10 meters, affecting the performance 
+of DCB. In the current RIM protocol, we do not store neighbor information and we have to send 
+control packets among 2-hop rim neighbors. When DOI is greater than 0.1, the performance of 
+RIM-70 is the worst because all rim neighbors are in the unstable region. 
+ 
+ 
+Figure 3.4. Delivery ratio versus irregularity in space 
+ 
+ 
+Figure 3.5. Number of forwarders versus irregularity in space 
+ 
+ 
+Figure 3.6. Collisions per node versus radio irregularity 
+ 
+In Figure 5, we show the number of forwarding nodes employed by each protocol. The 
+forwarders selected by our protocol are fewer than DCB. Comparing Figures 4 and 5, we can see 
+that for DOI less than 0.1, our protocol requires only 90 forwarding nodes to reach the same 
+delivery ratio as DCB. With increasing degree of irregularity, the number of forwarding nodes 
+19 
+ 
+ 
+Figure 3.8. Number of forwarders versus radio change period 
+ 
+ 
+Figure 3.9. Collisions per node versus radio change period 
+ 
+Figures 8 shows the influence of changing radio frequency on the forwarding node ratio and 
+Figure 9 shows the number of collisions per node. Since the delivery ratio of RIM is higher as 
+shown in Figure 7, the number of forwarders used is more and hence the collisions in the network 
+increase. The behavior of DCB can be explained in a similar way. 
+ 
+Table 5. Settings of environments for radio irregularity in time 
+ 
+ 
+3.5. Conclusions 
+In this paper, we propose a broadcast algorithm RIM to alleviate the broadcast storm 
+problem under irregular and dynamic radio coverage for dense wireless sensor networks. For 
+irregularity in radio coverage in space, we propose to select a small set of nodes from the 1-hop 
+neighbors that are on the rim of the radio coverage region to cover the 2-hop neighbors. For 
+dynamic in radio coverage, we consider a stateless, on-demand strategy. The simulation results 
+show that our RIM protocol has high delivery ratio while the number of forwarding nodes is 
+small. Our algorithm also generates few collisions under high network density and high degree of 
+radio irregularity. 
+The RIM protocol considered in this paper adopts an on-demand strategy, in which each 
+node performs an on-demand selection of their forwarders. The reason behind on-demand 
+selection is that the forwarder information may change frequently due to irregular radio coverage 
+and may not be valid for the next broadcast operation. This version of the RIM protocol may be 
+improved through caching, especially when we have more than one data packet to broadcast. The 
+caching policy may have to be adjusted according to the network condition. For example, if the 
+21 
+ 
+Information,” in Proc. of INFOCOM, 2006. 
+z J. Susec and I. Marsic, “An Efficient Distributed Network-Wide Broadcast Algorithm for Mobile Ad Hoc 
+Networks,” in Proc. of CAIP, July 2000. 
+z Y. Tseng, S. Y. Ni, and E. Y. Shih, “Adaptive Approaches to Relieving Broadcast Storms in a Wireless 
+Multihop Mobile Ad Hoc Network,” IEEE Transactions on Computers, V52(5): 545-557, 2003. 
+z B. Williams and T. Camp, “Comparison of Broadcasting Techniques for Mobile Ad Hoc Networks,” in Proc. of 
+MobiHoc, June 2002. 
+z A. Woo, T. Tong, and D. Culler, “Taming the Underlying Challenges of Reliable Multihop Routing in Sensor 
+Networks,” in Proc. of the first international conference on Embedded networked sensor systems, pp. 14-27, 
+2003. 
+z J. Wu and H. Li, “On Calculating Connected Dominating Set for Efficient Routing in Ad Hoc Wireless 
+Networks,” in Proc. of DialM, 1999. 
+z J. Wu, “Extended Dominating-Set-Based Routing in Ad Hoc Wireless Networks with Unidirectional Links,” 
+IEEE Transactions on Parallel and Distributed Systems, 13(9):886-881, Sept. 2002. 
+z J. Wu and F. Dai, “Broadcasting in Ad Hoc Networks Based on Self-Pruning,” in Proc. of INFOCOM, 
+Mar./Apr. 2003. 
+z J. Wu and F. Dai, “A Generic Distributed Broadcast Scheme in Ad Hoc Wireless Networks,” in Proc. of ICDCS, 
+pp. 460-468, May 2003. 
+z J. Wu, “An Enhanced Approach to Determine a Small Forward Node Set Based on Multipoint Relay,” in Proc. 
+of IEEE VTC, Sept. 2003. 
+z J. Wu and F. Dai, “Performance Analysis of Broadcast Protocols in Ad Hoc Networks Based on Self-Pruning,” 
+IEEE Transactions Parallel and Distributed Systems, Vol. 15, No. 11, pp. 1027-1040, Nov. 2004. 
+z J. Wu and F. Dai, “Efficient Broadcasting with Guaranteed Coverage in Mobile Ad Hoc Networks,” IEEE 
+Transactions on Mobile Computing, Vol. 4, No. 3, May/June 2005. 
+z Y. Yi, M. Gerla, and T. J. Kwon, “Efficient Flooding in Ad Hoc Networks: A Comparative Performance Study.” 
+in Proc. of the IEEE International Conference on Communications (ICC), May 2003. 
+z G. Zhou, T. He, S. Krishnamurthy, and J. Stankovic, “Impact of Radio Irregularity on Wireless Sensor 
+Networks,” in The Second International Conference on Mobile Systems, Applications, and Services (MobiSys), 
+June 2004. 
+z G. Zhou, T. He, S. Krishnamurthy, and J. Stankovic, “Models and Solutions for Radio Irregularity in Wireless 
+Sensor Networks,” ACM Transactions on Sensor Networks, 2006. 
+z L. Zhu, B. Lee, B. Seet, K. Wong, G. Liu, S. Huang, and K. Lee, “Performance of New Broadcast Forwarding 
+Criteria in MANET,” in Proc. of ICOIN, pp. 34-43, 2004. 
+z GloMoSim: A Scalable Simulation Environment for wireless and Wired Network Systems, Parallel Computing 
+Laboratory and Wireless Adaptive Mobility Laboratory, UCLA Computer Science Department, 
+http://pcl.cs.ucla.edu/projects/domains/glomosim.html 
+ 
+ 
+  
+23 
+ 
+For ease of presentation, we define critical node as the node whose residual energy is minimum 
+among all nodes and its energy is named critical energy. Hence, our problem can be restated as to 
+maximize the critical energy with the quantity and the fairness constraints. Our problem is 
+different from all previous work. In particular, the required number of samples and the sampling 
+rate range of each sensor node are known a priori. It well models the application scenarios, such 
+as voice monitoring, system modeling, and target localization, where the quality of application 
+depends on the number of samples and the distribution of each sample’s source. 
+In this work, we target a directed graph sensor network. All samples are sent back to a base 
+station. We determine the sampling rate of each sensor node and decide the route of each sample 
+to maximize the critical energy and to meet the quantity and the fairness constraints. 
+We first prove that the problem is NP-H. We later propose a partial distributed algorithm to 
+deliver a near optimal solution. The main idea is to partition the sensor network into several 
+sub-tree networks and sub-graph networks. For each sub-tree network, we propose a distributed 
+algorithm to determine the rate assignment. The distributed computation starts from leaf nodes 
+and converges at the root of the sub-tree network. For each sub-graph network, we execute a 
+central and greedy algorithm on each sub-graph network’s root. The results of each sub-trees 
+networks and sub-graph networks are then integrated at the base station. When the given network 
+is a tree network, we prove that the obtained result is optimal. 
+We evaluate the performance of the proposed algorithms by simulation. In each experiment, 
+we adopt 100 sensor nodes to randomly construct a wireless sensor network. We repeat 1000 runs 
+of each experiment and present their average value. We investigate how close the proposed 
+algorithm to the optimal algorithm is. Since the rate allocation problem in directed graph 
+networks is NP-H, the optimal solution is not obtainable in large scale sensor networks. Hence, 
+we develop a polynomial time algorithm to estimate the upper bound of the optimal solution and 
+compare our algorithm with it. According to the results, the performance difference between our 
+algorithm and the optimal upper bound is smaller than 3%. We also explore the trade-off between 
+the fairness and the network lifetime. The result indicates that in order to prolong the network 
+lifetime, the WSN application should relax the fairness constraint to an appropriate level. 
+ 
+4.1. Related Work 
+Due to the energy constraint, extensive research has been done to maximize the sensor 
+network lifetime by considering different scenario. We divide these works into two categories. 
+The first category is to design the routing algorithm to maximize the network capacity under the 
+lifetime constraint. The second category is to determine the sampling rate of each node to 
+maximize the sum of source utilities under the lifetime constraint. Our problem is different from 
+all previous work. In particular, the required number of samples and the sampling rate range of 
+each sensor node are known a priori. It well models the application scenarios, such as voice 
+monitoring, system modeling, and target localization, where the quality of application depends on 
+the number of samples and the distribution of each sample’s source. 
+25 
+ 
+ 
+Table 1. List of notations and definitions. 
+ 
+In order to maintain the fairness of rate allocation, the sampling rate of each node si is 
+limited in a range. We use li and ui to represent xi’s lower bound and upper bound. The values of 
+li and ui are application-dependent. They can be statically embedded in the associated sensor 
+node or dynamically assigned by s0 at run-time. In addition, we use zi,j to denote the number of 
+samples transmitted from si to sj in T. The total number of samples sent out by si is equal to the 
+number of samples that si receives and senses. Therefore, 
+ 
+In Eq. (1), since s0 will not send samples to si, the first term’s index in the right hand side 
+starts from 1. Let e0 i denote the residual energy of si at the end of interval T. We calculate e0i by 
+ 
+In Eq. (2), the first term in the right hand side is si’s original energy capacity. The second 
+term is the energy consumption of sensing data. The third and the fourth term are the energy 
+consumption of transmitting and receiving samples. For ease of reference, Table I lists the 
+definitions of notations used in this paper. 
+ 
+4.2.2. Problem Formulation 
+In order to maximize the network lifetime, our objective is to determine xi and zi,j to 
+maximize the minimum residual energy in S. Hence, our problem, named P0, is formulated as 
+27 
+ 
+allocation is NP-Hard. 
+ 
+4.2.4. Decision Table, Energy Table and Routing Table 
+Based on the topology of network formed by s0’s child nodes, we partition the sensor 
+network into several sub-tree and sub-graph networks. As shown in Figure 1, s1 constructs a 
+sub-tree network and s5 composes a sub-graph network. 
+For sub-tree networks, we define two types of tables, decision table and energy table, to 
+record the rate allocation and the critical energy. Let sk be an internal node and Dk is its decision 
+table. Dk[i, j] represents the number of samples delivered from sk’s jth child node while sk sends 
+out i samples. Index i and j are zero-based. Dk[i, 0] represents the number of samples sensed by 
+sk itself when sk sends out i samples. We use Ek to denote sk’s energy table. Ek[j] is defined as 
+the critical energy among sk and its subnetwork after sk sends out j samples.  
+ 
+ 
+Figure 4.1. A directed graph network 
+ 
+For sub-graph networks, we use Gk to denote the sub-graph formed by sk. The definition of 
+Dk[i, j] in a sub-graph network becomes the number of samples sensed by the jth source node in 
+Gk while sk sends out i samples. Let rk,j denote the jth route in Gk. We further define the outing 
+table, Zk, to record the traffic of each route in Gk. Zk[i, j] stores the number of samples 
+transmitted by rk,j while sk sends out i samples. 
+Example 1: As shown in Figure 1, s2, s3, s4, s8, and s9 are capable of providing samples. If 
+s1 and its subnetwork need to deliver three samples, the rate allocation is (x1, x2, x3, x4) = (D1[3, 
+0],D1[3, 1],D1[3, 2],D1[3, 3]) = (0, 1, 1, 1). After delivering three samples, the critical energy 
+among s1 and its child nodes is E1[3] = 100. On the other hand, if s5 needs to deliver two 
+samples, the rate allocation is (x8, x9) = (D5[2, 1],D5[2, 2]) = (1, 1). Also, the traffic of r5,1, r5,2 
+and r5,3 are (Z5[2, 1],Z5[2, 2],Z5[2, 3]) = (1, 0, 1). After delivering two samples, the critical 
+energy of G5 is E5[2] = 105. 
+ 
+29 
+ 
+the request R to the WSN. After receiving the request, each leaf node will construct its E table 
+and send it back to its parent node. Then, each internal node executes MultiHopTree to merge the 
+received E tables and sends an integrated E table back to its parent node. The iterative integration 
+converges at s0. Finally, s0 distributes the optimal rate allocation to its child nodes. 
+At this stage, each internal node executes RateAssign to set their own sampling rate and 
+further distribute the rate allocation to their child nodes. Eventually, each sensor node’s sampling 
+rate is set. 
+ 
+4.3.2. Distributed Computation 
+ 
+ 
+ 
+ 
+ 
+As mentioned before, each leaf node will construct an energy table and send it back to its 
+parent node. Let sx denote a leaf node and sy is its parent node. Ex[j] is determined by 
+ 
+After receiving all its child nodes’ E tables, the internal node will execute MultiHopTree to 
+integrate the received E tables. We list MultiHopTree in Algorithm 1 where sk is the internal node 
+31 
+ 
+17). 
+After receiving all its child nodes’ E tables, s0 uses SingleHopRoot to determine E0 and D0. 
+The rate allocation of its child nodes is listed (D0[R, 1],D0[R, 2] . . .D0[R, n0]), where n0 is the 
+number of s0’s child nodes. 
+ 
+ 
+ 
+ 
+Figure 4.3. A multi-hop tree sensor network 
+ 
+ 
+Figure 4.4. Power parameters of sensor nodes 
+ 
+4.3.3. Rate Assignment 
+s0 sends the rate allocation to its child nodes. After receiving the rate allocation from the 
+parent node, each internal node uses RateAssign to determine its and its child nodes’ sampling 
+rate. We summarize RateAssign in Algorithm 3. Let sk be the internal node that we consider here. 
+l is the number of samples allocated by sk’s parent node. By looking up Dk table, sk first sets its 
+rate xk to Dk[l, 0]. It later sends the rate allocation to its child nodes (line 4 to 6). Finally, all 
+sensor nodes’ sampling rate are set. 
+Example 2: Figure 3 is a tree sensor network and Figure 4 lists each node’s parameters. 
+Nodes s2, s3, s4, s5, s6 and s7 are capable of providing samples. At the beginning, s0 broadcasts 
+33 
+ 
+4.3.4. Time Complexity 
+We define the height of a node in a tree as the length of the path to its furthest child node. 
+Let h be the height of root node s0. Following the execution flow, we discuss the time complexity 
+of request broadcast, parallel computation, and rate assignment respectively. 
+For request broadcast, it takes O(h) to deliver the request to the furthest leaf node. For 
+parallel computation, it includes three parts. They are the computation of leaf nodes, internal 
+nodes and the base station. For each leaf node, it takes O(R) to construct its E table and send it 
+back to its parent node. For each internal node, it applies MultiHopTree to build its D table and E 
+table. Let C denote the maximum number of child nodes for an internal node. In MultiHopTree, it 
+invokes two procedures, SingleHopRoot and Update, accordingly. For SingleHopRoot, at each 
+iteration, it takes O(C) to copy the previous iteration’s result. Also, it reuiqres O(C) to select the 
+provider and update D and E. Hence, the time complexity of SingleHopRoot is O(RC). For 
+Update, the time compexlity is domoated by the case that sk is capable of providing samples. In 
+this case, it first takes O(R)+O(RC) = O(RC) to copy Ek and Dk. It later determines the provider 
+iteratively. At ith iteration, it calculates ¾c by Eq. (9), determines Ek[i] by Eq. (10), and updates 
+Dk. The time complexity of these three parts are O(i), O(1) and O(C) accordingly. Hence, it 
+requires O(R2)+O(R)+O(RC) = O(R2) to update Dk and Ek. Then, the time complexity of 
+Update is O(R2). MultiHopTree finally sends out the integrated energy table which takes O(R). 
+Then, the time complexity of MultiHopTree is O(RC) + O(R2) + O(R) = O(RC) + O(R2): Since 
+MultiHopTree is corruently executed at each level, it requires O(RCh) + O(R2h) to complete all 
+nodes’ E and D tables. Also, s0 uses SingleHopRoot to merge received E tables and it takes 
+O(RC). In summary, the computation of lead nodes, internal nodes and the base station are O(R), 
+O(RCh) + O(R2h) and O(RC). Therefore, the time complexity of parallel computation is bounded 
+by O(RCh) + O(R2h) + O(RC) = O(RCh) + O(R2h).  
+During the rate allocation, s0 takes O(C) to send the rate allocation to its child nodes. For 
+each internal node, it also takes O(C) to execute RateAssign. Since RateAssign is corruently 
+executed at each level, it requires O(Ch) to send the rate allocation to the furthest leaf node. In 
+summary, the time complexity of request broadcast, parallel computation, and rate assignment are 
+O(h), O(RCh) + O(R2h) and O(Ch) respectively. The proposed method is bounded by O(h) + 
+O(RCh) + O(R2h) + O(Ch) = O(RCh) + O(R2h). 
+ 
+4.3.5. Optimality Proof 
+We first prove that Algorithm 2 can obtain the optimal solution in a single-hop network. We 
+later prove that the proposed distributed algorithm can obtain the optimal solution for tree 
+networks. Let A denote Algorithm 2 and B denote an arbitrary algorithm. We define EA,i and 
+EB,i as the critical energy of A and B when collecting i samples. In addition, ±j is the energy 
+consumption of sj to sense and transmit one sample, ±j = aj + bi,0. 
+Theorem 2: Algorithm 2 can obtain the optimal solution of P0 in a single-hop network. 
+35 
+ 
+node at level y, its energy table can interpret its associated sub-tree network if its child nodes’ 
+energy tables can interpret their own sub-tree networks. Therefore, we can generalize the 
+previous results to level h where s0’s energy energy table E0 can interpret the whole sensor 
+network. In other words, E0[R] represents the maximum critical energy of the sensor network 
+after providing R samples. 
+According to Theorem 2, each level one sensor node’s energy table can interpret its 
+associated sub-tree network. Let sk denote an internal node at level y (y > 1). C(k) = fsk,1, 
+sk,2, ..., sk,ng represents sk’s child nodes and Ek,j is sk,j’s energy table. sk use MultiHopTree to 
+integrate all its child node’s energy tables. MultiHopTree first applies SingleHopRoot to obtain an 
+initial Ek. 
+Because fEk,1,Ek,2, . . . ,Ek,ng can interpret their sub-tree networks respectively, Ek[i] 
+represents the maximum critical energy of C(k) after providing i samples. If sk cannot provide 
+samples, we update Ek[i] by Eq. (8). Obviously, Ek[i] well represents the critical energy of Tk 
+after providing i samples. On the other hand, if sk can provide samples, for each Ek[i], we 
+examine all possible combinations between sk and its child nodes. The combination that has the 
+maximum critical energy is selected as the result. Hence, Ek[i] also represents the critical energy 
+of Tk after providing i samples. The result can be easily extended to level h. In other words, E0[R] 
+is the maximum critical energy of the sensor network after providing R samples. 
+ 
+ 
+Figure 4.6. Upper-bound and lower-bound in tree 
+ 
+4.3.6. Fairness Assurance 
+We now generalize the proposed algorithm to arbitrary range of sampling rate. Let sk denote 
+an internal node whose sampling range is [lk, uk]. Also, sk,i is sk’s ith child node. We use Ak,i 
+and Bk,i to denote the starting entry and the ending entry of sk,i’s energy table Ek,i. Two 
+modifications are made when MultiHopTree constructs Ek and Dk. The starting entry of Ek and 
+Dk is Ak instead of 0. Ak is lk+Pn i=1 Ak,i, where n is the number of s0ks child nodes. In 
+addition, the ending entry of Ek and Dk is Bk instead of R. Bk is minfuk +Pn i=1 Bk,i,Rg: 
+Second, we regard Ek,i’s entries after Bk,i as zero. Hence, sk,i will not be considered as a 
+37 
+ 
+traffic of each route in that sub-graph. We use rk,j to denote the jth route in Gk. The routes that 
+we consider here are loop-free routes since routes with loop will always consume more energy 
+than that without loop. In addition, we use Zk to represent Gk’s routing table and Zk[i, j] is 
+defined as the number of samples transmitted by the route rk,j while sk sends out i samples. 
+ 
+ 
+ 
+4.4.2. Central Algorithm 
+We define the critical energy of a route as the minimum energy capacity among sensor 
+nodes on that route. MultiHopGraph is a greedy algorithm shown in Algorithm 4. At each 
+iteration, it examines each route and selects the route, rk,x , that has the maximum critical energy 
+after providing one more sample (line 9). Assuming that rk,x’s source node is the yth source node 
+in Gk. Then, the rate of rk,x and this source node are increased to Zk[i, x] = Zk[i ¡ 1, x] + 1 and 
+Dk[i, y] = Dk[i ¡ 1, y] + 1 (line 10 to 11). Also, Ek[i] records the critical energy of Gk. 
+Let ¸ denote the number of routes in Gk and n the number of nodes in Gk. Q is the 
+maximum number of nodes on a route. At each iteration, it takes O(Q¸) to determine the critical 
+energy of each route. Also, it takes O(¸) and O(n) to update Zk and Dk. If ¸ > n, the time 
+complexity of MultiHopGraph is O(RQ¸). 
+ 
+39 
+ 
+We generalize Algorithm 4 to arbitrary sampling rate range. For a sub-graph network Gk, 
+we use Ak = fsk,1, sk,2, . . . , sk,ng to denote the set of sensor nodes that are capable of providing 
+samples in Gk. The sampling rate range of sk,i is [lk,i, uk,i]. Ak and Bk are the starting entry and 
+the ending entry of Dk, Zk and Ek. Ak is the sum of minimum sampling rate of each source node 
+which is calculated 
+ 
+Bk is the sum of maximum sampling rate of each source node which is calculated by 
+ 
+For Dk, we set each source node to its minimum sampling rate. Hence, we have Dk[Ak, i] = 
+lk,i, 1 · i · n. For Zk, we adopt a heuristic method. We sort source nodes by the number of routes 
+they own. We start from sk,i that has the fewest routes because nodes with more routes have more 
+opportunities to compensate the previous decision. If sk,i has only one route to send back samples, 
+the initial traffic of its associated route is equal to lk,i. On the other hand, if sk,i has more than 
+one route, we will consider sk,i’s first lk,i samples one by one, and select a route for each sample 
+that can obtain the largest critical energy. Finally, the initial traffic of each route is recorded in 
+Zk[Ak, i], 1 · i · ¸, where ¸ is the number of routes in Gk. Then, Ek[Ak] is obtained by examining 
+the residual energy of each node in Gk. After initializing the starting entry of each table, we apply 
+MultiHopGraph to determine the provider and the route of each sample until the Bkth sample. 
+Similarity, when a source node si has provided ui samples, it will not be considered as the 
+provider anymore. 
+ 
+4.5. Performance Evaluation 
+In this section, we evaluate the performance of our algorithms through simulation. We first 
+describe the simulation setup. Next, we evaluate our algorithm againtst several metrics. 
+ 
+4.5.1. Simulation Setup 
+In our simulation, we use 100 sensor nodes to construct a wireless sensor network. lists the 
+range of each sensor node’s power parameters. The power parameters of each node are randomly 
+selected from these ranges. In each set of experiment, we repeat 1000 independent runs. At each 
+round, we construct a senor network randomly and select 10 nodes as the source nodes. We 
+present their average performance in the following figures. The range of each sensor node’s 
+sampling rate is application-dependent. In our simulation, we adopt a simple equation to 
+determine sensor node’s sampling range. Let n denote the number of sensor nodes that are 
+capable of providing samples and x = R n is their average sampling rate. For each si 2 A, its 
+sampling rate range is limited. The fairness indicates how close the sampling rate is to x. For 
+41 
+ 
+each source node in the modified network has only one parent node. Hence, it becomes a tree 
+network and we can use the method proposed in section 4 to obtain the maximum critical energy 
+of the modified network. In the second category, at least one source node in the modified network 
+has more than one parent node. We set the transmission energy of source node si to all its parents 
+to ebi = min j2P(i) bi,j , where P(i) is the set of si’s parent nodes. It ensures that each route can be 
+considered as an independent route. We then apply Algorithm 4 to obtain the critical energy. 
+ 
+ 
+Figure 4.11. Performance comparison at different R 
+ 
+ 
+Figure 4.12. Performance comparison of energy range 
+ 
+Since each route is independent, the behavior of Algorithm 4 is the same as SingleHopRoot. 
+Therefore, it can get the maximum critical energy in the modified network. Example 5: There are 
+three routes in Figure 10(a). r1 and r2 are dependent routes since s1 is shared by r1 and r2. To 
+obtain the upper bound of this directed graph network, we first duplicate s1 and use s01 to denote 
+the copy. The result is shown in Figure 10(b). The energy consumption of transmitting one 
+sample from s4 to s2 or s01 is set to minfb4,1, b4,2g. We then apply Algorithm 4 to Figure 10(b) 
+to obtain the maximum critical energy which represents the upper bound of critical energy of 
+Figure 10(a). 
+2) Effect of Critical Energy: This experiment evaluates the normalized critical energy of an 
+algorithm under R. As shown in Figure 11, MCE delivers near optimal solution. The performance 
+difference between MCE and Optimal Upper Bound is less than 3% in every R. Both Weight and 
+MTE-weight perform worse than MCE. This is because a node with less energy capacity will also 
+be selected to deliver samples as a node on the route has large energy capacity. Hence, the critical 
+43 
+ 
+4) Effect of Fairness: In all previous experiments, the value of fairness ½ is set to 0.5. We 
+use this experiment to evaluate ½’s impact on critical energy. R is set to 10000. As shown in 
+Figure 13, we vary ½ between 0 and 1. For each ½, we list the associated upper-bound of 
+sampling rate on the top of each bar. The critical energy becomes larger when ½ increases. In 
+other words, if the WSN application requires definite fairness (½ = 0), it will induce the smallest 
+critical energy. The reason is that each sensor node’s sampling rate is equal to each other no 
+matter how much energy capacity it has. Hence, nodes with less energy capacity will decrease the 
+critical energy. This experimental results also illustrate the trade-off between fairness and 
+network lifetime. If the WSN application requires a longer lifetime, it should increase ½ to an 
+appropriate level. 
+5) Effect of the Provider Number: This experiment evaluates the critical energy of an 
+algorithm under different number of providers. R is set to 3000. In a directed graph network, the 
+more sensor nodes can provide samples, the more routes we have. As shown in Figure 14, MCE 
+can deliver larger critical energy when the number of providers increases. This is because we 
+have more opportunities to reduce the flow of heavy loaded routes and select better routes to send 
+samples back to the base station. However, Weight and MTE-weight do not benefit much from 
+these extra opportunities. The critical energy of these two algorithms is similar while the number 
+of providers increases. This is because no matter how many providers and routes they have, 
+Weight and MTE-weight always select the routes with higher energy capacity or minimum 
+transmission cost to deliver samples. Hence, the nodes on the routes with seldom energy will run 
+out of energy quickly. In particular, MTE-weight delivers the worst performance when the 
+number of providers is one. In this case, MTE-weight will use only one route to send all samples 
+back to the base station and cause the lowest critical energy. 
+ 
+4.6. Conclusion 
+In this work, we investigate the rate allocation problem of sensor networks. It is the first 
+work that maximizes the lifetime under the quantity and the fairness constraint. We show that the 
+rate allocation problem in a directed graph network is NP-H and propose a partial distributed 
+algorithm. When the given network is a tree network, we prove that the obtained solution is the 
+optimal. In addition, we estimate the opitmal upper bound and compare our algorithm with it.  
+According to our simulation results, the performance difference between our algorithm and 
+the optimal upper bound is less than 3%. We also explore the trade-off between the fairness and 
+the network lifetime. In order to prolong the network lifetime, the WSN application should relax 
+the fairness to an appropriate level. In the feature, we plan to develop a distributed algorithm for 
+directed graph networks and consider real-time constraints. 
+ 
+References 
+z D. Culler, D. Estrin, and M. Srivastava, “Introduction: Overview of sensor networks,” IEEE Computer, vol. 37, 
+no. 8, pp. 41–49, 2004. 
+45 
+ 
+2492–2497. 
+z H. Liu, P., and X. Jia, “Maximal lifetime scheduling for sensor surveillance sstems with k sensors to one target,” 
+IEEE Transations on Parallel and Distributed Systems, vol. 17, no. 12, pp. 1526–1536, 2006. 
+z M. R. Garey and D. S. Johnson, Computers and Intractability; A Guide to the Theory of NP-Completeness. 
+New York, NY, USA: W. H. Freeman & Co., 1990. 
+z T. J. Shepard, “Decentralized channel management in scalable multihop spread-spectrum packet radio 
+networks,” Tech. Rep. MIT/LCS/TR-670, 1995. [Online]. Available: 
+citeseer.ist.psu.edu/shepard95decentralized.html 
+ 
+ 
+  
+47 
+ 
+6. 可供推廣之研發成果資料表 
+■ 可申請專利  □ 可技術移轉                          日期：96 年 7 月 31 日 
+補助計畫 
+□EDU 
+□EIC 
+■NSC 
+計畫名稱：無線感知網路之延展性作業系統 
+計畫主持人：金仲達 
+計畫編號: 
+學門領域：  
+核心技術 : 一種分散式演算法，用來計算無線感測網路中每一個感測節點之取樣頻率。 
+技術／創作名稱: 無線感測網路之取樣頻率設定演算法 
+發明人/創作人: 朱宗賢 / 余皇億 / 江柏穠 / 黃泰一 / 沈仲九 
+技術說明 
+本發明提供一種分散式演算法，用來計算無線感測網路中每一
+個感測節點之取樣頻率，搜集所需之樣本數，並使無線感測網路壽
+命可以達到最久，所謂無線感測網路壽命，係指系統開始執行到第
+一個感測節點電池耗盡為止的時間。該發明主要特徵是採分散式計
+算，每ㄧ個感節點都做一些局部之計算，並將其結果傳給其父節點，
+該父節點綜合其所有子節點的結果後，算出一個新的結果，再回傳
+給其父節點，最終我們會在根節點得到最佳取樣頻率設定值。本發
+明可以在滿足總取樣數，及均勻取樣的條件下，快速地為每一個節
+點找到其最佳的取樣頻率，使無線感測網路之壽命達到最久。 
+應用範圍 無限感測網路之相關應用 
+可利用之產業及可
+開發之產品 工廠監控、居家保全、系統建模、物體定位 
+ 
+ 
+ 
+會議的進行分三個平行的場次，共 19 個sessions。會期中，每一天有一場keynote 
+speech，邀請到European CoreGrid Initiative的Dr. Thierry Priol、University of Aizu的Prof. 
+Minyi Guo、及St. Francis Xavier University的Prof. Laurence T. Yang等三人主講。大會也
+在第一天安排了一場round table，邀請包括Jean-Marc Pierson, Lionel Brunie, Geoffrey 
+Coulson, Minyi Guo, Manish Parashar, Gregor von Laszewski, Laurence T. Yang等學者，討
+論Pervasive Grids (PG)。PG主要是研討如何利用pervasive及ambient information做為管
+理、控制、優化、調適應用的手段之一。在這次round table之中，幾位學者就他們對於
+PG的研究與心得，討論PG到底是什麼? PG的應用及需求為何? PG是否可能實現? 等議
+題。可惜學者們對PG的定義仍有許多不同看法，討論尚未形成共識。不過經由這次會
+議 的 討 論 ， 已 有 一 個 WiKi 網 站 成 立 ， 研 討 PG 相 關 的 技 術 ：
+http://perse.insa-lyon.fr/pervasivegrids/。 
+ 
+在這次會議中，本人在會議的第一天發表了一篇論文，“SONMAS: A Structured 
+Overlay Network for Multidimensional Attribute Space”，是陳秀琴同學與所合作撰寫的。
+該論文討論利用 peer 的特徵向量做為 peer 和 peer 之間互連的依據，從而建構出與傳統
+P2P 網路不同的互連結構。論文發表後，與幾位學者有更進一步的討論，也對未來可
+能的研究方向交換意見。 
+ 
+ 
+二、與會心得 
+格網和普及計算的結合似乎是順理成章的趨勢，但是到底什麼是 Pervasive Grid、
+PG 有什麼應用、PG 的研究議題是什麼，學者們好像都還沒有定見，討論起來也是各
+說各話。當然這個問題也漸漸引起學者的興趣，相信透過更多的討論，如本會議或 WiKi
+網站，可以把問題討論得更清楚。 
+ 
+在會議中才得知 Springer-Verlog 的 Lecture Notes on Computer Science 將不再列入
+SCI。相信這樣做對於許多因追求 SCI 論文而產生的奇怪象現，能產生淡化的效果。然
+而另一方面，對學術研討會的參與及稿源也可能造成影響。因為這樣一來，許多人就
+對 LNSC 的會議沒有興趣，直接投稿到 SCI 期刊，而不願意浪費時間、精力、經費在
+參加研討會上。問題是每年有那麼多學術研討會，如果來稿不足，會議就辦不成。當
+然，這或許是另一個機會，可以淘汰一些比較雜、水準比較差的會議，而留下少數幾
+個領域內主要會議。這樣不但可以提昇大家論文的品質，也可以讓資源更集中，做最
+好的利用。 
+ 
+此次會議的籌辦不是很理想。除了上述場地的分佈及標示等問題外，工作人員不
+□ 赴國外出差或研習 
+□ 赴大陸地區出差或研習 
+ 出席國際學術會議 
+□ 國際合作研究計畫出國 
+心得報告 
+計畫名稱 
+(1) 智慧型感測器系統網路及應
+用技術研發三年計畫 
+(2) 通用無線感測器平台的研發-
+子計畫三 
+計畫編號 (1) 95A0272SB (2) 95B0368I7 
+報 告 人 
+姓 名 黃泰一 
+服 務 機 構
+及 職 稱
+國立清華大學資訊工程學系
+副教授 
+會議/訪問時間 
+ 地點 
+96.3.13~96.3.16 
+韓國首爾 
+會 議 名 稱 SAC 2007 
+發表論文題目 LA-TinyOS: A Locality-aware Operating System for Wireless Sensor Network 
+一、主要任務摘要（五十字以內） 
+    發表論文 -LA-TinyOS: A Locality-aware Operating System for Wireless Sensor 
+Network。聽取國際上無線感測器網路的研究現況。 
+ 
+二、對計畫之效益（一百字以內） 
+     聽取其他學者對於無線感測器和嵌入式系統的研究，有助於了解目前國際上無線
+感測網路的研究趨勢與技術現況，能夠針對目前的計畫內容加以評估與改進，並配合
+最新的技術達成最有效的應用。 
+ 
+三、經過 
+  3/14報告論文。3/14及3/15聽取各種不同領域最新的學術論文，並且與其他教授交流
+研究心得及成果。 
+ 
+四、心得 
+  以前大部分關於無線感測器的研究著重在於系統架構及通訊協定的設計，而忽略了
+無線感測器應用本身。現在感測器應用的研究開始重視應用本身的特性與限制，針對
+各種不同的應用能夠有效的調整系統狀態以達到最佳化的效果，乃是目前許多無線感
+測器研究的方向。 
+ 
+五、建議與結語 
+  目前嵌入式系統的研究仍然是學界研究的熱門主題，尤其無線感測器更是其中重要
+的一環。越來越多的應用普遍存在周遭環境之中，省電節能的機制越來越重要。 
+ 
+六、攜回資料 
+ Proceeding of the 2007 Symposium on Applied Computing 
+ 
+ 
+ 
+　 Proceeding紙本 x 1 
+ 
+of a distributed hash table, which serves as a directory for information indexing. 
+Information in the system should be published to the distributed hash table. In 
+attribute-based approach, the information to be looked up, i.e. the attributes, is the 
+means by which the peers are interconnected. The advantages are the followings. (1) 
+There is no need to publish the information to some unrelated peers. (2) It can support 
+complex queries such range and KNN queries. (3) There will be no overhead for 
+maintaining a directory and keeping the indices up-to-date. 
+As an example of the attribute-based approach, we will introduce in this paper one 
+such system, the Structured Overlay Network for Multidimensional Attribute Space 
+(SONMAS). SONMAS is capable of handling range and KNN queries for 
+multidimensional attributes, while still keeping a log(N) routing efficiency. Although 
+a number of previous works have addressed the issue of complex queries in DHT-
+based P2P systems [15] [16], they still require the indexing information be published 
+to a directory, i.e. the distributed hash table. The most closely related work to 
+SONMAS is skip graph [3]. A skip graph can be decomposed into levels of sorted 
+link-lists. There is only one level-0 list and it contains N sorted nodes. There are 2 
+level-1 lists, and each contains N/2 nodes. All nodes in level-0 list goes to either of 
+the level-1 list with equal probability. The splitting process continues until the lists 
+become singletons. The membership is probabilistic and determined by the 
+membership vectors. Skip graphs have a routing efficiency of O(logN). In skip graphs, 
+all that matters are the ordering of attributes instead of the exact attribute values of 
+nodes. Skip quad-tree [5] is realized by adding skip pointers to a quad-tree. A skip 
+quad-tree is defined for a two-dimensional space. This idea can be generalized to 
+spaces of different dimensions [1] [5]. The Skip web [2] is an example of a P2P 
+network based on the idea of skip quad-tree. However, the reliability issues that are 
+critical for real world P2P scenarios are yet to be addressed. In addition, interest 
+collision problems are not addressed in the current works. 
+2   System Design 
+Assume that each node in the system is characterized by exactly one 
+multidimensional attribute. The basic idea of SONMAS is to divide the n-dimensional 
+attribute space into a hierarchy of cubes, upon which an efficient interconnection 
+among the nodes can be built. The cube structure reflects the proximity of nodes in 
+the attribute space. To handle attribute collision, we add an extra dimension, node id, 
+to the attribute space to eliminate any collision. 
+2.1   Attribute-ID-Hybrid Space 
+To resolve collision problems in attribute space, we transform the attribute space to an 
+attribute-ID-hybrid space where collisions are not possible. In the attribute-ID-hybrid 
+space, a node’s position is determined by appending a unique node ID after its 
+multidimensional attribute: 
+< attribute-ID-hybrid key > = <attribute key | multi-D node ID> 
+to choose different members as their access to the same cell. Note also that the 
+attribute-ID-hybrid space will be very sparse.  
+2.3   Basic Operations 
+This section introduces some basic operations of SONMAS. Due to space 
+limitation, operations such as handling attribute changes, network maintenance, and 
+system optimizations will not be discussed here. 
+ 
+Routing 
+ 
+The basic idea of the SONMAS routing algorithm is to forward the messages through 
+the cell hierarchy by narrowing down the intermediate locations of the messages level 
+by level. Eventually the correct atom cell is reached and so is the destination node. 
+The SONMAS routing algorithm is shown in Figure 1. The matching level is defined 
+as the level of the smallest cell that simultaneously includes both the message holder 
+and the message destination. In terms of the numerical representation of attribute-ID-
+hybrid key, matching level is equivalent to the length of the common prefixes 
+between the key of message holder and the key of message destination.  
+ 
+Procedure routing 
+Upon receiving a message, check matching level between current node and message 
+destination. 
+m  matching level  
+if ( m equals h )  
+{The current node is the message destination} 
+else  
+{Check level-m routing sub-table, and select the level-(m+1) sub-cell that contains the 
+destination node} 
+if (Selected entry is null)  
+{Announce routing failed} 
+else  
+{Forward the message to the selected entry} 
+} 
+End 
+ 
+Fig. 1. The SONMAS routing algorithm 
+ 
+Join/quit 
+ 
+By connecting to well-known portals, or any existing on-line peers, a node can send 
+its join request to the network. The join request is addressed to the joining node itself 
+and will be forwarded in the network according to the routing rule. We define the 
+level that the join request terminates as the stopping level, the cell as the stopping cell, 
+and the node as the stopping node. The responsibility of the stopping node is to 
+process the join request by providing its routing table and sending the join success 
+message to the new node, and sending the join notification message to all members 
+within the stopping cell. In addition, the stopping node as well as those that receive 
+End 
+ 
+Fig. 3. Handling by-cell-range-searches. 
+ 
+In Figure 3, range level is the level of the target cell that specifies the size of the 
+target range. The range level is an integer between 0 and m, where m is the length of 
+the attribute key as defined in Section 2.1. Resolution level is the level when tasks can 
+no longer be subdivided, and the reporting process should begin. The resolution level 
+is an integer ranging from 0 to h, where h is the length of attribute-ID-hybrid key. 
+True range queries in which the size and position of the target is not limited by the 
+cell hierarchy can be implemented by a high-level manipulation of by-cell-range-
+searches. The reason is that an arbitrary range can be decomposed into various target 
+cells of various levels.  
+3   Evaluation 
+SONMAS is evaluated by simulations on time efficiency, traffic overhead, system 
+reliability under dynamic environment, as well as query performance. The simulator 
+is written in Java and run on JVM version 1.4.2_01-b06. Throughout all the 
+simulations, uniform end-to-end delay is assumed, and node computation delay is 
+neglected. TCP is assumed for the transportation layer protocol; however, the three-
+way synchronization time is neglected.  
+The network size simulated ranges from 10 to 5000 nodes. Three version of 
+SONMAS are evaluated: the full function version equipped with all reliability-related 
+designs including HSA, routing table exchange, and one level introduction; the 
+baseline version in which the above functions are excluded; the intro-off version 
+which contains all reliability-related designs but one level introduction. The metrics 
+used to evaluate our system include average hop count, packet count, and connectivity 
+score. Because of the uniform latency assumption, it is sufficient to represent routing 
+time efficiency with average hop count. The connectivity is measured by querying the 
+universe from a number of randomly selected peers. The connectivity score is defined 
+as the average query score of all these queries. The full score of connectivity is 100. 
+3.1   Time Efficiency and Traffic Overhead 
+In the following experiments, the network size ranges from 10 to 5000 nodes, in 1 to 
+6-dimensional attribute space with choices of bases ranging from 2 to 32. The 
+experiments are conducted as follows. We bring up the network to the size of our 
+choice at constant rate. After a short period of stabilization time, events are started as 
+required by each experiment. For the measurement of routing efficiency, a number of 
+arbitrary packets are sent, and the cumulated path length and packet success rate are 
+recorded. As with the join overhead, a series of join and quit events are arranged after 
+stabilization, and the total number of join operation related packets are recorded as 
+well as cumulated message size in bytes. 
+version of SONMAS, and the other corresponding to the full function of SONMAS. 
+In terms of number of packets, the baseline version shows O(logN) and the full 
+function version is a little worse than that. 
+
+
+
+
+ 
+    
+    	 
+          	    
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+     
+     
+ 
+Fig. 6. Join traffic overhead measured as the message count as a function of network size in 
+log scale. 
+ 
+ 
+
+
+
+
+
+
+
+     
+ 	 
+         	      	  
+
+
+
+
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+         
+       
+ 
+Fig. 7. Maintenance traffic overhead measured as the message count as a function of 
+network size. 
+3.2   Query Performance 
+The following experiments demonstrate the performance of by-cell-range-searches. 
+The network size varies from 100 to 5000. For the query performance, we ran a 
+
+
+
+
+
+	 
+         
+
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+ 
+Fig. 9. latency as a function of range level for dimension 2 and base 2. 
+
+ 
+ 
+ 
+ 
+
+ 
+ 	
+	
+               
+
+
+
+
+	
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+ 
+Fig. 10. Node count as a function of resolution level with range level = 0 for 
+dimension 2 and base 2. 
+3.3   Summary 
+Here, we summarize the major results of the simulations bellow: 
+ Routing efficiency: The Nbblog  routing efficiency of SONMAS is verified. 
+ Join overhead: The join operation takes O(logN) messages per event. The 
+traffic mainly comes from the “join success” packet, in which the routing table 
+of the stopping node is attached as the payload. Clearly, if a size limit is put 
+onto the backup lists, the traffic overhead would be reduced to O(logN) bytes 
+per event. 
+ Maintenance overhead: While each node needs to maintain O( Nbblog ) states, 
+the maintenance overhead seen by a node is O(log2N) bytes per second. It is not 
+hard to imagine that if a size limit is put onto the backup lists, the overhead 
+would be reduced to O(logN) bytes per second. 
+3. James Aspnes and Gauri Shah, “Skip Graphs”, Proc. Fourteenth Annual ACM-SIAM 
+Symposium on Discrete Algorithms, (2002) 384-393 
+4. I. Clarke, O. Sandberg, B. Wiley, and T. W. Hong, “Freenet: A Distributed Anonymous 
+Information Storage and Retrieval System”, Proc. Workshop on Design Issues in 
+Anonymity and Unobservability, (2000) 311–320 
+5. D. Eppstein, M. T. Goodrich, and J. Z. Sun, “The Skip Quadtree: A Simple Dynamic Data 
+Structure for Multidimensional Data”, Proc. 21st ACM Symp. On Computational Geometry 
+(SCG) (2005) 
+6. Prasanna Ganesan, Beverly Yang, and Hector GarciaMolina, “One Torus to Rule Them All: 
+Multidimensional Queries in P2P Systems”, Proc. of the Seventh International Workshop on 
+the Web and Databases (WebDB) (2004)   
+7. Nicholas J. A. Harvey, Michael B. Jones, Stefan Saroiu, Marvin Theimer, and Alec Wolman, 
+“SkipNet: A Scalable Overlay Network with Practical Locality Properties”, Proc. of the 
+Fourth USENIX Symposium on Internet Technologies and Systems (USITS), (2003)  
+8. Sylvia Ratnasamy, Paul Francis, Mark Handley, Richard Karp, and Scott Shenker, “A 
+Scalable Content-Addressable Network”, Proc. ACM Symposium on Communications 
+Architectures and Protocols (SIGCOMM) (2001) 161–172 
+9. Sean Rhea, Dennis Geels, Timothy Roscoe, and John Kubiatowicz, “Handling Churn in a 
+DHT”, Proc. 2004 USENIX Technical Conference (2004) 
+10. A. Rowstron and P. Druschel, “Pastry: Scalable, Decentralized Object Location and 
+Routing for Large-scale Peer-to-peer Systems”, Lecture Notes in Computer Science (2001) 
+161-172 
+11. I. Stoica, R. Morris, D. Karger, M. F. Kaashoek, and H. Balakrishnan, “Chord: A Scalable 
+Peer-to-Peer Lookup Service for Internet Applications”, Proc. of the International 
+Conference on Applications, Technologies, Architectures, and Protocols for Computer 
+Communications (2001) 149-160 
+12. Napster. http://www.napster.com/ 
+13. Gnutella. http://www.gnutella.com/ 
+14. Chunqiang Tang, Zhichen Xu, Mallik Mahalingam, “pSearch: Information Retrieval in 
+Structured Overlays”, ACM SIGCOMM Computer Communication Review (2003) 89 – 94  
+15. A. R. Bharambe, Mukesh Agrawal, and S. Seshan. “Mercury: Supporting Scalable Multi-
+Attribute Range Queries,” Proc. ACM Symposium on Communications Architectures and 
+Protocols  (SIGCOMM) (2004) 
+16. C. Schmidt, M. Parashar. “Flexible Information Discovery in Decentralized Distributed 
+Systems,” Proc. HPDC (2003) 
+Locality-Aware TinyOS or LA-TinyOS. LA-TinyOS auto-
+matically reduces the period of a locality-aware task when an
+anomalous event occurs and resets it when such an event dis-
+appears for an appropriate period, to ensure temporal local-
+ity. LA-TinyOS notifies the same task on neighboring nodes
+that are within a specific number of hops to reduce the pe-
+riod in advance to deal with spatial locality. The presented
+design flexibly specifies the configurations of a locality-aware
+task in a table-driven manner. TinyOS’s FIFO scheduler is
+modified into a multi-level scheduler where a task is always
+scheduled before normal tasks. Finally, LA-TinyOS pro-
+vides a mechanism for a locality-aware task to execute its
+self-adaptive functions when it enters and leaves its locality.
+An anomalous event is commonly treated as a critical sit-
+uation in a WSN application. Therefore, when a task enters
+its locality, no energy is saved and all of the available pro-
+cessor capacity is utilized to reduce the period. The alloca-
+tion of processor utilization becomes complicated when more
+than one task enters their localities. LA-TinyOS has an ef-
+ficient bandwidth-allocation policy to provide soft real-time
+scheduling for a workload of mixed periodic and aperiodic
+tasks, and in-locality and normal tasks.
+LA-TinyOS provides a more reliable and efficient frame-
+work to develop locality-aware tasks than does TinyOS. As a
+demonstration, LA-TinyOS takes only a few lines of code to
+implement one locality event while TinyOS has more than
+50 lines of code. Therefore, LA-TinyOS requires less flash
+memory. However, both LA-TinyOS and TinyOS use simi-
+lar amounts of RAM memory. Finally, a locality-aware ap-
+plication was implemented using LA-TinyOS, and deployed
+in the reading room of the public library at our campus.
+The application monitors temperature, light and noise vol-
+ume periodically and records noise violation events. A field
+study demonstrates that this application smoothly exhibits
+locality-aware features.
+Many projects have been performed to construct mid-
+dleware for WSN applications [1, 8, 3, 2]. However, none
+has addressed the problem of providing self-adaptive locality
+awareness for WSN applications. VigilNet [3] is an energy-
+efficient surveillance system. It allows an administrator to
+configure remotely the period of a monitoring task. The
+configuration is performed manually and cannot adapt well
+to dynamic situations, such as anomalous events. Instead,
+LA-TinyOS automatically adjusts the periods of the tasks,
+according to anomalous situations and available processor
+utilization. Both Delicato et al. [1] and Liu et al. [8] pro-
+posed an adaptive middleware to switch the network pro-
+tocol dynamically to save energy. This adaption is based
+on the current state of the system and the required service
+level. If processor utilization is ignored, such an adaption
+may result in system overload and performance degradation.
+A similar concern also arises in relation to the system pro-
+posed by Fok et al. [2] which uses a mobile agent to inject
+code dynamically into WSN for event tracking. In contrast,
+LA-TinyOS utilizes a feedback scheme to utilize the proces-
+sor fully for periodic monitoring and to provide a bounded
+response time for other tasks.
+This paper is organized as follows. Section 2 describes
+configuration elements to support both temporal and spa-
+tial locality. Section 3 presents a brief overview of TinyOS.
+Section 4 introduces LA-TinyOS. Section 5 describes the
+bandwidth-allocation policy. Section 6 statically compares
+LA-TinyOS and TinyOS in supporting locality-aware appli-
+default 
+period
+reduced 
+period
+graceful 
+period
+locality
+begins
+locality
+ ends
+time
+:  anomaly occurrence: sensor sampling
+in-locality
+Figure 1: The period of a task and its graceful length
+cations. Section 7 discusses the performance of LA-TinyOS
+in a real WSN application, deployed in the public library
+at our campus. Finally, Section 8 concludes this paper and
+discusses future work.
+2. LOCALITY-AWARE CONFIGURATION
+ELEMENTS
+AWSN application consists of a set of periodic tasks to be
+executed at regular intervals, called the period. A periodic
+task first senses and checks whether the sensed data reveals
+an anomaly. If no anomaly is detected, it returns along a
+normal path. Otherwise, a special action is performed to
+alert the occurrence of this anomaly. Each anomaly may
+have its own set of temporal and spatial locality character-
+istics, and therefore requires particular adjustments to be
+made. A comprehensive list of configuration elements to
+construct a locality-aware WSN application is provided.
+Period: The period of a task determines how frequently it
+is executed to monitor the environment. The period
+of a task that detects an anomaly should be reduced
+to improve observations of this anomaly.
+Graceful Length: A graceful length defines a period of
+time during which a task executes at its reduced pe-
+riod and no anomaly is detected, as shown in Figure 1.
+A task resets its period after its graceful length of time
+expires.
+Task Priority: A task in its locality matters more than a
+task that is outside its locality. A WSN operating sys-
+tem requires a priority-driven or multi-level scheduler
+to favor in-locality tasks.
+Alerting Area: When a node detects an anomaly, by spa-
+tial locality, this anomaly is likely to be detected by
+neighboring nodes shortly. An alerting area can be
+configured as nodes within a specific number of broad-
+casting hops.
+Self-Adaption Functions: When a task enters its local-
+ity, it may demand certain application-specific adap-
+tion, in addition to execute at a reduced period. Such
+an adaption can be operating its radio module at a
+high-power mode to produce reliable wireless trans-
+mission. When a task leaves its locality, all adaptions
+must be restored to their default settings.
+1152
+Table 1: The LA-TinyOS locality-configuration table
+Event Timer ID Graceful Length Tasks Hops Adaption Functions
+“A” 1 2000 dataTask 2 enterl() / leavel()
+“B” 2 1000 getMax 1 Null / Null
+ful length, associated tasks, the number of broadcasting
+hops and self-adaptive functions. This table is called the
+locality-configuration table. The LocalityControl interface
+implements three commands;
+registerEvent(string EventName);
+configureLocality(event table entry T e,
+uint 8 TimerID,
+uint 32 GracefulLength,
+uint 8 HopCount,
+(void∗) FuncEnter,
+(void∗) FuncLeave);
+triggerEvent(string EventName);
+where registerEvent registers a new entry in the locality-
+configuration table, configureLocality specifies locality con-
+figurations, and triggerEvent is called when an an anomalous
+event is detected to enter its locality. LA-TinyOS provides a
+new reg internal operator to associate a task with an event.
+Figure 4 presents partial code of a locality-aware Oscillo-
+scope in LA-TinyOS. It first registers an event named “A”
+in the locality-configuration table (line 8). It then calls con-
+figureLocality to specify locality configurations of this event
+(line 9). The reg operator associates dataTask with this
+event (line 11). The first row in Table 1 shows the locality
+configurations of this event. When the sensed data exceeds
+a specific value (0x03B0), an anomaly is detected and the
+event “A” is triggered to enter its locality (line 14 to 15). By
+Table 1, when “A” is detected, LA-TinyOS executes enterl
+to enter its locality and executes leavel to leave its locality.
+Both enterl and leavel are pointers to self-adaption functions
+provided by this application.
+4.2 Temporal and Spatial Locality
+The TinyOS TimerM component maintains a list of soft-
+ware timers, as shown in Table 2. Each software timer has
+an ID, indicating whether it is a one-shot timer or a periodic
+timer, its default period and the time left before it expires.
+Whenever a timer interrupt fires, the interrupt handler of
+HWClock reduces the value in the Time-to-Expired field of
+each software timer and executes a corresponding handler
+when it reaches zero. LA-TinyOS increases TimerM in steps
+to include a new API,
+setLocailityTimer(unit8 t TimerID,
+unit32 t ReducedPeriod);
+to change the period of the software timer. When an event
+enters its locality, LA-TinyOS calculates its reduced period
+and uses this API to update its period in the software timer
+list. Its TimerID is obtained by looking up the locality-
+configuration table. The default period will be saved in a
+kernel data structure. When an event leaves its locality, set-
+LocailityTimer is again applied to reset its period. Section 5
+will explain how the calculation of a reduced period depends
+on available processor utilization.
+The third column in Table 1 records the graceful length of
+each event. When an event enters its locality, LA-TinyOS
+reduces its graceful length counter at each timer interrupt.
+Whenever an anomaly is detected, this counter is reset to
+its full value. When the counter reaches zero, the period of
+its associated software timer in Table 2 is reset to its default
+value, to indicate this event’s leaving its locality.
+LA-TinyOS implements the spatial locality by broadcast-
+ing alerting messages. Upon receiving an alerting message,
+a node activates a corresponding anomalous event to enter
+its locality. The alerting area is defined by the number of
+broadcasting hops, which are also available in the locality-
+configuration table.
+4.3 Multiple-Level Scheduler
+TinyOS provides a non-preemptive FIFO scheduler. Such
+a scheduler fails to distinguish tasks that are associated with
+an anomalous event from regular, non-urgent tasks. LA-
+TinyOS improves its FIFO scheduler to a three-level sched-
+uler without changing TinyOS non-preemptive scheduling.
+Normal tasks are in the third-level FIFO queue and are
+served only when the other queues have no tasks. When
+an anomalous event is detected, its associated tasks regis-
+tered in the locality-configuration table are queued in the
+first-level and are scheduled to be executed next. Tasks as-
+sociated with an event that is triggered to enter its locality
+by an alerting message are queued in the second-level FIFO
+queue. This three-level FIFO scheduler ensures that LA-
+TinyOS performs tasks according to their importance.
+5. SCHEDULABILITY ANALYSIS
+Reducing the period of a periodic task increases the pro-
+cessor utilization and consumes more energy. An anoma-
+lous event is considered as a critical situation. Therefore,
+LA-TinyOS is designed to utilize all of the available proces-
+sor capacity when an anomaly is detected. Aperiodic tasks
+are also associated with non-periodic activities. LA-TinyOS
+is equipped with an efficient bandwidth-allocation policy to
+provide a bounded response time for aperiodic tasks and
+dynamically-adjusted periods for periodic tasks.
+5.1 Task Model
+We define each periodic task τi as (ei, pi), where pi is
+its period set by its software timer and ei is its execution
+time. The execution time ei includes the execution time of
+the periodic task itself, associated interrupt handlers, and
+issued anomaly-processing tasks. Take Oscilloscope in Fig-
+ures 3 and 4 as an example. Its ei includes the execution
+time of Timer.fired, ADC.dataReady, and dataTask. Because
+these code is rather simple and easy to analyze, we can ob-
+tain their execution time by traditional timing-analysis tools
+such as [7] or a TinyOS instruction-level emulator such as
+Avrora [9]. We use ui to denote the processor utilization of
+τi, where ui = ei/pi. Let n be the number of periodic tasks
+in the system. Let Up denote the total processor utilization
+1154
+implementation{ 
+command result_t StdControl.start(){ 
+ call SensorControl.start(); 
+ call Timer.start(TIMER_REPEAT, 1500); 
+ … 
+}
+async event result_t ADC.dataReady(uint16_t data){ 
+if (data > 0x03B0){ // an anomaly 
+ struct LocalityMsg *send; 
+ uint32_t new_period = LocalityAdapt(); 
+call SetTimer.setLocalityTimer(1, new_period); 
+      enterl(); // self-adaption function 
+ // send spatial locality message 
+      send = (struct LocalityMsg *)Msg.data; 
+      send -> eid = 0; 
+      send -> count = 2; 
+      post SpatialLocality(); 
+      HOT_0 = TRUE; 
+ // start to monitor for a graceful length 
+ call Timer3.start(TIMER_REPEAT, 1000);  
+}
+else  HOT_0 = FALSE; 
+pack->data[packetReadingNumber] = data; 
+post dataTask(); 
+}
+uint32_t LocalityAdapt(){ 
+// caculate a new period based on the current  
+// processor utilization and workload 
+return new_period; 
+}
+task void SpatialLocality(){ 
+call SendSpatial.send(TOS_BCAST_ADDR,  
+sizeof(struct LocalityMsg), &Msg); 
+}
+event result_t Timer3.fired() {  // gracefully restore the system 
+atomic{ 
+    if (HOT_0 == FALSE){ 
+     call SetTimer.setLocalityTimer(1, 1500);           
+        leavel(); // self-adaption function 
+   call Timer3.stop(); 
+       } 
+   } 
+   return SUCCESS; 
+}
+event TOS_MsgPtr ReceiveSpatial.receive(TOS_MsgPtr m) { 
+    struct LocalityMsg *pack = (struct LocalityMsg *)m->data;     
+    atomic { 
+     if (pack->eid == 0 && HOT_0 == FALSE){ 
+          struct LocalityMsg *send; 
+   uint32_t new_period = LocalityAdapt(); 
+               call SetTimer.setLocalityTimer(1, new_period);     
+               enterl();             
+               HOT_0 = TRUE;                            
+               send = (struct LocalityMsg *)Msg.data; 
+               send -> eid = 0; 
+               send -> count = count_0 - 1;                     
+               if (count_0 - 1 > 0) 
+                post SpatialLocality();  
+         }                       
+    } 
+    return m; 
+}
+}
+Figure 6: A locality-aware Oscilloscope in TinyOS
+˃
+ˈ˃
+˄˃˃
+˄ˈ˃
+˅˃˃
+˅ˈ˃
+ˆ˃˃
+ˆˈ˃
+ˇ˃˃
+˄ ˅ ˆ ˇ ˈ ˉ ˊ ˋ
+́̈̀˵˸̅ʳ̂˹ʳ˿̂˶˴˿˼̇̌ˀ˴̊˴̅˸ʳ˸̉˸́̇̆
+˧˼́̌ˢ˦
+˟˔ˀ˧˼́̌ˢ˦
+Figure 7: The lines of nesC code
+while it takes TinyOS more than 50 lines of code. The dif-
+ference in the amount of required code between TinyOS and
+LA-TinyOS grows significantly larger when there are more
+events. This result well demonstrates how much LA-TinyOS
+reduces the effort of locality-aware programming.
+Figures 8 and 9 compare the memory usage of LA-TinyOS
+and TinyOS in executing the application shown in Figure 7.
+Particularly, Figure 8 gives the usage of flash memory and
+Figure 9 gives the usage of dynamic memory (RAM). The
+flash memory stores data such as code segments and static
+data. When there is only one event, LA-TinyOS consumes
+580 more bytes of flash memory: 270 bytes are used by the
+LocalityM component and 310 bytes are used by the multi-
+level scheduler. The flash usage of TinyOS grows larger
+when there are more events, due to its redundant code for
+Figure 8: The usage of flash memory
+locality awareness. In contrast, LA-TinyOS only slightly in-
+creases its flash usage and uses less flash memory when there
+are 3 events or more. On the other hand, RAM stores dy-
+namic data such as runtime variables. Because both TinyOS
+and LA-TinyOS make use of similar runtime variables to im-
+plement locality-aware events, their RAM usage is almost
+identical.
+7. CASE STUDY: ENVIRONMENT MONI-
+TORING IN PUBLIC LIBRARY
+LA-TinyOS was used to implement a locality-aware WSN
+application in the reading room of the public library at our
+campus. The reading room has an area of about 45 square
+feet. The application monitors environmental changes in
+1156
+log environmental changes and catch noise violation events.
+Future work will extend LA-TinyOS to consider physical
+boundaries in identifying anomalous events and use of this
+information to improve self-adaptive for locality awareness.
+9. ACKNOWLEDGMENTS
+This research was supported in part by Ministry of Eco-
+nomic Affairs, R.O.C., under Grant MOEA 95-EC-17-A-04-
+S1-044 and under Grant MOEA 95-EC-17-A-01-S1-038.
+10. REFERENCES
+[1] Flavia C. Delicato, Paulo F. Pires, Luiz Rust, Luci
+Pirmez, and Jose Ferreira de Rezende. Reflective
+middleware for wireless sensor networks. In SAC:
+Proceedings of the the 20th Annual ACM Symposium
+on Applied Computing, pages 1155-1159, March 2005.
+[2] Chien-Liang Fok, Gruia-Catalin Roman, and
+Chenyang Lu. Mobile agent middleware for sensor
+networks: an application case study. In IPSN: The 4th
+International Symposium on Information Processing
+in Sensor Networks, April 2005.
+[3] Tian He, Sudha Krishnamurthy, Liqian Luo, Ting
+Yan, Lin Gu, Radu Stoleru, Gang Zhou, Qing Cao,
+Pascal Vicaire, John A. Stankovic, Tarek F.
+Abdelzaher, Jonathan Hui, and Bruce Krogh.
+Vigilnet: An integrated sensor network system for
+energy-efficient surveillance. ACM Transactions on
+Sensor Networks, 2(1):1-38, 2006.
+[4] Inc Crossbow Technology. http://www.crossbow.com.
+[5] David Culler, Deboard Estrin, and Mani Srivastava.
+Introduction: Overview of sensor networks. In IEEE
+Computer, 37(8):41-49, 2004.
+[6] Jason Hill, Robert Szewczyk, Alec Woo, Seth Hollar,
+David Culler, and Kristofer Pister. System
+architecture directions for networked sensors. In
+ASPLOS-IX: Proceedings of the 9th International
+Conference on Architectural Support for Programming
+Languages and Operating Systems, pages 93-104,
+November 2000.
+[7] Tai-Yi Huang, Jane W.-S. Liu, and David Hull. A
+method for bounding the effect of DMA I/O
+interference on program execution time. In RTSS:
+Proceedings of the 17th IEEE Real-Time System
+Symposium, pages 275-285, December 1996.
+[8] Ting Liu, and Margaret Martonosi. Impala: a
+middleware system for managing autonomic, parallel
+sensor systems. In PPoPP: Proceedings of the 9th
+ACM SIGPLAN Symposium on Principles and
+Practice of Parallel Programming, pages 107-118, June
+2003.
+[9] Ben L. Titzer, Jens Palsberg, and Jens Palsberg.
+Avrora: scalable sensor network simulation with
+precise timing. In IPSN: The 4th International
+Symposium on Information Processing in Sensor
+Networks, pages 1-11, April 2005.
+[10] http://eos.cs.nthu.edu.tw/eosprojs/la-tinyos.zip.
+1158
+work is the first one that addresses this problem. The dis-
+cussed workload consists of n frame-based real-time tasks
+to be scheduled on m heterogeneous processors. All tasks
+are independent and non-preemptible. We focus our discus-
+sion on the single-level problem where each processor has
+only one speed. This problem can be formulated as a non-
+linear generalized assignment problem (GAP) that is proven
+to be NP-hard. In other words, an optimal solution requires
+exponential time complexity.
+We provide a couple ofpolynomial-time solutions to de-
+termine each processor's speed such that the total energy
+consumption is minimized. Initially, each task is assigned
+to a processor in a local-optimal manner. We next propose a
+greedy-based method to migrate tasks out of an overloaded
+processor in order to reduce energy. This method selects
+only one task during each migration. We further improve its
+performance by selecting a group of tasks on the same pro-
+cessor in each migration. A dynamic-programming method
+is proposed to avoid redundant computations. Finally, we
+determine each processor's speed by its final workload and
+the deadline. The greedy-based method has 0(nm logn)
+time complexity. The dynamic-programming method has
+0(nmX) time complexity, where X bounds the load ofthe
+most-loaded processor after the initial partition.
+We conducted a series of simulations to evaluate our
+algorithms. Our simulations model a set of off-the-shelf
+embedded processors including ARM processors and TI
+DSP processors. For comparison, we also implemented
+a commonly-used homogeneous multi-processor (HoMP)
+low-power algorithm called list scheduling [11, 5]. With-
+out any energy-reduction method, the list scheduling al-
+gorithm delivers the worst performance. The combination
+of list scheduling and our dynamic-programming energy-
+reduction method, however, still consumes considerably
+more energy than the combination of the local-optimal task
+partition and the dynamic-programming method. This re-
+sult shows the importance of initial task assignments and
+the effectiveness of our local-optimal partition. Each ex-
+perimental result is compared to the optimal value obtained
+by an exhaustive iteration of all possible task-to-processor
+assignments. At all measurable configurations, our energy
+consumption is at most 300 more than the optimal value.
+These results well demonstrate that our work provides a
+near-optimal solution for the HeMP single-level voltage
+setup problem.
+The rest of this paper is structured as follows. Section 2
+describes the system model and the local-optimal task parti-
+tion. Section 3 presents the greedy-based energy-reduction
+algorithm. The DP-based energy-reduction algorithm is de-
+scribed in Section 4. Section 5 presents our performance
+analysis. Finally, Section 6 concludes this paper and dis-
+cusses future work.
+1.1 Related Work
+A number of real-time scheduling algorithms have been
+proposed for a HoMP system [2, 1, 4]. The Proportionate-
+fair (Pfair) algorithm, proposed by Baruah et al. [2], pro-
+vides an optimal real-time schedule for periodic tasks. This
+algorithm, however, considers no energy consumption and
+cannot be used in a low-power system. Anderson et al. [1]
+proposed a method for finding the optimal number of pro-
+cessors on which a given set of periodic tasks incurs the
+minimum energy consumption. Chen et al. [4] optimally
+bounds the energy consumption for a set of frame-based
+tasks, each ofwhich has different power characteristics. All
+these algorithms focused their discussion on HoMP sys-
+tems. Without considering that a task may have different
+execution times on heterogeneous processors, these algo-
+rithms cannot be directly applied on HeMP systems.
+Yu et al. [16] proposed a low-power real-time algorithm
+to schedule a set of independent periodic tasks on HeMP
+systems in which each processor is capable ofdynamic volt-
+age scaling (DVS). In other words, tasks running on the
+same processor may be executed at different speeds. This
+problem is formulated as a linear GAP and a linear re-
+laxation heuristic solution is provided. Assuming that the
+available processor speeds are known as a priori, this al-
+gorithm provides a schedule that minimizes energy under
+this constraint. Hsu et al. [7] addressed this problem for a
+HeMP system in which each processor has a fixed speed.
+This problem is formulated as an integer linear program-
+ming problem and a polynomial-time approximation solu-
+tion is provided. Again, this algorithm assumes that each
+processor speed is given as a constraint. As a result, their
+real-time schedule may not be optimal in reducing energy
+without such a constraint.
+The voltage setup problem is first formulated in [8] to
+determine the number of levels and at which values should
+voltages be implemented to deliver the optimal energy-
+saving performance for a specific application. Aydin et
+al. [3] proved that the optimal voltage for a one-processor
+single-level problem is equal to its utilization when the
+maximum speed is normalized to one. Hua et al. [8] pro-
+posed an analytical solution for a one-processor two-level
+problem and Seo et al. [13] proposed an optimal solution
+for a one-processor multi-level problem. To the best of
+our knowledge, our work is the first one that addresses the
+multi-processor voltage setup problem. Because ofthe pop-
+ularity in HeMP embedded systems nowadays, our study
+started with the HeMP single-level problem.
+2 System Model
+Our work adopts a commonly-used multi-processor
+model consisting ofm processors sharing a common mem-
+11 | ~~ki k2 | k3 | D 0
+mW/Hz3J 1 x10-6 T 2x10-6 { 3x10-6 { 0.05(s)
+Xi,i Fi,lI i,2 Fi,2 Xi,3 Fi,3 min(Fi,j))
+Ti 1o I X7ITV 30 5.4 x 10-2 10 3 x 10-3 1 X 10-3
+T2 30 2.7 x 10-2 10 2 x 10-3 40 1.92 x 10-1 2 x 10-3
+T3 80 5.12 x 10-1 50 2.5 x101 10 3 x 10-3 3 x 10-3
+T4 80 5.12 x 10-1 20 1.6 x 10-2 20 2.4 x10-2 1.6 x 10-2
+T5 30 2.7 x 10-2 60 4.32 x 10-1 70 1.029 2.7 x 10-2
+total 40 6.4 x 10-2 30 5.4 x 10-2 10 3 x 10-3 48.4 (mJ)
+Table 1: A 5-task 3-processor example
+Algorithm 1
+1: Procedure kX3-Partition()
+2: initialize all data structures to 0;
+3: for all ri do
+4: construct ai;
+5: end for
+6: for i = I to n do
+7: j = car(aj1);
+8: addTnto lj;
+9: end for
+10: for i = I to m do
+11: calculate Xi and F1;
+12: a = InsertReverseSorted(y, i, F1);
+13: end for
+Fa > Fb
+Xa
+x
+aXiz
+_,
+Xi,b
+Xb
+ka kb
+Figure 1: The migration of Ti from Ca to Cb
+3.1 Migration Order
+counts of Ti on C1,C2, and C3 are 10, 30, and 10. Ac-
+cordingly, F1,1, F1,2, F1,3 are 1 x 10-3 , 5.4 x 10-2, and
+3 x 10-6. Thus, a, = (1, 3, 2). Similarly, a5 = (1, 2, 3).
+Algorithm 1 assigns Ti to C1 as it incurs the least F1,j.
+In addition, T2, T3, T4, T5 are assigned to C2, C3, C2, Cl,
+respectively. This partition results in a total energy con-
+sumption of 48.4 mJ when D = 0.05 (second). Finally,
+y = (1, 2, 3) as Fi = 6.4 x 10-2, F2 = 5.4 x 10-2, and
+F3= 3 x 10-3.
+3 A Greedy-Based Energy-Reduction Algo-
+rithm
+We present here a greedy-based method to select tasks
+for migration. In the following, we first describe an index
+to sort tasks in a processor by their potential contribution of
+reducing S when being migrated. We next present the core
+algorithm and its timing complexity.
+We migrate Ti from its currently-assigned processor to
+another processor, if such a migration results in a smaller S.
+Let Ca denote the processor Ti is currently assigned to. Let
+Cb denote the target processor. Without loss of generosity,
+we assume that Fa > Fb, as shown in Figure 1. We use
+Xi,a and Xi,b to denote the workload Ti incurs on both pro-
+cessors. By Eq. (3), a smaller E is achieved by migrating T
+from Ca to Cb if and only if
+k (Xa- Xi,a)3+kbX (Xb + Xi,b)3 < kaXa+kbX b
+This equation can be simply induced to
+ka (Xb + Xi,b)3 bX
+kb X3 - (Xa - Xi,a)3 (4)
+Let I77 denote the number oftasks in f7i. For each Ci, we
+define 3i (3i,1I /3i,2 i.... 13i, 1-QI) as a list of task numbers
+where each task TOi,j e 17i. Initially, because Ci is the most-
+favored processor for TL j, i = car(ca,v j) for any j. We sort
+by its impact on the total energy reduction when a task
+1 1 I 6T_ k2k3 D l 1
+mW/HzS3 1 xT 2x10-6x 3 x 10-6 0.05(s)t
+Xi, l Fi , I Xi ,2 Fi ,2 Xi,3 Fi,3 l[l
+Ti 10 2xt10-30 54x0 3 x 10- P3
+T2 30 2.7 x10-2 10 2 x 10-3 40 1.92 x 10-' 1 2
+T3 80 5.12 x 10-1 50 2.5 x 10-1 10 3 x 10-3 P3
+T4 80 5.12 x 10-1 20 1.6 x 10-2 20 2.4 x 10-2 p2
+T5 30 2.7 x10-2 60 4.32 x 10-1 70 1.029 P1
+total 30 2.7x 10-2 30 5.4 x 10-2 20 2.4 x 10-2
+600Hz 216mW 600Hz 432mW 400Hz 192mW 42 (mJ)
+Table 2: The greedy-based energy-reduction for the example shown in Table 1
+restriction here and select a group oftasks on the same pro-
+cessor for migration. We avoid redundant computations by
+a dynamic-programming method.
+4.1 The Recursive Formula
+Let Ca denote the most-loaded processor. Let Z = |%Ta
+denote the number oftasks initially assigned to Ca by kX3-
+Partition. Xa is used to denote the sum of cycle counts of
+all tasks in Ta. In addition, we construct /3a as described
+in Section 3.1 to sort tasks in Ta by their 6j's defined in
+Eq. (5). Let A denote the maximum amount of reduction in
+S by migrating a group oftasks out of Ca. To determine this
+group of tasks, we further define M[k, g] as the maximum
+amount of reduction by migrating a group of tasks, each
+of which is one of the first k tasks in /3a and the sum of
+cycle counts of all migrated tasks is less than or equal to g.
+Obviously, we have
+A= max {M[Z,g]}.
+O<g<Xa (7)
+In addition, we have an initial setting of M[0, g] = 0 for
+g = OtoXa.
+Because each migration changes the workload of both
+the source and the target processors, we define H[k, g]
+to record the workload of each processor after the group
+of tasks selected in M[k, g] are migrated. We represent
+H[k, g] as a list ofm entries and H[k, g] [i] denotes its i-th
+entry, the workload of Ci. Let Xi denote the initial work-
+load of Ci after kX3-Partition. We have,
+H[O,g] = {XiX2, .. I X,m}, forg = 0 to Xa.
+The k-th task in 13a may or may not be selected to be
+migrated in M[k, g]. For simplicity, we use r1 to denote
+13a,k. When T11 is not selected, we have M[k, g] = M[k-
+1, g]. Otherwise, when T,1 is migrated, we have
+Algorithm 3
+1: Procedure MigrateTask(Ci, rj, Ck)
+2: cj= cdr(oj); i3= cdr(/31);
+3: 6j CalculateDelta(car(aj), cadr(aj));
+4: !3k lnsertSorted(/3k, 6j);
+5: Xi Xi- j,j; update Fi;
+6: Xk Xk + Xj,k; update Fk;
+7: -y ReverseSorted(Qy);
+where EnergyDelta(H[k, g], r1) denotes the amount of re-
+duction in S by migrating Tr1 out of Ca at the workload of
+H[k, g]. In summary, we define M[k, g] by
+f M[k-1,g],
+M[k,g] max M[k-1,g-xa1,a+ ,j,
+1 EnergyDelta(H[k -1,g -x,a),Ty)
+(8)
+The EnergyDelta algorithm is shown in Algorithm 4.
+We first determine the energy reduction by migrating Tr1 out
+of Ca (line 3). We next calculate the increase of energy in
+its target processor (line 10), obtained by the next element
+in c°r . If we do not have any reduction in S (line 11), we
+continue to the next processor in cv,, (line 6). This algorithm
+stops either when we locate a target processor that results in
+a positive reduction in S or when we reach the end of c°r .
+Finally, we need to document the change of processor
+workloads in H[k, g]. If T77 is not selected to be migrated
+in M[k, g], we have H[k, g] = H[k -1, g]. Otherwise, we
+first make a copy of H[k -1, g
+-X,a] to H[k, g]. We next
+change two entries in H[k, g] by
+(9)
+M[k, g] = M[k-1, g- x1,a]+EnergyDelta(H[k-1, g- x,,a, T),w
+H[k, g] [a] = H[k, g] [a] xq,a;
+H [k, g] [b] = H [k, g] [b] + Xq, b;
+here b is the target processor determined in EnergyDelta.
+Processor Min k(mW/Hz3) Max k(mW/Hz3)
+ARM92x
+ARMIOx
+ARMI Ix
+TMS32OCx
+TMS32ODx
+1.5026 x 10-
+3.0469 x 10-
+4.0718 x 10-
+3.2277 x 10-
+1.1250 x 10-
+-5
+-6
+-7
+_9
+-8
+3.1855 x 10-5
+3.4466 x 10-6
+1.1478 x 10-6
+5.2083 x 10-7
+3.5095 x 10-8
+Table 4: The k range in each processor model
+task number 6 8 10 12 14 16
+2 processors 3 3 3 3 3 3
+4processors 5 5 5 6 6 5
+6 processors 7 8 9 8 9 11
+8 processors 10 11 12 14 13 12
+Table 5: MaxReduction calls by FB
+\k
+g\
+0
+1
+2
+3
+0
+XI=5
+X2=0
+XI=5
+X2=O
+XI=5
+X2=0
+XI=5
+X0
+1 2 3
+Xl=5 X1-5 X =5
+x 0 X2=O X2=0
+X =5 X1-5 X =2
+X2=0 Xa-0 X2=5
+Xl=4 Xl=4 X,4
+X2=2 X2=2 X=2
+XI=4 XI=3 XI=3
+X2=2 X2=4 X2=4
+4
+X5
+X2=0
+XI=2
+X2=5
+X5=2
+X2=5
+5
+xI=5
+X2=0
+XI=2
+X2=5
+XI =2
+X2=5
+XI=2
+X5
+Figure 3: The H matrix of C1
+5 Experimental Results
+We conducted a series of simulations to demonstrate
+the effectiveness of our algorithms in delivering the op-
+timal energy-saving performance. There are nearly 30
+processors modeled in our simulations. These proces-
+sors include general-purpose embedded processors, such as
+ARM9, ARMI10, and ARMI1 1, and DSP processors, such
+as TMS320C and TMS320D. The adjusted switched capac-
+itance of each processor is obtained from the official web
+site ofARM and TI and is summarized in Table 4. We con-
+ducted our simulations on an Intel Xeon server with 1GB
+memory. We evaluate our algorithms on a simulated HeMP
+system consisting of 2, 4, 6, and 8 processors, each ofwhich
+is randomly selected from the list of modeled processors.
+We vary the workload by changing the number of tasks and
+each task has an execution cycle count between 1,000 and
+3,000. For each configuration, we ran simulations for 30
+times and took the average value for comparison.
+We use kX3 to denote the kX3-Partition algorithm. We
+use List to denote a commonly-used HoMP low-power
+scheduling algorithm that dispatches a task to an least-
+loaded processor [1 1, 5]. There are 3 energy-reduction algo-
+rithms: Greedy denotes the Greedy-Based algorithm, DP
+denotes the DP-Based algorithm, and FB denotes the Fully-
+Balanced algorithm. All results are compared to the opti-
+mal value that is obtained by exhaustively iterating through
+all possible task-to-processor assignments and finding the
+minimum energy consumption. Because the number of it-
+erations grows exponentially with the number of tasks and
+processors, we cannot obtain the optimal value at the con-
+figurations of 16 tasks on 6 processors and 12 or more tasks
+on 8 processors. For example, the configuration of 16 tasks
+and 8 processors will take approximately 10 years to finish
+all iterations. Instead, we use a method of linear regression
+to obtain these impossible values.
+Figure 4 shows the experimental results. Because het-
+erogeneous performance among different processors is not
+considered, Li s t delivers the worst performance in all con-
+figurations. At the configuration of 6 tasks on 8 processors,
+its energy consumption is 30 times ofthe optimal value. The
+combination of (List + DP) significantly reduces its en-
+ergy consumption. In comparison, the combination of (kx3
++ DP) requires considerably less energy than the previous
+combination. This result well demonstrates the importance
+of initial task assignments and the effectiveness of our local-
+optimal partition.
+(kx3 + DP) delivers better performance than (kX3 +
+Greedy) because DP consider all tasks while Greedy
+considers only one task for each migration. The difference
+between (kX3 + DP) and (kX3 + FB) is at their number
+of MaxReduction calls. DP calls MaxReduction on each
+processor once while FB iteratively calls MaxReduction
+on any most-loaded processor until no reduction is made.
+Table 5 shows the number of calls by (kX3 + FB). Both
+combinations deliver almost identical performance at all
+configurations even though (kx3 + DP) requires less calls
+on MaxReduction. Finally, both combinations deliver the
+near-optimal energy-saving performance at most configura-
+tions. The only exceptions are at the configurations where
+we can only obtain approximate optimal values through lin-
+ear regressions. These experimental results show that, at
+its polynomial-time complexity, (kx3 + DP) still yields the
+near-optimal result for the HeMP single-level voltage setup
+problem.
+6 Conclusions and Future Work
+Heterogeneous multi-processor (HeMP) systems are
+adopted by low-power embedded systems to host differ-
+ent categories of applications. A real-time scheduling algo-
+rithm is required to minimize the total energy consumption
+and complete all tasks before their deadline. In this paper,

@@ -1,0 +1,256 @@
+ 2
+3. System Design Goals 
+ 
+In order to meet the future trend of sensor net-
+work development, we think that a well designed 
+sensor network operating systems should have sev-
+eral key functionality as described below. 
+First, the system must support compact dy-
+namic module for the effective wireless transmis-
+sion when the system need a newer or correct soft-
+ware component for fault recovery or normal soft-
+ware upgrade. 
+Second, the system must have the ability to de-
+tect at least some system fault and to trigger appro-
+priate recovery procedure. For example, if it is a 
+kind of transient failure, we only need to 
+re-initialize the failed software component 
+(self-recovery). If it is a real bug, system upgrade is 
+necessary (software update). 
+Third, we also need a well design module 
+management system. Once the system fault is de-
+tected, the self-recovery or self-update procedure is 
+started. To keep continuing running we should not 
+stop the running system as best as we can, that 
+means update have to be done while running.  
+We summary the design goals of our system 
+briefly as following: 
+z Light-weight dynamic module mechanism  
+z Fault detection ability 
+z Self-recovery and self-update ability. 
+z Acceptable system performance 
+Fault detection ability can prevent our system 
+from invalid access or external faulty module de-
+struction. In fault detection, we seclude each module 
+into a separate memory region. Each module can ac-
+cess its own memory region only, so called domain. 
+By means of ARM 7 MMU hardware support, the 
+domain solution is feasible. Only the module that 
+owns this domain could write/read the corresponding 
+memory region. Operating system kernel is the 
+unique module that can read/write all domains’ 
+memory region. 
+ 
+4. Dynamic Module Mechanism  
+ 
+Linux is a good operating system, but it is huge 
+for most popular sensor node architecture.  
+eCos(embedded Configurable operating sys-
+tem)[10] is an open source, full function embedded 
+operating system which support many different 
+hardware platform. Due to its clear structure and ele-
+gant design, more and more researchers engage into 
+its development. 
+ In original eCos, only source-level component 
+is supported. At run time, the entire system is com-
+piled and linked as static image that can be 
+downloaded into embedded platform. That is no way 
+to dynamically change any module or device driver.  
+Due to the elegant and compact design of eCos, 
+we want to use it as the starting point of our sensor 
+network operating system design. 
+So we must develop a dynamic module format 
+and mechanism on eCos.   
+ 
+4.1. The Format of Module Execution File 
+(LW-ELF) 
+ 
+ELF is the most popular object file format in 
+UNIX world. In order to replace module in sensor 
+node by dynamic loading/unloading, the object file 
+must use the wireless device to transfer. The size of 
+module is closely proportioned to the transmission 
+time and power consumption. In order to down-sizing 
+the ELF object file format, we develop an ELF-like 
+object file format named LW-ELF. 
+We concentrate on reduction about section, re-
+location and symbol data to generate LW-ELF.  
+ 
+4.1.1. Reduce Section Data  
+Section data includes section header table and 
+section string table. Section header table could find 
+section string table, symbol table, symbol string table 
+and relocation table in object code.  
+To trim section data, we regard sections in ob-
+ject code as the same block to reduce the use of sec-
+tion header entry and section string table. As Figure 1 
+shows, we put text section、BSS section and section 
+that will be used into the Object Code block of 
+LW-ELF.  
+ELF Header
+BSS section
+Text Section
+Other section
+Section Header
+Table
+Section String
+Table
+Symbol Table
+Symbol String
+Table
+Relocation Table
+Object Code
+BSS Offset BSS Size
+ELF LW-ELF
+ 
+Figure 1. The method to trim section data. 
+ 
+4.1.2. Reduce Relocation Data  
+This kind of data can divide into four kinds of 
+type. They are defined PC, ABS and undefined PC, 
+ABS. Defined PC and ABS indicate that these ma-
+chine code use the data in object code are able to find 
+target address. However, undefined PC and ABS in-
+dicate that these machine code use the data unable to 
+find in object code, must obtain target address 
+through linker of OS.  
+The trimming methods used by LW_ELF are as 
+follow.  
+z Defined PC 
+Operand of general branch machine code is the 
+offset of target section. These sections based offset 
+need relocation entry and symbol entry to obtain ob-
+ject code based offset.  
+To this kind of data, we calculate object code 
+based offset and update branch machine code to re-
+duce the time to relocate and the number of reloca-
+ 4
+Module ID
+Fun list Fun structure
+Address structure
+Version
+Base addr
+Data
+Container
+Update
+Lock
+Data Container
+GV list GV structure
+Fun Use list
+Address structureGV Use list
+ 
+Figure 5. Module structure  
+The attribute of Data_container structure is a 
+important area to store the configuration data , which 
+is critical to this module. While self-maintenance or 
+self-recovery mechanism occurs, this data structure 
+will be used to find the saved data kept before. Data 
+Container is the pointer to point Data_container 
+structure. 
+There is an additional Lock attribute as a syn-
+chronous mechanism flag that will be used while 
+self-maintenance or self-recovery mechanism occurs. 
+Update tells kernel that module have updated or re-
+covered. The update mechanism will be explained in 
+section 3.4. 
+ 
+5. Self-maintaining Mechanism 
+ 
+The self-maintenance mechanism in our design 
+is divided into two parts: self-recover and self-update. 
+The time to trigger module self-recover is when 
+the system find out some failures. The main method 
+is to re-initialize this fault module to get back to the 
+normal working state fast. Some study have showed 
+that this method can usually solve transient failures 
+[12] fast.  
+The time to trigger self-update mechanism is 
+self-recover mechanism can not resolve failure or 
+module manager thread receive the new version 
+module. Figure 6 is the self-update flow. Module 
+manager thread will inspect whether the system re-
+ceive new version module or not every ten minutes. 
+When receiving new version module, the module 
+manager thread will decide whether it can update or 
+not. If the version of received module is newer than 
+that of system, it will enter update step.  
+ 
+S
+E
+Resolve LW-ELF Header Allocate object code memory
+Copy object to its memory
+Create A module
+Relocate ABS Defined
+Object Code
+Update GV Undefined
+Object Code
+Update Fun Undefined
+Object Code
+Update Fun Register
+Data
+Hot swap
+Update GV Register
+Data
+Construct module
+Free Original module  
+Figure 6. The self-update flow 
+The key question of this part is how to get back 
+to the original execution environment after module 
+update or recover. Object code of module is possible 
+updated or recover at any time. So, the data the mod-
+ule use can not put into object code. It must store in 
+Data_Container we design and implement.  
+The most important part of self-update and 
+self-recover mechanism is hot swap. The environ-
+ment of old module is transplanted into new module 
+in the operation of the system, and replaced old mod-
+ule with new module. This step must deal with syn-
+chronization, will use lock in module structure to 
+control only one can use this module. 
+When module thread should change old, how-
+ever, old Module has already been used by kernel or 
+other module, it will not be updated unless kernel or 
+other module release lock of this module; when mod-
+ule is update, kernel or other module must wait mod-
+ule thread to release the lock of this module. 
+After finishing hot swap, module thread will sets up-
+date field in module structure as 1 to tell kernel while 
+use this module, it must execute the reload function 
+to read the data in Data_container and complete 
+whole flow of update. Finally, module thread will 
+free the memory space used by old module structure. 
+ 
+6. System Evaluation  
+ 
+First, we will explain how we experiment on 
+SCAN II. After this, we will describe our experi-
+ment and the result. 
+ 
+6.1. Experiment Method 
+ 
+The implementation of Zigbee/802.15.4 proto-
+col stack on SCAN II is a project of our laboratory. 
+Due to the delay of protocol stack implementation,  
+we can not use wireless device to test module trans-
+mission. We suppose that one original and one newer 
+LW-ELF files have already existed in the memory of 
+SCAN II, and module manager know the memory 
+address of them.  
+We connect Multi-ICE to SCAN II, use ADS to 
+download our OS image and serial port driver mod-
+ule. Then the OS image is executed.  
+When system initialize, module manager will 
+read serial port driver module, the format of that is 
+LW-ELF, add this module into system, and create 
+module thread responsible for module update. Finally, 
+it will create the thread of simple shell to communi-
+cate with user.  
+ 
+6.2. The Design and Result of Experiment  
+ 
+To verify that our method can reduce the size of 
+ELF, we compare the size of LW-ELF and ELF first. 
+After this, we will describe the experiment of 
+self-recovery and self-update mechanism. Finally, we 
+will compare our system with other sensor network 
+OS. 

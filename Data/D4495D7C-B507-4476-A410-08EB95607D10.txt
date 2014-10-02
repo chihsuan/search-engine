@@ -1,0 +1,527 @@
+2計畫中文摘要：
+關鍵詞：標籤圖形、同構測試、圖形演算法、特徵字串
+本計畫發展出一個新的標籤圖形的同構測試演算法，使其能減低在進行標籤圖形同構
+測試時的瓶頸，以提升同構測試的效率。
+在此計畫中，我們首先將開發標籤圖形的特性，然後利用這些特性發展切割標籤圖形
+頂點的方法，主要是利用頂點的特徵字串將同一圖形中的頂點分成若干群組，再以群組對
+群組的方式進行兩個圖形的同構測試。如此可以將比對的過程限制在兩個圖形的相對群組
+之間，使得相對群組的比對過程自行形成一個較小的搜尋空間，這種比對方式將可以提升
+同構測試的效率。我們的同構測試演算法不只使用圖形的拓樸性質(如頂點相鄰性)與語意
+性質(如頂點與邊的標籤)，更將使用動態規劃的技術來發展可行性測試演算法。同時我們
+也必須考慮已經進行頂點配對的群組，將成為後面群組進行配對時的限制條件。因此我們
+將研究適當的資料結構來儲存比對進行間每個群組的結果(包含頂點配對與鄰接邊的相鄰
+性與標籤限制)，以便在進行比對時能有效率的參考。
+最後，我們預計要實作所提出的同構測試演算法，以及幾個具有代表性的方法，以測
+試我們的方法與其他方法之間的優劣。
+4(一) 研究目的與文獻探討
+Graphs are suitable for modeling a variety of real-world complex structures with the benefits of being
+capable of characterizing the spatial, topological, geometric, or abstract properties among the objects in the
+modeled data sets [1]. In many application areas, objects are symbolized as vertices in a graph and the
+relationships between object pairs are represented as edges joining the vertex pairs. In such graphs, each vertex
+and edge is assigned a label to denote the object class and to convey the relation held between a pair of objects,
+respectively. For examples, in a molecular structure an atom corresponds to a vertex and a bond between two
+atoms is represented as an edge between two vertices. The vertices are assigned labels that stand for the atom
+types (e.g. C, H) and the labels of edges are the bond types or the relative 3D orientations between a pair of
+atoms in such structures [2, 3]. In geographical information systems, objects or spatial elements are vertices
+and the relationships between object pairs are edges that hold the information of adjacency, connectivity, and
+containment [4]. Another application is image retrieval, in which vertices denote the recognized objects in an
+image and edges are the spatial or topological relationships between pairs of objects [5-7].
+For the fields appropriately modeled by graphs, one of the emerging topics is to discover the recurring
+substructures or patterns in the graph database, which is the collection of all the modeled instances. Taking the
+molecular biology as an example, mining the frequent topological structures in order to identify novel RNAs or
+protein structures is vital for researchers in this field [2, 3]. Finding the frequent common chemical
+substructures is also helpful for toxicologists to classify new toxic substances [8]. There are still more
+applications such as computer networks, pattern recognition, social network analysis, and Web mining require
+to finding frequently occurred patterns.
+The approaches to graph-based data mining are categorized by Washio and Motoda (2003) into five groups,
+among which the mathematical graph theory based approach closely related to the substance of graph based
+modeling. The recent work of graph theory based methods include AGM (Apriori-based Graph Mining) [9],
+FSG (Frequent SubGraph discovery) [1], gSpan (graph-based Substructure pattern mining) [10], and FFSM
+(Fast Frequent Subgraph Mining) [8], etc. During the whole process of frequent subgraph mining including
+candidate generation and frequency counting, the graph and subgraph isomorphism testing still plays the key
+role [1, 10]. The subgraph isomorphism testing problem is NP-complete whereas there is no known
+polynomial-time algorithm for the isomorphism testing of general graphs [11-14]. However, for some specific
+kinds of graphs, polynomial-time testing algorithms had been proposed. For example, trees can be tested in
+linear time [15], and so are planar graphs [16]. In addition, an O(n3log n) algorithm was proposed for graphs
+with at most three edges incident on every vertex [17].
+For the methods handling general kinds of graphs, most of the previous works are dedicated to unlabeled
+graphs [18-20], which are graphs only convey structural (adjacent or not) information. Among these efforts, the
+NAUTY algorithm [21, 22] is known to be one of the fastest algorithms for unlabeled graph isomorphism
+6(二) 研究方法
+A labeled graph is a graph that each of its vertex and edge is assigned a label as the property of the vertex
+or edge. Unlike vertex labels, the vertex ids are usually given without further meaning. The labeled graph G in
+Fig. 1(a) gives examples such as l(v2) =‘B’and l(v2,v3) =‘x’. Two labeled graphs are isomorphic if we can find
+a one-to-one and onto function between the vertices of these two graphs where the vertex labels, edge labels,
+and adjacency relations are preserved through the mapping. For example, we can find a bijection f such that f(v1)
+= w3, f(v2) = w1, f(v3) = w2 between graphs G and G’ in Figs. 1(a) and 1(b). 
+As stated earlier, some approaches employ the canonical codes as isomorphism certificates to determine the
+isomorphism of two labeled graphs [1, 8, 9]. The canonical code is a graph identifier that two graphs are
+isomorphic if and only if they have the same canonical codes. Canonical codes can be defined by any feasible
+representation. For example, a canonical code can be the smallest string obtained by concatenating all the
+vertex labels followed by the columns of the upper triangular entries of the adjacency matrices over all possible
+permutations of vertices [1]. The amount of all vertex permutations of a graph with n vertices is O(n!). For
+example, there are 3! possible permutations for the three vertices in graph H of Fig. 1(c). The canonical code is
+AAAxyz obtained by the order v2, v3, v1 from the matrix in Fig. 1(d). In order to reduce the number of possible
+permutations, the vertex invariants are employed by recent work such as Kuramochi et al. (2004). Vertex
+invariants are some inherent properties of the vertices that are preserved across isomorphism mappings such as
+vertex labels and degrees. Vertices with the same values of the vertex invariants are partitioned into the same
+equivalence class. If the vertices of a graph are partitioned into c classes1,2,…, c, the amount of all possible
+codes need to be generated in order to obtain the canonical one is O(i=1~c(|i|!)) in Kuramochi et al. (2004) .
+Before introducing the proposed algorithm CISC, we need to present some definitions and lemmas that
+serve as the building blocks. The label and the degree of a vertex v are denoted as l(v) and deg(v), respectively,
+and the label of edge (w,v) is l(w,v).
+Definition 1. (Vertex Signature) For a vertex v with m neighbors v1, v2,…, vm, the signature of vertex v is a
+string defined as: sig(v) = l(v)deg(v) + l(v,vp(1))l(vp(1))deg(vp(1)) + l(v,vp(2))l(vp(2))deg(vp(2)) +…+ l(v,vp(m))
+l(vp(m))deg(vp(m)), where “+”is string concatenation, and p(1), p(2),…, p(m) is a permutation of 1, 2,…, m, 
+which satisfies the following criteria:
+(1) l(v,vp(k))l(v,vp(k+1)), for all k, 1km–1
+(2) l(vp(k))l(vp(k+1)), if l(v,vp(k)) = l(v, vp(k+1))
+(3) deg(vp(k))deg(vp(k+1)), if l(vp(k)) = l(vp(k+1))
+Therefore, the signature of vertex v with m neighbors is composed of the label and the degree of v followed
+by m triples in the form (edge label, vertex label, vertex degree). These triples are ordered first by edge labels,
+then by vertex labels, and then by vertex degrees. Notice that the permutation of the neighbors in the vertex
+signature is not obtained by calculating all possible permutations; it is attained by sorting the triples under the
+81. The Proposed Method
+3.1. Descriptions of CISC
+CISC employs the graph signatures of the two labeled graphs as the first-step filter. The testing process can
+be immediately terminated and returns a false signal when a pair of unequal graph signatures is encountered.
+Otherwise two ordered partitions with respect to these graph signatures will be made. CISC then tries to find
+local bijections between each pair of corresponding classes (k(G1) andk(G2)), from the smallest classes (k = 1)
+to the largest ones (k = c), with the constraints of the patterns made in the previous loops. The testing procedure
+stops if there is any pair of corresponding classes between which no bijection can be found. The procedure for
+finding the local bijection follows the principle of backtracking [26] which is limited within the boundary of
+each class pair. During the matching process, some nodes in the state space tree are pruned due to the proposed
+mechanism of feasibility testing, which references the local bijections of previous classes already been
+computed. The main program of algorithm CISC is as follows.
+Algorithm 1: CISC
+Input: two labeled graphs G1 and G2
+Output: If G1G2 then return True, otherwise return False
+Begin
+1. Produce the graph signatures Sig(G1) of G1 and Sig(G2) of G2
+2. If Sig(G1)Sig(G2) Then
+return False
+3. Make ordered partitions(G1) from Sig(G1) and(G2) from Sig(G2)
+4. For class_no From 1 To the number of classes of(G1) Do
+5. If Class_Test(class_no) Is False Then
+return False
+6. return True
+End
+In Step 1, the graph signatures of G1 and G2 are produced. Firstly, each vertex signature is produced by
+sorting the neighbor triples as stated in Definition 1. Secondly, the vertex signatures are sorted and
+concatenated to make the final graph signature as in Definition 2. Step 2 is the quick filter that gives a negative
+answer as soon as two different graph signatures are detected. This filter saves much process time in practice
+because it avoids further unnecessary computations. Step 3 partitions the vertices in G1 and G2 by the vertex
+signatures as stated in Definition 3. In step 5, each corresponding class pair of G1 and G2 is tested to find the
+local bijections, under the results of previous loops. Notice that the whole procedure stops as soon as one class
+pair fails to pass the test. If all the class pairs pass the test, the final answer is positive.
+A data structure CMP[] (Class Matching Pattern) is designed to record the local matching patterns of each
+class pair. For class i with m vertices (|i(G1)| = m), each pattern contains m entries, and the j-th entry stores the
+10
+Algorithm 5: Peer_Test(v, w, k, class_no)
+Input: the same input as procedure Feasibility_Test
+Output: return True if (v, w) pass the peer test
+Begin
+1. For pos 1 To k–1 Do
+2. viclass_no, pos(G1) //the pos-th vertex inclass_no(G1)
+3. wj TMP[vi] //the temporary matching pattern in this DFS path, wj is mapped with vi
+4. If l(v,vi)l(w,wj) Then //the adjacency relations or edge labels are not identical
+return False
+5. return True
+End
+Algorithm 5 Peer_Test verifies the preservations of adjacency and edge labels for the matched peer
+vertices of v, which are the vertices in the same partition as v and have already been mapped earlier in the same
+DFS traverse path. As depicted in step 4 of algorithm 3 DFS_Traverse, if vertex v is the k-th vertex in
+class_no(G1), then each vertex vi (1 i k-1) has temporarily been mapped to a vertex wj in class_no(G2). The
+edge label between v and each vi must be identical to the edge label between w and each wj, i.e., l(v, vi) = l(w,
+wj). Recall that if v is not adjacent to vi, w must also not be adjacent to wj.
+In algorithm 6 Smaller_Neighbor_Test, array Ances_SNP[] (Ancestors’Smaller-Neighbor Patterns) is
+designed as another book-keeping data structure during the DFS search process. Recall that in step 4 of
+algorithm 3 (DFS_Traverse) we choose a candidate w under the constraint that w is not in TMP[1] ~ TMP[k-1].
+Now Ances_SNP[] will assist TMP[] by keeping all the used CMP[] patterns in the earlier levels by the
+ancestors of the current DFS path. The promising CMP[] patterns used by level k must not violate the
+Ances_SNP[] patterns recorded from level 1 till level k-1. The usage of Ances_SNP[] will be illustrated by
+Example 3 in next subsection.
+Algorithm 6: Smaller_Neighbor_Test(v, w, k)
+Input: a vertex v of G1, a vertex w of G2, the current DFS level k
+Output: return True if (v, w) pass the smaller neighbor test
+Begin
+1. Let S1 be the set of the smaller neighbors of v
+//viS1, vi is adjacent to v and class_no(vi) < class_no(v)
+2. Divide the vertices in S1 by class number into S1,1, S1,2,…, S1,m
+3. Let S2 be the set of the smaller neighbors of w
+//wjS2, wj is adjacent to w and class_no(wj) < class_no(w)
+4. Divide the vertices in S2 by class number into S2,1, S2,2,…, S2,m
+5. For each class S1,i in S1 Do
+12
+w1 to be feasible is l(v1,v2) = l(w1,w2), which also contradicts the assumption.
+(c) class_no(v1) < class_no(v2): analogous to case (b), which is also impossible.
+3. The preservation of adjacency relations is assured. The proof is similar to that of edge label preservation.
+Suppose v1,v2V(G1), w1,w2V(G2), where f(v1) = w1, f(v2) = w2. Also suppose l(v1) = l(w1), l(v2) = l(w2),
+(v1,v2)E(G1) but (w1,w2)E(G2) (the case that (w1,w2)E(G2) but (v1,v2)E(G1) is analogous). Only 3
+cases about the class numbers of vertices v1 and v2 may exist:
+(a) class_no(v1) = class_no(v2): this case is impossible since algorithm 5 Peer_Test excludes this
+possibility in step 4. Thus f(v1) = w1 and f(v2) = w2 cannot exist in the same local bijection, which
+contradicts the assumption.
+(b) class_no(v1) > class_no(v2): by step 3 of algorithm 6 Smaller_Neighbor_Test(v1,w1), w2 is not in set
+S2 because w2 is not adjacent to w1, thus v2 is impossible being mapped to w2 when v1 has been
+mapped to w1, i.e., f(v2)w2 if f(v1) = w1, which contradicts the assumption.
+(c) class_no(v1) < class_no(v2): analogous to case (b), which is also impossible. 
+2. Experimental Results
+The efficiency of CISC was compared with those of three well-known methods suitable for general labeled
+graphs, which are FSG [1], VF2 [19], and Ullmann [24]. We implemented CISC in C++ language, and the parts
+of generating canonical code (without the mining process) of FSG in the same language. We also used the C++
+source programs of VF2 and Ullmann provided in the web site http://amalfi.dis.unina.it/graph/, of which the
+two methods consider both syntactic (structural) and semantic (label) constraints. These five methods were run
+on a mobile Pentium4 (1.8 GHz) notebook with 376 MB RAM running Windows XP.
+Description of the Dataset
+The dataset is composed of 15600 couples of isomorphic graphs, and they are divided into five kinds of
+graphs: 3600 couples of randomly connected graphs (denoted as RC), 1200 couples of regular 2D meshes
+(denoted as R2DM), 3600 couples of irregular 2D meshes (denoted as IR2DM), 3600 couples of bounded
+valence graphs (denoted as BVG), and 3600 couples of irregular bounded valence graphs (denoted as IBVG).
+Each category contains graphs with ten different sizes, which are 20, 40, 60, 80, 100, 200, 400, 600, 800, and
+1000. In addition, the number of vertex/edge labels is designed to be one label, five labels, and ten labels.
+Graphs with one label are actually unlabeled, and graphs with five or ten labels means that the label of each
+vertex or edge is chosen randomly only from the five or ten predefined labels. For example, the number of atom
+types (labels) in a protein structure is between five and ten. Forty different couples of graphs are generated as a
+group for each combination of size, number of label, kind of graph, and graph parameter value (as described
+later). The brief description of the five graph categories is as follows, which is similar to those in Cordella et al.
+(2004) and De Santo et al. (2003).
+14
+(三) 結論
+The focus of the proposed algorithm CISC is on providing efficient isomorphism testing method for labeled
+graphs in practical applications. CISC takes advantages of the features of labeled graphs to compactly encode
+the vertex invariants into vertex and graph signatures, and partitions the vertices in a graph by the equivalence
+relation of vertex signatures. The entire mapping process is divided into several local mapping between each
+corresponding class pair of two graphs. The latter classes perform the mapping based on the local patterns and
+constraints made by the previous classes; hence CISC limits the backtrackings to occurring only within the
+same partition classes.
+We have conducted a series of experiments to compare CISC with three well-known methods. The test
+dataset consists of five kinds of graphs with total amount 31200 graphs. The experimental results show that
+CISC outperforms other compared methods for graphs with multiple labels, which fulfills the designing
+intention of CISC. For graphs with one label, CISC is still better for little-regularity graphs such as randomly
+connected graphs (RC) and irregular bounded valence graphs (IBVG). For non-isomorphic comparisons, CISC
+is also the best for all kinds of graphs except unlabeled regular 2D meshes (R2DM with one label), which
+confirms that CISC really avoids unnecessary process with its first-step filter. CISC is applicable to the fields
+that need to perform isomorphism testing of labeled graphs in large databases such as bioinformatics, computer
+vision, and pattern recognition, etc. The bottleneck part, which is the isomorphism testing phase, can be
+improved by the efficiency of the proposed method. Our future work is to expand CISC algorithm to handle
+subgraph isomorphism testing.
+16
+Fig. 1. Three labeled graphs and the canonical matrix of graph H in (c).
+Fig. 2. Labeled graphs (b) and (c) have identical graph signatures but are not isomorphic.
+v1
+D
+v3
+C
+v2
+B
+v4 A
+v6
+v8
+B
+v5
+x
+z
+x
+x
+y
+v7
+E
+C
+A
+z
+xx
+(a)G1
+v1
+A
+v5
+A
+v3
+A
+v4
+A
+v2
+v6
+A
+(b)G2
+w1
+A
+w5
+A
+w3
+A
+w4
+A
+w6
+A
+(c)G3
+A Ax
+x x
+x x
+x
+xxx x
+x x
+x
+x
+w2
+v3 v1
+B
+x
+y
+y
+(a) G
+A B
+w2
+w3
+A
+y
+x
+y
+(b)G’
+B
+B v3
+v1
+A
+z
+x
+y
+(c) H
+A
+Aw1 v2 v2 v3 v1v2
+v3
+v1
+A
+A
+A
+x y
+z
+(d) the canonical
+matrix of graph H
+v2
+18
+(a) Regular 2D Meshes - 1 Label
+1.E-02
+1.E-01
+1.E+00
+1.E+01
+1.E+02
+1.E+03
+0 100 200 300 400 500 600 700 800 900 1000
+Nodes
+T
+im
+e(
+se
+c)
+CISC
+VF2
+Ullmann
+FSG
+(b) R2DM (Not Isomorphic) - 1 Label
+1.E-02
+1.E-01
+1.E+00
+1.E+01
+1.E+02
+1.E+03
+0 100 200 300 400 500 600 700 800 900 1000
+Nodes
+Ti
+m
+e(
+se
+c)
+CISC
+VF2
+Ullmann
+FSG
+(c) Regular 2D Meshes - 5 Labels
+1.E-03
+1.E-02
+1.E-01
+1.E+00
+1.E+01
+1.E+02
+1.E+03
+0 100 200 300 400 500 600 700 800 900 1000
+Nodes
+T
+im
+e(
+se
+c)
+CISC
+VF2
+Ullmann
+FSG
+(d) R2DM (Not Isomorphic) - 5 Labels
+1.E-03
+1.E-02
+1.E-01
+1.E+00
+1.E+01
+1.E+02
+1.E+03
+0 100 200 300 400 500 600 700 800 900 1000
+Nodes
+T
+im
+e(
+se
+c)
+CISC
+VF2
+Ullmann
+FSG
+(e ) Regular 2D Meshes - 10 Labels
+1.E-03
+1.E-02
+1.E-01
+1.E+00
+1.E+01
+1.E+02
+1.E+03
+0 100 200 300 400 500 600 700 800 900 1000
+Nodes
+T
+im
+e(
+se
+c)
+CISC
+VF2
+Ullmann
+FSG
+(f) R2DM (Not Isomorphic) - 10 Labels
+1.E-03
+1.E-02
+1.E-01
+1.E+00
+1.E+01
+1.E+02
+1.E+03
+0 100 200 300 400 500 600 700 800 900 1000
+Nodes
+T
+im
+e(
+se
+c)
+CISC
+VF2
+Ullmann
+FSG
+Fig.4. The average matching times of the four methods on regular 2D meshes with (a)(b) one label, (c)(d) five labels,
+and (e)(f) ten labels. (a)(c)(e) are isomorphic comparisons, (b)(d)(f) are non-isomorphic.
+20
+國科會補助專題研究計畫成果報告自評表
+請就研究內容與原計畫相符程度、達成預期目標情況、研究成果之學術或應用
+價值（簡要敘述成果所代表之意義、價值、影響或進一步發展之可能性）、是否
+適合在學術期刊發表或申請專利、主要發現或其他有關價值等，作一綜合評估。
+1. 請就研究內容與原計畫相符程度、達成預期目標情況作一綜合評估
+■達成目標
+□未達成目標（請說明，以 100 字為限）
+□ 實驗失敗
+□ 因故實驗中斷
+□ 其他原因
+說明：
+2. 研究成果在學術期刊發表或申請專利等情形：
+論文：□已發表 □未發表之文稿 ■撰寫中 □無
+專利：□已獲得 □申請中 □無
+技轉：□已技轉 □洽談中 □無
+其他：（以 100 字為限）
+附件二
+22
+國科會補助專題研究計畫項下出席國際學術會議心得報告
+日期： 100 年 7 月 31 日
+參加會議經過與心得
+International Supercomputing Conference 為全球知名的高效能計算(HPC)方面的國
+際會議，此次會議於 2011 年 6 月 19 日至 23 日於德國漢堡舉行，包含 Heterogeneous Systems，
+Storage & Memory Access for Future HPC Systems，Sustained Performance on Petascale Systems，
+Cloud Computing & HPC，Parallelization of Software Packages，Architecture & Networking for HPC
+Systems，Parallel File Systems，Computational Biology & HPC…等主題。參加者涵蓋全球從事
+高效能計算之研究人員，討論主題除了有關高效能計算架構、軟體、演算法、與在各領域
+應用之外，還談到高效能計算系統所面臨的各種挑戰與解決方案 …等議題，內容廣泛且豐
+富。由於論文素質相當高，會場討論非常熱烈，會議於 6 月 23 日圓滿結束。
+計畫編號 NSC 99－2221－E－011－067－
+計畫名稱 植基於標籤圖形的同構測試演算法
+出國人員
+姓名
+徐俊傑
+服務機構
+及職稱
+國立台灣科技大學資管系教授
+會議時間
+100 年 6月 19 日
+至 100 年 6月 23
+日
+會議地點
+德國漢堡
+會議名稱
+(中文) 國際超級計算會議
+(英文) International Supercomputing Conference
+發表論文
+題目
+(中文)
+(英文)
+附件四
+99 年度專題研究計畫研究成果彙整表 
+計畫主持人：徐俊傑 計畫編號：99-2221-E-011-067- 
+計畫名稱：植基於標籤圖形的同構測試演算法 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 1 1 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 4 4 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 2 2 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 

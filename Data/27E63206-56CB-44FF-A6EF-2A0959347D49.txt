@@ -1,0 +1,864 @@
+the time-frequency data will be selected with an 
+appropriate strategy for preparing training data. By 
+utilizing its recurrent structure, SRNN can learn to 
+detect the trend of brainwave and provide more 
+precise discharge location. 
+    Experiment results on identification of discharge 
+transient show that, SRNN can perform better than 
+TDNN in terms of specificity (SPE) and positive 
+predictive value (PPV). 
+英文關鍵詞： Epilepsy, Electroencephalography (EEG), Hilbert-Huang 
+Transform (HHT), Recurrent Neural Network, Time-Delay 
+Neural Network (TDNN) 
+ 
+ I 
+ 
+摘要 
+腦電圖(Electroencephalogram, EEG)具有程序簡單、費用低廉、非侵入式等特性，在癲癇診斷上可
+避免不必要的用藥以及手術。然而，人工閱讀腦電圖須花費大量的時間，且不同的醫師對於癲癇的主
+觀認定也不盡相同。目前市售軟體在自動化辨識癲癇放電波方面，普遍有標示不精準的問題存在，這
+是因為腦波訊號係非穩態、具高變異性，因此難以利用解析方法或參數法(Parametric approach)建立一
+自動化癲癇腦波判讀系統。 
+本計畫開發完成一自動篩選出腦電圖癲癇放電區間之神經網路，其首先利用希爾伯特-黃轉換
+(Hilbert-Huang Transform, HHT)將腦波訊號轉換至時頻域以擷取特徵資訊，再藉由具處理時空型
+(Spatiotemporal)資料能力的遞迴式神經網路(Simple Recurrent Neural Network, SRNN)，搭配一基於頻譜
+資訊的訓練資料選取策略，以訓練 SRNN 學習腦波變化趨勢，使其能客觀地標記異常放電波的時間點
+位置。 
+實驗結果顯示，若搭配適當的訓練資料，SRNN 能有效地發揮其遞迴結構辨識資料變化趨勢的能
+力以標記異常放電波，其在特異度(SPE)、陽性預測率(PPV)的表現可較時間延遲神經網路(Time-Delay 
+Neural Network, TDNN)為佳。 
+ 
+關鍵詞：癲癇、腦電圖、希爾伯特-黃轉換、遞迴式神經網路、時間延遲神經網路 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ III 
+ 
+目錄 
+摘要 ...................................................................................................................................... I 
+Abstract ............................................................................................................................ III 
+目錄 ................................................................................................................................. IIII 
+第一章 前言 ........................................................................................................................ 1 
+1-1 研究背景 ......................................................................................................................................... 1 
+1-2 研究動機與目的 ............................................................................................................................. 1 
+1-3 本文架構 ......................................................................................................................................... 1 
+第二章 文獻探討 ................................................................................................................ 2 
+2-1 癲癇與腦電圖簡介 ......................................................................................................................... 2 
+2-2 腦波判讀 ......................................................................................................................................... 3 
+2-3 文獻回顧 ......................................................................................................................................... 5 
+第三章 研究方法 ................................................................................................................ 7 
+3-1 資料擷取 ......................................................................................................................................... 7 
+3-2 希爾伯特-黃轉換 ........................................................................................................................... 7 
+3-3 Elman 遞迴式類神經網路 ........................................................................................................... 10 
+3-4 演算法流程 .................................................................................................................................. 12 
+3-5 效能評估 ...................................................................................................................................... 15 
+第四章 實驗結果與分析 .................................................................................................. 16 
+4-1 系統環境與樣本配置 .................................................................................................................. 16 
+4-2 實驗結果 ...................................................................................................................................... 17 
+4-3 實驗分析 ...................................................................................................................................... 25 
+ 1 
+ 
+ 
+第一章 前言 
+1-1 研究背景 
+癲癇(Epilepsy)，或稱為羊癲瘋、腦癲、伊比力斯症，根據世界衛生組織的估計，癲癇的盛行率約
+在 0.4%-1%之間，目前全世界約有五千萬名癲癇患者[1]。癲癇是一種由於腦神經元劇烈地同步放電所
+引起的疾病，而由於以藥物治療癲癇的副作用強烈 [2]，因此醫師普遍使用非侵入式的腦電圖
+(Electroencephalogram, EEG)記錄病患的腦波，並藉由觀察是否出現異常放電波，如棘波(spike)與銳波
+(sharp)作為確立癲癇發作之依據，藉此避免不必要的用藥以及手術。 
+然而閱讀腦電圖及判斷其是否有異常放電是件非常耗時且勞心的工作，例如:在一段長約 20 分鐘
+的癲癇腦電圖裡，醫師必須排除約 228000 個非異常腦波，才能找出 100 個具代表性的棘波[3]。另外，
+若病患在醫院檢查時並無異樣，而需配戴攜帶型腦電圖進行長時間追蹤時，其腦波資料量將更為龐大。
+因此自 1970 年代以來，各種自動化辨識癲癇腦波的方法相繼被提出[4]，也有許多商業化的腦波辨識軟
+體面世，但至今許多醫師仍認為該些軟體標示放電波時間點位置的準確度仍有待商榷 [3]。 
+ 
+1-2 研究動機與目的 
+由於腦波資料係非穩態、隨病患的不同而具高變異性，故醫師在閱讀病人腦電圖的過程中相當耗
+時耗力，以市售腦波軟體自動化辨識癲癇放電波易有標示不符醫師預期的情況，而不同的醫師對於癲
+癇的主觀認定亦不盡相同[5]。因此，癲癇腦波訊號的特徵辨識在輔助診斷上有其實用及發展的必要性，
+而針對腦波資料本身的特質，本計畫以神經網路作為腦波特徵辨識的主要工具。然而，一般空間型神
+經網路(如 Back-propagation network [24] )並不適合學習腦波在時間上變化的特徵，故本計畫希望藉由
+一具有處理時空型(Spatiotemporal)資料能力的遞迴式神經網路(Simple Recurrent Neural Network [22], 
+SRNN)，搭配一基於頻譜資訊的訓練資料選取策略，以訓練 SRNN 學習腦波變化趨勢，冀望其概泛化
+能力(Generalization)能快速排除非異常腦波，篩選出異常放電波(棘波與銳波)並標記異常放電波的時間
+點位置，協助醫師進行更客觀有效率的診斷，提升醫療品質。 
+1-3 本文架構 
+本文共分為五章，架構如下: 
+第一章，簡介研究背景、研究的動機與目的 
+第二章，癲癇與腦電圖介紹、腦波判讀方法，以及文獻回顧 
+第三章，介紹本計畫所提出的腦波篩選方法 
+第四章，實驗參數設定、實驗結果分析 
+第五章，結論與未來展望 
+ 3 
+ 
+ 
+ 
+圖 2-2 標準 10/20 配置法[6] 
+ 
+極為強烈[2]。因此醫師在開處方或進行外科手術之前，仍必須經過謹慎的腦電圖診斷程序確認病人是
+否患有癲癇。 
+腦電圖是利用儀器將神經元活動時所造成的微弱電壓，透過黏貼於頭皮上的多個電極記錄下來，
+經訊號放大器放大之後，以電壓隨時間變化之波形呈現的腦細胞活動記錄圖(如圖 2-1)。由於為一種非
+侵入性(Non-invasive)的檢測方式，因此腦電圖在醫學方面的應用十分廣泛，如腦死判定、癲癇腦波檢
+測、睡眠腦波檢查、麻醉深度監測等，是醫師進行功能性檢查時的重要診斷依據。 
+但其中仍以癲癇腦波檢測的應用最為普遍。只要曾有癲癇發作的病史，醫師均會安排一次約 20-30
+分鐘的清醒期腦波檢查，以評估腦的功能與狀況；或使用包含睡眠、過度換氣、間歇性光照刺激等激
+發程序之誘發試驗腦波檢查，如當場發作，便可確立癲癇之診斷，也能經由觀察發作的種類，協助抗
+癲癇藥物種類之選擇。 
+為了定位出癲癇病灶所在，黏貼於頭皮上的電極多遵循標準 10/20 配置法(Ten-twenty system) [6]。
+其將腦殼視為一個半球體，由頭前鼻樑為起點，到頭後枕骨間的連線與左右耳間的連線，按照 10%、
+20%、20%、20%、20%、10% (共 100%)的比例分割半球，總共劃得 19 個電極通道，其固定的名稱標
+記如圖 2-2 所示。 
+ 
+2-2 腦波判讀 
+干擾波 
+醫師在進行各種腦波判讀之前，必須先排除各種非源自大腦本身的干擾波(Artifact)。干擾波可分
+為三大類: (1)來自正常生理反應 (2)來自機器之干擾波 (3)來自周遭環境之干擾波[7]。 
+通常來自於機器及周遭環境的干擾波，如電極黏貼不良產生之干擾波(Electrode artifact)、60Hz 交
+流電之干擾波等，受過訓練之檢查人員會在腦電圖檢查的前置作業或腦電圖記錄過程中就會設下對應
+的濾波器將其排除，因此並不常見。但來自於正常生理反應的干擾波則無法避免，如因心臟跳動產生 
+ 5 
+ 
+ 
+ 
+圖 2-4 典型的棘波 
+ 
+棘波與銳波 
+棘波(Spike)與銳波(Sharp)是癲癇腦電圖中最常見且最易辨認的癲癇樣放電波(圖 2-4)，其具有下列
+特徵[7] 
+1. 棘波波形尖銳，波長約在 20-70 msec (即頻率 14.3-50Hz)。 
+2. 銳波波形較棘波為鈍，波長約在 70-200 msec (即頻率 5-14.3Hz)。 
+3. 負電位，且其後經常跟隨一個振幅低於前者之慢波 
+4. 與背景波明顯不同 (具有高振幅) 
+5. 具一定之電場，能在兩個以上的電極同時記錄到波形變化 
+ 
+2-3 文獻回顧 
+針對癲癇腦波的研究主要分為腦波量化與模式辨認兩個部份。量化癲癇腦波除了使醫師在判讀腦
+波時有客觀的依據之外，更可藉由統計分析出各種腦波背後所代表的意義，提早發現腦部病變；而模
+式辨認則試圖將醫師對癲癇腦波的判讀經驗轉化為程式，其包含了如何擷取具代表性的特徵、以及找
+出最佳的分類方法，使得電腦最終能簡化繁複的辨認工作，讓醫師能聚焦於有意義的診斷與治療。 
+最早將電腦應用於癲癇腦波的研究可追朔到 1972 年的 Carrie[1]，1973 年的 Harner[9]等人。此時
+期多注重於區間振幅分析，利用棘波具有高振幅的特徵，搭配極值與零點交越作為半波分解的依據，
+求出各種波形量化參數。其後 Gotman 與 Gloor[10]在 1976 年更依此為基礎發展出專家系統，他們的研
+究成果也成為日後各種辨識方法的比較基準。 
+隨著電腦運算能力不斷地進步，更多計算複雜度較高的演算法相繼被提出。其中發展最為迅速的
+是類神經網路以及小波轉換(Wavelet transform)。由於類神經網路具有學習及概泛化的能力，因此十分
+適合處理具高變異性的腦波資料。從 1992 年 Gabor 與 Seyalg[11]首次將其應用於癲癇腦波辨識之後，
+ 7 
+ 
+ 
+第三章 研究方法 
+3-1 資料擷取 
+本計畫所使用之腦波資料由財團法人長庚紀念醫院基隆院區精神內科彭宗義醫師提供。腦波測量
+儀器為 Nicolet Allance Works NA9020181 數位腦波記錄儀，錄得原始腦波訊號後，再經由腦波擷取軟
+體 Nicolet EEG Vue 及 Nicolet EEG Reader Version 3.6.0 轉換為.csv 格式。詳細擷取參數設定如下 
+ 通道數 = 16 
+ 取樣率 = 250 Hz 
+ 低頻截頻器 = 3 Hz 
+ 高頻截頻器 = 70 Hz 
+ 凹陷濾波器 = 60 Hz 
+低頻截頻器主要可排除呼吸對腦波記錄的干擾，而凹陷濾波器均設定為開啟以濾除 60Hz 交流電干擾
+波。 
+本計畫實驗所用之腦波樣本均來自於同一位癲癇重症患者 A 約 11 分鐘長的腦電圖。透過該腦波擷
+取軟體篩選出高振幅變化次數最多的時段，總計取得十筆癲癇腦波樣本(表 3-1)，每筆長度 10 秒，並
+經由專業醫師判斷，標記出 87 個放電波。其中五筆來自於最靠近病灶的 F4 通道，訊號清晰度最高、
+干擾也最少；另外因放電波具有擴散至腦部其他部位的特性，所以其餘五筆是從位於 F4 右側之 F8 通
+道取出，以獲得不同振幅大小之放電波樣本。 
+ 
+3-2 希爾伯特-黃轉換(HHT) 
+腦波訊號為非線性、非穩態的時間序列。因此除了訊號變動程度劇烈之外，該些訊號變動的統計
+特性也會隨時間以及病患個體間的差異而變動。由於傳統的傅立葉轉換只能提供頻率與能量的關係，
+無法觀察頻率隨時間的變化，因此並不適用於分析腦波訊號；而短時傅立葉轉換與小波轉換 
+ 
+表 3-1 樣本編號與時段對照表 
+F4 F8 
+編號 時段 編號 時段 
+F4-1 00’00” – 00’10” F8-1 06’20” – 06’30” 
+F4-2 03’00” – 03’10” F8-2 04’10” – 04’20” 
+F4-3 03’50” – 04’00” F8-3 07’50” – 08’00” 
+F4-4 09’50” – 10’00” F8-4 00’30” – 00’40” 
+F4-5 10’20” – 10’30” F8-5 01’40” – 01’50” 
+ 9 
+ 
+ 
+ 
+                  )()()( tiYtXtZ   (3.1)
+ 
+                   
+
+
+ dt
+XVPtY   )(..1)(  (3.2)
+ 
+其中 P.V.代表柯西主值(Cauchy principal value)。由於實部裡的負頻率成份與經希爾伯特轉換的虛部
+訊號互相抵消，此複數函數可經數學證明為一解析函數[20]，即其傅立葉轉換的實部不含負頻率成分。
+因此可得 
+                   
+)()()( tietatZ   (3.3)
+ 
+其中 
+                   
+2/122 )]()([)( tYtXta  , )](/)([)( tXtYt  (3.4)
+ 
+   
+分別為瞬時振幅與瞬時相位角，就可由此推知瞬時頻率 
+                  dt
+dtf   2
+1)(
+ 
+(3.5)
+ 
+   
+ 
+由於 HHT 使用經驗模態拆解法作為訊號的前置處理，因此不需事先選定基底函數，而是隨訊號的
+不同拆解出不同數目與頻率的 IMF，避開了小波轉換母函數應如何選取的問題；而以解析訊號為分析
+基礎使得 HHT 與短時傅立葉以及小波轉換相較，具備更佳的頻率解析度。三者的特性比較列於下表
+3-2。 
+ 
+ 
+表 3-2 時頻分析方法之比較 
+ 短時傅立葉轉換 小波轉換 HHT 
+基底函數 視窗函數 小波母函數 適應性 
+頻率分析 傅立葉轉換 傅立葉轉換 解析訊號 
+時頻解析度 較低 較高 最高 
+ 
+ 11 
+ 
+ 
+ 
+圖 3-2 TDNN 單元[21] 
+ 
+ 
+圖 3-3 SRNN 結構[22] 
+ 
+ 13 
+ 
+ 
+特徵擷取 
+腦波原始資料僅包含時間與振幅資訊，其資訊含量不如頻譜豐富。而輸入資料裡包含越多的訊息，
+類神經網路就更有可能抓到具代表性的特徵，並以此為辨識依據。以一段癲癇腦波為例，其經 HHT 後
+產生的頻譜如圖 3-5 所示。從圖中可發現能量多集中在 0-25Hz 之間，40Hz 以上除了放電波出現時有
+較多的能量分布之外，其餘時刻佔總能量的比例極低，而棘波與銳波的頻率又落在 5-50Hz 之間，因此
+最後從頻譜矩陣裡擷取 0-50Hz 頻段(對應流程圖 Band-Pass Filter 程序)作為輸入資料，以期能保留最多
+的能量變化。 
+即使僅保留最具代表性的頻段，一段十秒的腦波其頻譜矩陣仍包含了 160*2500 多達四十萬筆的資
+料，這對類神經網路而言是很大的負擔。解決方法為分別對時間軸與頻率軸作量化，將頻譜等分成小
+區塊，計算其能量總和作為量化後的頻譜能量大小(對應流程圖 Quantization 程序)，便可有效縮減頻譜
+矩陣的大小，以加快後續類神經網路的訓練速度。雖然這會造成頻譜資訊模糊化，但在不過度量化損
+失主要特徵的前提下，反而可幫助類神經網路辨認趨勢，避免過度匹配的問題。 
+ 
+特徵分類 
+類神經網路的效能有很大的部分是取決於訓練資料如何設定。為了反映腦波在頻率及振幅上變動
+的趨勢，因此以 HHT 頻譜中的資訊作為訓練資料選取之依據。具體策略為計算頻譜大於 5Hz 能量的總
+和，將其正規化至＋1 與－1 之間，並由能量極值點超過設定大小的位置出發，分別往前後選取超過閥
+值的部分，以此標記切割出訓練資料的範圍(圖 3-6)。 
+為了避免因不同放電波能量差距過大，造成能量較低的變化被忽略，影響學習效果，資料在輸入
+網路前均經過正規化處理，值域為＋1 到－1 之間，以平均每個輸入元素的重要性。 
+ 
+ 
+ 
+(a) 
+ 
+(b) 
+圖 3-5 癲癇腦波及其 HHT 頻譜 
+ 
+ 15 
+ 
+ 
+  
+3-5 效能評估 
+本計畫對於分類器的效能評估主要使用三個參數描述，分別為敏感度(Sensitivity, SEN)、特異度
+(Specificity, SPE)以及陽性預測值(Positive Predictive Value, PPV)，可經由下列公式算出 
+                FNTP
+TPSEN   
+(3.6)
+                FPTN
+TNSPE   
+(3.7)
+                FPTP
+TPPPV   
+(3.8)
+ 
+其中 
+TP 為 True Positive，代表分類器正確地命中的個數 
+TN 為 True Negative，代表分類器正確地拒絕的個數 
+FP 為 False Positive，代表分類器發出假警報的個數，又稱第一類錯誤 
+FN 為 False Negative，代表分類器發生失誤的個數，又稱第二類錯誤 
+ 
+SEN 可評估分類器抓出所有放電波的能力，而 SPE 則衡量分類器拒絕非放電波的能力，至於 PPV
+代表如果檢驗為陽性，其實際上也為放電波的比率。 
+在評估分類器效能時，通常使用敏感度與特異度即足以代表此分類器的偵測能力。但由於癲癇的
+低盛行率以及放電波在腦電圖中的低出現率，使得敏感度及特異度時常與醫師的使用經驗產生落差
+[3]。舉例而言，若有一疾病其盛行率為 1%，而有檢測方法其敏感度為 100%、特異度為 95%，則其檢
+驗為陽性且實際患病的機率僅為 1/(1+99*0.05) = 16.8%。因此陽性預測值較能代表醫師使用此分類器的
+實際感受，更適合作為評估效能的依據。 
+ 
+表 3-4 分類器的四種分類結果 
+ 放電波 非放電波 
+陽性反應 True Positive, TP False Positive, FP 
+陰性反應 False Negative, FN True Negative, TN 
+ 17 
+ 
+ 
+4-2 實驗結果 
+實驗結果分為兩部份，第一部份為訓練樣本選取策略的測試，說明選取策略不同對 SRNN 所造成
+的影響，以及 SRNN 與 TDNN 在相同選取策略下的比較；第二部分則著重於 SRNN 的特性分析，測試
+SRNN 在不同量化寬度下的表現，與測試樣本量化寬度對結果所造成的影響，以從實驗結果中間接推
+測出 SRNN 的特性。 
+ 
+訓練樣本選取策略 
+承第 3-4 節演算法流程中所述，訓練資料如何選取是決定類神經網路效能的關鍵，因此以下實驗
+均聚焦於測試訓練樣本選取策略的效果。實驗參數控制如下: 
+ 希爾伯特黃頻譜 = 0-50 Hz 
+ 時間軸量化寬度 = 15 資料點 
+ 頻率軸量化寬度 = 5 資料點 
+ 高頻能量計算基準 > 5 Hz 
+ 訓練資料選取閥值 = -0.7 
+ 神經網路輸出閥值 = 0.2 
+ 
+圖 4-1(a)的星號代表此段時間的頻譜被選取作為目標＋1 的訓練樣本，對應圖 4-1(b)的 HHT 頻譜 
+ 
+ 
+(a)訓練樣本 F4-1 波形 
+ 
+(b)HHT 頻譜 
+ 
+(c)正規化之高頻能量 (訓練資料選取依據) 
+圖 4-1 訓練樣本 
+ 19 
+ 
+ 
+ 
+(a)測試樣本 F8-5 波形 
+ 
+(b)正規化之高頻能量 
+圖 4-3 辨識結果 
+ 
+ 
+為了改進上述問題，訓練策略改為選取高頻能量上升趨勢及下降趨勢，並於輸出層增加一個神經
+元，分別給予不同的訓練目標。如下表 4-3 及圖 4-4 所示。 
+圖 4-4(a)(c)的星號代表此段時間的頻譜被選取作為目標[＋1,－1]的訓練樣本，可從圖 4-4(c)看出其
+具有高頻能量上升趨勢；圓圈代表訓練目標改為[－1,＋1]，對照圖 4-4(c)即可知其具高頻能量下降趨
+勢；星號與圓圈重疊的位置則為[＋1, ＋1]，其餘無標記的部分均為[－1,－1]。 
+為了顯示此訓練策略對 SRNN 的影響，因此使用相同的方式與樣本訓練 TDNN，以從比較中彰顯
+兩者特性的差異。 SRNN 與 TDNN 網路詳細參數設定整理如表 4-4。 
+ 
+ 
+表 4-3 訓練目標 
+高頻能量表現 訓練目標 
+上升趨勢 [＋1, －1] 
+下降趨勢 [－1, ＋1] 
+峰值 [＋1, ＋1] 
+其他 [－1, －1] 
+ 
+ 
+ 
+ 21 
+ 
+ 
+ 
+(a)SRNN 測試樣本 F4-4 波形及網路輸出結果 
+ 
+(b)TDNN 測試樣本 F4-4 波形及網路輸出結果 
+圖 4-5 SRNN 與 TDNN 辨識結果比較 
+ 
+圖 4-6(a)(b)則是 SRNN 失誤(FN)1 次，TDNN 也失誤 1 次且有 1 次假警報(FP)。圖 4-7(a)(b)SRNN
+除了出現 2 次失誤(FN)之外，也出現了 1 次假警報(FP)；但 TDNN 在 100.5 秒與 102 秒之間就有 3 次
+假警報，加上 104.5 秒與 106.5 秒的 2 次，總計為 5 次。以上實驗的結果整理如表 4-5。 
+ 
+ 
+ 
+(a)SRNN 測試樣本 F8-4 波形及網路輸出結果 
+(b)TDNN 測試樣本 F8-4 波形及網路輸出結果 
+圖 4-6 SRNN 與 TDNN 辨識結果比較 
+ 
+ 23 
+ 
+ 
+ 
+ 
+ 
+(a)測試樣本 F4-5 scale X = 15 
+ 
+(b) 測試樣本 F4-5 scale X = 10 
+ 
+(c) 測試樣本 F4-5 scale X = 5 
+圖 4-8 時間軸量化寬度測試 
+ 
+ 
+圖 4-8 為測試樣本的結果，成功命中(TP)的次數從 scale X =15 的 7 次、scale X =10 的 6 次往下遞
+減至 scale X =5 的 5 次，從圖中可看出其輸出的型態也有很大的不同。 
+而由圖 4-9 可發現，其 HHT 頻譜的解析度雖然隨著 scale X 而提高，但過多的細節反而破壞了高
+頻上升與下降的趨勢，這使得 SRNN 的效能因而降低。 
+ 25 
+ 
+ 
+ 
+(a)測試樣本 F4-4 scale X = 15 
+(b) 測試樣本 F4-4 scale X = 10 
+(c) 測試樣本 F4-4 scale X = 5 
+圖 4-10 辨識不同量化寬度的測試樣本 
+ 
+ 
+4-3 實驗分析 
+從與 TDNN 的對照實驗及表 4-5 的結果中可看出，SRNN 遞迴式的網路架構，可利用內容單元儲
+存前一時刻資料的內隱狀態，因此輸出時可前後比對時序資料的差別，較能學習到資料的變化趨勢。
+雖然 SRNN 的 SEN 從 92.31%下降至 84.62%，但對於醫師而言，PPV 才是最重要的指標，而改良訓練
+策略後的 SRNN，其 PPV 優於 TDNN 的 81.36%，可達 91.67%。 
+而透過改變頻譜的量化寬度可以得知，SRNN 的表現隨著趨勢的破壞而降低；如以同一網路辨識
+不同量化寬度的測試樣本，也顯示出原本的總體趨勢在較高解析度的頻譜上被視為許多局部趨勢的組
+合。以上實驗結果均間接說明 SRNN 具有學習癲癇腦波資料時序變化的能力。 
+ 27 
+ 
+ 
+ 
+參考文獻 
+[1] W.H.O., January 2009. Epilepsy Fact Sheets [Online]. Available: 
+http://www.who.int/mediacentre/factsheets/fs999/en/index.html 
+[2] O. Devinsky, “Cognitive and behavioral effects of Antiepileptic drugs,” Epilepsia vol. 36, suppl. s2, pp. 
+S46–S65, February 1995. 
+[3] R. N. Harner, “Automatic EEG Spike Detection,” Clin EEG Neurosci, vol. 40, no. 4, pp. 262-270, 
+October 2009. 
+[4] J. R. Carrie, “A technique for analyzing transient EEG abnormalities,” Electroencephalogr. Clin. 
+Neurophysiol., vol. 32, pp. 199-201, 1972. 
+[5] S. B. Wilson, R. N. Harner, F. H. Duffy, B. R. Tharp, M. R. Nuwer, M. R. Sperling, “Spike detection. I. 
+correlation and reliability of human experts,” Electroencephalogr. Clin. Neurophysiol., vol. 98, no. 3, pp. 
+186-198, March 1996. 
+[6] 江部充、本間伊佐子著 林景福、江逸仁譯 《圖解腦波入門》，台北市：合記圖書出版社，1985。 
+[7] 關尚勇、林吉和醫師編著 蘇明勳醫師指導 《破解腦電波：EEG 教材》(第二版)，台北市：藝軒圖
+書出版社，2007。 
+[8] G. Deuschl and A. Eisen, “Guidelines of the International Federation of Clinical Neurophysiology,” 
+Electroenceph. Clin. Neurophysiol., suppl. 52, 1999. 
+[9] R. N. Harner, “Sequential analysis and quantification of the electroencephalogram,” Electroencephalogr. 
+Clin. Neurophysiol., vol. 34, p. 791, 1973. 
+[10] J. Gotman, P. Gloor, “Automatic recognition and quantification of interictal epileptic activity in the 
+human scalp EEG,” Electroencephalogr. Clin. Neurophysiol., vol. 41, pp. 513-529, 1976. 
+[11] A. J. Gabor, M. Seyal, “Automated interictal EEG spike detection using artificial neural networks,” 
+Electroencephalogr. Clin. Neurophysiol., vol. 83, pp. 271-280, 1992. 
+[12] L. Senhadji, J. L. Dillenseger, F. Wendung, C. Rocha, A. Kinie, “Wavelet analysis of EEG for 
+three-dimensional mapping of epileptic events,” Ann. Biomed. Eng., vol. 23, pp. 543-552, 1995. 
+[13] F. I. Argoud, F. M. De Azevedo, J. M. Neto, E. Grillo, “SADE3: an effective system for automated 
+detection of epileptiform events in long-term EEG based on context information,” Med. Biol. Eng. 
+Comput. vol. 44, pp. 459-470, 2006. 
+[14] N. Acır, ․I. Öztura, M. Kuntalp, B. Baklan, C. Güzelis, “Automatic Detection of Epileptiform Events in 
+EEG by a Three-Stage Procedure Based on Artificial Neural Networks,” IEEE Trans. Biomed. Eng., vol. 
+52, no. 1, pp. 30-40, Jan. 2005. 
+[15] H. Ocak, “Automated detection of epileptic seizures in EEG using discrete wavelet transform and 
+approximate entropy,” Expert Syst. Appl., vol. 36, pp. 2027-2096, 2009. 
+[16] 謝紹陽《智慧型腦神經癲癇診斷分析系統開發》，慈濟大學醫學資訊研究所碩士論文，2008。  
+[17] 張琬琳《基於遞迴式神經網路之癲癇類型診斷及癲癇發作偵測系統》，國立成功大學資訊工程學系
+國科會補助專題研究計畫出席國際學術會議心得報告 
+                                 日期：101年 10 月 30日 
+                                 
+一、參加會議經過 
+ 
+2012年 8月 8日至 8月 10日於美國内華達州拉斯維加斯舉行第 13屆 IEEE International 
+Conference on Information Reuse and Integration。行前，王榮華教授及曾俊舜學長不僅指導吾人
+如何撰寫本次論文的英文講稿，亦針對英文發音進行校正，並安排時段模擬論文發表，使吾
+人受益良多。本次大會共發表 105篇論文，與會者多數來自歐美國家。吾人於 8月 7日先至洛
+杉磯後再開車前往拉斯維加斯，隔天辦理報到手續及領取會議相關資料。 
+ 
+二、與會心得 
+ 
+本次會議議程主題為資訊的再利用與整合，故凡與資訊相關領域，如：影像、信號、數
+學等研究領域的人員參與。吾人曾於 2011年 12月時受貴會資助，有幸能參與日本京都大學之
+IEEE國際研討會(2011 IEEE/SICE)，於此兩次會議過程中深刻感受到兩國文化差異，其中日本
+會議對於報告時間和報告的方式皆非常地嚴謹，似乎有一套制式化的標準使會議得以按照既
+定時程順利地進行，也由於制式化造成會議過於嚴肅且呆板。而本次研討會因歐美學者居
+多，各學者發表其論文時於講台上侃侃而談，除了母語的優勢外，更充分將字彙活潑的利
+用，並以自我揶揄、幽默等有趣的方式讓人對其研究成果留下深刻印象，而聽者更是踴躍發
+問，並且不吝惜提出自己的見解，展現出對學術的熱情，甚至在會後交流時亦可感受到該些
+學者對於問題追根究底的精神，相較於本國的學習氣氛，該些外國學者的精神都為本國學生
+所缺乏，如：本國多數學生為了考試而讀書，目光只集中於書本的文字，而缺乏興趣探究字
+裡行間欲表達的意義與精神，進而形成不探究事理、不溯其原委只為考試而讀書的局面，造
+成現今補習班林立的景象。 
+會後與來自英國 University of Manchester的教授 Dodson討論本次會議吾人發表的論文，
+教授謙虛提問，並以幽默的口吻表達其觀點，點出更多關於人類視覺的細節，提供了對於本
+計畫編號 NSC 100－2221－E－019－063－ 
+計畫名稱 結合時間域與頻譜特徵之智慧型癲癇腦波判讀系統 
+出國人員
+姓名 林長德、林巧偉 
+服務機構
+及職稱 
+國立台灣海洋大學電機系資訊科技
+組/研究生 
+會議時間 
+101年 8月 6日至 
+101年 8月 14日 會議地點 Las Vegas , Nevada, U.S.A 
+會議名稱 
+(中文)2012第十三屆資訊再利用與整合 IEEE國際研討會 
+(英文)2012 13th IEEE International Conference on Information Reuse and Integration 
+發表題目 
+(中文)一種保留符合人類視覺感受的邊緣偵測方法 
+(英文) Perceptual Edges Preservation Conformal to Human Vision Perception 
+ 
+Perceptual Edges Preservation Conformal to Human Vision Perception 
+ 
+ 
+Chun-Shun Tseng, Chang-Te Lin, Chiao-Wei Lin, and Jung-Hua Wang 
+Electrical Engineering Department, National Taiwan Ocean University, Keelung, Taiwan  
+E-mail: jhwang@mail.ntou.edu.tw 
+ 
+ 
+Abstract 
+ 
+This paper presents a novel approach called PEPA 
+(Perceptual Edges Preservation Algorithm) which 
+enables computing machines to mimic the human vision 
+capability in perceiving meaningful objects in an input 
+scene, characterized in that the preserved edges are 
+conformal to human vision perception. The approach 
+mainly comprises three stages: (1) applying linear and 
+nonlinear filtering to mimic the capability of human 
+vision system in perceiving image objects, and (2) an 
+Entropy-based energy function is proposed to overcome 
+the gradient direction distortion due to sampling. (3) A 
+Bayesian-based decision rule is developed to determine 
+whether a target pixel is located on a perceptual edge. 
+Simulation results are provided to justify the capability of 
+imitating human visual perception.  
+ 
+Keywords: visual perception, non-linear filtering, 
+Bayesian decision rule, entropy, perceptual edges  
+ 
+1. Introduction 
+ 
+Edge detection is not only a tool to vastly reduce 
+amount of data in input images [7-8] but also a crucial 
+preprocess for image/video applications such as object 
+recognition [6] and motion tracking [9], etc. To name a 
+few [1-2], the Canny detector, Sobel operator and Laplace 
+operator are well known in textbooks, yet most of them 
+merely perform a linear operation on all pixels in an input 
+image with a defined mask. Despite the fact that the linear 
+operation is preferable to non-linear one in terms of 
+stability and simplicity, information vital to forming 
+human visual perception [15] is not easy to preserve under 
+the linear and pixel-by-pixel uniform mask filtering. For 
+example, at first glance, human beings tend to notice the 
+contour of an object (e.g., a computer keyboard), rather 
+than the details associated with the object (e.g. individual 
+keycap), even those details are clearly present in our 
+vision. The uniform mask filtering is a truly fair process 
+for every pixel no matter which pixel is significant to  
+      
+(a)                                   (b) 
+Figure 1. Demonstration for visual perception [1]. 
+ 
+human vision perception or not in the input image. 
+Apparently, our brain does more works than this. This 
+inclination reveals that information simplification and 
+integration are constantly taking place in our vision 
+system. Therefore, both linear and non-linear operations 
+need to be considered in order to realize the human 
+inherent capability of visual simplification and integration. 
+To realize or simply mimic the intriguing capability of 
+visual perception is always a goal set for industrial 
+automation and many other applications [10-12]. An 
+example for demonstrating the intriguing human visual 
+perception is shown in Fig. 1, where two identical lines 
+are placed in parallel in Fig. 1 (a), yet different lengths are 
+easily perceived by viewing Fig. 1 (b) where two sets of 
+opposite arrows are added to the two lines in Fig. 1(a), 
+respectively. Although uneasily to be told by our human 
+visual system, the lengths of the two lines (without arrows) 
+in Fig. 1 (b) are actually identical, this phenomenon of 
+ground truth being against the visual perception is called 
+as “visual paradox”. Because the shrink/stretch effects in 
+Fig. 1 (b) are caused by the arrows with different 
+orientations, our idea here is to design a weighting 
+approach based on orientations to implement the human 
+visual tendency on a computing device, instead of 
+exploiting the complex biological mechanism. Thus, in 
+order to realize the visual paradox on a machine, in this 
+work three more observations from human visual 
+perception are utilized to imitate the shrink/stretch effects 
+as in the following. 
+ 
+1.1. Gradient Directions 
+ 
+Gestalt images suitable to manifest the potential usage 
+of the gradient directions are shown in Fig. 2 (a)-(c). As 
+we can see, human visual perception can still qualify  
+      
+(a)                                         (b) 
+Figure 5. (a) Zebra. (b) Edge detection result of 
+applying Grompone von Gioi’s method to (a). 
+ 
+significance in one direction. 
+Grompone von Gioi et al. [14] introduced a fast line 
+segment detector which elaborates gradient directions in a 
+line support region, i.e. a sampling region with shape and 
+size varied according to local gradient directions, and its 
+relatively light computation load is desirable in practical 
+applications. However, the method is set to draw line 
+segments with salient orientations obtained from sampling 
+regions rather than extracting the precise location of edges. 
+Therefore loss of completeness in a contour is inevitable, 
+especially in curves (as the discontinuous lines shown in 
+Fig. 5 (b) corresponding to the stripes in Fig. 5 (a)). 
+ 
+1.3. Information Integration in Sampling Region 
+ 
+In light of the fact that the sampling region can be 
+formed with numerous sizes, shapes and orientations, it is 
+not trivial to evaluate a universal optimal sampling region 
+for diverse input images. As such, this work will provide 
+an Entropy-based function for evaluating significance of a 
+single orientation in every sampling region.  
+ 
+The rest of this paper is organized as follows: 
+algorithmic details are given in the next section, and 
+simulation results are provided to justify the capability of 
+imitating the human visual tendency in section 3. Section 
+4 demonstrates test results to reveal the capability of 
+approximating human visual perception. Finally, 
+conclusion and future work are given in Section 5. 
+ 
+2. Perceptual Edges Preservation Algorithm   
+ 
+PEPA  consists of two main process modules: (i) linear 
+and non-linear filters for obtaining the fine and coarse-
+edge features, and (ii) Entropy [4] weighting and Bayesian 
+decision rule [5] for evaluating significance of a single 
+orientation on pixels by utilizing edge features obtained in 
+stage (i). 
+ 
+2.1. Linear and Non-linear Processes 
+ 
+A gradient operation (e.g. Sobel) is applied using (1) (2) 
+(3) (4):     
+ 
+,
+121
+000
+121
+
+
+
+
+
+
+
+
+
+
+−−−
+=S
+                                       (1) 
+  Gy = S∗ I, Gx = ST ∗ I,                                              (2) 
+      GF = ))1(log( 22 xy GGNormalized ++ , and              (3) 
+   θF= arctan(Gy / Gx),                                                (4) 
+ 
+where I is the input image, θF the gradient directions 
+obtained by using (4). Though GF in (3) can preserve fine-
+edge feature, it is liable to lose line segments located at 
+heterogeneous objects or textures as shown in Fig. 2 (d).  
+For example, the human vision system can easily notice 
+the two faces emerged from stems and leaves in Fig. 2 (b). 
+Applying (1)-(4) to Fig. 2 (b), on the other hand, would 
+result in only lots of fractured edges with great 
+randomness in direction, namely non-aligned edges, 
+making it virtually impossible to perceive contours of the 
+two faces. Clearly, fine-edge feature alone is not sufficient 
+to extract perceptual edges. 
+To overcome this heterogeneous issue in which 
+perceptual edges emerged from different objects and to 
+successfully extract textures, the idea here is to extract 
+coarse-edge feature for augmenting the fine-edge feature 
+by the following three steps: (i) a Gaussian blurred [2] 
+image IG is acquired with I as the input, (ii) result IGm of a 
+morphological closing [1] is obtained by applying 
+morphological erosion (5) and dilation (6) in order, (iii) a 
+median filtering is used to eliminate impulse-like noise 
+present in IGm, and the filtered result is denoted as IGC.   
+ 
+(IGΘB)(x, y) =                                                                     
+min{IG(x＋q, y＋k)－B(q, k), (q, k)∈DB},       (5) 
+(IG♁B)(x, y) =                                                               
+max{IG(x＋q, y＋k)＋B(q, k), (q, k)∈DB},       (6) 
+ 
+where DB is a set of positions and B is defined as a 
+matrix with identical value for each element, namely a 
+3 × 3 mask centered at (x, y) is used to determine the 
+search range of the maximum or minimum. The major 
+effect of applying the above three steps is to create chunky 
+or blob regions where possible. Afterwards, coarse-edge 
+feature GC and its direction θC can be obtained by using 
+(2)-(4) with the input I being replaced by IGC. 
+ 
+ 
+ 
+      
+(a)                             (b) 
+    
+(c)                            (d) 
+Figure 6. (b)-(c) P1 results of applying our 
+approach to (a) with different quantization levels, 
+where Bin is equal to 20 and 60, respectively. (d) 
+Contours of the rectangular extracted by 
+thresholding. 
+ 
+1 2 3 4
+0
+0.005
+0.01
+0.015
+Iteration
+M
+SE
+Bin = 20    
+40
+60
+ 
+(a) 
+1 2 3 4
+0.005
+0.01
+0.015
+0.02
+0.025
+0.03
+Bin = 20    
+40
+60
+Iteration
+M
+SE
+ 
+(b) 
+Figure 7. (a)-(b) MSE of PF and PC between 
+successive renewing processes, respectively. 
+ 
+      
+(a)                                        (b) 
+      
+(c)                                        (d) 
+Figure 8. (a)-(d) F
+Binθ  , CBinθ , results of P
+F  and PC by 
+applying PEPA to Fig. 1 (b). 
+A renewing process, i.e., renewing the PF and PC via 
+(7)-(13), is considered to acquire a suitable sampling 
+region. Fig. 7 shows that mean square error (MSE) of P 
+between successive renewing processes is decreased and 
+ultimately converges, where circle, cross and plus marks 
+denote the input image (Fig. 6 (a)) with Bin = 20, 40 and 
+60, respectively. 
+ 
+3.2. Mimicking Human Visual Tendency  
+ 
+Fig. 8 shows the F
+Binθ , 
+C
+Binθ (corresponding to quantized 
+θF and θC, respectively), PF  and PC of applying PEPA to 
+Fig. 1 (b), and obvious different lengths are shown in C
+Binθ  
+and PC (Fig. 8 (b) and (d)). These results reveal that 
+extracting the coarse-edge feature not only can desirably 
+overcome heterogeneous issues but also mimic the human 
+visual tendency in evaluating salient orientation on 
+neighboring edges. 
+ 
+4. Experimental Results 
+ 
+Fig. 9 shows the perceptual edges of applying our 
+approach to Fig. 3 (a) and Fig. 5 (a), note that 
+completeness and continuity in contours are well 
+preserved. Fig. 10 (a)-(b) show the P3 results of applying 
+PEPA to Fig. 2 (b) with Bin = 20 and 60, respectively. 
+Distinguishable face contours are emerged in both P3 
+results in Fig. 10, implying that users have a wider range 
+in choosing an integer for the parameter Bin for achieving 
+a satisfactory perceptual edge result. 
+Another application of the PEPA is demonstrated as 
+Fig. 11, where an edge detection result of Canny 
+(threshold is auto-determined by MATLAB) is shown in 
+Fig. 11 (a). The P3 results in Fig. 10 can be utilized, e.g. 
+binarizing the P3 results with a threshold for choosing 
+suitable locations (where binary value is equal to 1), to 
+extract perceptual edges from Fig. 11 (a), and the results 
+corresponding to Fig. 10 (a) and (b) are shown in Fig. 11 
+(b) and (c), respectively. Note that similar perceptual 
+edges are preserved in Fig. 11 (b) and (c) due to the 
+values of Bin can be chosen in a wider range, and 
+contours of the two faces are clearly emerged in a noise- 
+removed result (as shown in Fig. 11 (d)) of applying a 
+ 
+    
+Figure 9. Perceptual edges of applying our 
+approach to Fig. 3 (a) and Fig. 5 (a), respectively. 
+國科會補助計畫衍生研發成果推廣資料表
+日期:2013/01/31
+國科會補助計畫
+計畫名稱: 結合時間域與頻譜特徵之智慧型癲癇腦波判讀系統
+計畫主持人: 王榮華
+計畫編號: 100-2221-E-019-063- 學門領域: 人工智慧與仿生計算
+無研發成果推廣資料
+Laerning, 2010.
+申請中件數 0 0 0%  
+專利 已獲得件數 3 3 100% 件 
+快速定位圖樣之
+方法，美國專利公
+開 號 ：
+US2010163632 
+(A1)； 德國專利
+公 開 號 ：
+DE102009059264 
+(A1)； 中國專利
+公 開 號 ：
+CN101777119 (B)
+ 
+件數 0 0 0% 件  
+技術移轉 
+權利金 0 0 0% 千元  
+碩士生 1 1 100%  
+博士生 1 1 100%  
+博士後研究員 0 0 0%  
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 0% 
+人次 
+ 
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 

@@ -1,0 +1,299 @@
+Abstract - Since their first appearance in 1960s, Buffer Overflow Attacks, BOAs, have buffeted the
+Internet for more than half a century. Due to the simplicity to launch a BOA, the tremendous available
+targets in the Internet, and the damage it can create, BOAs have continuously been one of the most
+hazardous security threats in the Internet. As more protection approaches are developed, BOAs also
+evolve into different mutants to bypass the proposed protection. However, in order to damage
+compromised hosts, attackers almost inevitably need to execute system calls. Under the i86 architecture,
+a system call is issued through an int 0x80 or a sysenter instruction; hence, in this paper we
+proposed a novel solution (called System Call Protector, SCP, hereafter) to a broad range of BOAs
+through protecting the int 0x80 instruction. The protection is twofold: (1) prevent attackers’
+execution of the int 0x80 instruction provided by themselves (2) prevent attackers’execution of the
+int 0x80 instruction that is a part of the code of the attacked program. Experiments show with less
+than 14% average overhead, SCP implemented on a Linux platform could effectively block various
+kinds of BOAs. Meanwhile, SCP allows an executable stack which is important to nested functions and
+some OSes, such as Linux OS. Besides, SCP only modifies the glibc library and the kernel; therefore,
+it doesn’t need any source code. Under SCP the number of possible locations of an int 0x80
+instruction is 4096 times of ASLR’s, which makes SCP a more secure mechanism.
+Index Terms- buffer overflow attacks, system calls, System Call Protector, PaX/ASLR
+I. Introduction
+Since its first appearance in 1960 [27], Buffer overflow attacks have buffeted the
+Internet for more than half a century. Due to the simplicity to launch a BOA, the
+tremendous available targets in the Internet, and the damage it can create, buffer
+overflow attacks have continuously been one of the most hazardous security threats in
+the Internet. Not only Internet worms utilize this attack to proliferate themselves but
+SCP: A System Call Protector against Buffer
+Overflow Attacks
+.
+.
+what form a BOA could change to, in order to damage compromised hosts, attackers
+almost inevitably need to execute system calls [31]. Under the i86 architecture, a
+system call is issued through an int 0x80 or a sysenter instruction; hence, in this
+paper we proposed a novel solution (called System Call Protector, SCP, hereafter) to a
+broad range of BOAs through protecting the int 0x80 instruction. The protection is
+twofold: (1) prevent attackers’execution of the int 0x80 instruction provided by
+themselves (2) prevent attackers’execution of the int 0x80 instruction that is a part
+of the code of the attacked program.
+SCP is a glibc-and-kernel-based solution to all known code injection style
+BOAs, no matter where the injected code resides and how the code is executed; hence,
+it doesn’t’require the source code or executable files of any application. Besides,
+because it doesn’t change the memory layout specified by an executable file, such as
+an ELF executable, there is no a compatible problem and non-relocatable code could
+still work as usual. SCP also allows an executable stack; thus, OSes, such as Linux,
+programming languages, such as LISP, and application programs that require an
+executable stack could still function well. Furthermore, because under SCP the only
+legal int 0x80 instruction could be stored at any location of a 4KB-page, comparing
+with ASLR [5,6,7] whose implementation often needs to align the new base addresses
+of a page with 4KB (i.e. 4096) boundary, the number of possible locations to store the
+int 0x80 instruction in SCP is 4096 times of the ASLR’s. This feature makes SCP a
+more secure mechanism. Finally, comparing with PaX/ASLR, SCP provides more
+robust protection against local BOAs, because local attackers usually could use some
+tools to get the memory layout of a running process and with this information
+attackers can bypass PaX/ASLR’s protection easily. But the leak of memory layout
+information doesn’t weaken the protection provided by SCP. In summary, SCP is a
+solution to various code injection style BOAs with the following properties.
+ Low performance overhead
+ Protect programs against all known code injection style BOAs
+ No modification to source code or executable files is required
+ Compatible with existing systems and applications
+well-known standards, these solutions have compatible problems for non-relocatable
+programs. They could also create unusable internal fragments and make code
+maintenance a more difficult work, because every different process crash caused by
+the same bug will have a different core dump. Moreover, when being attacked by a
+BOA, the above solutions and some other solutions result in the crash of the attacked
+process. Even though crashing processes could effectively thwart BOAs, commercial
+sites may be not satisfied by this reaction. After all, keeping their sites on-line usually
+is their major concern. Finally some solutions need special hardware, such as a
+decoder to decrypt instructions, to perform the protection; however, the price of
+adding new hardware usually is not inexpensive.
+Several techniques solve BOAs by changing the layout or number or property of
+stacks. StackGuard [1], one of the most famous and important buffer overflow-related
+research works, inserts a canary word before the return address of the activation
+record of every active function. By checking the integrity of the canary word right
+before transferring control back to the caller function, StackGuard prevents attackers
+from hijacking the execution of an application through overwriting a return address.
+Solar designer [42] utilizes a non-executable stack to solve stack smashing style
+BOAs. However, this approach has compatible problems with nested functions and
+the sigreturn system call in Linux. Xu et al. [43] classify local variables into several
+categories according to their types. By storing each different class of variables at a
+different stack, their method prevents attackers from taking over program execution
+by overflowing a data buffer and its adjacent area.
+RAD [8] protects return addresses by storing another copy of return addresses in a
+well-protected area, called RAR. By checking the consistence of return addresses in
+RAR with their counterparts in the stack, RAD protects programs against stack
+smashing style BOAs. Both RAD and StackGuard utilize compilers to automatically
+support is unavoidable. Besides, Sovarel et al. [40] proposed an incremental
+key-breaking attack approach to invalidate ISR.
+Since the fundamental cause of BOAs is a lack of size checking between input
+strings and the corresponding holding buffers, array bound checking uses compilers to
+automatically add array bound checking code into programs compiled by them.
+Several approaches [12, 13, 14, 41] have been developed to implement automatic
+array bound checking. However, currently these techniques still suffer from high
+performance overhead and changes to pointer semantic. The overhead is caused by the
+need to check the correctness of every memory access.
+Static source code analysis techniques [44, 45, 46, 47] automatically analyze
+source code of application programs to detect potential buffer overflow vulnerabilities.
+These schemes usually suffer from high false alarms and scalability problems.
+III. Principle and Structure of SCP
+In this section we discuss the principle and structure of SCP. Besides, because
+SCP defends against BOAs through protecting system calls, we also introduce how
+system calls work in a Linux system.
+3.1 Principle of SCP
+According to Hofmeyr et al. [31], no matter what approach a buffer overflow
+attacker adopts, in order to damage target hosts, she/he inevitably needs to execute
+system calls. Under the i86 architecture, a system call is issued through an int 0x80
+or a sysenter instruction; thus, SCP defeats BOAs by preventing any illegal use of
+instruction int 0x80 by attackers. (P.S.: Instruction sysenter could be protected
+by the same method.) Attackers’illegal usage of instruction int 0x80 includes (1)
+mode data which are shared by all processes. Each process has its own user mode
+code and user mode data. Kernel mode code is executed with higher privilege level
+and provides services to user mode code of every process. However, unlike general
+function calls, user mode code of any process must utilize system calls to invoke
+kernel mode code (functions) that is (are) exported to the user mode code.
+Under Linux, before executing a system call, the user mode code must follow the
+steps described in Figure 2 to transfer execution into kernel.
+Figure 2: System Calls Use int $0x80 to Trap into Kernel
+Because all system calls use int 0x80 instruction to enter into kernel, kernel
+must have a way to decide what system call each invocation of int 0x80 instruction
+is corresponded to. In Linux, every system call, such as read, write, open, or
+close, is assigned a different number called system call number. The kernel uses this
+number which is transmitted through the eax register to distinguish system calls.
+After the execution of an int 0x80 instruction, the execution flow of a process is
+switched from user mode into kernel mode, and the address of the instruction right
+after the int 0x80 instruction is stored in the kernel mode stack of that process; thus,
+from this address, the kernel can deduce where the int 0x80 instruction is issued. If
+a process has registered to the kernel all legal addresses of all int 0x80 instructions
+it uses before its execution, then the execution of any int 0x80 instruction injected
+by attackers could be detected. Moreover, if the addresses of these legal int 0x80
+instructions are difficult to obtain, then, attackers will have problems to utilize
+1. Store Parameters in Registers
+2. movl system_Call_Number, %eax
+3. int 0x80
+corresponding instructions. Here PLT means Procedure Linkage Table and GOT
+represents Global Offset Table. When a system call is called the first time, the loader
+loads the corresponding wrapper routine into memory and stores the loading address
+into GOT; hence, if it is called again, no loading operation is needed to be performed.
+3.3 Structure of SCP
+SCP provides its protection against BOAs based on the following assumptions:
+ The protected process uses dynamic linked libraries.
+ The protected process doesn’tuse its own int 0x80 assembly instruction to
+issue a system call in its non-library source code.
+SCP is a libc-and-kernel based solution; hence, its protection is implemented
+in two different code blocks: the libc library and the kernel. Currently we have
+implemented SCP on a Linux platform.
+3.3.1 libc Component of SCP
+SCP replaces every int 0x80 instruction in the Linux libc library (i.e.
+glibc) with a Secure_Kernel_Entrance code block shown in Figure 4 (a);
+hence, under SCP every process utilizing dynamic linked libraries uses a
+Secure_Kernel_Entrance code block to issue a system call instead and the
+first execution of this process’s system calls triggers the first execution of one of this
+process’s Secure_Kernel_Entrance code blocks.
+In the beginning, a Secure_Kernel_Entrance code block saves the contents of all
+registers in the user mode stack of the process. When a process first executes a
+Secure_Kernel_Entrance, this code block uses mmap2()to dynamically allocate a
+page and uses the assigned page (called Trap Page hereafter) to store the code shown
+in Figure 4 (b) (called Trap Code hereafter).
+Figure 5: New System Call Calling Path under SCP
+3.3.2 Limitation upon System Call notify_kernel
+SCP develops a new system call notify_kernel to notify kernel the unique
+legal address of a process that could issue a system call. However, SCP restricts the
+number of times that system call notify_kernel could be executed to avoid
+attackers using this system call to change the address of the only legal int 0x80
+instruction.
+Except the above limitation, SCP allows a process to be able to execute
+notify_kernel only twice for the following reasons. To execute an application
+program AP, OS first forks a process which executes Linking Loader (or
+ld-linux.so.2) to prepare the execution of AP. The loader utilizes system call
+brk() first to replace the address space of the process with the image of the
+application program AP. In other words, the same process is used to execute two
+different programs. When containing the image of the first program, the process uses
+the Trap Page specific to that image to invoke system calls. And later on when holding
+the kernel. The int 0x80 instruction associated with a sigreturn is dynamically
+created at the stack segment of a process. Similarly, for simplicity, SCP doesn’t make
+address consistence check for sigreturn.
+The above exception doesn’t decrease the protection provided by SCP, because
+according to Bernaschi et al. [21], the three system calls could not be used to damage
+a host; hence, the exception does not weaken the protection provided by SCP.
+3.3.4 Inject Bait Code Blocks
+SCP allows an executable stack; hence, it is possible that attackers can hijack the
+execution of a program and after transferring the execution flow into attackers’
+injected code, attackers can scan the address space of the attacked process to find the
+int 0x80 instruction to execute their system calls. SCP solves this problem by
+inserting fake Trap Code instruction blocks around the real one and inserting fake
+Trap Page memory pages around the authentic one as shown in figure 6. Mixing the
+real int 0x80 instruction with the fake ones could protect the real one effectively.
+Figure 6: Insert Fake Trap Code and Trap Page around the Real One
+Fake trap page
+Fake trap page
+Fake trap page
+Fake trap page
+Fake trap page
+Fake trap page
+Real trap page
+…
+(Fake trap code)
+(Fake trap code)
+(Fake trap code)
+(Fake trap code)
+….
+4.1 Effectiveness Evaluation
+In the effectiveness tests, we launch the following kinds of attacks against a
+SCP-protected system to test the effectiveness of SCP.
+1. Traditional stack smashing style attacks
+2. Attacks using int 0x80 instruction which is not in the Trap Page
+3. Attacks using extra notify_kernel
+In the first test, we use Aleph One [26]’s exploit string and vulnerable program to
+test SCP’s protection against stack smashing style BOAs. Many attackers use Aleph
+One’s example as a template to craft their exploit strings; hence, this test could
+examine SCP’s capability in defending against stack smashing style BOAs. Figure 8
+shows SCP could successfully intercept and block stack smashing style BOAs.
+Figure 8: Results of Testing SCP’s Capability in Defending against Stack Smashing
+Style Buffer Overflow Attacks.
+The first part of figure 8 shows how a BOA is launched. The second part of the
+figure displays real time warning messages issued by SCP and the reaction taken by
+SCP. The third part presents partial contents of a log file which records the system
+calls blocked by SCP, the return addresses of the blocked system calls, the contents of
+average performance overhead. Figure 11 displays the results.
+System
+Call
+Original libc & Kernel
+(μsec)
+SCP libc & Kernel
+(μsec)
+Performance
+Overhead
+mmap 4.83598861 5.04285570 4.28 %
+open 5.70100183 12.31045995 115.93 %
+read 4.44757121 4.65731530 4.72 %
+write 28.61905470 28.86815789 0.87 %
+Figure 11 Micro Benchmark
+Figure 11 shows that SCP introduces little performance overhead for most of the
+tested system calls except system call open. The results of using strace [25] show
+that under SCP when executing an open system call, more page faults occur. This is
+because that in the original system, when executing an open system call, the system
+only needs to access the code segment for the system call code and stack segment for
+the parameters; however, in the SCP system, when executing an open system call,
+the system needs to access the code segment and heap segment for the code and the
+stack segment for the parameters. In the later case, because more segments are needed
+to be accessed to execute a system call, the number of page faults increases.
+4.2.2 Macro Benchmark
+In the macro benchmark tests, we write five programs to collect the data. Each of
+these five programs repeatedly executes a program 100,000 times to test SCP’s
+average performance overhead. The first four programs use system call open
+frequently; hence they have higher performance overhead. The average performance
+solve the problem from the following 3 directions:
+ Utilize CPU segment unit’s hardware support to modify the kernel
+ Adopt NX bit [25] technology
+ Apply SCP to hosts with 64-bit CPU since CPU like AMD 64 already provided
+executable-but-non-readable segments
+References
+[1].C. Cowan, C. Pu, D. Maier, H. Hinton, J. Wadpole, P. Bakke, S. Beattie, A. Grier,
+P. Wagle, Q. Zhang, "StackGuard: Automatic Detection and Prevention of
+Buffer-overrun Attacks", In Proceedings of the 7th USENIX Security Symposium,
+January 1998
+[2].Phrake Magazine, http://www.phrack.org
+[3].Bulba and Kil3r lam3rz@hert.org, "Bypassing StackGuard and StackShield",
+volume 0xa Issue 0x38, 05.01.2000
+[4].Arash Baratloo, Navjot Singh, and Timothy Tsai. "Transparent run-time defense
+against stack smashing attacks". In Proceedings of the 2000 USENIX Annual
+Technical Conference (USENIX-00), pages 251–262, Berkeley, CA, June 2000.
+[5].S. Bhatkar, D. DuVarney, and R. Sekar. "Address obfuscation: An efficient
+approach to combat a broad range of memory error exploits". In V. Paxson, editor,
+Proc. 12th USENIX Sec. Symp, USENIX, Aug. 2003.
+[6].Sandeep Bhatkar, Daniel C. DuVarney, and R. Sekar, "Address Obfuscation: an
+Efficient Approach to Combat a Broad Range of Memory Error Exploits",
+Department of Computer Science, Stony Brook University
+[7].The PaX Address Space Layout Randomization project, http://pax.grsecurity.net/
+[8].Tzi-cker Chiueh and Fu-Hau Hsu, "RAD: A Compiler Time Solution to Buffer
+Overflow Attacks", ICDCS 2001, Phoenix, Arizona, USA, April, 2001.
+October 2003.
+[21].Bernaschi, M., Gabrielli, E., and Mancini, L. V. 2002. "REMUS: a
+Security-Enhanced Operating System," ACM Transactions on Information and
+System Security 5, 36 (Feb.).
+[22].QEMU: a generic and open source machine emulator and virtualizer,
+http://fabrice.bellard.free.fr/qemu/
+[23].VMware, http://www.vmware.com/
+[24].Strace: a system call tracer, http://sourceforge.net/projects/strace/
+[25].NX Bit, http://en.wikipedia.org/wiki/NX_bit
+[26].Aleph One, "Smashing the Stack for Fun and Profit", Phrak 49
+[27]Crispin Cowan, `Bufer Overflow and OS/390,’ ’ 
+http://geek-girl.com/bugtraq/1999_1/0481.html.
+[28] Mat Conover, w`00w00 on Heap Overflows,’ ’
+http://www.w00w00.org/articles.html.
+[29] Solar Designer, `` Bugtraq mailing list: Getting around non-executable stack (and
+fix),’http://www.securityfocus.com/archive/1/7480, Aug. 1997.
+[30] Nergal, ``The advanced return-into-lib(c) exploits: Pax case study,’ Phrack,
+10(58), Dec. 2001.
+[31] Hofmeyr, S. A., Forrest, S., and Somayaji, ``A. Intrusion detection using
+sequences of system calls,’Journal of Computer Security, 6 (1998), 151--180.
+[32] X. Wang, C. Pan, P. Liu, S. Zhu, ``SigFree: A Signature-free Buffer Overflow
+Attack Blocker,’15th USENIX Security, July 2006.
+[33] Izik, ``Advanced Buffer Overflow Methods [or] Smack the Stack,’22nd Chaos
+Communication Congress, Dec. 2005.
+[34] Phetips, ``Returning to %esp (Circumventing the VA kernel patch For Fun and
+Profit),’http://milw0rm.com/papers/94
+[35] Massimo Bernaschi, Emanuele Gabrielli, and Luigi V. Mancini, ``Remus: a
+security-enhanced operating system,’ ACM Transactions on Information and
+System Security Volume 5, Issue 1 (Feb. 2002) Pages: 36–61.
+[36] Jun Xu, Zbigniew Kalbarczyk, and Ravishankar K. Iyer, ``Transparent Runtime
+Randomization for Security,’22nd Symposium on Reliable Distributed Systems
+(SRDS 2003), Oct. 2003, Florence, Italy.

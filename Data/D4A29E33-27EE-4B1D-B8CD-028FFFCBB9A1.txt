@@ -1,0 +1,198 @@
+Mobile VPN 用戶從一個地方移動到
+另一個地方是常見的。這類的網路用戶經
+常在不同的位置之間移動，並且可能使用
+不同的網路媒介進入 VPN，例如 802.11 
+WLAN、802.16 WiMAX 等等無線方式連
+接。但是 VPN 用戶時常在移動，又要能夠
+讓他們持續與 VPN 連線，已不是單純的
+handoff 的問題。以 IPSec VPN 為例，用戶
+利 用 IPSec Tunnel 連 至 IPSec VPN 
+Gateway 再接上內部 Server。當 VPN 用戶
+改變他們的地理位置時，他們的 Mobile 
+VPN 節點很可能已經穿到其他子網路，這
+表明他們手上設備需要重新取得 IP 位
+址。當 IP 位址改變時會造成所有以原來 IP
+建立的 IP 通道（tunnel）失效，為了恢復
+VPN 的連結，那些用戶需要重新用他們的
+帳號和密碼做重新登入 VPN 的動作。在重
+建VPN過程中所有正在進行中的資料傳輸
+將被暫停，並且需要重新登入 VPN 後才能
+繼續。目前 Mobile VPN 的作法多是考量改
+善使用 IPSec VPN (User based VPN)的情
+形。我們則是探討利用 VPLS 技術來提供
+Mobile VPN 的可行性。 
+ 
+三、結果與討論 
+由於 VPLS 是一種由 MPLS 來達成
+layer 2 VPN 的技術，因此我們以這個概念
+為出發點，首先需完成基於 IXP 2400 網路
+處理器的 MPLS 路由器。在之前的計畫，
+我們已實現網路處理器的 Data Plane，以及
+路由運作的 Control Plane，但二者尚未能整
+合。因此在本計畫我們規劃下列工作項目: 
+1. 在網路處理器平台實現 data plane 與
+control plane 的溝通。2. 在 PC 平台將
+MPLS 和 bridge 加以整合，驗證 VPLS 的
+基本能力。3. 設計在 mobility 的環境下，
+MAC Learning Table 的自動更新。  
+A. Data plane 與 control plane 的溝通 
+圖 1 顯示了由 IXP2400 網路處理器
+與外部處理器組成的路由器系統。這個系
+統架構將 Control Plane 與 Data Plane 劃分
+開 來 ， 分 別 置 放 於 General Purpose 
+Processor 與 IXP2400 網路處理器上各自
+獨立開發與運作；最後透過 Linux 的隧道
+技術 把 Control Plane 與 Data Plane 整合
+起來。 
+ 
+圖 1 以網路處理器為基礎的路由器系統 
+在控制與資料平面分離的架構下，必
+須讓控制平面與資料平面有完善的溝通。
+所謂的溝通，是指以下兩件事：1.控制平面
+能模擬資料平面的網路介面：分離式路由
+器的對外路由的網路介面是在資料平面
+上，控制平面必須要能知道資料平面上的
+網路介面資訊，路由常駐程式才能依據正
+確的介面資訊來運作。2.資料平面能正確地
+轉送路由封包：資料平面除了轉送一般的
+資料封包外，也必須將控制平面送來的路
+由封包(如 OSPF Hello 封包)轉送給鄰居路
+由器，另外，將鄰居路由器送來的路由封
+包傳遞給控制平面處理。為了達到上述的
+兩件事情，我們提出使用隧道技術來完
+成。在此架構下，控制平面和資料平面所
+需要負責的任務如下。控制平面:1.必須與
+資料平面建立數條 IP-in-IP 的隧道。2. 利
+用隧道介面來模擬資料平面的真實路由網
+路介面。3. 路由常駐程式負責路由協定的
+運作，並利用隧道介面來計算正確的路
+由。4. 負責資料平面的路由表維護。資料
+平面:1.必須與控制平面建立數條 IP-in-IP 
+的隧道，作為反向路由封包的傳遞路徑。
+2.轉送 OSPF 路由封包。3.轉送一般資料封
+包。4.接收控制平面傳來的路由更新資訊，
+並將其寫入核心路由表中。 
+我們所解決的問題包括 1. 由於控制
+平面與鄰居路由器對 OSPF 環境認知的差
+異，必須修改隧道介面使其成為廣播型態
+的裝置。 2. 由於 OSPF 廣播 External 
+Route，不能讓 OSPFd 知道真實介面的存
+在。3. 經由資料平面轉送的路由封包，會
+遞減 TTL 欄位值至 0，而被丟棄，必須做
+適當的修改。4. 隧道介面因為多了ㄧ層隧
+ 2
+ 4
+許加入 VPN。加入 VPN 之後，基本上使用
+者不需要做任何設定，就擁有 VPLS 的服
+務了。 
+在 PE 端的 bridge 具備 auto-learning 的
+功能。當使用者 A 第一次從 port 1 傳送封
+包的時候，bridge 就會把使用者 A 的 MAC 
+address 和相對應的 port 紀錄在 Forwarding 
+Table 之中；而且因為目前還沒有紀錄任何
+MAC address，所以封包會被 flood，除了
+port 1 之外全部的 port。 
+當有其他使用者要傳送封包給使用者
+A 時，因為 bridge 已經知道使用者 A 位於
+port 1，所以只會將封包往 port 1 轉送，而
+不會傳送到全部的 port。 
+當有封包要透過 Core Network 送給遠
+端屬於相同 VPN 的成員時，PE 會將整個
+L2 frame 連同 MAC header 整個封裝到
+MPLS packet 之中。當 MPLS packet 傳到遠
+端的 PE 時，PE 將封包解開後，導入 bridge
+之中，因為對於 bridge 來說，就好像從某
+個 port 收到封包一樣，將該筆 MAC address
+紀錄後，依照 bridge 的 Forwarding Table，
+來決定進行 forward 或是 flood。當接收者
+收到封包，看到的 MAC address 依然是傳
+送者的 MAC address，感覺起來好像依然屬
+於同一個 LAN 底下。當一筆 MAC address
+太久沒被使用，應該予以刪除，減少 Table
+資源的浪費。預設自動刪除的時間為五分
+鐘。 
+這部份的實作，利用 Linux kernel 所提
+供的 Bridge function，以及 bridge-utils 這套
+網路上提供的免費軟體，來達成 bridge 的
+實現與管理。利用 bridge-utils 提供的指令
+先創造出一個 virtual interface：br0，再把
+其他 interface 加入 br0 底下，如此一來，
+加入 br0 的那些 interface，就好像運作在同
+一個 LAN 底下。此時，封包的轉送不是依
+據 routing table，而是根據 Forwarding Table
+來決定要往哪個介面送。 
+C. Mobile VPLS 
+上面所描述的，還只是有線的 VPLS
+的情況而已。為了要實現 Mobile VPLS，
+在 PE 上還必須有 Access Point 的無線裝
+置，以及處理 802.11 封包的能力。 
+在我們環境中，利用市售的無線網
+卡”DWL-G520”達成架設 AP 的目標。因為
+AP 本身就一種 bridge 的裝置，只要將 AP
+的 interface 加入 VPLS bridge 之中，Mobile 
+VPLS 的基礎架構就可以算是完成了。 
+因為現在的環境變成了 Mobility，代表
+station 可能會從一個區域移動到另外一個
+區域。當 station 有移動的情況時，各個 PE
+的 forwarding table 也必須馬上更新，維持
+最新的 forwarding 資訊。 
+關於這個部份，我們利用 station 進行
+hand off 運作的原理，當有加入某個 VPN
+的 station 要從一個 AP 移動到另外一個屬
+於相同 VPN 的 AP 底下時，勢必要與 VPN
+的 server 做溝通，並且還要與原本的 AP
+做 deassociation，再與新的AP做 association
+的動作。當 station 與本來的 AP 進行
+deassociation 時，此時 PE 利用 LDP 發出
+Address Withdraw Message 給全部的 PE，
+內含 MAC list TLV，該 MAC list TLV 會紀
+錄該 station 的 MAC address，當其他 PE 收
+到這個 Address withdraw message 封包之
+後 ， 將 該 筆 MAC address 從自己的
+forwarding table 中刪除。而 station 與新的
+AP 做 association，因為該 AP 也是屬於相
+同 bridge 的 interface，所以 station 的 MAC 
+address就會馬上紀錄在該 PE的 forwarding 
+table 之中，達成 Mobile VPLS 的能力。 
+ 
+四、成果自評 
+整體而言，我們在技術難度相當高的
+網路處理器平台上利用隧道技術完成了資
+料平面與控制平面的溝通，整合 Linux 上
+Bridge 模組到 MPLS PE 路由器內以實現
+VPLS PE，並且將 VPLS 對於 Mobility 的支
+援在 WiFi 環境設計出來，這在國內應該是
+ 0
+ 
+一、 參加會議經過
+2007 年國際到處存在的計算與通訊會議在美國紐約 White Plain Crowne Plaza
+Hotel 舉行，會議為期五天，自三月十九日至三月二十三日。整個會議包含一個
+Main Conference、4 個 Keynotes/seminars、10 Workshops、1 Work-in-Progress
+session、1 demo session、and 1 panel。這是一個非常高水準的會議，Main Conference
+從 208 篇投稿論文中接受少於 15%的 28 篇論文，分佈於 9 個 Sessions，以單一
+Track 的方式於三天內完成論文成果發表。10 個 Workshops 則分布在頭尾兩天，
+每個 Workshop 的論文接受率都在三分之一以下。
+Main Conference 的 Sessions 安排資訊如下:
+Keynote Lecture: From Pervasive Computing to EventWeb, by Prof. Ramesh Jain.
+Session 1: RFID
+Work-in-Progress session
+Demo Session and Reception (IBM)
+Keynote Lecture: Very Large-Scale Pervasiveness Does Not Scale Down, by Dr.
+Henri Tirri.
+Session 2: Best Papers
+Session 3: Middleware and applications
+Session 4: Middleware and applications
+Session 5: Localization and its Applications
+Panel Session: Is the explosion of academic interest in sensor networks commensurate
+with practical applications of the technology?
+Session 6: End-user experience
+Session 7: Security
+Session 8: Data Management and Usage
+Session 9: Interacting with the user
+Main Conference 的三篇最佳論文分別為: 1. Mining Frequency Trajectory Patterns
+for Activity Monitoring Using Radio Frequency Tag Arrays， 2. BlueTorrent:
+Cooperative Content Sharing for Bluetooth Users，3. A Local Data Abstraction and
+Communication Paradigm for Pervasive Computing。
+研討會(Workshop)為並行舉行。我參加的是到處存在的計算感測網路與系統研討
+會 Workshop on Sensor Networks and Systems for Pervasive Computing (PerSeNS
+2007)。此研討會從 45 篇投稿論文中接受 13 篇論文發表，接受率低於 30%。

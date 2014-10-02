@@ -1,0 +1,644 @@
+將原始的音訊經由線性預測處理，拆解成預測誤差
+以及線性預測係數，分別代表聲源激發訊號以及聲
+道濾波器係數。若要還原原本的音訊，則僅需將預
+測誤差通過由預測係數構成的合成濾波器來產
+生。但在高壓縮率的條件下，由於儲存預測誤差所
+需資料量很龐大，還原後的聲音訊號則無法維持原
+本品質。爾後 Marc Padellini 和 Francois Capman 等
+人[1]利用隱藏式馬可夫模型(hidden Markov model, 
+HMM)來分析訊號的頻譜特性，再從既有的碼本
+(code book)裡找出對應的語音波形，儲存其對應關
+係來還原原始音訊，系統的位元率可達 500bps。
+Kechu Yi 和 Jun Cheng 等人[2]也提出結合聲音辨識
+之 HMM 模型，主要結合了基頻同步累加(Pitch 
+Synchronous OverLap Add, PSOLA)演算法，來調整
+經由 HMM 模型所產生的聲音訊號的韻律特性，使
+系統位元率能達到 200bps。 
+在文獻[8]中，作者提出結合線性預測處理的
+LP-PSOLA 語音轉換法，將線性預測模型中的預測
+誤差，經由 PSOLA 調整成與 target 訊號具有相同
+的韻律特性，最後再經由合成濾波器還原 target 訊
+號。主要的目的在於保留原始發聲模型的特色，以
+解決原本 POSLA 所合成出的聲音音調不自然的情
+形。當我們使用 LP-POSLA 來做音訊的壓縮時，其
+所合成出的聲音確實能保有原本的韻律特性，但卻
+忽略了振幅大小的調整，使得聲音的強弱不符合
+target 訊號的特性。除此之外，對於同音訊號連續
+出現的情形，由於每個單音的發音長度並不相同，
+傳統的 LP-POSLA 僅能等比例的調整韻律的特
+性，於是造成語調的失真。 
+為了解決以上的問題，我們採用了閉迴路
+(close-loop) 的 直 接 搜 尋 法 來 取 代 傳 統 的
+LP-PSOLA。首先利用音高標記區隔出 source 與
+target 訊號各個單一週期之後，從既有的單一週期
+預測誤差訊號中，尋找與 target 的各個單一週期最
+相似的訊號，並以之取代。除此之外，為了避免由
+合成訊號所造成的誤差累加問題，使得閉迴路所搜
+尋出的結果並非最佳解，我們提出間接搜尋法，藉
+由以合成出的訊號與 target 訊號誤差最小條件下，
+間接找出單一週期間彼此最佳的對應關係。最後，
+我們將探討如何重新計算合成濾波器係數，使得其
+能隨著預測誤差搜尋的結果而調整。如此一來，即
+使調整後的預測誤差與實際訊號有明顯的差異
+時，藉由重新計算最佳合成濾波器係數，將可有效
+降低預測誤差的失真對於還原語音訊號的影響。 
+二、基於語音轉換處理之同音壓縮系統 
+在此章節，我們會描述如何將原本應用於語音
+合成的語音轉換處理法，與同音壓縮系統的概念作
+結合。 
+    在相同發音訊號的壓縮處理上，令 source 與
+target 為兩同音之訊號，我們採用圖 2.1 的架構，將
+target 的韻律特性由其線性預測誤差來取代。於是
+source 訊號的線性預測誤差經過 PSOLA 韻律轉換
+後，產生具有 target 之韻律特性的預測誤差訊號，
+最後再經過 target 訊號之聲道濾波器還原後，即可
+得到近似原始 target 訊號的結果。有別於傳統的語
+音壓縮系統，其主要的儲存需求來自於線性預測誤
+差，但在我們的同音壓縮架構中，只需要儲存 target
+與 source 之預測誤差週期的對應關係，以及 target
+的線性預測係數，大大的降低資料的儲存量。除此
+之外，傳統的 PSOLA 僅有包含 target 的韻律特性
+之調整資訊，於是在合成濾波器的部分只能使用原
+始 source 訊號的線性預測係數。但在我們的架構
+裡，由於 target 也經過線性預測分析，為了使還原
+後的訊號能更接近原始 target 訊號，因此在訊號合
+成時我們就必需根據 target 訊號的聲道濾波器係數
+ 
+圖 3.1 語音壓縮系統之編碼端 
+ 
+圖 3.2 語音壓縮系統之解碼端 
+步驟：(1)音高標記(pitch marker)：利用聲音訊號
+具有特定頻率的性質，求取自相關函數來找出各個
+單一基頻週期的起始點，用來區隔出各個週期的訊
+號。(2)前處理：因 source 與 target 雖為同音訊號，
+但不同的 target 訊號的音調以及音量均會改變，為
+了讓影響比對結果的變因降到最少，於是我們會先
+對於基頻週期長度以及能量來做調整。對於 source
+與 target 週期的長短不同的問題，我們使用簡單的
+線性內插法來解決，使每次比對兩兩週期的長度維
+持一定。接著再使用歸一化(normalization)的技巧來
+解決能量差異太大的問題，使得每次比對，兩兩週
+期內的訊號能量分佈均相同。(3)對應關係的決定：
+根據最小平方誤差準則，我們找到與各別 target 基
+頻週期誤差最小的 source 週期所代表的 index，最
+後將完整 source-target 對應的關係以向量方式記錄
+下來。利用同音訊號在預測誤差中各個週期的高相
+關性，使得我們無需對 target 預測誤差訊號進行傳
+統的壓縮編碼處理，因而減少了輸出位元數，達成
+提高壓縮倍率的目標。整體的架構如圖 3.3 所示。 
+但上述的閉迴路直接搜尋法，無法保證利用其
+搜尋的結果所還原的訊號，仍是與 target 訊號誤差
+最小的結果。原因在於預測誤差還需再多經過一個
+合成濾波器，其定義如(3-1)式所示： 
+1
+( ) ( ) ( )
+p
+k
+k
+s n a s n k e
+
+    n       (3-1) 
+其中 為合成訊號， 為預測係數，P 為預測階
+數， 為近似 target 之預測誤差。也就是說，每
+一個合成訊號是由過去前P點的合成訊號之線性組
+合來產生。所以當某一個合成訊號之振幅值
+與 target 訊號 s(m)之間有誤差產生時，下一個合成
+訊號之振幅值
+( )s n
+( )e n
+ka
+s(m)
+s(m 1) 就會包含這些誤差值。當這
+些誤差持續性累積的情況下(即誤差值持續保持相
+同的正號或負號)，則 可能會有嚴重誤差累積
+的問題，使得經由合成濾波器所產生的還原訊號
+，並不再保有與原本 target 訊號誤差最小的特
+性。 
+ae (n)
+s(n )
+為了避免誤差累積的問題，所以我們提出了間
+接的搜尋方法重新決定 source-target 單一週期的對
+應關係。如圖 3.4 所顯示，在比對過程中，我們必
+需考慮預測誤差中的每一個基頻週期，在合成時所
+產生的合成誤差累積，因此我們將討論合成後的訊
+號 與 target 之間的誤差，以最小平方誤差為搜
+尋準則，來間接決定能產生最佳合成訊號的預測誤
+'s (n)
+ 在圖 3.9 中，由於聲道合成濾波器係數由線性
+預測係數所決定，而預測係數又是以最小預測誤差
+平方和準則所產生： 
+P
+2
+k{ } n k 1ak
+min (t(n) a t(n k))
+
+       (3–2) 
+其中 為預測係數，t(n)為 target 訊號， P 為預測
+階數。由(3-2)式可以看出，聲道濾波器係數的決定
+並沒有考慮到上述 具有誤差的情形下所產生
+的額外失真。 
+ka
+'
+te (n)
+(A)預測誤差             (B)合成波形 
+圖 3.6 未考慮誤差累積之結果 
+而圖 3.7 則為間接搜尋之結果，雖然此結果在圖
+3.7(A)預測誤差上所呈現的 MSE 值(32.42dB)大於
+圖 3.6(A)預測誤差上的 MSE 值(29.54dB)，在取樣
+點 1780 至 1785 之間與目標訊號有較大之誤差。但
+因為在此區間的訊號所產生的誤差有正值也有負
+值，所以在合成時會造成抵銷的效果，因而減少誤
+差合成累積的問題，使得最後所產生的合成訊號，
+會比圖 3.6(B)更貼近原始 target 訊號。 
+ 
+圖 3.9 預測係數求取之架構圖 
+ 因此我們將利用 regularized LS 演算法(圖 
+3.10)，令含有誤差的預測誤差訊號 為其參考
+訊號，在使還原訊號與 target 訊號平方誤差最小的
+條件下，重新計算預測係數 ： 
+'
+te (n)
+ka
+ 
+P
+2
+k t{ } n k 1ak
+min [t(n) ( a t(n k) e ' (n))]
+
+       (3–5) 
+其中 為預測係數，t(n)為 target 訊號， 為近
+似目標預測誤差訊號，P 為預測階數。 
+ka te ' (n)
+  (A)預測誤差           (B)合成波形 
+ 
+圖 3.7 考慮誤差累積之結果 
+B. 線性預測分析之改進 
+在我們所提出的同音訊號壓縮系統中，如圖
+3.8， 代表由 source 預測誤差所轉換產生的預
+測誤差，而 則為實際 target 的預測誤差。當兩
+者存在明顯的差異時，會使得合成的語音訊號
+與實際的 target 訊號也有明顯的失真。 
+'
+te (n)
+te (n)
+'t (n) 圖 3.10 最佳預測係數求取之架構圖 
+四、 實驗結果與討論 
+ 
+我們將利用新聞廣播語料庫中的語音資料，來
+比較 LP-PSOLA 與本研究中所提出的同音壓縮方
+法之效能。我們將分別說明單字詞，二字詞及多字
+詞處理結果。此新聞語料庫的取樣頻率為 16kHz，
+每個取樣值以 16-bits PCM 格式儲存。在線性預測
+分析部分，我們採用 16 階的線性預測濾波器，以
+20 點之音框為處理單位。 
+A. 位元壓縮率之計算 
+圖 3.8 同音訊號壓縮系統 由於系統的設計是以低位元率為目標，所以我
+        (A 還原訊號         (B)近似預測誤差 
+圖 4.4  間接搜尋的結果 
+善有限的情況下(例如”大”)，仍可得到額外的音質
+改善。若比較結合兩種改進方法的結果，則平均可
+以降低 13.21 dB 的誤差值。  
+接下來我們以實際的聲音訊號來解釋改善後
+的結果。以國語「鋼」為例，圖 4.1、4.2 分別為 source
+以及 target 訊號與其預測誤差，而 4.3、4.4 則分別
+為 LP-PSOLA 以及使用間接搜尋演算法的結果。由
+於預測誤差波形在還原時，所使用的合成濾波器可
+能會產生誤差累積之問題，而間接搜尋方法，因為
+考慮了合成誤差累積之影響，使得圖 4.4(A)合成波
+形的失真效果會小於 LP-PSOLA 結果。 
+ 
+     (A)還原訊號          (B)近似預測誤差 
+圖 4.5 預測係數修正後之結果 
+為了再減少搜尋後合成波形所產的失真，如圖
+4.4(A)紅色框中之波形，我們在加入預測係數修正
+方法。考慮圖 4.4(B)預測誤差搜尋之結果來重新計
+算目標之合成濾波器係數，使其最後合成之波形能
+更為接近目標訊號。如圖 4.4(A)紅色框裡我們可
+看到此部份的合成波形之振幅值大於目標訊號之
+振幅值，而 果，雖然
+與圖
+以
+ 圖 4.5 為預測係數修正後之結
+4.4 有相同之預測誤差波形，但是圖 4.5(A)經
+過預測係數之修正後的合成波形，在紅色框中的失
+真可以有效的被減少。 
+(2)二字詞實驗 
+LP-PSOLA 與兩種改進的演算法之比較： 
+圖 4.1  (A) source 訊號         (B) source 預測誤差 
+ 
+ 
+圖 4.2   (A) target 訊號       (B) target 預測誤差 
+  
+        (A)還原訊號          (B)近似預測誤差  
+圖 4.3  LP-PSOLA 的結果 表 4.6 二字詞合成波形上的 MSE 值(dB) 
+ 二字詞的實驗與單字詞最大的差別在於，必須
+考慮 source 及 target 每個單字詞所佔時間的比例，
+因為就算是同樣發音的訊號，由於每次發聲的語調
+並不相同，各個單字詞的長短也就有所差異。由於
+LP-PSOLA 並沒有考慮這種情形，所以在我們結合
+了間接搜尋及預測係數修正的方法後，平均可將還  
+圖 4.11 忽略誤差累積問題之波形 
+在我們提出的間接搜尋方法則考慮了此誤差累積
+的問題，藉由間接搜尋所找出的預測誤差波形的
+MSE 值為 61.75dB，雖然較直接搜尋法來的高，但
+經 由 合 成 濾 波 器 所 還 原 的 訊 號 MSE 值 為
+66.14dB，則較直接搜尋法低了 2.57 dB。如圖 4.12
+所示，橘色的部分與圖 4.11 為同一個單一週期，其
+紅色方框部分的誤差有明顯的降低。 
+接著則觀察使用了 weighted regularized LS 方
+法重新計算線性預測係數所改善的效果。圖 4.13
+為與上述相同之語音訊號，經由預測係數修正前與
+修正後之結果，其藍色實線為 target 訊號，綠色實
+線則為合 當我
+們考慮 預測
+係數的結果，確實能夠再進一步的使合成訊號的
+成訊號波形。由圖 4.16(B)可以，看出
+預測誤差訊號所包含的失真，重新計算
+MSE 降低。 
+ 
+圖 4.12 考慮誤差累積問題之波形 
+ 
+(A)未修正之結果 
+ 
+(B)修正後之結果 
+圖 4.13 預測係數之修正 
+(3)多字詞實驗 
+在多字詞實驗中我們使用了語調不同，但為同
+一人之發聲的語音訊號，如表 4.7 中的畢業生、畢
+業生 02 等等。 
+在表 4.7 中，我們比較 LP-PSOLA 與兩種改善
+方法之比較。在 MSE 的比較上，結合間接搜尋以
+及重新計算預測係數的架構，比起傳統的
+LP-PSOLA 平均可降低 13.16 dB 的誤差。比起二字
+詞的實驗所降低的 .15 dB，原因可
+能在於轉音的地方較多，而我們的壓縮系統在轉音
+的部分相對會產生較大的誤差值。原因在於轉音的
+部分會包含前後兩個單音的個別頻率，對於音高標
+記的部分會產生較大的誤差，而在單一週期的比對
+上也較難找出近似的波形。。 
+誤差約略少了 1
+ 
+表 4.7 三字詞合成波形上的 MSE 值(dB) 
+ 我們以國語三字詞「教育部」之語音訊號為
+例，圖 4.14 及 4.15 分別代表 source 以及 target 的
+語音訊號波形及其預測誤差訊號。在 source 訊號中
+各單字詞所佔之比例分別為 3/10、2/10、5/10，而
+對於 target 訊號而言各單字詞的比例為 3/10、3/10、
+4/10。 
+使用 LP-PSOLA 語音壓縮系統種中，其音長的
+調整中，並未考慮 target 訊號中各字詞發音之長
+短，因此結果會與二字詞的結果雷同。如圖 4.16(A)
+所示，其還原波形中單字詞所佔的比例分別為
+3/10、2/10、5/10，與 target 訊號並不相同。 
+ 
+[9] WAI C. Chu,“ Speech Coding Algorithms Foundation 
+And Evolution dardized Coders”, 
+[12
+[13
+[15
+Of Stan
+Wiley-Interscience, 2003. 
+[10] V. Ramasubramanian and D. Harish,“ An Optimal 
+Unit-Selection Algorithm For Ultra Low Bit-Rate 
+Speech Coding”, Speech and Signal Processing, 
+PP.541-544, 2007. 
+[11] K.S.Lee ,R. Cox,“ A Very Low Bit Rate Speech Coder 
+Based On a Recognition/Synthesis Paradigm,” IEEE 
+trans. SAP, Vol.9, No5, PP.482-491, July 2001. 
+] G.Baudoin, F.El Chami,“ Corpus Based Very Low Bit 
+Rate Speech Coding” Proc. ICASSP-03, PP.792-795, 
+2003. 
+] Heng-Chou Chen, Chin-Yung Chen, Kui-Ming Tsou, 
+Oscul T.-C. Chen,“ A 0.75 kbps Speech Codec Using 
+Recognition and Synthesis Schemes”, Speech Coding 
+For Telecommunications Proceeding, PP.27-28, 1997. 
+[14] 王小川,“ 語音訊號處理”, 全華 2005. 
+] 王建文 ,“ Very Low Speech Compression Using 
+Closed-Loop Speech Transformation Merhods” 中興
+大學碩士論文, 2008. 
+ 
+response coefficient from the i-th transmit antenna.  In [1], 
+the correlation of adjacent subcarrier channel transfer 
+function (CTF) coefficients  and  mnH i 2,   12, mnHi
+2 1
+ is 
+explored to decouple the effects of different transmit 
+antennas on the received symbol and hence reduce the 
+complexity of decision-directed channel estimation.  Given 
+the correctly decided symbols at adjacent subcarriers  
+and  , i.e., , , 
+m
+12 m  m 2,1 ntnt 2,1 m  mnt 2,2 , 
+, in [1] the two received symbols  1m 2,2 nt  mnr 2,  and  are linearly transformed to obtain  2,nr 1m
+    
+ 
+ 1 ,z n m m2 2
+, 2 ,2
+,2
+r n m
+t n
+ 1
+1m
+
+, 2
+r n m
+t n
+
+
+, (2) 
+and 
+   
+ 
+ 2 ,
+m
+z n m
+m1 1
+, 2 1
+, 2 1
+r n m
+t n m
+ 
+, 2
+, 2
+r n
+t n
+ . (3) 
+With the assumption of    1 1, 2 ,m H n 2 1m H n  and 
+   2 , 2m 2 1m , 2H nH n ,   1 ,mz n  can be shown to be 
+only related to  1 , 2H n m
+  
+ by 
+   
+ 
+ 
+ 
+ 
+ 
+ 
+  
+2 2
+1 1
+, 2
+  
+1 1
+1 1
+2 2
+1
+, 2
+, ,
+, 2 ,2
+,2 , 2 1
+,2 , 2 1
+,2 , ,
+t n m t n m
+H n m
+t n m t n m
+w n m w n m
+t n m t n m
+H n m v n m w n m
+      
+   
+  
+1
+1
+   
+   
+            
+         
+z n m
+
+
+. (4) 
+Likewise, 2z n, m  is only related to  2 , 2H n m  by 
+      
+ 
+ 
+ 
+ 
+ 
+ 
+     
+2 2
+2 2
+1 1
+1 1
+2 2 2
+, 2 , 2
+, , 2
+,2 , 2
+,2 ,2 1
+, 2 ,2 1
+,2 , ,
+t n m t n
+H n m
+t n m t n
+w n m w n m
+t n m t n m
+H n m v n m w n m
+      
+   
+  
+1
+1
+   
+   
+            
+         
+z n m
+m
+m
+
+
+
+. (5) 
+ 
+After using (2) and (3) to convert all pairs of received 
+symbols at adjacent subcarriers based on the decided 
+symbols, the channel impulse response (CIR)   iˆh n
+ 
+, l  
+corresponding to the i-th transmit antenna can be 
+independently estimated by performing the following LS 
+estimation: 
+          0
+2
+2 21 12
+,
+min
+h n li
+l
+0 0
+, , , , .
+K m lK j
+k
+i i i i
+m l
+z n m v n m h n l e
+  
+ 
+   hˆ n (6) 
+The reduced complexity algorithm [1], consisting of (2), (3) 
+and (6), separates the estimation of each transmit antenna 
+response to reduce the matrix size and the complexity of 
+matrix inverse required in the LS estimation.  
+However, for higher order channels and channels with 
+larger root-mean-square delay spreads, the existence of 
+severe frequency selectivity will cause significant channel 
+gain variations between adjacent subcarriers, which 
+invalidates the relation between  ,iz n m  and  ,iv n m  in (4) 
+and (5). As a result, it will introduce bias in the LS channel 
+impulse response estimate  iˆ ,h n l . Therefore, the MSE 
+performance of the reduced complexity algorithm will 
+exhibit an extra term (the first one in (7)) due to the gain 
+variation across adjacent subcarriers 
+   
+0
+21 2 0
+21
+1 1 ,
+2
+K
+l n
+K
+l
+i
+K
+MSE w P l
+K t m
+
+
+    (7) 
+where     2P l E h l     denotes the power delay profile of 
+the channel.  From (7) we can observe that with the increase 
+of the channel order 0K , the extra MSE will grow 
+quadratically with 0K  for large K , and thus dominates the 
+overall MSE. 
+Fig. 1 compares the two MSE components in (7) for the 
+TU and HT channel models with delay spread of 1.06 s  and 
+5.04 s , respectively. Since the TU channel has smaller 
+channel order and RMS delay spread, the extra MSE due to 
+the channel gain variation keeps less than the noise 
+component when the SNR is smaller than 12dB.  On the 
+other hand, due to the higher channel order and larger RMS 
+of the HT channel, the gain-variation reduced MSE will 
+dominate the overall error as long as the SNR is larger than 
+6dB.  Simulation results in [1] have also shown that the 
+reduced complexity algorithm has more than 5dB SNR loss 
+due to the invalid equal gain assumption. 
+III. PROPOSED BIAS REMOVAL SCHEMES 
+In the following, we propose to exploit the temporal 
+channel correlation to compensate for the performance loss 
+of the algorithm in [1] while keeping its low complexity.  
+We first show in Fig.2 the correlation coefficient of adjacent 
+subcarriers’ gain variation across two successive OFDM 
+symbols.  Both the max and min correlation coefficients for 
+different Doppler frequencies are depicted in Fig.2.  Due to 
+the strong temporal correlation even at Doppler frequencies  
+higher than 200Hz, we first propose to compensate the 
+estimation bias using the latest channel estimate as follows. 
+In the existence of channel gain variation across adjacent 
+subcarriers, the relation between the transformed data  mnz ,1 ,  mnz ,2  and the corresponding transmitted data  mnv ,1 ,  mnv ,2  in (4) and (5) should be modified as 
+         1 1 1 1 1, , , 2 , ,z n m v n m H n m w n m c n m    ,  (8) 
+         2 2 2 2 2, , , 2 , ,z n m v n m H n m w n m c n m      
+,  (9) 
+where the additional terms  and  arise form 
+the gain variations 
+mnc ,1 mnc ,2
+     1 1 1, , 2 , 2H n m H n m H n m 1 ,     (10) 
+and 
+     2 2 2, , 2 , 2H n m H n m H n m 1 ,     (11) 
+with the following relationship 
+REFERENCES 
+[1] H. Minn, D. I. Kim, and V. K. Bhargava, “A Reduced Complexity 
+Channel Estimation for OFDM Systems with Transmit Diversity in 
+Mobile Wireless Channels,” IEEE Trans. Commun., vol. 50, no. 5, 
+May 2002, pp. 799–807 
+[2] Y. Li, N. Seshadri, and S. Ariyavisitakul, “Channel estimation for 
+OFDM systems with transmitter diversity in mobile wireless 
+channels,” IEEE J. Sel. Areas Commun., vol. 17, no. 3, pp. 461–471, 
+Mar. 1999. 
+[3] D. Schafhuber and G. Matz, “MMSE and Adaptive Prediction of 
+Time-Varying Channels for OFDM Systems,” IEEE Trans. Wireless 
+Commun., vol. 4, no. 2, pp. 593–602, Mar 2005.. 
+[4] Y. Li, J. C. Chuang, and N. R. Sollenberger, “Transmit diversity for 
+OFDM systems and its impact on high-rate data wireless networks,” 
+IEEE J. Selected Areas Comm., vol. 17, pp. 1233–1243, July 1999 
+  
+   
+Figure 1.  MSE of the reduced complexity algorithm,                  
+component 1: adjacent gain variation, component2: noise. 
+Figure 2.  Temporal correlation of adjacent subcarriers’ gain variation, 
+number of subcarriers K=128. 
+   
+Figure 3.  MSE performance comparison: HT channel,  Doppler 
+frequency = 40Hz. 
+Figure 4.  BER performance comparison: HT channel,  Doppler  
+frequency = 40Hz. 
+   
+Figure 5.  MSE performance comparison: HT channel,  Doppler 
+frequency = 200Hz 
+Figure 6.  BER performance comparison: HT channel,  Doppler  
+frequency = 200Hz
+ 
+97年度專題研究計畫研究成果彙整表 
+計畫主持人：吳國光 計畫編號：97-2221-E-005-093-MY2 
+計畫名稱：智慧型嬰幼兒監護與安撫晶片系統--子計畫三：智慧型嬰幼兒監護與安撫系統中的聲音訊
+號處理技術之研究 
+量化 
+成果項目 實際已達成
+數（被接受
+或已發表）
+預期總達成
+數(含實際已
+達成數) 
+本計畫實
+際貢獻百
+分比 
+單位 
+備 註 （ 質 化 說
+明：如數個計畫
+共同成果、成果
+列 為 該 期 刊 之
+封 面 故 事 ...
+等） 
+期刊論文 0 0 100%  
+研究報告/技術報告 0 0 100%  
+研討會論文 0 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100%   
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 4 0 100%  
+博士生 1 0 100%  
+博士後研究員 0 0 100%  
+國內 
+參與計畫人力 
+（本國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+期刊論文 0 0 100% 已投稿兩篇論文至國際期刊 
+研究報告/技術報告 0 0 100%  
+研討會論文 1 0 100% 
+篇 
+ 
+論文著作 
+專書 0 0 100% 章/本  
+申請中件數 0 0 100%  專利 已獲得件數 0 0 100% 件  
+件數 0 0 100% 件  
+技術移轉 
+權利金 0 0 100% 千元  
+碩士生 0 0 100%  
+博士生 0 0 100%  
+博士後研究員 0 0 100%  
+國外 
+參與計畫人力 
+（外國籍） 
+專任助理 0 0 100% 
+人次 
+ 
+ 

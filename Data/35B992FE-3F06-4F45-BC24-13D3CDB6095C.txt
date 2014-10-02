@@ -1,0 +1,414 @@
+ 2 
+ 
+11 位元長，假數 M 為 m= 52 位元長，其值可表示為： 
+Exponent E Unsigned Mantissa M
+e m
+Sign
+1
+ 
+圖 2.1  浮點數格式 
+其中，Sign 為整個數字的正負號，E 通常為以 2 補數表示的整數，M 為經過正規化後的無
+號數定點數，整個浮點數 F 的值等於  
+10232)0.1()1(  ES MF  
+較值得注意的是，此資料格式具有正規化的假數，也就是說假數永遠是大於或等於 1 並小
+於 2，但是假數的整數值 1 為隱密值。另外，指數部分為超碼表示，也就是更正的指數值
+為 E 值減去超碼 1023。對正規化浮點數無法表示的值，例如  以及指數 Overflow 和
+Underflow，在 IEEE754 標準中，將這些特殊值當成例外狀況，IEEE754 標準對這些特殊值
+的定義。 
+  
+2.1.2 浮點數加、減法運算 
+浮點數運算單元與定點數運算單元最主要的不同在於，浮點數運算單元必須分別對指
+數以及假數的部份做處理，並且需要做正規化的動作。給定兩個正規浮點數 1n 與 2n 進行
+加、減運算。假設 21 EE  ，而運算的結果為 n，則 n 可表示為 
+21 nnn   
+112
+212211
+2211
+2)2()1(
+)2)2()1(()2)1((
+)2)1(()2)1((
+21
+21
+21
+EEES
+EEESES
+ESES
+pp
+pp
+pp
+
+
+
+
+
+ 
+當要對兩個浮點數進行相加、減運算時，必須先調整小數點的位置，讓指數一樣大
+(Alignment)。由於 IEEE 754 對於運算結果的捨位(Rounding)，是採用 Round-to-Nearest-Even
+的方式，因此在進行加、減法運算的時候，必須加入 Guard bit, Round bit, Sticky bit 等調整
+位元，來調整相加、減後的有效數字精準度。 
+ 
+2.1.3. 浮點數乘、除法運算 
+與浮點數加、減法比較起來，浮點數的乘、除法較為簡單。給定兩個浮點數 1n 與 2n ，
+則它們的乘積 
+21 nnn   
+1221
+2211
+2)()1(
+2)1(2)1(
+21
+21
+EESS
+ESES
+pp
+pp
+ 
+
+ 
+也就是說，浮點數的乘(除)法相當於將兩個浮點運算元的假數相乘(除)，並且將指數相加
+(減)。而運算結果的 Sign，將兩運算元的 Sign 做互斥或(Exclusive-OR)運算即可得到。乘、
+除法運算所得到的結果仍然有可能需要進行正規化，但是對乘法來說，它最多只需要一個
+ 4 
+ 
+   aaaaaaaSES kkAAA 210121  
+整個數字為 n 個位元長，k 為指數值的整數部份， l 為指數值的小數部份， lkn 1 。當
+A 為正數時，將 SA設為 0；當 A 為負數時，將 SA設為 1，而 AEA 2log 。也就是說，A 的
+值應為 
+  102321  AA ESA  
+而 EA係一個 63 位元的定點數，其整數部分為 11 個位元，小數部分為 52 個位元，我們並
+將指數的整數部分以超碼等於 1023 來表示。另一方面，LNS 算術的特殊值的定義列在表(一)。 
+ 
+2.2.3. LNS 算術的算術運算 
+ LNS 算術的乘除法運算非常容易，僅為壹個加法或減法，再加上一個溢位(overflow 或
+underflow)的偵測即可。然而，LNS 算術的加減法就不是很容易。考慮兩運算元 A、B，對
+數加、減法的目的就是在求 CC ESBAC 2)1(  的值。當 BA  時，我們可將原式重新
+表示為 )1(
+A
+B
+ABAC   將 CS 設為 AS ，即 AC SS   
+ )1(log 2
+A
+B
+AEC )(1loglog 22 BAA EEE
+A
+B
+A   
+其中 
+)(
+22 21log1log)(
+BA EE
+BA
+A
+B
+EE
+ ，假設 0 BA EEv ，我們可以 )(v
+及 )(v 函數分別代表加減法中的查表函數， )21log()( vv  ， )21log()( vv  。 
+ 
+3. 研究方法 
+本章將敘述我們提出的幾項研究方法，以達成我們在 32 位元中低階嵌入式處理器設計
+客製化指令以實現高精密度 64 位元複雜函數的研究目的。 
+3.1 客製化指令與 Altera Nios-II SOPC 設計平台 
+我們以 Altera 公司之 Nios-II SOPC 設計平台為我們研究之發展與實作的工具。此設計平
+台具備下列數項軟硬體設計工具的優點，極適合我們達成研究目標： 
+1. 它具備有 Quartus-II[27]之電路設計軟體，可以讓我們設計客製化指令所需的硬體電路。 
+2. 它具備有 SOPC Builder[28]軟體的 SOPC 系統發展工具，可以讓我們很容易的整合 SOPC
+系統之各項軟硬體 IP，包括軟核微處理器、SDRAM、通用 I/O 等。 
+3. 在 SOPC Builder 中包括有組合語言、C 與 C++的編譯器，以及程式偵錯器(debugger)與
+Profiler，讓我們可以輕易的撰寫、測詴與評估我們所設計的客製化指令。 
+4. SOPC Builder 具備有讓設計者設計客製化指令[29]的功能。設計人員可以輕易的設計客製
+化指令。 
+5. 我們係採用 Altera DE2-70 發展版為我們的開發與實驗平台。此發展板上的 FPGA 編號為
+Cyclone II EP2C70F896C6N，而其具備的軟核處理器為 Nios-II 版本，此版本之處理器並不
+ 6 
+ 
+大為減輕硬體成本的負擔。但是，它所需的計算步驟較多，可能會須要執行較多個客製化
+指令。 
+ 
+4、 研究工作 
+4.1 六十四位元浮點數加減法運算的各項客製化指令的設計 
+ 64-位元浮點數加減法是以一個 C 的副函式來執行： 
+    FLP_ADD_SUB(wordA1, wordA2, wordB1, wordB2, Operation) 
+其中參數 wordA1 及 wordA2 代表浮點數運算元 A 的兩個 words，wordB1 及 wordB2 代表
+浮點數運算元 B 的兩個 words，而 Operation 代表浮點數加法或浮點數減法。 
+ 在以 32-位元處理器來設計 64-位元浮點數加減法的計算時，我們係根據下列幾項要點
+來考量： 
+1. 只有在兩個浮點數的指數值相差為零或壹，且為浮點數減法運算時，在假數相減後才須
+要利用位元移位來做減法結果的正規化計算。而在浮點數加法及浮點數減法且指數差
+值大於壹時，就不需要以移位來做正規化。所以若能先偵測出指數差值為零或壹，即
+可令許多浮點數加減法運算節省移位的時間。 
+2. 因為運算元匯流排的位元長度為 32 位元，而假數的位元長度為 53 位元，若再加上
+Guard bit，Round bit 及 Sticky bit，假數加減法的位元長度將為 56 位元。因此，浮點數
+加減法中的假數相加減須以四個步驟來完成。第一個步驟為低半部位元的相加減，第
+二個步驟產生低半部位元相加減的進位位元(carry bit)。第三個步驟是高半部位元的相
+加減。第四個步驟是將第三個步驟的結果加上第二個步驟產生的進位。 
+ 
+此副函式的執行步驟如以下所述： 
+1. 計算指數差值並判斷兩個運算元浮點數的狀況，此一步驟係利用一個客製化指令來產
+生一個狀態字，命名為 diff，此狀態字內容包括指數差值、運算元 A 與運算元 B 是否為
+特殊浮點數、浮點數加法或減法、以及指數差值是否為零或壹。 
+2. 比較兩個指數值的大小，若 A 值小於 B 值，則將 A 與 B 交換。經此步驟,A 值將大於或
+等於 B 值。 
+3. 若為浮點數減法，且指數差值為零或壹，則執行下列步驟： 
+3.1 產生低半部假數相減之結果值。 
+3.2 產生低半部假數相減之借位值(以 32 位元表示)。 
+3.3 產生低半部假數相減之結果值。 
+3.4 將 3.3 之結果值減去 3.2 之借位值。 
+3.5 步驟 3.4 與 3.1 的結果串接後，即可得到完整的假數相減的結果。對此一結果，我們
+仍須做下列的動作： 
+3.5.1 若此結果為負值，則須將其改為正值，並更改 A 的正負號。 
+3.5.2 須檢查整數位元(20)以及小數第一位元是否為零；若是，則須做移位，並調整指
+數值。 
+3.5.3 須檢查此一結果是否為零值，若是則代表減法結果得到一個零值的浮點數。 
+3.6 取 3.5 的結果的低半部(32 位元)，即是我們欲求之浮點數相減結果的第二個 word。 
+3.7 取 3.5 的結果的高半部與運算元 A 的第一個字做指數數值的調整後，即可得所求之
+ 8 
+ 
+SA expA manA1 manA2
+11 20 32
+A word1 A word2
+1
+SB expB manB1 manB2
+11 20 32
+B word1 B word2
+1
+ 
+ 利用兩個客製化指令轉換成下列的格式: 
+SA expA1 manA1 manA2
+4 27 25
+A word1(A1) A word2(A2)
+1
+expA2
+7
+ 
+SB expB1 manB1 manB2
+4 27 25
+B word1(B1) B word2(B2)
+1
+expB2
+7
+ 
+ 浮點數乘積 BAC   ， 即可由 2,1,2,1 BBAA 兩兩相乘後，在加總起來而得，
+22211211 BABABABABAC  。 
+ 而每一個部份積都包括有高位元部分與低位元部分，各自由一個客製化指令執行後而
+得到其值,如下列式子所示： 
+ 
+)1,1(____11Pr
+)1,1(____11Pr
+BAlprodllCIALTlod
+BAhprodllCIALThod
+
+
+ 
+ 
+而這些部份積的字元格式則定義成如下所示：  
+Sc expC1
+1 5 26
+20 2-24-0 2-24
+)1exp1exp1(exp
+11
+BAC
+hprod
+
+
+ 
+2 30
+0 0 2-25 2-54
+lprod 11   
+4 28
+0 0 2-27 2-5400
+hprod 12  
+00
+7 25
+00000 2-55 2-79
+ lprod 12  
+ 10 1
+0
+ 
+中，以執行mantissa相加，以及正規化與進位的動作，而另一個指令ALT_CI_prodh_1則是
+取得執行 mantissa 相加，正規化與進位結果的高位元部分，prodl_final 與 prodh_1 其格式如
+下： 
+Sc expC1
+1 5 21
+20 2-20Exp-adj
+3
+X X X
+3
+ 1_prodh  
+32
+2-21 2-52
+ finalprodl _  
+ 
+最後，我們再利用一個客製化指令做最後的指數相加與調整，即可得最後結果的上半
+部 word，稱為 prodh_final，其格式如下： 
+)_22,1_(____ lprodprodgfinalprodhCIALTfinalprodh    
+Sc expC
+1 11
+manC
+21
+2-1 2-20
+ finalprodh_  
+Coefficient
+Tables
+x2 x3 x4 x5
+x1 x2 x2 x2 x2
+Multiplier
+x22
+Multiplier
+x23
+Multiplier
+x24
+Multiplier
+x25
+Multiplier
+ADDER ADDER ADDER
+a0
+a1 … a1
+x2 a2 a3 a4 a5
+ADDER
+ADDER
+ƒ(λ)
+ 
+圖(一) 多項式函數值計算電路的架構。 
+ 
+4.3 六十四位元浮點數除法的計算 
+浮點數除法的計算方法是先利用倒數函數求出 B 的倒數  
+B
+1 ，再利用浮點數乘法
+ 
+B
+AC 1 求出商值。此除法函式的執行程序如下： 
+1. 先利用倒數函數求出 B 的倒數值  
+B
+I 1 。 
+2. 再利用客製化指令 ALT_CI_FXP_FLP_1 與 ALT_CI_FXP_FLP_2 將倒數值的格式由
+定點數轉換為浮點數格式。此乃因為倒數函數的輸出值為定點數格式。 
+ 12 1
+2
+ 
+1. 先利用 A 與 B 的第一個 word，A1 及 B1,做運算元 A 與 B 是否為特殊值的判斷。在這
+個客製化指令，並可同時執行 BA 值的計算，與判斷 A 與 B 何者較大的動作。這些
+結果都可包含在同一個 word 中，我們取名為 d1，其格式如下： 
+0
+6
+SPB
+1
+0
+2 20
+ALGB
+1
+SPA
+1
+s
+ 
+2. 為完成 BAd  的運算，我們須再設計一個客製化指令，利用 A 與 B 的第二個 word，
+d2，執行 22 BA  的動作。此指令的輸出結果恆為正值，不管
+或022  BA 022  BA 。為了將 22 BA  產生的借位傳達到 1d ，我們須再設計一個客
+製化指令，用來儲存在此借位，其格式如下：  
+000 000………000
+3 26
+000
+3
+A2B2BRW A≧B
+000 111………111
+3 26
+000
+3
+A<B
+ 
+3. 我們再利用一個客製化指令，將 1d 與 BRWBA 22 中的對數值部分相加，即可得到最後之
+1d 值，其格式如下： 
+dI00000
+5
+dF1s
+6 20
+ 
+4. 將 1d 與 2d 帶入指數函數 ),exp(_ 21 ddfunc 中，求出
+Fd2 的值，其結果值存放 result1 與
+result2 兩個 words 中，其中 result1 的內容且包含有 1d 中的 s 與 Id 值。 
+5. 再利用我們所設計的客製化指令求得 )21( d 之值。在這個指令中，運算元為步驟 4 求
+得的 result1 與 result2，而執行的動作包括： 
+5.1 移位，對 result1 與 result 串接之 dF2 的二進制位元組從事向右移 Id 位元的動作。 
+此動作可讓我們求得 FI dd  22 值。 
+5.2 計算 )21( d 或 )21( d 之值。 
+6. 偵測步驟 5.2 結果之前導零位元的個數。 
+7. 將 )21( d 的值由定點數格式轉成我們定義之特殊浮點數格式。 
+8. 將步驟 5 求得之特殊浮點數格式的結果帶入對數函數，即可得到 
+)21(loglg 2
+drsl  之值。 rsllg 值為定點數格式,且包含了兩個 words， 1lg rsl 與 2lg rsl 。 
+9. 最後，再利用步驟 1 中之 1d 中之 ALGB 的值，將 A 與 B 中之較大值(設為 LGNum)與  
+rsllg  相加，此加法需四個客製化指令才能完成，因為需產生 2lg rsl 與 LGMum2 相加之
+進位值，以及將此進位值與 LGNum1 相加。 
+ 
+五、設計與實驗結果 
+ 我們已在 DE2-70 發展板之實作完成第四章所列的各項複雜函數的計算。因為本研究
+所規劃的複雜函數項目太多，LNS 算術加減法計算的客製化指令與軟體部份則尚未完成。
+ 14 1
+4
+ 
+複雜函數的計算。我們已完成下列的工作項目： 
+1. 六十四位元浮點數加減法運算客製化指令的設計。 
+2. 六十四位元浮點數乘法運算客製化指令的設計。 
+3. 六十四位元浮點數除法運算。 
+4. 各項複雜函數計算客製化指令的設計。 
+5. 六十四位元 LNS 算術加減法運算。 
+ 
+我們已完成上述複雜函數計算的軟硬體設計，並已完成除對數數字系統算術之外，其它
+複雜函數計算的實現與實驗。實驗結果顯示，以特殊客製化指令方式實現複雜函數計算的
+速度，將可達到以雙倍精密度浮點數純軟體實現速度的 1.69 到 272 倍。本研究主要的貢獻
+在提供嵌入式處理器一種客製化指令的設計方法，用來實現快速而硬體成本低的高精密度
+複雜函數的計算。 
+7. 參考文獻 
+[1] Wolfe, A., Bretemitz, M., Jr., Stephens, C., Ting, A. L., Kirk, D. B., Bianchini, R. P., Jr., Shen, 
+J. P., “The white dwarf: A high-performance application-specific processor,” Proceeding of 
+the 15 Computer Architecture Conference, 1988. 
+[2] Yee Jern Chong and Sri Parameswaran, “Custom floating-point unit generation for embedded 
+systems,” IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems, 
+vol. 28, no. 5, May 2009, pp. 638-650. 
+[3] Israel Koren, Computer arithmetic algorithms, Prentice-Hall International Inc., New Jersey, 
+1993. 
+[4] Debasish Das, Krishnendu Mukhopadhyaya, and Bhabani P. Sinha, “Implementation of four 
+common functions on an LNS co-processor,” IEEE Transaction on Computers, vol. 44, no. 1, 
+pp. 155-161, Jan. 1995. 
+[5] M. L. Frey and F. J. Taylor, “A table reduction technique for logarithmically architected 
+digital filters,” IEEE Transactions on Acoustics, Speech, and Signal Processing, vol. 
+ASSP-33, no. 3, pp. 718-719, June 1985. 
+[6] David M. Lewis, “An architecture for addition and subtraction of long word length numbers 
+in the logarithmic number system,” IEEE Transactions on Computers, vol. 39, no. 11, pp. 
+1325-1336, Nov. 1990. 
+[7] Fang-shi Lai and Ching-Farn Eric Wu, “A hybrid number system processor with geometric 
+and complex arithmetic capabilities,” IEEE Transactions on Computers, vol. 40, no. 8, pp. 
+952-962, Aug. 1991.  
+國科會補助計畫衍生研發成果推廣資料表
+日期:2011/10/03
+國科會補助計畫
+計畫名稱: 嵌入式高精密度複雜函數計算之客製化指令的設計
+計畫主持人: 陳啟鏘
+計畫編號: 99-2221-E-035-052- 學門領域: 計算機結構與計算機系統
+無研發成果推廣資料
+其他成果 
+(無法以量化表達之成
+果如辦理學術活動、獲
+得獎項、重要國際合
+作、研究成果國際影響
+力及其他協助產業技
+術發展之具體效益事
+項等，請以文字敘述填
+列。) 
+無 
+ 成果項目 量化 名稱或內容性質簡述 
+測驗工具(含質性與量性) 0  
+課程/模組 0  
+電腦及網路系統或工具 0  
+教材 0  
+舉辦之活動/競賽 0  
+研討會/工作坊 0  
+電子報、網站 0  
+科 
+教 
+處 
+計 
+畫 
+加 
+填 
+項 
+目 計畫成果推廣之參與（閱聽）人數 0  
+ 
