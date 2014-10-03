@@ -1,15 +1,15 @@
 
 
 def break_to_words:
-  pass
+    pass
 
 def stoplist:
-  pass
+    pass
 
 def stemming:
-  pass
+    pass
 
 def term_weighting:
-  pass
+    pass
 
 

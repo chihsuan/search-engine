@@ -1,2 +1,2 @@
 def ranking_alg:
-  pass
+    pass
