@@ -6,19 +6,32 @@ import nltk
 
 class Document():
     
-    def __init__(self, doc_id, doc_name):
+    def __init__(self, doc_id, doc_name, data_foldr):
         self.doc_id = doc_id
+        self.data_foldr = data_foldr
         self.doc_name = doc_name
         self.terms = {}
         self.doc_content = self.read_doc()
 
     def read_doc(self):
-        with open(self.doc_name, 'r') as f:
+        with open(self.data_foldr+self.doc_name, 'r') as f:
             return f.readlines()
 
+    def iter_line(self):
+        for line in self.doc_content:
+            yield line
+    
+    def get_lines(self):
+        return list(self.iter_line())
+
     def to_one_line(self):
-        for line in self.doc_content: 
-            pass
+        self.one_line = u''
+        lines = self.get_lines()
+        for line in lines:
+            # append to one line and remove \n, ^M
+            self.one_line += line.decode('utf-8').replace('\n','').replace(str(chr(13)), '')
+        self.doc_content = []
+        #print self.one_line.encode('utf-8')
 
     def tokenizes(self, line):
         tokens = nltk.word_tokenize(line.decode('utf-8'))
@@ -27,3 +40,7 @@ class Document():
                 self.terms[token] += 1
             else:
                 self.terms[token] = 1 
+    
+    def output_one_line(self, output_foldr):
+        with open(output_foldr+self.doc_name, 'w') as f:
+            f.write(self.one_line.encode('utf-8'))
