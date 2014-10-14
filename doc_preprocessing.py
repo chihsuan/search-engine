@@ -9,21 +9,22 @@ def get_docs_list(doc_foldr):
     document_list = []
     for root, _, files in os.walk(doc_foldr):
         for f in files:
-            document_list.append(doc_foldr+f)
+            document_list.append(f)
     return document_list
 
 
-def init_docs(document_list)
+def init_docs(document_list, doc_foldr='data/'):
     doc_id = 0
     documents = []
     for doc in document_list:
-        documents.append(Document(doc_id, doc))
+        documents.append(Document(doc_id, doc, doc_foldr))
         doc_id += 1
-    return document_list
+    return documents
 
 if __name__=='__main__':
     document_list = get_docs_list('data/')
-    init_docs(document_list)
-    # line?
-    # tokenize output
-
+    documents = init_docs(document_list)
+    for doc in documents:
+        doc.to_one_line()
+        doc.output_one_line('output/processed_data/')
+        doc = []
