@@ -3,14 +3,15 @@
 
 import os
 import nltk
-
 from modules import csv_io
+from nltk.stem import PorterStemmer
 
 class Tokenizer:
 
     def __init__(self):
         self.relative_path = os.path.join("my_class/")
         self.stopword_list = csv_io.read_csv(self.relative_path + 'stopword.csv') 
+        self.stemmer = PorterStemmer()
 
     def is_stop_word(self, word):
         if word.lower() in self.stopword_list:
@@ -18,8 +19,8 @@ class Tokenizer:
         else:
             return False
 
-    def stemming(self):
-        pass
+    def stemming(self, token):
+        return self.stemmer.stem(token)
 
     def term_weighting(self):
         pass
