@@ -22,9 +22,6 @@ class Tokenizer:
     def stemming(self, token):
         return self.stemmer.stem(token)
 
-    def term_weighting(self):
-        pass
-
     def to_tokens(self, sentence):
         return nltk.word_tokenize(sentence)
 
