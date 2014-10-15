@@ -41,7 +41,7 @@ class DataDB:
 
 
     # execute sql statment
-    def exeSQL(self, sql ):
+    def exe_sql(self, sql ):
         try:
             print sql
             self.cursor.execute( sql )
@@ -49,7 +49,7 @@ class DataDB:
         except:
             self.db.rollback()
 
-    def createTable( self, table_name, key_list ):
+    def create_table( self, table_name, key_list ):
         sql = "CREATE TABLE IF NOT EXISTS " + table_name + "(" + key_list[0] + " char(32)"
         for i in range( 1, len(key_list) ):
             sql += "," + key_list[i] + " char(32)"
@@ -57,7 +57,7 @@ class DataDB:
         print sql	
         self.exeSQL( sql )
 
-    def insertData( self, table_name, key_list, data_list ):
+    def insert_data( self, table_name, key_list, data_list ):
 
         sql = "INSERT INTO " + table_name + " " + "(" + key_list[0] 
 
@@ -79,12 +79,13 @@ class DataDB:
 
         self.exeSQL(sql)
 
-    def basicInfor(self):
+    def show_info(self):
         self.cursor.execute( "SELECT VERSION()")
         data = self.cursor.fetchone()
         if data:
             print "Database version", data
 
+    
     # disconnect database
     def close(self):
         self.db.commit()
