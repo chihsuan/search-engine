@@ -10,7 +10,7 @@ class Tokenizer:
 
     def __init__(self):
         self.relative_path = os.path.join("my_class/")
-        self.stopword_list = csv_io.read_csv(self.relative_path + 'stopword.csv') 
+        self.stopword_list = csv_io.read_csv(self.relative_path + 'stopword.csv') + [u',']
         self.stemmer = PorterStemmer()
 
     def is_stop_word(self, word):
