@@ -28,7 +28,7 @@ class Tokenizer:
     def to_tokens(self, sentence):
         return nltk.word_tokenize(sentence)
 
-    def is_zh (c):
+    def is_zh (self,c):
         c_unicode = ord (c)
 
         # unicode range
