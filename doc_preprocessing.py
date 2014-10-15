@@ -4,6 +4,7 @@ import sys
 import os
 
 from my_class.Document import Document
+from modules import json_io
 
 def get_docs_list(doc_foldr):
     document_list = []
@@ -16,9 +17,12 @@ def get_docs_list(doc_foldr):
 def init_docs(document_list, doc_foldr='data/'):
     doc_id = 0
     documents = []
+    doc_hash = {}
     for doc in document_list:
         documents.append(Document(doc_id, doc, doc_foldr))
+        doc_hash[doc] = doc_id
         doc_id += 1
+    json_io.write_json('output/doc_hash.json', doc_hash)
     return documents
 
 if __name__=='__main__':
@@ -27,7 +31,7 @@ if __name__=='__main__':
         output_dir = sys.argv[2]
     else:
         data_dir = 'data/'
-        output_dir = 'output_dir/processed_data'
+        output_dir = 'output/processed_data/'
 
     document_list = get_docs_list(data_dir)
     documents = init_docs(document_list)
