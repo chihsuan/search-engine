@@ -7,7 +7,6 @@ import os
 from my_class.Document import Document
 from my_class.Tokenizer import Tokenizer
 from doc_preprocessing import get_docs_list
-from my_class.DataDB import DataDB
 from modules import json_io
 from modules import csv_io
 
