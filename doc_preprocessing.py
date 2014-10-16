@@ -18,11 +18,14 @@ def init_docs(document_list, doc_foldr='data/'):
     doc_id = 0
     documents = []
     doc_hash = {}
+    id_hash = {}
     for doc in document_list:
         documents.append(Document(doc_id, doc, doc_foldr))
         doc_hash[doc] = doc_id
+        id_hash[doc_id] = doc
         doc_id += 1
     json_io.write_json('output/doc_hash.json', doc_hash)
+    json_io.write_json('output/id_hash.json', id_hash)
     return documents
 
 if __name__=='__main__':
