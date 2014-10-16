@@ -9,26 +9,21 @@ from my_class.Tokenizer import Tokenizer
 from doc_preprocessing import get_docs_list
 from my_class.DataDB import DataDB
 from modules import json_io
-
-    
+from modules import csv_io
 
 if __name__=='__main__':
-    if len(sys.argv) >= 2: 
+    if len(sys.argv) >= 1: 
         doc_input = sys.argv[1]
-        config = json_io.read_json(sys.argv[2])[u'database']
     else:
-        config = json_io.read_json('config.json')[u'database']
         doc_input = 'output/en_doc/'
-    
-    mydb = DataDB( config[u'dbtype'], config[u'host'], config[u'dbname'], \
-            config[u'username'], config[u'password'], config[u'encoding'], "")
    
     document_list = get_docs_list(doc_input)
     tokenizer = Tokenizer()
+    doc_id = 0
     for doc in document_list:
-        doc_id = 0
         doc_obj = Document(doc_id, doc, doc_input)
         # tokenize
+        normalize_tokens = []
         for line in doc_obj.get_lines():
             tokens = tokenizer.to_tokens(line.decode('utf-8'))
             for token in tokens:
@@ -36,8 +31,7 @@ if __name__=='__main__':
                     token = ""
                 else:
                     token = tokenizer.stemming(token)
-                    print token.encode('utf-8'),
+                    normalize_tokens.append(token.encode('utf-8'))
+        csv_io.write_csv('output/tokens/' + doc, [normalize_tokens])
         del doc_obj
         doc_id += 1
-
-    mydb.close()
