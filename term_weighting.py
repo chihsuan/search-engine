@@ -27,7 +27,7 @@ def idf(terms):
     doc_id = 0
     term_idf = {}
     for term in terms:
-        term_idf[term] = 0
+        term_idf[term] = []
 
     for doc in document_list:
         content = csv_io.read_csv('output/tokens/'+doc)
