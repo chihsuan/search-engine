@@ -6,6 +6,7 @@ import os
 import math
 
 from modules import csv_io
+from modules import json_io
 from doc_preprocessing import get_docs_list
 from my_class.DataDB import DataDB
 
@@ -22,6 +23,15 @@ def tf(terms):
         count/length
 
     return terms_tf
+
+def sub_idf(document_list):
+    term_idf = {}
+    doc_id = 0
+    for doc in document_list:
+        content = csv_io.read_csv('output/tokens/'+doc)
+        for term in content:
+            term_idf[term] = doc_id
+        json_io.write_json('output/sub_idf.json', term_idf)
 
 def idf(terms):
     doc_id = 0
@@ -51,12 +61,13 @@ if __name__=='__main__':
     document_list = get_docs_list('output/tokens/')
     config = json_io.read_json('config.json')[u'database']
 
-    if len(sys.argv[1]) > 1:
+    if len(sys.argv) > 1:
 
-        if sys.argv[1] == 1:
-            create_term_set(document_list)
-        elif sys.argv[1] == 2:
-            
+        if sys.argv[1] == '1':
+            #create_term_set(document_list)
+            sub_idf(document_list)
+        
+        elif sys.argv[1] == '2':
             mydb = DataDB( config[u'dbtype'], config[u'host'], config[u'dbname'], \
                     config[u'username'], config[u'password'], config[u'encoding'], "")
 
