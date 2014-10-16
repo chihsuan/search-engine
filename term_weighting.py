@@ -30,8 +30,9 @@ def sub_idf(document_list):
     for doc in document_list:
         content = csv_io.read_csv('output/tokens/'+doc)
         for term in content:
-            term_idf[term] = doc_id
-        json_io.write_json('output/sub_idf.json', term_idf)
+            if term not in term_idf:
+                term_idf[term] = doc_id
+        json_io.write_json('output/sub_idf/'+doc+'.json', term_idf)
 
 def idf(terms):
     doc_id = 0
