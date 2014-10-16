@@ -42,19 +42,16 @@ class DataDB:
 
 
     # execute sql statment
-    def exe_sql(self, sql, doc_id):
+    def exe_sql(self, sql):
         try:
-            #print sql
             self.cursor.execute(sql)
             self.db.commit()
         except psycopg2.DatabaseError, e:
-            #print sql,'\n',
             #print 'Error %s' % e    
             self.db.rollback()
-            sql = "INSERT INTO documents (doc_id,content) VALUES ('" + doc_id + "', ' ');" 
-            #sys.exit(1)
-            self.exe_sql(sql, doc_id)
-            #sys.exit(1)
+            #sql = "INSERT INTO documents (doc_id,content) VALUES ('" + doc_id + "', ' ');" 
+            #self.exe_sql(sql, doc_id)
+            sys.exit(1)
 
     def create_table( self, table_name, key_list ):
         sql = "CREATE TABLE IF NOT EXISTS " + table_name + "(" + key_list[0] + " char(32)"
