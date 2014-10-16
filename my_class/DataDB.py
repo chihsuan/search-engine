@@ -3,6 +3,7 @@
 
 import MySQLdb
 import psycopg2
+import sys
 
 class DataDB:
 
@@ -41,43 +42,49 @@ class DataDB:
 
 
     # execute sql statment
-    def exe_sql(self, sql ):
+    def exe_sql(self, sql, doc_id):
         try:
-            print sql
-            self.cursor.execute( sql )
+            #print sql
+            self.cursor.execute(sql)
             self.db.commit()
-        except:
+        except psycopg2.DatabaseError, e:
+            #print sql,'\n',
+            #print 'Error %s' % e    
             self.db.rollback()
+            sql = "INSERT INTO documents (doc_id,content) VALUES ('" + doc_id + "', ' ');" 
+            #sys.exit(1)
+            self.exe_sql(sql, doc_id)
+            #sys.exit(1)
 
     def create_table( self, table_name, key_list ):
         sql = "CREATE TABLE IF NOT EXISTS " + table_name + "(" + key_list[0] + " char(32)"
         for i in range( 1, len(key_list) ):
-            sql += "," + key_list[i] + " char(32)"
+            sql += "," + key_list[i] + "text"
         sql += ");"
-        print sql	
-        self.exeSQL( sql )
+        #print sql	
+        self.exe_sql(sql)
 
-    def insert_data( self, table_name, key_list, data_list ):
+    def insert_data(self, table_name, key_list, data_list):
 
-        sql = "INSERT INTO " + table_name + " " + "(" + key_list[0] 
+		sql = "INSERT INTO " + table_name + " " + "(" + key_list[0] 
 
-        for i in range( 1, len(key_list) ):
-            sql += "," + key_list[i]
+		for i in range( 1, len(key_list) ):
+			sql += "," + key_list[i]
+		
+		sql += ") VALUES ("
+		
+		for i in range( 0, len(data_list) ):
+			if data_list[i]:	
+				try: 
+					sql += "'"+ data_list[i] + "',"
+				except TypeError:	
+					sql += "'"+ str(data_list[i]) + "',"
+			else:
+				sql += "' ',"
 
-        sql += ") VALUES ("
-
-        for i in range( 0, len(data_list) ):
-            if data_list[i]:	
-                try: 
-                    sql += "'"+ data_list[i] + "',"
-                except TypeError:	
-                    sql += "'"+ str(data_list[i]) + "',"
-            else:
-                sql += "' ',"
-
-        sql = sql[0: len(sql) -1 ] + ");"
-
-        self.exeSQL(sql)
+		sql = sql[0: len(sql) -1 ] + ");"
+		
+		self.exe_sql(sql, data_list[0])
 
     def show_info(self):
         self.cursor.execute( "SELECT VERSION()")
