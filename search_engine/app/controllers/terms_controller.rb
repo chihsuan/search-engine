@@ -1,0 +1,2 @@
+class TermsController < ApplicationController
+end
