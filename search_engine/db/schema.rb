@@ -18,8 +18,7 @@ ActiveRecord::Schema.define(version: 20141016054628) do
 
   create_table "doc_lookups", force: true do |t|
     t.integer  "doc_id"
-    t.integer  "frequency"
-    t.float    "weight"
+    t.float    "tf"
     t.datetime "created_at"
     t.datetime "updated_at"
     t.integer  "term_id"
@@ -34,8 +33,7 @@ ActiveRecord::Schema.define(version: 20141016054628) do
 
   create_table "terms", force: true do |t|
     t.string   "term"
-    t.integer  "document_count"
-    t.integer  "frequency"
+    t.float    "idf"
     t.datetime "created_at"
     t.datetime "updated_at"
   end
