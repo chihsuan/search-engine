@@ -10,14 +10,20 @@ class Document():
         self.data_foldr = data_foldr
         self.doc_name = doc_name
         self.terms = {}
-        self.doc_content = self.read_doc()
+        self.doc_lines = self.read_doc()
+
+
+    def read(self):
+        with open(self.data_foldr+self.doc_name, 'r') as f:
+            self.content = f.read()
+            return self.content
 
     def read_doc(self):
         with open(self.data_foldr+self.doc_name, 'r') as f:
             return f.readlines()
 
     def iter_line(self):
-        for line in self.doc_content:
+        for line in self.doc_lines:
             yield line
     
     def get_lines(self):
@@ -29,7 +35,7 @@ class Document():
         for line in lines:
             # append to one line and remove \n, ^M
             self.one_line += line.decode('utf-8').replace('\n','').replace(str(chr(13)), '')
-        self.doc_content = []
+        self.doc_lines = []
         #print self.one_line.encode('utf-8')
 
     def tokenizes(self, line):
