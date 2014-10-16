@@ -25,14 +25,13 @@ def tf(terms):
     return terms_tf
 
 def sub_idf(document_list):
-    term_idf = {}
-    doc_id = 0
+    term_idf = []
     for doc in document_list:
         content = csv_io.read_csv('output/tokens/'+doc)
         for term in content:
             if term not in term_idf:
-                term_idf[term] = doc_id
-        json_io.write_json('output/sub_idf/'+doc+'.json', term_idf)
+                term_idf.append(term)
+        csv_io.write_csv('output/sub_idf/'+doc+'.csv', [term_idf])
 
 def idf(terms):
     doc_id = 0
