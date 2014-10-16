@@ -37,8 +37,12 @@ def split_zh_en (zh_en_str):
         
     if en_set:
         zh_en_group.append ([mark["en"], ''.join(en_set)])
+        en += ''.join(en_set)
     elif zh_set:
         zh_en_group.append ([mark["zh"], ''.join(zh_set)])
+        zh += ''.join(zh_set)
+    if en == "":
+        print 'error'
 
     return zh_en_group, en, zh
 
