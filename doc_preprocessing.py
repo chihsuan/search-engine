@@ -1,5 +1,8 @@
 #!/usr/bin/env python2.7
 # -*- coding: utf-8 -*-
+'''
+    convert doc content to one line
+'''
 import sys
 import os
 
@@ -15,7 +18,7 @@ def get_docs_list(doc_foldr):
 
 
 def init_docs(document_list, doc_foldr='data/'):
-    doc_id = 0
+    doc_id = 1
     documents = []
     doc_hash = {}
     id_hash = {}

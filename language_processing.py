@@ -65,7 +65,7 @@ if __name__=='__main__':
 
     document_list = get_docs_list(doc_input)
     for doc in document_list:
-        doc_id = 0
+        doc_id = 1
         doc_obj = Document(doc_id, doc, doc_input)
         for line in doc_obj.get_lines():
             result, en, zh = split_zh_en(line.decode('utf-8'))
