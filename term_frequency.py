@@ -23,9 +23,9 @@ def tf(terms, output_path):
     
     json_io.write_json(output_path+doc+'.json', term_tf)
 
-def to_db(mydb, term_id, document_list, doc_hash):
+def to_db(mydb, term_id, document_list, doc_hash, input_dir):
     for doc in document_list:
-        terms_tf = json_io.read_json('output/tf/'+doc)
+        terms_tf = json_io.read_json(input_dir+doc)
         for term, tf in terms_tf.iteritems():
             term = term.replace("'", "")
             if len(term) > 255:
@@ -42,7 +42,7 @@ if __name__=='__main__':
     else:
         doc_hash = csv_io.read_csv('output/doc_hash.json')
         input_dir = 'output/tokens/'
-        output_dir = 'output/en_ft/'
+        output_dir = 'output/en_tf/'
 
     document_list = get_docs_list(input_dir)
     for doc in document_list:
