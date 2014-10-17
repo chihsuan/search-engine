@@ -53,7 +53,7 @@ if __name__=='__main__':
         
         idf = round(math.log(doc_number/(len(doc) + 1)), 4)
         sql = "INSERT INTO terms (term,idf) VALUES (" + "'" + term + "','" + str(idf) + "');"
-        #mydb.exe_sql(sql)
+        mydb.exe_sql(sql)
 
         term_hash[term] = term_id
         term_id += 1
