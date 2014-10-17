@@ -7,8 +7,11 @@ search-engine
 + nltk
 + postgresql
 
-note: You need to fill up config_samlpe.json and rename to config.json
+1. Enter the search_engine folder and run <code>bundle install</code>
+2. Database migration <code>rake db:migrate</code>
+3. Parse data and insert to database <code>sh run.sh</code> 
 
+note: You need to fill up config_samlpe.json and rename to config.json
 
 ## Data Processing
 + python
