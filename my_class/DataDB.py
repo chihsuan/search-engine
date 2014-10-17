@@ -51,6 +51,10 @@ class DataDB:
             self.db.rollback()
             sys.exit(1)
 
+    def select(self, sql):
+        self.exe_sql(sql)
+        return self.cursor.fetchall()
+
     def doc_sql(self, sql, doc_id):
         try:
             self.cursor.execute(sql)

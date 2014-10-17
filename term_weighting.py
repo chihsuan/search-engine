@@ -12,11 +12,11 @@ from doc_preprocessing import get_docs_list
 from my_class.DataDB import DataDB
 
 
-def idf():
+def idf(input_dir):
     doc_id = 0
     term_idf = {}
     for doc in document_list:
-        terms = json_io.read_json('output/tf/'+doc)
+        terms = json_io.read_json(input_dir+doc)
         for term in terms:
             if term not in term_idf:
                 term_idf[term] = []
@@ -28,7 +28,7 @@ if __name__=='__main__':
     if len(sys.argv) > 1:
         input_dir = sys.argv[1]
     else:
-        input_dir = 'output/zh_tf/'
+        input_dir = 'output/en_tf/'
 
     config = json_io.read_json('config.json')[u'database']
     doc_hash = json_io.read_json('output/doc_hash.json')
@@ -38,10 +38,11 @@ if __name__=='__main__':
             config[u'username'], config[u'password'], config[u'encoding'], "")
 
     #Get idf
-    term_doc_list = idf()
-
+    term_id = mydb.select('SELECT id FROM terms order by id desc limit 1;')[0][0]
+    term_doc_list = idf(input_dir)
+    if term_id is None:
+        term_id = 1
     term_hash= {}
-    term_id = 1
     doc_number = len(document_list)
     for term, doc in term_doc_list.iteritems():
         term = term.replace("'", "")
@@ -50,11 +51,11 @@ if __name__=='__main__':
         
         idf = round(math.log(doc_number/(len(doc) + 1)), 4)
         sql = "INSERT INTO terms (term,idf) VALUES (" + "'" + term + "','" + str(idf) + "');"
-        mydb.exe_sql(sql)
+        #mydb.exe_sql(sql)
 
         term_hash[term] = term_id
         term_id += 1
     
-    term_frequency.to_db(mydb, term_hash, document_list, doc_hash)
+    term_frequency.to_db(mydb, term_hash, document_list, doc_hash, input_dir)
     mydb.close()
     
