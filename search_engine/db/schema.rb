@@ -18,6 +18,7 @@ ActiveRecord::Schema.define(version: 20141016054628) do
 
   create_table "doc_lookups", force: true do |t|
     t.integer  "doc_id"
+    t.string   "title"
     t.float    "tf"
     t.datetime "created_at"
     t.datetime "updated_at"
