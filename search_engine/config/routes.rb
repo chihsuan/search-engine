@@ -1,4 +1,9 @@
 Rails.application.routes.draw do
+
+  root 'doc_lookups#index'
+  get '/search' => 'doc_lookups#search'
+  resources :doc_lookups
+
   # The priority is based upon order of creation: first created -> highest priority.
   # See how all your routes lay out with "rake routes".
 
