@@ -37,11 +37,13 @@ if __name__=='__main__':
     mydb = DataDB( config[u'dbtype'], config[u'host'], config[u'dbname'], \
             config[u'username'], config[u'password'], config[u'encoding'], "")
 
-    #Get idf
-    term_id = mydb.select('SELECT id FROM terms order by id desc limit 1;')[0][0]
-    term_doc_list = idf(input_dir)
-    if term_id is None:
+    try:
+        term_id = mydb.select('SELECT id FROM terms order by id desc limit 1;')[0][0]
+    except IndexError, e:
         term_id = 1
+
+    #Get idf
+    term_doc_list = idf(input_dir)
     term_hash= {}
     doc_number = len(document_list)
     for term, doc in term_doc_list.iteritems():
