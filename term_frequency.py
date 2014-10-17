@@ -34,11 +34,17 @@ def to_db(mydb, term_id, document_list, doc_hash):
                     + "'" + str(doc_hash[doc[:-5]]) + "','" + doc[:-5]  + "','" + str(tf) + "','" + str(term_id[term]) + "');"
             mydb.exe_sql(sql)
 
-
 if __name__=='__main__':
-    doc_hash = csv_io.read_csv('output/doc_hash.json')
-    document_list = get_docs_list('output/tokens/')
+    if len(sys.argv) > 1:
+        doc_hash = csv_io.read_csv('output/doc_hash.json')
+        input_dir = sys.argv[1]
+        output_dir = 'output/zh_tf/'
+    else:
+        doc_hash = csv_io.read_csv('output/doc_hash.json')
+        input_dir = 'output/tokens/'
+        output_dir = 'output/en_ft/'
 
+    document_list = get_docs_list(input_dir)
     for doc in document_list:
-        terms = csv_io.read_csv('output/tokens/'+doc)
-        tf(terms, 'output/tf/')
+        terms = csv_io.read_csv(input_dir+doc)
+        tf(terms, output_dir)

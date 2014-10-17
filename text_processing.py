@@ -11,7 +11,7 @@ from modules import json_io
 from modules import csv_io
 
 if __name__=='__main__':
-    if len(sys.argv) >= 1: 
+    if len(sys.argv) > 1: 
         doc_input = sys.argv[1]
     else:
         doc_input = 'output/en_doc/'
@@ -26,11 +26,13 @@ if __name__=='__main__':
         for line in doc_obj.get_lines():
             tokens = tokenizer.to_tokens(line.decode('utf-8'))
             for token in tokens:
-                if tokenizer.is_stop_word(token) or token.isdigit():
+                if tokenizer.is_stop_word(token):
                     token = ""
+                elif token.isdigit():
+                    normalize_tokens.append(token.encode('utf-8'))
                 else:
                     token = tokenizer.stemming(token)
                     normalize_tokens.append(token.encode('utf-8'))
-        csv_io.write_csv('output/tokens/' + doc, [normalize_tokens])
+        csv_io.write_csv('output/en_tokens/' + doc, [normalize_tokens])
         del doc_obj
         doc_id += 1

@@ -25,9 +25,14 @@ def idf():
 
 if __name__=='__main__':
 
+    if len(sys.argv) > 1:
+        input_dir = sys.argv[1]
+    else:
+        input_dir = 'output/zh_tf/'
+
     config = json_io.read_json('config.json')[u'database']
     doc_hash = json_io.read_json('output/doc_hash.json')
-    document_list = get_docs_list('output/tf/')
+    document_list = get_docs_list(input_dir)
 
     mydb = DataDB( config[u'dbtype'], config[u'host'], config[u'dbname'], \
             config[u'username'], config[u'password'], config[u'encoding'], "")
