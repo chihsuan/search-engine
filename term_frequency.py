@@ -7,6 +7,7 @@ import math
 from modules import csv_io
 from modules import json_io
 from doc_preprocessing import get_docs_list
+from my_class.DataDB import DataDB
 
 def tf(terms, output_path):
     term_tf = {}
@@ -22,12 +23,22 @@ def tf(terms, output_path):
     
     json_io.write_json(output_path+doc+'.json', term_tf)
 
+def to_db(mydb, term_id, document_list, doc_hash):
+    for doc in document_list:
+        terms_tf = json_io.read_json('output/tf/'+doc)
+        for term, tf in terms_tf.iteritems():
+            term = term.replace("'", "")
+            if len(term) > 255:
+                term = term[:254]
+            sql = "INSERT INTO doc_lookups (doc_id,title,tf,term_id) VALUES (" \
+                    + "'" + str(doc_hash[doc[:-5]]) + "','" + doc[:-5]  + "','" + str(tf) + "','" + str(term_id[term]) + "');"
+            mydb.exe_sql(sql)
+
+
 if __name__=='__main__':
     doc_hash = csv_io.read_csv('output/doc_hash.json')
     document_list = get_docs_list('output/tokens/')
 
-    doc_id = 0
     for doc in document_list:
         terms = csv_io.read_csv('output/tokens/'+doc)
         tf(terms, 'output/tf/')
-        doc_id += 1

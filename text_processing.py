@@ -18,7 +18,7 @@ if __name__=='__main__':
    
     document_list = get_docs_list(doc_input)
     tokenizer = Tokenizer()
-    doc_id = 0
+    doc_id = 1
     for doc in document_list:
         doc_obj = Document(doc_id, doc, doc_input)
         # tokenize
