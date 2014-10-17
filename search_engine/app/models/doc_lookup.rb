@@ -1,9 +1,28 @@
 class DocLookup < ActiveRecord::Base
   belongs_to :term
   
+  def self.is_zh(c)
+    c_unicode = c.ord
+    zh_range = [[0x2e80, 0x33ff], [0xff00, 0xffef], [0x4e00, 0x9fbb], \
+                [0xf900, 0xfad9], [0x20000, 0x2a6d6], [0x2f800, 0x2fa1d]]
+
+    zh_range.each do |lower, upper|
+      if c_unicode >= lower and c_unicode <= upper
+        puts 'is zh'
+        return true
+      end
+    end
+    return false
+  end
+
   def self.look_up(query_terms)
 
-    keywords = query_terms.split(' ')
+    #exec("python is_zh.py " + query_terms[0])
+    if self.is_zh(query_terms[0])
+      keywords = self.n_gram(query_terms, 2)
+    else
+      keywords = query_terms.split(' ')
+    end
     doc_ranking = nil
 
     for keyword in keywords
@@ -27,7 +46,6 @@ class DocLookup < ActiveRecord::Base
         values['tf'] = values['tf'] * term['idf'] 
       end
     end
-    
 
     return doc_hash.sort_by{|k, v| v['tf']}.reverse
   end
@@ -36,4 +54,13 @@ class DocLookup < ActiveRecord::Base
     return DocLookup.find(id)['doc_id']
   end
 
+  def self.n_gram(query, n)
+    tokens = []
+    stop = query.length - n + 1
+    for i in 0..stop
+      tokens << query[i..i+n-1]
+    end
+    puts tokens
+    return tokens
+  end
 end
