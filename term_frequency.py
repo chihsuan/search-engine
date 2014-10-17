@@ -41,7 +41,7 @@ if __name__=='__main__':
         output_dir = 'output/zh_tf/'
     else:
         doc_hash = csv_io.read_csv('output/doc_hash.json')
-        input_dir = 'output/tokens/'
+        input_dir = 'output/en_tokens/'
         output_dir = 'output/en_tf/'
 
     document_list = get_docs_list(input_dir)
