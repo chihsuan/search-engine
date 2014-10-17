@@ -27,13 +27,11 @@ if __name__=='__main__':
     table_name = "documents"
     key_list = ['doc_id', 'content']
 
-    doc_id = 0
     for doc in document_list:
-        doc_obj = Document(doc_id, doc, data_dir)
+        doc_obj = Document(doc_hash[doc], doc, data_dir)
         content = doc_obj.read().replace("'", '"')
         data_list = [str(doc_hash[doc]),  content]
 
         mydb.insert_data(table_name, key_list, data_list)
         del doc_obj
-        doc_id += 1
     mydb.close()

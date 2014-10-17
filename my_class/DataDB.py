@@ -47,11 +47,21 @@ class DataDB:
             self.cursor.execute(sql)
             self.db.commit()
         except psycopg2.DatabaseError, e:
+            print 'Error %s' % e    
+            self.db.rollback()
+            sys.exit(1)
+
+    def doc_sql(self, sql, doc_id):
+        try:
+            self.cursor.execute(sql)
+            self.db.commit()
+        except psycopg2.DatabaseError, e:
             #print 'Error %s' % e    
             self.db.rollback()
-            #sql = "INSERT INTO documents (doc_id,content) VALUES ('" + doc_id + "', ' ');" 
-            #self.exe_sql(sql, doc_id)
-            sys.exit(1)
+            sql = "INSERT INTO documents (doc_id,content) VALUES ('" + doc_id + "', ' ');" 
+            self.exe_sql(sql, doc_id)
+            #sys.exit(1)
+
 
     def create_table( self, table_name, key_list ):
         sql = "CREATE TABLE IF NOT EXISTS " + table_name + "(" + key_list[0] + " char(32)"
@@ -81,7 +91,7 @@ class DataDB:
 
 		sql = sql[0: len(sql) -1 ] + ");"
 		
-		self.exe_sql(sql, data_list[0])
+		self.doc_sql(sql, data_list[0])
 
     def show_info(self):
         self.cursor.execute( "SELECT VERSION()")
