@@ -23,3 +23,6 @@ note: You need to fill up config_samlpe.json and rename to config.json
 
 ## Web interface
 + Ruby on Rails
+
+## See more
+https://github.com/chihsuan/search-engine/blob/master/Project_Report.pdf
