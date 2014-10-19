@@ -40,7 +40,7 @@ class DocLookup < ActiveRecord::Base
   def self.rank_by_tf_idf(term, doc_hash, doc_ranking)
 
     doc_hash.each do |key, values|
-      if doc_ranking.present? and doc_ranking.has_key?(key)
+      if doc_ranking.instance_of? Hash and doc_ranking.has_key?(key)
         values['tf'] = values['tf'] * term['idf'] + doc_ranking[key]['tf']
       else
         values['tf'] = values['tf'] * term['idf'] 
@@ -62,5 +62,17 @@ class DocLookup < ActiveRecord::Base
     end
     puts tokens
     return tokens
+  end
+
+  def rank_by_tf(term, doc_hash, doc_ranking)
+    doc_hash.each do |key, values|
+      if doc_ranking.instance_of? Hash and doc_ranking.has_key?(key)
+        values['tf'] = values['tf'] + doc_ranking[key]['tf']
+      else
+        values['tf'] = values['tf'] 
+      end
+    end
+
+    return doc_hash.sort_by{|k, v| v['tf']}.reverse
   end
 end

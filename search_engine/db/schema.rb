@@ -11,7 +11,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema.define(version: 20141016054628) do
+ActiveRecord::Schema.define(version: 20141018061327) do
 
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
@@ -24,6 +24,8 @@ ActiveRecord::Schema.define(version: 20141016054628) do
     t.datetime "updated_at"
     t.integer  "term_id"
   end
+
+  add_index "doc_lookups", ["term_id"], name: "index_doc_lookups_on_term_id", using: :btree
 
   create_table "documents", force: true do |t|
     t.integer  "doc_id"
@@ -38,5 +40,7 @@ ActiveRecord::Schema.define(version: 20141016054628) do
     t.datetime "created_at"
     t.datetime "updated_at"
   end
+
+  add_index "terms", ["term"], name: "index_terms_on_term", using: :btree
 
 end
