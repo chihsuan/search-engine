@@ -38,16 +38,27 @@ class DocLookup < ActiveRecord::Base
       end
     end
 
+    while doc_ranking.length > 20
+      doc_ranking.pop()
+    end
+
     return doc_ranking
   end
 
   def self.rank_by_tf_idf(term, doc_hash, doc_ranking)
 
     doc_hash.each do |key, values|
-      if doc_ranking.instance_of? Hash and doc_ranking.has_key?(key)
+      if doc_ranking.is_a? Hash and doc_ranking.has_key?(key)
         values['tf'] = values['tf'] * term['idf'] + doc_ranking[key]['tf']
       else
         values['tf'] = values['tf'] * term['idf'] 
+      end
+    end
+    if doc_ranking != nil
+      doc_ranking.each do |key, values|
+        if not doc_hash.has_key?(key)
+          doc_hash[key] = values
+        end
       end
     end
 
@@ -68,21 +79,26 @@ class DocLookup < ActiveRecord::Base
     return tokens
   end
 
-  def rank_by_tf(term, doc_hash, doc_ranking)
+  def self.rank_by_tf(term, doc_hash, doc_ranking)
     doc_hash.each do |key, values|
-      if doc_ranking.instance_of? Hash and doc_ranking.has_key?(key)
-        values['tf'] = values['tf'] + doc_ranking[key]['tf']
-      else
-        values['tf'] = values['tf'] 
+      if doc_ranking.is_a? Hash and doc_ranking.has_key?(key)
+        values['tf'] = values['tf']  + doc_ranking[key]['tf']
       end
     end
-
+    if doc_ranking != nil
+      doc_ranking.each do |key, values|
+        if not doc_hash.has_key?(key)
+          doc_hash[key] = values
+        end
+      end
+    end
     return doc_hash.sort_by{|k, v| v['tf']}.reverse
   end
+
 end
 
 class String
     def numeric?
           Float(self) != nil rescue false
-            end
+    end
 end
