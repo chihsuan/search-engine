@@ -26,7 +26,11 @@ class DocLookup < ActiveRecord::Base
     doc_ranking = nil
 
     for keyword in keywords
-      term = Term.select("id, idf").where(:term => keyword.stem).first
+      if self.is_zh(keyword[0]) or keyword[0].numeric?
+        term = Term.select("id, idf").where(:term => keyword).last
+      else
+        term = Term.select("id, idf").where(:term => keyword.stem).first
+      end
       if term.present?
         documents = DocLookup.where(:term_id => term['id']).limit(20)
         doc_hash = documents.index_by(&:id)
@@ -75,4 +79,10 @@ class DocLookup < ActiveRecord::Base
 
     return doc_hash.sort_by{|k, v| v['tf']}.reverse
   end
+end
+
+class String
+    def numeric?
+          Float(self) != nil rescue false
+            end
 end
