@@ -34,7 +34,7 @@ class Document():
         lines = self.get_lines()
         for line in lines:
             # append to one line and remove \n, ^M
-            self.one_line += line.decode('utf-8').replace('\n','').replace(str(chr(13)), '')
+            self.one_line += line.decode('utf-8').replace('\n','').replace(str(chr(13)), '').lower()
         self.doc_lines = []
         #print self.one_line.encode('utf-8')
 
